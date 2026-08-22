@@ -2832,6 +2832,24 @@ export interface paths {
     patch: operations["update_session"];
     trace?: never;
   };
+  "/v1/sessions/{session_id}/archive": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** PUT /v1/sessions/{session_id}/archive - Archive session */
+    put: operations["archive_session"];
+    post?: never;
+    /** DELETE /v1/sessions/{session_id}/archive - Restore an archived session */
+    delete: operations["unarchive_session"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/cancel": {
     parameters: {
       query?: never;
@@ -12050,6 +12068,15 @@ export interface components {
          */
         agent_version_id?: string | null;
         /**
+         * Format: date-time
+         * @description When this session was archived; `None` means active. Archived sessions
+         *     are hidden from default list results and shown by opting in
+         *     (`include_archived=true`). Unlike `is_pinned`, archive is a property of
+         *     the session itself rather than of the viewer.
+         * @example 2026-05-25T10:14:32Z
+         */
+        archived_at?: string | null;
+        /**
          * @description Validated config passed by host at blueprint spawn time.
          *     Example: `{"target_repo": "acme/everruns"}`.
          */
@@ -12526,6 +12553,15 @@ export interface components {
          * @example agentver_01933b5a00007000800000000000001
          */
         agent_version_id?: string | null;
+        /**
+         * Format: date-time
+         * @description When this session was archived; `None` means active. Archived sessions
+         *     are hidden from default list results and shown by opting in
+         *     (`include_archived=true`). Unlike `is_pinned`, archive is a property of
+         *     the session itself rather than of the viewer.
+         * @example 2026-05-25T10:14:32Z
+         */
+        archived_at?: string | null;
         /**
          * @description Validated config passed by host at blueprint spawn time.
          *     Example: `{"target_repo": "acme/everruns"}`.
@@ -14257,6 +14293,15 @@ export interface components {
        * @example agentver_01933b5a00007000800000000000001
        */
       agent_version_id?: string | null;
+      /**
+       * Format: date-time
+       * @description When this session was archived; `None` means active. Archived sessions
+       *     are hidden from default list results and shown by opting in
+       *     (`include_archived=true`). Unlike `is_pinned`, archive is a property of
+       *     the session itself rather than of the viewer.
+       * @example 2026-05-25T10:14:32Z
+       */
+      archived_at?: string | null;
       /**
        * @description Validated config passed by host at blueprint spawn time.
        *     Example: `{"target_repo": "acme/everruns"}`.
@@ -17998,6 +18043,15 @@ export interface components {
        * @example agentver_01933b5a00007000800000000000001
        */
       agent_version_id?: string | null;
+      /**
+       * Format: date-time
+       * @description When this session was archived; `None` means active. Archived sessions
+       *     are hidden from default list results and shown by opting in
+       *     (`include_archived=true`). Unlike `is_pinned`, archive is a property of
+       *     the session itself rather than of the viewer.
+       * @example 2026-05-25T10:14:32Z
+       */
+      archived_at?: string | null;
       /**
        * @description Validated config passed by host at blueprint spawn time.
        *     Example: `{"target_repo": "acme/everruns"}`.
@@ -27300,6 +27354,11 @@ export interface operations {
          */
         mine?: boolean | null;
         /**
+         * @description Include archived sessions. Defaults to false.
+         * @example true
+         */
+        include_archived?: boolean | null;
+        /**
          * @description Inclusive lower bound on creation time (RFC 3339).
          * @example 2026-08-01T00:00:00Z
          */
@@ -27499,6 +27558,7 @@ export interface operations {
         source?: string;
         status?: string;
         mine?: boolean;
+        include_archived?: boolean;
         created_after?: string;
         created_before?: string;
         order?: string;
@@ -27671,6 +27731,90 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["WithUrls_Session"];
         };
+      };
+      /** @description Invalid session ID */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  archive_session: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID (prefixed, e.g., session_...) */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Session archived successfully */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid session ID */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  unarchive_session: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID (prefixed, e.g., session_...) */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Session unarchived successfully */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Invalid session ID */
       400: {

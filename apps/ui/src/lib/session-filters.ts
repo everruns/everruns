@@ -84,6 +84,9 @@ export interface SessionFilters {
   window: SessionTimeWindow;
   /** Restrict to sessions owned by the signed-in user. */
   mine: boolean;
+  /** Widen the list to archived sessions. Off by default — archiving is the
+   *  user asking for a session to stop showing up. */
+  includeArchived: boolean;
   /** Zero-based page index. */
   page: number;
 }
@@ -95,6 +98,7 @@ export const EMPTY_SESSION_FILTERS: SessionFilters = {
   agent: null,
   window: "all",
   mine: false,
+  includeArchived: false,
   page: 0,
 };
 
@@ -124,6 +128,7 @@ export function parseSessionFilters(params: URLSearchParams): SessionFilters {
     agent: params.get("agent") || null,
     window: parseWindow(params.get("window")),
     mine: params.get("mine") === "true",
+    includeArchived: params.get("include_archived") === "true",
     page: Number.isFinite(page) && page > 0 ? page : 0,
   };
 }
@@ -140,6 +145,7 @@ export function serializeSessionFilters(filters: SessionFilters): string {
   if (filters.agent) params.set("agent", filters.agent);
   if (filters.window !== "all") params.set("window", filters.window);
   if (filters.mine) params.set("mine", "true");
+  if (filters.includeArchived) params.set("include_archived", "true");
   if (filters.page > 0) params.set("page", String(filters.page));
   return params.toString();
 }
@@ -152,7 +158,8 @@ export function hasActiveFilters(filters: SessionFilters): boolean {
     filters.source.length > 0 ||
     filters.agent !== null ||
     filters.window !== "all" ||
-    filters.mine
+    filters.mine ||
+    filters.includeArchived
   );
 }
 
@@ -210,6 +217,7 @@ export interface SessionQueryParams {
   source?: string;
   agentId?: string;
   mine?: boolean;
+  includeArchived?: boolean;
   createdAfter?: string;
 }
 
@@ -224,6 +232,7 @@ export function toQueryParams(
     source: filters.source.length ? filters.source.join(",") : undefined,
     agentId: filters.agent ?? undefined,
     mine: filters.mine || undefined,
+    includeArchived: filters.includeArchived || undefined,
     createdAfter: windowStart(filters.window, now),
   };
 }

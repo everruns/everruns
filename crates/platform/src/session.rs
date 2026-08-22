@@ -562,6 +562,13 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(example = false))]
     pub is_pinned: Option<bool>,
+    /// When this session was archived; `None` means active. Archived sessions
+    /// are hidden from default list results and shown by opting in
+    /// (`include_archived=true`). Unlike `is_pinned`, archive is a property of
+    /// the session itself rather than of the viewer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "2026-05-25T10:14:32Z"))]
+    pub archived_at: Option<DateTime<Utc>>,
     /// Number of active (enabled) schedules for this session.
     /// Populated when the session is fetched for API responses.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -664,6 +671,7 @@ impl Session {
             finished_at: None,
             usage: execution.usage,
             is_pinned: None,
+            archived_at: None,
             active_schedule_count: None,
             features: Vec::new(),
             parent_session_id: execution.parent_session_id,

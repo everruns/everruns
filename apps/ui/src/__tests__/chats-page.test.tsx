@@ -7,6 +7,8 @@ import type { Session } from "@/lib/api/types";
 
 const mockPinMutate = jest.fn();
 const mockUnpinMutate = jest.fn();
+const mockArchiveMutate = jest.fn();
+const mockUnarchiveMutate = jest.fn();
 
 jest.mock("next/link", () => ({
   __esModule: true,
@@ -23,6 +25,8 @@ jest.mock("@/hooks/use-sessions", () => ({
   useUpdateSession: () => ({ mutate: jest.fn() }),
   usePinSession: () => ({ mutate: mockPinMutate, isPending: false }),
   useUnpinSession: () => ({ mutate: mockUnpinMutate, isPending: false }),
+  useArchiveSession: () => ({ mutate: mockArchiveMutate, isPending: false }),
+  useUnarchiveSession: () => ({ mutate: mockUnarchiveMutate, isPending: false }),
 }));
 
 jest.mock("@/hooks", () => ({
@@ -118,6 +122,37 @@ describe("Chats surface", () => {
 
     expect(mockPinMutate).toHaveBeenCalledWith({ sessionId: "sess_1" });
     expect(mockUnpinMutate).toHaveBeenCalledWith({ sessionId: "sess_2" });
+  });
+
+  it("archives and unarchives chats from the list", () => {
+    mockUseChatThreads.mockReturnValue({
+      threads: [
+        thread({ id: "sess_1" }),
+        thread({ id: "sess_2", title: "Done", archived_at: "2026-08-09T11:00:00Z" }),
+      ],
+      isLoading: false,
+      error: null,
+    });
+
+    render(<ChatsPageClient />);
+    fireEvent.click(screen.getByRole("button", { name: "Archive chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Unarchive chat" }));
+
+    expect(mockArchiveMutate).toHaveBeenCalledWith({ sessionId: "sess_1" });
+    expect(mockUnarchiveMutate).toHaveBeenCalledWith({ sessionId: "sess_2" });
+  });
+
+  it("hides archived chats until the filter asks for them", () => {
+    render(<ChatsPageClient />);
+
+    // The list starts narrowed; the toggle is what widens it, and the hook is
+    // what carries that to the server.
+    expect(mockUseChatThreads).toHaveBeenLastCalledWith({ includeArchived: false });
+
+    fireEvent.click(screen.getByRole("button", { name: /Filter/ }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Show archived" }));
+
+    expect(mockUseChatThreads).toHaveBeenLastCalledWith({ includeArchived: true });
   });
 
   it("keeps the starting form mounted when the new thread lands in the list", () => {

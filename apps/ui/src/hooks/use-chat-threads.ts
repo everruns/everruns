@@ -23,25 +23,39 @@ export interface UseChatThreadsResult {
   error: Error | null;
 }
 
+export interface UseChatThreadsOptions {
+  enabled?: boolean;
+  /** Widen the list to archived threads too. Off by default: archiving a thread
+   *  is the user asking for it to stop showing up. */
+  includeArchived?: boolean;
+}
+
 /** This user's chat threads, pinned first and then ordered by recent activity. */
-export function useChatThreads(options: { enabled?: boolean } = {}): UseChatThreadsResult {
+export function useChatThreads(options: UseChatThreadsOptions = {}): UseChatThreadsResult {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const { user } = useAuth();
   const org = currentOrg?.public_id;
   const enabled = !!org && (options.enabled ?? true);
+  const includeArchived = options.includeArchived ?? false;
 
   const query = useQuery({
-    // Same shape as the sessions list cache, so a create/update invalidation of
-    // `sessions.all()` refreshes the sidebar too.
-    queryKey: queryKeys.sessions.list(org, undefined, 0, THREAD_SCAN_LIMIT),
-    queryFn: () => listSessions({ offset: 0, limit: THREAD_SCAN_LIMIT }),
+    // Still under the `["sessions"]` prefix, so a create/update invalidation of
+    // `sessions.all()` refreshes the sidebar too. The archived variant is a
+    // separate cache entry because it is a different server-side predicate.
+    queryKey: queryKeys.sessions.filtered(
+      org,
+      includeArchived ? "threads+archived" : "threads",
+      0,
+      THREAD_SCAN_LIMIT,
+    ),
+    queryFn: () => listSessions({ offset: 0, limit: THREAD_SCAN_LIMIT, includeArchived }),
     enabled,
     refetchInterval: THREAD_POLL_MS,
   });
 
   const threads = useMemo(
-    () => selectChatThreads(query.data?.data ?? [], user?.id),
-    [query.data, user?.id],
+    () => selectChatThreads(query.data?.data ?? [], user?.id, { includeArchived }),
+    [query.data, user?.id, includeArchived],
   );
 
   return {

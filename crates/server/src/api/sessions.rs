@@ -5,10 +5,11 @@
 use crate::auth::{AuthState, ResolvedOrg, rate_limit::OrgRateLimiter};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::sessions::{
-    AddSessionParticipant, CancelSession, CreateSession, DeleteSession, ForkSession,
-    GetOrCreateChatSession, GetSession, GetSessionContextReport, GetSessionFacets, GetSessionStats,
-    LeaveSessionParticipant, ListSessionParticipants, ListSessions, PinSession, SESSION_MANAGE,
-    SESSION_VIEW, SessionFilterArgs, SessionService, UnpinSession, UpdateSessionCmd,
+    AddSessionParticipant, ArchiveSession, CancelSession, CreateSession, DeleteSession,
+    ForkSession, GetOrCreateChatSession, GetSession, GetSessionContextReport, GetSessionFacets,
+    GetSessionStats, LeaveSessionParticipant, ListSessionParticipants, ListSessions, PinSession,
+    SESSION_MANAGE, SESSION_VIEW, SessionFilterArgs, SessionService, UnarchiveSession,
+    UnpinSession, UpdateSessionCmd,
 };
 use crate::kernel_imports::{
     Caller, ResourceConfigResponse, ScopedMcpServers, SessionContextReport, SessionSeedMode,
@@ -390,6 +391,9 @@ pub struct ListSessionsQuery {
     /// Restrict to sessions owned by the calling user.
     #[param(example = true)]
     pub mine: Option<bool>,
+    /// Include archived sessions. Defaults to false.
+    #[param(example = true)]
+    pub include_archived: Option<bool>,
     /// Inclusive lower bound on creation time (RFC 3339).
     #[param(example = "2026-08-01T00:00:00Z")]
     pub created_after: Option<String>,
@@ -418,6 +422,7 @@ pub struct SessionFacetsQuery {
     pub source: Option<String>,
     pub status: Option<String>,
     pub mine: Option<bool>,
+    pub include_archived: Option<bool>,
     pub created_after: Option<String>,
     pub created_before: Option<String>,
     pub order: Option<String>,
@@ -596,6 +601,10 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/v1/sessions/{session_id}/pin",
             axum::routing::put(pin_session).delete(unpin_session),
+        )
+        .route(
+            "/v1/sessions/{session_id}/archive",
+            axum::routing::put(archive_session).delete(unarchive_session),
         )
         // Cancel turn endpoint
         .route("/v1/sessions/{session_id}/cancel", post(cancel_turn))
@@ -795,6 +804,7 @@ pub async fn list_sessions(
             source: query.source,
             status: query.status,
             mine: query.mine,
+            include_archived: query.include_archived,
             created_after: query.created_after,
             created_before: query.created_before,
             order: query.order,
@@ -835,6 +845,7 @@ pub async fn get_session_facets(
                 source: query.source,
                 status: query.status,
                 mine: query.mine,
+                include_archived: query.include_archived,
                 created_after: query.created_after,
                 created_before: query.created_before,
                 order: query.order,
@@ -1159,6 +1170,58 @@ pub async fn unpin_session(
         );
     }
     UnpinSession { session_id }.run(&state.ctx(&org)).await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// PUT /v1/sessions/{session_id}/archive - Archive session
+#[utoipa::path(
+    put,
+    path = "/v1/sessions/{session_id}/archive",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
+    ),
+    responses(
+        (status = 204, description = "Session archived successfully"),
+        (status = 400, description = "Invalid session ID"),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn archive_session(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    ArchiveSession { session_id }.run(&state.ctx(&org)).await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// DELETE /v1/sessions/{session_id}/archive - Restore an archived session
+#[utoipa::path(
+    delete,
+    path = "/v1/sessions/{session_id}/archive",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
+    ),
+    responses(
+        (status = 204, description = "Session unarchived successfully"),
+        (status = 400, description = "Invalid session ID"),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn unarchive_session(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    UnarchiveSession { session_id }
+        .run(&state.ctx(&org))
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

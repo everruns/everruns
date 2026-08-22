@@ -58,6 +58,16 @@ describe("SidebarChatThreads", () => {
     expect(screen.getByRole("link", { name: /New chat/ })).toHaveAttribute("href", "/chats/new");
   });
 
+  it("keeps the way out to all chats even with no threads", () => {
+    // /chats is the only place archived threads can be brought back into view,
+    // so the link must not disappear with the list.
+    setThreads([]);
+
+    render(<SidebarChatThreads pathname="/chats" />);
+
+    expect(screen.getByRole("link", { name: "All chats" })).toHaveAttribute("href", "/chats");
+  });
+
   it("marks pinned threads", () => {
     mockUseChatThreads.mockReturnValue({
       threads: [{ ...thread("sess_pinned", "Pinned thread"), is_pinned: true }],

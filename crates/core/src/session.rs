@@ -336,6 +336,7 @@ mod tests {
             "started_at",
             "finished_at",
             "is_pinned",
+            "archived_at",
             "active_schedule_count",
             "features",
             "forked_from_sequence",

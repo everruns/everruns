@@ -1432,13 +1432,14 @@ impl ResourceUrlable for everruns_platform::Budget {
 /// rel set mapping without constructing a full `Session`.
 ///
 /// Cancel is offered only while a turn is mid-flight (`Active`);
-/// pin/unpin flips on `is_pinned`; events
+/// pin/unpin flips on `is_pinned`, archive/unarchive on `is_archived`; events
 /// streaming, metadata edits, and delete are unconditional because the
 /// API exposes them regardless of run state.
 pub fn session_allowed_actions(
     id: &str,
     status: &everruns_platform::SessionStatus,
     is_pinned: bool,
+    is_archived: bool,
     api_base: &str,
 ) -> Vec<AllowedAction> {
     use everruns_platform::SessionStatus;
@@ -1493,6 +1494,28 @@ pub fn session_allowed_actions(
             .with_href(format!("{api_base}/v1/sessions/{id}/pin"))
             .with_hint(pin_rel.3),
     );
+    let archive_rel = if is_archived {
+        (
+            "unarchive",
+            "DELETE",
+            "unarchive_session",
+            "Restore this session to default lists.",
+        )
+    } else {
+        (
+            "archive",
+            "PUT",
+            "archive_session",
+            "Archive this session so it drops out of default lists.",
+        )
+    };
+    actions.push(
+        AllowedAction::new(archive_rel.0)
+            .with_method(archive_rel.1)
+            .with_operation_id(archive_rel.2)
+            .with_href(format!("{api_base}/v1/sessions/{id}/archive"))
+            .with_hint(archive_rel.3),
+    );
     actions.push(
         AllowedAction::new("delete")
             .with_method("DELETE")
@@ -1525,6 +1548,7 @@ impl ResourceUrlable for everruns_platform::Session {
             &self.id.to_string(),
             &self.status,
             self.is_pinned.unwrap_or(false),
+            self.archived_at.is_some(),
             api_base,
         )
     }
@@ -2220,6 +2244,7 @@ mod tests {
             "session_01",
             &SessionStatus::Active,
             false,
+            false,
             "https://api.example",
         );
         let rels: Vec<&str> = actions.iter().map(|a| a.rel.as_str()).collect();
@@ -2246,7 +2271,7 @@ mod tests {
             SessionStatus::Paused,
         ] {
             let actions =
-                session_allowed_actions("session_01", &status, false, "https://api.example");
+                session_allowed_actions("session_01", &status, false, false, "https://api.example");
             assert!(
                 actions.iter().all(|a| a.rel != "cancel"),
                 "{status:?}: cancel must not appear when no turn is mid-flight"
@@ -2261,12 +2286,14 @@ mod tests {
             "session_01",
             &SessionStatus::Idle,
             false,
+            false,
             "https://api.example",
         );
         let pinned = session_allowed_actions(
             "session_01",
             &SessionStatus::Idle,
             true,
+            false,
             "https://api.example",
         );
         let unpinned_rels: Vec<&str> = unpinned.iter().map(|a| a.rel.as_str()).collect();
@@ -2286,11 +2313,45 @@ mod tests {
     }
 
     #[test]
+    fn session_actions_flip_archive_rel_on_is_archived() {
+        use everruns_platform::SessionStatus;
+        let active = session_allowed_actions(
+            "session_01",
+            &SessionStatus::Idle,
+            false,
+            false,
+            "https://api.example",
+        );
+        let archived = session_allowed_actions(
+            "session_01",
+            &SessionStatus::Idle,
+            false,
+            true,
+            "https://api.example",
+        );
+        let active_rels: Vec<&str> = active.iter().map(|a| a.rel.as_str()).collect();
+        let archived_rels: Vec<&str> = archived.iter().map(|a| a.rel.as_str()).collect();
+        assert!(
+            active_rels.contains(&"archive") && !active_rels.contains(&"unarchive"),
+            "active session offers archive, not unarchive: {active_rels:?}"
+        );
+        assert!(
+            archived_rels.contains(&"unarchive") && !archived_rels.contains(&"archive"),
+            "archived session offers unarchive, not archive: {archived_rels:?}"
+        );
+        let archive = active.iter().find(|a| a.rel == "archive").unwrap();
+        assert_eq!(archive.method.as_deref(), Some("PUT"));
+        let unarchive = archived.iter().find(|a| a.rel == "unarchive").unwrap();
+        assert_eq!(unarchive.method.as_deref(), Some("DELETE"));
+    }
+
+    #[test]
     fn session_actions_always_include_self_events_stream_update_delete() {
         use everruns_platform::SessionStatus;
         let actions = session_allowed_actions(
             "session_xyz",
             &SessionStatus::Idle,
+            false,
             false,
             "https://api.example",
         );

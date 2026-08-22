@@ -125,6 +125,31 @@ would report a count that disagrees with the page rendered beside it. Facets
 belong to the list, so they read what the list reads. `fact_session` remains
 the right source for analytics that tolerate projection lag.
 
+## Archive: the "put it away" bit
+
+`sessions.archived_at` (migration 124) records that a session was deliberately
+set aside. Default list results and every facet count exclude archived rows;
+`include_archived=true` widens both together, so the counts still describe the
+page. `PUT`/`DELETE /v1/sessions/{id}/archive` set and clear it, idempotently:
+re-archiving keeps the original timestamp, so it records when the session was
+*first* put away.
+
+Three distinctions are the point:
+
+* **Not status.** `SessionStatus`/`SessionActivity` describe execution. An
+  archived session can be idle, completed, or failed; archiving says nothing
+  about how the run went.
+* **Not deletion.** The events stay. A chat thread is the record of what an
+  agent did, so the answer to "I'm done with this" must not be destruction. The
+  thread keeps its URL and opens normally.
+* **Not per-viewer.** Unlike `pinned_sessions`, archive lives on the session
+  row, so a thread archived by its owner is archived for everyone who can see
+  it. Pinning is a personal shortcut; archiving is a statement about the thread.
+
+The chat surface is where this is spent: `/chats` hides archived threads and
+offers a "Show archived" filter to bring them back, and that filter is always
+present — it is the only way back to an archived thread short of its URL.
+
 ## Index shape
 
 The list and every aggregate share one predicate shape, org, then some subset
@@ -132,4 +157,7 @@ of source, agent, owner, and a creation window, ordered by `created_at` or
 `updated_at`. Migration 118 extends the existing `(org_id, created_at DESC)`
 index (EVE-697) so each added filter still begins from an org-scoped index
 scan. Org scoping is part of the predicate itself, not a post-filter: a count
-must never span organizations.
+must never span organizations. Migration 124 adds a partial
+`(org_id, updated_at DESC) WHERE archived_at IS NULL` index for the default
+"active threads, most recent first" shape, so archiving shrinks the hot path
+instead of adding to it.

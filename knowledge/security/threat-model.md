@@ -295,7 +295,7 @@ Prior to the command runner, only MCP/gRPC `dispatch` evaluated `Command::policy
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
-| TM-API-001 | SQL injection | Critical | All queries use sqlx prepared statements (parameterized). The sessions list/facet filters (EVE-852) compose their WHERE clause dynamically, but only from `$N` placeholders and `&'static str` literals returned by closed enums (`SessionSource`/`SessionActivity`); the `&'static str` bound on `sql_string_list` makes it a type error for a runtime string to reach query text, and every request-supplied value stays a bound parameter. | MITIGATED |
+| TM-API-001 | SQL injection | Critical | All queries use sqlx prepared statements (parameterized). The sessions list/facet filters (EVE-852) compose their WHERE clause dynamically, but only from `$N` placeholders and `&'static str` literals — those returned by closed enums (`SessionSource`/`SessionActivity`), and the two-shape archive predicate; the `&'static str` bound on `sql_string_list` makes it a type error for a runtime string to reach query text, and every request-supplied value (including `include_archived`, which selects between two compile-time literals rather than being interpolated) stays a bound parameter. | MITIGATED |
 | TM-API-002 | Large payload DoS | High | Input validation with size limits on agent/session/message fields | MITIGATED |
 | TM-API-003 | Path injection in filesystem API | High | Regex constraint: `path ~ '^/([^/\0]+(/[^/\0]+)*)?$'`; no `..`, `//`, or null bytes | MITIGATED |
 | TM-API-004 | Multipart upload abuse | Medium | Max file 100MB; max request 101MB; allowed MIME types: image/png, image/jpeg, image/gif, image/webp | MITIGATED |

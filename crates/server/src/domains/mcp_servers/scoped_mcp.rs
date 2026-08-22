@@ -499,6 +499,7 @@ mod tests {
             finished_at: None,
             usage: None,
             is_pinned: None,
+            archived_at: None,
             active_schedule_count: None,
             features: vec![],
             parent_session_id: None,

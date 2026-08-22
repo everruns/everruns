@@ -2138,6 +2138,25 @@ impl SessionService {
             .await
     }
 
+    /// Archive a session: it stays readable and its history intact, but drops
+    /// out of default list results. Idempotent.
+    pub async fn archive(&self, caller: &Caller, session_id: Uuid) -> Result<bool> {
+        Ok(self
+            .db
+            .set_session_archived(caller.org_id, SessionId::from_uuid(session_id), true)
+            .await?
+            .is_some())
+    }
+
+    /// Restore an archived session to the default list results. Idempotent.
+    pub async fn unarchive(&self, caller: &Caller, session_id: Uuid) -> Result<bool> {
+        Ok(self
+            .db
+            .set_session_archived(caller.org_id, SessionId::from_uuid(session_id), false)
+            .await?
+            .is_some())
+    }
+
     /// Unpin a session for a user in the caller's current org.
     /// Authorization is enforced at `Command::run` via `UnpinSession::policy`.
     pub async fn unpin(&self, caller: &Caller, user_id: Uuid, session_id: Uuid) -> Result<bool> {
@@ -2723,7 +2742,8 @@ impl SessionService {
             started_at: row.started_at,
             finished_at: row.finished_at,
             usage,
-            is_pinned: None,             // Populated by caller with user context
+            is_pinned: None, // Populated by caller with user context
+            archived_at: row.archived_at,
             active_schedule_count: None, // Populated by caller
             features: vec![],            // Populated by caller via populate_features()
             parent_session_id: row.parent_session_id,

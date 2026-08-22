@@ -129,6 +129,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::sessions::get_or_create_chat_session,
         api::sessions::pin_session,
         api::sessions::unpin_session,
+        api::sessions::archive_session,
+        api::sessions::unarchive_session,
         api::sessions::cancel_turn,
         api::messages::create_message,
         api::messages::list_messages,

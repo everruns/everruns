@@ -17,6 +17,7 @@ import Link from "next/link";
 import { Check, Copy, ExternalLink, Pencil } from "lucide-react";
 import type { Session } from "@/lib/api/types";
 import { AgentAvatar } from "@/components/chat/agent-avatar";
+import { ChatArchiveButton } from "@/components/chat/chat-archive-button";
 import { ChatPinButton } from "@/components/chat/chat-pin-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -120,13 +121,21 @@ export function ChatThreadHeader({
     <div className="flex items-center gap-3 border-b border-border/70 bg-background/70 px-4 py-3 backdrop-blur-[1px] sm:px-6">
       <AgentAvatar name={counterpart} />
       <div className="flex min-w-0 flex-col">
-        <ThreadTitle session={session} title={title} />
+        <span className="flex min-w-0 items-center gap-2">
+          <ThreadTitle session={session} title={title} />
+          {session.archived_at && (
+            <span className="flex-none border border-border/70 px-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+              Archived
+            </span>
+          )}
+        </span>
         <span className="truncate text-xs text-muted-foreground">
           {counterpartHref ?? counterpart ?? "No agent bound"}
         </span>
       </div>
       <div className="ml-auto flex items-center gap-2">
         <ChatPinButton session={session} showLabel />
+        <ChatArchiveButton session={session} showLabel />
         <ShareButton />
         <Link
           href={`/sessions/${session.id}/transcript`}
