@@ -93,8 +93,7 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
 
     // Retry live sampling and transient transport failures. If all successful
     // attempts cleanly decline an advertised tool, the contract check below
-    // reports a non-blocking sampling miss. Missing tool definitions and parsed
-    // tool-call mismatches remain merge-blocking failures.
+    // fails because the runtime summary cannot prove provider wire serialization.
     let Some(result) = run_live_turn!(
         config,
         3,
@@ -118,9 +117,7 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
     };
 
     assert!(result.success, "Turn should succeed: {:?}", result.error);
-    if !assert_live_tool_call_contract(&result, "get_current_time", &config.label()) {
-        return;
-    }
+    assert_live_tool_call_contract(&result, "get_current_time", &config.label());
     assert!(
         result.iterations > 1,
         "Should have multiple iterations (reason -> act -> reason); iterations={}",

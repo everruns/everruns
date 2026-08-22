@@ -378,24 +378,19 @@ pub fn classify_live_tool_call(result: &TurnResult, expected_tool: &str) -> Live
     }
 }
 
-/// Enforce live tool-call contracts while keeping clean model sampling misses
-/// out of the merge gate. Returns whether the tool path was exercised.
-pub fn assert_live_tool_call_contract(
-    result: &TurnResult,
-    expected_tool: &str,
-    label: &str,
-) -> bool {
+/// Enforce live tool-call contracts after the caller exhausts its sampling retries.
+/// A clean sampling miss is still useful diagnostic evidence, but cannot prove
+/// that the provider serialized the tool definition onto the wire.
+pub fn assert_live_tool_call_contract(result: &TurnResult, expected_tool: &str, label: &str) {
     let outcome = classify_live_tool_call(result, expected_tool);
     match outcome {
-        LiveToolCallOutcome::Exercised => true,
-        LiveToolCallOutcome::SamplingMiss => {
-            eprintln!(
-                "::warning title=Live LLM sampling miss::{label} advertised {expected_tool} \
-                 but the model cleanly returned without calling it"
-            );
-            eprintln!("SAMPLING MISS: generations={:?}", result.llm_generations,);
-            false
-        }
+        LiveToolCallOutcome::Exercised => {}
+        LiveToolCallOutcome::SamplingMiss => panic!(
+            "TOOL CONTRACT FAILURE: {label} did not call {expected_tool:?} after sampling retries; \
+             the in-memory advertised-tool summary is not wire-level request evidence; \
+             generations={:?}",
+            result.llm_generations,
+        ),
         LiveToolCallOutcome::MissingToolDefinition => panic!(
             "TOOL CONTRACT FAILURE: {label} did not advertise {expected_tool:?} on every \
              successful generation; generations={:?}",
@@ -494,7 +489,10 @@ pub fn all_providers_registry() -> DriverRegistry {
 
 #[cfg(test)]
 mod quota_detector_tests {
-    use super::{LiveToolCallOutcome, classify_live_tool_call, is_quota_exhausted};
+    use super::{
+        LiveToolCallOutcome, assert_live_tool_call_contract, classify_live_tool_call,
+        is_quota_exhausted,
+    };
     use everruns_core::turn::TurnStopReason;
     use everruns_provider::typed_id::TurnId;
     use everruns_test_support::in_memory_loop::{LlmGenerationSummary, TurnResult};
@@ -532,6 +530,13 @@ mod quota_detector_tests {
             classify_live_tool_call(&result, "get_current_time"),
             LiveToolCallOutcome::SamplingMiss
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "did not call \"get_current_time\" after sampling retries")]
+    fn sampling_miss_does_not_satisfy_live_contract() {
+        let result = tool_result(&["get_current_time"], 0, &["stop"], 0);
+        assert_live_tool_call_contract(&result, "get_current_time", "test provider");
     }
 
     #[test]
