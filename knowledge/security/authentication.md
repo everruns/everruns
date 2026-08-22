@@ -175,6 +175,10 @@ fallback exposes nothing the public register endpoint doesn't already (its
 failures are equally generic). The visible difference between "logged in" and
 "account created" is inherent to open signup, not an oracle.
 
+### Admin Mode Requires Credentials
+
+`AUTH_MODE=admin` without `AUTH_ADMIN_EMAIL` and `AUTH_ADMIN_PASSWORD` produces a deployment nobody can log into: admin mode checks credentials directly instead of looking users up in the database, and no admin user is seeded. `AuthConfig::validate()` rejects that combination at startup for the same fail-fast reason as the External-mode conflict below, so an operator sees the missing variables at deploy time rather than as a login screen that never accepts anything.
+
 ### External Mode and OAuth Providers
 
 `AUTH_MODE=external` and the built-in OAuth flow are mutually exclusive. External mode delegates user identity to a third-party provider (PropelAuth, Auth0, Clerk, etc.); the platform's own OAuth handlers (`/v1/auth/oauth/{provider}`, `/v1/auth/callback/{provider}`) are disabled.

@@ -17,6 +17,9 @@
 #   2. Create .env file with:
 #      SECRETS_ENCRYPTION_KEY=kek-v1:<your-generated-key>
 #      WORKER_GRPC_AUTH_TOKEN=<your-token>  # Required: worker gRPC auth token
+#      AUTH_JWT_SECRET=<your-random-secret> # Required: JWT signing secret
+#      AUTH_ADMIN_EMAIL=admin@example.com   # Required: admin login email
+#      AUTH_ADMIN_PASSWORD=<your-password>  # Required: admin login password
 #      DEFAULT_OPENAI_API_KEY=sk-...        # Optional: OpenAI API key
 #      DEFAULT_ANTHROPIC_API_KEY=sk-ant-... # Optional: Anthropic API key
 #      DEFAULT_GEMINI_API_KEY=...           # Optional: Google Gemini API key
