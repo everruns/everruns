@@ -691,6 +691,33 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         Ok(())
     }
 
+    #[instrument(skip(self, error))]
+    async fn try_fail_workflow(
+        &self,
+        workflow_id: Uuid,
+        error: WorkflowError,
+    ) -> Result<bool, StoreError> {
+        let error_json = sanitize_json_null_bytes(
+            serde_json::to_value(error).map_err(|e| StoreError::Serialization(e.to_string()))?,
+        );
+        let result = sqlx::query(
+            r#"
+            UPDATE durable_workflow_instances
+            SET status = 'failed',
+                error = $2,
+                completed_at = COALESCE(completed_at, NOW())
+            WHERE id = $1 AND status = 'running'
+            "#,
+        )
+        .bind(workflow_id)
+        .bind(error_json)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| StoreError::Database(e.to_string()))?;
+
+        Ok(result.rows_affected() == 1)
+    }
+
     #[instrument(skip(self, task))]
     async fn enqueue_task(&self, task: TaskDefinition) -> Result<Uuid, StoreError> {
         // Check pending task limits: per-workflow for workflow tasks, global for standalone
@@ -1111,10 +1138,11 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     }
 
     #[instrument(skip(self))]
-    async fn fail_task(
+    async fn fail_task_with_retry(
         &self,
         task_id: Uuid,
         error: &str,
+        retryable: bool,
     ) -> Result<TaskFailureOutcome, StoreError> {
         // EVE-639: SELECT FOR UPDATE and the follow-up UPDATE must share ONE
         // transaction so the row lock is held across the whole read-modify-write.
@@ -1163,7 +1191,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         let options: ActivityOptions = serde_json::from_value(options_json)
             .map_err(|e| StoreError::Serialization(e.to_string()))?;
 
-        let outcome = if attempt < max_attempts {
+        let outcome = if retryable && attempt < max_attempts {
             // Calculate retry delay
             let delay = options.retry_policy.delay_for_attempt((attempt + 1) as u32);
             let visible_at = Utc::now() + chrono::Duration::from_std(delay).unwrap_or_default();
@@ -1417,7 +1445,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             WHERE status = 'claimed'
               AND heartbeat_at < $1
               AND attempt >= max_attempts
-            RETURNING id, workflow_id, activity_id, last_error
+            RETURNING id, workflow_id, activity_id, activity_type, input, last_error
             "#,
         )
         .bind(threshold)
@@ -1434,6 +1462,8 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 task_id: r.get("id"),
                 workflow_id: r.get("workflow_id"),
                 activity_id: r.get("activity_id"),
+                activity_type: r.get("activity_type"),
+                input: r.get("input"),
                 last_error: r.get("last_error"),
             })
             .collect();

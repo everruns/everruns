@@ -74,6 +74,8 @@ export function ChatComposer({
   isActive,
   cancelCurrentTurn,
   canSubmit,
+  modelReady,
+  modelLoading,
   isUploading,
   sendPending,
   textareaRef,
@@ -120,6 +122,8 @@ export function ChatComposer({
   isActive: boolean;
   cancelCurrentTurn: { mutate: () => void; isPending?: boolean };
   canSubmit: boolean;
+  modelReady: boolean;
+  modelLoading: boolean;
   isUploading: boolean;
   sendPending: boolean;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -173,6 +177,7 @@ export function ChatComposer({
     }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
+      if (!canSubmit) return;
       await onSubmit(buildControls());
     }
   };
@@ -200,6 +205,11 @@ export function ChatComposer({
   return (
     <div className={chatSurfaceStyles.composerSection}>
       <form onSubmit={handleSubmit} className="space-y-3">
+        {!modelReady && (
+          <p className="text-sm text-muted-foreground" role="status">
+            {modelLoading ? t("chat_model_loading") : t("chat_model_required")}
+          </p>
+        )}
         <input
           ref={fileInputRef}
           type="file"

@@ -220,6 +220,9 @@ pub struct DeadTaskInfo {
     pub task_id: Uuid,
     pub workflow_id: Option<Uuid>,
     pub activity_id: String,
+    pub activity_type: String,
+    /// Serialized task input used to recover session/turn context.
+    pub input: serde_json::Value,
     pub last_error: Option<String>,
 }
 
@@ -627,6 +630,17 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         error: Option<crate::workflow::WorkflowError>,
     ) -> Result<(), StoreError>;
 
+    /// Atomically transition a running workflow to failed.
+    ///
+    /// Returns true only to the caller that won the terminal transition. This
+    /// elects one owner for external terminal lifecycle effects when a worker
+    /// failure races stale-task reclamation.
+    async fn try_fail_workflow(
+        &self,
+        workflow_id: Uuid,
+        error: crate::workflow::WorkflowError,
+    ) -> Result<bool, StoreError>;
+
     // =========================================================================
     // Task Queue Operations
     // =========================================================================
@@ -665,9 +679,22 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         result: serde_json::Value,
     ) -> Result<(), StoreError>;
 
-    /// Fail a task (may requeue or send to DLQ)
-    async fn fail_task(&self, task_id: Uuid, error: &str)
-    -> Result<TaskFailureOutcome, StoreError>;
+    /// Fail a task using its normal retry policy.
+    async fn fail_task(
+        &self,
+        task_id: Uuid,
+        error: &str,
+    ) -> Result<TaskFailureOutcome, StoreError> {
+        self.fail_task_with_retry(task_id, error, true).await
+    }
+
+    /// Fail a task, optionally bypassing retries for deterministic failures.
+    async fn fail_task_with_retry(
+        &self,
+        task_id: Uuid,
+        error: &str,
+        retryable: bool,
+    ) -> Result<TaskFailureOutcome, StoreError>;
 
     /// Atomically claim a workflow for a new turn.
     ///

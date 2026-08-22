@@ -409,6 +409,25 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         Ok(())
     }
 
+    async fn try_fail_workflow(
+        &self,
+        workflow_id: Uuid,
+        error: WorkflowError,
+    ) -> Result<bool, StoreError> {
+        let mut workflows = self.workflows.write();
+        let workflow = workflows
+            .get_mut(&workflow_id)
+            .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
+        if workflow.status != WorkflowStatus::Running {
+            return Ok(false);
+        }
+
+        workflow.status = WorkflowStatus::Failed;
+        workflow.error = Some(error);
+        workflow.completed_at = Some(Utc::now());
+        Ok(true)
+    }
+
     async fn continue_as_new(
         &self,
         old_workflow_id: Uuid,
@@ -613,10 +632,11 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         Ok(())
     }
 
-    async fn fail_task(
+    async fn fail_task_with_retry(
         &self,
         task_id: Uuid,
         error: &str,
+        retryable: bool,
     ) -> Result<TaskFailureOutcome, StoreError> {
         let mut tasks = self.tasks.write();
         let task = tasks
@@ -627,7 +647,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         task.last_error = Some(error.to_string());
 
         let max_attempts = task.definition.options.retry_policy.max_attempts;
-        if task.attempt < max_attempts {
+        if retryable && task.attempt < max_attempts {
             // Requeue for retry
             task.status = TaskStatus::Pending;
             task.claimed_by = None;
@@ -773,6 +793,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         };
 
         let mut reclaimed_ids = Vec::new();
+        let mut dead_tasks = Vec::new();
         let mut sealed_tasks = Vec::new();
 
         let mut tasks = self.tasks.write();
@@ -782,6 +803,19 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             }
             let max_attempts = task.definition.options.retry_policy.max_attempts;
             if task.attempt >= max_attempts {
+                task.status = TaskStatus::Dead;
+                let error = task.last_error.clone().unwrap_or_else(|| {
+                    "Worker became unresponsive after exhausting all retry attempts".to_string()
+                });
+                task.last_error = Some(error.clone());
+                dead_tasks.push(DeadTaskInfo {
+                    task_id: *task_id,
+                    workflow_id: task.definition.workflow_id,
+                    activity_id: task.definition.activity_id.clone(),
+                    activity_type: task.definition.activity_type.clone(),
+                    input: task.definition.input.clone(),
+                    last_error: Some(error),
+                });
                 continue;
             }
 
@@ -848,7 +882,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
 
         Ok(ReclaimResult {
             reclaimed_ids,
-            dead_tasks: Vec::new(),
+            dead_tasks,
             sealed_tasks,
         })
     }
@@ -3493,5 +3527,176 @@ mod tests {
                 "cycle {cycle}: standalone tasks must not track a progress token"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn deterministic_failure_bypasses_retries_and_releases_workflow() {
+        let store = InMemoryWorkflowEventStore::new();
+        let workflow_id = Uuid::now_v7();
+        store
+            .create_workflow(workflow_id, "turn", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        store
+            .update_workflow_status(workflow_id, WorkflowStatus::Running, None, None)
+            .await
+            .unwrap();
+        let task_id = store
+            .enqueue_task(TaskDefinition {
+                workflow_id: Some(workflow_id),
+                activity_id: "reason".to_string(),
+                activity_type: "reason".to_string(),
+                input: serde_json::json!({"session_id": "session_test"}),
+                options: ActivityOptions {
+                    retry_policy: crate::reliability::RetryPolicy::exponential()
+                        .with_max_attempts(5),
+                    ..Default::default()
+                },
+            })
+            .await
+            .unwrap();
+        store
+            .claim_task("worker", &["reason".to_string()], 1)
+            .await
+            .unwrap();
+
+        let outcome = store
+            .fail_task_with_retry(task_id, "Model not configured", false)
+            .await
+            .unwrap();
+        assert!(matches!(outcome, TaskFailureOutcome::MovedToDlq));
+        assert_eq!(store.get_task(task_id).await.unwrap().attempt, 1);
+
+        let error = WorkflowError::new("Model not configured");
+        assert!(
+            store
+                .try_fail_workflow(workflow_id, error.clone())
+                .await
+                .unwrap()
+        );
+        assert!(!store.try_fail_workflow(workflow_id, error).await.unwrap());
+        assert!(
+            store
+                .try_claim_workflow_for_new_turn(workflow_id)
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            store.get_workflow_status(workflow_id).await.unwrap(),
+            WorkflowStatus::Running
+        );
+
+        let follow_up_task_id = store
+            .enqueue_task(TaskDefinition {
+                workflow_id: Some(workflow_id),
+                activity_id: "reason-follow-up".to_string(),
+                activity_type: "reason".to_string(),
+                input: serde_json::json!({"model_id": "model_valid"}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+        let claimed = store
+            .claim_task("worker", &["reason".to_string()], 1)
+            .await
+            .unwrap();
+        assert_eq!(claimed.len(), 1);
+        assert_eq!(claimed[0].id, follow_up_task_id);
+    }
+
+    #[tokio::test]
+    async fn retryable_failure_keeps_workflow_running_before_final_attempt() {
+        let store = InMemoryWorkflowEventStore::new();
+        let workflow_id = Uuid::now_v7();
+        store
+            .create_workflow(workflow_id, "turn", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        store
+            .update_workflow_status(workflow_id, WorkflowStatus::Running, None, None)
+            .await
+            .unwrap();
+        let task_id = store
+            .enqueue_task(TaskDefinition {
+                workflow_id: Some(workflow_id),
+                activity_id: "reason".to_string(),
+                activity_type: "reason".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions {
+                    retry_policy: crate::reliability::RetryPolicy::exponential()
+                        .with_max_attempts(5),
+                    ..Default::default()
+                },
+            })
+            .await
+            .unwrap();
+        store
+            .claim_task("worker", &["reason".to_string()], 1)
+            .await
+            .unwrap();
+
+        let outcome = store.fail_task(task_id, "transient").await.unwrap();
+        assert!(matches!(outcome, TaskFailureOutcome::WillRetry { .. }));
+        assert_eq!(
+            store.get_workflow_status(workflow_id).await.unwrap(),
+            WorkflowStatus::Running
+        );
+    }
+
+    #[tokio::test]
+    async fn worker_reaper_race_elects_exactly_one_terminal_effect_owner() {
+        let store = std::sync::Arc::new(InMemoryWorkflowEventStore::new());
+        let workflow_id = Uuid::now_v7();
+        store
+            .create_workflow(workflow_id, "turn", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        store
+            .update_workflow_status(workflow_id, WorkflowStatus::Running, None, None)
+            .await
+            .unwrap();
+
+        let worker = store.clone();
+        let reaper = store.clone();
+        let (worker_won, reaper_won) = tokio::join!(
+            async {
+                let won = worker
+                    .try_fail_workflow(workflow_id, WorkflowError::new("worker failure"))
+                    .await?;
+                if won {
+                    crate::task_events::record_workflow_failed(
+                        worker.as_ref(),
+                        workflow_id,
+                        "worker failure".to_string(),
+                    )
+                    .await;
+                }
+                Ok::<_, StoreError>(won)
+            },
+            async {
+                let won = reaper
+                    .try_fail_workflow(workflow_id, WorkflowError::new("reaper failure"))
+                    .await?;
+                if won {
+                    crate::task_events::record_workflow_failed(
+                        reaper.as_ref(),
+                        workflow_id,
+                        "reaper failure".to_string(),
+                    )
+                    .await;
+                }
+                Ok::<_, StoreError>(won)
+            },
+        );
+
+        assert_eq!(worker_won.unwrap() as u8 + reaper_won.unwrap() as u8, 1);
+        let events = store.get_workflow_events(workflow_id).await.unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.event_type == "workflow_failed")
+                .count(),
+            1
+        );
     }
 }

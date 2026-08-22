@@ -155,6 +155,10 @@ pub enum AgentLoopError {
     #[error("Model not available: {0}")]
     ModelNotAvailable(String),
 
+    /// No explicit, snapshot, or system-default model could be resolved.
+    #[error("Model not configured")]
+    ModelNotConfigured,
+
     /// Tool execution error
     #[error("Tool execution error: {0}")]
     ToolExecution(String),
@@ -331,6 +335,11 @@ impl AgentLoopError {
         AgentLoopError::ModelNotAvailable(model_id.into())
     }
 
+    /// Create a missing-model configuration error.
+    pub fn model_not_configured() -> Self {
+        AgentLoopError::ModelNotConfigured
+    }
+
     /// Check if this is a request-too-large error
     pub fn is_request_too_large(&self) -> bool {
         matches!(self, AgentLoopError::RequestTooLarge(_))
@@ -433,7 +442,8 @@ impl AgentLoopError {
             AgentLoopError::AgentNotFound(_)
             | AgentLoopError::HarnessNotFound(_)
             | AgentLoopError::SessionNotFound(_)
-            | AgentLoopError::NoMessages => true,
+            | AgentLoopError::NoMessages
+            | AgentLoopError::ModelNotConfigured => true,
 
             // Config/driver errors won't self-heal within retries.
             AgentLoopError::Configuration(_) | AgentLoopError::DriverNotRegistered(_) => true,
@@ -455,6 +465,9 @@ impl AgentLoopError {
     /// Get structured user-facing error metadata based on error classification.
     pub fn user_facing_error(&self, context: UserFacingErrorContext) -> UserFacingError {
         match self {
+            AgentLoopError::ModelNotConfigured => {
+                UserFacingError::new(user_facing_error_codes::MODEL_NOT_CONFIGURED)
+            }
             AgentLoopError::ModelNotAvailable(model_id) => {
                 UserFacingError::new(user_facing_error_codes::MODEL_UNAVAILABLE)
                     .with_field("model_id", model_id)
@@ -882,6 +895,19 @@ mod tests {
         let err = AgentLoopError::model_not_available("gpt-99");
         assert!(err.user_facing_message().contains("gpt-99"));
         assert!(err.user_facing_message().contains("not available"));
+    }
+
+    #[test]
+    fn model_not_configured_is_typed_terminal_and_actionable() {
+        let err = AgentLoopError::model_not_configured();
+
+        assert!(err.is_non_retryable());
+        assert_eq!(
+            err.user_facing_error(UserFacingErrorContext::default())
+                .code,
+            user_facing_error_codes::MODEL_NOT_CONFIGURED
+        );
+        assert!(err.user_facing_message().contains("Choose a model"));
     }
 
     #[test]

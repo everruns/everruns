@@ -82,6 +82,8 @@ function localizeRuntimeErrorBase(
         ? formatMessage(locale, "runtime_error_model_unavailable", { value: modelId })
         : formatMessage(locale, "runtime_error_model_unavailable_generic");
     }
+    case "model_not_configured":
+      return formatMessage(locale, "runtime_error_model_not_configured");
     case "request_too_large":
       return formatMessage(locale, "runtime_error_request_too_large");
     case "provider_rate_limited": {

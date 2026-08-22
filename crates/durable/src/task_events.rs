@@ -204,7 +204,7 @@ pub async fn record_workflow_completed<S: WorkflowEventStore>(
 /// Record that a workflow has failed.
 ///
 /// This should be called when a workflow fails permanently.
-pub async fn record_workflow_failed<S: WorkflowEventStore>(
+pub async fn record_workflow_failed<S: WorkflowEventStore + ?Sized>(
     store: &S,
     workflow_id: Uuid,
     error_message: String,

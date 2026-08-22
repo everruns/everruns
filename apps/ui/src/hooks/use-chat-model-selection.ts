@@ -76,7 +76,8 @@ export function useChatModelSelection({
   }, []);
 
   const selectedModel = useMemo(
-    () => models.find((model) => model.id === selectedModelId && isChatModel(model)),
+    () =>
+      models.find((model) => model.id === selectedModelId && model.enabled && isChatModel(model)),
     [models, selectedModelId],
   );
 

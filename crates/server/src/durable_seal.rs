@@ -34,18 +34,18 @@ use crate::domains::sessions::SessionService;
 use crate::services::EventService;
 
 /// Session context needed to emit sealed-turn events.
-struct SealedSessionContext {
-    org_id: i64,
-    session_id: SessionId,
-    turn_id: Option<TurnId>,
-    input_message_id: MessageId,
+pub(crate) struct DurableTaskSessionContext {
+    pub(crate) org_id: i64,
+    pub(crate) session_id: SessionId,
+    pub(crate) turn_id: Option<TurnId>,
+    pub(crate) input_message_id: MessageId,
 }
 
 /// Best-effort extraction of session context from a task input.
 ///
 /// `process_input`/`reason` tasks serialize engine `TurnState` with the IDs at
 /// the top level; `act` tasks nest them under `context`. Try both shapes.
-fn extract_context(input: &serde_json::Value) -> Option<SealedSessionContext> {
+pub(crate) fn extract_context(input: &serde_json::Value) -> Option<DurableTaskSessionContext> {
     let org_id = input.get("org_id").and_then(|v| v.as_i64())?;
 
     // Top-level shape (TurnState / DurableTurnInput).
@@ -75,7 +75,7 @@ fn extract_context(input: &serde_json::Value) -> Option<SealedSessionContext> {
     // release the active session; only turn-scoped events require a real turn.
     let turn_id = turn_id_v.and_then(parse_id::<TurnId>);
 
-    Some(SealedSessionContext {
+    Some(DurableTaskSessionContext {
         org_id,
         session_id,
         turn_id,
@@ -89,7 +89,7 @@ fn parse_id<T: std::str::FromStr>(v: &serde_json::Value) -> Option<T> {
 
 async fn recover_turn_id_from_events(
     event_service: &EventService,
-    ctx: &SealedSessionContext,
+    ctx: &DurableTaskSessionContext,
     sealed: &SealedTaskInfo,
 ) -> Option<TurnId> {
     let filter_types = [TURN_STARTED.to_string()];

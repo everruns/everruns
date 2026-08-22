@@ -75,6 +75,8 @@ const messages = {
     chat_error_description:
       "Try sending your message again. If it keeps happening, share feedback so we can investigate.",
     chat_error_fallback: "Message failed.",
+    chat_model_loading: "Checking model availability…",
+    chat_model_required: "Choose a model, or configure a default model, before sending.",
     voice_error_description: "Voice could not start. Try again, or check voice provider setup.",
     voice_microphone_permission_description:
       "Check your browser microphone permissions, then try starting voice again.",
@@ -101,6 +103,8 @@ const messages = {
       "The model `{value}` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
     runtime_error_model_unavailable_generic:
       "The selected model is not available. Please select a different model.",
+    runtime_error_model_not_configured:
+      "No model is configured for this chat. Choose a model or configure a default model, then try again.",
     runtime_error_request_too_large:
       "The conversation has become too long for the model to process. Please start a new session or reduce the context size.",
     runtime_error_provider_rate_limited: "Rate limited by the AI provider. Please wait a moment.",
@@ -286,6 +290,9 @@ const messages = {
     chat_error_description:
       "Спробуйте надіслати повідомлення ще раз. Якщо це повторюється, надішліть відгук, щоб ми могли дослідити проблему.",
     chat_error_fallback: "Повідомлення не вдалося надіслати.",
+    chat_model_loading: "Перевіряємо доступність моделі…",
+    chat_model_required:
+      "Виберіть модель або налаштуйте модель за замовчуванням перед надсиланням.",
     voice_error_description:
       "Не вдалося запустити голос. Спробуйте ще раз або перевірте налаштування голосового провайдера.",
     voice_microphone_permission_description:
@@ -312,6 +319,8 @@ const messages = {
     runtime_error_model_unavailable:
       "Модель `{value}` недоступна. Її могли видалити, перейменувати або ваш API-ключ не має до неї доступу. Виберіть іншу модель.",
     runtime_error_model_unavailable_generic: "Вибрана модель недоступна. Виберіть іншу модель.",
+    runtime_error_model_not_configured:
+      "Для цього чату не налаштовано модель. Виберіть модель або налаштуйте модель за замовчуванням і повторіть спробу.",
     runtime_error_request_too_large:
       "Розмова стала надто довгою для цієї моделі. Почніть нову сесію або зменште розмір контексту.",
     runtime_error_provider_rate_limited:

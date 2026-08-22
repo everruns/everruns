@@ -15,11 +15,12 @@ use everruns_durable::{
     ActivityOptions, ClaimedTask, DurableExecution, HeartbeatResponse, StoreError, TaskDefinition,
     TaskFailureOutcome, WorkerInfo, WorkflowError, WorkflowEvent, WorkflowEventStore,
     WorkflowStatus, append_event, record_activity_completed, record_activity_failed,
-    record_activity_started,
+    record_activity_started, record_workflow_failed,
 };
 use everruns_engine::{ActInput, ActPlan, TurnPlan};
 use everruns_host::{
-    advance_host_execution, execute_act_activity as runtime_execute_act_activity,
+    RuntimeSessionLifecycle, advance_host_execution,
+    execute_act_activity as runtime_execute_act_activity,
     execute_input_activity as runtime_execute_input_activity,
     execute_reason_activity as runtime_execute_reason_activity,
 };
@@ -35,7 +36,7 @@ use uuid::Uuid;
 use crate::durable_runner::DurableTurnInput;
 use crate::grpc_durable_store::GrpcDurableStore;
 use crate::runtime_host::WorkerRuntimeHost;
-use crate::task_error::summarize_task_failure;
+use crate::task_error::{is_non_retryable_task_error, summarize_task_failure, user_facing_failure};
 use crate::worker_adapters::WorkerAdapters;
 use crate::{
     activities::ScheduledAgentTriggerInput, activities::ScheduledAppChannelInput,
@@ -246,6 +247,7 @@ pub trait TaskStore: Send + Sync + 'static {
         &self,
         task: &ClaimedTask,
         error: &str,
+        retryable: bool,
     ) -> Result<TaskFailureOutcome, StoreError>;
 
     async fn enqueue_task_and_record(
@@ -354,8 +356,15 @@ where
         &self,
         task: &ClaimedTask,
         error: &str,
+        retryable: bool,
     ) -> Result<TaskFailureOutcome, StoreError> {
-        let will_retry = task.attempt < task.max_attempts;
+        let outcome =
+            match WorkflowEventStore::fail_task_with_retry(self, task.id, error, retryable).await {
+                Ok(outcome) => outcome,
+                Err(StoreError::TaskNotOwned(_)) => return Ok(TaskFailureOutcome::MovedToDlq),
+                Err(error) => return Err(error),
+            };
+        let will_retry = matches!(outcome, TaskFailureOutcome::WillRetry { .. });
         record_activity_failed(
             self,
             task.workflow_id,
@@ -364,7 +373,15 @@ where
             will_retry,
         )
         .await;
-        WorkflowEventStore::fail_task(self, task.id, error).await
+        if matches!(outcome, TaskFailureOutcome::MovedToDlq)
+            && let Some(workflow_id) = task.workflow_id
+            && WorkflowEventStore::try_fail_workflow(self, workflow_id, WorkflowError::new(error))
+                .await?
+        {
+            record_workflow_failed(self, workflow_id, error.to_string()).await;
+            return Ok(TaskFailureOutcome::ExhaustedRetries);
+        }
+        Ok(outcome)
     }
 
     async fn enqueue_task_and_record(
@@ -534,19 +551,18 @@ impl TaskStore for GrpcDurableStore {
         &self,
         task: &ClaimedTask,
         error: &str,
+        retryable: bool,
     ) -> Result<TaskFailureOutcome, StoreError> {
         let mut store = self.clone();
-        let will_retry = GrpcDurableStore::fail_task(&mut store, task.id, error)
-            .await
-            .map_err(store_error)?;
-        Ok(if will_retry {
-            TaskFailureOutcome::WillRetry {
-                next_attempt: task.attempt + 1,
-                delay: Duration::ZERO,
-            }
-        } else {
-            TaskFailureOutcome::MovedToDlq
-        })
+        let (will_retry, terminal_failure_owner) =
+            GrpcDurableStore::fail_task(&mut store, task.id, error, retryable)
+                .await
+                .map_err(store_error)?;
+        Ok(grpc_task_failure_outcome(
+            will_retry,
+            terminal_failure_owner,
+            task.attempt,
+        ))
     }
 
     async fn enqueue_task_and_record(
@@ -611,6 +627,23 @@ impl TaskStore for GrpcDurableStore {
         GrpcDurableStore::get_and_consume_signals_by_type(&mut store, workflow_id, signal_type)
             .await
             .map_err(store_error)
+    }
+}
+
+fn grpc_task_failure_outcome(
+    will_retry: bool,
+    terminal_failure_owner: bool,
+    attempt: u32,
+) -> TaskFailureOutcome {
+    if terminal_failure_owner {
+        TaskFailureOutcome::ExhaustedRetries
+    } else if will_retry {
+        TaskFailureOutcome::WillRetry {
+            next_attempt: attempt + 1,
+            delay: Duration::ZERO,
+        }
+    } else {
+        TaskFailureOutcome::MovedToDlq
     }
 }
 
@@ -981,7 +1014,9 @@ where
                 workflow_id = %wf_id,
                 "Workflow cancelled, skipping task"
             );
-            let _ = store.fail_task_and_record(task, "Workflow cancelled").await;
+            let _ = store
+                .fail_task_and_record(task, "Workflow cancelled", false)
+                .await;
             return Ok(());
         }
     }
@@ -1096,18 +1131,7 @@ where
     let (result, turn_input_opt) = match execution {
         Ok(execution) => execution,
         Err(e) => {
-            let failure = summarize_task_failure(
-                task.id,
-                task.workflow_id,
-                &task.activity_type,
-                task.attempt,
-                Some(task.max_attempts),
-                &task.input,
-                &e,
-            );
-            let _ = store
-                .fail_task_and_record(task, &failure.persisted_message)
-                .await;
+            fail_activity_task(store, adapters, task, None, &e).await?;
 
             return Err(e);
         }
@@ -1151,23 +1175,81 @@ where
             }
         }
         Err(e) => {
-            let failure = summarize_task_failure(
-                task.id,
-                task.workflow_id,
-                &task.activity_type,
-                task.attempt,
-                Some(task.max_attempts),
-                &task.input,
-                &e,
-            );
-            let _ = store
-                .fail_task_and_record(task, &failure.persisted_message)
-                .await;
+            fail_activity_task(store, adapters, task, turn_input_opt.as_ref(), &e).await?;
 
             return Err(e);
         }
     }
 
+    Ok(())
+}
+
+async fn fail_activity_task<S: TaskStore, A: WorkerAdapters + Clone>(
+    store: &Arc<S>,
+    adapters: &A,
+    task: &ClaimedTask,
+    turn_input: Option<&DurableTurnInput>,
+    error: &anyhow::Error,
+) -> Result<TaskFailureOutcome> {
+    let failure = summarize_task_failure(
+        task.id,
+        task.workflow_id,
+        &task.activity_type,
+        task.attempt,
+        Some(task.max_attempts),
+        &task.input,
+        error,
+    );
+    let retryable = !is_non_retryable_task_error(error);
+    let outcome = store
+        .fail_task_and_record(task, &failure.persisted_message, retryable)
+        .await
+        .map_err(|store_error| anyhow::anyhow!("Failed to persist task failure: {store_error}"))?;
+
+    if matches!(outcome, TaskFailureOutcome::ExhaustedRetries) {
+        terminalize_failed_turn(adapters, task, turn_input, &failure.persisted_message).await?;
+    }
+
+    Ok(outcome)
+}
+
+async fn terminalize_failed_turn<A: WorkerAdapters + Clone>(
+    adapters: &A,
+    task: &ClaimedTask,
+    turn_input: Option<&DurableTurnInput>,
+    persisted_error: &str,
+) -> Result<()> {
+    let parsed_input = if turn_input.is_none() {
+        serde_json::from_value::<DurableTurnInput>(task.input.clone()).ok()
+    } else {
+        None
+    };
+    let Some(input) = turn_input.or(parsed_input.as_ref()) else {
+        return Ok(());
+    };
+    let Some(turn_id) = input.turn_id else {
+        warn!(
+            task_id = %task.id,
+            workflow_id = ?task.workflow_id,
+            "Cannot emit terminal turn events without a turn_id"
+        );
+        return Ok(());
+    };
+
+    let user_error = user_facing_failure(persisted_error);
+    let message = user_error.fallback_message();
+    let lifecycle = RuntimeSessionLifecycle::new(
+        WorkerRuntimeHost::new(adapters.clone()),
+        input.org_id,
+        input.session_id,
+    );
+    lifecycle
+        .turn_failed(turn_id, input.input_message_id, &message, Some(&user_error))
+        .await
+        .map_err(anyhow::Error::from)?;
+    lifecycle
+        .fire_turn_end_hooks(input.harness_id, input.agent_id, turn_id, false)
+        .await;
     Ok(())
 }
 
@@ -1592,6 +1674,7 @@ mod tests {
             &self,
             _task: &ClaimedTask,
             _error: &str,
+            _retryable: bool,
         ) -> Result<TaskFailureOutcome, StoreError> {
             Ok(TaskFailureOutcome::MovedToDlq)
         }
@@ -1789,6 +1872,79 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn direct_store_elects_one_terminal_failure_owner() {
+        let store = everruns_durable::InMemoryWorkflowEventStore::new();
+        let workflow_id = Uuid::now_v7();
+        store
+            .create_workflow(workflow_id, "turn", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        WorkflowEventStore::update_workflow_status(
+            &store,
+            workflow_id,
+            WorkflowStatus::Running,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        store
+            .enqueue_task(TaskDefinition {
+                workflow_id: Some(workflow_id),
+                activity_id: "reason".to_string(),
+                activity_type: "reason".to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            })
+            .await
+            .unwrap();
+        let task = WorkflowEventStore::claim_task(&store, "worker", &["reason".to_string()], 1)
+            .await
+            .unwrap()
+            .pop()
+            .unwrap();
+
+        let outcome = TaskStore::fail_task_and_record(&store, &task, "terminal", false)
+            .await
+            .unwrap();
+
+        assert!(matches!(outcome, TaskFailureOutcome::ExhaustedRetries));
+        assert_eq!(
+            WorkflowEventStore::get_workflow_status(&store, workflow_id)
+                .await
+                .unwrap(),
+            WorkflowStatus::Failed
+        );
+        let events = store.get_workflow_events(workflow_id).await.unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.event_type == "workflow_failed")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn grpc_store_preserves_retry_and_terminal_ownership_outcomes() {
+        assert!(matches!(
+            grpc_task_failure_outcome(true, false, 2),
+            TaskFailureOutcome::WillRetry {
+                next_attempt: 3,
+                ..
+            }
+        ));
+        assert!(matches!(
+            grpc_task_failure_outcome(false, true, 5),
+            TaskFailureOutcome::ExhaustedRetries
+        ));
+        assert!(matches!(
+            grpc_task_failure_outcome(false, false, 5),
+            TaskFailureOutcome::MovedToDlq
+        ));
+    }
+
     #[test]
     fn parse_resume_state_allows_missing_field() {
         let input = serde_json::json!({});
@@ -1961,6 +2117,7 @@ mod tests {
                 &self,
                 _task: &ClaimedTask,
                 _error: &str,
+                _retryable: bool,
             ) -> Result<TaskFailureOutcome, StoreError> {
                 let current = self.current.fetch_add(1, Ordering::SeqCst) + 1;
                 self.max.fetch_max(current, Ordering::SeqCst);

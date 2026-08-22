@@ -945,11 +945,15 @@ message CompleteDurableTaskResponse {
 message FailDurableTaskRequest {
     Uuid task_id = 1;
     string error = 2;
+    // Omitted by older workers: preserve normal retry behavior.
+    optional bool retryable = 3;
 }
 
 message FailDurableTaskResponse {
     bool failed = 1;
     bool will_retry = 2;
+    // True only for the worker elected to run terminal turn/session effects.
+    bool terminal_failure_owner = 3;
 }
 
 // === Heartbeat task ===

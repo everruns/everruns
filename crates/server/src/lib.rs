@@ -103,6 +103,7 @@ pub mod event_retention;
 pub mod blob_gc;
 
 // Surface sealed durable turns (forward-progress guard, EVE-534) to sessions.
+pub mod durable_failure;
 pub mod durable_seal;
 
 // Organization initialization (built-in harnesses, reconciliation)

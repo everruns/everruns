@@ -168,6 +168,16 @@ See `crates/durable/src/persistence/store.rs` for `TaskDefinition` and `crates/s
 
 4. **Dead Letter Queue** - Failed tasks preserved for debugging/replay
 
+### Failed-turn terminalization
+
+Deterministic activity failures bypass the normal retry policy. When any
+activity reaches the DLQ, the worker and stale-task reaper race an atomic
+`running → failed` workflow transition; only the winner owns terminal effects.
+That owner records `workflow.failed`, emits the canonical `turn.failed` and
+`session.idled` lifecycle, and returns the session to `idle`. A later message
+can then claim the terminal workflow for a new turn instead of remaining queued
+behind dead work.
+
 ### Forward-progress guard and Sealed terminal (EVE-534)
 
 `RetryPolicy.max_attempts` bounds *how many times* a task may run, but a turn

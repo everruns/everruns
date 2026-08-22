@@ -9,15 +9,41 @@ const mockExecuteSessionCommand = jest.fn();
 const mockUseFeatureFlag = jest.fn((..._args: unknown[]) => false);
 const mockStartSessionVoice = jest.fn();
 const mockEndSessionVoice = jest.fn();
-const mockModelEffortMenu = jest.fn((_props: Record<string, unknown>) => null);
+const mockModelEffortMenu = jest.fn((_props: Record<string, unknown>): React.ReactNode => null);
 const mockParticipants: Array<Record<string, unknown>> = [];
 const mockAgents: Array<Record<string, unknown>> = [];
+const mockModels: ModelWithProvider[] = [];
+
+const availableDefaultModel: ModelWithProvider = {
+  id: "model-default",
+  provider_id: "provider-1",
+  model_id: "gpt-5.4",
+  display_name: "GPT-5.4",
+  capabilities: ["chat"],
+  enabled: true,
+  healthy: true,
+  created_at: "2025-01-01T00:00:00Z",
+  updated_at: "2025-01-01T00:00:00Z",
+  provider_name: "OpenAI",
+  provider_type: "openai",
+  is_favorite: false,
+  profile: {
+    name: "GPT-5.4",
+    family: "gpt-5",
+    attachment: false,
+    reasoning: false,
+    temperature: true,
+    tool_call: true,
+    structured_output: true,
+    open_weights: false,
+  },
+};
 
 const mockSessionContext = {
   agentId: "agent-1",
   events: [],
   sessionId: "session-1",
-  llmModel: null as ModelWithProvider | null,
+  llmModel: availableDefaultModel as ModelWithProvider | null,
   llmModelLoading: false,
   chatEvents: [] as Event[],
   toolResultsMap: new Map(),
@@ -68,7 +94,7 @@ jest.mock("@/components/session/session-participants-rail", () => ({
 }));
 
 jest.mock("@/hooks", () => ({
-  useModels: () => ({ data: [], isLoading: false }),
+  useModels: () => ({ data: mockModels, isLoading: false }),
   useProviders: () => ({ data: [] }),
   useAgents: () => ({ data: mockAgents }),
   useSessionParticipants: () => ({ data: mockParticipants }),
@@ -242,11 +268,14 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  window.localStorage.clear();
   mockUseFeatureFlag.mockReturnValue(false);
   mockStartSessionVoice.mockReset();
   mockEndSessionVoice.mockReset();
   mockParticipants.length = 0;
   mockAgents.length = 0;
+  mockModels.length = 0;
+  mockSessionContext.llmModelLoading = false;
 });
 
 describe("ChatPanel compaction divider", () => {
@@ -255,7 +284,7 @@ describe("ChatPanel compaction divider", () => {
     mockModelEffortMenu.mockClear();
     mockExecuteSessionCommand.mockReset();
     mockSessionContext.chatEvents = [];
-    mockSessionContext.llmModel = null;
+    mockSessionContext.llmModel = availableDefaultModel;
     mockSessionContext.reasoningEffort = "";
     mockSessionContext.sessionId = "session-1";
     mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
@@ -349,7 +378,7 @@ describe("ChatPanel placeholder", () => {
     jest.clearAllMocks();
     mockExecuteSessionCommand.mockReset();
     mockSessionContext.chatEvents = [];
-    mockSessionContext.llmModel = null;
+    mockSessionContext.llmModel = availableDefaultModel;
     mockSessionContext.reasoningEffort = "";
     mockSessionContext.sendMessage.mutateAsync.mockReset();
     mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
@@ -364,6 +393,98 @@ describe("ChatPanel placeholder", () => {
     expect(
       screen.queryByPlaceholderText("Type a message or / for commands... (Enter to send)"),
     ).not.toBeInTheDocument();
+  });
+
+  it("does not submit while the default model is unavailable", async () => {
+    mockSessionContext.llmModel = null;
+    mockSessionContext.llmModelLoading = false;
+
+    render(<ChatPanel />);
+
+    const textarea = screen.getByPlaceholderText("Type a message... (Enter to send)");
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    expect(mockSessionContext.sendMessage.mutateAsync).not.toHaveBeenCalled();
+    expect(screen.getByText(/Choose a model/)).toBeInTheDocument();
+  });
+
+  it("waits for default model resolution before enabling submission", () => {
+    mockSessionContext.llmModel = null;
+    mockSessionContext.llmModelLoading = true;
+
+    const { container } = render(<ChatPanel />);
+
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "hello" } });
+
+    expect(screen.getByText("Checking model availability…")).toBeInTheDocument();
+    expect(container.querySelector('button[type="submit"]')).toBeDisabled();
+  });
+
+  it("sends an explicit model when no default is available", async () => {
+    mockSessionContext.llmModel = null;
+    mockModels.push({ ...availableDefaultModel, id: "model-explicit" });
+    mockModelEffortMenu.mockImplementationOnce((props: Record<string, unknown>) => (
+      <button
+        type="button"
+        onClick={() => (props.onModelChange as (id: string) => void)("model-explicit")}
+      >
+        Choose explicit model
+      </button>
+    ));
+    mockSessionContext.sendMessage.mutateAsync.mockResolvedValueOnce(undefined);
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Choose explicit model" }));
+    const textarea = screen.getByRole("combobox");
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    await waitFor(() =>
+      expect(mockSessionContext.sendMessage.mutateAsync).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        content: "hello",
+        controls: { locale: "en-US", model_id: "model-explicit" },
+        addressedParticipantId: null,
+      }),
+    );
+  });
+
+  it("does not submit a stale explicit model that is no longer enabled", async () => {
+    mockSessionContext.llmModel = null;
+    mockModels.push({ ...availableDefaultModel, id: "model-disabled", enabled: false });
+    window.localStorage.setItem(
+      "everruns:chat:model-selection:agent-1:session-1",
+      "model-disabled",
+    );
+
+    render(<ChatPanel />);
+
+    const textarea = screen.getByRole("combobox");
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    expect(mockSessionContext.sendMessage.mutateAsync).not.toHaveBeenCalled();
+    expect(screen.getByText(/Choose a model/)).toBeInTheDocument();
+  });
+
+  it("inherits a resolved default without adding a message override", async () => {
+    mockSessionContext.llmModel = availableDefaultModel;
+    mockSessionContext.sendMessage.mutateAsync.mockResolvedValueOnce(undefined);
+
+    render(<ChatPanel />);
+    const textarea = screen.getByRole("combobox");
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    await waitFor(() =>
+      expect(mockSessionContext.sendMessage.mutateAsync).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        content: "hello",
+        controls: { locale: "en-US" },
+        addressedParticipantId: null,
+      }),
+    );
   });
 
   it("keeps slash command hint when commands are available", () => {
