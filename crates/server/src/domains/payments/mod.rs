@@ -4,6 +4,7 @@ use everruns_core::{Permission, Policy, Rule};
 
 pub mod authority;
 pub mod commands;
+pub mod eip712;
 pub mod queries;
 pub mod types;
 

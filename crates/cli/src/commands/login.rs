@@ -1,7 +1,8 @@
 // CLI login command — interactive OAuth login with localhost callback
 //
 // Decision: Spawn a one-shot localhost HTTP server to receive the OAuth callback.
-// Decision: Use webbrowser crate for cross-platform browser launch.
+// Decision: browser launch goes through crate::browser, which spawns the
+// platform URL handler directly.
 // Decision: Fall back to --token flag for headless/SSH environments.
 
 use anyhow::{Context, Result, anyhow};
@@ -213,7 +214,7 @@ async fn run_oauth_login(api_url: &str, profile: &str) -> Result<()> {
     eprintln!();
     eprintln!("Waiting for login...");
 
-    if webbrowser::open(&start.auth_url).is_err() {
+    if crate::browser::open(&start.auth_url).is_err() {
         eprintln!("(Could not open browser automatically)");
     }
 

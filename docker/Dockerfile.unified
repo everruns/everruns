@@ -22,22 +22,19 @@ COPY --from=tonistiigi/xx:1.9.0@sha256:c64defb9ed5a91eacb37f96ccc3d4cd72521c4bd1
 
 ARG TARGETPLATFORM
 
-# perl + make are host build tools required by git2's `vendored-openssl` feature,
-# which compiles OpenSSL from source (openssl-src) during the build. The slim
-# rust base ships neither; without them the release image build fails at
-# OpenSSL's ./Configure. Runtime images stay distroless (no system libssl).
+# No OpenSSL toolchain here: git2 is built without a TLS backend (git network
+# access goes through the workspace rustls client, see
+# crates/server/src/domains/git_fetch.rs), and nothing else in the shipped
+# binaries links OpenSSL. That removes the from-source openssl-src build along
+# with the perl, make, and libssl-dev it needed. Runtime images stay distroless.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     clang \
     lld \
     curl \
-    libssl-dev \
-    perl \
-    make \
     && xx-apt-get install -y --no-install-recommends \
     gcc \
     libc6-dev \
-    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure pkg-config for cross-compilation

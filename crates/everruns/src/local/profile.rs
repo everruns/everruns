@@ -94,10 +94,43 @@ impl LocalProfile {
 }
 
 fn default_data_dir() -> PathBuf {
-    dirs::data_local_dir()
+    data_local_dir()
         .unwrap_or_else(std::env::temp_dir)
         .join("everruns")
         .join("local")
+}
+
+/// The user's local (non-roaming) data directory.
+///
+/// Decision: replaces the `dirs` crate, which pulled a Redox passwd-parsing
+/// subtree for this one lookup. The result must stay byte-identical to what
+/// `dirs::data_local_dir()` returned — it is the root of the on-disk local
+/// profile, and moving it would orphan existing state.
+///
+/// Linux: `$XDG_DATA_HOME` when absolute, else `~/.local/share`.
+/// macOS: `~/Library/Application Support`. Windows: `%LOCALAPPDATA%`.
+fn data_local_dir() -> Option<PathBuf> {
+    let non_empty = |key: &str| {
+        std::env::var_os(key)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+    };
+
+    #[cfg(target_os = "macos")]
+    {
+        non_empty("HOME").map(|home| home.join("Library").join("Application Support"))
+    }
+    #[cfg(windows)]
+    {
+        non_empty("LOCALAPPDATA")
+    }
+    #[cfg(all(not(target_os = "macos"), not(windows)))]
+    {
+        match non_empty("XDG_DATA_HOME") {
+            Some(path) if path.is_absolute() => Some(path),
+            _ => non_empty("HOME").map(|home| home.join(".local/share")),
+        }
+    }
 }
 
 #[cfg(unix)]

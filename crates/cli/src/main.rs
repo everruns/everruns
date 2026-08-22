@@ -6,8 +6,10 @@
 // Design Decision: Credential file (platform config dir/everruns/credentials.json) with env var override.
 
 mod auth;
+mod browser;
 mod commands;
 mod output;
+mod user_dirs;
 
 use clap::{Parser, Subcommand};
 use everruns_sdk::Everruns;

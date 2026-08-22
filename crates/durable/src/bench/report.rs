@@ -2,10 +2,10 @@
 //!
 //! Generates interactive HTML reports with charts for benchmark results.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-
-use minijinja::{Environment, context};
+use std::time::Duration;
 
 use super::metrics::{BenchmarkMetrics, LatencySummary, ResourceSnapshot};
 
@@ -71,61 +71,142 @@ impl BenchmarkReport {
     }
 
     fn render_html(&self, metrics: &BenchmarkMetrics) -> String {
-        let mut env = Environment::new();
-        env.add_template("report", REPORT_TEMPLATE).unwrap();
-
-        let template = env.get_template("report").unwrap();
-
-        // Prepare data for charts
         let schedule_to_start = metrics.schedule_to_start.summary();
         let execution = metrics.execution.summary();
         let end_to_end = metrics.end_to_end.summary();
 
+        // Prepare data for charts
         let throughput_data = metrics.tasks_completed.timeseries();
         let resource_data = metrics.resources.snapshots();
 
         // Calculate throughput over time (ops/sec in sliding windows)
         let throughput_series = calculate_throughput_series(&throughput_data);
 
-        template
-            .render(context! {
-                title => self.config.title,
-                benchmark_name => metrics.name,
-                duration_secs => metrics.elapsed().as_secs_f64(),
-                total_tasks => metrics.tasks_completed.total(),
-                throughput => metrics.tasks_completed.throughput(),
+        let pair = |name: &str, value: String| (name.to_string(), value);
 
-                // Latency summaries
-                schedule_to_start => format_latency_summary(&schedule_to_start),
-                execution => format_latency_summary(&execution),
-                end_to_end => format_latency_summary(&end_to_end),
+        let mut vars: Vec<(String, String)> = vec![
+            pair("title", self.config.title.clone()),
+            pair("benchmark_name", metrics.name.clone()),
+            pair(
+                "duration_secs_2f",
+                format!("{:.2}", metrics.elapsed().as_secs_f64()),
+            ),
+            pair("total_tasks", metrics.tasks_completed.total().to_string()),
+            pair(
+                "throughput_1f",
+                format!("{:.1}", metrics.tasks_completed.throughput()),
+            ),
+            // Headline stat cards render one decimal; the detail table renders two.
+            pair(
+                "end_to_end_p50_ms_1f",
+                format!("{:.1}", millis(end_to_end.p50)),
+            ),
+            pair(
+                "end_to_end_p99_ms_1f",
+                format!("{:.1}", millis(end_to_end.p99)),
+            ),
+            // Resource usage
+            pair(
+                "peak_memory_mb_1f",
+                format!("{:.1}", metrics.resources.peak_memory_mb()),
+            ),
+            pair(
+                "avg_cpu_percent_1f",
+                format!("{:.1}", metrics.resources.avg_cpu_percent()),
+            ),
+            // Chart data (JSON)
+            pair(
+                "throughput_chart_data",
+                serde_json::to_string(&throughput_series).unwrap(),
+            ),
+            pair("latency_chart_data", format_latency_chart_data(metrics)),
+            pair(
+                "resource_chart_data",
+                format_resource_chart_data(&resource_data),
+            ),
+            // Latency distribution for histogram
+            pair("latency_histogram_data", format_latency_histogram(metrics)),
+        ];
 
-                // Resource usage
-                peak_memory_mb => metrics.resources.peak_memory_mb(),
-                avg_cpu_percent => metrics.resources.avg_cpu_percent(),
+        for (prefix, summary) in [
+            ("schedule_to_start", &schedule_to_start),
+            ("execution", &execution),
+            ("end_to_end", &end_to_end),
+        ] {
+            vars.extend(latency_summary_vars(prefix, summary));
+        }
 
-                // Chart data (JSON)
-                throughput_chart_data => serde_json::to_string(&throughput_series).unwrap(),
-                latency_chart_data => format_latency_chart_data(metrics),
-                resource_chart_data => format_resource_chart_data(&resource_data),
+        let vars: HashMap<String, String> = vars.into_iter().collect();
 
-                // Latency distribution for histogram
-                latency_histogram_data => format_latency_histogram(metrics),
-            })
-            .unwrap()
+        render_template(REPORT_TEMPLATE, &vars)
     }
 }
 
-fn format_latency_summary(summary: &LatencySummary) -> serde_json::Value {
-    serde_json::json!({
-        "count": summary.count,
-        "mean_ms": summary.mean.as_secs_f64() * 1000.0,
-        "min_ms": summary.min.as_secs_f64() * 1000.0,
-        "max_ms": summary.max.as_secs_f64() * 1000.0,
-        "p50_ms": summary.p50.as_secs_f64() * 1000.0,
-        "p95_ms": summary.p95.as_secs_f64() * 1000.0,
-        "p99_ms": summary.p99.as_secs_f64() * 1000.0,
-    })
+fn millis(duration: Duration) -> f64 {
+    duration.as_secs_f64() * 1000.0
+}
+
+/// Flattens a latency summary into the `<prefix>_<stat>` placeholders the
+/// report table reads.
+fn latency_summary_vars(prefix: &str, summary: &LatencySummary) -> Vec<(String, String)> {
+    vec![
+        (format!("{prefix}_count"), summary.count.to_string()),
+        (
+            format!("{prefix}_mean_ms"),
+            format!("{:.2}", millis(summary.mean)),
+        ),
+        (
+            format!("{prefix}_min_ms"),
+            format!("{:.2}", millis(summary.min)),
+        ),
+        (
+            format!("{prefix}_max_ms"),
+            format!("{:.2}", millis(summary.max)),
+        ),
+        (
+            format!("{prefix}_p50_ms"),
+            format!("{:.2}", millis(summary.p50)),
+        ),
+        (
+            format!("{prefix}_p95_ms"),
+            format!("{:.2}", millis(summary.p95)),
+        ),
+        (
+            format!("{prefix}_p99_ms"),
+            format!("{:.2}", millis(summary.p99)),
+        ),
+    ]
+}
+
+/// Substitutes `{{ name }}` placeholders in a single pass.
+///
+/// Decision: the report is one static page with no loops or conditionals, so a
+/// template engine (previously minijinja) bought nothing over this. Single-pass
+/// scanning also keeps substituted values — chart JSON in particular — from
+/// being rescanned for placeholders.
+fn render_template(template: &str, vars: &HashMap<String, String>) -> String {
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+
+    while let Some(open) = rest.find("{{") {
+        out.push_str(&rest[..open]);
+        let after_open = &rest[open + 2..];
+        let Some(close) = after_open.find("}}") else {
+            out.push_str(&rest[open..]);
+            return out;
+        };
+        let name = after_open[..close].trim();
+        match vars.get(name) {
+            Some(value) => out.push_str(value),
+            // An unknown placeholder is a template bug; keep it visible in the
+            // output rather than silently rendering an empty cell.
+            None => out.push_str(&rest[open..open + 2 + close + 2]),
+        }
+        rest = &after_open[close + 2..];
+    }
+
+    out.push_str(rest);
+    out
 }
 
 fn calculate_throughput_series(data: &[(u64, u64)]) -> Vec<(f64, f64)> {
@@ -461,7 +542,7 @@ const REPORT_TEMPLATE: &str = r##"
     <div class="container">
         <header>
             <h1>{{ title }}</h1>
-            <div class="subtitle">{{ benchmark_name }} | Duration: {{ "%.2f"|format(duration_secs) }}s</div>
+            <div class="subtitle">{{ benchmark_name }} | Duration: {{ duration_secs_2f }}s</div>
         </header>
 
         <div class="interpretation-box">
@@ -485,35 +566,35 @@ const REPORT_TEMPLATE: &str = r##"
             </div>
             <div class="stat-card">
                 <a href="#glossary-throughput">
-                    <div class="stat-value">{{ "%.1f"|format(throughput) }}</div>
+                    <div class="stat-value">{{ throughput_1f }}</div>
                     <div class="stat-label">Tasks/sec</div>
                     <div class="stat-desc">Sustained processing rate</div>
                 </a>
             </div>
             <div class="stat-card">
                 <a href="#glossary-p50">
-                    <div class="stat-value">{{ "%.1f"|format(end_to_end.p50_ms) }}ms</div>
+                    <div class="stat-value">{{ end_to_end_p50_ms_1f }}ms</div>
                     <div class="stat-label">P50 E2E Latency</div>
                     <div class="stat-desc">Median end-to-end time</div>
                 </a>
             </div>
             <div class="stat-card">
                 <a href="#glossary-p99">
-                    <div class="stat-value">{{ "%.1f"|format(end_to_end.p99_ms) }}ms</div>
+                    <div class="stat-value">{{ end_to_end_p99_ms_1f }}ms</div>
                     <div class="stat-label">P99 E2E Latency</div>
                     <div class="stat-desc">Worst-case (1% of tasks)</div>
                 </a>
             </div>
             <div class="stat-card">
                 <a href="#glossary-memory">
-                    <div class="stat-value">{{ "%.1f"|format(peak_memory_mb) }}MB</div>
+                    <div class="stat-value">{{ peak_memory_mb_1f }}MB</div>
                     <div class="stat-label">Peak Memory</div>
                     <div class="stat-desc">Max RSS during benchmark</div>
                 </a>
             </div>
             <div class="stat-card">
                 <a href="#glossary-cpu">
-                    <div class="stat-value">{{ "%.1f"|format(avg_cpu_percent) }}%</div>
+                    <div class="stat-value">{{ avg_cpu_percent_1f }}%</div>
                     <div class="stat-label">Avg CPU</div>
                     <div class="stat-desc">Process CPU utilization</div>
                 </a>
@@ -560,33 +641,33 @@ const REPORT_TEMPLATE: &str = r##"
                 <tbody>
                     <tr>
                         <td><a href="#glossary-s2s" class="metric-link">Schedule → Start</a></td>
-                        <td>{{ schedule_to_start.count }}</td>
-                        <td>{{ "%.2f"|format(schedule_to_start.mean_ms) }}</td>
-                        <td>{{ "%.2f"|format(schedule_to_start.min_ms) }}</td>
-                        <td>{{ "%.2f"|format(schedule_to_start.p50_ms) }}</td>
-                        <td>{{ "%.2f"|format(schedule_to_start.p95_ms) }}</td>
-                        <td>{{ "%.2f"|format(schedule_to_start.p99_ms) }}</td>
-                        <td>{{ "%.2f"|format(schedule_to_start.max_ms) }}</td>
+                        <td>{{ schedule_to_start_count }}</td>
+                        <td>{{ schedule_to_start_mean_ms }}</td>
+                        <td>{{ schedule_to_start_min_ms }}</td>
+                        <td>{{ schedule_to_start_p50_ms }}</td>
+                        <td>{{ schedule_to_start_p95_ms }}</td>
+                        <td>{{ schedule_to_start_p99_ms }}</td>
+                        <td>{{ schedule_to_start_max_ms }}</td>
                     </tr>
                     <tr>
                         <td><a href="#glossary-execution" class="metric-link">Execution</a></td>
-                        <td>{{ execution.count }}</td>
-                        <td>{{ "%.2f"|format(execution.mean_ms) }}</td>
-                        <td>{{ "%.2f"|format(execution.min_ms) }}</td>
-                        <td>{{ "%.2f"|format(execution.p50_ms) }}</td>
-                        <td>{{ "%.2f"|format(execution.p95_ms) }}</td>
-                        <td>{{ "%.2f"|format(execution.p99_ms) }}</td>
-                        <td>{{ "%.2f"|format(execution.max_ms) }}</td>
+                        <td>{{ execution_count }}</td>
+                        <td>{{ execution_mean_ms }}</td>
+                        <td>{{ execution_min_ms }}</td>
+                        <td>{{ execution_p50_ms }}</td>
+                        <td>{{ execution_p95_ms }}</td>
+                        <td>{{ execution_p99_ms }}</td>
+                        <td>{{ execution_max_ms }}</td>
                     </tr>
                     <tr>
                         <td><a href="#glossary-e2e" class="metric-link">End-to-End</a></td>
-                        <td>{{ end_to_end.count }}</td>
-                        <td>{{ "%.2f"|format(end_to_end.mean_ms) }}</td>
-                        <td>{{ "%.2f"|format(end_to_end.min_ms) }}</td>
-                        <td class="percentile-good">{{ "%.2f"|format(end_to_end.p50_ms) }}</td>
-                        <td class="percentile-warning">{{ "%.2f"|format(end_to_end.p95_ms) }}</td>
-                        <td class="percentile-danger">{{ "%.2f"|format(end_to_end.p99_ms) }}</td>
-                        <td>{{ "%.2f"|format(end_to_end.max_ms) }}</td>
+                        <td>{{ end_to_end_count }}</td>
+                        <td>{{ end_to_end_mean_ms }}</td>
+                        <td>{{ end_to_end_min_ms }}</td>
+                        <td class="percentile-good">{{ end_to_end_p50_ms }}</td>
+                        <td class="percentile-warning">{{ end_to_end_p95_ms }}</td>
+                        <td class="percentile-danger">{{ end_to_end_p99_ms }}</td>
+                        <td>{{ end_to_end_max_ms }}</td>
                     </tr>
                 </tbody>
             </table>
@@ -698,7 +779,7 @@ const REPORT_TEMPLATE: &str = r##"
         };
 
         // Throughput Chart
-        const throughputData = {{ throughput_chart_data|safe }};
+        const throughputData = {{ throughput_chart_data }};
         new Chart(document.getElementById('throughputChart'), {
             type: 'line',
             data: {
@@ -723,7 +804,7 @@ const REPORT_TEMPLATE: &str = r##"
         });
 
         // Latency Histogram
-        const histogramData = {{ latency_histogram_data|safe }};
+        const histogramData = {{ latency_histogram_data }};
         new Chart(document.getElementById('latencyHistogram'), {
             type: 'bar',
             data: {
@@ -745,7 +826,7 @@ const REPORT_TEMPLATE: &str = r##"
         });
 
         // Resource Chart
-        const resourceData = {{ resource_chart_data|safe }};
+        const resourceData = {{ resource_chart_data }};
         new Chart(document.getElementById('resourceChart'), {
             type: 'line',
             data: {
@@ -783,7 +864,7 @@ const REPORT_TEMPLATE: &str = r##"
         });
 
         // Latency Over Time
-        const latencyData = {{ latency_chart_data|safe }};
+        const latencyData = {{ latency_chart_data }};
         new Chart(document.getElementById('latencyTimeChart'), {
             type: 'scatter',
             data: {
@@ -813,3 +894,52 @@ const REPORT_TEMPLATE: &str = r##"
 </body>
 </html>
 "##;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_template_substitutes_known_placeholders() {
+        let vars = HashMap::from([("name".to_string(), "value".to_string())]);
+        assert_eq!(render_template("a {{ name }} b", &vars), "a value b");
+    }
+
+    #[test]
+    fn render_template_leaves_unknown_placeholders_visible() {
+        let vars = HashMap::new();
+        assert_eq!(
+            render_template("a {{ missing }} b", &vars),
+            "a {{ missing }} b"
+        );
+    }
+
+    #[test]
+    fn render_template_does_not_rescan_substituted_values() {
+        // Chart data is JSON built elsewhere; a value that happens to look like
+        // a placeholder must survive verbatim.
+        let vars = HashMap::from([
+            ("outer".to_string(), "{{ inner }}".to_string()),
+            ("inner".to_string(), "leaked".to_string()),
+        ]);
+        assert_eq!(render_template("{{ outer }}", &vars), "{{ inner }}");
+    }
+
+    #[test]
+    fn report_renders_every_template_placeholder() {
+        let metrics = BenchmarkMetrics::new("placeholder coverage");
+        metrics.schedule_to_start.record(Duration::from_millis(1));
+        metrics.execution.record(Duration::from_millis(2));
+        metrics.end_to_end.record(Duration::from_millis(3));
+        metrics.tasks_completed.increment();
+        metrics.sample();
+
+        let html = BenchmarkReport::new(ReportConfig::default()).render_html(&metrics);
+
+        assert!(
+            !html.contains("{{"),
+            "unsubstituted placeholder left in rendered report"
+        );
+        assert!(html.contains("placeholder coverage"));
+    }
+}

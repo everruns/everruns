@@ -1,6 +1,6 @@
 // CLI credential management
 //
-// Decision: Credentials stored via dirs::config_dir()/everruns/credentials.json
+// Decision: Credentials stored via crate::user_dirs::config_dir()/everruns/credentials.json
 // (Linux: ~/.config/everruns/, macOS: ~/Library/Application Support/everruns/)
 // Decision: Multi-profile support from day one
 // Decision: EVERRUNS_API_KEY env var always takes precedence
@@ -168,8 +168,8 @@ pub fn resolve_credentials(
 
 /// Path to the credentials file
 pub fn credentials_path() -> Result<PathBuf> {
-    let config_dir =
-        dirs::config_dir().ok_or_else(|| anyhow!("Could not determine config directory"))?;
+    let config_dir = crate::user_dirs::config_dir()
+        .ok_or_else(|| anyhow!("Could not determine config directory"))?;
     Ok(config_dir.join("everruns").join("credentials.json"))
 }
 
@@ -259,8 +259,8 @@ mod tests {
     #[cfg(target_os = "macos")]
     fn test_credentials_path_macos_uses_application_support() {
         let path = credentials_path().unwrap();
-        let expected_prefix =
-            dirs::config_dir().expect("dirs::config_dir() should succeed on macOS");
+        let expected_prefix = crate::user_dirs::config_dir()
+            .expect("user_dirs::config_dir() should succeed on macOS");
         assert!(
             path.starts_with(&expected_prefix),
             "macOS credentials path should start with {}, got: {}",

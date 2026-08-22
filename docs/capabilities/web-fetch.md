@@ -29,7 +29,6 @@ Fetch a URL and return its content.
 | `max_pages` | integer | no | Maximum crawl pages, including the seed (default: 5, maximum: 20) |
 | `if_none_match` | string | no | ETag for a conditional request |
 | `if_modified_since` | string | no | Last-Modified value for a conditional request |
-| `render` | string | no | Use `rakers` for opt-in lightweight JavaScript/DOM rendering |
 | `save_to_file` | string | no | Workspace destination when file download is enabled for the capability |
 
 Returns: content body, status code, metadata, quality signals, redirect history, and crawl summaries when requested.
@@ -39,7 +38,7 @@ Returns: content body, status code, metadata, quality signals, redirect history,
 - **Timeouts**: 1s for first byte, 30s for body. Partial content returned on body timeout.
 - **Binary content**: Images, PDFs, etc. return metadata only (content type, size), not the binary data.
 - **Focused extraction**: Use `content_focus: "agent"` for FetchKit's lowest-noise extraction strategy.
-- **Rendered pages**: `render: "rakers"` runs bounded inline JavaScript without loading page subresources. It is intended for simple rendered pages, not full browser automation.
+- **No JavaScript rendering**: Web Fetch returns the server's response as delivered. Pages that build their content client-side need a browser capability such as [Browserless](/capabilities/browserless/).
 - **Crawl scope**: Crawl discovery stays on the seed URL's origin and enforces FetchKit's page limit.
 - **SSRF protection**: Private IPs (loopback, RFC1918, link-local, CGNAT) are blocked by default with DNS pinning to prevent rebinding attacks.
 - **Excessive newlines**: Automatically filtered from converted content.

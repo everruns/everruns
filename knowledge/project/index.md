@@ -8,4 +8,5 @@
 * [Commands System](commands.md) - Slash commands system.
 * [XML Prompt Formatting](xml-prompt-formatting.md) - XML tags for system prompt structure.
 * [Build Artifact Size](build-artifact-size.md) - Why the library crates compile large, and which levers move it.
+* [Dependency Surface](dependency-surface.md) - Which third-party crates are worth removing or reimplementing in-tree.
 * [Dismissed Options](dismissed-options.md) - Technical options considered but dismissed.

@@ -1002,6 +1002,7 @@ jobs:
             --test client_side_tools_test \
             --test evals_integration_test \
             --test observers_integration_test \
+            --test prometheus_metrics_test \
             --test llm_model_default_test \
             --test org_creation_test \
             --test org_isolation_test \

@@ -49,6 +49,7 @@ pub mod organizations;
 pub mod payments;
 pub mod plugins;
 pub mod prometheus;
+pub mod prometheus_recorder;
 pub mod providers;
 pub mod public;
 pub mod public_chat;
