@@ -23,10 +23,7 @@ export { listEvents } from "./events";
 // Session CRUD
 // ============================================
 
-/**
- * Create a new session for an agent.
- * Sessions are direct children of organizations, with agent_id specifying which agent works in the session.
- */
+/** Create a new organization session bound to an agent or directly to a harness. */
 export async function createSession(request: CreateSessionRequest): Promise<Session> {
   const response = await api.post<Session>("/v1/sessions", request);
   return response.data;

@@ -54,7 +54,7 @@ export default function ChatsPageClient() {
   // in the list cannot unmount the form mid-navigation.
   const [starting, setStarting] = useState(false);
   // Same counterpart rule as the thread header: the agent when there is one,
-  // otherwise the harness the thread is bound to (Platform Chat).
+  // otherwise the harness the thread is bound to.
   const agentNameById = new Map(agents.map((agent) => [agent.id, getDisplayName(agent)]));
   const harnessNameById = new Map(
     harnesses.map((harness) => [harness.id, getDisplayName(harness)]),
@@ -68,7 +68,7 @@ export default function ChatsPageClient() {
       <PageMasthead
         icon={<MessageCircle />}
         title="Chats"
-        description="Conversations with your agents. Each thread is an ordinary session you can open, share, and re-read."
+        description="Conversations with agents and harnesses. Each thread is an ordinary session you can open, share, and re-read."
         actions={
           <Link href="/chats/new" className={buttonVariants()}>
             <Plus className="size-4" />
@@ -87,7 +87,7 @@ export default function ChatsPageClient() {
           <EmptyState
             icon={<MessageCircle />}
             title="No chats yet"
-            description="Pick an agent and start talking. The thread is saved as a session you can come back to."
+            description="Pick an agent or harness and start talking. The thread is saved as a session you can come back to."
             action={<NewChatForm onStartingChange={setStarting} />}
           />
         )}
