@@ -95,6 +95,16 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
   `buildSessionNavigation` in
   [`session-header.tsx`](../../apps/ui/src/components/session/session-header.tsx) and
   gated on the session's capability features.
+* **The tab bar is a map of the recording, so tabs carry counts.** Work, Events and
+  Workspace are badged with what is behind them; Timeline (the whole run) and Cost (a
+  single figure already shown in the header) are not. An empty tab renders with no badge
+  rather than a `0`, so absence reads as absence. The counts ride on the session payload
+  the page already fetches — never a per-tab request — and are served from denormalized
+  counters maintained by trigger (`sessions.event_count`, `sessions.task_count`,
+  `workspaces.file_count`), so opening a session never scans `events`. They are a
+  snapshot at load; a live session's badges refresh when the session query does. A count
+  the server cannot produce cheaply is omitted, and an absent badge is the honest
+  answer — see [session counts](../operations/session-counts.md).
 * **Fork is what makes read-only acceptable.** The escape hatches from a recording are
   Fork into chat, Open agent and Export, nothing else. Forking creates a *new* session
   seeded with this one's conversation, workspace and durable storage

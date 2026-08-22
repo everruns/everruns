@@ -70,7 +70,9 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
   const navigationItems = buildSessionNavigation({
     basePath,
     features,
-    activeScheduleCount: session?.active_schedule_count,
+    taskCount: session?.task_count,
+    eventCount: session?.event_count,
+    fileCount: session?.file_count,
   });
 
   // Resolve the session-level provider trace link here, where org/provider

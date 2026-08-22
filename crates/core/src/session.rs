@@ -338,6 +338,9 @@ mod tests {
             "is_pinned",
             "archived_at",
             "active_schedule_count",
+            "event_count",
+            "task_count",
+            "file_count",
             "features",
             "forked_from_sequence",
         ] {

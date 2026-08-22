@@ -30351,6 +30351,16 @@
                     }
                   ]
                 },
+                "event_count": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32",
+                  "description": "Total events recorded for this session (EVE-868). Read from the\ndenormalized `sessions.event_count` counter rather than counted, so the\nsession detail tab bar costs no extra scan over `events`.\n`None` on payloads built outside the database read path.",
+                  "example": 42,
+                  "minimum": 0
+                },
                 "features": {
                   "type": "array",
                   "items": {
@@ -30361,6 +30371,16 @@
                     "file_system",
                     "secrets"
                   ]
+                },
+                "file_count": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32",
+                  "description": "Non-directory files in this session's workspace (EVE-868). Read from\n`workspaces.file_count`. Counts persisted files only: capability-provided\nvirtual mounts are served from memory and are not included.",
+                  "example": 6,
+                  "minimum": 0
                 },
                 "finished_at": {
                   "type": [
@@ -30575,6 +30595,16 @@
                     "q3",
                     "draft"
                   ]
+                },
+                "task_count": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32",
+                  "description": "Background work owned by this session — subagents, external agents and\nbackground tools (EVE-868). Read from `sessions.task_count`. This is\nwhat the Work tab holds; `active_schedule_count` describes only the\nschedules it also lists.",
+                  "example": 3,
+                  "minimum": 0
                 },
                 "title": {
                   "type": [
@@ -31126,6 +31156,16 @@
                         }
                       ]
                     },
+                    "event_count": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "format": "int32",
+                      "description": "Total events recorded for this session (EVE-868). Read from the\ndenormalized `sessions.event_count` counter rather than counted, so the\nsession detail tab bar costs no extra scan over `events`.\n`None` on payloads built outside the database read path.",
+                      "example": 42,
+                      "minimum": 0
+                    },
                     "features": {
                       "type": "array",
                       "items": {
@@ -31136,6 +31176,16 @@
                         "file_system",
                         "secrets"
                       ]
+                    },
+                    "file_count": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "format": "int32",
+                      "description": "Non-directory files in this session's workspace (EVE-868). Read from\n`workspaces.file_count`. Counts persisted files only: capability-provided\nvirtual mounts are served from memory and are not included.",
+                      "example": 6,
+                      "minimum": 0
                     },
                     "finished_at": {
                       "type": [
@@ -31350,6 +31400,16 @@
                         "q3",
                         "draft"
                       ]
+                    },
+                    "task_count": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "format": "int32",
+                      "description": "Background work owned by this session — subagents, external agents and\nbackground tools (EVE-868). Read from `sessions.task_count`. This is\nwhat the Work tab holds; `active_schedule_count` describes only the\nschedules it also lists.",
+                      "example": 3,
+                      "minimum": 0
                     },
                     "title": {
                       "type": [
@@ -33828,6 +33888,16 @@
               }
             ]
           },
+          "event_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Total events recorded for this session (EVE-868). Read from the\ndenormalized `sessions.event_count` counter rather than counted, so the\nsession detail tab bar costs no extra scan over `events`.\n`None` on payloads built outside the database read path.",
+            "example": 42,
+            "minimum": 0
+          },
           "features": {
             "type": "array",
             "items": {
@@ -33838,6 +33908,16 @@
               "file_system",
               "secrets"
             ]
+          },
+          "file_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Non-directory files in this session's workspace (EVE-868). Read from\n`workspaces.file_count`. Counts persisted files only: capability-provided\nvirtual mounts are served from memory and are not included.",
+            "example": 6,
+            "minimum": 0
           },
           "finished_at": {
             "type": [
@@ -34052,6 +34132,16 @@
               "q3",
               "draft"
             ]
+          },
+          "task_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Background work owned by this session — subagents, external agents and\nbackground tools (EVE-868). Read from `sessions.task_count`. This is\nwhat the Work tab holds; `active_schedule_count` describes only the\nschedules it also lists.",
+            "example": 3,
+            "minimum": 0
           },
           "title": {
             "type": [
@@ -40683,6 +40773,16 @@
                   }
                 ]
               },
+              "event_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "Total events recorded for this session (EVE-868). Read from the\ndenormalized `sessions.event_count` counter rather than counted, so the\nsession detail tab bar costs no extra scan over `events`.\n`None` on payloads built outside the database read path.",
+                "example": 42,
+                "minimum": 0
+              },
               "features": {
                 "type": "array",
                 "items": {
@@ -40693,6 +40793,16 @@
                   "file_system",
                   "secrets"
                 ]
+              },
+              "file_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "Non-directory files in this session's workspace (EVE-868). Read from\n`workspaces.file_count`. Counts persisted files only: capability-provided\nvirtual mounts are served from memory and are not included.",
+                "example": 6,
+                "minimum": 0
               },
               "finished_at": {
                 "type": [
@@ -40907,6 +41017,16 @@
                   "q3",
                   "draft"
                 ]
+              },
+              "task_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "Background work owned by this session — subagents, external agents and\nbackground tools (EVE-868). Read from `sessions.task_count`. This is\nwhat the Work tab holds; `active_schedule_count` describes only the\nschedules it also lists.",
+                "example": 3,
+                "minimum": 0
               },
               "title": {
                 "type": [

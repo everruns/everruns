@@ -1009,6 +1009,7 @@ jobs:
             --test org_lifecycle_test \
             --test schedule_integration_test \
             --test session_git_integration_test \
+            --test session_tab_counts_integration_test \
             -- --test-threads=1
 
       # Previously-unrun server integration tests, now wired in (EVE-664, EVE-668).

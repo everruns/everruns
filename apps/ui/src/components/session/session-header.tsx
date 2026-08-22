@@ -25,7 +25,7 @@ import {
   getEntityReferenceClassName,
   getEntityReferenceLabel,
 } from "@/lib/entity-lifecycle";
-import { formatTokens } from "@/lib/formatting";
+import { formatCompactNumber, formatTokens } from "@/lib/formatting";
 import { CHAT_THREAD_TAG } from "@/lib/chat-threads";
 import { cn, shortenId } from "@/lib/utils";
 import {
@@ -140,14 +140,35 @@ export function SessionStatusBadge({ status }: { status: SessionStatus | undefin
   return null;
 }
 
+/**
+ * A tab badge (EVE-868). Zero renders as no badge at all: an empty tab should
+ * look empty, not annotated with a `0`. Counts are compacted so a 12,000-event
+ * recording does not stretch the tab bar.
+ *
+ * The server omits a count it could not cheaply produce, so `undefined` means
+ * "unknown", which reads the same as "nothing here" — an absent badge is
+ * honest either way.
+ */
+function tabBadge(count: number | undefined): string | undefined {
+  if (!count || count <= 0) return undefined;
+  return formatCompactNumber(count);
+}
+
 export function buildSessionNavigation({
   basePath,
   features,
-  activeScheduleCount,
+  taskCount,
+  eventCount,
+  fileCount,
 }: {
   basePath: string;
   features: Set<string>;
-  activeScheduleCount?: number;
+  /** Background work the session owns — subagents, external agents, background tools. */
+  taskCount?: number;
+  /** Every event in the session. */
+  eventCount?: number;
+  /** Non-directory files in the session's workspace. */
+  fileCount?: number;
 }): SessionNavItem[] {
   const hasFeature = (feature: string) => features.has(feature);
   // Work covers subagents, leased resources and the schedules this session
@@ -174,10 +195,9 @@ export function buildSessionNavigation({
             label: "Work",
             href: `${basePath}/work`,
             icon: Waypoints,
-            badge:
-              activeScheduleCount && activeScheduleCount > 0
-                ? String(activeScheduleCount)
-                : undefined,
+            // Tasks, not schedules: the tab holds subagents and background work
+            // as well, and a schedule-only count undercounts what is behind it.
+            badge: tabBadge(taskCount),
           },
         ]
       : []),
@@ -186,6 +206,7 @@ export function buildSessionNavigation({
       label: "Events",
       href: `${basePath}/events`,
       icon: Activity,
+      badge: tabBadge(eventCount),
     },
     ...(hasFeature("file_system")
       ? [
@@ -195,6 +216,7 @@ export function buildSessionNavigation({
             label: "Workspace",
             href: `${basePath}/files`,
             icon: Folder,
+            badge: tabBadge(fileCount),
           },
         ]
       : []),

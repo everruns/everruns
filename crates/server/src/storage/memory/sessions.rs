@@ -143,6 +143,10 @@ impl InMemoryDatabase {
             total_cache_creation_tokens: 0,
             turn_count: 0,
             tool_call_count: 0,
+            // Counted on read by `with_tab_counts`, never stored (EVE-868).
+            event_count: 0,
+            task_count: 0,
+            workspace_file_count: 0,
             total_actual_cost_usd: 0.0,
             total_estimated_cost_usd: 0.0,
             total_cost_usd: 0.0,
@@ -183,16 +187,48 @@ impl InMemoryDatabase {
         Ok(())
     }
 
+    /// Session detail tab counts (EVE-868).
+    ///
+    /// PostgreSQL keeps these as counters maintained by triggers, because the
+    /// alternative there is a scan of `events` on every session page load. In
+    /// memory the maps *are* the source of truth and there is no history to
+    /// scan, so the session-detail read counts them directly rather than
+    /// duplicating trigger bookkeeping across every mutation site — the
+    /// observable payload is the same either way.
+    fn with_tab_counts(&self, mut session: SessionRow) -> SessionRow {
+        session.event_count = self
+            .events
+            .read()
+            .values()
+            .filter(|event| event.session_id == session.id)
+            .count() as i64;
+        session.task_count = self
+            .session_tasks
+            .read()
+            .values()
+            .filter(|task| task.session_id == session.id)
+            .count() as i64;
+        // Files are keyed by workspace: `SessionFileRow::session_id` carries the
+        // workspace id, the same column PostgreSQL renamed in migration 056.
+        session.workspace_file_count = self
+            .session_files
+            .read()
+            .values()
+            .filter(|file| !file.is_directory && file.session_id.uuid() == session.workspace_id)
+            .count() as i64;
+        session
+    }
+
     /// Get session, validating org ownership directly
     pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
-        let sessions = self.sessions.read();
-        if let Some(session) = sessions.get(&id) {
-            // Validate that the session belongs to the org
-            if session.org_id == org_id {
-                return Ok(Some(session.clone()));
-            }
-        }
-        Ok(None)
+        let found = {
+            let sessions = self.sessions.read();
+            sessions
+                .get(&id)
+                .filter(|session| session.org_id == org_id)
+                .cloned()
+        };
+        Ok(found.map(|session| self.with_tab_counts(session)))
     }
 
     /// Get session without org scoping. For internal system use only (e.g. usage tracking).

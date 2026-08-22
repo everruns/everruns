@@ -11,6 +11,15 @@
   widening the App installation as the only path. See
   `knowledge/security/security-testing.md`.
 
+* **Session tab badges are counters, not counts.** The session detail tab bar
+  renders on every page load, so Work, Events and Workspace are badged from
+  denormalized columns maintained by statement-level triggers
+  (`sessions.event_count`, `sessions.task_count`, `workspaces.file_count`),
+  never from an aggregate over `events`. The file counter lives on `workspaces`
+  because files were rekeyed to the workspace in migration 056 and a workspace
+  can back more than one session. Zero is reported as absent so an empty tab
+  renders unannotated. See `knowledge/operations/session-counts.md`.
+
 ## 2026-08-21
 
 * **Dependency removal is measured, not estimated, and two traps produce wrong
