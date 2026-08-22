@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Covers scripts/report_security_alerts.py: the Markdown shapes, the severity
 # ordering, and — the point of the script — that an unreadable endpoint is
-# reported as a permission regression instead of an empty alert list (EVE-923).
+# reported as a permission regression instead of an empty alert list (EVE-926).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -117,11 +117,18 @@ check("code-scanning falls back to rule severity", "warning" in "\n".join(rows))
 # reads code-scanning alerts and is still refused Dependabot alerts.
 check(
     "blocked Dependabot text points at the tracking issue",
-    "EVE-923" in r.DEPENDABOT_BLOCKED,
+    "EVE-926" in r.DEPENDABOT_BLOCKED,
 )
 check(
     "blocked Dependabot text does not blame a missing workflow permission",
     "lacks `security-events: read`" not in r.DEPENDABOT_BLOCKED,
+    r.DEPENDABOT_BLOCKED,
+)
+# The other misdiagnosis, and the more expensive one: "try a different token".
+# A scheduled session cannot, because the egress proxy replaces the header.
+check(
+    "blocked Dependabot text rules out substituting a token",
+    "cannot be substituted" in r.DEPENDABOT_BLOCKED,
     r.DEPENDABOT_BLOCKED,
 )
 check(
@@ -142,7 +149,7 @@ def with_stub(status, body, fn):
 
 
 lines, ok = with_stub(403, None, r.dependabot_section)
-check("Dependabot 403 is reported but not fatal", ok is True and "EVE-923" in lines[0])
+check("Dependabot 403 is reported but not fatal", ok is True and "EVE-926" in lines[0])
 
 lines, ok = with_stub(403, None, r.code_scanning_section)
 check("code-scanning 403 is fatal", ok is False, f"ok={ok}")

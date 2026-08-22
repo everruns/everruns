@@ -3,22 +3,25 @@ name: Security Alerts
 # Publishes open Dependabot and code-scanning alerts into a job log a scheduled
 # maintenance session can actually read.
 #
-# Those two APIs are 403 for every token such a session holds (EVE-923), so its
-# security step falls back to `cargo deny` and `pnpm audit`. That fallback is a
-# real signal but not an equivalent one: it cannot see GitHub-only advisories,
-# alerts on ecosystems with no local gate, the dismissed/snoozed state that says
-# an alert was already triaged, or CodeQL findings at all.
+# Those two APIs are 403 for such a session, and no token it holds changes that:
+# the agent egress proxy rewrites `Authorization` for api.github.com, so every
+# request authenticates as the session's own App installation whatever it sends
+# (EVE-926). Its security step therefore falls back to `cargo deny` and
+# `pnpm audit`. That fallback is a real signal but not an equivalent one: it
+# cannot see GitHub-only advisories, alerts on ecosystems with no local gate,
+# the dismissed/snoozed state that says an alert was already triaged, or CodeQL
+# findings at all.
 #
 # A workflow job can grant itself `security-events: read` on the built-in
-# GITHUB_TOKEN, which needs no org or app administration — unlike either option
-# in EVE-923's exit criteria. The Actions API that exposes this run's logs and
+# GITHUB_TOKEN, which needs no org or app administration — unlike the App-scope
+# change EVE-926 asks for. The Actions API that exposes this run's logs and
 # artifacts is already readable from a scheduled session.
 #
 # That recovers code scanning, not everything. Measured on run 32458309940: the
 # same job that read code-scanning alerts was still refused Dependabot alerts
 # with 403, and no `permissions:` key changes that — Dependabot alert reads need
-# the PAT or App scope EVE-923 asks for. So the job reports the Dependabot half
-# as blocked rather than failing on it, and stays red-on-regression only for the
+# the App scope EVE-926 asks for. So the job reports the Dependabot half as
+# blocked rather than failing on it, and stays red-on-regression only for the
 # half a workflow can actually read.
 
 on:

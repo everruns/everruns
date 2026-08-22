@@ -3,12 +3,16 @@
 
 Usage: GH_TOKEN=... scripts/report_security_alerts.py [owner/repo]
 
-Neither token a scheduled cloud-agent session holds can read the alert APIs
-(EVE-923): the session's GitHub App installation token carries no
-`security_events`, and the Doppler PAT has no permissions on this repo. Both
-endpoints answer 403, so the security step of the maintenance sweep silently
-degrades to the lockfile scanners — which cannot see GitHub-only advisories,
-triage state, or CodeQL findings at all.
+A scheduled cloud-agent session cannot read the alert APIs at all, and not for
+the reason it looks like. The agent egress proxy rewrites the `Authorization`
+header for `api.github.com`, so every request from such a session authenticates
+as the session's own GitHub App installation regardless of what it sends — an
+invalid token, and no token, both answer 200. Supplying the Doppler PAT
+therefore changes nothing; the installation's scopes are the only ones in play,
+and they do not include `security_events`. Both endpoints answer 403, so the
+security step of the maintenance sweep silently degrades to the lockfile
+scanners — which cannot see GitHub-only advisories, triage state, or CodeQL
+findings at all.
 
 An Actions job can grant itself `security-events: read` on the built-in
 GITHUB_TOKEN with no org or app administration. Running this there and printing
@@ -21,9 +25,10 @@ refused Dependabot alerts with 403. So the two halves have different meanings
 and must not be collapsed:
 
 * code scanning unreadable -> a real regression, fail the job.
-* Dependabot unreadable -> the standing EVE-923 gap, which no permission
-  available to a workflow closes. Report it and carry on; failing here would
-  make the job permanently red and therefore ignored.
+* Dependabot unreadable -> the standing EVE-926 gap, which no permission
+  available to a workflow closes, and which no token substitution closes either
+  (see above). Report it and carry on; failing here would make the job
+  permanently red and therefore ignored.
 
 Exits non-zero only when an endpoint that should be readable is not, never
 because alerts exist: unresolvable-but-accepted advisories are normal here
@@ -81,12 +86,14 @@ def unexpected(status: int, kind: str) -> list[str]:
     return [f"**Unexpected HTTP {status}** reading {kind}."]
 
 
-# No `permissions:` key grants a workflow token Dependabot alert reads — only a
-# PAT or App installation carrying `security_events` can, which is EVE-923's ask.
+# No `permissions:` key grants a workflow token Dependabot alert reads. Only an
+# App installation carrying `security_events` can — a PAT cannot help a
+# scheduled session either, because the egress proxy discards it. EVE-926.
 DEPENDABOT_BLOCKED = (
     "**Unreadable (403).** No permission available to a workflow token grants "
-    "this; it needs the PAT or App scope tracked in EVE-923. Code-scanning "
-    "alerts above/below are unaffected."
+    "this, and a PAT cannot be substituted from a scheduled session — it needs "
+    "`security_events` on the GitHub App installation, tracked in EVE-926. "
+    "Code-scanning alerts above/below are unaffected."
 )
 
 

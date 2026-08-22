@@ -43,11 +43,22 @@ Pick only what matches the scope:
 - `cd apps/docs && pnpm run build`
 - `./scripts/export-openapi.sh`
 - `scripts/test-everruns-dev-plugin.sh` — plugin metadata, registration, and version parity
-- Dependabot / secret-scanning alert counts:
+- Security alerts. **Do not call the alert APIs directly from a scheduled cloud-agent session** —
+  `dependabot/alerts`, `secret-scanning/alerts` and `code-scanning/alerts` all answer `403` there,
+  and no token changes that: the agent egress proxy rewrites `Authorization` for `api.github.com`,
+  so the session always authenticates as its own GitHub App installation (EVE-926). Read the
+  daily [`Security Alerts`](../../../.github/workflows/security-alerts.yml) job log over the
+  Actions API instead, which carries code-scanning alerts and says explicitly that the Dependabot
+  half is blocked:
   ```bash
-  doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh api repos/everruns/everruns/dependabot/alerts --jq "[.[] | select(.state==\"open\")] | length"'
-  doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh api repos/everruns/everruns/secret-scanning/alerts --jq "[.[] | select(.state==\"open\")] | length"'
+  gh api "repos/everruns/everruns/actions/workflows/security-alerts.yml/runs?per_page=1" \
+    --jq '.workflow_runs[0].id'
+  gh api "repos/everruns/everruns/actions/runs/<run-id>/jobs" --jq '.jobs[].id'
+  gh api "repos/everruns/everruns/actions/jobs/<job-id>/logs"
   ```
+  Then confirm the locally gated half yourself, since that is where an actionable finding
+  usually is: `cargo deny check advisories`, `bash scripts/lib/check-nonworkspace-advisories.sh`,
+  and `pnpm audit --prod` in `apps/ui` and `apps/docs`.
 
 ## Deliverable
 
