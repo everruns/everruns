@@ -860,9 +860,9 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bashkit"
-version = "0.17.0"
+version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d79c5e19acc7434830f5e1fab3beb2bc40a2ecb7e357ff6a94051da1e09a5a6"
+checksum = "eddf70256084490dc419937e9aae94d235a8da529be93e85bd7190b76ae12ebf"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2481,7 +2481,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-bashkit"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2501,7 +2501,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-brave-search"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2519,7 +2519,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-browserless"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2542,7 +2542,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-cursor"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2559,7 +2559,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-daytona"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2578,7 +2578,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-deno"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2603,7 +2603,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-docker"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2619,7 +2619,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-duckduckgo"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "async-trait",
  "everruns-capability",
@@ -2636,7 +2636,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-e2b"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "async-trait",
  "buffa",
@@ -2665,7 +2665,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-filesystem"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2685,7 +2685,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-github"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2703,7 +2703,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-lua"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2719,7 +2719,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-openai-image"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2739,7 +2739,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-openrouter-workspace"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2752,7 +2752,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-parallel"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "async-trait",
  "everruns-capability",
@@ -2768,7 +2768,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-sprites"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2786,7 +2786,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-web-fetch"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "async-trait",
  "base64 0.23.1",

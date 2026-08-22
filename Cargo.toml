@@ -189,12 +189,12 @@ everruns-ard = { path = "crates/ard", version = "0.18.0" }
 everruns-openai = { path = "crates/drivers/openai", version = "0.18.1" }
 everruns = { path = "crates/everruns", version = "0.18.0" }
 everruns-macros = { path = "crates/macros", version = "0.18.1" }
-everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.18.0" }
-everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.18.0" }
-everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.18.0" }
-everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.18.0" }
-everruns-integrations-lua = { path = "integrations/lua", version = "0.18.0" }
-everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.18.0" }
+everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.18.1" }
+everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.18.1" }
+everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.18.1" }
+everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.18.1" }
+everruns-integrations-lua = { path = "integrations/lua", version = "0.18.1" }
+everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.18.1" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }

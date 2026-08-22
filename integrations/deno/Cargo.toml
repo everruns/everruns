@@ -4,7 +4,7 @@
 [package]
 name = "everruns-integrations-deno"
 readme = "README.md"
-version = "0.18.0"
+version = "0.18.1"
 rust-version.workspace = true
 homepage.workspace = true
 repository.workspace = true
