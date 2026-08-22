@@ -194,30 +194,30 @@ fn catalog_entry_score(entry: &crate::domains::common::CommandCatalogEntry, quer
         .filter(|term| term.len() > 1)
         .collect::<Vec<_>>();
 
-    let mut score = 0;
+    let mut score: u16 = 0;
     for term in terms {
         if name
             .split_whitespace()
             .any(|part| normalize_search_term(part) == term)
         {
-            score += 8;
+            score = score.saturating_add(8);
         } else if name.contains(&term) {
-            score += 5;
+            score = score.saturating_add(5);
         }
         if category == term {
-            score += 7;
+            score = score.saturating_add(7);
         } else if category.contains(&term) {
-            score += 3;
+            score = score.saturating_add(3);
         }
         if description.contains(&term) {
-            score += 1;
+            score = score.saturating_add(1);
         }
     }
     if score > 0 && entry.read_only {
-        score += 4;
+        score = score.saturating_add(4);
     }
     if score > 0 && (name.starts_with("list ") || name.starts_with("get ")) {
-        score += 4;
+        score = score.saturating_add(4);
     }
     score
 }
@@ -485,6 +485,22 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn discovery_score_saturates_for_many_matching_terms() {
+        let query = "agent ".repeat(4_096);
+        let output = discover_for_test(&json!({ "query": query, "include_schemas": false }))
+            .expect("discovery with many matching terms");
+        let value: Value = serde_json::from_str(&output).expect("discover JSON");
+        let names = value["operations"]
+            .as_array()
+            .expect("operations")
+            .iter()
+            .filter_map(|operation| operation["name"].as_str())
+            .collect::<Vec<_>>();
+
+        assert!(names.contains(&"list_agents"), "got {names:?}");
     }
 
     #[test]
