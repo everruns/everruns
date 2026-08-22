@@ -1478,16 +1478,7 @@ impl SessionService {
             total: row.total as u64,
             by_activity: bucket(row.by_activity),
             by_source: bucket(row.by_source),
-            by_agent: row
-                .by_agent
-                .into_iter()
-                .filter_map(|b| {
-                    Uuid::parse_str(&b.value).ok().map(|id| SessionFacetCount {
-                        value: AgentId::from_uuid(id).to_string(),
-                        count: b.count as u64,
-                    })
-                })
-                .collect(),
+            by_agent: bucket(row.by_agent),
             active_now: row.active_now as u64,
             failed_today: row.failed_today as u64,
             p95_duration_ms: row.p95_duration_ms as u64,
