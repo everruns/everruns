@@ -12,14 +12,15 @@ use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::execution_metadata;
 use crate::services::{EventService, PrincipalService};
 use crate::storage::StorageBackend;
-use crate::storage::models::ReserveActiveTurnSlotResult;
+use crate::storage::models::{CreateSessionParticipantRow, ReserveActiveTurnSlotResult};
 use anyhow::Result;
 use chrono::Utc;
 use everruns_core::Event;
 use everruns_core::events::{
     EventContext, EventRequest, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
 };
-use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
+use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, PrincipalId, SessionId};
 use everruns_worker::AgentRunner;
 use serde_json::json;
 use std::sync::Arc;
@@ -67,6 +68,40 @@ impl MessageService {
     pub fn with_caps(mut self, caps: OrgCaps) -> Self {
         self.caps = caps;
         self
+    }
+
+    async fn ensure_active_user_participant(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        user_id: Uuid,
+    ) -> Result<PrincipalId> {
+        let principal = PrincipalService::new(self.db.clone())
+            .ensure_user_principal(org_id, user_id)
+            .await?;
+        let display_name = self
+            .db
+            .get_user(user_id)
+            .await?
+            .map(|user| user.name.trim().to_string())
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| "User".to_string());
+
+        self.db
+            .ensure_active_user_session_participant(CreateSessionParticipantRow {
+                org_id,
+                session_id,
+                kind: SessionParticipantKind::User,
+                agent_id: None,
+                agent_version_id: None,
+                principal_id: principal.id,
+                display_name: Some(display_name),
+                role: SessionParticipantRole::Member,
+                joined_at: None,
+            })
+            .await?;
+
+        Ok(principal.id)
     }
 
     /// Create a user message from API request
@@ -151,23 +186,10 @@ impl MessageService {
             let event_metadata = if let Some(metadata) = ctx.event_metadata {
                 Some(metadata)
             } else if let Some(user_id) = ctx.user_id {
-                let principal_id = match PrincipalService::new(self.db.clone())
-                    .ensure_user_principal(ctx.org_id, user_id)
-                    .await
-                {
-                    Ok(principal) => Some(principal.id),
-                    Err(err) => {
-                        tracing::warn!(
-                            org_id = ctx.org_id,
-                            user_id = %user_id,
-                            session_id = %ctx.session_id,
-                            error = %err,
-                            "Failed to resolve user principal for message metadata"
-                        );
-                        None
-                    }
-                };
-                execution_metadata::interactive_user_metadata(Some(user_id), principal_id)
+                let principal_id = self
+                    .ensure_active_user_participant(ctx.org_id, session_id_typed, user_id)
+                    .await?;
+                execution_metadata::interactive_user_metadata(Some(user_id), Some(principal_id))
             } else {
                 self.session_owner_message_metadata(ctx.org_id, session_id_typed)
                     .await
@@ -457,7 +479,10 @@ mod tests {
     use super::*;
     use crate::domains::sessions::limits::OrgCaps;
     use crate::errors::BadRequestError;
-    use crate::storage::{StorageBackend, models::UpdateSession};
+    use crate::storage::{
+        StorageBackend,
+        models::{CreateUserRow, UpdateSession},
+    };
     use async_trait::async_trait;
     use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 
@@ -642,6 +667,99 @@ mod tests {
                 .get("participant_id")
                 .and_then(|value| value.as_str()),
             Some(owner_participant.id.to_string().as_str())
+        );
+    }
+
+    #[tokio::test]
+    async fn create_message_rejoins_user_who_left_session() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+        let delivery = crate::event_delivery::EventDelivery::in_memory();
+        let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
+            max_concurrent_sessions: 10_000,
+            max_active_turns: 10_000,
+        });
+
+        let user = db
+            .create_user(CreateUserRow {
+                email: "returning-user@example.com".to_string(),
+                name: "Returning User".to_string(),
+                avatar_url: None,
+                roles: vec!["user".to_string()],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: None,
+                auth_provider_id: None,
+                external_id: None,
+            })
+            .await
+            .unwrap();
+        let principal = PrincipalService::new(db.clone())
+            .ensure_user_principal(1, user.id)
+            .await
+            .unwrap();
+        let session = create_test_session(&db, 1).await;
+        let original_participant = db
+            .ensure_active_user_session_participant(CreateSessionParticipantRow {
+                org_id: 1,
+                session_id: session.id,
+                kind: SessionParticipantKind::User,
+                agent_id: None,
+                agent_version_id: None,
+                principal_id: principal.id,
+                display_name: Some("Returning User".to_string()),
+                role: SessionParticipantRole::Member,
+                joined_at: None,
+            })
+            .await
+            .unwrap();
+        db.leave_session_participant(1, session.id, original_participant.id)
+            .await
+            .unwrap()
+            .expect("leave initial participant");
+
+        svc.create(
+            CreateMessageContext {
+                org_id: 1,
+                user_id: Some(user.id),
+                harness_id: session.id.uuid(),
+                agent_id: None,
+                session_id: session.id.uuid(),
+                event_metadata: None,
+                request_id: None,
+            },
+            CreateMessageRequest::user("I am back"),
+        )
+        .await
+        .unwrap();
+
+        let participants = db.list_session_participants(1, session.id).await.unwrap();
+        let active_participant = participants
+            .iter()
+            .find(|row| row.principal_id == principal.id && row.left_at.is_none())
+            .expect("returning user rejoins");
+        assert_ne!(active_participant.id, original_participant.id);
+        assert_eq!(active_participant.principal_id, principal.id);
+        assert_eq!(
+            active_participant.display_name.as_deref(),
+            Some("Returning User")
+        );
+
+        let events = db
+            .list_message_events_limited(session.id, None)
+            .await
+            .unwrap();
+        let input = events
+            .into_iter()
+            .find(|row| row.event_type == "input.message")
+            .expect("input message event");
+        assert_eq!(
+            input
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("participant_id"))
+                .and_then(|value| value.as_str()),
+            Some(active_participant.id.to_string().as_str())
         );
     }
 
