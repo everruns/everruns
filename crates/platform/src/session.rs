@@ -574,6 +574,26 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(example = 2))]
     pub active_schedule_count: Option<u32>,
+    /// Total events recorded for this session (EVE-868). Read from the
+    /// denormalized `sessions.event_count` counter rather than counted, so the
+    /// session detail tab bar costs no extra scan over `events`.
+    /// `None` on payloads built outside the database read path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 42))]
+    pub event_count: Option<u32>,
+    /// Background work owned by this session — subagents, external agents and
+    /// background tools (EVE-868). Read from `sessions.task_count`. This is
+    /// what the Work tab holds; `active_schedule_count` describes only the
+    /// schedules it also lists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 3))]
+    pub task_count: Option<u32>,
+    /// Non-directory files in this session's workspace (EVE-868). Read from
+    /// `workspaces.file_count`. Counts persisted files only: capability-provided
+    /// virtual mounts are served from memory and are not included.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 6))]
+    pub file_count: Option<u32>,
     /// Aggregated UI features from all active capabilities (harness + agent + session).
     /// Computed at read time from the capability registry.
     /// Known features: "file_system", "schedules", "secrets", "key_value",
@@ -673,6 +693,9 @@ impl Session {
             is_pinned: None,
             archived_at: None,
             active_schedule_count: None,
+            event_count: None,
+            task_count: None,
+            file_count: None,
             features: Vec::new(),
             parent_session_id: execution.parent_session_id,
             forked_from_session_id: execution.forked_from_session_id,

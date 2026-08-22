@@ -50,7 +50,9 @@ export default function DevSessionComponentsPage() {
                     navigationItems={buildSessionNavigation({
                       basePath: `/sessions/${scenario.session.id}`,
                       features: new Set(scenario.session.features ?? []),
-                      activeScheduleCount: scenario.session.active_schedule_count,
+                      taskCount: scenario.session.task_count,
+                      eventCount: scenario.session.event_count,
+                      fileCount: scenario.session.file_count,
                     })}
                     secondaryMetaText={scenario.secondaryMetaText}
                   />

@@ -16,3 +16,4 @@
 * [Egress Service](egress.md) - Host-owned outbound network boundary and future gateway.
 * [Utility LLM Service](utility-llm.md) - Internal utility LLM service for capability internals.
 * [Voice Sessions](voice.md) - Voice Sessions.
+* [Session Counts](session-counts.md) - Denormalized session counters and the reads they exist to keep cheap.

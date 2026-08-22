@@ -444,7 +444,6 @@ describe("SessionLayout", () => {
   it("shows Work when the session scheduled or leased anything", async () => {
     mockSessionContext.session = {
       ...mockSessionContext.session,
-      active_schedule_count: 3,
       features: ["schedules"],
     };
     await renderLayout();
@@ -452,6 +451,42 @@ describe("SessionLayout", () => {
     await waitFor(() => {
       expect(screen.getByRole("link", { name: /work/i })).toBeInTheDocument();
     });
-    expect(screen.getByText("3")).toBeInTheDocument();
+  });
+
+  // EVE-868: the badges come off the session payload the layout already has,
+  // so no extra request is issued to render them.
+  it("badges the tabs with the counts on the session payload", async () => {
+    mockSessionContext.session = {
+      ...mockSessionContext.session,
+      features: ["schedules", "file_system"],
+      task_count: 3,
+      event_count: 42,
+      file_count: 6,
+    };
+    await renderLayout();
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: /^work 3$/i })).toBeInTheDocument();
+    });
+    expect(screen.getByRole("link", { name: /^events 42$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^workspace 6$/i })).toBeInTheDocument();
+  });
+
+  it("leaves an empty tab unbadged rather than showing a zero", async () => {
+    mockSessionContext.session = {
+      ...mockSessionContext.session,
+      features: ["schedules", "file_system"],
+      task_count: 0,
+      event_count: 0,
+      file_count: 0,
+    };
+    await renderLayout();
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: /^work$/i })).toBeInTheDocument();
+    });
+    expect(screen.getByRole("link", { name: /^events$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^workspace$/i })).toBeInTheDocument();
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 });

@@ -3943,6 +3943,23 @@ export interface Session {
   archived_at?: string | null;
   /** Number of active schedules for this session */
   active_schedule_count?: number;
+  /**
+   * Total events recorded for this session. Denormalized counter, omitted when
+   * zero — an empty tab carries no badge (EVE-868).
+   */
+  event_count?: number;
+  /**
+   * Background work the session owns — subagents, external agents, background
+   * tools. This is what the Work tab holds; `active_schedule_count` describes
+   * only the schedules it also lists. Omitted when zero.
+   */
+  task_count?: number;
+  /**
+   * Non-directory files in this session's workspace. Persisted files only:
+   * capability-provided virtual mounts are served from memory and excluded.
+   * Omitted when zero.
+   */
+  file_count?: number;
   /** Aggregated UI features from all active capabilities (harness + agent + session) */
   features?: string[];
   /** Session-level system prompt override (prepended to agent prompt) */

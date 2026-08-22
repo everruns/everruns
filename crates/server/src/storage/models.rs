@@ -858,6 +858,19 @@ pub struct SessionRow {
     /// Denormalized count of tool.completed events
     #[sqlx(default)]
     pub tool_call_count: i64,
+    /// Denormalized count of every event in the session (EVE-868). Backs the
+    /// Events tab badge; `#[sqlx(default)]` because most SELECTs don't project it.
+    #[sqlx(default)]
+    pub event_count: i64,
+    /// Denormalized count of `session_tasks` rows owned by this session
+    /// (EVE-868). Backs the Work tab badge.
+    #[sqlx(default)]
+    pub task_count: i64,
+    /// Denormalized count of non-directory files in this session's workspace
+    /// (EVE-868). Lives on `workspaces`, so session-detail SELECTs project it
+    /// through a join and everything else leaves it at zero.
+    #[sqlx(default)]
+    pub workspace_file_count: i64,
     /// Cumulative provider-reported actual cost in USD for this session
     #[sqlx(default)]
     pub total_actual_cost_usd: f64,

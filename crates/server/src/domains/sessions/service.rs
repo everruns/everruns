@@ -2745,7 +2745,14 @@ impl SessionService {
             is_pinned: None, // Populated by caller with user context
             archived_at: row.archived_at,
             active_schedule_count: None, // Populated by caller
-            features: vec![],            // Populated by caller via populate_features()
+            // Denormalized tab counts (EVE-868). Projections that do not select
+            // the counters decode them as 0, which is also the "nothing behind
+            // this tab" value — so zero is reported as absent, and an empty tab
+            // renders with no badge rather than a `0`.
+            event_count: (row.event_count > 0).then_some(row.event_count as u32),
+            task_count: (row.task_count > 0).then_some(row.task_count as u32),
+            file_count: (row.workspace_file_count > 0).then_some(row.workspace_file_count as u32),
+            features: vec![], // Populated by caller via populate_features()
             parent_session_id: row.parent_session_id,
             forked_from_session_id: row.forked_from_session_id,
             forked_from_sequence: row.forked_from_sequence,

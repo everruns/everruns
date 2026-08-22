@@ -42,6 +42,9 @@ function createSession({
   status,
   features,
   activeScheduleCount = 0,
+  taskCount,
+  eventCount,
+  fileCount,
   usage,
 }: {
   id: string;
@@ -49,6 +52,9 @@ function createSession({
   status: SessionStatus;
   features: string[];
   activeScheduleCount?: number;
+  taskCount?: number;
+  eventCount?: number;
+  fileCount?: number;
   usage?: TokenUsage;
 }): Session {
   return {
@@ -68,6 +74,9 @@ function createSession({
     started_at: "2026-04-22T14:20:00Z",
     finished_at: null,
     active_schedule_count: activeScheduleCount,
+    task_count: taskCount,
+    event_count: eventCount,
+    file_count: fileCount,
     features,
     usage,
   };
@@ -113,6 +122,9 @@ export const sessionHeaderScenarios: Array<{
       status: "active",
       features: ["file_system", "leased_resources", "schedules"],
       activeScheduleCount: 2,
+      taskCount: 3,
+      eventCount: 428,
+      fileCount: 6,
     }),
     activeTab: "timeline",
     effectiveStatus: "active",
@@ -126,6 +138,8 @@ export const sessionHeaderScenarios: Array<{
       title: "Sandbox file inspection",
       status: "idle",
       features: ["file_system", "key_value"],
+      eventCount: 12,
+      fileCount: 4,
       usage: sessionUsageSamples.light,
     }),
     activeTab: "files",

@@ -12100,6 +12100,15 @@ export interface components {
         created_at: string;
         effective_owner?: null | components["schemas"]["PrincipalSummary"];
         /**
+         * Format: int32
+         * @description Total events recorded for this session (EVE-868). Read from the
+         *     denormalized `sessions.event_count` counter rather than counted, so the
+         *     session detail tab bar costs no extra scan over `events`.
+         *     `None` on payloads built outside the database read path.
+         * @example 42
+         */
+        event_count?: number | null;
+        /**
          * @description Aggregated UI features from all active capabilities (harness + agent + session).
          *     Computed at read time from the capability registry.
          *     Known features: "file_system", "schedules", "secrets", "key_value",
@@ -12110,6 +12119,14 @@ export interface components {
          *     ]
          */
         features?: string[];
+        /**
+         * Format: int32
+         * @description Non-directory files in this session's workspace (EVE-868). Read from
+         *     `workspaces.file_count`. Counts persisted files only: capability-provided
+         *     virtual mounts are served from memory and are not included.
+         * @example 6
+         */
+        file_count?: number | null;
         /**
          * Format: date-time
          * @description Timestamp when the session finished (completed or failed).
@@ -12258,6 +12275,15 @@ export interface components {
          *     ]
          */
         tags?: string[];
+        /**
+         * Format: int32
+         * @description Background work owned by this session — subagents, external agents and
+         *     background tools (EVE-868). Read from `sessions.task_count`. This is
+         *     what the Work tab holds; `active_schedule_count` describes only the
+         *     schedules it also lists.
+         * @example 3
+         */
+        task_count?: number | null;
         /**
          * @description Human-readable title for the session.
          * @example Q3 marketing brief
@@ -12586,6 +12612,15 @@ export interface components {
         created_at: string;
         effective_owner?: null | components["schemas"]["PrincipalSummary"];
         /**
+         * Format: int32
+         * @description Total events recorded for this session (EVE-868). Read from the
+         *     denormalized `sessions.event_count` counter rather than counted, so the
+         *     session detail tab bar costs no extra scan over `events`.
+         *     `None` on payloads built outside the database read path.
+         * @example 42
+         */
+        event_count?: number | null;
+        /**
          * @description Aggregated UI features from all active capabilities (harness + agent + session).
          *     Computed at read time from the capability registry.
          *     Known features: "file_system", "schedules", "secrets", "key_value",
@@ -12596,6 +12631,14 @@ export interface components {
          *     ]
          */
         features?: string[];
+        /**
+         * Format: int32
+         * @description Non-directory files in this session's workspace (EVE-868). Read from
+         *     `workspaces.file_count`. Counts persisted files only: capability-provided
+         *     virtual mounts are served from memory and are not included.
+         * @example 6
+         */
+        file_count?: number | null;
         /**
          * Format: date-time
          * @description Timestamp when the session finished (completed or failed).
@@ -12744,6 +12787,15 @@ export interface components {
          *     ]
          */
         tags?: string[];
+        /**
+         * Format: int32
+         * @description Background work owned by this session — subagents, external agents and
+         *     background tools (EVE-868). Read from `sessions.task_count`. This is
+         *     what the Work tab holds; `active_schedule_count` describes only the
+         *     schedules it also lists.
+         * @example 3
+         */
+        task_count?: number | null;
         /**
          * @description Human-readable title for the session.
          * @example Q3 marketing brief
@@ -14326,6 +14378,15 @@ export interface components {
       created_at: string;
       effective_owner?: null | components["schemas"]["PrincipalSummary"];
       /**
+       * Format: int32
+       * @description Total events recorded for this session (EVE-868). Read from the
+       *     denormalized `sessions.event_count` counter rather than counted, so the
+       *     session detail tab bar costs no extra scan over `events`.
+       *     `None` on payloads built outside the database read path.
+       * @example 42
+       */
+      event_count?: number | null;
+      /**
        * @description Aggregated UI features from all active capabilities (harness + agent + session).
        *     Computed at read time from the capability registry.
        *     Known features: "file_system", "schedules", "secrets", "key_value",
@@ -14336,6 +14397,14 @@ export interface components {
        *     ]
        */
       features?: string[];
+      /**
+       * Format: int32
+       * @description Non-directory files in this session's workspace (EVE-868). Read from
+       *     `workspaces.file_count`. Counts persisted files only: capability-provided
+       *     virtual mounts are served from memory and are not included.
+       * @example 6
+       */
+      file_count?: number | null;
       /**
        * Format: date-time
        * @description Timestamp when the session finished (completed or failed).
@@ -14484,6 +14553,15 @@ export interface components {
        *     ]
        */
       tags?: string[];
+      /**
+       * Format: int32
+       * @description Background work owned by this session — subagents, external agents and
+       *     background tools (EVE-868). Read from `sessions.task_count`. This is
+       *     what the Work tab holds; `active_schedule_count` describes only the
+       *     schedules it also lists.
+       * @example 3
+       */
+      task_count?: number | null;
       /**
        * @description Human-readable title for the session.
        * @example Q3 marketing brief
@@ -18076,6 +18154,15 @@ export interface components {
       created_at: string;
       effective_owner?: null | components["schemas"]["PrincipalSummary"];
       /**
+       * Format: int32
+       * @description Total events recorded for this session (EVE-868). Read from the
+       *     denormalized `sessions.event_count` counter rather than counted, so the
+       *     session detail tab bar costs no extra scan over `events`.
+       *     `None` on payloads built outside the database read path.
+       * @example 42
+       */
+      event_count?: number | null;
+      /**
        * @description Aggregated UI features from all active capabilities (harness + agent + session).
        *     Computed at read time from the capability registry.
        *     Known features: "file_system", "schedules", "secrets", "key_value",
@@ -18086,6 +18173,14 @@ export interface components {
        *     ]
        */
       features?: string[];
+      /**
+       * Format: int32
+       * @description Non-directory files in this session's workspace (EVE-868). Read from
+       *     `workspaces.file_count`. Counts persisted files only: capability-provided
+       *     virtual mounts are served from memory and are not included.
+       * @example 6
+       */
+      file_count?: number | null;
       /**
        * Format: date-time
        * @description Timestamp when the session finished (completed or failed).
@@ -18234,6 +18329,15 @@ export interface components {
        *     ]
        */
       tags?: string[];
+      /**
+       * Format: int32
+       * @description Background work owned by this session — subagents, external agents and
+       *     background tools (EVE-868). Read from `sessions.task_count`. This is
+       *     what the Work tab holds; `active_schedule_count` describes only the
+       *     schedules it also lists.
+       * @example 3
+       */
+      task_count?: number | null;
       /**
        * @description Human-readable title for the session.
        * @example Q3 marketing brief
