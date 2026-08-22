@@ -24,7 +24,7 @@ import { ResourceNotFound } from "@/components/resource-not-found";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHarnesses, usePageTitle } from "@/hooks";
 import { useChatThreads } from "@/hooks/use-chat-threads";
-import { threadTitle } from "@/lib/chat-threads";
+import { isChatThread, threadTitle } from "@/lib/chat-threads";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 
 function ThreadContent({ threadId }: { threadId: string }) {
@@ -69,6 +69,18 @@ function ThreadContent({ threadId }: { threadId: string }) {
         description="This thread may have been deleted, moved to another organization, or the URL may be wrong."
         backHref="/chats"
         backLabel="Back to chats"
+        resourceId={threadId}
+      />
+    );
+  }
+
+  if (!isChatThread(session)) {
+    return (
+      <ResourceNotFound
+        title="Thread not found"
+        description="This session is a read-only recording. Fork it into a chat before continuing the conversation."
+        backHref={`/sessions/${threadId}/transcript`}
+        backLabel="Open recording"
         resourceId={threadId}
       />
     );

@@ -186,6 +186,7 @@ describe("SessionLayout", () => {
       status: "idle",
       created_at: "2025-01-01T00:00:00Z",
       active_schedule_count: 0,
+      tags: ["recording"],
       features: ["file_system", "secrets", "key_value", "schedules"],
     };
   });
@@ -314,7 +315,10 @@ describe("SessionLayout", () => {
     fireEvent.click(screen.getByRole("button", { name: /fork into chat/i }));
 
     expect(mockForkMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: "ses-abc12345" }),
+      expect.objectContaining({
+        sessionId: "ses-abc12345",
+        request: expect.objectContaining({ tags: ["recording", "chat"] }),
+      }),
       expect.anything(),
     );
   });

@@ -14,6 +14,7 @@ import { useAgent, useSession, useEvents, useModel, useSessionResolvedModel } fr
 import { sendUserMessage, cancelTurn } from "@/lib/api/sessions";
 import { useMutation } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
+import { isChatThread } from "@/lib/chat-threads";
 import { useOrg } from "@/providers/org-provider";
 import { useLocale } from "@/providers/locale-provider";
 import type {
@@ -315,7 +316,10 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   // Browser-agent messaging is offered only on a surface that has a composer.
   // Session detail is a read-only recording (EVE-854), so registering these
   // tools there would hand a browser agent a mutation the page itself refuses.
-  const isChatSurface = pathname === "/chat" || pathname === `/chats/${sessionId}`;
+  const isChatSurface =
+    !!session &&
+    isChatThread(session) &&
+    (pathname === "/chat" || pathname === `/chats/${sessionId}`);
   const canSendWebMcpMessage = effectiveStatus === "idle" || effectiveStatus === "started";
 
   const sendMessageTool = useMemo<WebMcpToolDefinition>(
