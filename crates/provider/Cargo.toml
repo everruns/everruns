@@ -61,9 +61,10 @@ rustls = { workspace = true, optional = true }
 [features]
 default = ["http"]
 # Shared protocol drivers, request helpers, and streaming reconnect support.
-http = ["dep:reqwest", "dep:eventsource-stream", "dep:http", "dep:bytes", "tokio/net", "tls-ring"]
-# Process-wide ring selection for products that link multiple rustls providers.
-tls-ring = ["dep:rustls"]
+http = ["dep:reqwest", "dep:eventsource-stream", "dep:http", "dep:bytes", "tokio/net", "tls-aws-lc-rs"]
+# Process-wide crypto-provider install for products that build TLS clients.
+# The workspace links `aws-lc-rs` only (EVE-924).
+tls-aws-lc-rs = ["dep:rustls"]
 
 # OpenAPI schema derives (utoipa::ToSchema).
 openapi = ["dep:utoipa"]
@@ -72,7 +73,7 @@ sqlx = ["dep:sqlx"]
 
 [[test]]
 name = "tls_startup"
-required-features = ["http", "tls-ring"]
+required-features = ["http", "tls-aws-lc-rs"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

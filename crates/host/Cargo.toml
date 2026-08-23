@@ -68,7 +68,7 @@ utility-openai = ["everruns-provider/http"]
 observability = [
     "direct-egress",
     "tokio/time",
-    "everruns-provider/tls-ring",
+    "everruns-provider/tls-aws-lc-rs",
     "dep:rand",
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",

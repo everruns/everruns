@@ -8,7 +8,7 @@ Caching and rate limiting strategy for everruns. PostgreSQL is the sole stateful
 
 Valkey is optional infrastructure for coordinating rate limits across 10+ control-plane instances.
 
-- **Crate**: `fred` v10 (`enable-rustls-ring`, `i-scripts` features)
+- **Crate**: `fred` v10 (`enable-rustls`, `i-scripts` features)
 - **Module**: `crates/server/src/valkey.rs`
 - **Env var**: `VALKEY_URL` (e.g., `redis://localhost:6379`). See `docs/sre/environment-variables.md`.
 - **Algorithm**: Sliding-window counter via atomic Lua script (sorted set per key)

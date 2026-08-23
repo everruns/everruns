@@ -23,7 +23,7 @@ clap.workspace = true
 
 # Everruns SDK
 everruns-sdk.workspace = true
-everruns-provider = { workspace = true, default-features = false, features = ["tls-ring"] }
+everruns-provider = { workspace = true, default-features = false, features = ["tls-aws-lc-rs"] }
 
 # HTTP client (for endpoints not yet in SDK)
 reqwest.workspace = true

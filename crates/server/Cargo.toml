@@ -84,7 +84,9 @@ futures-util.workspace = true
 flate2.workspace = true
 tar.workspace = true
 
-bashkit = { version = "0.17.0", features = ["scripted_tool", "jq"] }
+# `default-features = false` drops bashkit's default `ring`; the rest of its
+# default set is restored explicitly so only the crypto backend changes (EVE-924).
+bashkit = { version = "0.17.0", default-features = false, features = ["scripted_tool", "jq", "tzdata", "aws-lc-rs"] }
 
 everruns-capability = { workspace = true }
 everruns-core = { path = "../core", features = ["openapi", "tree-sitter-outlines"] }

@@ -171,7 +171,7 @@ pub enum CapabilitiesCommand {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    everruns_provider::install_ring_crypto_provider();
+    everruns_provider::install_default_crypto_provider();
 
     let cli = Cli::parse();
     let output_format = output::OutputFormat::from_str(&cli.output);

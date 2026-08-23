@@ -251,11 +251,11 @@ their effectful owners:
 | `driver_helpers`, `stream_reconnect` | `everruns_provider::` |
 | `OpenAiUtilityLlmService`, `SystemUtilityLlmConfig`, `UTILITY_OPENAI_API_KEY_ENV` | `everruns_host::` with `features = ["utility-openai"]` |
 
-Core no longer initializes Rustls. Provider HTTP clients install their ring
+Core no longer initializes Rustls. Provider HTTP clients install the workspace
 crypto provider when they are first constructed, while server, worker, and CLI
 startup owners install it eagerly. Custom binaries that combine TLS stacks can
-depend on `everruns-provider` with `features = ["tls-ring"]` and call
-`everruns_provider::install_ring_crypto_provider()` once during startup; the
+depend on `everruns-provider` with `features = ["tls-aws-lc-rs"]` and call
+`everruns_provider::install_default_crypto_provider()` once during startup; the
 call is idempotent and safe under concurrent initialization.
 
 ## Provider and typed-ID imports

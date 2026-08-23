@@ -113,12 +113,15 @@ pub use user_facing_error::{
     parse_usage_limit_reset_at, trim_error_chain_prefixes,
 };
 
-/// Select ring as the process-wide rustls crypto provider.
+/// Select the workspace crypto backend as the process-wide rustls provider.
 ///
-/// Products that link more than one rustls provider call this once during
-/// startup, before constructing TLS clients. Repeated and concurrent calls are
-/// safe: rustls accepts the first installation and later calls are no-ops.
-#[cfg(feature = "tls-ring")]
-pub fn install_ring_crypto_provider() {
-    let _ = rustls::crypto::ring::default_provider().install_default();
+/// The backend is a build-time choice — the workspace standardises on
+/// `aws-lc-rs` (EVE-924), so only one is ever linked. Products still call this
+/// once during startup, before constructing TLS clients, because rustls refuses
+/// to pick a default implicitly when a crate in the graph could install another.
+/// Repeated and concurrent calls are safe: rustls accepts the first
+/// installation and later calls are no-ops.
+#[cfg(feature = "tls-aws-lc-rs")]
+pub fn install_default_crypto_provider() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 }

@@ -21,7 +21,9 @@ everruns-capability.workspace = true
 everruns-core.workspace = true
 everruns-provider.workspace = true
 async-trait.workspace = true
-bashkit = { version = "0.17.0", features = ["jq", "http_client", "bot-auth"] }
+# `default-features = false` drops bashkit's default `ring`; the rest of its
+# default set is restored explicitly so only the crypto backend changes (EVE-924).
+bashkit = { version = "0.17.0", default-features = false, features = ["jq", "http_client", "bot-auth", "bash_tool", "tzdata", "aws-lc-rs"] }
 serde_json.workspace = true
 futures.workspace = true
 tokio = { workspace = true, features = ["rt", "sync", "time"] }
