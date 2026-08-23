@@ -129,6 +129,14 @@ binary carrying web-fetch, and was the only reason the workspace resolved a
 - Duplicate versions are mostly not ours to fix. `reqwest 0.12` alongside `0.13` comes
   from `everruns-sdk`, the `a2a-*-lf` crates, and `reqwest-eventsource`; `http 0.2` comes
   from the AWS SDK behind the Bedrock driver. Chase these by upgrading upstreams.
+- Exactly one rustls crypto backend is linked, and it is `aws-lc-rs` (EVE-924). A
+  duplicate backend is worse than a duplicate version: two C/assembly crypto libraries
+  mean two advisory streams, two FIPS stories, and a `CryptoProvider` that rustls cannot
+  choose on its own. Every TLS-carrying dependency in the root manifest therefore names
+  the backend explicitly — `rustls`, `sqlx`, `fred`, `tonic`, `async-nats`, `bashkit` —
+  so a bump cannot re-enable `ring` by inheriting a default. `cargo tree -i ring --target
+  all` printing nothing is the invariant; `crates/provider/tests/tls_startup.rs` asserts
+  the runtime half.
 
 ## Success Bar
 
