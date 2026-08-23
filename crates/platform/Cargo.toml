@@ -128,7 +128,7 @@ required-features = ["container-sandbox-live-tests"]
 
 [dev-dependencies]
 everruns-builtins.workspace = true
-everruns-provider = { workspace = true, features = ["tls-ring"] }
+everruns-provider = { workspace = true, features = ["tls-aws-lc-rs"] }
 a2a-server.workspace = true
 axum.workspace = true
 futures.workspace = true

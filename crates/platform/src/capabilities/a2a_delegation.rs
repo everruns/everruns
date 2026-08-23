@@ -2114,7 +2114,7 @@ mod tests {
     }
 
     async fn spawn_real_a2a_agent() -> String {
-        everruns_provider::install_ring_crypto_provider();
+        everruns_provider::install_default_crypto_provider();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let base_url = format!("http://{addr}");

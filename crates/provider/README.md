@@ -16,9 +16,9 @@ through `everruns`; provider implementers and low-level hosts depend here
 directly to avoid pulling in the agent-loop kernel.
 
 The default `http` feature provides the shared protocol implementations and
-selects the ring Rustls provider before constructing their clients. Contract-
+installs the Rustls crypto provider before constructing their clients. Contract-
 only consumers can use `default-features = false` to avoid HTTP and TLS
-dependencies entirely. The `tls-ring` feature exposes the idempotent startup
+dependencies entirely. The `tls-aws-lc-rs` feature exposes the idempotent startup
 initializer independently for binaries that assemble multiple TLS stacks.
 
 ## Quick Example

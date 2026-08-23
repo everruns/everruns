@@ -811,7 +811,7 @@ fn build_http11_tls_connector() -> Result<Connector, String> {
     for cert in rustls_native_certs::load_native_certs().certs {
         let _ = root_store.add(cert);
     }
-    let provider = rustls::crypto::ring::default_provider();
+    let provider = rustls::crypto::aws_lc_rs::default_provider();
     let mut config = rustls::ClientConfig::builder_with_provider(provider.into())
         .with_safe_default_protocol_versions()
         .map_err(|e| format!("Failed to build TLS config: {e}"))?

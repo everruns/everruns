@@ -59,7 +59,7 @@ impl Drop for SandboxGuard {
 async fn smoke_live_sandbox_exec_and_files() {
     // Test binary doesn't go through init_telemetry() or CLI main(),
     // so install the rustls CryptoProvider explicitly (rustls 0.23 requirement).
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
     let api_key = require_api_key!();
     let client = E2BClient::new(api_key.clone());
