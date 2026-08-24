@@ -19,10 +19,10 @@ browser agent can invoke read and navigation tools.
 
 ## Steps
 
-1. Open `/dashboard` and wait for the application to settle.
+1. Open `/chats` — the landing surface — and wait for the application to settle.
 2. Discover registered tools from `document.modelContext`.
 3. Verify `everruns_get_context`, `everruns_search`, and `everruns_open` are present.
-4. Execute `everruns_get_context` and verify it reports the current org and dashboard page.
+4. Execute `everruns_get_context` and verify it reports the current org and the Chats page.
 5. Execute `everruns_open` for the Sessions page.
 6. Verify the visible URL changes to `/sessions`.
 

@@ -13,7 +13,7 @@ documented in Everruns' own docs.
 
 - Control-plane running (`just start-dev` or `just start-all`)
 - A real LLM provider/model configured for the org (tool-calling capable). `llmsim-default` is not sufficient for validating docs lookup behavior.
-- The signed-in user has access to Platform Chat (`/chat`)
+- The signed-in user can start a chat thread on the built-in `platform-chat` harness from `/chats`
 - Default org has the built-in `platform-chat` harness provisioned
 
 ## Test Data
@@ -26,7 +26,7 @@ documented in Everruns' own docs.
 
 ### Happy path — docs-backed answer
 
-1. **Open Platform Chat** in the web UI (`/chat`).
+1. **Open Platform Chat** in the web UI: go to `/chats`, start a **New chat**, and pick the built-in **Platform Chat** harness.
 
 2. **Send the prompt** from the test data table.
 
@@ -39,7 +39,7 @@ documented in Everruns' own docs.
    - Only markdown content is included (`.md` and `.mdx`)
    - The docs are embedded from the repo `docs/` directory at compile time rather than being written into the database per session
 
-6. **Refresh the page** and confirm the answer remains in the singleton Platform Chat transcript.
+6. **Refresh the page** and confirm the answer remains in the Platform Chat thread transcript.
 
 ### Negative path A — wrong path
 
@@ -79,7 +79,7 @@ documented in Everruns' own docs.
 
 - The answer is presented as a normal assistant message.
 - Tool calls render as structured tool blocks, not raw JSON or `to=...` text.
-- Refresh preserves the conversation in the Platform Chat singleton session.
+- Refresh preserves the conversation in the Platform Chat thread.
 
 ## Failure Modes
 

@@ -12,7 +12,7 @@ rendering, tool-call formatting, and error-banner suppression.
 
 - Control-plane running (`just start-dev` or `just start-all`)
 - An LLM API key configured (OpenAI, Anthropic, or Gemini — Platform Chat works with any frontier chat model)
-- The signed-in user has a fresh Platform Chat session (or is willing to start one) — Platform Chat is a per-user singleton
+- The signed-in user has a fresh Platform Chat thread (or is willing to start one). The old singleton `/chat` page was retired with EVE-855; a Platform Chat conversation is now an ordinary chat thread bound to the built-in `platform-chat` harness
 - Default org has the built-in `platform-chat`, `generic`, and `base` harnesses provisioned (handled by org init)
 
 ## Test Data
@@ -28,7 +28,7 @@ rendering, tool-call formatting, and error-banner suppression.
 
 ### Happy path — create and run
 
-1. **Open Platform Chat** in the web UI (`/chat`).
+1. **Open Platform Chat** in the web UI: go to `/chats`, start a **New chat**, and pick the built-in **Platform Chat** harness. Note the thread URL (`/chats/{threadId}`).
 
 2. **Send the create message:**
 
@@ -106,7 +106,7 @@ rendering, tool-call formatting, and error-banner suppression.
 
 ### Persistence
 
-- Refreshing the page preserves the Platform Chat transcript (per-user singleton session).
+- Refreshing `/chats/{threadId}` preserves the Platform Chat transcript, and the thread stays listed on `/chats`.
 - The `weather-bot` agent persists in the agents list and is reachable via direct URL after browser reload.
 
 ## Failure Modes
@@ -119,7 +119,7 @@ rendering, tool-call formatting, and error-banner suppression.
 | 500 / red banner on empty name | `create_agent` validation missing — server should return 4xx with a structured error that the chat surfaces as plain text |
 | Nonexistent-agent run spawns a session anyway | `send_message` / `create_session` accepting an unknown agent name — should be rejected before spawn |
 | Agent link 404 | Agent created but UI route missing — check agents detail route registration |
-| Platform Chat session lost on reload | Singleton tag-based lookup broken — check the Platform Chat session bootstrap |
+| Platform Chat thread lost on reload | Thread not listed by the Chats surface — check the `chat` tag written on thread creation and `selectChatThreads` |
 
 ## Notes
 
