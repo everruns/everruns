@@ -24,11 +24,11 @@ Verify slash-command discovery, selection, execution, persistence, and failure b
 
 ## Steps
 
-1. Open `/chat`, record the session ID returned by `POST /v1/sessions/chat`, and inspect `GET /v1/sessions/{id}/commands`.
+1. Open `/chats`, start a **New chat** on the built-in **Platform Chat** harness, record the session ID from the thread URL (`/chats/{sessionId}`), and inspect `GET /v1/sessions/{id}/commands`.
 2. Type `/`, then `/b`. Verify the accessible menu, filtering, and selected option.
 3. Select `/btw` with the keyboard. Verify it fills the composer until its required argument is supplied.
 4. Submit `/btw` with an argument. Verify the command endpoint is used, the result is dismissible, Escape restores composer focus, and message history count is unchanged.
-5. Reload `/chat`. Verify the same owned session is reused and an ordinary message succeeds.
+5. Reload the thread URL. Verify the same owned session is reused and an ordinary message succeeds.
 6. Open a Generic `/sessions/{id}/chat` page, type `/`, and select the invocable skill with the pointer. Verify touch-sized/pointer selection restores focus and fills the composer.
 7. Send the filled skill command. Verify it uses the ordinary message endpoint and is persisted.
 8. Repeat the menu checks at desktop and mobile widths; verify the menu remains visible and scrollable.

@@ -17,7 +17,7 @@ capability, Agent, connector, and current-user connection reads.
 
 ## Steps
 
-1. Open Platform Chat at `/chat` and send: `Create another agent with resend plugin.`
+1. Open Platform Chat — `/chats` → **New chat** → built-in **Platform Chat** harness — and send: `Create another agent with resend plugin.`
 2. Before confirming, inspect the tool trace.
 3. Verify Platform Chat uses `query` to read the installed plugins,
    capabilities, Agents, connection providers, and current-user connections.

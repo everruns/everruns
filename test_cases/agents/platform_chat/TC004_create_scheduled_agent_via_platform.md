@@ -22,7 +22,7 @@ a production credential into this manual test transcript.
 
 ## Steps
 
-1. Open Platform Chat at `/chat`.
+1. Open Platform Chat: go to `/chats`, start a **New chat**, and pick the built-in **Platform Chat** harness.
 
 2. Send:
 

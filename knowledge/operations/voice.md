@@ -26,7 +26,7 @@ The initial provider target is OpenAI `gpt-realtime-2`, using the Realtime API G
 - Keep provider API keys, tool execution, platform-management tools, and policy checks server-side.
 - Persist useful transcript-level history in Everruns events and messages. Do not store raw microphone or assistant audio in V1.
 - Support `gpt-realtime-2` reasoning, preambles, server-side tool calls, interruptions, and long-session context.
-- Let the same chat UI render text turns and voice transcript turns in `/sessions/{id}/chat`, agent chat, and `/chat`.
+- Let the same chat UI render text turns and voice transcript turns in `/sessions/{id}/chat`, agent chat, and Platform Chat threads.
 
 ## Non-Goals
 
@@ -201,7 +201,7 @@ Surfaces:
 
 - Session chat: `/sessions/{session_id}/chat` starts voice against that existing session.
 - Agent chat: creating a voice chat from an agent uses `POST /v1/agents/{agent_id}/voice/sessions`, then navigates to the new session chat route.
-- Platform Chat: `/chat` uses `POST /v1/sessions/chat/voice` and shows the same transcript in the singleton Platform Chat session.
+- Platform Chat: `POST /v1/sessions/chat/voice` resolves the singleton Platform Chat session and returns the same voice bootstrap payload, showing the transcript in that session. Its only UI caller was the `/chat` page retired with EVE-855, so no first-party surface calls it today — `apps/ui/src/lib/api/voice.ts` still exports `startChatVoice` for it, unused.
 
 UI states:
 

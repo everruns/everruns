@@ -124,8 +124,11 @@ Conversational harness for the global chat interface. Inherits Generic capabilit
 - Confirm before creating harnesses or agents; use common sense for sessions
 
 **Use cases:**
-- Global chat interface (web UI at `/chat`)
-- Per-user singleton sessions via tag-based lookup
+- Operator chat threads on the Chats surface (`/chats`), started by binding a new thread to this
+  harness. The singleton `/chat` page it was built for was retired with EVE-855; threads that
+  predate the Chats surface still carry the `global-chat` tag so they stay listed.
+- Per-user singleton sessions via tag-based lookup, still served by `POST /v1/sessions/chat` —
+  the only HTTP entry point that resolves the singleton, and the one the voice bootstrap uses.
 
 ## Design Decisions
 
