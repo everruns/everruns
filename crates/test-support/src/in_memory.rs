@@ -56,6 +56,7 @@ impl InMemoryMessageRetriever {
             role: input.role,
             content: input.content,
             phase: None,
+            phase_source: None,
             controls: input.controls,
             metadata: input.metadata,
             external_actor: None,
