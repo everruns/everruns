@@ -566,6 +566,7 @@ mod tests {
             }
             Ok(LlmResponse {
                 text,
+                reasoning: Vec::new(),
                 tool_calls: None,
                 metadata: LlmCompletionMetadata::default(),
             })

@@ -2026,76 +2026,113 @@ mod tests {
     }
 
     #[test]
-    fn test_message_thinking_field_roundtrip() {
+    fn test_message_reasoning_roundtrip() {
         use chrono::Utc;
         use everruns_core::{ContentPart, Message, MessageRole};
+        use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
         use uuid::Uuid;
 
-        // Create a Message with thinking content (simulating extended thinking model output)
-        let thinking_content = "Let me analyze this step by step...\n\n1. First, I need to understand the problem.\n2. Then, I'll formulate a solution.".to_string();
+        // Two separately-signed reasoning artifacts, as interleaved thinking
+        // produces. Both must survive the worker boundary with their own
+        // signature: a merged pair carrying one signature is exactly what the
+        // provider rejects.
         let message = Message {
             id: Uuid::now_v7().into(),
             role: MessageRole::Agent,
-            content: vec![ContentPart::text(
-                "Here is my response based on my analysis.",
-            )],
-            phase: None,
-            thinking: Some(thinking_content.clone()),
-            thinking_signature: Some("test_signature_abc123".to_string()),
+            content: vec![
+                ContentPart::Reasoning(
+                    ReasoningContentPart::opaque("anthropic")
+                        .with_signature("sig-first")
+                        .with_text(ReasoningText::Plain {
+                            text: "First I check the logs".to_string(),
+                        }),
+                ),
+                ContentPart::Reasoning(
+                    ReasoningContentPart::opaque("anthropic")
+                        .with_signature("sig-second")
+                        .with_text(ReasoningText::Plain {
+                            text: "Now I read the diff".to_string(),
+                        }),
+                ),
+                ContentPart::text("Here is my response based on my analysis."),
+            ],
+            phase: Some(everruns_provider::ExecutionPhase::Commentary),
+            phase_source: Some(everruns_provider::PhaseSource::Derived),
             controls: None,
             metadata: None,
             external_actor: None,
             created_at: Utc::now(),
         };
 
-        // Convert to proto
-        let proto_message = schema_message_to_proto(&message);
+        let roundtripped = proto_message_to_schema(schema_message_to_proto(&message)).unwrap();
 
-        // Verify thinking field is set in proto
-        assert_eq!(proto_message.thinking, Some(thinking_content.clone()));
+        let parts: Vec<&ReasoningContentPart> = roundtripped.reasoning_parts().collect();
+        assert_eq!(parts.len(), 2, "both artifacts must survive");
+        assert_eq!(parts[0].signature.as_deref(), Some("sig-first"));
+        assert_eq!(parts[1].signature.as_deref(), Some("sig-second"));
         assert_eq!(
-            proto_message.thinking_signature,
-            Some("test_signature_abc123".to_string())
+            parts[0].text,
+            Some(ReasoningText::Plain {
+                text: "First I check the logs".to_string(),
+            })
         );
+        assert_eq!(roundtripped.role, MessageRole::Agent);
+    }
 
-        // Convert back to schema
-        let schema_message = proto_message_to_schema(proto_message).unwrap();
+    /// Phase and its source cross the boundary. Dropping either leaves the API
+    /// unable to say whether a message is the answer, or whether its
+    /// classification came from the provider or was inferred.
+    #[test]
+    fn test_message_phase_and_source_roundtrip() {
+        use chrono::Utc;
+        use everruns_core::{ContentPart, Message, MessageRole};
+        use everruns_provider::{ExecutionPhase, PhaseSource};
+        use uuid::Uuid;
 
-        // Verify thinking field survives roundtrip
-        assert_eq!(schema_message.thinking, Some(thinking_content));
-        assert_eq!(schema_message.role, MessageRole::Agent);
+        for (phase, source) in [
+            (ExecutionPhase::Commentary, PhaseSource::Derived),
+            (ExecutionPhase::FinalAnswer, PhaseSource::Provider),
+        ] {
+            let message = Message {
+                id: Uuid::now_v7().into(),
+                role: MessageRole::Agent,
+                content: vec![ContentPart::text("answer")],
+                phase: Some(phase),
+                phase_source: Some(source),
+                controls: None,
+                metadata: None,
+                external_actor: None,
+                created_at: Utc::now(),
+            };
+
+            let roundtripped = proto_message_to_schema(schema_message_to_proto(&message)).unwrap();
+            assert_eq!(roundtripped.phase, Some(phase));
+            assert_eq!(roundtripped.phase_source, Some(source));
+        }
     }
 
     #[test]
-    fn test_message_without_thinking_roundtrip() {
+    fn test_message_without_reasoning_roundtrip() {
         use chrono::Utc;
         use everruns_core::{ContentPart, Message, MessageRole};
         use uuid::Uuid;
 
-        // Create a Message without thinking content (normal model output)
         let message = Message {
             id: Uuid::now_v7().into(),
             role: MessageRole::Agent,
-            content: vec![ContentPart::text("A simple response without thinking.")],
+            content: vec![ContentPart::text("A simple response without reasoning.")],
             phase: None,
-            reasoning: Vec::new(),
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
             created_at: Utc::now(),
         };
 
-        // Convert to proto
-        let proto_message = schema_message_to_proto(&message);
-
-        // Verify thinking field is None in proto
-        assert_eq!(proto_message.thinking, None);
-
-        // Convert back to schema
-        let schema_message = proto_message_to_schema(proto_message).unwrap();
-
-        // Verify thinking field remains None
-        assert_eq!(schema_message.thinking, None);
+        let roundtripped = proto_message_to_schema(schema_message_to_proto(&message)).unwrap();
+        assert!(!roundtripped.has_reasoning());
+        assert_eq!(roundtripped.phase, None);
+        assert_eq!(roundtripped.phase_source, None);
     }
 
     #[test]
@@ -2120,7 +2157,7 @@ mod tests {
             role: MessageRole::User,
             content: vec![ContentPart::text("Hello")],
             phase: None,
-            reasoning: Vec::new(),
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: Some(actor.clone()),
@@ -2157,7 +2194,7 @@ mod tests {
             role: MessageRole::User,
             content: vec![ContentPart::text("Hello")],
             phase: None,
-            reasoning: Vec::new(),
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,

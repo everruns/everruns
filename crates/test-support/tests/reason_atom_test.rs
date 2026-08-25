@@ -746,9 +746,10 @@ impl everruns_provider::driver_registry::ChatDriver for ThinkingLeakDriver {
     {
         Ok(Box::pin(stream::iter(vec![
             Ok(
-                everruns_provider::driver_registry::LlmStreamEvent::ThinkingDelta(
-                    self.thinking.clone(),
-                ),
+                everruns_provider::driver_registry::LlmStreamEvent::ReasoningDelta {
+                    delta: self.thinking.clone(),
+                    summary: false,
+                },
             ),
             Ok(everruns_provider::driver_registry::LlmStreamEvent::TextDelta(self.answer.clone())),
             Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
