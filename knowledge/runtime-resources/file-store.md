@@ -74,6 +74,20 @@ supports `read_file`, `write_file`, `write_file_if_content_matches` (CAS),
 `delete_file`, `list_directory`, `stat_file`, `grep_files`,
 `create_directory`, and `seed_initial_file`.
 
+### Batch-native reads
+
+The filesystem capability can read a bounded ordered set of independent files
+in one structured `read_many_files` call. This belongs in the capability adapter, not
+the neutral `SessionFileSystem` trait: each item remains an ordinary store read,
+so every host keeps one path-resolution, containment, mount, and content-limit
+owner while models need not depend on provider-specific parallel tool emission.
+
+Only paths known before the call belong in a batch. A path derived from one
+file's content is a data dependency and must be read in a later call. Batch
+results retain request order and per-path failures, and their aggregate output
+stays below the runtime hard tool-result ceiling. See
+`integrations/filesystem/src/lib.rs` for the wire schema and bounds.
+
 ### Unified Workspace Path Model (EVE-660)
 
 The agent sees **one** filesystem, resolved by
