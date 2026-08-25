@@ -32574,11 +32574,15 @@
         "description": "Reasoning configuration for the model",
         "properties": {
           "effort": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Effort level for reasoning (low, medium, high)"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReasoningEffort",
+                "description": "Effort level for reasoning.\n\nTyped rather than free-form: the effort taxonomy is closed, and each\ndriver previously re-parsed the string with its own case handling, which\nlet `minimal` silently mean \"no reasoning\" on budget-based models."
+              }
+            ]
           }
         }
       },

@@ -13487,8 +13487,7 @@ export interface components {
     };
     /** @description Reasoning configuration for the model */
     ReasoningConfig: {
-      /** @description Effort level for reasoning (low, medium, high) */
-      effort?: string | null;
+      effort?: null | components["schemas"]["ReasoningEffort"];
     };
     /**
      * @description One provider-issued reasoning artifact, ordered in `Message.content`
