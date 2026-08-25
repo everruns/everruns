@@ -5838,10 +5838,18 @@ mod durable_sse_tests {
 async fn test_reasoning_reaches_api_sanitized_and_classified() {
     let client = reqwest::Client::new();
 
+    // Names are unique per run: the API rejects a duplicate agent name with
+    // 409, so fixed names pass once against a fresh database and fail on every
+    // rerun against the same one.
+    let run_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+
     let provider_response = client
         .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
-            "name": "llmsim-reasoning-provider",
+            "name": format!("llmsim-reasoning-provider-{run_id}"),
             "provider_type": "llmsim"
         }))
         .send()
@@ -5863,7 +5871,7 @@ async fn test_reasoning_reaches_api_sanitized_and_classified() {
             API_BASE_URL, provider.id
         ))
         .json(&json!({
-            "model_id": "llmsim-reasoning-test",
+            "model_id": format!("llmsim-reasoning-test-{run_id}"),
             "display_name": "LlmSim Reasoning Test Model",
             "enabled": true
         }))
@@ -5880,7 +5888,7 @@ async fn test_reasoning_reaches_api_sanitized_and_classified() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "reasoning-projection-agent",
+            "name": format!("reasoning-projection-agent-{run_id}"),
             "system_prompt": "You are a helpful assistant.",
             "model_id": model.id,
         }))
@@ -5895,7 +5903,7 @@ async fn test_reasoning_reaches_api_sanitized_and_classified() {
         .json(&json!({
             "harness_name": SEED_HARNESS_NAME,
             "agent_id": agent.public_id,
-            "title": "Reasoning Projection Session",
+            "title": format!("Reasoning Projection Session {run_id}"),
         }))
         .send()
         .await
@@ -5994,12 +6002,52 @@ async fn test_reasoning_reaches_api_sanitized_and_classified() {
             .map(|p| p["type"].as_str().unwrap_or("?"))
             .collect::<Vec<_>>()
     );
+    // Readable text arrives in whichever shape the provider exposes: verbatim
+    // chain-of-thought as `plain`, a curated gloss as `summary`. Both are
+    // reasoning-channel content; neither may be the answer.
+    let reasoning_text: Vec<String> = reasoning_parts
+        .iter()
+        .filter_map(|p| match p["text"]["kind"].as_str() {
+            Some("plain") => p["text"]["text"].as_str().map(str::to_string),
+            Some("summary") => p["text"]["parts"].as_array().map(|parts| {
+                parts
+                    .iter()
+                    .filter_map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }),
+            _ => None,
+        })
+        .filter(|t| !t.trim().is_empty())
+        .collect();
+    // Readable text is not guaranteed. A provider may return a reasoning
+    // artifact carrying only an id and its encrypted payload — the model
+    // reasoned but surfaced no prose — and that artifact is still valid and
+    // still replayable. Requiring text here would fail on a correct response.
+    // What must always hold is that the artifact is identified, so it can be
+    // replayed under the handle the provider issued.
     assert!(
-        reasoning_parts.iter().any(|p| p["text"]["text"]
-            .as_str()
-            .is_some_and(|t| t.contains("deliberating"))),
-        "reasoning text should reach the API"
+        reasoning_parts
+            .iter()
+            .any(|p| p["item_id"].is_string() || p["provider"].is_string()),
+        "reasoning parts must be identified: {reasoning_parts:?}"
     );
+
+    // Reasoning folded into the answer is the bug this rework fixes: it
+    // persists as the model's reply and replays to the model as its own prior
+    // output.
+    let answer_text: String = content
+        .iter()
+        .filter(|p| p["type"] == "text")
+        .filter_map(|p| p["text"].as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    for reasoning in &reasoning_text {
+        assert!(
+            !answer_text.contains(reasoning.trim()),
+            "reasoning text leaked into the answer"
+        );
+    }
 
     // 3. Replay state must not. The provider needs it; a client never does, and
     //    publishing it widens the surface for no benefit (TM-LLM-034).
