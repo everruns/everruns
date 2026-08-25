@@ -18643,6 +18643,29 @@
               }
             ],
             "description": "Tool result content (result of tool execution)"
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReasoningContentPart",
+                "description": "Provider reasoning artifact, ordered against the text and tool calls it\nwas interleaved with."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "reasoning"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Provider reasoning artifact, ordered against the text and tool calls it\nwas interleaved with."
           }
         ],
         "description": "A part of message content - can be text, image, image_file, tool_call, or tool_result\n\nThis is the canonical content part type used across the system.\nAPI layer enables the \"openapi\" feature to add ToSchema derive."
@@ -21535,8 +21558,8 @@
         "type": "string",
         "description": "Execution phase for assistant messages in multi-step tool-calling flows.\n\nProviders that natively support phases (OpenAI GPT-5.x) send the phase value\ndirectly in the API request. For providers without native support (Anthropic,\nGemini), the phase is still tracked internally and derived from state in the\nReasonAtom, but is not sent to the provider API.\n\nSerialized as lowercase strings for backward compatibility with existing\npersisted messages: `\"commentary\"` and `\"final_answer\"`.\n\nLegacy values `\"in_progress\"` and `\"completed\"` are accepted during\ndeserialization for backward compatibility.",
         "enum": [
-          "Commentary",
-          "FinalAnswer"
+          "commentary",
+          "final_answer"
         ]
       },
       "ExportReportQueryRequest": {
@@ -23820,7 +23843,7 @@
         ],
         "properties": {
           "message": {
-            "$ref": "#/components/schemas/Message",
+            "$ref": "#/components/schemas/RuntimeMessage",
             "description": "The user message"
           }
         }
@@ -26222,7 +26245,7 @@
                   "items": {
                     "$ref": "#/components/schemas/ContentPart"
                   },
-                  "description": "Array of content parts"
+                  "description": "Array of content parts.\n\nReasoning artifacts appear here as `reasoning` parts, in the order the\nprovider emitted them, with opaque replay state (signatures, encrypted\npayloads) stripped."
                 },
                 "controls": {
                   "oneOf": [
@@ -26266,6 +26289,28 @@
                   "propertyNames": {
                     "type": "string"
                   }
+                },
+                "phase": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ExecutionPhase",
+                      "description": "Execution phase for agent messages: whether this is intermediate\n`commentary` or the turn's `final_answer`. Absent on user messages.\n\nWithout this a client cannot tell an intermediate message from the\nanswer, which is the single question most consumers of a session need\nanswered."
+                    }
+                  ]
+                },
+                "phase_source": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PhaseSource",
+                      "description": "Whether `phase` was reported by the provider or inferred by the runtime\nfrom tool-call presence.\n\n`derived` is a weak signal: it means only \"this message called tools\",\nso a text-only preamble is reported as `final_answer`. Clients needing a\ndependable classification should treat `derived` accordingly."
+                    }
+                  ]
                 },
                 "role": {
                   "$ref": "#/components/schemas/MessageRole"
@@ -28162,7 +28207,7 @@
           "messages": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Message"
+              "$ref": "#/components/schemas/RuntimeMessage"
             },
             "description": "Messages sent to the LLM (including system prompt)"
           },
@@ -29081,9 +29126,11 @@
       },
       "Message": {
         "type": "object",
-        "description": "A message in the conversation",
+        "description": "Message - primary conversation data (API response)",
         "required": [
           "id",
+          "session_id",
+          "sequence",
           "role",
           "content",
           "created_at"
@@ -29094,7 +29141,7 @@
             "items": {
               "$ref": "#/components/schemas/ContentPart"
             },
-            "description": "Message content as array of content parts (text, images, tool calls, tool results)"
+            "description": "Array of content parts.\n\nReasoning artifacts appear here as `reasoning` parts, in the order the\nprovider emitted them, with opaque replay state (signatures, encrypted\npayloads) stripped."
           },
           "controls": {
             "oneOf": [
@@ -29110,7 +29157,7 @@
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when the message was created"
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "external_actor": {
             "oneOf": [
@@ -29133,7 +29180,11 @@
               "object",
               "null"
             ],
-            "description": "Message-level metadata"
+            "description": "Message-level metadata (locale, etc.)",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
           },
           "phase": {
             "oneOf": [
@@ -29142,27 +29193,32 @@
               },
               {
                 "$ref": "#/components/schemas/ExecutionPhase",
-                "description": "Execution phase for this message.\n\nHelps LLMs distinguish between intermediate working commentary and completed\nanswers in multi-step tool-calling flows. Only set on agent (assistant) messages.\nProviders with native phase support (OpenAI GPT-5.x) send this value in the API\nrequest; others derive it from state but don't send it to the provider."
+                "description": "Execution phase for agent messages: whether this is intermediate\n`commentary` or the turn's `final_answer`. Absent on user messages.\n\nWithout this a client cannot tell an intermediate message from the\nanswer, which is the single question most consumers of a session need\nanswered."
+              }
+            ]
+          },
+          "phase_source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PhaseSource",
+                "description": "Whether `phase` was reported by the provider or inferred by the runtime\nfrom tool-call presence.\n\n`derived` is a weak signal: it means only \"this message called tools\",\nso a text-only preamble is reported as `final_answer`. Clients needing a\ndependable classification should treat `derived` accordingly."
               }
             ]
           },
           "role": {
-            "$ref": "#/components/schemas/MessageRole",
-            "description": "Message role"
+            "$ref": "#/components/schemas/MessageRole"
           },
-          "thinking": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Thinking content from extended thinking models (Anthropic Claude)\nThis is the model's chain-of-thought reasoning before producing the response.\nMust be included in subsequent API calls when thinking is enabled."
+          "sequence": {
+            "type": "integer",
+            "format": "int32"
           },
-          "thinking_signature": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Cryptographic signature for thinking content (Anthropic Claude)\nRequired when sending thinking back in subsequent API calls."
+          "session_id": {
+            "type": "string",
+            "description": "Session ID this message belongs to (format: session_{32-hex})",
+            "example": "session_01933b5a00007000800000000000001"
           }
         }
       },
@@ -29181,12 +29237,10 @@
       },
       "MessageRole": {
         "type": "string",
-        "description": "Message role in the conversation",
+        "description": "Message role (API layer)\n\nSimplified to only user and agent messages.\nTool results are conveyed via `tool.completed` events.\nSystem messages are internal and not exposed via API.",
         "enum": [
-          "system",
           "user",
-          "agent",
-          "tool_result"
+          "agent"
         ]
       },
       "MetricsPoint": {
@@ -30084,7 +30138,7 @@
             "description": "Structured interpolation fields for localized error rendering."
           },
           "message": {
-            "$ref": "#/components/schemas/Message",
+            "$ref": "#/components/schemas/RuntimeMessage",
             "description": "The agent message"
           },
           "metadata": {
@@ -31869,6 +31923,14 @@
           "released"
         ]
       },
+      "PhaseSource": {
+        "type": "string",
+        "description": "Where a message's [`ExecutionPhase`] came from.\n\nOnly some providers report a phase. For the rest the runtime infers one from\ntool-call presence, where \"commentary\" means nothing more than \"this message\ncalled tools\" — so a text-only preamble is indistinguishable from a final\nanswer. Those are different claims, and a consumer cannot tell them apart\nfrom the phase value alone, so the source travels with it.",
+        "enum": [
+          "provider",
+          "derived"
+        ]
+      },
       "PostTaskMessageBody": {
         "type": "object",
         "description": "Request body for posting an inbound task message.",
@@ -32338,20 +32400,13 @@
       },
       "ReasonItemData": {
         "type": "object",
-        "description": "Data for `reason.item` event.\n\nDurable record of an opaque assistant reasoning response item (e.g., OpenAI\nResponses API reasoning items). Carries provider-supplied opaque artifacts\nand curated summary text only. Plaintext hidden chain-of-thought is never\npersisted in this event — emitters must strip any plaintext reasoning\ncontent before constructing it.",
+        "description": "Data for `reason.item` event.\n\nDurable record of one provider reasoning artifact.\n\nCarries identity and curated summary text only. Opaque replay state\n(signatures, encrypted reasoning context) is deliberately absent: it is\nstate the driver hands back to the provider, not content, and it must not\nreach an event stream or any API surface. Plaintext chain-of-thought is\nlikewise never persisted here.",
         "required": [
           "turn_id",
           "provider",
           "item_id"
         ],
         "properties": {
-          "encrypted_content": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Provider-encrypted reasoning context, if supplied. Opaque to consumers."
-          },
           "item_id": {
             "type": "string",
             "description": "Provider-assigned identifier for the reasoning item."
@@ -32527,6 +32582,67 @@
           }
         }
       },
+      "ReasoningContentPart": {
+        "type": "object",
+        "description": "One provider-issued reasoning artifact, ordered in `Message.content`\nalongside text and tool calls.\n\nOrdering is the point. Providers interleave reasoning with text and tool\ncalls, and every current provider requires its artifacts replayed in the\nposition it issued them: Anthropic verifies each thinking block against its\nown `signature`, OpenAI keys reasoning items by the `item_id` it issued and\nexpects them adjacent to the item they precede, and Gemini binds a\n`thoughtSignature` to a specific function call. A flattened per-message\nfield cannot express any of that, so this is a content part.\n\n`signature` and `encrypted` are opaque provider artifacts. They are carried\nverbatim and never interpreted, never rendered, and never published on an\nAPI surface — see [`ReasoningContentPart::to_public`].",
+        "required": [
+          "provider"
+        ],
+        "properties": {
+          "bound_tool_call_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Id of the tool call this artifact is bound to, when the provider scopes\nit that way (Gemini attaches a thought signature to one function call)."
+          },
+          "encrypted": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider-encrypted reasoning context (OpenAI `encrypted_content`).\nOpaque."
+          },
+          "item_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider-assigned identifier, carried verbatim (e.g. OpenAI `rs_…`)."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider that produced this artifact (e.g. `anthropic`, `openai`).\nReplay is only valid against the provider that issued it."
+          },
+          "signature": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider signature over this specific block (Anthropic thinking\nsignature, Gemini `thoughtSignature`). Opaque."
+          },
+          "text": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReasoningText",
+                "description": "Readable reasoning, when the provider exposes any."
+              }
+            ]
+          },
+          "tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Reasoning tokens attributed to this artifact, when reported.",
+            "minimum": 0
+          }
+        }
+      },
       "ReasoningEffort": {
         "type": "string",
         "description": "Reasoning effort level for models that support it",
@@ -32577,6 +32693,67 @@
             "description": "The API value (e.g., \"low\", \"medium\")"
           }
         }
+      },
+      "ReasoningText": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Verbatim chain-of-thought exposed by the provider (Anthropic extended\nthinking, Gemini thought parts, Chat Completions `reasoning_content`).",
+            "required": [
+              "text",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "plain"
+                ]
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Provider-curated summary segments, not raw chain-of-thought (OpenAI\nResponses `summary_text`). Safe to display; never the model's own words.",
+            "required": [
+              "parts",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "summary"
+                ]
+              },
+              "parts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The provider withheld the content (Anthropic `redacted_thinking`). The\nartifact must still be replayed verbatim, so the part keeps its\nsignature/encrypted payload while carrying no readable text.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "redacted"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Readable reasoning text, in the form the provider actually exposes.\n\nProviders differ in *what* they are willing to show, and collapsing that\ndifference loses the one thing a consumer needs to know: whether it is\nlooking at the model's own words or a curated gloss of them."
       },
       "RecoveryMode": {
         "type": "string",
@@ -33249,6 +33426,100 @@
             "example": "Reverting refund-window change — false positives in production."
           }
         }
+      },
+      "RuntimeMessage": {
+        "type": "object",
+        "description": "A message in the conversation",
+        "required": [
+          "id",
+          "role",
+          "content",
+          "created_at"
+        ],
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContentPart"
+            },
+            "description": "Message content as array of content parts (text, images, tool calls, tool results)"
+          },
+          "controls": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Controls",
+                "description": "Runtime controls (model, reasoning, etc.)"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the message was created"
+          },
+          "external_actor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExternalActor",
+                "description": "External actor identity (for messages from external channels like Slack)"
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "Unique message ID (format: message_{32-hex})",
+            "example": "message_01933b5a00007000800000000000001"
+          },
+          "metadata": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Message-level metadata"
+          },
+          "phase": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutionPhase",
+                "description": "Execution phase for this message.\n\nHelps LLMs distinguish between intermediate working commentary and completed\nanswers in multi-step tool-calling flows. Only set on agent (assistant) messages.\nProviders with native phase support (OpenAI GPT-5.x) send this value in the API\nrequest; others derive it from state but don't send it to the provider."
+              }
+            ]
+          },
+          "phase_source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PhaseSource",
+                "description": "Whether [`Self::phase`] was reported by the provider or inferred from\ntool-call presence. A derived phase carries no information beyond\n\"this message called tools\", so consumers that need a real\nclassification must be able to tell the two apart."
+              }
+            ]
+          },
+          "role": {
+            "$ref": "#/components/schemas/RuntimeMessageRole",
+            "description": "Message role"
+          }
+        }
+      },
+      "RuntimeMessageRole": {
+        "type": "string",
+        "description": "Message role in the conversation",
+        "enum": [
+          "system",
+          "user",
+          "agent",
+          "tool_result"
+        ]
       },
       "SavedReport": {
         "type": "object",
