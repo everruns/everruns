@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-08-25
+
+### Highlights
+
+- **Reasoning modeled as ordered artifacts** - Model reasoning is now captured as ordered artifacts with a published classification, so reasoning steps replay in the order they were produced and their kind is visible to consumers ([#3276](https://github.com/everruns/everruns/pull/3276)).
+- **Bounded batch file reads** - The filesystem capability gained bounded batch reads, letting agents fetch several files in a single guarded call instead of one round-trip per file ([#3275](https://github.com/everruns/everruns/pull/3275)).
+
+### What's Changed
+
+- feat(reasoning): model reasoning as ordered artifacts and publish the classification ([#3276](https://github.com/everruns/everruns/pull/3276)) by [@chaliy](https://github.com/chaliy)
+- feat(filesystem): add bounded batch reads ([#3275](https://github.com/everruns/everruns/pull/3275)) by [@chaliy](https://github.com/chaliy)
+- fix(events): stop publishing reasoning replay state on the events API ([#3279](https://github.com/everruns/everruns/pull/3279)) by [@chaliy](https://github.com/chaliy)
+- fix(openresponses): send the required summary on replayed reasoning items ([#3280](https://github.com/everruns/everruns/pull/3280)) by [@chaliy](https://github.com/chaliy)
+- fix(narration): name the agent that spawn_agent spawns ([#3277](https://github.com/everruns/everruns/pull/3277)) by [@chaliy](https://github.com/chaliy)
+- fix(builtins): hide redundant output recovery paths ([`5fe85ff`](https://github.com/everruns/everruns/commit/5fe85ffd67edf62f77d1d29e7fb827b8bc8ffdf1)) by [@chaliy](https://github.com/chaliy)
+- refactor(tls): standardise on aws-lc-rs and drop the second crypto backend ([#3272](https://github.com/everruns/everruns/pull/3272)) by [@chaliy](https://github.com/chaliy)
+- chore(sessions): retire the global chat singleton endpoints ([#3278](https://github.com/everruns/everruns/pull/3278)) by [@chaliy](https://github.com/chaliy)
+- chore(test-cases): retarget retired-route references at their replacements ([#3273](https://github.com/everruns/everruns/pull/3273)) by [@chaliy](https://github.com/chaliy)
+- fix(release): republish everruns facade as 0.18.4 ([#3271](https://github.com/everruns/everruns/pull/3271)) by [@chaliy](https://github.com/chaliy)
+- fix(release): cascade-bump integration crates to close the v0.21.0 cone ([#3270](https://github.com/everruns/everruns/pull/3270)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+Two published library crates had breaking public-contract changes this cycle (the reasoning-artifact
+work in [#3276](https://github.com/everruns/everruns/pull/3276) and the aws-lc-rs TLS
+consolidation in [#3272](https://github.com/everruns/everruns/pull/3272)), classified with
+`cargo semver-checks`:
+
+- `everruns-core` 0.18.1 → 0.19.0 (breaking: reasoning content parts and reworked `ReasoningConfig`)
+- `everruns-provider` 0.19.0 → 0.20.0 (breaking: `tls-ring` feature removed, crypto-provider installer renamed, reasoning types added)
+
+The `everruns` facade takes a matching bump (0.18.4 → 0.19.0) for the new reasoning
+`SessionEventKind` variants and provider re-exports. Because core and provider took breaking `0.x`
+bumps, every other published crate that pins them receives a compatibility patch republish to close
+the cone (`strand-check`):
+
+- `everruns-ard` 0.18.1 → 0.18.2, `everruns-builtins` 0.18.4 → 0.18.5, `everruns-capability` 0.18.0 → 0.18.1, `everruns-cli` 0.18.1 → 0.18.2, `everruns-engine` 0.18.1 → 0.18.2, `everruns-host` 0.20.2 → 0.20.3, `everruns-mcp` 0.19.1 → 0.19.2, `everruns-platform` 0.19.0 → 0.19.1, `everruns-test-support` 0.18.3 → 0.18.4, `everruns-turbopuffer` 0.18.1 → 0.18.2
+- Drivers: `everruns-anthropic` 0.18.1 → 0.18.2, `everruns-bedrock` 0.18.1 → 0.18.2, `everruns-fireworks` 0.18.1 → 0.18.2, `everruns-gemini` 0.18.1 → 0.18.2, `everruns-llmsim` 0.18.3 → 0.18.4, `everruns-mai` 0.18.1 → 0.18.2, `everruns-meta` 0.18.1 → 0.18.2, `everruns-openai` 0.18.1 → 0.18.2, `everruns-openrouter` 0.18.1 → 0.18.2
+
+`everruns-macros` is unchanged and outside the cone, so it is not republished. No crate was
+deleted or absorbed this cycle.
+
 ## [0.21.0] - 2026-08-22
 
 ### Highlights

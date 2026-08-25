@@ -1,6 +1,6 @@
 [package]
 name = "everruns-builtins"
-version = "0.18.4"
+version = "0.18.5"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -18,7 +18,7 @@ categories = ["development-tools", "asynchronous"]
 # execution values. It owns no host, platform, database, network, process, or
 # interpreter implementation edge.
 everruns-capability.workspace = true
-everruns-core = { path = "../core", version = "0.18.1", default-features = false }
+everruns-core = { path = "../core", version = "0.19.0", default-features = false }
 everruns-provider.workspace = true
 
 async-trait.workspace = true
