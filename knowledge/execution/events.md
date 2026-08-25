@@ -125,6 +125,15 @@ commentary or final answer, but must not flip between phases or regress to
 unknown. Missing or unknown phase always falls back to ordinary assistant text,
 never to reasoning.
 
+Phase carries a source. Providers with native phase support report it; for every
+other provider the runtime infers it from tool-call presence, where "commentary"
+means nothing more than "this message called tools". Those are different claims
+and consumers must be able to tell them apart, so the completed message publishes
+`phase_source` alongside `phase`. A derived phase is a weak signal: a text-only
+preamble with no tool calls is indistinguishable from a final answer, and a
+consumer that needs certainty must treat `derived` accordingly rather than trust
+the label.
+
 ### Turn terminal states
 
 A completed turn succeeded. A failed turn ended because of an error. A
@@ -184,6 +193,17 @@ Commentary is deliberate user-visible assistant text produced before or between
 tool calls. A final answer is turn-ending assistant text. Thinking is only
 reasoning explicitly exposed by the provider. A reasoning summary is a safe
 provider-curated artifact; opaque or encrypted reasoning is never surfaced.
+
+These three words are not interchangeable, and the `reason.` event prefix spans
+two unrelated meanings that must not be conflated: `reason.started` and
+`reason.completed` mark an LLM inference step in the reason/act loop, while
+`reason.thinking.*` and `reason.item` carry model reasoning. An inference step
+occurring says nothing about whether the model reasoned.
+
+A reasoning summary is reasoning, not commentary. Routing one onto the
+assistant-text channel does not merely mislabel it: the text is then persisted
+as the model's answer and replayed to the provider as the model's own prior
+output.
 
 A projection must not move content across channels to imitate a phase. In
 particular, absent phase never makes assistant text into thinking, and tool

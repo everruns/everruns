@@ -26,6 +26,7 @@ pub mod driver_helpers;
 pub mod driver_registry;
 pub mod error;
 pub mod execution_phase;
+pub mod reasoning;
 pub mod llm_retry;
 pub mod model;
 pub mod model_discovery;
@@ -75,6 +76,7 @@ pub use error::{
     StoreResultExt, classify_fs_error, from_json, json_val,
 };
 pub use execution_phase::ExecutionPhase;
+pub use reasoning::{ReasoningContentPart, ReasoningText};
 pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata};
 pub use model::{
     CostTier, Modality, Model, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelSource,

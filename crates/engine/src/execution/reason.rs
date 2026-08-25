@@ -39,7 +39,8 @@ use crate::llm_retry::{
     LlmRetryConfig, RetryMetadata, is_transient_error_message, remaining_retry_time,
     reserve_retry_wait,
 };
-use crate::message::{Message, MessageRole};
+use crate::message::{ContentPart, Message, MessageRole};
+use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use crate::message_retriever::MessageRetriever;
 use crate::output_guardrail::{
     ArmedGuardrail, OutputGuardrailContext, PostGenerationOutputContext, evaluate_guardrails,
@@ -1030,8 +1031,7 @@ impl ReasonAtom {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             });
         }
 
@@ -1287,13 +1287,16 @@ impl ReasonAtom {
         let (
             text,
             thinking,
-            thinking_signature,
+            reasoning,
             tool_calls,
             completion_metadata,
             time_to_first_token_ms,
             pending_delta,
             mut tripped,
         ) = 'stream_attempt: loop {
+            // Model name for reasoning events emitted from inside the stream,
+            // where `model_with_provider` is no longer borrowable.
+            let stream_model_name = llm_config.model.clone();
             let stream_result = if let Some(remaining) =
                 remaining_retry_time(&retry_config, retry_started_at)
             {
@@ -1412,8 +1415,12 @@ impl ReasonAtom {
             };
 
             let mut text = String::new();
+            // Reasoning artifacts in emission order. One entry per provider
+            // block, each keeping its own signature/id, so interleaved thinking
+            // and per-call thought signatures survive replay.
+            let mut reasoning: Vec<ReasoningContentPart> = Vec::new();
+            // Live-render buffer only; the durable text lives on the artifacts.
             let mut thinking = String::new();
-            let mut thinking_signature: Option<String> = None;
             let mut tool_calls = Vec::new();
             let mut termination = StreamTermination::Exhausted;
             let mut replay_state = StreamReplayState::default();
@@ -1597,7 +1604,7 @@ impl ReasonAtom {
                             last_delta_emit = Instant::now();
                         }
                     }
-                    LlmStreamEvent::ThinkingDelta(delta) => {
+                    LlmStreamEvent::ReasoningDelta { delta, summary: _ } => {
                         if delta.is_empty() {
                             continue;
                         }
@@ -1651,38 +1658,18 @@ impl ReasonAtom {
                             last_thinking_delta_emit = Instant::now();
                         }
                     }
-                    LlmStreamEvent::ThinkingSignature(signature) => {
-                        // Capture the cryptographic signature for thinking content (required to send it back)
+                    LlmStreamEvent::ReasoningItem(item) => {
+                        // One durable artifact per provider block, appended in
+                        // order. Replay walks these; nothing is collapsed into
+                        // a single per-message slot.
                         tracing::debug!(
                             session_id = %session_id,
-                            signature_len = signature.len(),
-                            "ReasonAtom: received ThinkingSignature from LLM"
+                            provider = %item.provider,
+                            item_id = ?item.item_id,
+                            has_signature = item.signature.is_some(),
+                            has_encrypted = item.encrypted.is_some(),
+                            "ReasonAtom: captured reasoning artifact"
                         );
-                        thinking_signature = Some(signature);
-                    }
-                    LlmStreamEvent::ReasonItem {
-                        provider,
-                        model,
-                        item_id,
-                        encrypted_content,
-                        summary,
-                        token_count,
-                    } => {
-                        // Preserve the opaque artifact as the assistant message's
-                        // thinking_signature so the next request can replay
-                        // reasoning context, and emit a durable reason.item event
-                        // for trace/session review. Plaintext reasoning content is
-                        // never included.
-                        if let Some(sig) = encrypted_content.as_ref() {
-                            tracing::debug!(
-                                session_id = %session_id,
-                                signature_len = sig.len(),
-                                provider = %provider,
-                                item_id = %item_id,
-                                "ReasonAtom: captured encrypted reasoning content from ReasonItem"
-                            );
-                            thinking_signature = Some(sig.clone());
-                        }
                         if let Err(e) = self
                             .event_emitter
                             .emit(EventRequest::new(
@@ -1690,12 +1677,22 @@ impl ReasonAtom {
                                 streaming_event_context.clone(),
                                 ReasonItemData {
                                     turn_id: context.turn_id,
-                                    provider,
-                                    model,
-                                    item_id,
-                                    encrypted_content,
-                                    summary,
-                                    token_count,
+                                    provider: item.provider.clone(),
+                                    model: Some(stream_model_name.clone()),
+                                    // Opaque payloads are replay state, never
+                                    // event data: `reason.item` carries
+                                    // identity and safe summary only.
+                                    item_id: item.item_id.clone().unwrap_or_default(),
+                                    encrypted_content: None,
+                                    summary: item
+                                        .display_text()
+                                        .filter(|_| !matches!(
+                                            item.text,
+                                            Some(ReasoningText::Plain { .. })
+                                        ))
+                                        .into_iter()
+                                        .collect(),
+                                    token_count: item.tokens,
                                 },
                             ))
                             .await
@@ -1706,6 +1703,7 @@ impl ReasonAtom {
                                 "ReasonAtom: failed to emit reason.item event"
                             );
                         }
+                        reasoning.push(item);
                     }
                     LlmStreamEvent::ToolCalls(calls) => {
                         tool_calls = calls;
@@ -1908,7 +1906,7 @@ impl ReasonAtom {
             break 'stream_attempt (
                 text,
                 thinking,
-                thinking_signature,
+                reasoning,
                 tool_calls,
                 completion_metadata,
                 time_to_first_token_ms,
@@ -1916,8 +1914,8 @@ impl ReasonAtom {
                 tripped,
             );
         };
-        let (mut text, mut thinking, thinking_signature, mut tool_calls) =
-            (text, thinking, thinking_signature, tool_calls);
+        let (mut text, mut thinking, mut reasoning, mut tool_calls) =
+            (text, thinking, reasoning, tool_calls);
 
         // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md). Runs
         // once on the finalized final-answer text to attach claim-level citations
@@ -2285,11 +2283,15 @@ impl ReasonAtom {
                 ))
             });
         assistant_message.metadata = Some(metadata);
-        // Store thinking content and signature for extended thinking models
-        // Both are required for subsequent API calls when thinking is enabled
-        if !thinking.is_empty() {
-            assistant_message.thinking = Some(thinking.clone());
-            assistant_message.thinking_signature = thinking_signature.clone();
+        // Reasoning artifacts lead the message content, preserving their order
+        // among themselves. Every current provider emits reasoning ahead of the
+        // text and tool calls it produced, and all three require it replayed in
+        // that position, so leading is the faithful placement.
+        if !reasoning.is_empty() {
+            let mut content = Vec::with_capacity(reasoning.len() + assistant_message.content.len());
+            content.extend(reasoning.drain(..).map(ContentPart::Reasoning));
+            content.append(&mut assistant_message.content);
+            assistant_message.content = content;
         }
         // Emit output.message.completed event (this stores the message as an event with proper turn context)
         // Include token usage for tracking (child of reason span)

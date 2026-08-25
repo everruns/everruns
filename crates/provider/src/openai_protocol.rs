@@ -1829,8 +1829,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("call_trimmed".to_string()),
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
         let filtered = drop_orphaned_tool_messages(&messages);
@@ -1854,8 +1853,7 @@ mod tests {
                 }]),
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -1863,8 +1861,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("call_1".to_string()),
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
         let filtered = drop_orphaned_tool_messages(&messages);

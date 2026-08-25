@@ -28,6 +28,7 @@ use everruns_core::events::{
     TurnSealedData,
 };
 use everruns_core::message::{ContentPart, Message};
+use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
@@ -301,11 +302,13 @@ fn fold_messages(messages: &[Message], redact: bool) -> Vec<Value> {
                 step.insert("timestamp".to_string(), ts);
                 step.insert("source".to_string(), json!("agent"));
                 step.insert("message".to_string(), content);
-                if let Some(thinking) = &message.thinking {
+                // ATIF carries readable reasoning only; opaque signatures and
+                // encrypted payloads are replay state and never exported.
+                if let Some(thinking) = message.reasoning_display_text() {
                     let reasoning = if redact {
                         REDACTED.to_string()
                     } else {
-                        thinking.clone()
+                        thinking
                     };
                     step.insert("reasoning_content".to_string(), json!(reasoning));
                 }
@@ -979,8 +982,7 @@ impl Fold {
                 append_omitted_images(&mut acc.extra, omitted);
                 acc.reasoning = data
                     .message
-                    .thinking
-                    .clone()
+                    .reasoning_display_text()
                     .or_else(|| self.pending_thinking.take())
                     .map(|t| self.content_or_redacted(t));
                 for part in &data.message.content {
@@ -1306,6 +1308,10 @@ fn build_content_value(
                     }));
                 }
             }
+            // Reasoning is exported as ATIF `reasoning_content` on the step, not
+            // as message content. Serializing the part here would also put the
+            // opaque signature and encrypted payload into the export.
+            ContentPart::Reasoning(_) => {}
         }
     }
     if has_image {
@@ -1665,7 +1671,16 @@ mod tests {
         };
 
         let mut first = Message::assistant_with_tools("checking", vec![tool_call]);
-        first.thinking = Some("let me look this up".to_string());
+        first.content.insert(
+            0,
+            ContentPart::Reasoning(
+                ReasoningContentPart::opaque("anthropic")
+                    .with_signature("sig")
+                    .with_text(ReasoningText::Plain {
+                        text: "let me look this up".to_string(),
+                    }),
+            ),
+        );
 
         vec![
             event(session, InputMessageData::new(Message::user("hi there"))),
@@ -2278,7 +2293,16 @@ mod tests {
             arguments: json!({"q": "weather"}),
         };
         let mut agent = Message::assistant_with_tools("checking", vec![tool_call]);
-        agent.thinking = Some("let me look".to_string());
+        agent.content.insert(
+            0,
+            ContentPart::Reasoning(
+                ReasoningContentPart::opaque("anthropic")
+                    .with_signature("sig")
+                    .with_text(ReasoningText::Plain {
+                        text: "let me look".to_string(),
+                    }),
+            ),
+        );
         let messages = vec![
             Message::user("hi there"),
             agent,

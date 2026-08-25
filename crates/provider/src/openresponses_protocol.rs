@@ -767,24 +767,38 @@ impl OpenResponsesProtocolChatDriver {
         // keep only the last notice. See `fold_system_messages`.
         let instructions: Option<String> = fold_system_messages(messages);
         let mut input_items = Vec::new();
-        // Counter for generating reasoning item IDs
-        let mut reasoning_counter = 0u32;
 
         for msg in messages {
             if msg.role == LlmMessageRole::System {
                 // Folded above into `instructions`; never emit the System message
                 // as a separate input item.
             } else if msg.role == LlmMessageRole::Assistant {
-                // For assistant messages, emit Reasoning item BEFORE message content if present
-                // This is required for o-series and GPT-5 models with extended thinking
-                if let Some(encrypted_content) = &msg.thinking_signature {
-                    reasoning_counter += 1;
+                // Reasoning items precede the message content they belong to,
+                // as the API requires for o-series and GPT-5 models.
+                //
+                // Every item is replayed, not just the last: a turn with
+                // parallel tool calls emits several, and each is keyed by the
+                // `rs_…` id OpenAI issued. Items without that id, or without
+                // encrypted content, are dropped rather than reconstructed —
+                // a synthesized id is not one the API can resolve.
+                for item in &msg.reasoning {
+                    let (Some(id), Some(encrypted_content)) = (&item.item_id, &item.encrypted)
+                    else {
+                        tracing::debug!(
+                            provider = %item.provider,
+                            has_id = item.item_id.is_some(),
+                            has_encrypted = item.encrypted.is_some(),
+                            "OpenResponses: skipping reasoning item without a replayable id/payload"
+                        );
+                        continue;
+                    };
                     input_items.push(ResponsesInputItem::Reasoning {
                         r#type: "reasoning".to_string(),
-                        id: format!("rs_{:08x}", reasoning_counter),
+                        id: id.clone(),
                         encrypted_content: encrypted_content.clone(),
                     });
                     tracing::debug!(
+                        item_id = %id,
                         encrypted_len = encrypted_content.len(),
                         "OpenResponses: including reasoning item in request"
                     );
@@ -1056,6 +1070,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 summary: "detailed".to_string(),
             });
 
+        // Reasoning items are only replayable when the provider hands back
+        // their encrypted payload, and it only does so on request.
+        let include = reasoning
+            .is_some()
+            .then(|| vec!["reasoning.encrypted_content".to_string()]);
+
         // Build metadata for request tracking
         let metadata = if config.metadata.is_empty() {
             None
@@ -1082,6 +1102,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             text: config.verbosity.clone().map(|verbosity| ResponsesText {
                 verbosity: Some(verbosity),
             }),
+            include,
         };
 
         // Log request details for debugging LLM errors.
@@ -1600,15 +1621,26 @@ fn handle_streaming_event(
     match event {
         StreamingEvent::OutputTextDelta { delta, .. } => LlmStreamEvent::TextDelta(delta),
 
-        StreamingEvent::ReasoningDelta { delta, .. } => LlmStreamEvent::ThinkingDelta(delta),
+        StreamingEvent::ReasoningDelta { delta, .. } => LlmStreamEvent::ReasoningDelta {
+            delta,
+            summary: false,
+        },
 
-        StreamingEvent::ReasoningTextDelta { delta, .. } => LlmStreamEvent::ThinkingDelta(delta),
+        StreamingEvent::ReasoningTextDelta { delta, .. } => LlmStreamEvent::ReasoningDelta {
+            delta,
+            summary: false,
+        },
 
         StreamingEvent::ReasoningSummaryDelta { delta, .. } => {
-            // OpenAI's reasoning summary stream is a model-supplied, readable
-            // summary, not raw chain-of-thought. Surface it as public text so
-            // clients can display progress without exposing hidden reasoning.
-            LlmStreamEvent::TextDelta(delta)
+            // A reasoning summary is a reasoning artifact, so it belongs on the
+            // reasoning channel — flagged as a summary rather than raw
+            // chain-of-thought. It must not become assistant text: that would
+            // persist it as the model's answer and replay it as the model's own
+            // prior output. See `knowledge/execution/events.md`.
+            LlmStreamEvent::ReasoningDelta {
+                delta,
+                summary: true,
+            }
         }
 
         StreamingEvent::FunctionCallArgumentsDelta { item_id, delta, .. } => {
@@ -1705,18 +1737,22 @@ fn handle_streaming_event(
                         })
                         .collect();
                     tracing::debug!(
+                        item_id = %id,
                         encrypted_len = encrypted_content.as_ref().map(|s| s.len()).unwrap_or(0),
                         summary_segments = safe_summary.len(),
                         "OpenResponses: received reasoning item"
                     );
-                    LlmStreamEvent::ReasonItem {
-                        provider: "openai".to_string(),
-                        model: Some(model.clone()),
-                        item_id: id,
-                        encrypted_content,
-                        summary: safe_summary,
-                        token_count: None,
+                    let mut item = crate::reasoning::ReasoningContentPart::opaque("openai")
+                        .with_item_id(id);
+                    if let Some(encrypted) = encrypted_content {
+                        item = item.with_encrypted(encrypted);
                     }
+                    if !safe_summary.is_empty() {
+                        item = item.with_text(crate::reasoning::ReasoningText::Summary {
+                            parts: safe_summary,
+                        });
+                    }
+                    LlmStreamEvent::ReasoningItem(item)
                 }
                 _ => LlmStreamEvent::TextDelta(String::new()),
             }
@@ -1872,6 +1908,13 @@ struct ResponsesRequest {
     /// nothing to configure so the provider keeps its default output length.
     #[serde(skip_serializing_if = "Option::is_none")]
     text: Option<ResponsesText>,
+    /// Opt-in response fields. `reasoning.encrypted_content` is what makes
+    /// reasoning replayable without server-side state: without it the API
+    /// returns reasoning items carrying no payload, so a stateless follow-up
+    /// (after compaction, a model switch, or router failover) silently loses
+    /// the reasoning chain. Omitted when there is nothing to include.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    include: Option<Vec<String>>,
 }
 
 /// `text` request block for the Responses API. Verbosity ("low"/"medium"/"high")
@@ -2607,8 +2650,7 @@ mod tests {
                 }]),
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -2616,8 +2658,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("call_xyz789".to_string()),
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
 
@@ -2659,8 +2700,7 @@ mod tests {
                 }]),
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
 
@@ -2717,8 +2757,7 @@ mod tests {
                 }]),
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -2726,8 +2765,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("call_xyz789".to_string()),
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
 
@@ -3255,8 +3293,7 @@ mod tests {
                 }]),
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -3264,8 +3301,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("call_1".to_string()),
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
 
@@ -3390,8 +3426,7 @@ mod tests {
                 }]),
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -3399,8 +3434,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("call_1".to_string()),
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
         let config = LlmCallConfig {
@@ -4022,8 +4056,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("call_123".to_string()),
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
 
@@ -4561,8 +4594,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
 
@@ -4632,8 +4664,7 @@ mod tests {
                 }]),
                 tool_call_id: None,
                 phase: Some(ExecutionPhase::Commentary),
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -4641,8 +4672,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("call_1".to_string()),
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
 

@@ -1,5 +1,35 @@
 # Everruns Knowledge Update Log
 
+## 2026-08-25, Reasoning is an ordered content part
+
+* **Reasoning is a list of provider artifacts, not text on the message.** The
+  flat `thinking` / `thinking_signature` pair could not express what providers
+  actually emit: Anthropic signs each thinking block separately and interleaved
+  thinking produces several per response, OpenAI keys reasoning items by an id it
+  issues, and Gemini binds a thought signature to one function call. All three
+  requirements are about *position and identity*, which a single per-message
+  field erases. Reasoning is now `ContentPart::Reasoning`, ordered in
+  `Message.content`. See `knowledge/foundations/llm-drivers.md`.
+
+* **A reasoning summary is reasoning, not commentary.** OpenAI's summary stream
+  was mapped to assistant text, which persisted it as the model's answer and
+  replayed it as the model's own prior output. Channel assignment is not
+  cosmetic: it decides what gets stored and what the model is told it said. See
+  `knowledge/execution/events.md`.
+
+* **Two provider opt-ins are silent when missing.** OpenAI returns
+  `encrypted_content` only when the request asks for it via `include`, and Gemini
+  returns thought parts only when `thinkingConfig` sets `includeThoughts`.
+  Without them the model still reasons and nothing errors, but nothing is
+  replayable and nothing reaches the reasoning channel. Advertising reasoning
+  support in a model profile is a claim about the driver, not the model.
+
+* **`phase` needs a source.** For every provider without native phase support,
+  "commentary" is computed from tool-call presence and carries no independent
+  meaning, so a text-only preamble is classified as a final answer. Consumers
+  cannot see that from the value alone, so the completed message now publishes
+  `phase_source` (`provider` or `derived`) beside it.
+
 ## 2026-08-24
 
 * **Output retention is not a recovery affordance.** Persistence-enabled tools

@@ -458,8 +458,6 @@ impl crate::storage::session_task_store::SessionTaskWaker for GrpcSessionTaskWak
             role: everruns_core::MessageRole::User,
             content: vec![everruns_core::ContentPart::text(text)],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -1193,8 +1191,7 @@ fn message_to_proto(message: &everruns_core::Message) -> proto::Message {
         controls,
         metadata,
         created_at: Some(datetime_to_proto_timestamp(message.created_at)),
-        thinking: message.thinking.clone(),
-        thinking_signature: message.thinking_signature.clone(),
+        phase: message.phase.map(|phase| phase.as_provider_str().to_string()),
         external_actor,
     }
 }

@@ -228,8 +228,6 @@ async fn poll_and_trigger(
             role: MessageRole::User,
             content: vec![ContentPart::Text(TextContentPart::new(description))],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
             controls: None,
             metadata: Some(metadata),
             external_actor: None,

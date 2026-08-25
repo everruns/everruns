@@ -567,8 +567,6 @@ impl InMemoryAgenticLoop {
             role: input.role,
             content: input.content,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
             controls: input.controls,
             metadata: input.metadata,
             external_actor: None,

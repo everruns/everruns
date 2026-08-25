@@ -24,6 +24,10 @@ use utoipa::ToSchema;
 /// deserialization for backward compatibility.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+// The serde impls below are hand-written, so utoipa cannot infer the wire
+// casing from a `serde(rename_all)` attribute and would otherwise publish the
+// Rust variant names. Keep this in lockstep with `as_provider_str`.
+#[cfg_attr(feature = "openapi", schema(rename_all = "snake_case"))]
 pub enum ExecutionPhase {
     /// Intermediate update — preamble or commentary before/between tool calls.
     /// The model is still working and may issue more tool calls.

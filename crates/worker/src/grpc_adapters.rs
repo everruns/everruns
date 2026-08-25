@@ -1304,9 +1304,11 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
         id: id.into(),
         role,
         content,
-        phase: None,
-        thinking: proto_msg.thinking, // Thinking content from extended thinking models
-        thinking_signature: proto_msg.thinking_signature, // Cryptographic signature for thinking
+        // Reasoning rides along inside `content` as ordered reasoning parts.
+        phase: proto_msg
+            .phase
+            .as_deref()
+            .and_then(everruns_provider::ExecutionPhase::from_provider_str),
         controls,
         metadata,
         external_actor: {

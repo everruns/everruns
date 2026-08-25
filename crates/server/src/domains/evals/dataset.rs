@@ -280,7 +280,7 @@ fn sft_role(role: &MessageRole) -> &'static str {
 /// Best-effort flat text for a message in the SFT shape.
 fn message_text(msg: &Message) -> String {
     let mut parts: Vec<String> = Vec::new();
-    if let Some(thinking) = &msg.thinking {
+    if let Some(thinking) = msg.reasoning_display_text() {
         parts.push(format!("[thinking] {thinking}"));
     }
     for part in &msg.content {
@@ -300,6 +300,9 @@ fn message_text(msg: &Message) -> String {
                 }
             }
             ContentPart::Image(_) | ContentPart::ImageFile(_) => parts.push("[image]".to_string()),
+            // Rendered above via `reasoning_display_text`, ahead of the content
+            // parts, so it is not repeated here.
+            ContentPart::Reasoning(_) => {}
         }
     }
     parts.join("\n")
@@ -393,8 +396,6 @@ mod tests {
             role,
             content: vec![ContentPart::Text(TextContentPart::new(text))],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
             controls: None,
             metadata: None,
             external_actor: None,

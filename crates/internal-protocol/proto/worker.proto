@@ -504,12 +504,16 @@ message Message {
     optional google.protobuf.Struct controls = 4;  // Controls object
     optional google.protobuf.Struct metadata = 5;  // metadata object
     Timestamp created_at = 6;
-    // Extended thinking content from Claude models (required for subsequent API calls)
-    optional string thinking = 7;
-    // Cryptographic signature for thinking content (required when sending thinking back)
-    optional string thinking_signature = 8;
+    // 7, 8: retired flat `thinking` / `thinking_signature`. Reasoning is now an
+    // ordered `reasoning` content part inside `content`, so each artifact keeps
+    // its own signature, id and position.
+    reserved 7, 8;
+    reserved "thinking", "thinking_signature";
     // External actor identity (for messages from external channels like Slack)
     optional google.protobuf.Struct external_actor = 9;
+    // Execution phase: "commentary" or "final_answer". Carried across the
+    // worker boundary so the classification survives to the API.
+    optional string phase = 10;
 }
 
 message GetMessageRequest {

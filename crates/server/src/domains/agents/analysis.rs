@@ -566,8 +566,6 @@ mod tests {
             }
             Ok(LlmResponse {
                 text,
-                thinking: None,
-                thinking_signature: None,
                 tool_calls: None,
                 metadata: LlmCompletionMetadata::default(),
             })

@@ -216,33 +216,63 @@ Anthropic requires `max_tokens` in every request (cannot be omitted), so the dri
 Agents can override `max_tokens` via agent config. Cost guardrails should be configurable per-agent or per-org, not baked into driver code.
 
 3. **LlmMessage Extended Fields**:
-   - `thinking`: Optional thinking content from extended thinking models
-   - `thinking_signature`: Opaque token for multi-turn thinking context (provider-specific)
+   - `reasoning`: Ordered provider reasoning artifacts for this assistant turn
 
-### Extended Thinking Support
+### Reasoning Support
 
-Extended thinking allows models to perform chain-of-thought reasoning before generating responses. Supported by both Anthropic Claude and OpenAI o-series/GPT-5 models.
+Reasoning is modelled as an ordered list of provider artifacts, not as text on
+the message. The shape lives in `crates/provider/src/reasoning.rs`.
+
+Ordering is the reason it is a list rather than a pair of fields. Providers
+interleave reasoning with text and tool calls, and each one requires its
+artifacts replayed in the position it issued them: Anthropic verifies every
+thinking block against the signature for *that* block, OpenAI keys reasoning
+items by the id it issued and expects each adjacent to the item it precedes, and
+Gemini binds a thought signature to one specific function call. Flattening any
+of that into a single per-message field produces artifacts the provider rejects
+or ignores.
+
+Each artifact separates three things that were previously conflated: readable
+text (raw chain-of-thought vs a provider-curated summary vs withheld), opaque
+replay state (signature / encrypted payload), and identity (provider, item id,
+bound tool call). Only readable text is ever rendered or published; replay state
+is carried verbatim and never leaves the driver boundary.
 
 Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5, Opus 4.8/4.7, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5 and Opus 4.8/4.7 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/drivers/anthropic/src/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/provider/src/model_profiles.rs`.
 
 #### Stream Events
 
-When `reasoning_effort` is configured, drivers emit additional stream events:
-- `ThinkingDelta(String)` - Incremental thinking/reasoning content
-- `ThinkingSignature(String)` - Opaque token for multi-turn context preservation
+When `reasoning_effort` is configured, drivers emit two reasoning events:
+- `ReasoningDelta { delta, summary }` -- incremental readable reasoning. Always
+  the reasoning channel, never assistant text. `summary` distinguishes a
+  provider-curated summary from raw chain-of-thought so consumers can label what
+  they show instead of guessing.
+- `ReasoningItem(ReasoningContentPart)` -- one completed artifact, carrying both
+  its readable text and the opaque state needed to replay it.
 
-#### Multi-turn Thinking Contract
+#### Multi-turn Reasoning Contract
 
-Both providers require preserved thinking context for multi-turn conversations. Every assistant message with thinking MUST include both `thinking` (content text) and `thinking_signature` (opaque token). The signature MUST be sent back in subsequent API calls to preserve reasoning context.
+Reasoning context must be preserved across turns, and how differs per provider.
+The runtime carries whatever the provider issued and hands it back unchanged;
+each driver knows its own wire form.
 
-| Field | Anthropic | OpenAI (o-series) |
-|-------|-----------|-------------------|
-| `thinking` | Chain-of-thought text | Reasoning summary text |
-| `thinking_signature` | Cryptographic signature | `encrypted_content` token |
+| Provider | Readable text | Replay state | Scope |
+|---|---|---|---|
+| Anthropic | chain-of-thought, or withheld (`redacted_thinking`) | signature per block | one block |
+| OpenAI Responses | curated summary | `encrypted_content` keyed by `rs_…` id | one item |
+| Gemini | thought parts | `thoughtSignature` | a turn, or one function call |
+| Chat Completions | `reasoning_content` | none | n/a |
+
+Two provider requirements are easy to miss and silently degrade when unmet:
+OpenAI returns `encrypted_content` only when the request opts in via
+`include`, and Gemini returns thought parts only when `thinkingConfig` sets
+`includeThoughts`. Without those, the model still reasons but nothing is
+replayable and nothing reaches the reasoning channel.
 
 Provider-specific wire format details live in the driver implementations:
-- `crates/drivers/anthropic/src/driver.rs` -- thinking form selection (adaptive vs budget-based), beta headers, signature capture, message ordering
-- `crates/drivers/openai/src/driver.rs` -- reasoning config, encrypted content, reasoning item format
+- `crates/drivers/anthropic/src/driver.rs` -- thinking form selection (adaptive vs budget-based), beta headers, per-block signature capture, message ordering
+- `crates/provider/src/openresponses_protocol.rs` -- reasoning config, `include`, encrypted content, reasoning item ids
+- `crates/drivers/gemini/src/driver.rs` -- thinking budget, thought parts, thought signatures
 
 #### Reasoning Guard Logic
 

@@ -1978,8 +1978,6 @@ fn message_from_input_with_id(message_id: MessageId, input: InputMessage) -> Mes
         role: input.role,
         content: input.content,
         phase: None,
-        thinking: None,
-        thinking_signature: None,
         controls: input.controls,
         metadata: input.metadata,
         external_actor: None,

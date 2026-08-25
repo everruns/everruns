@@ -1177,8 +1177,7 @@ mod tests {
             }
             Ok(LlmResponse {
                 text: self.response.clone(),
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
                 tool_calls: None,
                 metadata: LlmCompletionMetadata {
                     total_tokens: None,

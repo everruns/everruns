@@ -978,6 +978,10 @@ fn public_content_part_to_string(part: &ContentPart) -> Option<String> {
             image.filename.as_deref().unwrap_or("unnamed")
         )),
         ContentPart::ToolCall(_) | ContentPart::ToolResult(_) => None,
+        // Reasoning belongs to the reasoning channel and is projected there by
+        // the reason.* handlers. Rendering it as assistant text would move
+        // content across channels, which the projection contract forbids.
+        ContentPart::Reasoning(_) => None,
     }
 }
 

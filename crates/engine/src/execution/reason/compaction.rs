@@ -607,8 +607,7 @@ pub(super) async fn apply_reactive_compaction(
                     tool_calls: None,
                     tool_call_id: None,
                     phase: None,
-                    thinking: None,
-                    thinking_signature: None,
+                    reasoning: Vec::new(),
                 },
                 LlmMessage {
                     role: LlmMessageRole::User,
@@ -620,8 +619,7 @@ pub(super) async fn apply_reactive_compaction(
                     tool_calls: None,
                     tool_call_id: None,
                     phase: None,
-                    thinking: None,
-                    thinking_signature: None,
+                    reasoning: Vec::new(),
                 },
             ];
             let summary_config = crate::driver_registry::LlmCallConfig {

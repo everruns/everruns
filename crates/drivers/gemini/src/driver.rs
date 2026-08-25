@@ -27,6 +27,7 @@ use everruns_provider::driver_registry::{
     LlmResponseStream, LlmStreamEvent, disjoint_prompt_tokens, fold_system_messages,
 };
 use everruns_provider::error::{AgentLoopError, LlmErrorKind, Result};
+use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use everruns_provider::is_provider_quota_message;
 use everruns_provider::llm_retry::{
     LlmRetryConfig, RetryDecision, RetryMetadata, SendOutcome, retry_request, send_error_message,
@@ -84,7 +85,7 @@ impl GeminiChatDriver {
                 if text.is_empty() {
                     vec![]
                 } else {
-                    vec![GeminiPart::Text { text: text.clone() }]
+                    vec![GeminiPart::text(text.clone())]
                 }
             }
             LlmMessageContent::Parts(parts) => parts
@@ -94,7 +95,7 @@ impl GeminiChatDriver {
                         if text.is_empty() {
                             None
                         } else {
-                            Some(GeminiPart::Text { text: text.clone() })
+                            Some(GeminiPart::text(text.clone()))
                         }
                     }
                     LlmContentPart::Image { url } => {
@@ -118,9 +119,7 @@ impl GeminiChatDriver {
                             })
                         }
                     }
-                    LlmContentPart::Audio { .. } => Some(GeminiPart::Text {
-                        text: AUDIO_CONTENT_PLACEHOLDER.to_string(),
-                    }),
+                    LlmContentPart::Audio { .. } => Some(GeminiPart::text(AUDIO_CONTENT_PLACEHOLDER)),
                 })
                 .collect(),
         }
@@ -133,7 +132,7 @@ impl GeminiChatDriver {
         // present (infinity_context / compaction). See `fold_system_messages`.
         let system_instruction = fold_system_messages(messages).map(|text| GeminiContent {
             role: None, // system_instruction has no role
-            parts: vec![GeminiPart::Text { text }],
+            parts: vec![GeminiPart::text(text)],
         });
         let mut contents = Vec::new();
         let visible_function_call_ids = visible_tool_call_ids(messages);
@@ -169,7 +168,21 @@ impl GeminiChatDriver {
                     }
                 }
                 LlmMessageRole::Assistant => {
-                    let mut parts = Self::convert_content(&msg.content);
+                    // Thought parts lead the turn, matching the order Gemini
+                    // emitted them. Signatures bound to a specific call are
+                    // replayed on that call instead (below), never here.
+                    let mut parts: Vec<GeminiPart> = msg
+                        .reasoning
+                        .iter()
+                        .filter(|r| r.provider == "google" && r.bound_tool_call_id.is_none())
+                        .map(|r| {
+                            GeminiPart::thought(
+                                r.display_text().unwrap_or_default(),
+                                r.signature.clone(),
+                            )
+                        })
+                        .collect();
+                    parts.extend(Self::convert_content(&msg.content));
 
                     // Add function call parts if present
                     if let Some(tool_calls) = &msg.tool_calls {
@@ -186,6 +199,16 @@ impl GeminiChatDriver {
                                     name: tc.name.clone(),
                                     args,
                                 },
+                                // Gemini binds a thought signature to a
+                                // specific call; replay it on that call.
+                                thought_signature: msg
+                                    .reasoning
+                                    .iter()
+                                    .find(|r| {
+                                        r.provider == "google"
+                                            && r.bound_tool_call_id.as_deref() == Some(&tc.id)
+                                    })
+                                    .and_then(|r| r.signature.clone()),
                             });
                         }
                     }
@@ -400,9 +423,23 @@ impl ChatDriver for GeminiChatDriver {
 
         let tools = Self::convert_tools(&config.tools);
 
+        // Reasoning is opt-in on Gemini and silent when absent: without a
+        // thinkingConfig the model still reasons but returns no thought parts
+        // and no signature, so nothing reaches the reasoning channel and
+        // multi-turn tool use loses its thought continuity.
+        let thinking_config = config
+            .reasoning_effort
+            .as_deref()
+            .filter(|effort| !effort.eq_ignore_ascii_case("none"))
+            .map(|effort| GeminiThinkingConfig {
+                thinking_budget: driver_helpers::thinking_budget::from_effort(effort),
+                include_thoughts: true,
+            });
+
         let mut generation_config = GeminiGenerationConfig {
             temperature: config.temperature,
             max_output_tokens: config.max_tokens,
+            thinking_config,
         };
 
         // If no max_tokens specified, use model's max output from profile, or 8192 fallback
@@ -562,45 +599,109 @@ impl ChatDriver for GeminiChatDriver {
                                     for candidate in candidates {
                                         if let Some(content) = &candidate.content {
                                             for part in &content.parts {
-                                                match part {
-                                                    GeminiResponsePart::Text { text } => {
-                                                        let result = Ok(LlmStreamEvent::TextDelta(
-                                                            text.clone(),
-                                                        ));
-                                                        return Some((
-                                                            result,
-                                                            (
-                                                                stream,
-                                                                buffer,
-                                                                model,
-                                                                prompt_tokens,
-                                                                completion_tokens,
-                                                                cached_tokens,
-                                                                accumulated_tool_calls,
-                                                                tool_call_counter,
-                                                                retry_metadata,
-                                                                false,
-                                                            ),
-                                                        ));
+                                                // One event per part. A thought
+                                                // part carrying a signature is
+                                                // emitted as a completed
+                                                // reasoning item so the
+                                                // signature stays paired with
+                                                // its text; unsigned thought
+                                                // text streams as a delta for
+                                                // display only.
+                                                let emitted = match part {
+                                                    GeminiResponsePart::Text {
+                                                        text,
+                                                        thought_signature,
+                                                        ..
+                                                    } if part.is_thought() => {
+                                                        match thought_signature {
+                                                            Some(signature) => {
+                                                                Some(LlmStreamEvent::ReasoningItem(
+                                                                    ReasoningContentPart::opaque(
+                                                                        "google",
+                                                                    )
+                                                                    .with_signature(
+                                                                        signature.clone(),
+                                                                    )
+                                                                    .with_text(
+                                                                        ReasoningText::Plain {
+                                                                            text: text.clone(),
+                                                                        },
+                                                                    ),
+                                                                ))
+                                                            }
+                                                            None => {
+                                                                Some(LlmStreamEvent::ReasoningDelta {
+                                                                    delta: text.clone(),
+                                                                    summary: false,
+                                                                })
+                                                            }
+                                                        }
+                                                    }
+                                                    GeminiResponsePart::Text { text, .. } => {
+                                                        Some(LlmStreamEvent::TextDelta(text.clone()))
                                                     }
                                                     GeminiResponsePart::FunctionCall {
                                                         function_call,
+                                                        thought_signature,
                                                     } => {
-                                                        let mut counter =
-                                                            tool_call_counter.lock().unwrap();
-                                                        let call_id = format!("call_{}", *counter);
-                                                        *counter += 1;
+                                                        let call_id = {
+                                                            let mut counter =
+                                                                tool_call_counter.lock().unwrap();
+                                                            let call_id =
+                                                                format!("call_{}", *counter);
+                                                            *counter += 1;
+                                                            call_id
+                                                        };
 
                                                         accumulated_tool_calls
                                                             .lock()
                                                             .unwrap()
                                                             .push_complete(
-                                                                call_id,
+                                                                call_id.clone(),
                                                                 function_call.name.clone(),
                                                                 function_call.args.clone(),
                                                             );
+
+                                                        // Gemini scopes this
+                                                        // signature to one call;
+                                                        // bind it so replay can
+                                                        // put it back on that
+                                                        // call and nowhere else.
+                                                        thought_signature.as_ref().map(
+                                                            |signature| {
+                                                                LlmStreamEvent::ReasoningItem(
+                                                                    ReasoningContentPart::opaque(
+                                                                        "google",
+                                                                    )
+                                                                    .with_signature(
+                                                                        signature.clone(),
+                                                                    )
+                                                                    .with_bound_tool_call_id(
+                                                                        call_id,
+                                                                    ),
+                                                                )
+                                                            },
+                                                        )
                                                     }
-                                                    _ => {}
+                                                    _ => None,
+                                                };
+
+                                                if let Some(event) = emitted {
+                                                    return Some((
+                                                        Ok(event),
+                                                        (
+                                                            stream,
+                                                            buffer,
+                                                            model,
+                                                            prompt_tokens,
+                                                            completion_tokens,
+                                                            cached_tokens,
+                                                            accumulated_tool_calls,
+                                                            tool_call_counter,
+                                                            retry_metadata,
+                                                            false,
+                                                        ),
+                                                    ));
                                                 }
                                             }
                                         }
@@ -975,6 +1076,17 @@ struct GeminiContent {
 enum GeminiPart {
     Text {
         text: String,
+        /// Marks this part as model reasoning rather than answer text.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        thought: Option<bool>,
+        /// Opaque signature over the reasoning this part belongs to. Gemini
+        /// requires it returned on later turns or multi-turn tool use degrades.
+        #[serde(
+            rename = "thoughtSignature",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        thought_signature: Option<String>,
     },
     InlineData {
         #[serde(rename = "inlineData")]
@@ -987,6 +1099,13 @@ enum GeminiPart {
     FunctionCall {
         #[serde(rename = "functionCall")]
         function_call: GeminiFunctionCall,
+        /// Reasoning signature bound to this specific call.
+        #[serde(
+            rename = "thoughtSignature",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        thought_signature: Option<String>,
     },
     FunctionResponse {
         #[serde(rename = "functionResponse")]
@@ -1027,7 +1146,26 @@ struct GeminiGenerationConfig {
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_output_tokens: Option<u32>,
+    /// Reasoning controls. Omitted entirely for non-thinking models and for
+    /// effort `none`, since the field is rejected there.
+    #[serde(rename = "thinkingConfig", skip_serializing_if = "Option::is_none")]
+    thinking_config: Option<GeminiThinkingConfig>,
 }
+
+/// Gemini reasoning controls.
+///
+/// `include_thoughts` is what makes reasoning observable at all: without it the
+/// model still thinks but returns no thought parts, so nothing reaches the
+/// reasoning channel and no signature is available to replay.
+#[derive(Debug, Serialize)]
+struct GeminiThinkingConfig {
+    #[serde(rename = "thinkingBudget", skip_serializing_if = "Option::is_none")]
+    thinking_budget: Option<u32>,
+    #[serde(rename = "includeThoughts")]
+    include_thoughts: bool,
+}
+
+// --- response side ---
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1075,12 +1213,44 @@ enum GeminiResponsePart {
     FunctionCall {
         #[serde(rename = "functionCall")]
         function_call: GeminiFunctionCall,
+        #[serde(rename = "thoughtSignature", default)]
+        thought_signature: Option<String>,
     },
     Text {
         text: String,
+        #[serde(default)]
+        thought: Option<bool>,
+        #[serde(rename = "thoughtSignature", default)]
+        thought_signature: Option<String>,
     },
     #[allow(dead_code)]
     Other(Value),
+}
+
+impl GeminiPart {
+    fn text(text: impl Into<String>) -> Self {
+        Self::Text {
+            text: text.into(),
+            thought: None,
+            thought_signature: None,
+        }
+    }
+
+    /// A reasoning part replayed back to the model.
+    fn thought(text: impl Into<String>, signature: Option<String>) -> Self {
+        Self::Text {
+            text: text.into(),
+            thought: Some(true),
+            thought_signature: signature,
+        }
+    }
+}
+
+impl GeminiResponsePart {
+    /// Whether a text part carries reasoning rather than answer text.
+    fn is_thought(&self) -> bool {
+        matches!(self, Self::Text { thought: Some(true), .. })
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -1156,8 +1326,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::User,
@@ -1165,8 +1334,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
 
@@ -1195,7 +1363,7 @@ mod tests {
             .parts
             .iter()
             .filter_map(|p| match p {
-                GeminiPart::Text { text } => Some(text.as_str()),
+                GeminiPart::text(text) => Some(text.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()
@@ -1544,8 +1712,7 @@ mod tests {
                 }]),
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -1553,8 +1720,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("get_weather".to_string()),
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
 
@@ -1572,8 +1738,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: Some("get_weather".to_string()),
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         }];
 
         let (_, contents) = GeminiChatDriver::convert_messages(&messages);

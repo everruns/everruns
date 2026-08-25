@@ -855,9 +855,12 @@ pub fn proto_message_to_schema(
         id: id.into(),
         role,
         content,
-        phase: None,
-        thinking: value.thinking,
-        thinking_signature: value.thinking_signature,
+        // Phase crosses the worker boundary: dropping it here silently
+        // downgraded every message to "unclassified" before it reached the API.
+        phase: value
+            .phase
+            .as_deref()
+            .and_then(everruns_provider::ExecutionPhase::from_provider_str),
         controls,
         metadata,
         external_actor,
@@ -912,9 +915,10 @@ pub fn schema_message_to_proto(value: &everruns_core::Message) -> proto::Message
         controls,
         metadata,
         created_at: Some(datetime_to_proto_timestamp(value.created_at)),
-        thinking: value.thinking.clone(),
-        thinking_signature: value.thinking_signature.clone(),
         external_actor,
+        phase: value
+            .phase
+            .map(|phase| phase.as_provider_str().to_string()),
     }
 }
 
@@ -2067,8 +2071,7 @@ mod tests {
             role: MessageRole::Agent,
             content: vec![ContentPart::text("A simple response without thinking.")],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
             controls: None,
             metadata: None,
             external_actor: None,
@@ -2110,8 +2113,7 @@ mod tests {
             role: MessageRole::User,
             content: vec![ContentPart::text("Hello")],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
             controls: None,
             metadata: None,
             external_actor: Some(actor.clone()),
@@ -2148,8 +2150,7 @@ mod tests {
             role: MessageRole::User,
             content: vec![ContentPart::text("Hello")],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
             controls: None,
             metadata: None,
             external_actor: None,
