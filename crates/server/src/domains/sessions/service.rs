@@ -8,7 +8,6 @@
 
 use super::types::{SessionFacetCount, SessionFacetsResponse};
 use crate::api::common::Pagination;
-use crate::auth::rate_limit::OrgRateLimiter;
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
 use crate::domains::session_files::{CreateFileInput, WorkspaceFileService};
 use crate::domains::session_sandbox::SessionSandboxService;
@@ -98,14 +97,6 @@ pub struct SessionStats {
     pub idle: u32,
     pub started: u32,
     pub waiting_for_tool_results: u32,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum GetOrCreateChatSessionError {
-    #[error("chat session creation rate limit exceeded")]
-    RateLimited,
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
 }
 
 pub struct SessionService {
@@ -1163,62 +1154,6 @@ impl SessionService {
         Ok(mounts)
     }
 
-    async fn reconcile_capability_mounts(
-        &self,
-        org_id: i64,
-        harness_id: Uuid,
-        agent_id: Option<Uuid>,
-        session_capabilities: &[AgentCapabilityConfig],
-        session_id: Uuid,
-    ) -> Result<()> {
-        let mounts = self
-            .collect_capability_mounts(
-                org_id,
-                harness_id,
-                agent_id,
-                session_capabilities,
-                session_id,
-                None,
-            )
-            .await?;
-
-        self.session_file_service.evict_virtual_mounts(session_id);
-
-        let mut seen_paths = HashSet::new();
-        let mut mount_paths: Vec<String> = mounts
-            .iter()
-            .map(|mount| mount.path.clone())
-            .filter(|path| seen_paths.insert(path.clone()))
-            .collect();
-        mount_paths.sort_by_key(|path| path.len());
-        for path in mount_paths {
-            let _ = self
-                .db
-                .delete_session_file_recursive(session_id, &path)
-                .await?;
-        }
-
-        if mounts.is_empty() {
-            return Ok(());
-        }
-
-        let result = self
-            .session_file_service
-            .apply_capability_mounts(session_id, &mounts)
-            .await?;
-
-        if !result.is_success() {
-            tracing::warn!(
-                session_id = %session_id,
-                agent_id = ?agent_id,
-                errors = ?result.errors,
-                "Some capability mounts failed to apply after session repair"
-            );
-        }
-
-        Ok(())
-    }
-
     /// Copy harness/agent/session starter files into the session filesystem.
     async fn apply_initial_files(
         &self,
@@ -1828,151 +1763,6 @@ impl SessionService {
             }
             None => Ok(None),
         }
-    }
-
-    /// Get or create the global chat session for a user.
-    /// Uses tags for per-user singleton: `["global-chat", "user:{user_id}"]`.
-    /// Creates with the Platform Chat harness if no existing session is found.
-    pub async fn get_or_create_chat_session(
-        &self,
-        caller: &Caller,
-        user_id: Uuid,
-        harness_id: Uuid,
-        title: &str,
-        locale: Option<String>,
-        org_rate_limiter: Option<&OrgRateLimiter>,
-    ) -> std::result::Result<Session, GetOrCreateChatSessionError> {
-        let org_id = caller.org_id;
-        let org_public_id = &caller.org_public_id;
-        let user_tag = format!("user:{}", user_id);
-        let tags = vec!["global-chat".to_string(), user_tag.clone()];
-        let desired_harness_id = HarnessId::from_uuid(harness_id);
-
-        let owner_principal = self
-            .principal_service
-            .ensure_user_principal(org_id, user_id)
-            .await?;
-
-        // Look for existing chat session owned by the user.
-        if let Some(mut row) = self
-            .db
-            .find_session_by_tags_and_owner(org_id, owner_principal.id, &tags)
-            .await?
-        {
-            if row.harness_id != Some(desired_harness_id) {
-                tracing::info!(
-                    session_id = %row.id,
-                    previous_harness_id = ?row.harness_id,
-                    desired_harness_id = %desired_harness_id,
-                    "Repairing global chat session harness binding"
-                );
-
-                row = self
-                    .db
-                    .update_session(
-                        org_id,
-                        row.id,
-                        UpdateSession {
-                            harness_id: Some(desired_harness_id),
-                            ..Default::default()
-                        },
-                    )
-                    .await?
-                    .ok_or_else(|| anyhow::anyhow!("chat session disappeared during repair"))?;
-
-                let session_capabilities: Vec<AgentCapabilityConfig> = match serde_json::from_value(
-                    row.capabilities.clone(),
-                ) {
-                    Ok(capabilities) => capabilities,
-                    Err(error) => {
-                        tracing::error!(
-                            session_id = %row.id,
-                            error = %error,
-                            "Failed to deserialize session capabilities during global chat repair; continuing with empty capabilities"
-                        );
-                        Vec::new()
-                    }
-                };
-                self.reconcile_capability_mounts(
-                    org_id,
-                    desired_harness_id.uuid(),
-                    row.agent_id.map(|agent_id| agent_id.uuid()),
-                    &session_capabilities,
-                    row.id.uuid(),
-                )
-                .await?;
-            }
-
-            let mut session = Self::row_to_session(row, org_public_id, Some(desired_harness_id));
-            self.hydrate_ownership(org_id, &mut session).await?;
-            self.populate_features(caller.org_id, &mut session).await?;
-            self.resolve_session_agent_id(org_id, &mut session).await?;
-            return Ok(session);
-        }
-
-        // THREAT[TM-DOS-016]: Only a cache miss creates a resource. Charge the
-        // shared per-org session bucket here so transport-independent callers
-        // are covered without throttling ordinary global-chat reuse.
-        if let Some(limiter) = org_rate_limiter
-            && limiter.check_session_create(org_id).await.is_err()
-        {
-            return Err(GetOrCreateChatSessionError::RateLimited);
-        }
-
-        // Create a new chat session
-        let source = SessionSource::Chat;
-        let harness_id_typed = HarnessId::from_uuid(harness_id);
-        let input = CreateSessionRow {
-            workspace_id: None,
-            org_id,
-            source,
-            app_id: None,
-            harness_id: Some(harness_id_typed),
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
-            owner_principal_id: owner_principal.id,
-            resolved_owner_user_id: owner_principal.resolved_user_id,
-            title: Some(title.to_string()),
-            locale,
-            tags: vec!["global-chat".to_string(), user_tag],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            network_access: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
-        };
-        let row = self.db.create_session(input).await?;
-        let session_id = row.id.uuid();
-        let mut session = Self::row_to_session(row, org_public_id, Some(harness_id_typed));
-        self.hydrate_ownership(org_id, &mut session).await?;
-        self.populate_features(org_id, &mut session).await?;
-
-        // Apply capability mounts
-        self.apply_capability_mounts(
-            org_id,
-            harness_id,
-            None,
-            &[],
-            session_id,
-            Some(ScopedMemoryContext {
-                agent_id: None,
-                user_id: Some(user_id),
-            }),
-        )
-        .await?;
-
-        Ok(session)
     }
 
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {

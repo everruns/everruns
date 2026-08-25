@@ -6,10 +6,10 @@ use crate::auth::{AuthState, ResolvedOrg, rate_limit::OrgRateLimiter};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::sessions::{
     AddSessionParticipant, ArchiveSession, CancelSession, CreateSession, DeleteSession,
-    ForkSession, GetOrCreateChatSession, GetSession, GetSessionContextReport, GetSessionFacets,
-    GetSessionStats, LeaveSessionParticipant, ListSessionParticipants, ListSessions, PinSession,
-    SESSION_MANAGE, SESSION_VIEW, SessionFilterArgs, SessionService, UnarchiveSession,
-    UnpinSession, UpdateSessionCmd,
+    ForkSession, GetSession, GetSessionContextReport, GetSessionFacets, GetSessionStats,
+    LeaveSessionParticipant, ListSessionParticipants, ListSessions, PinSession, SESSION_MANAGE,
+    SESSION_VIEW, SessionFilterArgs, SessionService, UnarchiveSession, UnpinSession,
+    UpdateSessionCmd,
 };
 use crate::kernel_imports::{
     Caller, ResourceConfigResponse, ScopedMcpServers, SessionContextReport, SessionSeedMode,
@@ -364,14 +364,6 @@ pub struct AddSessionParticipantRequest {
     pub role: Option<SessionParticipantRole>,
 }
 
-/// Request body for the `get_or_create_chat_session` operation.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct GetOrCreateChatSessionRequest {
-    /// Browser locale for seeding the global chat session (BCP 47, e.g. `uk-UA`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub locale: Option<String>,
-}
-
 /// Query parameters for listing sessions with pagination.
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 pub struct ListSessionsQuery {
@@ -437,8 +429,6 @@ pub struct AppState {
     pub runner: Arc<dyn AgentRunner>,
     pub auth: AuthState,
     pub fallback_default_harness_name: Option<String>,
-    pub chat_harness_name: Option<String>,
-    pub chat_session_title: Option<String>,
     pub org_rate_limiter: OrgRateLimiter,
 }
 
@@ -476,16 +466,6 @@ impl AppState {
                 BuiltInHarnessRole::Default,
             )
             .map(|h| h.name.clone()),
-            chat_harness_name: everruns_platform::harness_for_role(
-                built_in_harnesses,
-                BuiltInHarnessRole::Chat,
-            )
-            .map(|h| h.name.clone()),
-            chat_session_title: everruns_platform::harness_for_role(
-                built_in_harnesses,
-                BuiltInHarnessRole::Chat,
-            )
-            .map(|h| h.display_name.clone()),
             org_rate_limiter: OrgRateLimiter::default(),
         }
     }
@@ -502,8 +482,6 @@ impl AppState {
         .with_event_service(Arc::new(self.event_service.clone()))
         .with_runner(self.runner.clone())
         .with_fallback_harness_name(self.fallback_default_harness_name.clone())
-        .with_chat_harness_name(self.chat_harness_name.clone())
-        .with_chat_session_title(self.chat_session_title.clone())
         .with_org_rate_limiter(self.org_rate_limiter.clone())
     }
 }
@@ -568,7 +546,6 @@ pub fn routes(state: AppState) -> Router {
         // Config endpoint (must be before /{session_id} to avoid conflict)
         .route("/v1/sessions/config", get(session_config))
         // Global chat session (must be before /{session_id} to avoid conflict)
-        .route("/v1/sessions/chat", post(get_or_create_chat_session))
         // Session facets (must be before /{session_id} to avoid conflict)
         .route("/v1/sessions/facets", get(get_session_facets))
         // Session stats (must be before /{session_id} to avoid conflict)
@@ -748,36 +725,6 @@ pub async fn fork_session(
     .await?;
 
     Ok((StatusCode::CREATED, Json(urls.wrap(session))))
-}
-
-/// POST /v1/sessions/chat - Get or create global chat session
-///
-/// Returns the user's singleton global chat session. Creates one if it doesn't exist.
-/// Uses the Platform Chat harness and tags for per-user singleton management.
-#[utoipa::path(
-    post,
-    path = "/v1/sessions/chat",
-    request_body = Option<GetOrCreateChatSessionRequest>,
-    responses(
-        (status = 200, description = "Chat session returned", body = WithUrls<Session>),
-        (status = 401, description = "Authentication required"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "sessions"
-)]
-pub async fn get_or_create_chat_session(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    payload: Option<Json<GetOrCreateChatSessionRequest>>,
-) -> ApiResult<WithUrls<Session>> {
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    let session = GetOrCreateChatSession {
-        locale: payload.and_then(|Json(body)| body.locale),
-    }
-    .run(&state.ctx(&org))
-    .await?;
-
-    Ok(Json(urls.wrap(session)))
 }
 
 /// GET /v1/sessions - List sessions in organization

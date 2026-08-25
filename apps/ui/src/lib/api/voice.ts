@@ -53,16 +53,6 @@ export async function endSessionVoice(
   });
 }
 
-export async function startChatVoice(
-  request: VoiceCallRequest,
-): Promise<VoiceSessionResponse<VoiceCallResponse>> {
-  const response = await api.post<VoiceSessionResponse<VoiceCallResponse>>(
-    "/v1/sessions/chat/voice",
-    request,
-  );
-  return response.data;
-}
-
 export async function startAgentVoice(
   agentId: string,
   request: VoiceCallRequest,

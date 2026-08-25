@@ -229,9 +229,6 @@ This preserves the rendered message while keeping enough context for future anal
 - `metadata.locale` is reserved for per-turn locale override
 - `metadata.timezone` is reserved for per-turn timezone override
 
-`POST /v1/sessions/chat`
-- may accept optional `locale` for seeding the singleton global chat session on first creation
-
 ## UI Localization
 
 ### Browser locale detection

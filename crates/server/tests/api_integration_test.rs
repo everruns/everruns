@@ -25,13 +25,10 @@ use everruns_platform::Harness;
 use everruns_platform::Session;
 use everruns_provider::model::Model;
 use everruns_provider::provider::Provider;
-use everruns_provider::typed_id::PrincipalId;
 use everruns_provider::typed_id::ScheduleId;
 use everruns_server::storage::models::{
-    CreateAgentRow, CreatePrincipalRow, CreateSessionScheduleRow, UpdateOrganizationSettings,
-    UpdateSession,
+    CreateAgentRow, CreateSessionScheduleRow, UpdateOrganizationSettings,
 };
-use uuid::Uuid;
 
 #[tokio::test]
 async fn test_knowledge_index_create_enqueues_sync_and_rejects_chat_model() {
@@ -3724,253 +3721,33 @@ async fn test_capability_info_includes_features() {
 }
 
 // ============================================
-// Global Chat Session Tests
+// Retired Global Chat Session Routes
 // ============================================
 
+/// The per-user singleton chat session and its voice sibling are retired
+/// (EVE-855). Chats binds each thread to an agent through the ordinary session
+/// routes, so the singleton had no caller left; these assertions keep the paths
+/// from being reintroduced by accident.
 #[tokio::test]
-async fn test_platform_chat_creates_session() {
-    let server = TestServer::new().await;
-
-    // First call should create a new chat session
-    let session: Session = server
-        .post("/v1/sessions/chat", json!({}))
-        .await
-        .assert_success()
-        .json();
-
-    assert_eq!(session.title.as_deref(), Some("Platform Chat"));
-    assert!(session.tags.contains(&"global-chat".to_string()));
-}
-
-#[tokio::test]
-async fn test_platform_chat_returns_same_session() {
-    let server = TestServer::new().await;
-
-    // First call creates
-    let first: Session = server
-        .post("/v1/sessions/chat", json!({}))
-        .await
-        .assert_success()
-        .json();
-
-    // Second call returns the same session
-    let second: Session = server
-        .post("/v1/sessions/chat", json!({}))
-        .await
-        .assert_success()
-        .json();
-
-    assert_eq!(
-        first.id, second.id,
-        "Should return the same singleton session"
-    );
-}
-
-#[tokio::test]
-async fn test_platform_chat_none_mode_reuse_accepts_messages_and_commands() {
+async fn test_retired_global_chat_routes_are_gone() {
+    // Routing only — no storage is touched, so the in-memory server is the
+    // cheaper and equally conclusive harness here.
     let server = TestServer::in_memory().await;
 
-    let first: Session = server
-        .post("/v1/sessions/chat", json!({}))
-        .await
-        .assert_success()
-        .json();
-    let reused: Session = server
-        .post("/v1/sessions/chat", json!({}))
-        .await
-        .assert_success()
-        .json();
-    assert_eq!(reused.id, first.id);
-
-    server
-        .post(
-            &format!("/v1/sessions/{}/messages", reused.id),
-            json!({
-                "message": {
-                    "role": "user",
-                    "content": [{ "type": "text", "text": "hello" }]
-                }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED);
-
-    let commands = server
-        .get(&format!("/v1/sessions/{}/commands", reused.id))
-        .await
-        .assert_status(StatusCode::OK)
-        .json_value();
-    assert!(
-        commands["commands"]
-            .as_array()
-            .expect("commands array")
-            .iter()
-            .any(|command| command["name"] == "btw"),
-        "the recovered Platform Chat session should resolve its harness commands"
-    );
-}
-
-#[tokio::test]
-async fn test_platform_chat_has_chat_harness() {
-    let server = TestServer::new().await;
-
-    let session: Session = server
-        .post("/v1/sessions/chat", json!({}))
-        .await
-        .assert_success()
-        .json();
-
-    assert_eq!(
-        session.harness_id.to_string(),
-        server.seed_chat_harness_id,
-        "Chat session should use the Platform Chat harness"
-    );
-}
-
-#[tokio::test]
-async fn test_platform_chat_is_unconditional_while_voice_remains_gated() {
-    let server = TestServer::in_memory().await;
-    let org_id = "org_00000000000000000000000000000001";
-
-    // Turning off voice leaves Chats available because it is core functionality,
-    // while voice remains independently hidden when disabled.
-    server
-        .patch(
-            &format!("/v1/orgs/{org_id}/feature-flags"),
-            json!({ "flags": { "voice": false } }),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    let effective_flags: Value = server
-        .get(&format!("/v1/orgs/{org_id}/feature-flags"))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    assert_eq!(effective_flags["voice"], Value::Bool(false));
-
+    // 405, not 404: `/v1/sessions/chat` still matches `/v1/sessions/{session_id}`,
+    // which serves GET/PATCH/DELETE but no POST. What matters is that no handler
+    // resolves the singleton any more.
     server
         .post("/v1/sessions/chat", json!({}))
         .await
-        .assert_success();
+        .assert_status(StatusCode::METHOD_NOT_ALLOWED);
 
-    // The voice gate rejects before any external provider call.
+    // No `{session_id}` route matches this shape, so the voice sibling is a
+    // plain 404.
     server
         .post("/v1/sessions/chat/voice", json!({ "sdp": "v=0" }))
         .await
         .assert_status(StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn test_platform_chat_ignores_tag_match_owned_by_other_principal() {
-    let server = TestServer::in_memory().await;
-
-    let initial: Session = server
-        .post("/v1/sessions/chat", json!({}))
-        .await
-        .assert_success()
-        .json();
-
-    let attacker_user_id = Uuid::new_v4();
-    let attacker_principal = server
-        .db
-        .create_principal(CreatePrincipalRow {
-            id: PrincipalId::from_uuid(Uuid::new_v4()),
-            org_id: DEFAULT_ORG_ID,
-            kind: "user".to_string(),
-            subject_id: Some(attacker_user_id),
-            parent_principal_id: None,
-            resolved_user_id: Some(attacker_user_id),
-            metadata: json!({}),
-        })
-        .await
-        .expect("failed to create attacker principal");
-
-    server
-        .db
-        .update_session(
-            DEFAULT_ORG_ID,
-            initial.id,
-            UpdateSession {
-                owner_principal_id: Some(attacker_principal.id),
-                resolved_owner_user_id: everruns_durable::UpdateField::Set(attacker_user_id),
-                ..Default::default()
-            },
-        )
-        .await
-        .expect("failed to mutate chat session owner")
-        .expect("chat session should exist");
-
-    let recreated: Session = server
-        .post("/v1/sessions/chat", json!({}))
-        .await
-        .assert_success()
-        .json();
-
-    assert_ne!(
-        recreated.id, initial.id,
-        "chat lookup must not attach to tag-matching sessions owned by a different principal"
-    );
-    assert_ne!(
-        recreated.owner_principal_id, attacker_principal.id,
-        "new Platform Chat should be owned by the authenticated user's principal"
-    );
-
-    server
-        .get(&format!("/v1/sessions/{}/commands", initial.id))
-        .await
-        .assert_status(StatusCode::FORBIDDEN);
-}
-
-#[tokio::test]
-async fn test_platform_chat_repairs_stale_harness_binding() {
-    let server = TestServer::in_memory().await;
-
-    let original: Session = server
-        .post("/v1/sessions/chat", json!({}))
-        .await
-        .assert_success()
-        .json();
-
-    let other_harness: Harness = server
-        .post(
-            "/v1/harnesses",
-            json!({
-                "name": "chat-repair-test",
-                "display_name": "Chat Repair Test",
-                "system_prompt": "Test harness"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    server
-        .db
-        .update_session(
-            DEFAULT_ORG_ID,
-            original.id,
-            UpdateSession {
-                harness_id: Some(other_harness.id),
-                ..Default::default()
-            },
-        )
-        .await
-        .expect("failed to mutate chat session")
-        .expect("chat session should exist");
-
-    let repaired: Session = server
-        .post("/v1/sessions/chat", json!({}))
-        .await
-        .assert_success()
-        .json();
-
-    assert_eq!(repaired.id, original.id);
-    assert_eq!(
-        repaired.harness_id.to_string(),
-        server.seed_chat_harness_id,
-        "chat endpoint should repair stale session harness bindings"
-    );
 }
 
 #[tokio::test]

@@ -1,5 +1,16 @@
 # Everruns Knowledge Update Log
 
+## 2026-08-25
+
+* **A singleton session is a surface, not a capability.** `POST /v1/sessions/chat`
+  and `POST /v1/sessions/chat/voice` existed to resolve one Platform Chat session
+  per user by tag. Chats binds each thread to an agent through the ordinary
+  session routes, which left both endpoints without a caller — and a per-user
+  singleton is a shape the rest of the API does not have. Retired with the
+  command, service method and harness-name plumbing they were the only readers
+  of. The Platform Chat harness and the `global-chat` tag on existing sessions
+  are unchanged. See `knowledge/execution/apis.md`.
+
 ## 2026-08-24
 
 * **Output retention is not a recovery affordance.** Persistence-enabled tools
