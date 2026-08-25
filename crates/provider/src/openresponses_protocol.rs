@@ -792,10 +792,20 @@ impl OpenResponsesProtocolChatDriver {
                         );
                         continue;
                     };
+                    // Replay the curated summary the provider gave us, when it
+                    // gave one. `summary` is required either way.
+                    let summary = match &item.text {
+                        Some(crate::reasoning::ReasoningText::Summary { parts }) => parts
+                            .iter()
+                            .map(|text| types::ContentPart::SummaryText { text: text.clone() })
+                            .collect(),
+                        _ => Vec::new(),
+                    };
                     input_items.push(ResponsesInputItem::Reasoning {
                         r#type: "reasoning".to_string(),
                         id: id.clone(),
                         encrypted_content: encrypted_content.clone(),
+                        summary,
                     });
                     tracing::debug!(
                         item_id = %id,
@@ -1971,6 +1981,12 @@ enum ResponsesInputItem {
         id: String,
         /// Encrypted reasoning content (required for multi-turn conversations)
         encrypted_content: String,
+        /// Provider-curated summary segments. The API rejects a reasoning input
+        /// item without this key (`400 … missing required field \`summary\``),
+        /// so it is always serialized — an empty list when the artifact carried
+        /// no summary, which is the common case since summaries arrive only
+        /// when the request asked for them.
+        summary: Vec<types::ContentPart>,
     },
     /// Opaque native context returned by `/responses/compact`.
     Compaction {
@@ -2933,6 +2949,7 @@ mod tests {
                 r#type: "reasoning".to_string(),
                 id: "rs_00000001".to_string(),
                 encrypted_content: "encrypted-blob".to_string(),
+                summary: Vec::new(),
             },
             ResponsesInputItem::Message {
                 r#type: "message".to_string(),
@@ -3982,14 +3999,93 @@ mod tests {
             r#type: "reasoning".to_string(),
             id: "rs_00000001".to_string(),
             encrypted_content: "encrypted_reasoning_context_here".to_string(),
+            summary: Vec::new(),
         };
 
         let json = serde_json::to_value(&item).unwrap();
         assert_eq!(json["type"], "reasoning");
+        // The API rejects a reasoning input item with no `summary` key, so an
+        // empty summary must still serialize as `[]` rather than vanish.
+        assert_eq!(
+            json["summary"],
+            serde_json::json!([]),
+            "summary is required even when empty"
+        );
         assert_eq!(json["id"], "rs_00000001");
         assert_eq!(
             json["encrypted_content"],
             "encrypted_reasoning_context_here"
+        );
+    }
+
+    /// Every replayed reasoning item carries `summary`, and carries the
+    /// provider's own summary segments when it had them.
+    ///
+    /// The Responses API rejects a reasoning input item without the key —
+    /// `400 … \`input[1]\` missing required field \`summary\`` — which took
+    /// `main` red against a live provider once reasoning replay went out under
+    /// provider-issued ids. Most artifacts carry no summary (the provider only
+    /// sends one when the request asks), so the empty case is the common one.
+    #[test]
+    fn test_build_input_reasoning_items_always_carry_a_summary() {
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "Think"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("No summary on this one.".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                phase: None,
+                reasoning: vec![
+                    crate::reasoning::ReasoningContentPart::opaque("openai")
+                        .with_item_id("rs_bare")
+                        .with_encrypted("enc_bare"),
+                ],
+            },
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("This one was summarized.".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                phase: None,
+                reasoning: vec![
+                    crate::reasoning::ReasoningContentPart::opaque("openai")
+                        .with_item_id("rs_summarized")
+                        .with_encrypted("enc_summarized")
+                        .with_text(crate::reasoning::ReasoningText::Summary {
+                            parts: vec!["First I checked.".to_string(), "Then I read.".to_string()],
+                        }),
+                ],
+            },
+        ];
+
+        let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
+        let reasoning: Vec<serde_json::Value> = input
+            .iter()
+            .map(|item| serde_json::to_value(item).unwrap())
+            .filter(|json| json["type"] == "reasoning")
+            .collect();
+        assert_eq!(reasoning.len(), 2, "both artifacts must be replayed");
+
+        for item in &reasoning {
+            assert!(
+                item.get("summary").is_some(),
+                "summary is required on every reasoning input item: {item}"
+            );
+        }
+
+        assert_eq!(
+            reasoning[0]["summary"],
+            serde_json::json!([]),
+            "an artifact with no summary replays an empty one, not a missing key"
+        );
+        assert_eq!(
+            reasoning[1]["summary"],
+            serde_json::json!([
+                { "type": "summary_text", "text": "First I checked." },
+                { "type": "summary_text", "text": "Then I read." },
+            ]),
+            "the provider's own summary segments replay verbatim"
         );
     }
 
