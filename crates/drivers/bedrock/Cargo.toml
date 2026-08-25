@@ -8,7 +8,7 @@ name = "everruns-bedrock"
 readme = "README.md"
 keywords = ["agent", "llm", "ai", "bedrock", "aws"]
 categories = ["api-bindings", "asynchronous"]
-version = "0.18.1"
+version = "0.18.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -39,7 +39,7 @@ base64.workspace = true
 # Provider SPI only (EVE-874): wire-protocol crates never depend on
 # everruns-core. Intentional optional features of everruns-provider (`openapi`
 # schema derives, `sqlx` TypedId codecs) stay off; default features are empty.
-everruns-provider = { path = "../../provider", version = "0.19.0" }
+everruns-provider = { path = "../../provider", version = "0.20.0" }
 
 # AWS SDK for Bedrock Runtime
 # Default features include the legacy `rustls` connector (rustls 0.21 +
