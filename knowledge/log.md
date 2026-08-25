@@ -2,6 +2,15 @@
 
 ## 2026-08-25
 
+* **A projection applied at one read boundary is not applied at the others.**
+  Reasoning replay state (`signature`, `encrypted`) was stripped from
+  `GET .../messages` but not from `GET .../events`, which serves the same
+  message inside `output.message.completed` — so one endpoint withheld what the
+  other published. The projection now lives on `EventData` and is applied on both
+  the list and SSE paths. Storage keeps the state: replay rebuilds the message
+  from the event log, so the projection belongs at the API edge, not at write
+  time. See `knowledge/execution/events.md`.
+
 * **A singleton session is a surface, not a capability.** `POST /v1/sessions/chat`
   and `POST /v1/sessions/chat/voice` existed to resolve one Platform Chat session
   per user by tag. Chats binds each thread to an agent through the ordinary

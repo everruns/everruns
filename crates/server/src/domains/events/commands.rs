@@ -21,6 +21,13 @@ pub struct ListEventsResult {
     pub total: Option<i64>,
 }
 
+/// Strip opaque provider replay state from every event leaving this read path
+/// (EVE-933). The stored event keeps it — turn replay reconstructs messages from
+/// the event log — so the projection belongs here, at the API edge.
+fn into_public(events: Vec<Event>) -> Vec<Event> {
+    events.into_iter().map(Event::into_public).collect()
+}
+
 fn validate_event_type_list(types: &[String], param_name: &str) -> Result<(), CommandError> {
     if types.len() > MAX_EVENT_TYPE_FILTER_SIZE {
         return Err(CommandError::bad_request(format!(
@@ -242,7 +249,7 @@ impl Command for ListEvents {
                 None
             };
             return Ok(ListEventsResult {
-                data: events,
+                data: into_public(events),
                 total,
             });
         }
@@ -297,7 +304,7 @@ impl Command for ListEvents {
         };
 
         Ok(ListEventsResult {
-            data: events,
+            data: into_public(events),
             total,
         })
     }

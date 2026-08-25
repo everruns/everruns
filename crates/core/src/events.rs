@@ -383,6 +383,13 @@ impl<'de> Deserialize<'de> for Event {
 }
 
 impl Event {
+    /// Projection safe to publish on an API surface: see
+    /// [`EventData::into_public`]. Apply at every event read boundary.
+    pub fn into_public(mut self) -> Self {
+        self.data = self.data.into_public();
+        self
+    }
+
     /// Create a new event with the given session_id, context, and typed data
     ///
     /// The event type is automatically inferred from the data type.
@@ -2693,6 +2700,53 @@ pub enum EventData {
 }
 
 impl EventData {
+    /// Replace every carried message with its publishable projection, dropping
+    /// the opaque provider replay state on reasoning parts.
+    ///
+    /// The message read path already does this via [`Message::into_public`], so
+    /// without it here `GET /v1/sessions/{id}/events` would hand a client
+    /// exactly the `signature` / `encrypted` material that
+    /// `GET /v1/sessions/{id}/messages` withholds (EVE-933).
+    ///
+    /// This is a *read* projection. The stored event must keep the replay state,
+    /// because replaying a turn reconstructs the message from the event log.
+    /// Whether [`Self::into_public`] would change this payload.
+    ///
+    /// Lets a hot read path (the SSE stream) skip cloning for the many variants
+    /// that carry no message. Keep in step with `into_public`.
+    pub fn needs_public_projection(&self) -> bool {
+        matches!(
+            self,
+            EventData::InputMessage(_)
+                | EventData::OutputMessageCompleted(_)
+                | EventData::LlmGeneration(_)
+        )
+    }
+
+    pub fn into_public(self) -> Self {
+        match self {
+            EventData::InputMessage(mut data) => {
+                data.message = data.message.into_public();
+                EventData::InputMessage(data)
+            }
+            EventData::OutputMessageCompleted(mut data) => {
+                data.message = data.message.into_public();
+                EventData::OutputMessageCompleted(data)
+            }
+            // The full prompt sent to the provider, so it carries the same
+            // reasoning parts the assistant message does.
+            EventData::LlmGeneration(mut data) => {
+                data.messages = data
+                    .messages
+                    .into_iter()
+                    .map(Message::into_public)
+                    .collect();
+                EventData::LlmGeneration(data)
+            }
+            other => other,
+        }
+    }
+
     /// Check if this is an unsupported event type.
     /// Unsupported events should be filtered before API responses.
     pub fn is_unsupported(&self) -> bool {
@@ -3107,6 +3161,149 @@ mod tests {
     use crate::driver_registry::PromptCacheStrategy;
     use serde_json::json;
     use std::collections::HashMap;
+
+    /// Build an assistant message whose reasoning part carries every kind of
+    /// opaque replay state, plus readable text that must survive.
+    fn message_with_replay_state() -> Message {
+        let mut message = Message::assistant("the answer");
+        message.content.push(ContentPart::reasoning(
+            everruns_provider::reasoning::ReasoningContentPart::opaque("anthropic")
+                .with_item_id("rs_abc")
+                .with_signature("sig-do-not-publish")
+                .with_encrypted("enc-do-not-publish")
+                .with_text(everruns_provider::reasoning::ReasoningText::Plain {
+                    text: "visible reasoning".to_string(),
+                }),
+        ));
+        message
+    }
+
+    fn generation_metadata() -> LlmGenerationMetadata {
+        LlmGenerationMetadata {
+            model: "test-model".to_string(),
+            provider: Some("anthropic".to_string()),
+            usage: None,
+            duration_ms: None,
+            time_to_first_token_ms: None,
+            success: true,
+            error: None,
+            finish_reasons: None,
+            response_id: None,
+            retry: None,
+            compaction: None,
+            request_options: None,
+        }
+    }
+
+    fn reasoning_part(message: &Message) -> &everruns_provider::reasoning::ReasoningContentPart {
+        message
+            .content
+            .iter()
+            .find_map(|part| match part {
+                ContentPart::Reasoning(r) => Some(r),
+                _ => None,
+            })
+            .expect("reasoning part")
+    }
+
+    /// The events read path must strip the same replay state the message read
+    /// path strips, or `GET .../events` republishes what `GET .../messages`
+    /// withholds (EVE-933).
+    #[test]
+    fn into_public_strips_replay_state_from_completed_messages() {
+        let data = EventData::OutputMessageCompleted(OutputMessageCompletedData::new(
+            message_with_replay_state(),
+        ));
+
+        let EventData::OutputMessageCompleted(public) = data.into_public() else {
+            panic!("variant must be preserved");
+        };
+        let part = reasoning_part(&public.message);
+
+        assert_eq!(part.signature, None, "signature must not be published");
+        assert_eq!(
+            part.encrypted, None,
+            "encrypted payload must not be published"
+        );
+        assert_eq!(
+            part.item_id.as_deref(),
+            Some("rs_abc"),
+            "the provider id is an identifier, not replay state"
+        );
+        assert_eq!(
+            part.display_text().as_deref(),
+            Some("visible reasoning"),
+            "readable reasoning is content and must survive"
+        );
+    }
+
+    #[test]
+    fn into_public_strips_replay_state_from_input_and_generation_messages() {
+        let EventData::InputMessage(input) =
+            EventData::InputMessage(InputMessageData::new(message_with_replay_state()))
+                .into_public()
+        else {
+            panic!("variant must be preserved");
+        };
+        assert_eq!(reasoning_part(&input.message).signature, None);
+
+        // The prompt replayed to the provider carries the same artifacts.
+        let generation = LlmGenerationData {
+            messages: vec![message_with_replay_state()],
+            tools: Vec::new(),
+            output: LlmGenerationOutput {
+                text: Some("the answer".to_string()),
+                tool_calls: Vec::new(),
+            },
+            metadata: generation_metadata(),
+        };
+        let EventData::LlmGeneration(public) = EventData::LlmGeneration(generation).into_public()
+        else {
+            panic!("variant must be preserved");
+        };
+        assert_eq!(reasoning_part(&public.messages[0]).signature, None);
+        assert_eq!(reasoning_part(&public.messages[0]).encrypted, None);
+    }
+
+    /// `needs_public_projection` gates the SSE clone, so a variant it misses is
+    /// a variant that leaks.
+    #[test]
+    fn needs_public_projection_covers_every_message_bearing_variant() {
+        assert!(
+            EventData::InputMessage(InputMessageData::new(Message::user("hi")))
+                .needs_public_projection()
+        );
+        assert!(
+            EventData::OutputMessageCompleted(OutputMessageCompletedData::new(Message::assistant(
+                "hi"
+            )))
+            .needs_public_projection()
+        );
+        assert!(
+            EventData::LlmGeneration(LlmGenerationData {
+                messages: Vec::new(),
+                tools: Vec::new(),
+                output: LlmGenerationOutput {
+                    text: None,
+                    tool_calls: Vec::new(),
+                },
+                metadata: generation_metadata(),
+            })
+            .needs_public_projection()
+        );
+        assert!(
+            !EventData::ReasonItem(ReasonItemData {
+                turn_id: TurnId::new(),
+                provider: "openai".to_string(),
+                model: None,
+                item_id: "rs_abc".to_string(),
+                summary: Vec::new(),
+                token_count: None,
+            })
+            .needs_public_projection(),
+            "a message-free variant must not pay for a clone"
+        );
+    }
 
     #[test]
     fn test_event_creation() {

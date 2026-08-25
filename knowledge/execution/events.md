@@ -205,6 +205,15 @@ assistant-text channel does not merely mislabel it: the text is then persisted
 as the model's answer and replayed to the provider as the model's own prior
 output.
 
+Opaque replay state is stored but never published. A reasoning artifact's
+provider `signature` and `encrypted` payload must survive in the event log,
+because replaying a turn rebuilds the message from it — and must be stripped
+from every read. Both the message read path and the events read path (list and
+SSE) apply that projection, via `Message::into_public` and
+`EventData::into_public` respectively; publishing on one and not the other is
+the bug EVE-933 records. A read boundary that carries a `Message` and skips the
+projection is a leak.
+
 A projection must not move content across channels to imitate a phase. In
 particular, absent phase never makes assistant text into thinking, and tool
 activity never becomes assistant text. AG-UI projection is implemented in
