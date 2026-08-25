@@ -127,8 +127,9 @@ Conversational harness for the global chat interface. Inherits Generic capabilit
 - Operator chat threads on the Chats surface (`/chats`), started by binding a new thread to this
   harness. The singleton `/chat` page it was built for was retired with EVE-855; threads that
   predate the Chats surface still carry the `global-chat` tag so they stay listed.
-- Per-user singleton sessions via tag-based lookup, still served by `POST /v1/sessions/chat` —
-  the only HTTP entry point that resolves the singleton, and the one the voice bootstrap uses.
+- Legacy per-user singleton sessions, identified by the `global-chat` tag. The endpoint that
+  resolved that singleton (`POST /v1/sessions/chat`) is retired with EVE-855; nothing creates a
+  new one, and existing threads are read through the ordinary session routes.
 
 ## Design Decisions
 

@@ -315,8 +315,6 @@ pub struct AppState {
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub fallback_base_harness_name: Option<String>,
     pub fallback_default_harness_name: Option<String>,
-    pub chat_harness_name: Option<String>,
-    pub chat_session_title: Option<String>,
     pub sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
     /// System utility LLM for sanctioned internal analysis commands.
     pub utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
@@ -389,16 +387,6 @@ impl AppState {
                 everruns_platform::BuiltInHarnessRole::Default,
             )
             .map(|h| h.name.clone()),
-            chat_harness_name: everruns_platform::harness_for_role(
-                built_in_harnesses,
-                everruns_platform::BuiltInHarnessRole::Chat,
-            )
-            .map(|h| h.name.clone()),
-            chat_session_title: everruns_platform::harness_for_role(
-                built_in_harnesses,
-                everruns_platform::BuiltInHarnessRole::Chat,
-            )
-            .map(|h| h.display_name.clone()),
             sqldb_store,
             utility_llm_service: host_composition.utility_llm_service(),
             health_check_service: None,
@@ -1853,8 +1841,6 @@ pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains
     .with_session_file_service(state.session_file_service.clone())
     .with_runner(state.runner.clone())
     .with_fallback_harness_name(state.fallback_default_harness_name.clone())
-    .with_chat_harness_name(state.chat_harness_name.clone())
-    .with_chat_session_title(state.chat_session_title.clone())
     .with_utility_llm_service(state.utility_llm_service.clone());
     if let Some(service) = &state.health_check_service {
         ctx = ctx.with_health_check_service(service.clone());

@@ -82,7 +82,6 @@ All endpoints are authenticated, org-scoped, and mounted under `/api/v1`.
 | POST | `/v1/sessions/{session_id}/voice/{voice_connection_id}/attach` | Attach a provider call ID after client-secret bootstrap so the server can open the sideband |
 | POST | `/v1/sessions/{session_id}/voice/{voice_connection_id}/end` | End the Voice Connection and close provider sideband state |
 | POST | `/v1/agents/{agent_id}/voice/sessions` | Create an Everruns session for an agent and return the same voice bootstrap payload |
-| POST | `/v1/sessions/chat/voice` | Get or create Platform Chat, then return the same voice bootstrap payload |
 
 ### Voice Calls Request
 
@@ -201,7 +200,7 @@ Surfaces:
 
 - Session chat: `/sessions/{session_id}/chat` starts voice against that existing session.
 - Agent chat: creating a voice chat from an agent uses `POST /v1/agents/{agent_id}/voice/sessions`, then navigates to the new session chat route.
-- Platform Chat: `POST /v1/sessions/chat/voice` resolves the singleton Platform Chat session and returns the same voice bootstrap payload, showing the transcript in that session. Its only UI caller was the `/chat` page retired with EVE-855, so no first-party surface calls it today — `apps/ui/src/lib/api/voice.ts` still exports `startChatVoice` for it, unused.
+- Platform Chat: the singleton bootstrap `POST /v1/sessions/chat/voice` is retired with EVE-855, along with the `/chat` page that was its only caller. Voice on a Platform Chat thread runs through the ordinary session routes above.
 
 UI states:
 

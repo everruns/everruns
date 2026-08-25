@@ -204,7 +204,6 @@ See `knowledge/operations/localization.md` for locale/timezone precedence and ex
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/v1/sessions` | Create session |
-| POST | `/v1/sessions/chat` | Get or create global chat session |
 | GET | `/v1/sessions` | List sessions (paginated) |
 | GET | `/v1/sessions/{session_id}` | Get session |
 | PATCH | `/v1/sessions/{session_id}` | Update session |
@@ -234,21 +233,14 @@ Both limits are injectable via `SessionService::with_caps` / `MessageService::wi
 
 Session creation and any other assignment flow must reject archived or deleted harnesses/agents with a client error. Existing sessions are preserved when dependencies are archived or deleted, but the next execution atom must fail gracefully with a user-visible explanation.
 
-#### Get or Create Chat Session
+#### Retired: Global Chat Session
 
-Returns the calling user's singleton global chat session. Creates one with the Platform Chat harness if none exists. Uses tag-based lookup (`global-chat` + `user:{user_id}`) for per-user singleton management.
-
-**Request:** `POST /v1/sessions/chat` (no body required)
-
-**Response:** `200 OK` with the `Session` object.
-
-Platform Chat is core functionality and requires no feature configuration. Its voice variant,
-`POST /v1/sessions/chat/voice`, remains independently gated by the org-effective `voice` flag and
-returns `404 Not Found` when voice is disabled.
-
-The UI no longer calls this endpoint. A chat thread is an ordinary session created with
-`POST /v1/sessions` bound to an agent (EVE-851), so the singleton has no surface left in the
-product; it remains only for API clients that still depend on it.
+`POST /v1/sessions/chat` and its voice sibling `POST /v1/sessions/chat/voice` resolved a per-user
+singleton Platform Chat session via tag lookup (`global-chat` + `user:{user_id}`). Both are removed
+with EVE-855: a chat thread is an ordinary session created with `POST /v1/sessions` bound to an
+agent (EVE-851), which left the singleton without a caller. The Platform Chat harness itself is
+unchanged, and sessions already tagged `global-chat` stay readable through the ordinary session
+routes.
 
 #### List Sessions
 
@@ -303,7 +295,6 @@ realtime state is ephemeral. See [voice.md](../operations/voice.md).
 | POST | `/v1/sessions/{session_id}/voice/{voice_connection_id}/attach` | Attach a provider call ID after client-secret bootstrap |
 | POST | `/v1/sessions/{session_id}/voice/{voice_connection_id}/end` | End a Voice Connection |
 | POST | `/v1/agents/{agent_id}/voice/sessions` | Create an agent session and bootstrap voice |
-| POST | `/v1/sessions/chat/voice` | Get or create Platform Chat and bootstrap voice |
 
 Voice endpoints are gated by the `voice` feature flag. V1 supports OpenAI
 `gpt-realtime-2` with WebRTC. Standard provider API keys stay server-side;
