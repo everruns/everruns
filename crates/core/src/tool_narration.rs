@@ -622,32 +622,64 @@ pub fn narrate_secret_store(
     }
 }
 
-/// Subagent delegation narration.
+/// Which agent a `spawn_agent` call delegates to: the blueprint for a subagent
+/// target, otherwise the configured target id.
+fn spawn_agent_identity(arguments: &Value) -> Option<String> {
+    let target = arguments.get("target");
+    let id = target
+        .and_then(|target| arg_str(target, &["id", "external_agent_id"]))
+        .map(|id| truncate(id, 40));
+    arg_str(arguments, &["blueprint"])
+        .map(|blueprint| truncate(blueprint, 40))
+        .or(id)
+}
+
+/// The kind of agent being spawned, from `target.type`.
+fn spawn_agent_kind(arguments: &Value, uk: bool) -> &'static str {
+    let target_type = arguments
+        .get("target")
+        .and_then(|target| arg_str(target, &["type"]))
+        .unwrap_or("subagent");
+    match (target_type, uk) {
+        ("agent", false) => "agent",
+        ("agent", true) => "агента",
+        ("external_a2a", false) => "external agent",
+        ("external_a2a", true) => "зовнішнього агента",
+        (_, false) => "subagent",
+        (_, true) => "субагента",
+    }
+}
+
+/// Delegation narration for `spawn_agent`: always says *which* agent is being
+/// spawned — its run name, its kind (subagent, first-party agent, external A2A
+/// agent), and the blueprint or configured target id when one is set.
+///
+/// "Launching Orbit Scout subagent (github_scout)".
 pub fn narrate_subagent_spawn(
     arguments: &Value,
     phase: ToolNarrationPhase,
     locale: Option<&str>,
 ) -> String {
+    let uk = is_uk(locale);
+    let kind = spawn_agent_kind(arguments, uk);
     let name = arg_str(arguments, &["name"]).map(|name| truncate(name, 40));
-    if is_uk(locale) {
-        let target = name
-            .map(|name| format!("субагента {name}"))
-            .unwrap_or_else(|| "субагента".to_string());
-        phrase3(
-            ("Запускаю", "Запустив", "Не вдалося запустити"),
-            Some(target),
-            phase,
-        )
-    } else {
-        let target = name
-            .map(|name| format!("{name} subagent"))
-            .unwrap_or_else(|| "subagent".to_string());
-        phrase3(
-            ("Launching", "Launched", "Failed to launch"),
-            Some(target),
-            phase,
-        )
+    let identity = spawn_agent_identity(arguments);
+
+    let mut target = match (&name, uk) {
+        (Some(name), false) => format!("{name} {kind}"),
+        (Some(name), true) => format!("{kind} {name}"),
+        (None, _) => kind.to_string(),
+    };
+    if let Some(identity) = identity.filter(|identity| Some(identity) != name.as_ref()) {
+        target.push_str(&format!(" ({identity})"));
     }
+
+    let verbs = pick(
+        locale,
+        ("Launching", "Launched", "Failed to launch"),
+        ("Запускаю", "Запустив", "Не вдалося запустити"),
+    );
+    phrase3(verbs, Some(target), phase)
 }
 
 /// `write_todos` narration.
@@ -2076,6 +2108,65 @@ mod tests {
         assert_eq!(
             summarize_group_actions(&actions, None),
             "Searched files twice, Read AGENTS.md, and 2 more actions"
+        );
+    }
+
+    #[test]
+    fn subagent_spawn_narration_names_the_spawned_agent() {
+        let call = serde_json::json!({
+            "name": "Orbit Scout",
+            "instructions": "Inspect the orbit subsystem.",
+            "target": { "type": "subagent" }
+        });
+        assert_eq!(
+            narrate_subagent_spawn(&call, ToolNarrationPhase::Started, None),
+            "Launching Orbit Scout subagent"
+        );
+        assert_eq!(
+            narrate_subagent_spawn(&call, ToolNarrationPhase::Completed, None),
+            "Launched Orbit Scout subagent"
+        );
+    }
+
+    #[test]
+    fn subagent_spawn_narration_includes_blueprint_and_target_id() {
+        let blueprint = serde_json::json!({
+            "name": "Orbit Scout",
+            "target": { "type": "subagent" },
+            "blueprint": "github_scout"
+        });
+        assert_eq!(
+            narrate_subagent_spawn(&blueprint, ToolNarrationPhase::Started, None),
+            "Launching Orbit Scout subagent (github_scout)"
+        );
+
+        let handoff = serde_json::json!({
+            "name": "Release check",
+            "target": { "type": "agent", "id": "release-reviewer" }
+        });
+        assert_eq!(
+            narrate_subagent_spawn(&handoff, ToolNarrationPhase::Started, None),
+            "Launching Release check agent (release-reviewer)"
+        );
+
+        let external = serde_json::json!({
+            "target": { "type": "external_a2a", "id": "partner-agent" }
+        });
+        assert_eq!(
+            narrate_subagent_spawn(&external, ToolNarrationPhase::Failed, None),
+            "Failed to launch external agent (partner-agent)"
+        );
+    }
+
+    #[test]
+    fn subagent_spawn_narration_is_localized() {
+        let call = serde_json::json!({
+            "name": "Orbit Scout",
+            "target": { "type": "subagent" }
+        });
+        assert_eq!(
+            narrate_subagent_spawn(&call, ToolNarrationPhase::Started, Some("uk")),
+            "Запускаю субагента Orbit Scout"
         );
     }
 }
