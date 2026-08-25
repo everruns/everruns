@@ -396,6 +396,7 @@ mod tests {
             role,
             content: vec![ContentPart::Text(TextContentPart::new(text))],
             phase: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
