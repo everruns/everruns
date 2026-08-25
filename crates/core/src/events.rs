@@ -3853,8 +3853,12 @@ mod tests {
         assert!(json.contains("turn_id"));
         assert!(json.contains("openai"));
         assert!(json.contains("rs_abc"));
-        assert!(json.contains("OPAQUE_BLOB"));
         assert!(json.contains("safe summary"));
+        // Opaque replay state is not event data. The event publishes identity
+        // and curated summary only; signatures and encrypted context stay on
+        // the message's reasoning parts, for the driver to hand back.
+        assert!(!json.contains("encrypted_content"));
+        assert!(!json.contains("signature"));
     }
 
     #[test]

@@ -7,7 +7,6 @@ expression: data
   "provider": "openai",
   "model": "gpt-5.5",
   "item_id": "rs_test",
-  "encrypted_content": "OPAQUE",
   "summary": [
     "safe summary"
   ],
