@@ -1,5 +1,12 @@
 # Everruns Knowledge Update Log
 
+## 2026-08-24
+
+* **Output retention is not a recovery affordance.** Persistence-enabled tools
+  retain non-empty output in the session filesystem, but expose model-facing
+  recovery paths only for content absent from the inline result. Complete output
+  must not induce a redundant file-tool round.
+
 ## 2026-08-22
 
 * **A scheduled session's GitHub identity is not negotiable, so "try another

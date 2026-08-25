@@ -181,7 +181,7 @@ All exec tools accept an `output` parameter controlling how much output is retur
 | `verbose` | ~16 KiB | Test failures, error investigation |
 | `full` | unlimited | Raw output, no truncation, when the LLM needs every line |
 
-Default is `auto`. In `auto` mode, the resolved budget depends on the process exit code: successful runs (`exit_code == 0`) collapse to `AUTO_SUCCESS_BUDGET` so the model relies on the persisted log; non-zero exits resolve to `normal` (~8 KiB) so failures stay debuggable in-loop. `AUTO_SUCCESS_BUDGET` is intentionally sized so the inline `stdout` field, including the `[full output saved to ... — use read_file ...]` pointer that `PersistOutputHook` appends, stays around 512 bytes total. The pointer uses the session filesystem's display identity. `raw_output` always carries the full cleaned output for persistence hooks, regardless of mode. The persistence hook reads the original tool-call argument and does not re-resolve explicit `silent`/`concise`/`normal`/`verbose`/`full` modes to `auto`; those modes retain their fixed inline window and ignore exit code.
+Default is `auto`. In `auto` mode, the resolved budget depends on the process exit code: successful runs (`exit_code == 0`) collapse to `AUTO_SUCCESS_BUDGET`; non-zero exits resolve to `normal` (~8 KiB) so failures stay debuggable in-loop. When that budget omits content, `PersistOutputHook` adds a recovery pointer and keeps the inline `stdout` field around 512 bytes total. When all content fits inline, persistence remains internal and no recovery affordance is exposed. Model-visible pointers use the session filesystem's display identity. `raw_output` always carries the full cleaned output for persistence hooks, regardless of mode. The persistence hook reads the original tool-call argument and does not re-resolve explicit `silent`/`concise`/`normal`/`verbose`/`full` modes to `auto`; those modes retain their fixed inline window and ignore exit code.
 
 Budgets apply to stdout; stderr is capped at `min(budget, 4096)` to keep error output proportional. Tools that set the `persist_output` hint persist non-empty full output to `/outputs/` via `tool_output_persistence`, stdout to `/outputs/{tool_call_id}.stdout`, stderr to `/outputs/{tool_call_id}.stderr`, and the files are readable with `read_file`. The persisted files are the source of truth for full logs; the inline payload is sized for next-step reasoning. See `crates/core/src/tool_output_sanitizer.rs` for budget constants, `output_verbosity_budget()`, and `resolve_auto_mode()`.
 
@@ -210,8 +210,8 @@ Human-facing exec tools should return a structured result instead of a single co
 | `hint` | string | Short diagnostic hint for signal exits or common recovery advice |
 | `truncated` | boolean | Whether stdout or stderr was truncated for the inline result |
 | `total_lines` | integer | Total stdout line count before truncation |
-| `output_files` | string[] | Model-visible, file-tool-readable paths containing full persisted output |
-| `full_output` | string | Model-visible, file-tool-readable stdout path when persisted |
+| `output_files` | string[] | Model-visible, file-tool-readable paths for persisted content absent inline |
+| `full_output` | string | Model-visible, file-tool-readable stdout path when stdout is limited inline |
 
 **Legacy compatibility:** Tools may continue to carry a combined pre-truncation string in `ToolResult.raw_output` for persistence hooks and logging, but the user-visible JSON contract should use `stdout`/`stderr`.
 
@@ -353,7 +353,7 @@ Two hook slots run in sequence:
 2. **Final hooks** (`final_post_tool_hooks`), always-on infrastructure (e.g. EVE-225 hard limit)
 
 Current hooks:
-- **PersistOutputHook** (`tool_output_persistence` capability; also installed as an always-on final hook): When a tool declares `persist_output: true` in hints, writes stdout to `/outputs/{tool_call_id}.stdout` and stderr to `/outputs/{tool_call_id}.stderr` in session VFS, injecting `full_output`, `total_lines`, and `output_files` into the result. It skips cleanly if no session file store is present, and skips if another hook already injected `output_files`. See `crates/builtins/src/tool_output_persistence.rs`.
+- **PersistOutputHook** (`tool_output_persistence` capability; also installed as an always-on final hook): When a tool declares `persist_output: true` in hints, writes stdout to `/outputs/{tool_call_id}.stdout` and stderr to `/outputs/{tool_call_id}.stderr` in session VFS. It injects `full_output`, `total_lines`, and `output_files` only for persisted content absent from the inline result, keeping complete-output retention internal. It skips cleanly if no session file store is present, and skips if another hook already injected `output_files`. See `crates/builtins/src/tool_output_persistence.rs`.
 - **DistillOutputHook** (`tool_output_distillation` capability): For tools that do *not* declare `persist_output` (notably MCP and `web_fetch`), produces a content-aware compact inline view of large results (array sampling, string head+tail, unified-diff summary) while self-persisting the full original to `/outputs/{tool_call_id}.stdout` and injecting the same `output_files` pointer. Runs as a capability hook (before the final hooks); the `output_files` guard above prevents double-writes with PersistOutputHook. Restores the verbatim original if persistence fails. See `crates/builtins/src/tool_output_distillation.rs` and `knowledge/execution/tool-output-distillation.md`.
 
 Current final hooks (always-on, cannot be removed):
