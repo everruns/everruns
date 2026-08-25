@@ -417,15 +417,21 @@ async fn reasoning_items_replay_under_their_provider_ids() {
     assert_eq!(
         reasoning_items,
         vec![
+            // `summary` is required on a replayed reasoning item: omitting it
+            // is a 400 from the live API, which is what the multi-turn live
+            // test caught. An item that carried no summary replays as an empty
+            // array, not as an absent field.
             &serde_json::json!({
                 "type": "reasoning",
                 "id": "rs_first",
                 "encrypted_content": "blob-one",
+                "summary": [],
             }),
             &serde_json::json!({
                 "type": "reasoning",
                 "id": "rs_second",
                 "encrypted_content": "blob-two",
+                "summary": [],
             }),
         ],
         "got: {request}"
