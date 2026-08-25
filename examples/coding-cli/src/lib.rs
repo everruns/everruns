@@ -12,8 +12,8 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
 use everruns::{
     Agent, AgentBuilder, AgentInstructionsConfig, BashkitShell, DuckDuckGo, FileSystem,
-    LocalConfig, LocalGitWorkspaceProvider, Model, Session, SessionId, Skills, StatelessTodoList,
-    WebFetch, Workspace, WorkspaceHead, WorkspaceHeadAccess, WorkspacePolicy,
+    LocalConfig, LocalGitWorkspaceProvider, Model, ReasoningEffort, Session, SessionId, Skills,
+    StatelessTodoList, WebFetch, Workspace, WorkspaceHead, WorkspaceHeadAccess, WorkspacePolicy,
 };
 
 /// System prompt for the coding agent.
@@ -161,8 +161,23 @@ impl Cli {
         self.offline || std::env::var_os("OPENAI_API_KEY").is_none()
     }
 
-    pub fn reasoning_effort(&self) -> Option<&str> {
-        self.reasoning_effort.as_deref()
+    /// Parsed reasoning effort.
+    ///
+    /// Returns an error for an unrecognized value rather than silently ignoring
+    /// it: an effort that does not parse means the model reasons at the
+    /// provider default, which looks identical to a typo having worked.
+    pub fn reasoning_effort(&self) -> Result<Option<ReasoningEffort>> {
+        self.reasoning_effort
+            .as_deref()
+            .map(|value| {
+                ReasoningEffort::parse(value).ok_or_else(|| {
+                    anyhow!(
+                        "unknown --reasoning-effort {value:?} \
+                         (expected none, minimal, low, medium, high, or xhigh)"
+                    )
+                })
+            })
+            .transpose()
     }
 
     pub fn prompt(&self) -> &[String] {

@@ -409,6 +409,15 @@ fn estimate_message_tokens(message: &Message) -> usize {
                     + result.error.as_ref().map_or(0, String::len)
                     + 20
             }
+            // Reasoning replays as provider-native artifacts, so its opaque
+            // payloads and text still occupy the request budget.
+            ContentPart::Reasoning(reasoning) => {
+                reasoning.provider.len()
+                    + reasoning.item_id.as_ref().map_or(0, String::len)
+                    + reasoning.signature.as_ref().map_or(0, String::len)
+                    + reasoning.encrypted.as_ref().map_or(0, String::len)
+                    + reasoning.display_text().map_or(0, |text| text.len())
+            }
         })
         .sum();
     (role_overhead + content_len) / TOKEN_CHARS

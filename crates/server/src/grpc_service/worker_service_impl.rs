@@ -818,8 +818,7 @@ impl WorkerService for WorkerServiceImpl {
             role: role.clone(),
             content,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            phase_source: None,
             controls,
             metadata,
             external_actor: None,
@@ -878,8 +877,12 @@ impl WorkerService for WorkerServiceImpl {
             controls,
             metadata,
             created_at: Some(datetime_to_proto_timestamp(message.created_at)),
-            thinking: message.thinking.clone(),
-            thinking_signature: message.thinking_signature.clone(),
+            phase: message
+                .phase
+                .map(|phase| phase.as_provider_str().to_string()),
+            phase_source: message
+                .phase_source
+                .map(|source| source.as_str().to_string()),
             external_actor,
         };
 
@@ -4346,8 +4349,7 @@ impl WorkerService for WorkerServiceImpl {
             role: everruns_core::MessageRole::User,
             content: vec![everruns_core::ContentPart::text(&req.content)],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,

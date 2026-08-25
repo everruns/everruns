@@ -2,6 +2,7 @@ use super::compaction::materially_reduced;
 use super::*;
 use crate::driver_registry::{LlmCallConfig, PromptCacheConfig, PromptCacheStrategy};
 use crate::events::CapabilityUsageKind;
+use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use serde_json::json;
 use std::collections::HashMap;
 
@@ -142,20 +143,14 @@ fn stream_stall_deadline_ignores_empty_keepalive_events() {
     assert!(!advances_stall_deadline(&LlmStreamEvent::TextDelta(
         String::new()
     )));
-    assert!(!advances_stall_deadline(&LlmStreamEvent::ThinkingDelta(
-        String::new()
-    )));
-    assert!(!advances_stall_deadline(
-        &LlmStreamEvent::ThinkingSignature("signature".to_string())
-    ));
-    assert!(!advances_stall_deadline(&LlmStreamEvent::ReasonItem {
-        provider: "openai".to_string(),
-        model: None,
-        item_id: "item_1".to_string(),
-        encrypted_content: None,
-        summary: vec![String::new()],
-        token_count: Some(0),
+    assert!(!advances_stall_deadline(&LlmStreamEvent::ReasoningDelta {
+        delta: String::new(),
+        summary: false,
     }));
+    // An artifact with neither replay state nor readable text is not progress.
+    assert!(!advances_stall_deadline(&LlmStreamEvent::ReasoningItem(
+        ReasoningContentPart::opaque("openai")
+    )));
 }
 
 #[test]
@@ -163,33 +158,22 @@ fn stream_stall_deadline_advances_on_output_progress() {
     assert!(advances_stall_deadline(&LlmStreamEvent::TextDelta(
         "hello".to_string()
     )));
-    assert!(advances_stall_deadline(&LlmStreamEvent::ThinkingDelta(
-        "thinking".to_string()
+    assert!(advances_stall_deadline(&LlmStreamEvent::ReasoningDelta {
+        delta: "thinking".to_string(),
+        summary: false,
+    }));
+    // Replay state alone is progress: the provider produced something the next
+    // request must carry, even with nothing readable to show.
+    assert!(advances_stall_deadline(&LlmStreamEvent::ReasoningItem(
+        ReasoningContentPart::opaque("openai")
+            .with_item_id("item_1")
+            .with_encrypted("encrypted")
     )));
-    assert!(advances_stall_deadline(&LlmStreamEvent::ReasonItem {
-        provider: "openai".to_string(),
-        model: Some("gpt-5.4".to_string()),
-        item_id: "item_1".to_string(),
-        encrypted_content: Some("encrypted".to_string()),
-        summary: vec![],
-        token_count: None,
-    }));
-    assert!(advances_stall_deadline(&LlmStreamEvent::ReasonItem {
-        provider: "openai".to_string(),
-        model: None,
-        item_id: "item_2".to_string(),
-        encrypted_content: None,
-        summary: vec!["summary".to_string()],
-        token_count: None,
-    }));
-    assert!(advances_stall_deadline(&LlmStreamEvent::ReasonItem {
-        provider: "openai".to_string(),
-        model: None,
-        item_id: "item_3".to_string(),
-        encrypted_content: None,
-        summary: vec![],
-        token_count: Some(1),
-    }));
+    assert!(advances_stall_deadline(&LlmStreamEvent::ReasoningItem(
+        ReasoningContentPart::opaque("openai").with_text(ReasoningText::Summary {
+            parts: vec!["summary".to_string()],
+        })
+    )));
     assert!(advances_stall_deadline(&LlmStreamEvent::ToolCalls(vec![
         ToolCall {
             id: "call_1".to_string(),

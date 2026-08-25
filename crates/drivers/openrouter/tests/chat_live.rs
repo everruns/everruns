@@ -14,6 +14,7 @@ use everruns_provider::driver_registry::{
     LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent, OpenRouterRoute,
     OpenRouterRoutingConfig,
 };
+use everruns_provider::model::ReasoningEffort;
 use futures::StreamExt;
 
 #[tokio::test]
@@ -34,7 +35,7 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
         temperature: None,
         max_tokens: Some(128),
         tools: vec![],
-        reasoning_effort: Some("low".to_string()),
+        reasoning_effort: Some(ReasoningEffort::Low),
         metadata,
         previous_response_id: None,
         provider_opaque_context: None,

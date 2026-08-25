@@ -543,7 +543,7 @@ impl InMemoryAgenticLoop {
     ///     content: vec![ContentPart::text("What is 2+2?")],
     ///     controls: Some(Controls {
     ///         model_id: None,
-    ///         reasoning: Some(ReasoningConfig { effort: Some("medium".into()) }),
+    ///         reasoning: Some(ReasoningConfig { effort: Some(ReasoningEffort::Medium) }),
     ///     }),
     ///     metadata: None,
     ///     tags: vec![],
@@ -567,8 +567,7 @@ impl InMemoryAgenticLoop {
             role: input.role,
             content: input.content,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            phase_source: None,
             controls: input.controls,
             metadata: input.metadata,
             external_actor: None,

@@ -58,6 +58,14 @@ enum Golden {
         finish: Option<String>,
     },
     Error(String),
+    Reasoning {
+        delta: String,
+        summary: bool,
+    },
+    ReasoningItem {
+        item_id: Option<String>,
+        encrypted: Option<String>,
+    },
 }
 
 fn golden(event: LlmStreamEvent) -> Golden {
@@ -88,6 +96,11 @@ fn golden(event: LlmStreamEvent) -> Golden {
             }
         }
         LlmStreamEvent::Error(e) => Golden::Error(e.to_string()),
+        LlmStreamEvent::ReasoningDelta { delta, summary } => Golden::Reasoning { delta, summary },
+        LlmStreamEvent::ReasoningItem(item) => Golden::ReasoningItem {
+            item_id: item.item_id.clone(),
+            encrypted: item.encrypted.clone(),
+        },
         other => panic!("unexpected event variant in golden capture: {other:?}"),
     }
 }
@@ -102,6 +115,11 @@ async fn drain_golden(mut stream: LlmResponseStream) -> Vec<Golden> {
         out.push(g);
     }
     out
+}
+
+/// Frame a minimal completed-response SSE body.
+fn sse_event(data: &str) -> String {
+    format!("data: {data}\n\ndata: [DONE]\n\n")
 }
 
 async fn mount_sse(server: &MockServer, body: String) {
@@ -280,5 +298,136 @@ async fn native_compact_context_is_the_exact_ordered_responses_input() {
             { "type": "message", "role": "user", "content": "last" },
             { "type": "message", "role": "user", "content": "reconstructed transcript" }
         ])
+    );
+}
+
+/// A reasoning request must opt into `reasoning.encrypted_content`.
+///
+/// The provider returns reasoning items with no payload unless asked, so
+/// without this the replay path exists but never has anything to replay: a
+/// stateless follow-up (after compaction, a model switch, or router failover)
+/// silently drops the reasoning chain with no error anywhere.
+#[tokio::test]
+async fn reasoning_request_opts_into_encrypted_content() {
+    let server = MockServer::start().await;
+    mount_sse(
+        &server,
+        sse_event(
+            r#"{"type":"response.completed","sequence_number":1,"response":{"id":"resp_1","usage":{"input_tokens":1,"output_tokens":1}}}"#,
+        ),
+    )
+    .await;
+
+    let mut call_config = config("gpt-5.2");
+    call_config.reasoning_effort = Some(everruns_provider::model::ReasoningEffort::High);
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            &call_config,
+        )
+        .await
+        .expect("stream should start");
+    let _ = drain_golden(stream).await;
+
+    let requests = server.received_requests().await.unwrap();
+    let request: serde_json::Value = requests[0].body_json().unwrap();
+    assert_eq!(
+        request["include"],
+        serde_json::json!(["reasoning.encrypted_content"]),
+        "got: {request}"
+    );
+}
+
+/// The opt-in is scoped to reasoning requests: a model that was not asked to
+/// reason has no reasoning payload to include.
+#[tokio::test]
+async fn non_reasoning_request_omits_include() {
+    let server = MockServer::start().await;
+    mount_sse(
+        &server,
+        sse_event(
+            r#"{"type":"response.completed","sequence_number":1,"response":{"id":"resp_1","usage":{"input_tokens":1,"output_tokens":1}}}"#,
+        ),
+    )
+    .await;
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            &config("gpt-4o"),
+        )
+        .await
+        .expect("stream should start");
+    let _ = drain_golden(stream).await;
+
+    let requests = server.received_requests().await.unwrap();
+    let request: serde_json::Value = requests[0].body_json().unwrap();
+    assert!(request.get("include").is_none(), "got: {request}");
+}
+
+/// Every reasoning item replays under the id the provider issued, and all of
+/// them replay — a turn with parallel tool calls emits several. Ids were
+/// previously synthesized from a counter, which the API cannot resolve.
+#[tokio::test]
+async fn reasoning_items_replay_under_their_provider_ids() {
+    let server = MockServer::start().await;
+    mount_sse(
+        &server,
+        sse_event(
+            r#"{"type":"response.completed","sequence_number":1,"response":{"id":"resp_1","usage":{"input_tokens":1,"output_tokens":1}}}"#,
+        ),
+    )
+    .await;
+
+    let mut assistant = LlmMessage::text(LlmMessageRole::Assistant, "working on it");
+    assistant.reasoning = vec![
+        everruns_provider::reasoning::ReasoningContentPart::opaque("openai")
+            .with_item_id("rs_first")
+            .with_encrypted("blob-one"),
+        everruns_provider::reasoning::ReasoningContentPart::opaque("openai")
+            .with_item_id("rs_second")
+            .with_encrypted("blob-two"),
+        // No id and no payload: not replayable, and must be dropped rather
+        // than reconstructed under a made-up id.
+        everruns_provider::reasoning::ReasoningContentPart::opaque("openai"),
+    ];
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![
+                LlmMessage::text(LlmMessageRole::User, "go"),
+                assistant,
+                LlmMessage::text(LlmMessageRole::User, "continue"),
+            ],
+            &config("gpt-5.2"),
+        )
+        .await
+        .expect("stream should start");
+    let _ = drain_golden(stream).await;
+
+    let requests = server.received_requests().await.unwrap();
+    let request: serde_json::Value = requests[0].body_json().unwrap();
+    let reasoning_items: Vec<&serde_json::Value> = request["input"]
+        .as_array()
+        .expect("input array")
+        .iter()
+        .filter(|item| item["type"] == "reasoning")
+        .collect();
+
+    assert_eq!(
+        reasoning_items,
+        vec![
+            &serde_json::json!({
+                "type": "reasoning",
+                "id": "rs_first",
+                "encrypted_content": "blob-one",
+            }),
+            &serde_json::json!({
+                "type": "reasoning",
+                "id": "rs_second",
+                "encrypted_content": "blob-two",
+            }),
+        ],
+        "got: {request}"
     );
 }

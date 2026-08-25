@@ -51,8 +51,7 @@ pub fn llm_message_from_message(msg: &Message) -> LlmMessage {
         },
         tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
         phase: msg.phase,
-        thinking: msg.thinking.clone(),
-        thinking_signature: msg.thinking_signature.clone(),
+        reasoning: msg.reasoning_parts().cloned().collect(),
     }
 }
 
@@ -80,6 +79,10 @@ pub fn llm_message_from_message_with_images(
 
     for part in &msg.content {
         match part {
+            // Reasoning travels on `LlmMessage::reasoning`, not in the content
+            // parts: drivers replay it in provider-native form and it must
+            // never be flattened into prompt text.
+            ContentPart::Reasoning(_) => {}
             ContentPart::Text(t) => {
                 parts.push(LlmContentPart::Text {
                     text: t.text.clone(),
@@ -147,8 +150,7 @@ pub fn llm_message_from_message_with_images(
         },
         tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
         phase: msg.phase,
-        thinking: msg.thinking.clone(),
-        thinking_signature: msg.thinking_signature.clone(),
+        reasoning: msg.reasoning_parts().cloned().collect(),
     }
 }
 
@@ -205,6 +207,7 @@ mod tests {
         OpenRouterServerTool, OpenRouterServerToolKind,
     };
     use crate::message::{ImageFileContentPart, TextContentPart};
+    use everruns_provider::model::ReasoningEffort;
 
     #[test]
     fn test_resolved_parallel_tool_calls_gating() {
@@ -300,10 +303,10 @@ mod tests {
     fn test_llm_call_config_builder_with_reasoning_effort() {
         let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
         let llm_config = llm_call_config_builder_from_agent(&runtime_agent)
-            .reasoning_effort("high")
+            .reasoning_effort(ReasoningEffort::High)
             .build();
 
-        assert_eq!(llm_config.reasoning_effort, Some("high".to_string()));
+        assert_eq!(llm_config.reasoning_effort, Some(ReasoningEffort::High));
     }
 
     #[test]
@@ -311,13 +314,13 @@ mod tests {
         let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
         let llm_config = llm_call_config_builder_from_agent(&runtime_agent)
             .model("claude-3-opus")
-            .reasoning_effort("medium")
+            .reasoning_effort(ReasoningEffort::Medium)
             .temperature(0.7)
             .max_tokens(1000)
             .build();
 
         assert_eq!(llm_config.model, "claude-3-opus");
-        assert_eq!(llm_config.reasoning_effort, Some("medium".to_string()));
+        assert_eq!(llm_config.reasoning_effort, Some(ReasoningEffort::Medium));
         assert_eq!(llm_config.temperature, Some(0.7));
         assert_eq!(llm_config.max_tokens, Some(1000));
     }
@@ -350,8 +353,7 @@ mod tests {
                 }),
             ],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -370,8 +372,7 @@ mod tests {
                 "Just text".to_string(),
             ))],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -401,8 +402,7 @@ mod tests {
                 }),
             ],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -422,8 +422,7 @@ mod tests {
             role: MessageRole::User,
             content: vec![ContentPart::Text(TextContentPart::new("Hello".to_string()))],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -454,8 +453,7 @@ mod tests {
                 }),
             ],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -497,8 +495,7 @@ mod tests {
                 filename: Some("missing.png".to_string()),
             })],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,

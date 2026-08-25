@@ -256,13 +256,15 @@ fn apply_private_reasoning_policy(
     reasoning.remove("summary");
     reasoning.insert("exclude".to_string(), Value::Bool(true));
 
-    if let Some(effort) = config
-        .reasoning_effort
-        .as_deref()
-        .map(str::trim)
-        .filter(|effort| !effort.is_empty())
-    {
-        reasoning.insert("effort".to_string(), Value::String(effort.to_string()));
+    // Unlike the direct providers, OpenRouter treats `effort: "none"` as a
+    // meaningful instruction that disables reasoning, rather than a field to
+    // omit. Send whatever effort was set, including `none`; only an unset
+    // effort leaves the field out.
+    if let Some(effort) = config.reasoning_effort {
+        reasoning.insert(
+            "effort".to_string(),
+            Value::String(effort.as_str().to_string()),
+        );
     }
 
     obj.insert("reasoning".to_string(), Value::Object(reasoning));

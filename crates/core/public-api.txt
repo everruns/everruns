@@ -784,12 +784,14 @@ everruns_core::message::AnnotationSource	struct
 everruns_core::message::ContentPart	enum
 everruns_core::message::ContentPart::Image	variant
 everruns_core::message::ContentPart::ImageFile	variant
+everruns_core::message::ContentPart::Reasoning	variant
 everruns_core::message::ContentPart::Text	variant
 everruns_core::message::ContentPart::ToolCall	variant
 everruns_core::message::ContentPart::ToolResult	variant
 everruns_core::message::ContentType	enum
 everruns_core::message::ContentType::Image	variant
 everruns_core::message::ContentType::ImageFile	variant
+everruns_core::message::ContentType::Reasoning	variant
 everruns_core::message::ContentType::Text	variant
 everruns_core::message::ContentType::ToolCall	variant
 everruns_core::message::ContentType::ToolResult	variant
@@ -802,6 +804,8 @@ everruns_core::message::InputContentPart::Image	variant
 everruns_core::message::InputContentPart::ImageFile	variant
 everruns_core::message::InputContentPart::Text	variant
 everruns_core::message::Message	struct
+everruns_core::message::Message::phase	struct_field
+everruns_core::message::Message::reasoning_parts	function
 everruns_core::message::MessageRole	enum
 everruns_core::message::MessageRole::Agent	variant
 everruns_core::message::MessageRole::System	variant

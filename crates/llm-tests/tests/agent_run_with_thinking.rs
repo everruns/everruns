@@ -14,6 +14,7 @@
 
 mod llm_test_matrix;
 
+use everruns_provider::model::ReasoningEffort;
 use everruns_provider::provider::DriverId;
 use llm_test_matrix::*;
 use rstest::rstest;
@@ -85,7 +86,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
                 model_id: None,
                 locale: None,
                 reasoning: Some(ReasoningConfig {
-                    effort: Some("high".into()),
+                    effort: Some(ReasoningEffort::High),
                 }),
                 error_disclosure: None,
                 hints: None,
@@ -102,20 +103,16 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
         // a thinking block; for providers that keep reasoning on the private
         // `thinking` field, require it in the acceptance check so we retry rather
         // than accept an attempt that would fail the reasoning assertions below.
-        let reasoning_captured = if config.reasoning_on_thinking_field {
-            runner
-                .messages()
-                .await
-                .ok()
-                .and_then(|msgs| {
-                    msgs.into_iter()
-                        .find(|m| m.role == MessageRole::Agent)
-                        .map(|m| m.thinking.is_some_and(|t| !t.is_empty()))
-                })
-                .unwrap_or(false)
-        } else {
-            true
-        };
+        let reasoning_captured = runner
+            .messages()
+            .await
+            .ok()
+            .and_then(|msgs| {
+                msgs.into_iter()
+                    .find(|m| m.role == MessageRole::Agent)
+                    .map(|m| m.has_reasoning())
+            })
+            .unwrap_or(false);
         if result.success && result.response.contains("503") && reasoning_captured {
             accepted = Some((runner, result));
             break;
@@ -152,11 +149,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
         .iter()
         .find(|m| m.role == MessageRole::Agent)
         .expect("Should have an agent message");
-    let reasoning_captured = !config.reasoning_on_thinking_field
-        || assistant_msg
-            .thinking
-            .as_ref()
-            .is_some_and(|thinking| !thinking.is_empty());
+    let reasoning_captured = assistant_msg.has_reasoning();
 
     // A successful adaptive-thinking generation can legitimately skip a
     // thinking block or miss the sampled arithmetic answer. Provider errors and
@@ -173,38 +166,52 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
         return;
     }
 
-    if config.reasoning_on_thinking_field {
-        // Anthropic (and OpenAI o-series) keep raw reasoning on the private
-        // `thinking` field.
-        assert!(
-            assistant_msg.thinking.is_some(),
-            "Agent message should have thinking content for {config}"
-        );
-        assert!(
-            !assistant_msg.thinking.as_ref().unwrap().is_empty(),
-            "Thinking content should not be empty for {config}"
-        );
-    } else {
-        // OpenAI GPT-5.x surfaces its readable reasoning summary as public
-        // text instead of on the private `thinking` field. The summary is
-        // folded into the response, which we already asserted is non-empty and
-        // carries the worked-out answer above, so `thinking` must stay empty
-        // (absent or blank).
-        assert!(
-            assistant_msg.thinking.as_ref().is_none_or(|t| t.is_empty()),
-            "GPT-5.x reasoning summary should surface as public text, not on \
-             the private thinking field, for {config}"
-        );
+    // Every provider now records reasoning the same way: ordered reasoning
+    // parts on the message. The old split — raw text on a private `thinking`
+    // field for some providers, and folded into the visible answer for GPT-5.x
+    // — is gone, and with it the per-model exception this test used to carry.
+    assert!(
+        assistant_msg.has_reasoning(),
+        "Agent message should carry reasoning artifacts for {config}"
+    );
+
+    let reasoning_parts: Vec<_> = assistant_msg.reasoning_parts().collect();
+    assert!(
+        reasoning_parts
+            .iter()
+            .any(|part| part.display_text().is_some_and(|text| !text.is_empty())),
+        "At least one reasoning artifact should carry readable text for {config}"
+    );
+
+    // Reasoning must never be folded into the answer text. A summary routed to
+    // the assistant-text channel is persisted as the model's answer and
+    // replayed as its own prior output.
+    for part in &reasoning_parts {
+        if let Some(text) = part.display_text() {
+            assert!(
+                !assistant_msg
+                    .content
+                    .iter()
+                    .filter_map(everruns_core::ContentPart::as_text)
+                    .any(|answer| answer.contains(text.trim())),
+                "Reasoning text leaked into the assistant answer for {config}"
+            );
+        }
     }
 
-    // thinking_signature is provider-specific:
-    // - Anthropic: cryptographic signature (always present with thinking)
-    // - OpenAI o-series: encrypted_content (present when model uses encrypted reasoning)
-    // - OpenAI GPT-5.x: not used (reasoning summary is readable, not encrypted)
+    // Replay state is provider-specific, and without it multi-turn reasoning
+    // silently degrades.
+    // `DriverId` is a newtype over a string, not an enum, so compare rather
+    // than pattern-match.
     if config.provider_type == DriverId::Anthropic {
         assert!(
-            assistant_msg.thinking_signature.is_some(),
-            "Anthropic should have thinking_signature for multi-turn"
+            reasoning_parts.iter().any(|part| part.signature.is_some()),
+            "Anthropic reasoning must carry a per-block signature for multi-turn"
+        );
+    } else if config.provider_type == DriverId::OpenAI {
+        assert!(
+            reasoning_parts.iter().any(|part| part.item_id.is_some()),
+            "OpenAI reasoning items must carry the provider-issued id"
         );
     }
 }
@@ -255,7 +262,7 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
                     model_id: None,
                     locale: None,
                     reasoning: Some(ReasoningConfig {
-                        effort: Some("low".into()),
+                        effort: Some(ReasoningEffort::Low),
                     }),
                     error_disclosure: None,
                     hints: None,

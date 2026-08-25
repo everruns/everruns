@@ -536,7 +536,7 @@ pub(crate) async fn run_app_agent_stream(
             base: agui_base_event(),
             messages: snapshot_messages
                 .iter()
-                .map(to_ag_ui_message)
+                .filter_map(to_ag_ui_message)
                 .collect::<Vec<_>>(),
         }),
     ];
@@ -939,23 +939,32 @@ fn build_external_actor(name: Option<&String>) -> Option<ExternalActor> {
     })
 }
 
-fn to_ag_ui_message(message: &crate::api::messages::Message) -> AgUiMessage {
+fn to_ag_ui_message(message: &crate::api::messages::Message) -> Option<AgUiMessage> {
     let id = AgUiMessageId::from(message.id.uuid());
     let content = public_content_parts_to_string(&message.content);
 
-    match message.role {
+    Some(match message.role {
         ApiMessageRole::User => AgUiMessage::User {
             id,
             content,
             name: None,
         },
-        ApiMessageRole::Agent => AgUiMessage::Assistant {
-            id,
-            content: (!content.is_empty()).then_some(content),
-            name: None,
-            tool_calls: None,
-        },
-    }
+        ApiMessageRole::Agent => {
+            // Replay must agree with the live stream. Live translation drops
+            // commentary from the assistant-text channel; emitting it here
+            // meant watching a session and reloading it produced different
+            // transcripts, with no signal that anything differed.
+            if matches!(message.phase, Some(ExecutionPhase::Commentary)) {
+                return None;
+            }
+            AgUiMessage::Assistant {
+                id,
+                content: (!content.is_empty()).then_some(content),
+                name: None,
+                tool_calls: None,
+            }
+        }
+    })
 }
 
 fn public_content_parts_to_string(parts: &[ContentPart]) -> String {
@@ -978,6 +987,10 @@ fn public_content_part_to_string(part: &ContentPart) -> Option<String> {
             image.filename.as_deref().unwrap_or("unnamed")
         )),
         ContentPart::ToolCall(_) | ContentPart::ToolResult(_) => None,
+        // Reasoning belongs to the reasoning channel and is projected there by
+        // the reason.* handlers. Rendering it as assistant text would move
+        // content across channels, which the projection contract forbids.
+        ContentPart::Reasoning(_) => None,
     }
 }
 
@@ -1892,7 +1905,6 @@ mod tests {
                 provider: "openai".to_string(),
                 model: Some("gpt-5.5".to_string()),
                 item_id: "rs_private".to_string(),
-                encrypted_content: Some("OPAQUE-DO-NOT-LEAK".to_string()),
                 summary: vec!["Looked up private CRM details.".to_string()],
                 token_count: Some(42),
             },
@@ -1921,7 +1933,6 @@ mod tests {
                 provider: "openai".to_string(),
                 model: Some("gpt-5.5".to_string()),
                 item_id: "rs_1".to_string(),
-                encrypted_content: Some("OPAQUE-DO-NOT-LEAK".to_string()),
                 summary: vec!["Considered the file layout.".to_string()],
                 token_count: Some(42),
             },
@@ -1982,7 +1993,6 @@ mod tests {
                 provider: "openai".to_string(),
                 model: None,
                 item_id: "rs_empty".to_string(),
-                encrypted_content: Some("OPAQUE".to_string()),
                 summary: vec![String::new(), "   ".to_string()],
                 token_count: None,
             },
@@ -2024,7 +2034,6 @@ mod tests {
                 provider: "openai".to_string(),
                 model: None,
                 item_id: "rs_sep".to_string(),
-                encrypted_content: None,
                 summary: vec!["Summarized the plan.".to_string()],
                 token_count: None,
             },
@@ -2091,7 +2100,6 @@ mod tests {
                 provider: "openai".to_string(),
                 model: None,
                 item_id: "rs_app".to_string(),
-                encrypted_content: None,
                 summary: vec!["Summary tail.".to_string()],
                 token_count: None,
             },

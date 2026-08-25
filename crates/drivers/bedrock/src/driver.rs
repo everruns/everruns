@@ -798,8 +798,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::User,
@@ -807,8 +806,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
         let (system_blocks, bedrock_msgs) = build_messages(&messages).unwrap();
@@ -851,8 +849,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: None,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         };
         assert!(build_tool_result_block(&msg).is_none());
     }

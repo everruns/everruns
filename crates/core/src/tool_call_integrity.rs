@@ -129,6 +129,9 @@ fn message_has_visible_content(message: &Message) -> bool {
         ContentPart::Text(text) => !text.text.is_empty(),
         ContentPart::Image(_) | ContentPart::ImageFile(_) => true,
         ContentPart::ToolCall(_) | ContentPart::ToolResult(_) => true,
+        // Reasoning is never user-visible content on its own: a message
+        // carrying only reasoning has nothing to show and nothing to act on.
+        ContentPart::Reasoning(_) => false,
     })
 }
 
@@ -137,10 +140,7 @@ fn llm_message_has_visible_content(message: &LlmMessage) -> bool {
         LlmMessageContent::Text(text) => !text.is_empty(),
         LlmMessageContent::Parts(parts) => !parts.is_empty(),
     };
-    has_content
-        || message.tool_calls.is_some()
-        || message.thinking.is_some()
-        || message.thinking_signature.is_some()
+    has_content || message.tool_calls.is_some() || !message.reasoning.is_empty()
 }
 
 #[cfg(test)]
@@ -168,8 +168,7 @@ mod tests {
             ]),
             tool_call_id: None,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         }
     }
 
@@ -180,8 +179,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: Some(id.to_string()),
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         }
     }
 

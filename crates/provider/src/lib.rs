@@ -37,6 +37,7 @@ pub mod openai_protocol;
 pub mod openresponses_protocol;
 pub mod openresponses_types;
 pub mod provider;
+pub mod reasoning;
 pub mod runtime_provider;
 pub mod stream_accumulator;
 #[cfg(feature = "http")]
@@ -74,7 +75,7 @@ pub use error::{
     AgentLoopError, FileSystemError, FileSystemErrorClass, LlmError, LlmErrorKind, Result,
     StoreResultExt, classify_fs_error, from_json, json_val,
 };
-pub use execution_phase::ExecutionPhase;
+pub use execution_phase::{ExecutionPhase, PhaseSource};
 pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata};
 pub use model::{
     CostTier, Modality, Model, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelSource,
@@ -94,6 +95,7 @@ pub use openai_protocol::OpenAIProtocolChatDriver;
 #[cfg(feature = "http")]
 pub use openresponses_protocol::{OpenResponsesProtocolChatDriver, OpenResponsesRequestExtension};
 pub use provider::{Provider as ProviderRecord, ProviderStatus, ProviderTraceConfig};
+pub use reasoning::{ReasoningContentPart, ReasoningText};
 pub use runtime_provider::{
     BearerAuth, Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey,
     ProviderRegistry, ResolvedProviderRequest, RuntimeProvider, RuntimeProviderRegistry,

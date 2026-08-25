@@ -816,6 +816,7 @@ impl BraintrustListener {
                 everruns_core::ContentPart::ImageFile(_) => "image_file",
                 everruns_core::ContentPart::ToolCall(_) => "tool_call",
                 everruns_core::ContentPart::ToolResult(_) => "tool_result",
+                everruns_core::ContentPart::Reasoning(_) => "reasoning",
             }).collect::<Vec<_>>(),
             "text_part_count": parts.iter().filter(|part| matches!(part, everruns_core::ContentPart::Text(_))).count(),
         })

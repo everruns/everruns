@@ -46,7 +46,13 @@ fn config(model: &str) -> LlmCallConfig {
 enum Golden {
     Text(String),
     Thinking(String),
-    ThinkingSignature(String),
+    /// One completed reasoning block: its text paired with the signature that
+    /// signs *that* block.
+    ReasoningItem {
+        text: Option<String>,
+        signature: Option<String>,
+        redacted: bool,
+    },
     ToolCall {
         name: String,
         args: String,
@@ -65,8 +71,20 @@ enum Golden {
 fn golden(event: LlmStreamEvent) -> Golden {
     match event {
         LlmStreamEvent::TextDelta(t) => Golden::Text(t),
-        LlmStreamEvent::ThinkingDelta(t) => Golden::Thinking(t),
-        LlmStreamEvent::ThinkingSignature(s) => Golden::ThinkingSignature(s),
+        LlmStreamEvent::ReasoningDelta { delta, .. } => Golden::Thinking(delta),
+        LlmStreamEvent::ReasoningItem(item) => Golden::ReasoningItem {
+            text: match &item.text {
+                Some(everruns_provider::reasoning::ReasoningText::Plain { text }) => {
+                    Some(text.clone())
+                }
+                _ => None,
+            },
+            signature: item.signature.clone(),
+            redacted: matches!(
+                item.text,
+                Some(everruns_provider::reasoning::ReasoningText::Redacted)
+            ),
+        },
         LlmStreamEvent::ToolCalls(calls) => {
             let tc = &calls[0];
             Golden::ToolCall {
@@ -253,7 +271,11 @@ async fn thinking_stream_golden_events() {
         drain_golden(stream).await,
         vec![
             Golden::Thinking("Let me think".into()),
-            Golden::ThinkingSignature("sig-abc".into()),
+            Golden::ReasoningItem {
+                text: Some("Let me think".into()),
+                signature: Some("sig-abc".into()),
+                redacted: false,
+            },
             Golden::Text("Answer".into()),
             Golden::Done {
                 total: Some(15),
@@ -483,5 +505,149 @@ async fn cache_diagnostics_absent_when_not_requested() {
             .headers
             .get("anthropic-beta")
             .is_none_or(|value| !value.to_str().unwrap().contains("cache-diagnosis"))
+    );
+}
+
+/// Interleaved thinking: two thinking blocks in one response, each signed
+/// separately, with a tool call between them.
+///
+/// This is the shape the interleaved-thinking beta produces, and the beta is
+/// enabled whenever budget thinking meets tools — the normal agent
+/// configuration. The previous model concatenated both blocks' text into one
+/// string and kept only the last signature, producing a block whose signature
+/// does not sign its content, which Anthropic rejects. Each block must survive
+/// as its own artifact with its own signature.
+#[tokio::test]
+async fn interleaved_thinking_keeps_each_signature_with_its_own_block() {
+    let server = MockServer::start().await;
+    let body = [
+        sse_event(
+            "message_start",
+            r#"{"type":"message_start","message":{"id":"msg_i","usage":{"input_tokens":8}}}"#,
+        ),
+        // First thinking block.
+        sse_event(
+            "content_block_start",
+            r#"{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}"#,
+        ),
+        sse_event(
+            "content_block_delta",
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"First I check the logs"}}"#,
+        ),
+        sse_event(
+            "content_block_delta",
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig-first"}}"#,
+        ),
+        sse_event(
+            "content_block_stop",
+            r#"{"type":"content_block_stop","index":0}"#,
+        ),
+        // Second thinking block, separately signed.
+        sse_event(
+            "content_block_start",
+            r#"{"type":"content_block_start","index":1,"content_block":{"type":"thinking","thinking":""}}"#,
+        ),
+        sse_event(
+            "content_block_delta",
+            r#"{"type":"content_block_delta","index":1,"delta":{"type":"thinking_delta","thinking":"Now I read the diff"}}"#,
+        ),
+        sse_event(
+            "content_block_delta",
+            r#"{"type":"content_block_delta","index":1,"delta":{"type":"signature_delta","signature":"sig-second"}}"#,
+        ),
+        sse_event(
+            "content_block_stop",
+            r#"{"type":"content_block_stop","index":1}"#,
+        ),
+        sse_event(
+            "message_delta",
+            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7}}"#,
+        ),
+        sse_event("message_stop", r#"{"type":"message_stop"}"#),
+    ]
+    .concat();
+    mount_sse(&server, body).await;
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![LlmMessage::text(LlmMessageRole::User, "think twice")],
+            &config("claude-sonnet-4-5"),
+        )
+        .await
+        .expect("stream should start");
+
+    let events = drain_golden(stream).await;
+    let items: Vec<&Golden> = events
+        .iter()
+        .filter(|g| matches!(g, Golden::ReasoningItem { .. }))
+        .collect();
+
+    assert_eq!(
+        items,
+        vec![
+            &Golden::ReasoningItem {
+                text: Some("First I check the logs".into()),
+                signature: Some("sig-first".into()),
+                redacted: false,
+            },
+            &Golden::ReasoningItem {
+                text: Some("Now I read the diff".into()),
+                signature: Some("sig-second".into()),
+                redacted: false,
+            },
+        ],
+        "each thinking block must keep the signature that signs it; \
+         concatenating them and keeping the last signature is what the \
+         provider rejects"
+    );
+}
+
+/// Withheld reasoning (`redacted_thinking`) arrives whole and carries no
+/// readable text, but is still a replayable artifact. It was previously
+/// unrepresented anywhere in the workspace and silently dropped.
+#[tokio::test]
+async fn redacted_thinking_survives_as_an_opaque_artifact() {
+    let server = MockServer::start().await;
+    let body = [
+        sse_event(
+            "message_start",
+            r#"{"type":"message_start","message":{"id":"msg_r","usage":{"input_tokens":4}}}"#,
+        ),
+        sse_event(
+            "content_block_start",
+            r#"{"type":"content_block_start","index":0,"content_block":{"type":"redacted_thinking","data":"ENCRYPTED_BLOB"}}"#,
+        ),
+        sse_event(
+            "content_block_stop",
+            r#"{"type":"content_block_stop","index":0}"#,
+        ),
+        sse_event(
+            "message_delta",
+            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}"#,
+        ),
+        sse_event("message_stop", r#"{"type":"message_stop"}"#),
+    ]
+    .concat();
+    mount_sse(&server, body).await;
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            &config("claude-sonnet-4-5"),
+        )
+        .await
+        .expect("stream should start");
+
+    let events = drain_golden(stream).await;
+    assert!(
+        events.iter().any(|g| matches!(
+            g,
+            Golden::ReasoningItem {
+                redacted: true,
+                text: None,
+                ..
+            }
+        )),
+        "redacted_thinking must survive as an opaque artifact, got: {events:?}"
     );
 }

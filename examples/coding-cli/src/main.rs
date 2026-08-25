@@ -8,7 +8,7 @@ use crossterm::event::{self, Event as TerminalEvent, KeyCode, KeyEventKind, KeyM
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use everruns::{
     Agent, AgentBuilder, Controls, InMemoryEngine, InputMessage, Model, OpenAI, ReasoningConfig,
-    Session, SessionEventKind, ToolStartContext, WorkspaceHeadAccess,
+    ReasoningEffort, Session, SessionEventKind, ToolStartContext, WorkspaceHeadAccess,
 };
 use everruns_coding_cli::{Cli, CodingWorkspace, SessionMode, coding_agent, shared_head};
 use ratatui::backend::CrosstermBackend;
@@ -80,7 +80,7 @@ async fn main() -> Result<()> {
     eprintln!("state={}", state_dir.display());
 
     if let Some(prompt) = cli.prompt_text() {
-        run_prompt(&session, &prompt, false, cli.reasoning_effort()).await
+        run_prompt(&session, &prompt, false, cli.reasoning_effort()?).await
     } else if std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
         tui(&cli, engine, agent, session, model).await
     } else {
@@ -151,12 +151,12 @@ fn prompt_for_approval(context: &ToolStartContext) -> std::result::Result<(), St
     }
 }
 
-fn prompt_input(prompt: &str, reasoning_effort: Option<&str>) -> InputMessage {
+fn prompt_input(prompt: &str, reasoning_effort: Option<ReasoningEffort>) -> InputMessage {
     let mut input = InputMessage::user(prompt);
     if let Some(effort) = reasoning_effort {
         input.controls = Some(Controls {
             reasoning: Some(ReasoningConfig {
-                effort: Some(effort.to_string()),
+                effort: Some(effort),
             }),
             ..Controls::default()
         });
@@ -168,7 +168,7 @@ async fn run_prompt(
     session: &Session,
     prompt: &str,
     verbose: bool,
-    reasoning_effort: Option<&str>,
+    reasoning_effort: Option<ReasoningEffort>,
 ) -> Result<()> {
     let mut events = session.events();
     let turn = session
@@ -250,7 +250,7 @@ async fn handle_input(
         }
         "/model" => eprintln!("model={model}"),
         command if command.starts_with('/') => eprintln!("unknown command: {command}"),
-        prompt => run_prompt(&active.session, prompt, true, cli.reasoning_effort()).await?,
+        prompt => run_prompt(&active.session, prompt, true, cli.reasoning_effort()?).await?,
     }
     Ok(false)
 }

@@ -14,10 +14,15 @@ use crate::typed_id::{ImageId, MessageId, ModelId};
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
-use everruns_provider::execution_phase::ExecutionPhase;
+use everruns_provider::execution_phase::{ExecutionPhase, PhaseSource};
+use everruns_provider::reasoning::ReasoningContentPart;
 /// Message role in the conversation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+// Published as `RuntimeMessageRole`. The REST API exposes only `user` and
+// `agent` (`api::messages::MessageRole`); publishing this four-variant runtime
+// enum under the plain name made clients model roles the API never returns.
+#[cfg_attr(feature = "openapi", schema(as = RuntimeMessageRole))]
 #[serde(rename_all = "snake_case")]
 pub enum MessageRole {
     /// System message (instructions)
@@ -94,9 +99,13 @@ impl ExternalActor {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ReasoningConfig {
-    /// Effort level for reasoning (low, medium, high)
+    /// Effort level for reasoning.
+    ///
+    /// Typed rather than free-form: the effort taxonomy is closed, and each
+    /// driver previously re-parsed the string with its own case handling, which
+    /// let `minimal` silently mean "no reasoning" on budget-based models.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub effort: Option<String>,
+    pub effort: Option<everruns_provider::model::ReasoningEffort>,
 }
 
 /// Runtime controls for message processing
@@ -170,6 +179,11 @@ impl Controls {
 /// A message in the conversation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+// Published as `RuntimeMessage`: this is the canonical runtime/event message,
+// distinct from the REST resource in `api::messages::Message` (which adds
+// `session_id` and `sequence`). Both previously claimed the name `Message` in
+// one OpenAPI document, so generated clients saw whichever won.
+#[cfg_attr(feature = "openapi", schema(as = RuntimeMessage))]
 pub struct Message {
     /// Unique message ID (format: message_{32-hex})
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "message_01933b5a00007000800000000000001"))]
@@ -190,16 +204,12 @@ pub struct Message {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<ExecutionPhase>,
 
-    /// Thinking content from extended thinking models (Anthropic Claude)
-    /// This is the model's chain-of-thought reasoning before producing the response.
-    /// Must be included in subsequent API calls when thinking is enabled.
+    /// Whether [`Self::phase`] was reported by the provider or inferred from
+    /// tool-call presence. A derived phase carries no information beyond
+    /// "this message called tools", so consumers that need a real
+    /// classification must be able to tell the two apart.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub thinking: Option<String>,
-
-    /// Cryptographic signature for thinking content (Anthropic Claude)
-    /// Required when sending thinking back in subsequent API calls.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub thinking_signature: Option<String>,
+    pub phase_source: Option<PhaseSource>,
 
     /// Runtime controls (model, reasoning, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -232,6 +242,7 @@ pub enum ContentType {
     ImageFile,
     ToolCall,
     ToolResult,
+    Reasoning,
 }
 
 impl std::fmt::Display for ContentType {
@@ -242,6 +253,7 @@ impl std::fmt::Display for ContentType {
             ContentType::ImageFile => write!(f, "image_file"),
             ContentType::ToolCall => write!(f, "tool_call"),
             ContentType::ToolResult => write!(f, "tool_result"),
+            ContentType::Reasoning => write!(f, "reasoning"),
         }
     }
 }
@@ -253,6 +265,7 @@ impl From<&str> for ContentType {
             "image_file" => ContentType::ImageFile,
             "tool_call" => ContentType::ToolCall,
             "tool_result" => ContentType::ToolResult,
+            "reasoning" => ContentType::Reasoning,
             _ => ContentType::Text,
         }
     }
@@ -527,6 +540,9 @@ pub enum ContentPart {
     ToolCall(ToolCallContentPart),
     /// Tool result content (result of tool execution)
     ToolResult(ToolResultContentPart),
+    /// Provider reasoning artifact, ordered against the text and tool calls it
+    /// was interleaved with.
+    Reasoning(ReasoningContentPart),
 }
 
 impl ContentPart {
@@ -572,6 +588,24 @@ impl ContentPart {
         ContentPart::ToolResult(ToolResultContentPart::new(tool_call_id, result, error))
     }
 
+    /// Create a reasoning content part
+    pub fn reasoning(part: ReasoningContentPart) -> Self {
+        ContentPart::Reasoning(part)
+    }
+
+    /// Get the reasoning artifact if this is a reasoning part
+    pub fn as_reasoning(&self) -> Option<&ReasoningContentPart> {
+        match self {
+            ContentPart::Reasoning(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    /// Whether this part is a reasoning artifact.
+    pub fn is_reasoning(&self) -> bool {
+        matches!(self, ContentPart::Reasoning(_))
+    }
+
     /// Get text if this is a text part
     pub fn as_text(&self) -> Option<&str> {
         match self {
@@ -593,6 +627,7 @@ impl ContentPart {
             ContentPart::ImageFile(_) => ContentType::ImageFile,
             ContentPart::ToolCall(_) => ContentType::ToolCall,
             ContentPart::ToolResult(_) => ContentType::ToolResult,
+            ContentPart::Reasoning(_) => ContentType::Reasoning,
         }
     }
 
@@ -689,6 +724,40 @@ impl InputContentPart {
 }
 
 impl Message {
+    /// Reasoning artifacts carried by this message, in emission order.
+    pub fn reasoning_parts(&self) -> impl Iterator<Item = &ReasoningContentPart> {
+        self.content.iter().filter_map(ContentPart::as_reasoning)
+    }
+
+    /// Whether this message carries any provider reasoning artifact.
+    pub fn has_reasoning(&self) -> bool {
+        self.content.iter().any(ContentPart::is_reasoning)
+    }
+
+    /// Readable reasoning across every artifact, joined for display.
+    ///
+    /// Display only. Replay must walk [`Message::reasoning_parts`] so each
+    /// artifact keeps its own signature and position.
+    pub fn reasoning_display_text(&self) -> Option<String> {
+        let joined = self
+            .reasoning_parts()
+            .filter_map(ReasoningContentPart::display_text)
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        (!joined.is_empty()).then_some(joined)
+    }
+
+    /// Replace every reasoning part with its publishable projection, dropping
+    /// opaque provider replay state. Used at API boundaries.
+    pub fn into_public(mut self) -> Self {
+        for part in &mut self.content {
+            if let ContentPart::Reasoning(r) = part {
+                *r = r.to_public();
+            }
+        }
+        self
+    }
+
     /// Override the generated message id.
     ///
     /// Streaming producers use this to allocate a public id before emitting
@@ -705,8 +774,7 @@ impl Message {
             role: MessageRole::User,
             content: vec![ContentPart::text(content)],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -721,8 +789,7 @@ impl Message {
             role: MessageRole::Agent,
             content: vec![ContentPart::text(content)],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -757,8 +824,7 @@ impl Message {
             role: MessageRole::Agent,
             content: parts,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -773,8 +839,7 @@ impl Message {
             role: MessageRole::System,
             content: vec![ContentPart::text(content)],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -798,8 +863,7 @@ impl Message {
                 error,
             ))],
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -834,8 +898,7 @@ impl Message {
             role: MessageRole::ToolResult,
             content,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -846,6 +909,13 @@ impl Message {
     /// Set the execution phase on this message and return self.
     pub fn with_phase(mut self, phase: ExecutionPhase) -> Self {
         self.phase = Some(phase);
+        self
+    }
+
+    /// Set the phase together with where it came from.
+    pub fn with_phase_from(mut self, phase: ExecutionPhase, source: PhaseSource) -> Self {
+        self.phase = Some(phase);
+        self.phase_source = Some(source);
         self
     }
 
@@ -896,6 +966,10 @@ impl Message {
             .iter()
             .map(|part| match part {
                 ContentPart::Text(t) => t.text.clone(),
+                // Reasoning is replayed as provider-native artifacts on
+                // `LlmMessage::reasoning`; it must never be flattened into
+                // prompt text. Filtered out below.
+                ContentPart::Reasoning(_) => String::new(),
                 ContentPart::Image(_) => "[Image]".to_string(),
                 ContentPart::ImageFile(_) => "[Image File]".to_string(),
                 ContentPart::ToolCall(tc) => {
@@ -915,6 +989,7 @@ impl Message {
                     }
                 }
             })
+            .filter(|rendered| !rendered.is_empty())
             .collect::<Vec<_>>()
             .join("\n")
     }

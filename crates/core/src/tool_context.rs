@@ -30,7 +30,7 @@ use std::sync::Arc;
 /// that never set an override see no behavior change.
 #[derive(Clone, Default)]
 pub struct ReasoningEffortHandle {
-    inner: Arc<std::sync::RwLock<Option<String>>>,
+    inner: Arc<std::sync::RwLock<Option<everruns_provider::model::ReasoningEffort>>>,
 }
 
 impl ReasoningEffortHandle {
@@ -40,29 +40,29 @@ impl ReasoningEffortHandle {
     }
 
     /// Create a handle pre-seeded with an effort override.
-    pub fn with_effort(effort: impl Into<String>) -> Self {
+    pub fn with_effort(effort: everruns_provider::model::ReasoningEffort) -> Self {
         Self {
-            inner: Arc::new(std::sync::RwLock::new(Some(effort.into()))),
+            inner: Arc::new(std::sync::RwLock::new(Some(effort))),
         }
     }
 
     /// Set (or replace) the override effort. Subsequent LLM steps in the same
     /// turn pick this up. Pass `None` to clear the override and fall back to the
     /// message-derived effort.
-    pub fn set(&self, effort: Option<String>) {
+    pub fn set(&self, effort: Option<everruns_provider::model::ReasoningEffort>) {
         // Recover from a poisoned lock so a panic elsewhere never silently
-        // disables mid-turn overrides; the stored value is a plain Option<String>
-        // with no broken invariant to worry about.
+        // disables mid-turn overrides; the stored value is a plain Option with
+        // no broken invariant to worry about.
         let mut guard = self.inner.write().unwrap_or_else(|e| e.into_inner());
         *guard = effort;
     }
 
     /// Read the current override effort, if any.
-    pub fn get(&self) -> Option<String> {
+    pub fn get(&self) -> Option<everruns_provider::model::ReasoningEffort> {
         // Recover from a poisoned lock rather than silently reverting to the
         // message-derived effort mid-turn (see `set`).
         let guard = self.inner.read().unwrap_or_else(|e| e.into_inner());
-        guard.clone()
+        *guard
     }
 }
 

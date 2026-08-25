@@ -65,7 +65,7 @@ async fn fireworks_chat_streams_response() {
     while let Some(event) = stream.next().await {
         match event.expect("stream item should not be a transport error") {
             LlmStreamEvent::TextDelta(delta) => text.push_str(&delta),
-            LlmStreamEvent::ThinkingDelta(delta) => thinking.push_str(&delta),
+            LlmStreamEvent::ReasoningDelta { delta, .. } => thinking.push_str(&delta),
             LlmStreamEvent::Done(meta) => {
                 done = true;
                 eprintln!(

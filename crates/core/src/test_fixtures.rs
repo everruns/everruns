@@ -78,8 +78,7 @@ impl TestMessageRetriever {
             role: input.role,
             content: input.content,
             phase: None,
-            thinking: None, // InputMessage doesn't include thinking (user messages don't have thinking)
-            thinking_signature: None,
+            phase_source: None,
             controls: input.controls,
             metadata: input.metadata,
             external_actor: None,

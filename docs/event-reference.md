@@ -33,12 +33,15 @@ Emitted when a user message is submitted to the session.
 
 ### output.message.started
 
-Emitted when the LLM starts generating a response. UI can show a "thinking" indicator.
+Emitted when the LLM starts generating a response. This marks the start of
+generation, not model reasoning: reasoning has its own events (see [Reasoning
+Events](#reasoning-events)) and its own channel.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `turn_id` | string | Turn ID this output belongs to |
 | `model` | string? | Optional model name being used |
+| `phase` | string? | Best-effort phase hint: `commentary` or `final_answer`. Absent means unclassified, never "reasoning". |
 
 ```json
 {
@@ -80,6 +83,12 @@ Emitted when the agent response is complete.
 | `message` | Message | The complete agent message |
 | `metadata` | ModelMetadata? | Model information |
 | `usage` | TokenUsage? | Token usage statistics |
+
+`message.phase` is authoritative for whether this message is intermediate
+`commentary` or the turn's `final_answer`, and `message.phase_source` says
+whether the provider reported that phase (`provider`) or the runtime inferred it
+from tool-call presence (`derived`). Reasoning artifacts appear as `reasoning`
+content parts inside `message.content`, in the order the provider emitted them.
 
 ```json
 {
@@ -205,9 +214,17 @@ Emitted when a turn is cancelled by the user.
 }
 ```
 
-## Extended Thinking Events
+## Reasoning Events
 
-These events are emitted by models that support extended thinking (e.g., Anthropic Claude with thinking enabled, OpenAI GPT-5.x and o-series models with reasoning effort configured).
+Model reasoning, as distinct from the `reason.started` / `reason.completed`
+lifecycle events further down, which mark an LLM *inference step* in the
+reason/act loop and are unrelated to whether the model reasoned.
+
+These events are emitted by models that expose reasoning (Anthropic Claude with
+thinking enabled, OpenAI GPT-5.x and o-series with reasoning effort configured,
+Gemini with a thinking budget, and Chat Completions models that return
+`reasoning_content`). Everything here belongs to the reasoning channel and must
+never be rendered as assistant text.
 
 ### reason.thinking.started
 
@@ -268,9 +285,44 @@ Emitted when extended thinking completes.
 }
 ```
 
+### reason.item
+
+Emitted when one reasoning artifact completes. One event per provider reasoning
+block, in emission order.
+
+Carries identity and safe summary text only. The opaque payloads that make the
+artifact replayable — provider signatures and encrypted reasoning context — are
+deliberately excluded: they are replay state, not content, and never appear in
+events or on any API surface.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `turn_id` | string | Turn ID this artifact belongs to |
+| `provider` | string | Provider that produced it (`anthropic`, `openai`, `google`) |
+| `model` | string? | Model reported by the provider |
+| `item_id` | string | Provider-assigned identifier, when the provider issues one |
+| `summary` | string[] | Provider-curated summary segments. Never raw chain-of-thought. |
+| `token_count` | integer? | Reasoning tokens attributed to this artifact |
+
+```json
+{
+  "type": "reason.item",
+  "data": {
+    "turn_id": "turn_...",
+    "provider": "openai",
+    "model": "gpt-5.2",
+    "item_id": "rs_68a1f...",
+    "summary": ["Checking the build logs before answering."],
+    "token_count": 412
+  }
+}
+```
+
 ## Atom Lifecycle Events
 
-These events provide visibility into the internal execution phases.
+These events mark steps of the reason/act execution loop. `reason.*` here means
+"the LLM inference step", not model reasoning — for that see [Reasoning
+Events](#reasoning-events).
 
 ### reason.started
 

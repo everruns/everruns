@@ -306,7 +306,7 @@ mod openrouter_tests {
             .reasoning_effort
             .expect("reasoning models expose an effort config");
         assert_eq!(effort.default, ReasoningEffort::Medium);
-        let values: Vec<_> = effort.values.iter().map(|v| v.value.clone()).collect();
+        let values: Vec<_> = effort.values.iter().map(|v| v.value).collect();
         assert_eq!(
             values,
             vec![

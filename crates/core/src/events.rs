@@ -2056,11 +2056,13 @@ pub struct ReasonThinkingCompletedData {
 
 /// Data for `reason.item` event.
 ///
-/// Durable record of an opaque assistant reasoning response item (e.g., OpenAI
-/// Responses API reasoning items). Carries provider-supplied opaque artifacts
-/// and curated summary text only. Plaintext hidden chain-of-thought is never
-/// persisted in this event — emitters must strip any plaintext reasoning
-/// content before constructing it.
+/// Durable record of one provider reasoning artifact.
+///
+/// Carries identity and curated summary text only. Opaque replay state
+/// (signatures, encrypted reasoning context) is deliberately absent: it is
+/// state the driver hands back to the provider, not content, and it must not
+/// reach an event stream or any API surface. Plaintext chain-of-thought is
+/// likewise never persisted here.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ReasonItemData {
@@ -2077,10 +2079,6 @@ pub struct ReasonItemData {
 
     /// Provider-assigned identifier for the reasoning item.
     pub item_id: String,
-
-    /// Provider-encrypted reasoning context, if supplied. Opaque to consumers.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub encrypted_content: Option<String>,
 
     /// Safe summary text segments curated by the provider. Never includes
     /// plaintext reasoning content.
@@ -3844,7 +3842,6 @@ mod tests {
             provider: "openai".to_string(),
             model: Some("gpt-5.5".to_string()),
             item_id: "rs_abc".to_string(),
-            encrypted_content: Some("OPAQUE_BLOB".to_string()),
             summary: vec!["safe summary".to_string()],
             token_count: Some(123),
         };
@@ -3856,8 +3853,12 @@ mod tests {
         assert!(json.contains("turn_id"));
         assert!(json.contains("openai"));
         assert!(json.contains("rs_abc"));
-        assert!(json.contains("OPAQUE_BLOB"));
         assert!(json.contains("safe summary"));
+        // Opaque replay state is not event data. The event publishes identity
+        // and curated summary only; signatures and encrypted context stay on
+        // the message's reasoning parts, for the driver to hand back.
+        assert!(!json.contains("encrypted_content"));
+        assert!(!json.contains("signature"));
     }
 
     #[test]
@@ -3874,7 +3875,6 @@ mod tests {
                 "provider": "openai",
                 "model": "gpt-5",
                 "item_id": "rs_event",
-                "encrypted_content": "ENC",
                 "summary": ["safe"],
                 "token_count": 9
             }
@@ -3904,8 +3904,7 @@ mod tests {
                 "turn_id": turn_id.to_string(),
                 "provider": "openai",
                 "item_id": "rs_request",
-                "encrypted_content": "ENC",
-                "summary": ["safe"]
+                    "summary": ["safe"]
             }
         });
 
@@ -3931,7 +3930,6 @@ mod tests {
             provider: "openai".to_string(),
             model: Some("gpt-5".to_string()),
             item_id: "rs_xyz".to_string(),
-            encrypted_content: Some("ENC".to_string()),
             summary: vec![],
             token_count: None,
         };
@@ -3944,7 +3942,6 @@ mod tests {
                 assert_eq!(out.turn_id, turn_id);
                 assert_eq!(out.provider, "openai");
                 assert_eq!(out.item_id, "rs_xyz");
-                assert_eq!(out.encrypted_content.as_deref(), Some("ENC"));
             }
             other => panic!("Expected ReasonItem, got {}", other.event_type()),
         }
@@ -3970,7 +3967,6 @@ mod tests {
             "provider": "openai",
             "model": "gpt-5",
             "item_id": "rs_keep",
-            "encrypted_content": "ENC",
             "summary": ["s"],
             "token_count": 7,
         });
@@ -4005,8 +4001,9 @@ mod tests {
     }
 
     /// Regression guard for EVE-485: the persisted `reason.item` event must
-    /// never carry plaintext hidden reasoning content. Construction only
-    /// accepts `encrypted_content` and `summary` (curated by the provider).
+    /// never carry plaintext hidden reasoning content, and must not carry the
+    /// opaque replay state either — signatures and encrypted context are what
+    /// the driver hands back to the provider, not event data.
     /// Assert structurally on parsed JSON keys rather than substrings so a
     /// payload value that happens to contain "content"/"thinking" cannot mask
     /// the guard.
@@ -4021,7 +4018,6 @@ mod tests {
             // Deliberately stuff the substrings the old guard checked into a
             // legitimate value to prove the structural check still rejects
             // them when present only as values.
-            encrypted_content: Some("opaque_blob_thinking_content_reasoning_text".to_string()),
             summary: vec!["safe summary mentioning content and thinking".to_string()],
             token_count: Some(1),
         };
@@ -4034,14 +4030,18 @@ mod tests {
             "thinking",
             "reasoning_content",
             "raw_reasoning",
+            // Opaque replay state: carried on the message's reasoning parts and
+            // handed back to the provider, never published as event data.
+            "encrypted_content",
+            "signature",
+            "encrypted",
         ] {
             assert!(
                 !object.contains_key(forbidden),
                 "ReasonItemData JSON must not expose `{forbidden}` key, got: {object:?}",
             );
         }
-        // The only sanctioned fields that carry reasoning artifacts.
-        assert!(object.contains_key("encrypted_content"));
+        // The only sanctioned field that carries reasoning text.
         assert!(object.contains_key("summary"));
     }
 
@@ -4426,7 +4426,6 @@ mod contract_tests {
             provider: "openai".to_string(),
             model: Some("gpt-5.5".to_string()),
             item_id: "rs_test".to_string(),
-            encrypted_content: Some("OPAQUE".to_string()),
             summary: vec!["safe summary".to_string()],
             token_count: Some(42),
         };

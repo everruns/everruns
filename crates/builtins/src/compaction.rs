@@ -1590,8 +1590,7 @@ fn apply_observation_masking_with_protected(
                 tool_calls: msg.tool_calls.clone(),
                 tool_call_id: msg.tool_call_id.clone(),
                 phase: msg.phase,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             });
             masked_count += 1;
         } else {
@@ -1780,8 +1779,7 @@ pub fn build_summary_message(summary_text: &str) -> LlmMessage {
         tool_calls: None,
         tool_call_id: None,
         phase: None,
-        thinking: None,
-        thinking_signature: None,
+        reasoning: Vec::new(),
     }
 }
 
@@ -1849,8 +1847,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: None,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         }
     }
 
@@ -1861,8 +1858,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: None,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         }
     }
 
@@ -1877,8 +1873,7 @@ mod tests {
             }]),
             tool_call_id: None,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         }
     }
 
@@ -1898,8 +1893,7 @@ mod tests {
             ),
             tool_call_id: None,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         }
     }
 
@@ -1910,8 +1904,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: Some(call_id.to_string()),
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         }
     }
 

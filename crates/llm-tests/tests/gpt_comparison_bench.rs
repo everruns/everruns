@@ -18,6 +18,7 @@ use std::time::Instant;
 use everruns_builtins::CurrentTimeCapability;
 use everruns_core::message::{ContentPart, Controls, MessageRole, ReasoningConfig};
 use everruns_core::message_retriever::InputMessage;
+use everruns_provider::model::ReasoningEffort;
 use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
 
 // ============================================================================
@@ -228,7 +229,7 @@ async fn test_gpt52_vs_gpt54_reasoning() {
                 model_id: None,
                 locale: None,
                 reasoning: Some(ReasoningConfig {
-                    effort: Some("high".into()),
+                    effort: Some(ReasoningEffort::High),
                 }),
                 error_disclosure: None,
                 hints: None,

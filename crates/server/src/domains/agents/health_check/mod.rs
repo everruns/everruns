@@ -69,8 +69,7 @@ pub(crate) mod test_support {
         async fn chat_completion(&self, _request: UtilityLlmRequest) -> Result<LlmResponse> {
             Ok(LlmResponse {
                 text: self.0.clone(),
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
                 tool_calls: None,
                 metadata: LlmCompletionMetadata::default(),
             })

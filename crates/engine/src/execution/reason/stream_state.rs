@@ -22,9 +22,8 @@ impl StreamReplayState {
         if match event {
             LlmStreamEvent::TextDelta(delta) => !delta.is_empty(),
             LlmStreamEvent::ToolCalls(calls) => !calls.is_empty(),
-            LlmStreamEvent::ThinkingDelta(_)
-            | LlmStreamEvent::ThinkingSignature(_)
-            | LlmStreamEvent::ReasonItem { .. }
+            LlmStreamEvent::ReasoningDelta { .. }
+            | LlmStreamEvent::ReasoningItem(_)
             | LlmStreamEvent::MessagePhase(_)
             | LlmStreamEvent::Done(_)
             | LlmStreamEvent::Error(_) => false,
@@ -89,26 +88,16 @@ pub(super) fn merge_retry_metadata(
 /// Returns true when a stream event carries assistant output progress.
 pub(super) fn advances_stall_deadline(event: &LlmStreamEvent) -> bool {
     match event {
-        LlmStreamEvent::TextDelta(delta) | LlmStreamEvent::ThinkingDelta(delta) => {
+        LlmStreamEvent::TextDelta(delta) | LlmStreamEvent::ReasoningDelta { delta, .. } => {
             !delta.is_empty()
         }
-        LlmStreamEvent::ReasonItem {
-            encrypted_content,
-            summary,
-            token_count,
-            ..
-        } => {
-            encrypted_content
-                .as_ref()
-                .is_some_and(|content| !content.is_empty())
-                || summary.iter().any(|item| !item.is_empty())
-                || token_count.is_some_and(|count| count > 0)
+        LlmStreamEvent::ReasoningItem(item) => {
+            item.has_replay_state() || item.display_text().is_some()
         }
         LlmStreamEvent::ToolCalls(calls) => !calls.is_empty(),
-        LlmStreamEvent::MessagePhase(_)
-        | LlmStreamEvent::ThinkingSignature(_)
-        | LlmStreamEvent::Done(_)
-        | LlmStreamEvent::Error(_) => false,
+        LlmStreamEvent::MessagePhase(_) | LlmStreamEvent::Done(_) | LlmStreamEvent::Error(_) => {
+            false
+        }
     }
 }
 
@@ -136,16 +125,16 @@ mod tests {
     #[test]
     fn reasoning_only_attempt_remains_replayable() {
         let mut state = StreamReplayState::default();
-        state.observe(&LlmStreamEvent::ThinkingDelta("analysis".to_string()));
-        state.observe(&LlmStreamEvent::ThinkingSignature("signature".to_string()));
-        state.observe(&LlmStreamEvent::ReasonItem {
-            provider: "openai".to_string(),
-            model: None,
-            item_id: "item".to_string(),
-            encrypted_content: Some("opaque".to_string()),
-            summary: vec!["summary".to_string()],
-            token_count: Some(1),
+        state.observe(&LlmStreamEvent::ReasoningDelta {
+            delta: "analysis".to_string(),
+            summary: false,
         });
+        state.observe(&LlmStreamEvent::ReasoningItem(
+            everruns_provider::reasoning::ReasoningContentPart::opaque("openai")
+                .with_item_id("item")
+                .with_encrypted("opaque")
+                .with_tokens(1),
+        ));
 
         let stall = LlmStreamError::new("provider stream stall: no tokens for 120s");
         assert!(state.should_retry(&stall, 0, 2));

@@ -452,12 +452,12 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             tools,
             parallel_tool_calls: config
                 .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
-            // Skip "none" — sending reasoning_effort to non-thinking models causes API errors
+            // An explicit "no reasoning" omits the field: sending it to a
+            // non-thinking model is an API error.
             reasoning_effort: config
                 .reasoning_effort
-                .as_ref()
-                .filter(|e| !e.eq_ignore_ascii_case("none"))
-                .cloned(),
+                .filter(crate::model::ReasoningEffort::requests_reasoning)
+                .map(|effort| effort.as_str().to_string()),
             service_tier: config.speed.clone(),
             verbosity: config.verbosity.clone(),
             metadata,
@@ -899,8 +899,24 @@ struct OpenAiStreamChoice {
 struct OpenAiDelta {
     #[serde(default)]
     content: Option<String>,
+    /// Reasoning text on the Chat Completions wire. Reasoning models reached
+    /// over this protocol (DeepSeek-R1, Qwen, Groq, Fireworks) stream it here;
+    /// vendors split between two field names for the same thing.
+    #[serde(default)]
+    reasoning_content: Option<String>,
+    #[serde(default)]
+    reasoning: Option<String>,
     #[serde(default)]
     tool_calls: Option<Vec<OpenAiStreamToolCall>>,
+}
+
+impl OpenAiDelta {
+    fn reasoning_text(&self) -> Option<&str> {
+        self.reasoning_content
+            .as_deref()
+            .or(self.reasoning.as_deref())
+            .filter(|text| !text.is_empty())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -977,6 +993,16 @@ fn process_stream_choice(
             );
         }
         return LlmStreamEvent::TextDelta(String::new());
+    }
+
+    // Reasoning delta. Checked before content: a chunk carries one or the
+    // other, and reasoning must reach the reasoning channel rather than being
+    // dropped (which is what happened before this protocol parsed it at all).
+    if let Some(reasoning) = choice.delta.reasoning_text() {
+        return LlmStreamEvent::ReasoningDelta {
+            delta: reasoning.to_string(),
+            summary: false,
+        };
     }
 
     // Content delta. Guard on non-empty: an empty-content delta that rides along
@@ -1412,10 +1438,9 @@ mod tests {
             stream_options: None,
             tools: None,
             parallel_tool_calls: None,
-            reasoning_effort: Some("none".to_string())
-                .as_ref()
-                .filter(|e| !e.eq_ignore_ascii_case("none"))
-                .cloned(),
+            reasoning_effort: Some(crate::model::ReasoningEffort::None)
+                .filter(crate::model::ReasoningEffort::requests_reasoning)
+                .map(|e| e.as_str().to_string()),
             metadata: None,
         };
 
@@ -1444,10 +1469,9 @@ mod tests {
             stream_options: None,
             tools: None,
             parallel_tool_calls: None,
-            reasoning_effort: Some("high".to_string())
-                .as_ref()
-                .filter(|e| !e.eq_ignore_ascii_case("none"))
-                .cloned(),
+            reasoning_effort: Some(crate::model::ReasoningEffort::High)
+                .filter(crate::model::ReasoningEffort::requests_reasoning)
+                .map(|e| e.as_str().to_string()),
             metadata: None,
         };
 
@@ -1829,8 +1853,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("call_trimmed".to_string()),
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
         let filtered = drop_orphaned_tool_messages(&messages);
@@ -1854,8 +1877,7 @@ mod tests {
                 }]),
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -1863,8 +1885,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("call_1".to_string()),
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
         let filtered = drop_orphaned_tool_messages(&messages);

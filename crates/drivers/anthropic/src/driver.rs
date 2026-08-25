@@ -36,6 +36,8 @@ use everruns_provider::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryDecision, RetryMetadata, SendOutcome, is_rate_limit_status,
     retry_request, send_error_message,
 };
+use everruns_provider::model::ReasoningEffort;
+use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use everruns_provider::stream_reconnect::connect_sse_with_reconnect;
 use everruns_provider::tool_types::{DeferrablePolicy, ToolCall, ToolDefinition};
 
@@ -539,38 +541,45 @@ impl AnthropicChatDriver {
                 LlmMessageRole::Assistant => {
                     let mut content = Vec::new();
 
-                    // Debug: log thinking state for assistant messages
                     tracing::debug!(
-                        has_thinking = msg.thinking.is_some(),
-                        has_signature = msg.thinking_signature.is_some(),
-                        thinking_len = msg.thinking.as_ref().map(|t| t.len()),
-                        signature_len = msg.thinking_signature.as_ref().map(|s| s.len()),
+                        reasoning_blocks = msg.reasoning.len(),
                         has_tool_calls = msg.tool_calls.is_some(),
                         tool_calls_count = msg.tool_calls.as_ref().map(|tc| tc.len()),
                         "AnthropicDriver: converting assistant message"
                     );
 
-                    // Add thinking block first if present (required by Anthropic when thinking is enabled)
-                    // Both thinking content and signature are required when sending thinking back
-                    if let (Some(thinking), Some(signature)) =
-                        (&msg.thinking, &msg.thinking_signature)
-                    {
-                        tracing::debug!(
-                            thinking_len = thinking.len(),
-                            signature_len = signature.len(),
-                            "AnthropicDriver: adding thinking block to assistant message"
-                        );
-                        content.push(AnthropicContentBlock::Thinking {
-                            thinking: thinking.clone(),
-                            signature: signature.clone(),
-                        });
-                    } else if msg.thinking.is_some() || msg.thinking_signature.is_some() {
-                        // Warn if one is present but not the other
-                        tracing::warn!(
-                            has_thinking = msg.thinking.is_some(),
-                            has_signature = msg.thinking_signature.is_some(),
-                            "AnthropicDriver: assistant message has partial thinking data (need both)"
-                        );
+                    // Thinking blocks lead the assistant message, as the API
+                    // requires when thinking is enabled. Every block is
+                    // replayed with the signature that signs *it*: a merged
+                    // block paired with some other block's signature fails
+                    // verification, which is exactly what interleaved thinking
+                    // produces if the blocks are flattened.
+                    for item in &msg.reasoning {
+                        if item.provider != "anthropic" {
+                            // Signatures are provider-scoped; replaying another
+                            // provider's artifact is never valid.
+                            continue;
+                        }
+                        match (&item.text, &item.signature, &item.encrypted) {
+                            (Some(ReasoningText::Redacted), _, Some(data)) => {
+                                content.push(AnthropicContentBlock::RedactedThinking {
+                                    data: data.clone(),
+                                });
+                            }
+                            (Some(ReasoningText::Plain { text }), Some(signature), _) => {
+                                content.push(AnthropicContentBlock::Thinking {
+                                    thinking: text.clone(),
+                                    signature: signature.clone(),
+                                });
+                            }
+                            _ => {
+                                tracing::warn!(
+                                    has_signature = item.signature.is_some(),
+                                    has_text = item.text.is_some(),
+                                    "AnthropicDriver: skipping unreplayable reasoning artifact"
+                                );
+                            }
+                        }
                     }
 
                     // Add text/image content
@@ -796,7 +805,7 @@ impl ChatDriver for AnthropicChatDriver {
         // `output_config.effort`. On Fable 5 and Opus 4.8/4.7 the budget-based
         // `thinking: {type: "enabled", budget_tokens}` form is removed and
         // returns 400, so this split is load-bearing, not stylistic.
-        let (thinking, output_config) = match config.reasoning_effort.as_deref() {
+        let (thinking, output_config) = match config.reasoning_effort {
             Some(effort) if uses_adaptive_thinking(wire_model) => {
                 match adaptive_effort_level(effort) {
                     Some(level) => (
@@ -922,6 +931,7 @@ impl ChatDriver for AnthropicChatDriver {
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let cache_creation_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let current_tool_call = Arc::new(Mutex::new(Option::<ToolCall>::None));
+        let current_thinking = Arc::new(Mutex::new(Option::<OpenThinkingBlock>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
         let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
         let response_id = Arc::new(Mutex::new(Option::<String>::None));
@@ -940,6 +950,7 @@ impl ChatDriver for AnthropicChatDriver {
             let cache_read_tokens = Arc::clone(&cache_read_tokens);
             let cache_creation_tokens = Arc::clone(&cache_creation_tokens);
             let current_tool_call = Arc::clone(&current_tool_call);
+            let current_thinking = Arc::clone(&current_thinking);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
             let finish_reason = Arc::clone(&finish_reason);
             let response_id = Arc::clone(&response_id);
@@ -988,18 +999,37 @@ impl ChatDriver for AnthropicChatDriver {
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
                             }
                             "content_block_start" => {
-                                // Check if starting a tool use block
                                 if let Ok(data) =
                                     serde_json::from_str::<AnthropicContentBlockStart>(&event.data)
-                                    && let AnthropicContentBlockDelta::ToolUse { id, name } =
-                                        data.content_block
                                 {
-                                    let mut current = current_tool_call.lock().unwrap();
-                                    *current = Some(ToolCall {
-                                        id,
-                                        name,
-                                        arguments: json!(""),
-                                    });
+                                    match data.content_block {
+                                        AnthropicContentBlockDelta::ToolUse { id, name } => {
+                                            let mut current = current_tool_call.lock().unwrap();
+                                            *current = Some(ToolCall {
+                                                id,
+                                                name,
+                                                arguments: json!(""),
+                                            });
+                                        }
+                                        AnthropicContentBlockDelta::Thinking { thinking } => {
+                                            // Opens a block; text arrives as
+                                            // thinking_delta and the signature
+                                            // as signature_delta.
+                                            *current_thinking.lock().unwrap() =
+                                                Some(OpenThinkingBlock {
+                                                    text: thinking,
+                                                    ..Default::default()
+                                                });
+                                        }
+                                        AnthropicContentBlockDelta::RedactedThinking { data } => {
+                                            *current_thinking.lock().unwrap() =
+                                                Some(OpenThinkingBlock {
+                                                    redacted_payload: Some(data),
+                                                    ..Default::default()
+                                                });
+                                        }
+                                        AnthropicContentBlockDelta::Text { .. } => {}
+                                    }
                                 }
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
                             }
@@ -1028,21 +1058,26 @@ impl ChatDriver for AnthropicChatDriver {
                                             return Ok(LlmStreamEvent::TextDelta(String::new()));
                                         }
                                         AnthropicDelta::ThinkingDelta { thinking } => {
-                                            // Stream thinking content from extended thinking models
-                                            tracing::debug!(
-                                                thinking_len = thinking.len(),
-                                                "AnthropicDriver: received thinking_delta from API"
-                                            );
-                                            return Ok(LlmStreamEvent::ThinkingDelta(thinking));
+                                            let mut open = current_thinking.lock().unwrap();
+                                            open.get_or_insert_with(OpenThinkingBlock::default)
+                                                .text
+                                                .push_str(&thinking);
+                                            return Ok(LlmStreamEvent::ReasoningDelta {
+                                                delta: thinking,
+                                                summary: false,
+                                            });
                                         }
                                         AnthropicDelta::SignatureDelta { signature } => {
-                                            // Cryptographic signature for thinking content
-                                            // This is required when sending thinking back to Anthropic
-                                            tracing::info!(
+                                            // Signs the block currently open, and
+                                            // only that block.
+                                            tracing::debug!(
                                                 signature_len = signature.len(),
                                                 "AnthropicDriver: received signature_delta from API"
                                             );
-                                            return Ok(LlmStreamEvent::ThinkingSignature(signature));
+                                            let mut open = current_thinking.lock().unwrap();
+                                            open.get_or_insert_with(OpenThinkingBlock::default)
+                                                .signature = Some(signature);
+                                            return Ok(LlmStreamEvent::TextDelta(String::new()));
                                         }
                                     }
                                 }
@@ -1056,39 +1091,60 @@ impl ChatDriver for AnthropicChatDriver {
                                 );
 
                                 // Finalize current tool call if any
-                                let mut current = current_tool_call.lock().unwrap();
-                                if let Some(mut tc) = current.take() {
-                                    // EVE-636: parse the accumulated JSON string exactly once.
-                                    finalize_tool_arguments(&mut tc);
-                                    accumulated_tool_calls.lock().unwrap().push(tc);
-                                }
-                                // Check if this is a thinking block with signature
-                                match serde_json::from_str::<AnthropicContentBlockStop>(&event.data)
                                 {
-                                    Ok(data) => {
-                                        tracing::debug!(
-                                            has_content_block = data.content_block.is_some(),
-                                            "AnthropicDriver: parsed content_block_stop"
-                                        );
-                                        if let Some(AnthropicCompletedContentBlock::Thinking {
+                                    let mut current = current_tool_call.lock().unwrap();
+                                    if let Some(mut tc) = current.take() {
+                                        // EVE-636: parse the accumulated JSON string exactly once.
+                                        finalize_tool_arguments(&mut tc);
+                                        accumulated_tool_calls.lock().unwrap().push(tc);
+                                    }
+                                }
+
+                                // Some responses carry the completed block
+                                // inline; prefer its signature when present,
+                                // otherwise the one accumulated from
+                                // signature_delta.
+                                let completed = serde_json::from_str::<AnthropicContentBlockStop>(
+                                    &event.data,
+                                )
+                                .ok()
+                                .and_then(|data| data.content_block);
+
+                                let mut open = current_thinking.lock().unwrap();
+                                if let Some(mut block) = open.take() {
+                                    match completed {
+                                        Some(AnthropicCompletedContentBlock::Thinking {
+                                            thinking,
                                             signature,
-                                            ..
-                                        }) = data.content_block
-                                        {
-                                            tracing::info!(
-                                                signature_len = signature.len(),
-                                                "AnthropicDriver: extracted thinking signature from content_block_stop"
-                                            );
-                                            return Ok(LlmStreamEvent::ThinkingSignature(signature));
+                                        }) => {
+                                            if !thinking.is_empty() {
+                                                block.text = thinking;
+                                            }
+                                            block.signature = Some(signature);
                                         }
+                                        Some(AnthropicCompletedContentBlock::RedactedThinking {
+                                            data,
+                                        }) => {
+                                            block.redacted_payload = Some(data);
+                                        }
+                                        _ => {}
                                     }
-                                    Err(e) => {
-                                        tracing::debug!(
-                                            error = %e,
-                                            raw_data = %event.data,
-                                            "AnthropicDriver: failed to parse content_block_stop"
+                                    // A block without a signature cannot be
+                                    // replayed: Anthropic rejects thinking it
+                                    // did not sign. Drop it rather than send
+                                    // an artifact that will fail verification.
+                                    if block.signature.is_none()
+                                        && block.redacted_payload.is_none()
+                                    {
+                                        tracing::warn!(
+                                            thinking_len = block.text.len(),
+                                            "AnthropicDriver: thinking block closed without a signature; not replayable"
                                         );
+                                        return Ok(LlmStreamEvent::TextDelta(String::new()));
                                     }
+                                    return Ok(LlmStreamEvent::ReasoningItem(
+                                        block.into_reasoning_part(),
+                                    ));
                                 }
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
                             }
@@ -1476,7 +1532,7 @@ enum AnthropicThinking {
 
 impl AnthropicThinking {
     /// Create a budget-based thinking config from a reasoning effort level
-    fn enabled_from_effort(effort: &str) -> Option<Self> {
+    fn enabled_from_effort(effort: ReasoningEffort) -> Option<Self> {
         driver_helpers::thinking_budget::from_effort(effort)
             .map(|budget_tokens| Self::Enabled { budget_tokens })
     }
@@ -1565,13 +1621,19 @@ fn uses_adaptive_thinking(model_id: &str) -> bool {
 /// Map an everruns reasoning-effort level to the `output_config.effort` value
 /// used with adaptive thinking. `xhigh` is surfaced as "Max" in the model
 /// profiles and maps to the API's `max` level.
-fn adaptive_effort_level(effort: &str) -> Option<&'static str> {
-    match effort.to_ascii_lowercase().as_str() {
-        "low" => Some("low"),
-        "medium" => Some("medium"),
-        "high" => Some("high"),
-        "xhigh" => Some("max"),
-        _ => None,
+/// Map a reasoning effort onto Anthropic's adaptive `output_config.effort`.
+///
+/// Anthropic's scale tops out at `max` rather than `xhigh`, and has no separate
+/// `minimal`, so the lowest non-zero effort maps to `low`. Previously `minimal`
+/// fell through to `None` here and disabled thinking entirely, matching the same
+/// hole the budget-based path had.
+fn adaptive_effort_level(effort: ReasoningEffort) -> Option<&'static str> {
+    match effort {
+        ReasoningEffort::None => None,
+        ReasoningEffort::Minimal | ReasoningEffort::Low => Some("low"),
+        ReasoningEffort::Medium => Some("medium"),
+        ReasoningEffort::High => Some("high"),
+        ReasoningEffort::Xhigh => Some("max"),
     }
 }
 
@@ -1598,6 +1660,9 @@ enum AnthropicContentBlock {
         /// Cryptographic signature required when sending thinking back to the API
         signature: String,
     },
+    /// Withheld reasoning, replayed verbatim as the API returned it.
+    #[serde(rename = "redacted_thinking")]
+    RedactedThinking { data: String },
     #[serde(rename = "tool_use")]
     ToolUse {
         id: String,
@@ -1741,6 +1806,8 @@ enum AnthropicCompletedContentBlock {
         /// Cryptographic signature for the thinking content (required to send it back)
         signature: String,
     },
+    #[serde(rename = "redacted_thinking")]
+    RedactedThinking { data: String },
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "tool_use")]
@@ -1749,6 +1816,36 @@ enum AnthropicCompletedContentBlock {
         name: String,
         input: serde_json::Value,
     },
+}
+
+/// The thinking block currently being streamed.
+///
+/// Anthropic signs each thinking block separately, and interleaved thinking
+/// emits several per response. Accumulating per block — rather than into one
+/// buffer for the whole message — is what keeps each signature paired with the
+/// text it actually signs.
+#[derive(Debug, Default)]
+struct OpenThinkingBlock {
+    text: String,
+    signature: Option<String>,
+    redacted_payload: Option<String>,
+}
+
+impl OpenThinkingBlock {
+    fn into_reasoning_part(self) -> ReasoningContentPart {
+        let mut part = ReasoningContentPart::opaque("anthropic");
+        if let Some(signature) = self.signature {
+            part = part.with_signature(signature);
+        }
+        if let Some(data) = self.redacted_payload {
+            // The redacted payload is the replay artifact; it is opaque and
+            // carries no readable text.
+            part = part.with_encrypted(data).with_text(ReasoningText::Redacted);
+        } else {
+            part = part.with_text(ReasoningText::Plain { text: self.text });
+        }
+        part
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -1761,6 +1858,10 @@ enum AnthropicContentBlockDelta {
     ToolUse { id: String, name: String },
     #[serde(rename = "thinking")]
     Thinking { thinking: String },
+    /// Reasoning the provider withheld. Arrives whole on `content_block_start`
+    /// and carries no readable text, but must still be replayed verbatim.
+    #[serde(rename = "redacted_thinking")]
+    RedactedThinking { data: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -2262,13 +2363,34 @@ mod tests {
         assert_eq!(enabled, json!({"type": "enabled", "budget_tokens": 4096}));
     }
 
+    /// Anthropic's adaptive scale has no `minimal` and tops out at `max`.
+    ///
+    /// `minimal` previously fell through the string match to `None`, disabling
+    /// thinking entirely — so the lowest non-zero effort behaved identically to
+    /// "none". It maps to the lowest real setting instead. Case handling and an
+    /// "unknown effort" case are gone because the enum makes both unrepresentable.
     #[test]
     fn test_adaptive_effort_level_mapping() {
-        assert_eq!(adaptive_effort_level("low"), Some("low"));
-        assert_eq!(adaptive_effort_level("medium"), Some("medium"));
-        assert_eq!(adaptive_effort_level("HIGH"), Some("high"));
-        assert_eq!(adaptive_effort_level("xhigh"), Some("max"));
-        assert_eq!(adaptive_effort_level("unknown"), None);
+        assert_eq!(adaptive_effort_level(ReasoningEffort::Minimal), Some("low"));
+        assert_eq!(adaptive_effort_level(ReasoningEffort::Low), Some("low"));
+        assert_eq!(
+            adaptive_effort_level(ReasoningEffort::Medium),
+            Some("medium")
+        );
+        assert_eq!(adaptive_effort_level(ReasoningEffort::High), Some("high"));
+        assert_eq!(adaptive_effort_level(ReasoningEffort::Xhigh), Some("max"));
+        assert_eq!(adaptive_effort_level(ReasoningEffort::None), None);
+    }
+
+    /// The budget path had the same `minimal` hole.
+    #[test]
+    fn test_thinking_budget_covers_minimal() {
+        use everruns_provider::driver_helpers::thinking_budget;
+        assert_eq!(
+            thinking_budget::from_effort(ReasoningEffort::Minimal),
+            Some(thinking_budget::MINIMAL)
+        );
+        assert_eq!(thinking_budget::from_effort(ReasoningEffort::None), None);
     }
 
     #[test]
@@ -2281,8 +2403,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Assistant,
@@ -2290,8 +2411,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
 
@@ -2318,8 +2438,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: None,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         };
         let messages = vec![
             msg(LlmMessageRole::User, "turn 1"),
@@ -2352,8 +2471,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: None,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         }];
 
         let (_, converted) = AnthropicChatDriver::convert_messages(&messages, true, 0);
@@ -2370,8 +2488,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: None,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         };
         // A live `<facts>` block trails the last stable (assistant) message.
         let messages = vec![
@@ -2655,8 +2772,7 @@ mod tests {
             }]),
             tool_call_id: None,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         }];
 
         let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
@@ -2742,8 +2858,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::User,
@@ -2751,8 +2866,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
 
@@ -2795,8 +2909,7 @@ mod tests {
                 }]),
                 tool_call_id: None,
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -2804,8 +2917,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: Some("call_123".to_string()),
                 phase: None,
-                thinking: None,
-                thinking_signature: None,
+                reasoning: Vec::new(),
             },
         ];
 
@@ -2840,8 +2952,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: Some("trimmed_call".to_string()),
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         }];
 
         let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
@@ -2865,8 +2976,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: Some("call_img".to_string()),
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         };
 
         let assistant = LlmMessage {
@@ -2879,8 +2989,7 @@ mod tests {
             }]),
             tool_call_id: None,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         };
         let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant, msg], false, 0);
 
@@ -2931,8 +3040,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: Some("call_txt".to_string()),
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         };
 
         let assistant = LlmMessage {
@@ -2945,8 +3053,7 @@ mod tests {
             }]),
             tool_call_id: None,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         };
         let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant, msg], false, 0);
 

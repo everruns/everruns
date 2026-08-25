@@ -137,30 +137,19 @@ impl From<&str> for LlmStreamError {
 pub enum LlmStreamEvent {
     /// Text delta (incremental content)
     TextDelta(String),
-    /// Thinking delta (incremental reasoning content from extended thinking models)
-    ThinkingDelta(String),
-    /// Cryptographic signature for thinking content (Anthropic Claude)
-    /// Emitted when a thinking block completes, before the Done event
-    ThinkingSignature(String),
-    /// Opaque assistant reasoning response item (OpenAI Responses).
-    /// Carries provider-supplied opaque/encrypted reasoning artifacts plus safe
-    /// summary text and per-item metadata. Plaintext hidden reasoning content is
-    /// intentionally excluded so callers can persist this without exposing
-    /// chain-of-thought.
-    ReasonItem {
-        /// Provider name (e.g., "openai").
-        provider: String,
-        /// Model identifier reported by the provider, if known.
-        model: Option<String>,
-        /// Provider-assigned identifier for the reasoning item.
-        item_id: String,
-        /// Provider-encrypted reasoning context, if supplied.
-        encrypted_content: Option<String>,
-        /// Safe summary text segments curated by the provider.
-        summary: Vec<String>,
-        /// Per-item reasoning token count, when the provider reports one.
-        token_count: Option<u32>,
-    },
+    /// Incremental readable reasoning for the reasoning block currently open.
+    ///
+    /// Always belongs to the reasoning channel, never the assistant-text
+    /// channel. `summary` marks provider-curated summary text (OpenAI
+    /// Responses) as opposed to raw chain-of-thought, so consumers can label
+    /// what they are showing instead of guessing.
+    ReasoningDelta { delta: String, summary: bool },
+    /// A reasoning block completed.
+    ///
+    /// Carries the whole artifact — readable text plus the opaque id,
+    /// signature and encrypted payload needed to replay it verbatim. One event
+    /// per block, in emission order, so interleaved thinking survives.
+    ReasoningItem(crate::reasoning::ReasoningContentPart),
     /// Tool calls from the LLM
     ToolCalls(Vec<ToolCall>),
     /// Provider-native execution phase for the current assistant message,
@@ -316,23 +305,17 @@ pub trait ChatDriver: Send + Sync {
             .chat_completion_stream(endpoint, messages, config)
             .await?;
         let mut text = String::new();
-        let mut thinking = String::new();
-        let mut thinking_signature: Option<String> = None;
+        let mut reasoning: Vec<crate::reasoning::ReasoningContentPart> = Vec::new();
         let mut tool_calls = Vec::new();
         let mut metadata = LlmCompletionMetadata::default();
 
         while let Some(event) = stream.next().await {
             match event? {
                 LlmStreamEvent::TextDelta(delta) => text.push_str(&delta),
-                LlmStreamEvent::ThinkingDelta(delta) => thinking.push_str(&delta),
-                LlmStreamEvent::ThinkingSignature(sig) => thinking_signature = Some(sig),
-                LlmStreamEvent::ReasonItem {
-                    encrypted_content, ..
-                } => {
-                    if let Some(sig) = encrypted_content {
-                        thinking_signature = Some(sig);
-                    }
-                }
+                // Deltas are a live-rendering concern; the terminal
+                // `ReasoningItem` carries the durable artifact.
+                LlmStreamEvent::ReasoningDelta { .. } => {}
+                LlmStreamEvent::ReasoningItem(item) => reasoning.push(item),
                 LlmStreamEvent::ToolCalls(calls) => tool_calls = calls,
                 // Streamed phase hint is a mid-stream refinement only; the
                 // non-streaming collector relies on the terminal Done metadata.
@@ -349,12 +332,7 @@ pub trait ChatDriver: Send + Sync {
 
         Ok(LlmResponse {
             text,
-            thinking: if thinking.is_empty() {
-                None
-            } else {
-                Some(thinking)
-            },
-            thinking_signature,
+            reasoning,
             tool_calls: if tool_calls.is_empty() {
                 None
             } else {
@@ -524,12 +502,13 @@ pub struct LlmMessage {
     /// and completed answers (`FinalAnswer`) in multi-step tool-calling flows.
     /// Only set on assistant messages. Must be preserved when replaying conversation history.
     pub phase: Option<crate::execution_phase::ExecutionPhase>,
-    /// Thinking content from extended thinking models (Anthropic Claude)
-    /// Must be included in subsequent API calls when thinking is enabled
-    pub thinking: Option<String>,
-    /// Cryptographic signature for thinking content (Anthropic Claude)
-    /// Required when sending thinking back in subsequent API calls
-    pub thinking_signature: Option<String>,
+    /// Provider reasoning artifacts for this assistant turn, in emission order.
+    ///
+    /// Drivers replay these verbatim in the position the provider issued them:
+    /// each keeps its own signature, id and encrypted payload, so interleaved
+    /// thinking and per-call thought signatures survive a round trip. Empty for
+    /// messages without reasoning.
+    pub reasoning: Vec<crate::reasoning::ReasoningContentPart>,
 }
 
 impl LlmMessage {
@@ -541,8 +520,7 @@ impl LlmMessage {
             tool_calls: None,
             tool_call_id: None,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         }
     }
 
@@ -554,8 +532,7 @@ impl LlmMessage {
             tool_calls: None,
             tool_call_id: None,
             phase: None,
-            thinking: None,
-            thinking_signature: None,
+            reasoning: Vec::new(),
         }
     }
 
@@ -1365,8 +1342,12 @@ pub struct LlmCallConfig {
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
     pub tools: Vec<ToolDefinition>,
-    /// Reasoning effort level (for models that support it: low, medium, high)
-    pub reasoning_effort: Option<String>,
+    /// Reasoning effort for models that support it.
+    ///
+    /// `None` means unset — the provider keeps its default. `Some(None)` is the
+    /// caller explicitly asking for no reasoning, which drivers honor by
+    /// omitting the reasoning request fields rather than sending a default.
+    pub reasoning_effort: Option<crate::model::ReasoningEffort>,
     /// Speed (service tier) for this call: "flex", "default", or "priority".
     /// Serialized as OpenAI `service_tier`; omitted when `None` so the
     /// provider keeps its default ("auto") routing.
@@ -1450,10 +1431,8 @@ impl LlmCallConfig {
 #[derive(Debug, Clone)]
 pub struct LlmResponse {
     pub text: String,
-    /// Thinking content from extended thinking models (e.g., Claude with thinking enabled)
-    pub thinking: Option<String>,
-    /// Cryptographic signature for thinking content (Anthropic Claude)
-    pub thinking_signature: Option<String>,
+    /// Provider reasoning artifacts, in emission order.
+    pub reasoning: Vec<crate::reasoning::ReasoningContentPart>,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub metadata: LlmCompletionMetadata,
 }
@@ -1473,9 +1452,9 @@ impl LlmCallConfigBuilder {
         Self { config }
     }
 
-    /// Set reasoning effort level (for models that support it: low, medium, high)
-    pub fn reasoning_effort(mut self, effort: impl Into<String>) -> Self {
-        self.config.reasoning_effort = Some(effort.into());
+    /// Set reasoning effort for models that support it.
+    pub fn reasoning_effort(mut self, effort: crate::model::ReasoningEffort) -> Self {
+        self.config.reasoning_effort = Some(effort);
         self
     }
 

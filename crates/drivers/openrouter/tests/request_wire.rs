@@ -14,6 +14,7 @@ use everruns_provider::driver_registry::{
     OpenRouterRoutingConfig, OpenRouterServerTool, OpenRouterServerToolKind,
     OpenRouterSortPartition, OpenRouterWebSearchPlugin,
 };
+use everruns_provider::model::ReasoningEffort;
 use everruns_provider::{BearerAuth, Provider};
 use serde_json::json;
 use wiremock::matchers::method;
@@ -242,7 +243,7 @@ async fn excludes_reasoning_by_default() {
 #[tokio::test]
 async fn excludes_reasoning_with_explicit_effort() {
     let mut config = base_config("nvidia/nemotron-3-super-120b-a12b:free");
-    config.reasoning_effort = Some("high".to_string());
+    config.reasoning_effort = Some(ReasoningEffort::High);
 
     let body = capture_request_body(&config).await;
 
@@ -258,7 +259,7 @@ async fn excludes_reasoning_with_explicit_effort() {
 #[tokio::test]
 async fn sends_reasoning_none_to_disable_openrouter_reasoning() {
     let mut config = base_config("nvidia/nemotron-3-super-120b-a12b:free");
-    config.reasoning_effort = Some("none".to_string());
+    config.reasoning_effort = Some(ReasoningEffort::None);
 
     let body = capture_request_body(&config).await;
 

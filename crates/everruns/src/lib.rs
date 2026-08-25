@@ -171,6 +171,11 @@ pub use everruns_core::{
 pub use everruns_provider::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmResponseStream, LlmStreamEvent,
 };
+// Reasoning is part of the public surface: `ReasoningConfig` above carries a
+// `ReasoningEffort`, and the artifact types appear on assistant messages.
+pub use everruns_provider::model::ReasoningEffort;
+pub use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
+pub use everruns_provider::{ExecutionPhase, PhaseSource};
 // Required by the public `ChatDriver` SPI: downstream drivers must be able to
 // name its error type without adding an implementation-crate dependency.
 pub use everruns_provider::error::AgentLoopError;
