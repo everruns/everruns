@@ -5838,6 +5838,38 @@ mod durable_sse_tests {
 async fn test_reasoning_reaches_api_sanitized_and_classified() {
     let client = reqwest::Client::new();
 
+    // This test exists to prove the real path: a real provider's reasoning,
+    // through the worker, into the API. Running it against a simulated provider
+    // would prove only that the simulator behaves as written.
+    //
+    // So a missing credential is a failure, not a reason to skip. A job
+    // configured to run this and silently unable to reach a provider reports
+    // success while verifying nothing, which is the failure mode
+    // `EVERRUNS_REQUIRE_LIVE_TESTS` exists to prevent.
+    let require_live = std::env::var("EVERRUNS_REQUIRE_LIVE_TESTS")
+        .ok()
+        .is_some_and(|v| {
+            let v = v.trim();
+            !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false")
+        });
+    let has_provider_key = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"]
+        .iter()
+        .any(|k| std::env::var(k).ok().is_some_and(|v| !v.trim().is_empty()));
+    if !has_provider_key {
+        assert!(
+            !require_live,
+            "EVERRUNS_REQUIRE_LIVE_TESTS is set but neither OPENAI_API_KEY nor \
+             ANTHROPIC_API_KEY is present. This test verifies real provider \
+             reasoning end to end and cannot do that without a credential — fix \
+             the job's secrets rather than relaxing this check."
+        );
+        eprintln!(
+            "SKIP: no provider credential; set EVERRUNS_REQUIRE_LIVE_TESTS=1 to \
+             make this a failure"
+        );
+        return;
+    }
+
     // Names are unique per run: the API rejects a duplicate agent name with
     // 409, so fixed names pass once against a fresh database and fail on every
     // rerun against the same one.
@@ -5846,51 +5878,14 @@ async fn test_reasoning_reaches_api_sanitized_and_classified() {
         .expect("clock after epoch")
         .as_nanos();
 
-    let provider_response = client
-        .post(format!("{}/v1/providers", API_BASE_URL))
-        .json(&json!({
-            "name": format!("llmsim-reasoning-provider-{run_id}"),
-            "provider_type": "llmsim"
-        }))
-        .send()
-        .await
-        .expect("Failed to create provider");
-    assert_eq!(
-        provider_response.status(),
-        201,
-        "Failed to create LlmSim provider"
-    );
-    let provider: Provider = provider_response
-        .json()
-        .await
-        .expect("Failed to parse provider");
-
-    let model_response = client
-        .post(format!(
-            "{}/v1/providers/{}/models",
-            API_BASE_URL, provider.id
-        ))
-        .json(&json!({
-            "model_id": format!("llmsim-reasoning-test-{run_id}"),
-            "display_name": "LlmSim Reasoning Test Model",
-            "enabled": true
-        }))
-        .send()
-        .await
-        .expect("Failed to create model");
-    assert_eq!(
-        model_response.status(),
-        201,
-        "Failed to create LlmSim model"
-    );
-    let model: Model = model_response.json().await.expect("Failed to parse model");
-
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
             "name": format!("reasoning-projection-agent-{run_id}"),
             "system_prompt": "You are a helpful assistant.",
-            "model_id": model.id,
+            // No model override: the agent takes the org default, which is a
+            // real reasoning-capable provider. That is the path this test is
+            // here to verify.
         }))
         .send()
         .await

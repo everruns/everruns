@@ -1333,6 +1333,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v4
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
 
@@ -1404,8 +1407,23 @@ jobs:
           cat server.log
           exit 1
 
+      # Provider credentials come from Doppler, matching the live LLM step. This
+      # job is already push-only, the same trust boundary that step relies on,
+      # so a PR cannot reach the vault through it.
+      #
+      # EVERRUNS_REQUIRE_LIVE_TESTS makes a missing credential fail loudly.
+      # The reasoning projection test verifies a real provider's reasoning
+      # through the worker into the API; without a key it can only test the
+      # error path, and skipping quietly would report success while verifying
+      # nothing. The llmsim tests in this job are unaffected — they never read a
+      # provider key.
       - name: Run workflow tests
-        run: cargo test -p everruns-server --test workflow_test -- --test-threads=1
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          EVERRUNS_REQUIRE_LIVE_TESTS: "1"
+        run: >-
+          doppler run --preserve-env="DATABASE_URL,API_BASE_URL,AUTH_MODE,DEPLOYMENT_GRADE,WORKER_GRPC_AUTH_TOKEN,SECRETS_ENCRYPTION_KEY,RATE_LIMIT_API_REQUESTS_PER_MINUTE,EVERRUNS_REQUIRE_LIVE_TESTS"
+          -- cargo test -p everruns-server --test workflow_test -- --test-threads=1
 
       - name: Stop services
         if: always()
