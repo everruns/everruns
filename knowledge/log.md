@@ -7,6 +7,12 @@
   recovery paths only for content absent from the inline result. Complete output
   must not induce a redundant file-tool round.
 
+* **Filesystem discovery has one batch owner.** The filesystem capability can
+  read a bounded ordered set of independent known paths in one structured call,
+  while dependent paths remain sequential. Every item still crosses the same
+  host filesystem boundary, preserving mount routing, containment, per-file
+  truncation, and one aggregate output ceiling.
+
 ## 2026-08-22
 
 * **A scheduled session's GitHub identity is not negotiable, so "try another

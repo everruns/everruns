@@ -537,8 +537,8 @@ enum ToolClass {
 
 fn classify_tool_call(tool_call: &ToolCall) -> ToolClass {
     match tool_call.name.as_str() {
-        "read_file" | "grep_files" | "repo_map" | "search_sessions" | "ast_grep"
-        | "list_directory" | "stat_file" => ToolClass::Exploration,
+        "read_file" | "read_many_files" | "grep_files" | "repo_map" | "search_sessions"
+        | "ast_grep" | "list_directory" | "stat_file" => ToolClass::Exploration,
         "write_file" | "edit_file" | "delete_file" | "ast_edit" => ToolClass::Mutation,
         "get_task" | "list_tasks" => ToolClass::Waiting,
         "bash" => classify_bash_command(
@@ -678,13 +678,12 @@ fn exploration_signature(tool_call: &ToolCall) -> Option<String> {
                 .unwrap_or_default();
             Some(format!("grep_files:{path_pattern}:{pattern}"))
         }
-        "repo_map" | "search_sessions" | "ast_grep" | "list_directory" | "stat_file" => {
-            Some(format!(
-                "{}:{}",
-                tool_call.name,
-                normalize_value(&tool_call.arguments)
-            ))
-        }
+        "read_many_files" | "repo_map" | "search_sessions" | "ast_grep" | "list_directory"
+        | "stat_file" => Some(format!(
+            "{}:{}",
+            tool_call.name,
+            normalize_value(&tool_call.arguments)
+        )),
         "bash" => {
             let command = tool_call
                 .arguments
@@ -840,6 +839,20 @@ mod tests {
             result: Some(value),
             ..result()
         }
+    }
+
+    #[test]
+    fn batch_reads_are_bounded_exploration_with_stable_signatures() {
+        let read = call(
+            "read_many_files",
+            json!({"paths": ["/workspace/a", "/workspace/b"]}),
+        );
+
+        assert_eq!(classify_tool_call(&read), ToolClass::Exploration);
+        assert_eq!(
+            exploration_signature(&read).as_deref(),
+            Some("read_many_files:{\"paths\":[\"/workspace/a\",\"/workspace/b\"]}")
+        );
     }
 
     #[tokio::test]

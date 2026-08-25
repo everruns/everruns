@@ -80,6 +80,7 @@ fn image_media_type(content: &str) -> Option<&'static str> {
 const WORKSPACE_PREFIX: &str = "/workspace";
 const SESSION_FILE_SYSTEM_TOOL_NAMES: &[&str] = &[
     "read_file",
+    "read_many_files",
     "write_file",
     "edit_file",
     "list_directory",
@@ -92,6 +93,11 @@ const LIST_DIRECTORY_DEFAULT_LIMIT: usize = 200;
 const LIST_DIRECTORY_MAX_LIMIT: usize = 1_000;
 const GREP_FILES_DEFAULT_LIMIT: usize = 200;
 const GREP_FILES_MAX_LIMIT: usize = 1_000;
+const READ_FILE_BATCH_MAX_PATHS: usize = 10;
+const READ_FILE_BATCH_MAX_PATH_BYTES: usize = 4 * 1024;
+// Leave headroom below the runtime's 64 KiB hard tool-result limit so the
+// ordered envelope and any per-path errors remain intact.
+const READ_FILE_BATCH_MAX_OUTPUT_BYTES: usize = 60 * 1024;
 
 fn escape_xml_text(content: &str) -> String {
     content
@@ -199,6 +205,7 @@ impl FilePathPresentation {
     fn parameters_schema_for_tool(&self, tool_name: &str) -> Option<Value> {
         match tool_name {
             "read_file" => Some(read_file_parameters_schema(self)),
+            "read_many_files" => Some(read_many_files_parameters_schema(self)),
             "write_file" => Some(write_file_parameters_schema(self)),
             "edit_file" => Some(edit_file_parameters_schema(self)),
             "list_directory" => Some(list_directory_parameters_schema(self)),
@@ -247,12 +254,13 @@ impl ToolDefinitionHook for FilePathPresentationHook {
 }
 
 fn read_file_parameters_schema(presentation: &FilePathPresentation) -> Value {
+    let path_description = presentation.path_param_description("docs/readme.txt");
     json!({
         "type": "object",
         "properties": {
             "path": {
                 "type": "string",
-                "description": presentation.path_param_description("docs/readme.txt")
+                "description": path_description
             },
             "offset": {
                 "type": "integer",
@@ -268,6 +276,40 @@ fn read_file_parameters_schema(presentation: &FilePathPresentation) -> Value {
             }
         },
         "required": ["path"],
+        "additionalProperties": false
+    })
+}
+
+fn read_many_files_parameters_schema(presentation: &FilePathPresentation) -> Value {
+    let path_description = presentation.path_param_description("docs/readme.txt");
+    json!({
+        "type": "object",
+        "properties": {
+            "paths": {
+                "type": "array",
+                "description": "Ordered paths for 2-10 independent files known before this call. Results use the same order. Never include a path discovered from another file in this batch.",
+                "items": {
+                    "type": "string",
+                    "description": path_description,
+                    "maxLength": READ_FILE_BATCH_MAX_PATH_BYTES
+                },
+                "minItems": 2,
+                "maxItems": READ_FILE_BATCH_MAX_PATHS
+            },
+            "offset": {
+                "type": "integer",
+                "description": "Starting line number applied to every file (0-indexed). Default: 0",
+                "default": 0,
+                "minimum": 0
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Max lines per file. Default varies by file type: 2000 (source/text), 500 (logs, tail-biased), 100 (CSV/TSV with header). Explicit value always wins.",
+                "default": 2000,
+                "minimum": 1
+            }
+        },
+        "required": ["paths"],
         "additionalProperties": false
     })
 }
@@ -900,7 +942,7 @@ impl Capability for FileSystemCapability {
         use crate::tool_output_sanitizer::READ_ECONOMY_HINT;
         let presentation = FilePathPresentation::from_context(ctx);
         Some(format!(
-            "<capability id=\"{}\">\n{}Directories are created on write. Read files before claiming what they contain — never speculate about code you have not opened.{}\n</capability>",
+            "<capability id=\"{}\">\n{}Writes create directories. Read before claims; never speculate about unopened code. Batch known independent paths with `read_many_files`; read discovered paths later.{}\n</capability>",
             self.id(),
             presentation.root_guidance(),
             READ_ECONOMY_HINT
@@ -924,6 +966,7 @@ impl Capability for FileSystemCapability {
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![
             Box::new(ReadFileTool),
+            Box::new(ReadManyFilesTool),
             Box::new(WriteFileTool),
             Box::new(EditFileTool),
             Box::new(ListDirectoryTool),
@@ -998,8 +1041,8 @@ impl Tool for ReadFileTool {
             READ_FILE_DEFAULT_LIMIT, apply_read_file_hard_cap, format_lines,
         };
 
-        let path = match arguments.get("path").and_then(|v| v.as_str()) {
-            Some(p) => p,
+        let path = match arguments.get("path").and_then(Value::as_str) {
+            Some(path) => path,
             None => return ToolExecutionResult::tool_error("Missing required parameter: path"),
         };
 
@@ -1238,6 +1281,194 @@ impl Tool for ReadFileTool {
     fn required_context_services(&self) -> &'static [ToolContextService] {
         &[ToolContextService::SessionFileSystem]
     }
+}
+
+// ============================================================================
+// ReadManyFilesTool
+// ============================================================================
+
+/// Tool to read a bounded, ordered set of independent files.
+pub struct ReadManyFilesTool;
+
+#[async_trait]
+impl Tool for ReadManyFilesTool {
+    fn narrate(
+        &self,
+        _tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_read_many_files(
+            phase, locale,
+        ))
+    }
+
+    fn name(&self) -> &str {
+        "read_many_files"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Read Many Files")
+    }
+
+    fn description(&self) -> &str {
+        "Read 2-10 independent files from the session workspace in one ordered call. Batch only paths known before the call. If one file reveals another path, read that path in a later call. Text results retain per-file success or error details. Image entries return metadata and must be read individually with read_file to view. This is NOT for reading files in cloud sandboxes; use the sandbox-specific read tool instead."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        read_many_files_parameters_schema(&FilePathPresentation::vfs())
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "read_many_files requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let Some(paths) = arguments.get("paths").and_then(Value::as_array) else {
+            return ToolExecutionResult::tool_error("Missing required parameter: paths");
+        };
+        if !(2..=READ_FILE_BATCH_MAX_PATHS).contains(&paths.len()) {
+            return ToolExecutionResult::tool_error(format!(
+                "Parameter `paths` must contain between 2 and {READ_FILE_BATCH_MAX_PATHS} paths"
+            ));
+        }
+
+        let mut parsed_paths = Vec::with_capacity(paths.len());
+        for (index, path) in paths.iter().enumerate() {
+            let Some(path) = path.as_str() else {
+                return ToolExecutionResult::tool_error(format!(
+                    "Parameter `paths[{index}]` must be a string"
+                ));
+            };
+            if path.is_empty() || path.len() > READ_FILE_BATCH_MAX_PATH_BYTES {
+                return ToolExecutionResult::tool_error(format!(
+                    "Parameter `paths[{index}]` must contain between 1 and {READ_FILE_BATCH_MAX_PATH_BYTES} bytes"
+                ));
+            }
+            parsed_paths.push(path.to_string());
+        }
+
+        self.execute_batch_with_context(arguments, &parsed_paths, context)
+            .await
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+
+    fn required_context_services(&self) -> &'static [ToolContextService] {
+        &[ToolContextService::SessionFileSystem]
+    }
+}
+
+impl ReadManyFilesTool {
+    async fn execute_batch_with_context(
+        &self,
+        arguments: Value,
+        paths: &[String],
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let mut results = Vec::with_capacity(paths.len());
+        let mut output_limit_reached = false;
+
+        for (index, path) in paths.iter().enumerate() {
+            if output_limit_reached {
+                results.push(batch_output_limit_error(index, false));
+                continue;
+            }
+
+            let mut single_arguments = arguments.clone();
+            let object = single_arguments
+                .as_object_mut()
+                .expect("validated read_many_files arguments are an object");
+            object.remove("paths");
+            object.insert("path".to_string(), json!(path));
+
+            let item = match ReadFileTool
+                .execute_with_context(single_arguments, context)
+                .await
+            {
+                ToolExecutionResult::Success(value) => value,
+                ToolExecutionResult::SuccessWithImages {
+                    mut result,
+                    images: _,
+                } => {
+                    if let Some(object) = result.as_object_mut() {
+                        object.insert("image_omitted".to_string(), json!(true));
+                        object.insert(
+                            "hint".to_string(),
+                            json!("Read this image individually with `read_file` to view it"),
+                        );
+                    }
+                    result
+                }
+                ToolExecutionResult::ToolError(error) => json!({
+                    "path": batch_input_display_path(context, path),
+                    "error": error
+                }),
+                ToolExecutionResult::InternalError(error) => {
+                    return ToolExecutionResult::InternalError(error);
+                }
+                ToolExecutionResult::ConnectionRequired { provider } => {
+                    return ToolExecutionResult::ConnectionRequired { provider };
+                }
+            };
+
+            let mut candidate = results.clone();
+            candidate.push(item.clone());
+            candidate.extend(
+                ((index + 1)..paths.len())
+                    .map(|remaining_index| batch_output_limit_error(remaining_index, false)),
+            );
+            let envelope = json!({
+                "results": candidate,
+                "count": paths.len()
+            });
+            if serde_json::to_vec(&envelope)
+                .is_ok_and(|bytes| bytes.len() <= READ_FILE_BATCH_MAX_OUTPUT_BYTES)
+            {
+                results.push(item);
+            } else {
+                output_limit_reached = true;
+                results.push(batch_output_limit_error(index, true));
+            }
+        }
+
+        ToolExecutionResult::success(json!({
+            "results": results,
+            "count": paths.len()
+        }))
+    }
+}
+
+fn batch_output_limit_error(index: usize, attempted: bool) -> Value {
+    let error = if attempted {
+        "Not returned because the batch output limit was reached; read this file individually"
+    } else {
+        "Not read because the batch output limit was reached; read this file individually"
+    };
+    json!({ "index": index, "error": error })
+}
+
+fn batch_input_display_path(context: &ToolContext, path: &str) -> String {
+    context
+        .file_store
+        .as_ref()
+        .map(|store| fs_input_display_path(store.as_ref(), path))
+        .unwrap_or_else(|| path.to_string())
 }
 
 // ============================================================================
@@ -2981,6 +3212,35 @@ mod tests {
     }
 
     #[test]
+    fn test_read_many_files_schema_is_required_bounded_and_dependency_safe() {
+        let schema = ReadManyFilesTool.parameters_schema();
+        let paths = &schema["properties"]["paths"];
+
+        assert_eq!(paths["type"], "array");
+        assert_eq!(paths["minItems"], 2);
+        assert_eq!(paths["maxItems"], READ_FILE_BATCH_MAX_PATHS);
+        assert_eq!(paths["items"]["type"], "string");
+        assert_eq!(paths["items"]["maxLength"], READ_FILE_BATCH_MAX_PATH_BYTES);
+        assert!(
+            paths["description"]
+                .as_str()
+                .unwrap()
+                .contains("Never include a path discovered from another file")
+        );
+        assert_eq!(schema["required"], json!(["paths"]));
+        assert_eq!(
+            ReadFileTool.parameters_schema()["required"],
+            json!(["path"])
+        );
+        assert!(
+            ReadFileTool.parameters_schema()["properties"]
+                .get("paths")
+                .is_none(),
+            "single-file compatibility keeps one unambiguous path input"
+        );
+    }
+
+    #[test]
     fn test_edit_file_schema_is_edits_only() {
         // EVE-620: the advertised schema must not offer top-level old_text/new_text
         // and must require edits[]. The single ambiguity-free shape is what keeps
@@ -3038,6 +3298,158 @@ mod tests {
         let context = ToolContext::new(SessionId::new());
         let result = ReadFileTool.execute_with_context(json!({}), &context).await;
         assert!(expect_tool_error(result).contains("Missing required parameter"));
+    }
+
+    #[tokio::test]
+    async fn test_read_many_files_reads_in_request_order() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/alpha.txt", "CODE=ALPHA");
+        store.add_text_file("/beta.txt", "CODE=BETA");
+        store.add_text_file("/gamma.txt", "CODE=GAMMA");
+        let context = make_context(store);
+
+        let result = ReadManyFilesTool
+            .execute_with_context(
+                json!({
+                    "paths": [
+                        "/workspace/alpha.txt",
+                        "/workspace/beta.txt",
+                        "/workspace/gamma.txt"
+                    ]
+                }),
+                &context,
+            )
+            .await;
+        let value = expect_success(result);
+        let results = value["results"].as_array().expect("ordered batch results");
+
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0]["path"], "/workspace/alpha.txt");
+        assert_eq!(results[0]["content"], "1|CODE=ALPHA");
+        assert_eq!(results[1]["path"], "/workspace/beta.txt");
+        assert_eq!(results[1]["content"], "1|CODE=BETA");
+        assert_eq!(results[2]["path"], "/workspace/gamma.txt");
+        assert_eq!(results[2]["content"], "1|CODE=GAMMA");
+    }
+
+    #[tokio::test]
+    async fn test_read_many_files_rejects_unbounded_arguments() {
+        let context = make_context(Arc::new(MockFileStore::default()));
+
+        let missing = ReadManyFilesTool
+            .execute_with_context(json!({}), &context)
+            .await;
+        assert!(expect_tool_error(missing).contains("Missing required parameter"));
+
+        let too_few = ReadManyFilesTool
+            .execute_with_context(json!({"paths": ["/workspace/a"]}), &context)
+            .await;
+        assert!(expect_tool_error(too_few).contains("between 2 and 10"));
+
+        let too_many = (0..=READ_FILE_BATCH_MAX_PATHS)
+            .map(|index| format!("/workspace/{index}.txt"))
+            .collect::<Vec<_>>();
+        let too_many = ReadManyFilesTool
+            .execute_with_context(json!({"paths": too_many}), &context)
+            .await;
+        assert!(expect_tool_error(too_many).contains("between 2 and 10"));
+
+        let oversized = ReadManyFilesTool
+            .execute_with_context(
+                json!({"paths": ["/workspace/a", "x".repeat(READ_FILE_BATCH_MAX_PATH_BYTES + 1)]}),
+                &context,
+            )
+            .await;
+        assert!(expect_tool_error(oversized).contains("between 1 and 4096 bytes"));
+    }
+
+    #[tokio::test]
+    async fn test_read_many_files_keeps_per_path_errors_ordered() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/alpha.txt", "ALPHA");
+        store.add_text_file("/gamma.txt", "GAMMA");
+        let context = make_context(store);
+
+        let result = ReadManyFilesTool
+            .execute_with_context(
+                json!({
+                    "paths": [
+                        "/workspace/alpha.txt",
+                        "/workspace/missing.txt",
+                        "/workspace/gamma.txt"
+                    ]
+                }),
+                &context,
+            )
+            .await;
+        let value = expect_success(result);
+        let results = value["results"].as_array().unwrap();
+
+        assert_eq!(results[0]["path"], "/workspace/alpha.txt");
+        assert_eq!(results[1]["path"], "/workspace/missing.txt");
+        assert!(results[1]["error"].as_str().unwrap().contains("not found"));
+        assert_eq!(results[2]["path"], "/workspace/gamma.txt");
+    }
+
+    #[tokio::test]
+    async fn test_read_many_files_caps_aggregate_output() {
+        let store = Arc::new(MockFileStore::default());
+        for path in ["/alpha.txt", "/beta.txt", "/gamma.txt"] {
+            store.add_text_file(path, &"x".repeat(60 * 1024));
+        }
+        let context = make_context(store);
+
+        let result = ReadManyFilesTool
+            .execute_with_context(
+                json!({
+                    "paths": [
+                        "/workspace/alpha.txt",
+                        "/workspace/beta.txt",
+                        "/workspace/gamma.txt"
+                    ]
+                }),
+                &context,
+            )
+            .await;
+        let value = expect_success(result);
+        let encoded = serde_json::to_vec(&value).unwrap();
+        let results = value["results"].as_array().unwrap();
+
+        assert!(encoded.len() <= READ_FILE_BATCH_MAX_OUTPUT_BYTES);
+        assert!(results[0].get("content").is_some());
+        assert!(
+            results[1]["error"]
+                .as_str()
+                .unwrap()
+                .contains("output limit")
+        );
+        assert!(
+            results[2]["error"]
+                .as_str()
+                .unwrap()
+                .contains("output limit")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_read_many_files_caps_escaped_error_paths() {
+        let context = make_context(Arc::new(MockFileStore::default()));
+        let adversarial_path = "\u{0001}".repeat(READ_FILE_BATCH_MAX_PATH_BYTES);
+
+        let result = ReadManyFilesTool
+            .execute_with_context(
+                json!({"paths": vec![adversarial_path; READ_FILE_BATCH_MAX_PATHS]}),
+                &context,
+            )
+            .await;
+        let value = expect_success(result);
+        let encoded = serde_json::to_vec(&value).unwrap();
+
+        assert_eq!(
+            value["results"].as_array().unwrap().len(),
+            READ_FILE_BATCH_MAX_PATHS
+        );
+        assert!(encoded.len() <= READ_FILE_BATCH_MAX_OUTPUT_BYTES);
     }
 
     #[tokio::test]
@@ -4013,7 +4425,13 @@ mod tests {
     fn vfs_tool_schemas_advertise_workspace_identity() {
         let presentation = FilePathPresentation::vfs();
         let schemas = filesystem_tool_schemas_with_presentation(&presentation);
-        let path_tools = ["read_file", "write_file", "edit_file", "list_directory"];
+        let path_tools = [
+            "read_file",
+            "read_many_files",
+            "write_file",
+            "edit_file",
+            "list_directory",
+        ];
         for tool_name in path_tools {
             let schema = schemas
                 .iter()

@@ -24,7 +24,7 @@ assert_eq!(FileSystemCapability.id(), "session_file_system");
 
 - Session-scoped filesystem tool implementations
 - Traversal-safe path and mount adaptation
-- Hash-gated text edits and bounded reads/searches
+- Hash-gated text edits and bounded single-file or ordered multi-file reads/searches
 - Model-visible path narration and binary image handling
 
 ## Documentation

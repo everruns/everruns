@@ -446,7 +446,10 @@ fn read_call_key(tool_call: &ToolCallContentPart) -> Option<ReadCallKey> {
         return None;
     }
 
-    let path = tool_call.arguments.get("path")?.as_str()?.to_string();
+    let path = match tool_call.name.as_str() {
+        "read_many_files" => serde_json::to_string(tool_call.arguments.get("paths")?).ok()?,
+        _ => tool_call.arguments.get("path")?.as_str()?.to_string(),
+    };
     let offset = match tool_call.arguments.get("offset") {
         Some(serde_json::Value::Number(number)) => Some(number.to_string()),
         Some(serde_json::Value::String(value)) => Some(value.clone()),
@@ -464,7 +467,7 @@ fn read_call_key(tool_call: &ToolCallContentPart) -> Option<ReadCallKey> {
 }
 
 fn is_read_file_tool_name(name: &str) -> bool {
-    name == "read_file" || name.ends_with("__read_file")
+    matches!(name, "read_file" | "read_many_files") || name.ends_with("__read_file")
 }
 
 #[cfg(test)]
@@ -500,6 +503,20 @@ mod tests {
 
     fn default_config() -> serde_json::Value {
         serde_json::json!({})
+    }
+
+    #[test]
+    fn batch_read_call_key_preserves_ordered_paths() {
+        let call = ToolCallContentPart::new(
+            "call-1",
+            "read_many_files",
+            serde_json::json!({"paths": ["/a", "/b"], "offset": 4}),
+        );
+        let key = read_call_key(&call).expect("batch reads participate in loop detection");
+
+        assert_eq!(key.resource.tool_name, "read_many_files");
+        assert_eq!(key.resource.path, "[\"/a\",\"/b\"]");
+        assert_eq!(key.range.offset.as_deref(), Some("4"));
     }
 
     fn tool_result_msg(call_fingerprint: &str, result_fingerprint: &str) -> Message {
