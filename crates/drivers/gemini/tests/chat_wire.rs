@@ -68,6 +68,12 @@ enum Golden {
         finish: Option<String>,
     },
     Error(String),
+    Reasoning(String),
+    ReasoningItem {
+        text: Option<String>,
+        signature: Option<String>,
+        bound_tool_call_id: Option<String>,
+    },
 }
 
 fn golden(event: LlmStreamEvent) -> Golden {
@@ -98,6 +104,12 @@ fn golden(event: LlmStreamEvent) -> Golden {
             }
         }
         LlmStreamEvent::Error(e) => Golden::Error(e.to_string()),
+        LlmStreamEvent::ReasoningDelta { delta, .. } => Golden::Reasoning(delta),
+        LlmStreamEvent::ReasoningItem(part) => Golden::ReasoningItem {
+            text: part.display_text(),
+            signature: part.signature.clone(),
+            bound_tool_call_id: part.bound_tool_call_id.clone(),
+        },
         other => panic!("unexpected event variant in golden capture: {other:?}"),
     }
 }
@@ -254,5 +266,109 @@ async fn eos_without_finish_reason_emits_done() {
                 finish: Some("stop".into()),
             },
         ]
+    );
+}
+
+/// Thought parts reach the reasoning channel and keep their signature.
+///
+/// Gemini marks reasoning with `thought: true` on an otherwise ordinary text
+/// part, so a driver that ignores the flag serves the model's reasoning to the
+/// user as its answer. `thoughtSignature` is the replay handle: without it a
+/// multi-turn conversation loses thought continuity.
+#[tokio::test]
+async fn thought_parts_become_reasoning_with_signature() {
+    let server = MockServer::start().await;
+    let body = [
+        r#"data: {"candidates":[{"content":{"parts":[{"text":"weighing the options","thought":true,"thoughtSignature":"sig-thought-1"}]}}]}"#,
+        "",
+        r#"data: {"candidates":[{"content":{"parts":[{"text":"The answer."}]}}]}"#,
+        "",
+        r#"data: {"candidates":[{"content":{"parts":[]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":4}}"#,
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let stream = provider(&server)
+        .chat_completion_stream(
+            vec![LlmMessage::text(LlmMessageRole::User, "think")],
+            &config("gemini-2.5-flash"),
+        )
+        .await
+        .expect("gemini stream should start");
+
+    let events = drain_golden(stream).await;
+
+    assert!(
+        events.iter().any(|g| matches!(
+            g,
+            Golden::ReasoningItem { text: Some(t), signature: Some(s), .. }
+                if t == "weighing the options" && s == "sig-thought-1"
+        )),
+        "thought part must yield a signed reasoning artifact, got: {events:?}"
+    );
+
+    // The thought must not also be served as the answer.
+    assert!(
+        !events
+            .iter()
+            .any(|g| matches!(g, Golden::Text(t) if t.contains("weighing"))),
+        "thought text leaked into the answer: {events:?}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|g| matches!(g, Golden::Text(t) if t == "The answer.")),
+        "the actual answer should still stream as text: {events:?}"
+    );
+}
+
+/// A signature that arrives on a `functionCall` part binds to that call.
+///
+/// Gemini attaches `thoughtSignature` to the function-call part when reasoning
+/// led to a tool call, and replaying it requires knowing which call it belongs
+/// to. An unbound signature cannot be put back in the right place on the next
+/// turn.
+#[tokio::test]
+async fn function_call_thought_signature_binds_to_its_call() {
+    let server = MockServer::start().await;
+    let body = [
+        r#"data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"get_weather","args":{"city":"Paris"}},"thoughtSignature":"sig-call-1"}]}}]}"#,
+        "",
+        r#"data: {"candidates":[{"content":{"parts":[]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":3}}"#,
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let stream = provider(&server)
+        .chat_completion_stream(
+            vec![LlmMessage::text(LlmMessageRole::User, "weather?")],
+            &config("gemini-2.5-flash"),
+        )
+        .await
+        .expect("gemini stream should start");
+
+    let events = drain_golden(stream).await;
+
+    let tool_call_id = events.iter().find_map(|g| match g {
+        Golden::ToolCall { name, .. } if name == "get_weather" => Some(name.clone()),
+        _ => None,
+    });
+    assert!(
+        tool_call_id.is_some(),
+        "the function call should still be emitted: {events:?}"
+    );
+
+    assert!(
+        events.iter().any(|g| matches!(
+            g,
+            Golden::ReasoningItem { signature: Some(s), bound_tool_call_id: Some(_), .. }
+                if s == "sig-call-1"
+        )),
+        "a function-call signature must bind to its tool call so it can be \
+         replayed in place, got: {events:?}"
     );
 }
