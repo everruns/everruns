@@ -78,14 +78,16 @@ async fn assert_output_pointers_follow_store(store: Arc<dyn SessionFileSystem>) 
     let mut result = ToolResult {
         tool_call_id: "call_paths".to_string(),
         result: Some(json!({
-            "stdout": "stdout body",
-            "stderr": "stderr body",
+            "stdout": "stdout preview",
+            "stderr": "stderr preview",
             "exit_code": 0,
         })),
         images: None,
         error: None,
         connection_required: None,
-        raw_output: Some("stdout body\n--- stderr ---\nstderr body".to_string()),
+        raw_output: Some(
+            "stdout body beyond preview\n--- stderr ---\nstderr body beyond preview".to_string(),
+        ),
     };
 
     PersistOutputHook

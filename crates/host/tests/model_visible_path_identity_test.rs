@@ -236,14 +236,16 @@ async fn assert_persistence_identity(store: Arc<dyn SessionFileSystem>, wrap_mou
     let mut persist_result = ToolResult {
         tool_call_id: "call_identity".to_string(),
         result: Some(json!({
-            "stdout": "stdout body",
-            "stderr": "stderr body",
+            "stdout": "stdout preview",
+            "stderr": "stderr preview",
             "exit_code": 0,
         })),
         images: None,
         error: None,
         connection_required: None,
-        raw_output: Some("stdout body\n--- stderr ---\nstderr body".to_string()),
+        raw_output: Some(
+            "stdout body beyond preview\n--- stderr ---\nstderr body beyond preview".to_string(),
+        ),
     };
     PersistOutputHook
         .after_exec(

@@ -68,7 +68,7 @@ Distillation is on by default in the **generic harness**. Every transform is det
 
 Two infrastructure hooks always run last, in order:
 
-1. **Persist Output**: for tools that declare the `persist_output` hint (exec/sandbox), writes the full `raw_output` to the session VFS and annotates the inline result with a pointer. It **skips** if a result already carries `output_files` (e.g. distillation already persisted it), so the two never double-write.
+1. **Persist Output**: for tools that declare the `persist_output` hint (exec/sandbox), writes the full `raw_output` to the session VFS. When content is absent from the inline result, it adds a recovery pointer; complete inline results keep the retained file internal and do not invite a redundant read. It **skips** if a result already carries `output_files` (e.g. distillation already persisted it), so the two never double-write.
 2. **Output Hard Limit**: a final, unremovable 64 KiB ceiling. By the time it runs, the result has usually already been budgeted or distilled, so it rarely fires; it's a backstop against pathological cases.
 
 ## The destination, where full output lives
@@ -80,7 +80,7 @@ Everything the pipeline elides is recoverable from the **session filesystem**:
 <display-root>/outputs/{tool_call_id}.stderr    ← full standard error (when present)
 ```
 
-The inline result carries the pointer in `output_files` and `full_output`, plus a human-readable note telling the model to use `read_file` (with `offset`/`limit`) when it needs detail it can't see inline. Persisted streams are capped at 1 MiB each. Deleting the session cascades and removes them.
+When the inline result omits persisted content, it carries the recovery pointer in `output_files` and `full_output`, plus a human-readable note telling the model to use `read_file` (with `offset`/`limit`) for the missing detail. Complete inline output has no model-facing pointer. Persisted streams are capped at 1 MiB each. Deleting the session cascades and removes them.
 
 This is the key to aggressive shrinking: because the original is one `read_file` away, the inline view can be small without the agent losing the ability to drill in.
 
