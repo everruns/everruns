@@ -5498,6 +5498,10 @@ export interface components {
       | (components["schemas"]["ToolResultContentPart"] & {
           /** @enum {string} */
           type: "tool_result";
+        })
+      | (components["schemas"]["ReasoningContentPart"] & {
+          /** @enum {string} */
+          type: "reasoning";
         });
     /** @description Data for context.compacted event (compaction completed). */
     ContextCompactedData: {
@@ -7270,7 +7274,7 @@ export interface components {
      *     deserialization for backward compatibility.
      * @enum {string}
      */
-    ExecutionPhase: "Commentary" | "FinalAnswer";
+    ExecutionPhase: "commentary" | "final_answer";
     /** @description Request body for the `export_report_query` operation. */
     ExportReportQueryRequest: {
       /** @description Export format. Defaults to `csv` when omitted. */
@@ -8477,7 +8481,7 @@ export interface components {
     /** @description Data for input.message event */
     InputMessageData: {
       /** @description The user message */
-      message: components["schemas"]["Message"];
+      message: components["schemas"]["RuntimeMessage"];
     };
     /** @description Request body for installing a plugin from a marketplace catalog entry. */
     InstallPluginRequest: {
@@ -9912,7 +9916,13 @@ export interface components {
     ListResponse_Message: {
       /** @description Array of items returned by the list operation. */
       data: {
-        /** @description Array of content parts */
+        /**
+         * @description Array of content parts.
+         *
+         *     Reasoning artifacts appear here as `reasoning` parts, in the order the
+         *     provider emitted them, with opaque replay state (signatures, encrypted
+         *     payloads) stripped.
+         */
         content: components["schemas"]["ContentPart"][];
         controls?: null | components["schemas"]["Controls"];
         /**
@@ -9930,6 +9940,8 @@ export interface components {
         metadata?: {
           [key: string]: unknown;
         } | null;
+        phase?: null | components["schemas"]["ExecutionPhase"];
+        phase_source?: null | components["schemas"]["PhaseSource"];
         role: components["schemas"]["MessageRole"];
         /** Format: int32 */
         sequence: number;
@@ -10929,7 +10941,7 @@ export interface components {
      */
     LlmGenerationData: {
       /** @description Messages sent to the LLM (including system prompt) */
-      messages: components["schemas"]["Message"][];
+      messages: components["schemas"]["RuntimeMessage"][];
       /** @description Metadata about the generation */
       metadata: components["schemas"]["LlmGenerationMetadata"];
       /** @description Output from the LLM */
@@ -11404,14 +11416,20 @@ export interface components {
           /** @enum {string} */
           provider: "git";
         });
-    /** @description A message in the conversation */
+    /** @description Message - primary conversation data (API response) */
     Message: {
-      /** @description Message content as array of content parts (text, images, tool calls, tool results) */
+      /**
+       * @description Array of content parts.
+       *
+       *     Reasoning artifacts appear here as `reasoning` parts, in the order the
+       *     provider emitted them, with opaque replay state (signatures, encrypted
+       *     payloads) stripped.
+       */
       content: components["schemas"]["ContentPart"][];
       controls?: null | components["schemas"]["Controls"];
       /**
        * Format: date-time
-       * @description Timestamp when the message was created
+       * @description Timestamp when this resource was created (RFC 3339).
        */
       created_at: string;
       external_actor?: null | components["schemas"]["ExternalActor"];
@@ -11420,22 +11438,20 @@ export interface components {
        * @example message_01933b5a00007000800000000000001
        */
       id: string;
-      /** @description Message-level metadata */
-      metadata?: Record<string, unknown> | null;
+      /** @description Message-level metadata (locale, etc.) */
+      metadata?: {
+        [key: string]: unknown;
+      } | null;
       phase?: null | components["schemas"]["ExecutionPhase"];
-      /** @description Message role */
+      phase_source?: null | components["schemas"]["PhaseSource"];
       role: components["schemas"]["MessageRole"];
+      /** Format: int32 */
+      sequence: number;
       /**
-       * @description Thinking content from extended thinking models (Anthropic Claude)
-       *     This is the model's chain-of-thought reasoning before producing the response.
-       *     Must be included in subsequent API calls when thinking is enabled.
+       * @description Session ID this message belongs to (format: session_{32-hex})
+       * @example session_01933b5a00007000800000000000001
        */
-      thinking?: string | null;
-      /**
-       * @description Cryptographic signature for thinking content (Anthropic Claude)
-       *     Required when sending thinking back in subsequent API calls.
-       */
-      thinking_signature?: string | null;
+      session_id: string;
     };
     MessageBody: {
       /**
@@ -11445,10 +11461,14 @@ export interface components {
       message: string;
     };
     /**
-     * @description Message role in the conversation
+     * @description Message role (API layer)
+     *
+     *     Simplified to only user and agent messages.
+     *     Tool results are conveyed via `tool.completed` events.
+     *     System messages are internal and not exposed via API.
      * @enum {string}
      */
-    MessageRole: "system" | "user" | "agent" | "tool_result";
+    MessageRole: "user" | "agent";
     /** @description Single metrics data point */
     MetricsPoint: {
       /**
@@ -11938,7 +11958,7 @@ export interface components {
       /** @description Structured interpolation fields for localized error rendering. */
       error_fields?: Record<string, unknown> | null;
       /** @description The agent message */
-      message: components["schemas"]["Message"];
+      message: components["schemas"]["RuntimeMessage"];
       metadata?: null | components["schemas"]["ModelMetadata"];
       usage?: null | components["schemas"]["TokenUsage"];
     };
@@ -13075,6 +13095,17 @@ export interface components {
      * @enum {string}
      */
     PaymentStatus: "active" | "disabled" | "pending" | "succeeded" | "failed" | "released";
+    /**
+     * @description Where a message's [`ExecutionPhase`] came from.
+     *
+     *     Only some providers report a phase. For the rest the runtime infers one from
+     *     tool-call presence, where "commentary" means nothing more than "this message
+     *     called tools" — so a text-only preamble is indistinguishable from a final
+     *     answer. Those are different claims, and a consumer cannot tell them apart
+     *     from the phase value alone, so the source travels with it.
+     * @enum {string}
+     */
+    PhaseSource: "provider" | "derived";
     /** @description Request body for posting an inbound task message. */
     PostTaskMessageBody: {
       /** @description Structured message parts (alternative to `text`). */
@@ -13349,15 +13380,15 @@ export interface components {
     /**
      * @description Data for `reason.item` event.
      *
-     *     Durable record of an opaque assistant reasoning response item (e.g., OpenAI
-     *     Responses API reasoning items). Carries provider-supplied opaque artifacts
-     *     and curated summary text only. Plaintext hidden chain-of-thought is never
-     *     persisted in this event — emitters must strip any plaintext reasoning
-     *     content before constructing it.
+     *     Durable record of one provider reasoning artifact.
+     *
+     *     Carries identity and curated summary text only. Opaque replay state
+     *     (signatures, encrypted reasoning context) is deliberately absent: it is
+     *     state the driver hands back to the provider, not content, and it must not
+     *     reach an event stream or any API surface. Plaintext chain-of-thought is
+     *     likewise never persisted here.
      */
     ReasonItemData: {
-      /** @description Provider-encrypted reasoning context, if supplied. Opaque to consumers. */
-      encrypted_content?: string | null;
       /** @description Provider-assigned identifier for the reasoning item. */
       item_id: string;
       /** @description Model identifier reported by the provider, if known. */
@@ -13460,6 +13491,52 @@ export interface components {
       effort?: string | null;
     };
     /**
+     * @description One provider-issued reasoning artifact, ordered in `Message.content`
+     *     alongside text and tool calls.
+     *
+     *     Ordering is the point. Providers interleave reasoning with text and tool
+     *     calls, and every current provider requires its artifacts replayed in the
+     *     position it issued them: Anthropic verifies each thinking block against its
+     *     own `signature`, OpenAI keys reasoning items by the `item_id` it issued and
+     *     expects them adjacent to the item they precede, and Gemini binds a
+     *     `thoughtSignature` to a specific function call. A flattened per-message
+     *     field cannot express any of that, so this is a content part.
+     *
+     *     `signature` and `encrypted` are opaque provider artifacts. They are carried
+     *     verbatim and never interpreted, never rendered, and never published on an
+     *     API surface — see [`ReasoningContentPart::to_public`].
+     */
+    ReasoningContentPart: {
+      /**
+       * @description Id of the tool call this artifact is bound to, when the provider scopes
+       *     it that way (Gemini attaches a thought signature to one function call).
+       */
+      bound_tool_call_id?: string | null;
+      /**
+       * @description Provider-encrypted reasoning context (OpenAI `encrypted_content`).
+       *     Opaque.
+       */
+      encrypted?: string | null;
+      /** @description Provider-assigned identifier, carried verbatim (e.g. OpenAI `rs_…`). */
+      item_id?: string | null;
+      /**
+       * @description Provider that produced this artifact (e.g. `anthropic`, `openai`).
+       *     Replay is only valid against the provider that issued it.
+       */
+      provider: string;
+      /**
+       * @description Provider signature over this specific block (Anthropic thinking
+       *     signature, Gemini `thoughtSignature`). Opaque.
+       */
+      signature?: string | null;
+      text?: null | components["schemas"]["ReasoningText"];
+      /**
+       * Format: int32
+       * @description Reasoning tokens attributed to this artifact, when reported.
+       */
+      tokens?: number | null;
+    };
+    /**
      * @description Reasoning effort level for models that support it
      * @enum {string}
      */
@@ -13478,6 +13555,28 @@ export interface components {
       /** @description The API value (e.g., "low", "medium") */
       value: components["schemas"]["ReasoningEffort"];
     };
+    /**
+     * @description Readable reasoning text, in the form the provider actually exposes.
+     *
+     *     Providers differ in *what* they are willing to show, and collapsing that
+     *     difference loses the one thing a consumer needs to know: whether it is
+     *     looking at the model's own words or a curated gloss of them.
+     */
+    ReasoningText:
+      | {
+          /** @enum {string} */
+          kind: "plain";
+          text: string;
+        }
+      | {
+          /** @enum {string} */
+          kind: "summary";
+          parts: string[];
+        }
+      | {
+          /** @enum {string} */
+          kind: "redacted";
+        };
     /**
      * @description Recovery mode chosen by the ContinuePartial classifier (EVE-532).
      * @enum {string}
@@ -13961,6 +14060,34 @@ export interface components {
        */
       summary?: string | null;
     };
+    /** @description A message in the conversation */
+    RuntimeMessage: {
+      /** @description Message content as array of content parts (text, images, tool calls, tool results) */
+      content: components["schemas"]["ContentPart"][];
+      controls?: null | components["schemas"]["Controls"];
+      /**
+       * Format: date-time
+       * @description Timestamp when the message was created
+       */
+      created_at: string;
+      external_actor?: null | components["schemas"]["ExternalActor"];
+      /**
+       * @description Unique message ID (format: message_{32-hex})
+       * @example message_01933b5a00007000800000000000001
+       */
+      id: string;
+      /** @description Message-level metadata */
+      metadata?: Record<string, unknown> | null;
+      phase?: null | components["schemas"]["ExecutionPhase"];
+      phase_source?: null | components["schemas"]["PhaseSource"];
+      /** @description Message role */
+      role: components["schemas"]["RuntimeMessageRole"];
+    };
+    /**
+     * @description Message role in the conversation
+     * @enum {string}
+     */
+    RuntimeMessageRole: "system" | "user" | "agent" | "tool_result";
     /**
      * @description A user-saved report definition — a named, persistable wrapper around a
      *     `ReportQuery` with optional dashboard placement metadata.
