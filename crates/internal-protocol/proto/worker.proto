@@ -514,6 +514,10 @@ message Message {
     // Execution phase: "commentary" or "final_answer". Carried across the
     // worker boundary so the classification survives to the API.
     optional string phase = 10;
+    // Where `phase` came from: "provider" or "derived". Travels with the phase
+    // for the same reason — a derived phase is only `has_tool_calls`, and a
+    // consumer cannot tell that from the value alone.
+    optional string phase_source = 11;
 }
 
 message GetMessageRequest {

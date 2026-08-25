@@ -1309,6 +1309,10 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
             .phase
             .as_deref()
             .and_then(everruns_provider::ExecutionPhase::from_provider_str),
+        phase_source: proto_msg
+            .phase_source
+            .as_deref()
+            .and_then(everruns_provider::PhaseSource::from_str_opt),
         controls,
         metadata,
         external_actor: {

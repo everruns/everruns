@@ -861,6 +861,10 @@ pub fn proto_message_to_schema(
             .phase
             .as_deref()
             .and_then(everruns_provider::ExecutionPhase::from_provider_str),
+        phase_source: value
+            .phase_source
+            .as_deref()
+            .and_then(everruns_provider::PhaseSource::from_str_opt),
         controls,
         metadata,
         external_actor,
@@ -919,6 +923,9 @@ pub fn schema_message_to_proto(value: &everruns_core::Message) -> proto::Message
         phase: value
             .phase
             .map(|phase| phase.as_provider_str().to_string()),
+        phase_source: value
+            .phase_source
+            .map(|source| source.as_str().to_string()),
     }
 }
 
