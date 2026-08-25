@@ -5818,3 +5818,241 @@ mod durable_sse_tests {
         println!("Durable circuit breakers endpoint test passed!");
     }
 }
+
+/// Reasoning reaches the API as ordered parts, classified, with replay state stripped.
+///
+/// This covers the two things the reasoning rework publishes and the one thing
+/// it must never publish, over the real API + worker + PostgreSQL path:
+///
+/// - `phase` / `phase_source` on the agent message. These cross the worker gRPC
+///   boundary, where `phase` was previously hardcoded to `None` and the proto
+///   had no field for it at all, so every message reached the API unclassified
+///   regardless of what the provider reported. Nothing else in the suite would
+///   catch that returning.
+/// - reasoning as ordered `reasoning` content parts carrying readable text.
+/// - the sanitization boundary: the artifact's signature and encrypted payload
+///   are replay state for the provider, never API content (TM-LLM-034). llmsim
+///   emits both alongside the text precisely so this assertion has something to
+///   catch.
+#[tokio::test]
+async fn test_reasoning_reaches_api_sanitized_and_classified() {
+    let client = reqwest::Client::new();
+
+    let provider_response = client
+        .post(format!("{}/v1/providers", API_BASE_URL))
+        .json(&json!({
+            "name": "llmsim-reasoning-provider",
+            "provider_type": "llmsim"
+        }))
+        .send()
+        .await
+        .expect("Failed to create provider");
+    assert_eq!(
+        provider_response.status(),
+        201,
+        "Failed to create LlmSim provider"
+    );
+    let provider: Provider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+
+    let model_response = client
+        .post(format!(
+            "{}/v1/providers/{}/models",
+            API_BASE_URL, provider.id
+        ))
+        .json(&json!({
+            "model_id": "llmsim-reasoning-test",
+            "display_name": "LlmSim Reasoning Test Model",
+            "enabled": true
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+    assert_eq!(
+        model_response.status(),
+        201,
+        "Failed to create LlmSim model"
+    );
+    let model: Model = model_response.json().await.expect("Failed to parse model");
+
+    let agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "name": "reasoning-projection-agent",
+            "system_prompt": "You are a helpful assistant.",
+            "model_id": model.id,
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+    assert_eq!(agent_response.status(), 201);
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+
+    let session_response = client
+        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .json(&json!({
+            "harness_name": SEED_HARNESS_NAME,
+            "agent_id": agent.public_id,
+            "title": "Reasoning Projection Session",
+        }))
+        .send()
+        .await
+        .expect("Failed to create session");
+    assert_eq!(session_response.status(), 201);
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+
+    // The effort is what makes llmsim reason, mirroring a real provider.
+    let message_response = client
+        .post(format!(
+            "{}/v1/sessions/{}/messages",
+            API_BASE_URL, session.id
+        ))
+        .json(&json!({
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "Think about this, then answer."}]
+            },
+            "controls": {"reasoning": {"effort": "high"}}
+        }))
+        .send()
+        .await
+        .expect("Failed to send message");
+    assert_eq!(message_response.status(), 201, "Failed to send message");
+
+    let mut agent_message: Option<Value> = None;
+    for _ in 0..60 {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let Ok(resp) = client
+            .get(format!(
+                "{}/v1/sessions/{}/messages",
+                API_BASE_URL, session.id
+            ))
+            .send()
+            .await
+        else {
+            continue;
+        };
+        if resp.status() != 200 {
+            continue;
+        }
+        let data: Value = resp.json().await.unwrap_or_default();
+        let empty = vec![];
+        let messages = data["data"].as_array().unwrap_or(&empty);
+        if let Some(m) = messages.iter().find(|m| m["role"] == "agent") {
+            agent_message = Some(m.clone());
+            break;
+        }
+    }
+
+    let agent_message = agent_message.expect("No agent message produced within 60s");
+    println!(
+        "agent message: {}",
+        serde_json::to_string_pretty(&agent_message).unwrap_or_default()
+    );
+
+    // A provider error message would carry no reasoning and no phase, and would
+    // make every assertion below vacuous.
+    assert!(
+        agent_message["metadata"]["error_code"].is_null(),
+        "Turn failed rather than producing a reasoning message: {:?}",
+        agent_message["metadata"]
+    );
+
+    // 1. Classification survives the worker boundary.
+    let phase = agent_message["phase"]
+        .as_str()
+        .expect("agent message must carry `phase`");
+    assert!(
+        phase == "commentary" || phase == "final_answer",
+        "unexpected phase {phase:?}"
+    );
+    let phase_source = agent_message["phase_source"]
+        .as_str()
+        .expect("agent message must carry `phase_source`");
+    assert!(
+        phase_source == "provider" || phase_source == "derived",
+        "unexpected phase_source {phase_source:?}"
+    );
+
+    // 2. Reasoning is published as ordered content parts with readable text.
+    let empty = vec![];
+    let content = agent_message["content"].as_array().unwrap_or(&empty);
+    let reasoning_parts: Vec<&Value> = content
+        .iter()
+        .filter(|p| p["type"] == "reasoning")
+        .collect();
+    assert!(
+        !reasoning_parts.is_empty(),
+        "agent message must carry reasoning content parts, got types {:?}",
+        content
+            .iter()
+            .map(|p| p["type"].as_str().unwrap_or("?"))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        reasoning_parts.iter().any(|p| p["text"]["text"]
+            .as_str()
+            .is_some_and(|t| t.contains("deliberating"))),
+        "reasoning text should reach the API"
+    );
+
+    // 3. Replay state must not. The provider needs it; a client never does, and
+    //    publishing it widens the surface for no benefit (TM-LLM-034).
+    for part in &reasoning_parts {
+        for leaked in ["signature", "encrypted", "encrypted_content"] {
+            assert!(
+                part.get(leaked).is_none_or(Value::is_null),
+                "reasoning part leaked `{leaked}` to the API: {part}"
+            );
+        }
+    }
+    let serialized = serde_json::to_string(&agent_message).unwrap_or_default();
+    for opaque in ["llmsim-signature-opaque", "llmsim-encrypted-opaque"] {
+        assert!(
+            !serialized.contains(opaque),
+            "opaque replay value {opaque:?} reached the API payload"
+        );
+    }
+
+    // 4. The same boundary holds for the event stream, which is a separate
+    //    projection and so a separate way for the payload to escape.
+    let events: Value = client
+        .get(format!(
+            "{}/v1/sessions/{}/events?limit=200",
+            API_BASE_URL, session.id
+        ))
+        .send()
+        .await
+        .expect("Failed to fetch events")
+        .json()
+        .await
+        .unwrap_or_default();
+    let empty_events = vec![];
+    let events = events["data"].as_array().unwrap_or(&empty_events);
+    let reason_items: Vec<&Value> = events
+        .iter()
+        .filter(|e| e["type"] == "reason.item")
+        .collect();
+    assert!(
+        !reason_items.is_empty(),
+        "a reasoning turn must publish reason.item events"
+    );
+    for item in &reason_items {
+        let data = &item["data"];
+        for leaked in ["encrypted_content", "signature", "encrypted"] {
+            assert!(
+                data.get(leaked).is_none_or(Value::is_null),
+                "reason.item leaked `{leaked}`: {data}"
+            );
+        }
+        assert!(
+            data["item_id"].is_string(),
+            "reason.item should identify the artifact: {data}"
+        );
+    }
+}

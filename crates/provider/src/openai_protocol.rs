@@ -495,6 +495,11 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         let provider_cost_usd = Arc::new(Mutex::new(Option::<f64>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(StreamToolCallAccumulator::new()));
         let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
+        // Reasoning text accumulated across deltas. Chat Completions has no
+        // per-item envelope for reasoning — it arrives as loose deltas with no
+        // id, signature or terminator — so the durable artifact has to be
+        // assembled here and emitted once the turn ends.
+        let accumulated_reasoning = Arc::new(Mutex::new(String::new()));
         // Captured from the first streaming chunk that carries an id field.
         // OpenRouter sets this to a "gen-..." identifier on every completion.
         let response_id = Arc::new(Mutex::new(Option::<String>::None));
@@ -518,6 +523,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                     let provider_cost_usd = Arc::clone(&provider_cost_usd);
                     let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
                     let finish_reason = Arc::clone(&finish_reason);
+                    let accumulated_reasoning = Arc::clone(&accumulated_reasoning);
                     let response_id = Arc::clone(&response_id);
                     let retry_metadata_for_done = shared_retry_metadata.clone();
 
@@ -556,6 +562,26 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                 {
                                     events.push(Ok(event));
                                     reason.get_or_insert_with(|| "tool_calls".to_string());
+                                }
+                            }
+
+                            // The reasoning artifact is what persists and what
+                            // replays; a delta alone reaches the UI and is then
+                            // lost. Chat Completions exposes no replay handle
+                            // (no id, no signature), so the artifact carries the
+                            // text and nothing opaque.
+                            {
+                                let mut text = accumulated_reasoning.lock().unwrap();
+                                if !text.trim().is_empty() {
+                                    let part = crate::reasoning::ReasoningContentPart::opaque(
+                                        "openai-protocol",
+                                    )
+                                    .with_text(
+                                        crate::reasoning::ReasoningText::Plain {
+                                            text: std::mem::take(&mut *text),
+                                        },
+                                    );
+                                    events.push(Ok(LlmStreamEvent::ReasoningItem(part)));
                                 }
                             }
 
@@ -625,6 +651,14 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                     let mut fr = finish_reason.lock().unwrap();
                                     let stream_event =
                                         process_stream_choice(choice, &mut tt, &mut acc, &mut fr);
+                                    // Mirror reasoning deltas into the artifact
+                                    // buffer as they stream, so the durable item
+                                    // assembled at [DONE] carries the whole text.
+                                    if let LlmStreamEvent::ReasoningDelta { delta, .. } =
+                                        &stream_event
+                                    {
+                                        accumulated_reasoning.lock().unwrap().push_str(delta);
+                                    }
                                     return vec![Ok(stream_event)];
                                 }
                                 vec![Ok(LlmStreamEvent::TextDelta(String::new()))]

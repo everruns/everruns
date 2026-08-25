@@ -768,6 +768,41 @@ impl ChatDriver for LlmSimDriver {
             .build()
             .into_chunk_stream();
 
+        // Reasoning artifacts, when the caller asked the model to reason.
+        //
+        // llmsim exists so the agent loop can be exercised without provider
+        // credits, and reasoning was the one part of a turn it could not
+        // produce. That left the whole reasoning path — persistence, the REST
+        // projection, and the sanitization that keeps replay state out of the
+        // API — testable only against live providers, so it went untested.
+        //
+        // The artifact deliberately carries both readable text and opaque
+        // replay state (signature and encrypted payload, as Anthropic and
+        // OpenAI respectively return), so a test can assert that the text
+        // survives to the API while the replay state does not.
+        let reasoning_events: Vec<Result<LlmStreamEvent>> = if config
+            .reasoning_effort
+            .is_some_and(|effort| effort.requests_reasoning())
+        {
+            let part = everruns_provider::reasoning::ReasoningContentPart::opaque("llmsim")
+                .with_item_id("rs_llmsim_0")
+                .with_signature("llmsim-signature-opaque")
+                .with_encrypted("llmsim-encrypted-opaque")
+                .with_text(everruns_provider::reasoning::ReasoningText::Plain {
+                    text: LLMSIM_REASONING_TEXT.to_string(),
+                })
+                .with_tokens(8);
+            vec![
+                Ok(LlmStreamEvent::ReasoningDelta {
+                    delta: LLMSIM_REASONING_TEXT.to_string(),
+                    summary: false,
+                }),
+                Ok(LlmStreamEvent::ReasoningItem(part)),
+            ]
+        } else {
+            Vec::new()
+        };
+
         // Map llmsim ChatCompletionChunk -> our LlmStreamEvent, then append
         // tool calls and metadata after the text stream completes.
         let tool_calls_tail = tool_calls;
@@ -809,7 +844,10 @@ impl ChatDriver for LlmSimDriver {
             tail
         };
 
-        let full_stream = event_stream.chain(stream::iter(done_events));
+        // Reasoning precedes the answer, matching every real provider.
+        let full_stream = stream::iter(reasoning_events)
+            .chain(event_stream)
+            .chain(stream::iter(done_events));
         Ok(Box::pin(full_stream))
     }
 }
@@ -822,6 +860,12 @@ impl std::fmt::Debug for LlmSimDriver {
             .finish()
     }
 }
+
+/// Readable reasoning text llmsim emits when a turn requests reasoning.
+///
+/// Distinctive so a test can assert it reached the API, and assert that the
+/// opaque replay state alongside it did not.
+pub const LLMSIM_REASONING_TEXT: &str = "llmsim deliberating about the request";
 
 // ============================================================================
 // Driver Registration
