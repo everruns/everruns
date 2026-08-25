@@ -169,7 +169,7 @@ impl MessageService {
                 content: content.clone(),
                 phase: None,
                 phase_source: None,
-                    controls: req.controls.clone(),
+                controls: req.controls.clone(),
                 metadata: req.metadata.clone(),
                 external_actor: req.external_actor.clone(),
                 created_at: now,
@@ -444,10 +444,7 @@ impl MessageService {
                     // `to_public` drops signatures and encrypted payloads:
                     // replay state is not content and must not cross an API
                     // boundary.
-                    content: core_message
-                        .clone()
-                        .into_public()
-                        .content,
+                    content: core_message.clone().into_public().content,
                     phase: core_message.phase,
                     phase_source: core_message.phase_source,
                     controls: core_message.controls.clone(),

@@ -20,14 +20,10 @@ use utoipa::ToSchema;
 pub enum ReasoningText {
     /// Verbatim chain-of-thought exposed by the provider (Anthropic extended
     /// thinking, Gemini thought parts, Chat Completions `reasoning_content`).
-    Plain {
-        text: String,
-    },
+    Plain { text: String },
     /// Provider-curated summary segments, not raw chain-of-thought (OpenAI
     /// Responses `summary_text`). Safe to display; never the model's own words.
-    Summary {
-        parts: Vec<String>,
-    },
+    Summary { parts: Vec<String> },
     /// The provider withheld the content (Anthropic `redacted_thinking`). The
     /// artifact must still be replayed verbatim, so the part keeps its
     /// signature/encrypted payload while carrying no readable text.

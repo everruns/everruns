@@ -877,7 +877,9 @@ impl WorkerService for WorkerServiceImpl {
             controls,
             metadata,
             created_at: Some(datetime_to_proto_timestamp(message.created_at)),
-            phase: message.phase.map(|phase| phase.as_provider_str().to_string()),
+            phase: message
+                .phase
+                .map(|phase| phase.as_provider_str().to_string()),
             phase_source: message
                 .phase_source
                 .map(|source| source.as_str().to_string()),

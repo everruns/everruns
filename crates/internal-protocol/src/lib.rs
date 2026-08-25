@@ -920,12 +920,8 @@ pub fn schema_message_to_proto(value: &everruns_core::Message) -> proto::Message
         metadata,
         created_at: Some(datetime_to_proto_timestamp(value.created_at)),
         external_actor,
-        phase: value
-            .phase
-            .map(|phase| phase.as_provider_str().to_string()),
-        phase_source: value
-            .phase_source
-            .map(|source| source.as_str().to_string()),
+        phase: value.phase.map(|phase| phase.as_provider_str().to_string()),
+        phase_source: value.phase_source.map(|source| source.as_str().to_string()),
     }
 }
 

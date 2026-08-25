@@ -88,15 +88,16 @@ pub(super) fn merge_retry_metadata(
 /// Returns true when a stream event carries assistant output progress.
 pub(super) fn advances_stall_deadline(event: &LlmStreamEvent) -> bool {
     match event {
-        LlmStreamEvent::TextDelta(delta)
-        | LlmStreamEvent::ReasoningDelta { delta, .. } => !delta.is_empty(),
+        LlmStreamEvent::TextDelta(delta) | LlmStreamEvent::ReasoningDelta { delta, .. } => {
+            !delta.is_empty()
+        }
         LlmStreamEvent::ReasoningItem(item) => {
             item.has_replay_state() || item.display_text().is_some()
         }
         LlmStreamEvent::ToolCalls(calls) => !calls.is_empty(),
-        LlmStreamEvent::MessagePhase(_)
-        | LlmStreamEvent::Done(_)
-        | LlmStreamEvent::Error(_) => false,
+        LlmStreamEvent::MessagePhase(_) | LlmStreamEvent::Done(_) | LlmStreamEvent::Error(_) => {
+            false
+        }
     }
 }
 

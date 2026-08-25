@@ -28,7 +28,6 @@ use everruns_core::events::{
     TurnSealedData,
 };
 use everruns_core::message::{ContentPart, Message};
-use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
@@ -1653,6 +1652,7 @@ mod tests {
         EventContext, InputMessageData, ModelMetadata, OutputMessageCompletedData,
         ReasonCompletedData, ToolCompletedData, TurnCompletedData, TurnFailedData,
     };
+    use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
     use everruns_provider::tool_types::ToolCall;
     use everruns_provider::typed_id::{SessionId, TurnId};
 

@@ -40,7 +40,6 @@ use crate::llm_retry::{
     reserve_retry_wait,
 };
 use crate::message::{ContentPart, Message, MessageRole};
-use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use crate::message_retriever::MessageRetriever;
 use crate::output_guardrail::{
     ArmedGuardrail, OutputGuardrailContext, PostGenerationOutputContext, evaluate_guardrails,
@@ -56,6 +55,7 @@ use crate::{
     durability::PartialStreamStore, event_emitter::EventEmitter, image_services::ImageResolver,
     image_services::ResolvedImage,
 };
+use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 
 mod compaction;
 mod error_policy;
@@ -1686,10 +1686,9 @@ impl ReasonAtom {
                                     item_id: item.item_id.clone().unwrap_or_default(),
                                     summary: item
                                         .display_text()
-                                        .filter(|_| !matches!(
-                                            item.text,
-                                            Some(ReasoningText::Plain { .. })
-                                        ))
+                                        .filter(|_| {
+                                            !matches!(item.text, Some(ReasoningText::Plain { .. }))
+                                        })
                                         .into_iter()
                                         .collect(),
                                     token_count: item.tokens,

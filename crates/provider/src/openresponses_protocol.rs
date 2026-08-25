@@ -1742,8 +1742,8 @@ fn handle_streaming_event(
                         summary_segments = safe_summary.len(),
                         "OpenResponses: received reasoning item"
                     );
-                    let mut item = crate::reasoning::ReasoningContentPart::opaque("openai")
-                        .with_item_id(id);
+                    let mut item =
+                        crate::reasoning::ReasoningContentPart::opaque("openai").with_item_id(id);
                     if let Some(encrypted) = encrypted_content {
                         item = item.with_encrypted(encrypted);
                     }
@@ -4619,7 +4619,6 @@ mod tests {
         assert!(json.get("type").is_none() || json["type"] == "message");
     }
 
-    #[test]
     /// Each reasoning item replays under the id the provider issued for it.
     ///
     /// This previously asserted only that synthesized ids were *unique*, which

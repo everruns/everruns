@@ -1,6 +1,6 @@
 # Everruns Knowledge Update Log
 
-## 2026-08-25, Reasoning is an ordered content part
+## 2026-08-25
 
 * **Reasoning is a list of provider artifacts, not text on the message.** The
   flat `thinking` / `thinking_signature` pair could not express what providers

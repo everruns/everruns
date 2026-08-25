@@ -27,11 +27,11 @@ use everruns_provider::driver_registry::{
     LlmResponseStream, LlmStreamEvent, disjoint_prompt_tokens, fold_system_messages,
 };
 use everruns_provider::error::{AgentLoopError, LlmErrorKind, Result};
-use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use everruns_provider::is_provider_quota_message;
 use everruns_provider::llm_retry::{
     LlmRetryConfig, RetryDecision, RetryMetadata, SendOutcome, retry_request, send_error_message,
 };
+use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use everruns_provider::stream_accumulator::StreamToolCallAccumulator;
 use everruns_provider::stream_reconnect::connect_bytes_with_reconnect;
 use everruns_provider::tool_types::{ToolCall, ToolDefinition};
@@ -119,7 +119,9 @@ impl GeminiChatDriver {
                             })
                         }
                     }
-                    LlmContentPart::Audio { .. } => Some(GeminiPart::text(AUDIO_CONTENT_PLACEHOLDER)),
+                    LlmContentPart::Audio { .. } => {
+                        Some(GeminiPart::text(AUDIO_CONTENT_PLACEHOLDER))
+                    }
                 })
                 .collect(),
         }
@@ -629,17 +631,17 @@ impl ChatDriver for GeminiChatDriver {
                                                                     ),
                                                                 ))
                                                             }
-                                                            None => {
-                                                                Some(LlmStreamEvent::ReasoningDelta {
+                                                            None => Some(
+                                                                LlmStreamEvent::ReasoningDelta {
                                                                     delta: text.clone(),
                                                                     summary: false,
-                                                                })
-                                                            }
+                                                                },
+                                                            ),
                                                         }
                                                     }
-                                                    GeminiResponsePart::Text { text, .. } => {
-                                                        Some(LlmStreamEvent::TextDelta(text.clone()))
-                                                    }
+                                                    GeminiResponsePart::Text { text, .. } => Some(
+                                                        LlmStreamEvent::TextDelta(text.clone()),
+                                                    ),
                                                     GeminiResponsePart::FunctionCall {
                                                         function_call,
                                                         thought_signature,
@@ -1249,7 +1251,13 @@ impl GeminiPart {
 impl GeminiResponsePart {
     /// Whether a text part carries reasoning rather than answer text.
     fn is_thought(&self) -> bool {
-        matches!(self, Self::Text { thought: Some(true), .. })
+        matches!(
+            self,
+            Self::Text {
+                thought: Some(true),
+                ..
+            }
+        )
     }
 }
 

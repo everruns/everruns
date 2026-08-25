@@ -71,17 +71,21 @@ impl PhaseSource {
 }
 
 impl Serialize for PhaseSource {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
         serializer.serialize_str(self.as_str())
     }
 }
 
 impl<'de> Deserialize<'de> for PhaseSource {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
         let s = String::deserialize(deserializer)?;
-        Self::from_str_opt(&s).ok_or_else(|| {
-            serde::de::Error::unknown_variant(&s, &["provider", "derived"])
-        })
+        Self::from_str_opt(&s)
+            .ok_or_else(|| serde::de::Error::unknown_variant(&s, &["provider", "derived"]))
     }
 }
 
