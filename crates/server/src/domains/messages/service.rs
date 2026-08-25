@@ -209,6 +209,9 @@ impl MessageService {
                 sequence: stored_event.sequence.unwrap_or(0),
                 role: MessageRole::User,
                 content,
+                // User messages are never phase-classified.
+                phase: None,
+                phase_source: None,
                 controls: req.controls,
                 metadata: req.metadata,
                 external_actor: req.external_actor,
@@ -421,6 +424,8 @@ impl MessageService {
                             sequence,
                             role: MessageRole::from(msg.role.to_string().as_str()),
                             content: msg.content,
+                            phase: None,
+                            phase_source: None,
                             controls: None,
                             metadata: None,
                             external_actor: None,
@@ -435,7 +440,15 @@ impl MessageService {
                     session_id: SessionId::from_uuid(session_id),
                     sequence,
                     role: MessageRole::from(core_message.role.to_string().as_str()),
-                    content: core_message.content.clone(),
+                    // `to_public` drops signatures and encrypted payloads:
+                    // replay state is not content and must not cross an API
+                    // boundary.
+                    content: core_message
+                        .clone()
+                        .into_public()
+                        .content,
+                    phase: core_message.phase,
+                    phase_source: core_message.phase_source,
                     controls: core_message.controls.clone(),
                     metadata: core_message.metadata.clone(),
                     external_actor: core_message.external_actor.clone(),

@@ -24,6 +24,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use everruns_provider::typed_id::{MessageId, SessionId, SessionParticipantId};
+use everruns_provider::{ExecutionPhase, PhaseSource};
 
 use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
 use everruns_worker::AgentRunner;
@@ -91,8 +92,28 @@ pub struct Message {
     pub session_id: SessionId,
     pub sequence: i32,
     pub role: MessageRole,
-    /// Array of content parts
+    /// Array of content parts.
+    ///
+    /// Reasoning artifacts appear here as `reasoning` parts, in the order the
+    /// provider emitted them, with opaque replay state (signatures, encrypted
+    /// payloads) stripped.
     pub content: Vec<ContentPart>,
+    /// Execution phase for agent messages: whether this is intermediate
+    /// `commentary` or the turn's `final_answer`. Absent on user messages.
+    ///
+    /// Without this a client cannot tell an intermediate message from the
+    /// answer, which is the single question most consumers of a session need
+    /// answered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<ExecutionPhase>,
+    /// Whether `phase` was reported by the provider or inferred by the runtime
+    /// from tool-call presence.
+    ///
+    /// `derived` is a weak signal: it means only "this message called tools",
+    /// so a text-only preamble is reported as `final_answer`. Clients needing a
+    /// dependable classification should treat `derived` accordingly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase_source: Option<PhaseSource>,
     /// Runtime controls (model, reasoning, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controls: Option<Controls>,

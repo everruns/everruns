@@ -36,6 +36,55 @@ pub enum ExecutionPhase {
     FinalAnswer,
 }
 
+/// Where a message's [`ExecutionPhase`] came from.
+///
+/// Only some providers report a phase. For the rest the runtime infers one from
+/// tool-call presence, where "commentary" means nothing more than "this message
+/// called tools" — so a text-only preamble is indistinguishable from a final
+/// answer. Those are different claims, and a consumer cannot tell them apart
+/// from the phase value alone, so the source travels with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(rename_all = "snake_case"))]
+pub enum PhaseSource {
+    /// The provider reported this phase on the wire.
+    Provider,
+    /// The runtime inferred it from tool-call presence. A weak signal.
+    Derived,
+}
+
+impl PhaseSource {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Provider => "provider",
+            Self::Derived => "derived",
+        }
+    }
+
+    pub fn from_str_opt(s: &str) -> Option<Self> {
+        match s {
+            "provider" => Some(Self::Provider),
+            "derived" => Some(Self::Derived),
+            _ => None,
+        }
+    }
+}
+
+impl Serialize for PhaseSource {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for PhaseSource {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Self::from_str_opt(&s).ok_or_else(|| {
+            serde::de::Error::unknown_variant(&s, &["provider", "derived"])
+        })
+    }
+}
+
 impl ExecutionPhase {
     /// Derive phase from whether the response contains tool calls.
     pub fn from_has_tool_calls(has_tool_calls: bool) -> Self {

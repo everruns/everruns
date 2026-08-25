@@ -75,7 +75,7 @@ pub use error::{
     AgentLoopError, FileSystemError, FileSystemErrorClass, LlmError, LlmErrorKind, Result,
     StoreResultExt, classify_fs_error, from_json, json_val,
 };
-pub use execution_phase::ExecutionPhase;
+pub use execution_phase::{ExecutionPhase, PhaseSource};
 pub use reasoning::{ReasoningContentPart, ReasoningText};
 pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata};
 pub use model::{

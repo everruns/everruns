@@ -2090,6 +2090,7 @@ mod tests {
     #[test]
     fn test_request_serialization() {
         let request = ResponsesRequest {
+            include: None,
             text: None,
             service_tier: None,
             model: "gpt-4o".to_string(),
@@ -2121,6 +2122,7 @@ mod tests {
     #[test]
     fn test_request_with_reasoning() {
         let request = ResponsesRequest {
+            include: None,
             text: None,
             service_tier: None,
             model: "o3".to_string(),
@@ -2157,6 +2159,7 @@ mod tests {
         metadata.insert("agent_id".to_string(), "agent_xyz789".to_string());
 
         let request = ResponsesRequest {
+            include: None,
             text: None,
             service_tier: None,
             model: "gpt-4o".to_string(),
@@ -2188,6 +2191,7 @@ mod tests {
     #[test]
     fn test_request_serializes_parallel_tool_calls() {
         let make = |flag: Option<bool>| ResponsesRequest {
+            include: None,
             text: None,
             service_tier: None,
             model: "gpt-5.4".to_string(),
@@ -2246,6 +2250,7 @@ mod tests {
             prompt_cache_key: None,
             parallel_tool_calls: None,
             text: None,
+            include: None,
         };
 
         let json = serde_json::to_value(make(None)).unwrap();
@@ -2263,6 +2268,7 @@ mod tests {
     #[test]
     fn test_request_serializes_verbosity() {
         let make = |verbosity: Option<&str>| ResponsesRequest {
+            include: None,
             service_tier: None,
             text: verbosity.map(|v| ResponsesText {
                 verbosity: Some(v.to_string()),
@@ -3999,8 +4005,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                thinking: Some("This is my chain of thought reasoning...".to_string()),
-                thinking_signature: Some("encrypted_reasoning_token_123".to_string()),
+                reasoning: Vec::new(),
             },
             LlmMessage::text(LlmMessageRole::User, "What else?"),
         ];
@@ -4047,8 +4052,7 @@ mod tests {
                 }]),
                 tool_call_id: None,
                 phase: None,
-                thinking: Some("I need to call the get_time tool...".to_string()),
-                thinking_signature: Some("encrypted_token_xyz".to_string()),
+                reasoning: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -4095,8 +4099,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                thinking: Some("Some thinking...".to_string()),
-                thinking_signature: None, // No signature!
+                reasoning: Vec::new(),
             },
         ];
 
@@ -4146,27 +4149,17 @@ mod tests {
             None,
         );
 
-        // Should emit ReasonItem with the encrypted content and metadata
+        // Should emit a reasoning artifact carrying the provider id and the
+        // encrypted payload needed to replay it.
         match result {
-            LlmStreamEvent::ReasonItem {
-                provider,
-                model,
-                item_id,
-                encrypted_content,
-                summary,
-                token_count,
-            } => {
-                assert_eq!(provider, "openai");
-                assert_eq!(model.as_deref(), Some("gpt-5"));
-                assert_eq!(item_id, "rs_001");
-                assert_eq!(
-                    encrypted_content.as_deref(),
-                    Some("encrypted_reasoning_data")
-                );
-                assert!(summary.is_empty());
-                assert!(token_count.is_none());
+            LlmStreamEvent::ReasoningItem(item) => {
+                assert_eq!(item.provider, "openai");
+                assert_eq!(item.item_id.as_deref(), Some("rs_001"));
+                assert_eq!(item.encrypted.as_deref(), Some("encrypted_reasoning_data"));
+                assert!(item.text.is_none());
+                assert!(item.tokens.is_none());
             }
-            other => panic!("Expected ReasonItem event, got {:?}", other),
+            other => panic!("Expected ReasoningItem event, got {:?}", other),
         }
     }
 
@@ -4333,22 +4326,21 @@ mod tests {
             None,
         );
 
-        // Should still emit ReasonItem carrying the safe summary even when no
+        // Should still emit the artifact carrying the safe summary even when no
         // encrypted content is present so the durable reasoning record survives.
         match result {
-            LlmStreamEvent::ReasonItem {
-                provider,
-                item_id,
-                encrypted_content,
-                summary,
-                ..
-            } => {
-                assert_eq!(provider, "openai");
-                assert_eq!(item_id, "rs_001");
-                assert!(encrypted_content.is_none());
-                assert_eq!(summary, vec!["Some summary".to_string()]);
+            LlmStreamEvent::ReasoningItem(item) => {
+                assert_eq!(item.provider, "openai");
+                assert_eq!(item.item_id.as_deref(), Some("rs_001"));
+                assert!(item.encrypted.is_none());
+                assert_eq!(
+                    item.text,
+                    Some(crate::reasoning::ReasoningText::Summary {
+                        parts: vec!["Some summary".to_string()],
+                    })
+                );
             }
-            other => panic!("Expected ReasonItem event, got {:?}", other),
+            other => panic!("Expected ReasoningItem event, got {:?}", other),
         }
     }
 
@@ -4396,15 +4388,16 @@ mod tests {
         );
 
         match result {
-            LlmStreamEvent::ReasonItem {
-                summary,
-                encrypted_content,
-                ..
-            } => {
-                assert_eq!(summary, vec!["safe summary".to_string()]);
-                assert_eq!(encrypted_content.as_deref(), Some("opaque"));
+            LlmStreamEvent::ReasoningItem(item) => {
+                assert_eq!(
+                    item.text,
+                    Some(crate::reasoning::ReasoningText::Summary {
+                        parts: vec!["safe summary".to_string()],
+                    })
+                );
+                assert_eq!(item.encrypted.as_deref(), Some("opaque"));
             }
-            other => panic!("Expected ReasonItem event, got {:?}", other),
+            other => panic!("Expected ReasoningItem event, got {:?}", other),
         }
     }
 
@@ -4418,7 +4411,7 @@ mod tests {
         let accumulated_tool_calls = Mutex::new(Vec::new());
         let finish_reason = Mutex::new(None);
 
-        // ReasoningDelta (opaque reasoning from o-series) maps to ThinkingDelta
+        // Raw reasoning from o-series reaches the reasoning channel, not text.
         let event = StreamingEvent::ReasoningDelta {
             sequence_number: 3,
             item_id: "rs_001".to_string(),
@@ -4440,10 +4433,11 @@ mod tests {
         );
 
         match result {
-            LlmStreamEvent::ThinkingDelta(text) => {
-                assert_eq!(text, "Let me reason about this...");
+            LlmStreamEvent::ReasoningDelta { delta, summary } => {
+                assert_eq!(delta, "Let me reason about this...");
+                assert!(!summary, "raw chain-of-thought is not a summary");
             }
-            _ => panic!("Expected ThinkingDelta, got {:?}", result),
+            _ => panic!("Expected ReasoningDelta, got {:?}", result),
         }
     }
 
@@ -4457,7 +4451,9 @@ mod tests {
         let accumulated_tool_calls = Mutex::new(Vec::new());
         let finish_reason = Mutex::new(None);
 
-        // ReasoningSummaryDelta (readable summary from GPT-5.x) maps to public TextDelta
+        // A reasoning summary is a reasoning artifact. Routing it to the
+        // assistant-text channel persisted it as the model's answer and
+        // replayed it as the model's own prior output.
         let event = StreamingEvent::ReasoningSummaryDelta {
             sequence_number: 4,
             item_id: "rs_002".to_string(),
@@ -4479,10 +4475,18 @@ mod tests {
         );
 
         match result {
-            LlmStreamEvent::TextDelta(text) => {
-                assert_eq!(text, "Breaking down the problem...");
+            LlmStreamEvent::ReasoningDelta { delta, summary } => {
+                assert_eq!(delta, "Breaking down the problem...");
+                assert!(
+                    summary,
+                    "a reasoning summary must be labelled as such, not passed \
+                     off as raw chain-of-thought"
+                );
             }
-            _ => panic!("Expected TextDelta, got {:?}", result),
+            other => panic!(
+                "reasoning summary must reach the reasoning channel, never \
+                 assistant text; got {other:?}"
+            ),
         }
     }
 
@@ -4617,8 +4621,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                thinking: Some("thinking 1".to_string()),
-                thinking_signature: Some("encrypted_1".to_string()),
+                reasoning: Vec::new(),
             },
             LlmMessage::text(LlmMessageRole::User, "Second question"),
             LlmMessage {
@@ -4627,8 +4630,7 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                thinking: Some("thinking 2".to_string()),
-                thinking_signature: Some("encrypted_2".to_string()),
+                reasoning: Vec::new(),
             },
         ];
 

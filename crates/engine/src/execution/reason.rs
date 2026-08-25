@@ -1294,6 +1294,7 @@ impl ReasonAtom {
             pending_delta,
             mut tripped,
         ) = 'stream_attempt: loop {
+            // Provider id for reasoning artifacts synthesized after the stream.
             // Model name for reasoning events emitted from inside the stream,
             // where `model_with_provider` is no longer borrowable.
             let stream_model_name = llm_config.model.clone();
@@ -1683,7 +1684,6 @@ impl ReasonAtom {
                                     // event data: `reason.item` carries
                                     // identity and safe summary only.
                                     item_id: item.item_id.clone().unwrap_or_default(),
-                                    encrypted_content: None,
                                     summary: item
                                         .display_text()
                                         .filter(|_| !matches!(
@@ -2273,20 +2273,41 @@ impl ReasonAtom {
         // Use the API-provided phase when available (preserving the provider's value),
         // otherwise derive from state: Commentary for intermediate iterations (with tool
         // calls), FinalAnswer for the completed response.
-        assistant_message.phase = completion_metadata
+        let provider_type_for_reasoning = model_with_provider.provider_type.to_string();
+        // Record where the phase came from. A provider-reported phase is a real
+        // classification; a derived one is just `has_tool_calls` wearing a
+        // classification's name, and consumers must be able to tell.
+        let provider_phase = completion_metadata
             .as_ref()
             .and_then(|meta| meta.phase.as_deref())
-            .and_then(everruns_provider::ExecutionPhase::from_provider_str)
-            .or_else(|| {
-                Some(everruns_provider::ExecutionPhase::from_has_tool_calls(
-                    has_tool_calls,
-                ))
-            });
+            .and_then(everruns_provider::ExecutionPhase::from_provider_str);
+        let (phase, phase_source) = match provider_phase {
+            Some(phase) => (phase, everruns_provider::PhaseSource::Provider),
+            None => (
+                everruns_provider::ExecutionPhase::from_has_tool_calls(has_tool_calls),
+                everruns_provider::PhaseSource::Derived,
+            ),
+        };
+        assistant_message.phase = Some(phase);
+        assistant_message.phase_source = Some(phase_source);
         assistant_message.metadata = Some(metadata);
         // Reasoning artifacts lead the message content, preserving their order
         // among themselves. Every current provider emits reasoning ahead of the
         // text and tool calls it produced, and all three require it replayed in
         // that position, so leading is the faithful placement.
+        // Providers that stream reasoning without any replayable artifact
+        // (Chat Completions `reasoning_content`) would otherwise render live
+        // and vanish on reload. Persist what was shown, with no replay state,
+        // so every provider's readable reasoning survives uniformly.
+        if reasoning.is_empty() && !thinking.is_empty() {
+            reasoning.push(
+                ReasoningContentPart::opaque(provider_type_for_reasoning.clone()).with_text(
+                    ReasoningText::Plain {
+                        text: thinking.clone(),
+                    },
+                ),
+            );
+        }
         if !reasoning.is_empty() {
             let mut content = Vec::with_capacity(reasoning.len() + assistant_message.content.len());
             content.extend(reasoning.drain(..).map(ContentPart::Reasoning));

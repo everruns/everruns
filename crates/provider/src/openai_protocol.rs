@@ -899,8 +899,24 @@ struct OpenAiStreamChoice {
 struct OpenAiDelta {
     #[serde(default)]
     content: Option<String>,
+    /// Reasoning text on the Chat Completions wire. Reasoning models reached
+    /// over this protocol (DeepSeek-R1, Qwen, Groq, Fireworks) stream it here;
+    /// vendors split between two field names for the same thing.
+    #[serde(default)]
+    reasoning_content: Option<String>,
+    #[serde(default)]
+    reasoning: Option<String>,
     #[serde(default)]
     tool_calls: Option<Vec<OpenAiStreamToolCall>>,
+}
+
+impl OpenAiDelta {
+    fn reasoning_text(&self) -> Option<&str> {
+        self.reasoning_content
+            .as_deref()
+            .or(self.reasoning.as_deref())
+            .filter(|text| !text.is_empty())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -977,6 +993,16 @@ fn process_stream_choice(
             );
         }
         return LlmStreamEvent::TextDelta(String::new());
+    }
+
+    // Reasoning delta. Checked before content: a chunk carries one or the
+    // other, and reasoning must reach the reasoning channel rather than being
+    // dropped (which is what happened before this protocol parsed it at all).
+    if let Some(reasoning) = choice.delta.reasoning_text() {
+        return LlmStreamEvent::ReasoningDelta {
+            delta: reasoning.to_string(),
+            summary: false,
+        };
     }
 
     // Content delta. Guard on non-empty: an empty-content delta that rides along

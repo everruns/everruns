@@ -536,7 +536,7 @@ pub(crate) async fn run_app_agent_stream(
             base: agui_base_event(),
             messages: snapshot_messages
                 .iter()
-                .map(to_ag_ui_message)
+                .filter_map(to_ag_ui_message)
                 .collect::<Vec<_>>(),
         }),
     ];
@@ -939,23 +939,32 @@ fn build_external_actor(name: Option<&String>) -> Option<ExternalActor> {
     })
 }
 
-fn to_ag_ui_message(message: &crate::api::messages::Message) -> AgUiMessage {
+fn to_ag_ui_message(message: &crate::api::messages::Message) -> Option<AgUiMessage> {
     let id = AgUiMessageId::from(message.id.uuid());
     let content = public_content_parts_to_string(&message.content);
 
-    match message.role {
+    Some(match message.role {
         ApiMessageRole::User => AgUiMessage::User {
             id,
             content,
             name: None,
         },
-        ApiMessageRole::Agent => AgUiMessage::Assistant {
-            id,
-            content: (!content.is_empty()).then_some(content),
-            name: None,
-            tool_calls: None,
-        },
-    }
+        ApiMessageRole::Agent => {
+            // Replay must agree with the live stream. Live translation drops
+            // commentary from the assistant-text channel; emitting it here
+            // meant watching a session and reloading it produced different
+            // transcripts, with no signal that anything differed.
+            if matches!(message.phase, Some(ExecutionPhase::Commentary)) {
+                return None;
+            }
+            AgUiMessage::Assistant {
+                id,
+                content: (!content.is_empty()).then_some(content),
+                name: None,
+                tool_calls: None,
+            }
+        }
+    })
 }
 
 fn public_content_parts_to_string(parts: &[ContentPart]) -> String {

@@ -162,14 +162,43 @@ pub enum SessionEventKind {
         /// New output appended to that stream.
         delta: String,
     },
-    /// A model reasoning step began.
+    /// An LLM inference step began.
+    ///
+    /// This is the reason half of the reason/act loop, not model reasoning: it
+    /// says an inference call started, nothing about whether the model reasoned.
+    /// For that, match [`Self::ReasoningDelta`] and [`Self::ReasoningItem`].
     ReasonStarted,
-    /// A model reasoning step completed.
+    /// An LLM inference step completed. See [`Self::ReasonStarted`].
     ReasonCompleted {
         /// Whether the model call succeeded.
         success: bool,
         /// Provider/model failure detail, when the step failed.
         error: Option<String>,
+    },
+    /// Incremental model reasoning. Belongs to the reasoning channel and must
+    /// never be rendered as assistant text.
+    ReasoningDelta {
+        /// New reasoning text since the last event.
+        delta: String,
+        /// Reasoning so far, for convenience.
+        accumulated: String,
+    },
+    /// Model reasoning finished for this turn.
+    ReasoningCompleted {
+        /// The complete reasoning text.
+        text: String,
+    },
+    /// One provider reasoning artifact completed.
+    ///
+    /// Carries identity and provider-curated summary text only; opaque replay
+    /// state never reaches this surface.
+    ReasoningItem {
+        /// Provider that produced it (`anthropic`, `openai`, `google`).
+        provider: String,
+        /// Provider-assigned identifier, when one was issued.
+        item_id: Option<String>,
+        /// Provider-curated summary segments. Never raw chain-of-thought.
+        summary: Vec<String>,
     },
     /// A complete model-generation record was emitted.
     ///
@@ -386,6 +415,27 @@ impl SessionEvent {
                         error: error.clone(),
                     }
                 }
+                _ => Self::other_kind(event),
+            },
+            events::REASON_THINKING_DELTA => match &event.data {
+                EventData::ReasonThinkingDelta(data) => SessionEventKind::ReasoningDelta {
+                    delta: data.delta.clone(),
+                    accumulated: data.accumulated.clone(),
+                },
+                _ => Self::other_kind(event),
+            },
+            events::REASON_THINKING_COMPLETED => match &event.data {
+                EventData::ReasonThinkingCompleted(data) => SessionEventKind::ReasoningCompleted {
+                    text: data.thinking.clone(),
+                },
+                _ => Self::other_kind(event),
+            },
+            events::REASON_ITEM => match &event.data {
+                EventData::ReasonItem(data) => SessionEventKind::ReasoningItem {
+                    provider: data.provider.clone(),
+                    item_id: (!data.item_id.is_empty()).then(|| data.item_id.clone()),
+                    summary: data.summary.clone(),
+                },
                 _ => Self::other_kind(event),
             },
             events::LLM_GENERATION => SessionEventKind::ModelGeneration,

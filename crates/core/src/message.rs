@@ -14,11 +14,15 @@ use crate::typed_id::{ImageId, MessageId, ModelId};
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
-use everruns_provider::execution_phase::ExecutionPhase;
-use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
+use everruns_provider::execution_phase::{ExecutionPhase, PhaseSource};
+use everruns_provider::reasoning::ReasoningContentPart;
 /// Message role in the conversation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+// Published as `RuntimeMessageRole`. The REST API exposes only `user` and
+// `agent` (`api::messages::MessageRole`); publishing this four-variant runtime
+// enum under the plain name made clients model roles the API never returns.
+#[cfg_attr(feature = "openapi", schema(as = RuntimeMessageRole))]
 #[serde(rename_all = "snake_case")]
 pub enum MessageRole {
     /// System message (instructions)
@@ -171,6 +175,11 @@ impl Controls {
 /// A message in the conversation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+// Published as `RuntimeMessage`: this is the canonical runtime/event message,
+// distinct from the REST resource in `api::messages::Message` (which adds
+// `session_id` and `sequence`). Both previously claimed the name `Message` in
+// one OpenAPI document, so generated clients saw whichever won.
+#[cfg_attr(feature = "openapi", schema(as = RuntimeMessage))]
 pub struct Message {
     /// Unique message ID (format: message_{32-hex})
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "message_01933b5a00007000800000000000001"))]
@@ -190,6 +199,13 @@ pub struct Message {
     /// request; others derive it from state but don't send it to the provider.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<ExecutionPhase>,
+
+    /// Whether [`Self::phase`] was reported by the provider or inferred from
+    /// tool-call presence. A derived phase carries no information beyond
+    /// "this message called tools", so consumers that need a real
+    /// classification must be able to tell the two apart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase_source: Option<PhaseSource>,
 
     /// Runtime controls (model, reasoning, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -754,6 +770,7 @@ impl Message {
             role: MessageRole::User,
             content: vec![ContentPart::text(content)],
             phase: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -768,6 +785,7 @@ impl Message {
             role: MessageRole::Agent,
             content: vec![ContentPart::text(content)],
             phase: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -802,6 +820,7 @@ impl Message {
             role: MessageRole::Agent,
             content: parts,
             phase: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -816,6 +835,7 @@ impl Message {
             role: MessageRole::System,
             content: vec![ContentPart::text(content)],
             phase: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -839,6 +859,7 @@ impl Message {
                 error,
             ))],
             phase: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -873,6 +894,7 @@ impl Message {
             role: MessageRole::ToolResult,
             content,
             phase: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,
@@ -883,6 +905,13 @@ impl Message {
     /// Set the execution phase on this message and return self.
     pub fn with_phase(mut self, phase: ExecutionPhase) -> Self {
         self.phase = Some(phase);
+        self
+    }
+
+    /// Set the phase together with where it came from.
+    pub fn with_phase_from(mut self, phase: ExecutionPhase, source: PhaseSource) -> Self {
+        self.phase = Some(phase);
+        self.phase_source = Some(source);
         self
     }
 
