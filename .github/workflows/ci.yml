@@ -137,6 +137,10 @@ jobs:
               - 'examples/coding-cli/**'
               - 'scripts/cli-e2e-test.sh'
               - 'scripts/lib/check-everruns-examples.sh'
+              # The lockfile job runs the publish-cone gate; re-run it when the
+              # gate or the pin-sync script it pairs with changes.
+              - 'scripts/check-publish-cone.py'
+              - 'scripts/sync-publish-pin-versions.py'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
@@ -326,6 +330,16 @@ jobs:
 
       - name: Check publish-pin versions match workspace
         run: python3 scripts/sync-publish-pin-versions.py --check
+
+      # Deterministic guard: a breaking bump of a foundational crate must
+      # cascade to every published dependant in the same change, or the facade
+      # publish strands on two incompatible copies of that crate (the failure
+      # that blocked the everruns 0.19.0 facade in the v0.22.0 release).
+      - name: Self-test the publish-cone gate
+        run: python3 scripts/check-publish-cone.py --self-test
+
+      - name: Check publish cone has no unhealed strands
+        run: python3 scripts/check-publish-cone.py --pre-merge
 
   msrv:
     name: Published Crate MSRV
