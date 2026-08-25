@@ -60,7 +60,7 @@ reqwest = { workspace = true, features = ["multipart"] }
 # secp256k1 signing for the x402 payment rail. EIP-712 hashing is in-tree
 # (domains/payments/eip712.rs); see knowledge/project/dependency-surface.md.
 k256 = { version = "0.14", default-features = false, features = ["ecdsa", "std"] }
-sha3 = "0.11"
+sha3 = "0.12"
 time.workspace = true
 regex.workspace = true
 async-trait.workspace = true
