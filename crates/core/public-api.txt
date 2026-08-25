@@ -456,6 +456,7 @@ everruns_core::events::EventData::VoiceOutputTranscriptDelta	variant
 everruns_core::events::EventData::VoiceSessionEnded	variant
 everruns_core::events::EventData::VoiceSessionFailed	variant
 everruns_core::events::EventData::VoiceSessionStarted	variant
+everruns_core::events::EventData::into_public	function
 everruns_core::events::EventRequest	struct
 everruns_core::events::EventRequest::is_ephemeral	function
 everruns_core::events::FILE_OP_CREATE	constant
@@ -804,6 +805,7 @@ everruns_core::message::InputContentPart::Image	variant
 everruns_core::message::InputContentPart::ImageFile	variant
 everruns_core::message::InputContentPart::Text	variant
 everruns_core::message::Message	struct
+everruns_core::message::Message::into_public	function
 everruns_core::message::Message::phase	struct_field
 everruns_core::message::Message::reasoning_parts	function
 everruns_core::message::MessageRole	enum
