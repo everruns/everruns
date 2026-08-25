@@ -17,6 +17,16 @@ pub enum UtilityLlmReasoningEffort {
     High,
 }
 
+impl From<UtilityLlmReasoningEffort> for everruns_provider::model::ReasoningEffort {
+    fn from(value: UtilityLlmReasoningEffort) -> Self {
+        match value {
+            UtilityLlmReasoningEffort::Low => Self::Low,
+            UtilityLlmReasoningEffort::Medium => Self::Medium,
+            UtilityLlmReasoningEffort::High => Self::High,
+        }
+    }
+}
+
 impl UtilityLlmReasoningEffort {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -89,9 +99,7 @@ impl UtilityLlmRequest {
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             tools: Vec::new(),
-            reasoning_effort: self
-                .reasoning_effort
-                .map(|effort| effort.as_str().to_string()),
+            reasoning_effort: self.reasoning_effort.map(Into::into),
             metadata: self.metadata,
             previous_response_id: None,
             provider_opaque_context: None,
@@ -190,7 +198,7 @@ mod tests {
             .into_driver_request()
             .unwrap();
 
-            assert_eq!(config.reasoning_effort.as_deref(), Some(expected));
+            assert_eq!(config.reasoning_effort.map(|e| e.as_str()), Some(expected));
         }
     }
 

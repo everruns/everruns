@@ -14,6 +14,7 @@
 
 mod llm_test_matrix;
 
+use everruns_provider::model::ReasoningEffort;
 use everruns_provider::provider::DriverId;
 use llm_test_matrix::*;
 use rstest::rstest;
@@ -85,7 +86,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
                 model_id: None,
                 locale: None,
                 reasoning: Some(ReasoningConfig {
-                    effort: Some("high".into()),
+                    effort: Some(ReasoningEffort::High),
                 }),
                 error_disclosure: None,
                 hints: None,
@@ -261,7 +262,7 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
                     model_id: None,
                     locale: None,
                     reasoning: Some(ReasoningConfig {
-                        effort: Some("low".into()),
+                        effort: Some(ReasoningEffort::Low),
                     }),
                     error_disclosure: None,
                     hints: None,

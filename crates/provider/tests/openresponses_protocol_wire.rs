@@ -319,7 +319,7 @@ async fn reasoning_request_opts_into_encrypted_content() {
     .await;
 
     let mut call_config = config("gpt-5.2");
-    call_config.reasoning_effort = Some("high".to_string());
+    call_config.reasoning_effort = Some(everruns_provider::model::ReasoningEffort::High);
     let stream = driver(&server)
         .chat_completion_stream(
             vec![LlmMessage::text(LlmMessageRole::User, "hi")],

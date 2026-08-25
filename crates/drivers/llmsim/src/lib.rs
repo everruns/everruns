@@ -706,7 +706,7 @@ impl ChatDriver for LlmSimDriver {
         if let Some(capture) = &self.config.effort_capture
             && let Ok(mut efforts) = capture.lock()
         {
-            efforts.push(config.reasoning_effort.clone());
+            efforts.push(config.reasoning_effort.map(|e| e.as_str().to_string()));
         }
 
         // Record the provider-visible messages for tests. Captured before any

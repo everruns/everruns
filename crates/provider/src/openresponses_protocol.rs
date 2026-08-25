@@ -1063,10 +1063,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // don't support them (or with effort=none) causes OpenAI API errors.
         let reasoning = config
             .reasoning_effort
-            .as_ref()
-            .filter(|e| !e.eq_ignore_ascii_case("none"))
+            .filter(crate::model::ReasoningEffort::requests_reasoning)
             .map(|effort| ResponsesReasoning {
-                effort: effort.clone(),
+                effort: effort.as_str().to_string(),
                 summary: "detailed".to_string(),
             });
 
@@ -4510,7 +4509,7 @@ mod tests {
             temperature: None,
             max_tokens: None,
             tools: vec![],
-            reasoning_effort: Some("none".to_string()),
+            reasoning_effort: Some(crate::model::ReasoningEffort::None),
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
             provider_opaque_context: None,
@@ -4526,10 +4525,9 @@ mod tests {
         // Simulate the driver's filter logic
         let reasoning = config
             .reasoning_effort
-            .as_ref()
-            .filter(|e| !e.eq_ignore_ascii_case("none"))
+            .filter(crate::model::ReasoningEffort::requests_reasoning)
             .map(|effort| ResponsesReasoning {
-                effort: effort.clone(),
+                effort: effort.as_str().to_string(),
                 summary: "detailed".to_string(),
             });
 
@@ -4549,7 +4547,7 @@ mod tests {
             temperature: None,
             max_tokens: None,
             tools: vec![],
-            reasoning_effort: Some("high".to_string()),
+            reasoning_effort: Some(crate::model::ReasoningEffort::High),
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
             provider_opaque_context: None,
@@ -4564,10 +4562,9 @@ mod tests {
 
         let reasoning = config
             .reasoning_effort
-            .as_ref()
-            .filter(|e| !e.eq_ignore_ascii_case("none"))
+            .filter(crate::model::ReasoningEffort::requests_reasoning)
             .map(|effort| ResponsesReasoning {
-                effort: effort.clone(),
+                effort: effort.as_str().to_string(),
                 summary: "detailed".to_string(),
             });
 

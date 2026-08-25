@@ -363,19 +363,30 @@ where
 /// Thinking token budgets for Anthropic's extended thinking feature.
 /// Maps reasoning effort levels to token budgets.
 pub mod thinking_budget {
+    use crate::model::ReasoningEffort;
+
+    /// Anthropic's documented floor for a budget-based thinking request.
+    pub const MINIMAL: u32 = 1024;
     pub const LOW: u32 = 1024;
     pub const MEDIUM: u32 = 4096;
     pub const HIGH: u32 = 16384;
     pub const XHIGH: u32 = 32768;
 
-    /// Map a reasoning effort string to a thinking budget.
-    pub fn from_effort(effort: &str) -> Option<u32> {
-        match effort.to_lowercase().as_str() {
-            "low" => Some(LOW),
-            "medium" => Some(MEDIUM),
-            "high" => Some(HIGH),
-            "xhigh" => Some(XHIGH),
-            _ => None,
+    /// Map a reasoning effort to a thinking budget.
+    ///
+    /// `None` means "do not send a budget": either the caller asked for no
+    /// reasoning, in which case the request must omit thinking entirely.
+    /// `Minimal` previously fell through here and silently produced *no*
+    /// thinking rather than the smallest budget, so a user selecting the lowest
+    /// non-zero effort got the same behavior as selecting none.
+    pub fn from_effort(effort: ReasoningEffort) -> Option<u32> {
+        match effort {
+            ReasoningEffort::None => None,
+            ReasoningEffort::Minimal => Some(MINIMAL),
+            ReasoningEffort::Low => Some(LOW),
+            ReasoningEffort::Medium => Some(MEDIUM),
+            ReasoningEffort::High => Some(HIGH),
+            ReasoningEffort::Xhigh => Some(XHIGH),
         }
     }
 }
@@ -581,13 +592,33 @@ mod tests {
         let _ = shared_request_http_client();
     }
 
+    /// `minimal` is the case that mattered and the old string-matching test did
+    /// not cover: it fell through to `None`, so the lowest non-zero effort
+    /// produced no thinking at all, exactly like "none".
     #[test]
     fn test_thinking_budget_from_effort() {
-        assert_eq!(thinking_budget::from_effort("low"), Some(1024));
-        assert_eq!(thinking_budget::from_effort("medium"), Some(4096));
-        assert_eq!(thinking_budget::from_effort("HIGH"), Some(16384));
-        assert_eq!(thinking_budget::from_effort("xhigh"), Some(32768));
-        assert_eq!(thinking_budget::from_effort("unknown"), None);
+        use crate::model::ReasoningEffort;
+        assert_eq!(
+            thinking_budget::from_effort(ReasoningEffort::Minimal),
+            Some(1024)
+        );
+        assert_eq!(
+            thinking_budget::from_effort(ReasoningEffort::Low),
+            Some(1024)
+        );
+        assert_eq!(
+            thinking_budget::from_effort(ReasoningEffort::Medium),
+            Some(4096)
+        );
+        assert_eq!(
+            thinking_budget::from_effort(ReasoningEffort::High),
+            Some(16384)
+        );
+        assert_eq!(
+            thinking_budget::from_effort(ReasoningEffort::Xhigh),
+            Some(32768)
+        );
+        assert_eq!(thinking_budget::from_effort(ReasoningEffort::None), None);
     }
 
     #[test]

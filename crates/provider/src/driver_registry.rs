@@ -1342,8 +1342,12 @@ pub struct LlmCallConfig {
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
     pub tools: Vec<ToolDefinition>,
-    /// Reasoning effort level (for models that support it: low, medium, high)
-    pub reasoning_effort: Option<String>,
+    /// Reasoning effort for models that support it.
+    ///
+    /// `None` means unset — the provider keeps its default. `Some(None)` is the
+    /// caller explicitly asking for no reasoning, which drivers honor by
+    /// omitting the reasoning request fields rather than sending a default.
+    pub reasoning_effort: Option<crate::model::ReasoningEffort>,
     /// Speed (service tier) for this call: "flex", "default", or "priority".
     /// Serialized as OpenAI `service_tier`; omitted when `None` so the
     /// provider keeps its default ("auto") routing.
@@ -1448,9 +1452,9 @@ impl LlmCallConfigBuilder {
         Self { config }
     }
 
-    /// Set reasoning effort level (for models that support it: low, medium, high)
-    pub fn reasoning_effort(mut self, effort: impl Into<String>) -> Self {
-        self.config.reasoning_effort = Some(effort.into());
+    /// Set reasoning effort for models that support it.
+    pub fn reasoning_effort(mut self, effort: crate::model::ReasoningEffort) -> Self {
+        self.config.reasoning_effort = Some(effort);
         self
     }
 

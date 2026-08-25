@@ -6,6 +6,7 @@
 
 use everruns_meta::provider;
 use everruns_provider::driver_registry::{LlmCallConfig, LlmMessage, LlmMessageRole};
+use everruns_provider::model::ReasoningEffort;
 use everruns_provider::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
 };
@@ -43,7 +44,7 @@ fn config(tools: Vec<ToolDefinition>, parallel_tool_calls: Option<bool>) -> LlmC
         temperature: Some(0.0),
         max_tokens: Some(512),
         tools,
-        reasoning_effort: Some("low".to_string()),
+        reasoning_effort: Some(ReasoningEffort::Low),
         speed: None,
         verbosity: None,
         metadata: std::collections::HashMap::new(),

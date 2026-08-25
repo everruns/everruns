@@ -36,6 +36,7 @@ use everruns_provider::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryDecision, RetryMetadata, SendOutcome, is_rate_limit_status,
     retry_request, send_error_message,
 };
+use everruns_provider::model::ReasoningEffort;
 use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use everruns_provider::stream_reconnect::connect_sse_with_reconnect;
 use everruns_provider::tool_types::{DeferrablePolicy, ToolCall, ToolDefinition};
@@ -804,7 +805,7 @@ impl ChatDriver for AnthropicChatDriver {
         // `output_config.effort`. On Fable 5 and Opus 4.8/4.7 the budget-based
         // `thinking: {type: "enabled", budget_tokens}` form is removed and
         // returns 400, so this split is load-bearing, not stylistic.
-        let (thinking, output_config) = match config.reasoning_effort.as_deref() {
+        let (thinking, output_config) = match config.reasoning_effort {
             Some(effort) if uses_adaptive_thinking(wire_model) => {
                 match adaptive_effort_level(effort) {
                     Some(level) => (
@@ -1531,7 +1532,7 @@ enum AnthropicThinking {
 
 impl AnthropicThinking {
     /// Create a budget-based thinking config from a reasoning effort level
-    fn enabled_from_effort(effort: &str) -> Option<Self> {
+    fn enabled_from_effort(effort: ReasoningEffort) -> Option<Self> {
         driver_helpers::thinking_budget::from_effort(effort)
             .map(|budget_tokens| Self::Enabled { budget_tokens })
     }
@@ -1620,13 +1621,19 @@ fn uses_adaptive_thinking(model_id: &str) -> bool {
 /// Map an everruns reasoning-effort level to the `output_config.effort` value
 /// used with adaptive thinking. `xhigh` is surfaced as "Max" in the model
 /// profiles and maps to the API's `max` level.
-fn adaptive_effort_level(effort: &str) -> Option<&'static str> {
-    match effort.to_ascii_lowercase().as_str() {
-        "low" => Some("low"),
-        "medium" => Some("medium"),
-        "high" => Some("high"),
-        "xhigh" => Some("max"),
-        _ => None,
+/// Map a reasoning effort onto Anthropic's adaptive `output_config.effort`.
+///
+/// Anthropic's scale tops out at `max` rather than `xhigh`, and has no separate
+/// `minimal`, so the lowest non-zero effort maps to `low`. Previously `minimal`
+/// fell through to `None` here and disabled thinking entirely, matching the same
+/// hole the budget-based path had.
+fn adaptive_effort_level(effort: ReasoningEffort) -> Option<&'static str> {
+    match effort {
+        ReasoningEffort::None => None,
+        ReasoningEffort::Minimal | ReasoningEffort::Low => Some("low"),
+        ReasoningEffort::Medium => Some("medium"),
+        ReasoningEffort::High => Some("high"),
+        ReasoningEffort::Xhigh => Some("max"),
     }
 }
 
@@ -2356,13 +2363,34 @@ mod tests {
         assert_eq!(enabled, json!({"type": "enabled", "budget_tokens": 4096}));
     }
 
+    /// Anthropic's adaptive scale has no `minimal` and tops out at `max`.
+    ///
+    /// `minimal` previously fell through the string match to `None`, disabling
+    /// thinking entirely — so the lowest non-zero effort behaved identically to
+    /// "none". It maps to the lowest real setting instead. Case handling and an
+    /// "unknown effort" case are gone because the enum makes both unrepresentable.
     #[test]
     fn test_adaptive_effort_level_mapping() {
-        assert_eq!(adaptive_effort_level("low"), Some("low"));
-        assert_eq!(adaptive_effort_level("medium"), Some("medium"));
-        assert_eq!(adaptive_effort_level("HIGH"), Some("high"));
-        assert_eq!(adaptive_effort_level("xhigh"), Some("max"));
-        assert_eq!(adaptive_effort_level("unknown"), None);
+        assert_eq!(adaptive_effort_level(ReasoningEffort::Minimal), Some("low"));
+        assert_eq!(adaptive_effort_level(ReasoningEffort::Low), Some("low"));
+        assert_eq!(
+            adaptive_effort_level(ReasoningEffort::Medium),
+            Some("medium")
+        );
+        assert_eq!(adaptive_effort_level(ReasoningEffort::High), Some("high"));
+        assert_eq!(adaptive_effort_level(ReasoningEffort::Xhigh), Some("max"));
+        assert_eq!(adaptive_effort_level(ReasoningEffort::None), None);
+    }
+
+    /// The budget path had the same `minimal` hole.
+    #[test]
+    fn test_thinking_budget_covers_minimal() {
+        use everruns_provider::driver_helpers::thinking_budget;
+        assert_eq!(
+            thinking_budget::from_effort(ReasoningEffort::Minimal),
+            Some(thinking_budget::MINIMAL)
+        );
+        assert_eq!(thinking_budget::from_effort(ReasoningEffort::None), None);
     }
 
     #[test]

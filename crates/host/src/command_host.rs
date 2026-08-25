@@ -210,8 +210,7 @@ impl StoreCommandHost {
             .controls
             .as_ref()
             .and_then(|controls| controls.reasoning.as_ref())
-            .and_then(|reasoning| reasoning.effort.clone())
-            .filter(|value| !value.is_empty())
+            .and_then(|reasoning| reasoning.effort)
         {
             builder = builder.reasoning_effort(effort);
         }

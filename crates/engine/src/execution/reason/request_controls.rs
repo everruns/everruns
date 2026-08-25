@@ -3,7 +3,7 @@ use crate::tool_context::ReasoningEffortHandle;
 use everruns_provider::DriverId;
 
 pub(super) struct RequestControls {
-    pub(super) reasoning_effort: Option<String>,
+    pub(super) reasoning_effort: Option<everruns_provider::ReasoningEffort>,
     pub(super) speed: Option<String>,
     pub(super) verbosity: Option<String>,
 }
@@ -27,17 +27,17 @@ pub(super) fn resolve_request_controls(
         .or_else(|| {
             latest_user_controls()
                 .and_then(|controls| controls.reasoning.as_ref())
-                .and_then(|reasoning| reasoning.effort.clone())
+                .and_then(|reasoning| reasoning.effort)
         })
         .filter(|effort| {
-            if effort.eq_ignore_ascii_case("none") {
+            if !effort.requests_reasoning() {
                 return false;
             }
             match crate::model_profiles::get_model_profile(provider_type, model) {
                 Some(profile) if !profile.reasoning => {
                     tracing::warn!(
                         model,
-                        effort,
+                        effort = effort.as_str(),
                         "Stripping reasoning_effort: model does not support reasoning"
                     );
                     false
@@ -111,7 +111,7 @@ mod tests {
         let mut message = Message::user("hello");
         message.controls = Some(crate::message::Controls {
             reasoning: Some(crate::message::ReasoningConfig {
-                effort: Some("none".to_string()),
+                effort: Some(everruns_provider::ReasoningEffort::None),
             }),
             ..Default::default()
         });

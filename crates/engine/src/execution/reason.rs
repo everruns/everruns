@@ -1084,7 +1084,7 @@ impl ReasonAtom {
         // 12. Build LLM call config with reasoning effort and metadata
         let mut llm_config_builder =
             crate::llm_conversions::llm_call_config_builder_from_agent(&runtime_agent);
-        if let Some(effort) = reasoning_effort.clone() {
+        if let Some(effort) = reasoning_effort {
             llm_config_builder = llm_config_builder.reasoning_effort(effort);
         }
         if let Some(speed) = speed {
@@ -2221,10 +2221,10 @@ impl ReasonAtom {
             "model".to_string(),
             serde_json::Value::String(runtime_agent.model.clone()),
         );
-        if let Some(ref effort) = reasoning_effort {
+        if let Some(effort) = reasoning_effort {
             metadata.insert(
                 "reasoning_effort".to_string(),
-                serde_json::Value::String(effort.clone()),
+                serde_json::Value::String(effort.as_str().to_string()),
             );
         }
         // Stamp the provider driver id and provider response id so the chat UI

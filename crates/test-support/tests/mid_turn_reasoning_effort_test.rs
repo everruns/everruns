@@ -17,13 +17,14 @@ use everruns_core::message_retriever::InputMessage;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{tool_context::ReasoningEffortHandle, tool_context::ToolContext};
 use everruns_llmsim::{LlmSimConfig, SimToolCall, SimTurn};
+use everruns_provider::model::ReasoningEffort;
 use everruns_test_support::InMemoryAgenticLoop;
 
 /// A tool that, when invoked, sets the shared reasoning-effort handle to a new
 /// value. This is the "seam" exercised by the test: a tool changing effort
 /// mid-turn.
 struct SetEffortTool {
-    new_effort: String,
+    new_effort: ReasoningEffort,
 }
 
 #[async_trait]
@@ -52,8 +53,8 @@ impl Tool for SetEffortTool {
     ) -> ToolExecutionResult {
         match &context.reasoning_effort_handle {
             Some(handle) => {
-                handle.set(Some(self.new_effort.clone()));
-                ToolExecutionResult::success(json!({ "effort": self.new_effort }))
+                handle.set(Some(self.new_effort));
+                ToolExecutionResult::success(json!({ "effort": self.new_effort.as_str() }))
             }
             None => ToolExecutionResult::tool_error("no reasoning effort handle in context"),
         }
@@ -85,7 +86,7 @@ async fn mid_turn_effort_change_is_observed_by_next_llm_step() {
     let runner = InMemoryAgenticLoop::builder()
         .with_llm_sim(sim)
         .tool(SetEffortTool {
-            new_effort: "high".to_string(),
+            new_effort: ReasoningEffort::High,
         })
         .reasoning_effort_handle(handle.clone())
         .max_iterations(5)
@@ -100,7 +101,7 @@ async fn mid_turn_effort_change_is_observed_by_next_llm_step() {
         content: vec![ContentPart::text("Please proceed.")],
         controls: Some(Controls {
             reasoning: Some(ReasoningConfig {
-                effort: Some("low".to_string()),
+                effort: Some(ReasoningEffort::Low),
             }),
             ..Default::default()
         }),
@@ -115,7 +116,7 @@ async fn mid_turn_effort_change_is_observed_by_next_llm_step() {
 
     // The tool must have run and mutated the live handle.
     assert_eq!(
-        handle.get().as_deref(),
+        handle.get().map(|e| e.as_str()),
         Some("high"),
         "tool should have set the live handle to high"
     );
@@ -141,7 +142,7 @@ async fn mid_turn_effort_change_is_observed_by_next_llm_step() {
     );
 
     // Sanity: the live handle reflects the override.
-    assert_eq!(handle.get().as_deref(), Some("high"));
+    assert_eq!(handle.get().map(|e| e.as_str()), Some("high"));
 }
 
 #[tokio::test]
@@ -193,7 +194,7 @@ async fn without_handle_mutation_effort_is_stable_across_steps() {
         content: vec![ContentPart::text("Go.")],
         controls: Some(Controls {
             reasoning: Some(ReasoningConfig {
-                effort: Some("medium".to_string()),
+                effort: Some(ReasoningEffort::Medium),
             }),
             ..Default::default()
         }),
@@ -233,7 +234,7 @@ async fn mid_turn_effort_override_is_cleared_before_next_turn() {
     let runner = InMemoryAgenticLoop::builder()
         .with_llm_sim(sim)
         .tool(SetEffortTool {
-            new_effort: "high".to_string(),
+            new_effort: ReasoningEffort::High,
         })
         .reasoning_effort_handle(handle.clone())
         .max_iterations(5)
@@ -246,7 +247,7 @@ async fn mid_turn_effort_override_is_cleared_before_next_turn() {
         content: vec![ContentPart::text("First turn.")],
         controls: Some(Controls {
             reasoning: Some(ReasoningConfig {
-                effort: Some("low".to_string()),
+                effort: Some(ReasoningEffort::Low),
             }),
             ..Default::default()
         }),
@@ -258,14 +259,14 @@ async fn mid_turn_effort_override_is_cleared_before_next_turn() {
         first_result.success,
         "first turn should succeed: {first_result:?}"
     );
-    assert_eq!(handle.get().as_deref(), Some("high"));
+    assert_eq!(handle.get().map(|e| e.as_str()), Some("high"));
 
     let second_input = InputMessage {
         role: MessageRole::User,
         content: vec![ContentPart::text("Second turn.")],
         controls: Some(Controls {
             reasoning: Some(ReasoningConfig {
-                effort: Some("low".to_string()),
+                effort: Some(ReasoningEffort::Low),
             }),
             ..Default::default()
         }),

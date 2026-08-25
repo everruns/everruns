@@ -431,8 +431,7 @@ impl ChatDriver for GeminiChatDriver {
         // multi-turn tool use loses its thought continuity.
         let thinking_config = config
             .reasoning_effort
-            .as_deref()
-            .filter(|effort| !effort.eq_ignore_ascii_case("none"))
+            .filter(everruns_provider::ReasoningEffort::requests_reasoning)
             .map(|effort| GeminiThinkingConfig {
                 thinking_budget: driver_helpers::thinking_budget::from_effort(effort),
                 include_thoughts: true,

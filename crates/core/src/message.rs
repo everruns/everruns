@@ -99,9 +99,13 @@ impl ExternalActor {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ReasoningConfig {
-    /// Effort level for reasoning (low, medium, high)
+    /// Effort level for reasoning.
+    ///
+    /// Typed rather than free-form: the effort taxonomy is closed, and each
+    /// driver previously re-parsed the string with its own case handling, which
+    /// let `minimal` silently mean "no reasoning" on budget-based models.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub effort: Option<String>,
+    pub effort: Option<everruns_provider::model::ReasoningEffort>,
 }
 
 /// Runtime controls for message processing

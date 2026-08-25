@@ -452,12 +452,12 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             tools,
             parallel_tool_calls: config
                 .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
-            // Skip "none" — sending reasoning_effort to non-thinking models causes API errors
+            // An explicit "no reasoning" omits the field: sending it to a
+            // non-thinking model is an API error.
             reasoning_effort: config
                 .reasoning_effort
-                .as_ref()
-                .filter(|e| !e.eq_ignore_ascii_case("none"))
-                .cloned(),
+                .filter(crate::model::ReasoningEffort::requests_reasoning)
+                .map(|effort| effort.as_str().to_string()),
             service_tier: config.speed.clone(),
             verbosity: config.verbosity.clone(),
             metadata,
@@ -1438,10 +1438,9 @@ mod tests {
             stream_options: None,
             tools: None,
             parallel_tool_calls: None,
-            reasoning_effort: Some("none".to_string())
-                .as_ref()
-                .filter(|e| !e.eq_ignore_ascii_case("none"))
-                .cloned(),
+            reasoning_effort: Some(crate::model::ReasoningEffort::None)
+                .filter(crate::model::ReasoningEffort::requests_reasoning)
+                .map(|e| e.as_str().to_string()),
             metadata: None,
         };
 
@@ -1470,10 +1469,9 @@ mod tests {
             stream_options: None,
             tools: None,
             parallel_tool_calls: None,
-            reasoning_effort: Some("high".to_string())
-                .as_ref()
-                .filter(|e| !e.eq_ignore_ascii_case("none"))
-                .cloned(),
+            reasoning_effort: Some(crate::model::ReasoningEffort::High)
+                .filter(crate::model::ReasoningEffort::requests_reasoning)
+                .map(|e| e.as_str().to_string()),
             metadata: None,
         };
 

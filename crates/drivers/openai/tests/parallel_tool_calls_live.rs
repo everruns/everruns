@@ -11,6 +11,7 @@
 
 use everruns_openai::provider;
 use everruns_provider::driver_registry::{LlmCallConfig, LlmMessage, LlmMessageRole};
+use everruns_provider::model::ReasoningEffort;
 use everruns_provider::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
 };
@@ -50,7 +51,7 @@ fn config_with(parallel: Option<bool>) -> LlmCallConfig {
             tool("get_weather", "Get the current weather for a city."),
             tool("get_local_time", "Get the current local time for a city."),
         ],
-        reasoning_effort: Some("low".to_string()),
+        reasoning_effort: Some(ReasoningEffort::Low),
         metadata: std::collections::HashMap::new(),
         previous_response_id: None,
         provider_opaque_context: None,

@@ -217,16 +217,58 @@ pub struct ModelModalities {
 }
 
 /// Reasoning effort level for models that support it
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ReasoningEffort {
+    /// Explicitly no reasoning. Distinct from an unset effort: the caller asked
+    /// for the model's non-reasoning behavior, so drivers omit the reasoning
+    /// request fields entirely rather than sending a provider default.
     None,
     Minimal,
     Low,
     Medium,
     High,
     Xhigh,
+}
+
+impl ReasoningEffort {
+    /// Wire value. Matches the serde representation and what providers accept.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Minimal => "minimal",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Xhigh => "xhigh",
+        }
+    }
+
+    /// Parse a wire value. Returns `None` for anything unrecognized so callers
+    /// can decide whether to reject or ignore.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "none" => Some(Self::None),
+            "minimal" => Some(Self::Minimal),
+            "low" => Some(Self::Low),
+            "medium" => Some(Self::Medium),
+            "high" => Some(Self::High),
+            "xhigh" => Some(Self::Xhigh),
+            _ => None,
+        }
+    }
+
+    /// Whether this effort asks the model to reason at all.
+    pub fn requests_reasoning(&self) -> bool {
+        !matches!(self, Self::None)
+    }
+}
+
+impl std::fmt::Display for ReasoningEffort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Named reasoning effort value for UI display
