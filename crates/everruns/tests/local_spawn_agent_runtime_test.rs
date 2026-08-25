@@ -38,8 +38,8 @@ use everruns_core::session_task::{
 };
 use everruns_core::{CapabilityRegistry, MessageRole};
 use everruns_host::{
-    AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntime, InProcessRuntimeBuilder,
-    RuntimeSessionStore, SessionBuilder,
+    AgentBuilder, EventReadLimit, EventReadRequest, HarnessBuilder, HostBackends, InProcessRuntime,
+    InProcessRuntimeBuilder, RuntimeSessionStore, SessionBuilder,
 };
 use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_llmsim::{LlmSimConfig, ResponseConfig, ToolCallConfig, ToolCallPattern};
@@ -155,6 +155,35 @@ impl LocalSessionRunner for RuntimeRunner {
         // maps bare `idle` → `completed`; a foreground handoff treats `idle` as
         // terminal directly. Either way the task settles.
         Ok(Some("idle".to_string()))
+    }
+}
+
+/// Narration recorded on this session's `spawn_agent` tool events. The
+/// dispatcher is assembled by core from the active delegation targets rather
+/// than contributed by a capability, so this is what proves a real turn renders
+/// a delegation line instead of the generic "Running Spawn Agent" fallback.
+async fn spawn_agent_narrations(runtime: &InProcessRuntime, session_id: SessionId) -> Vec<String> {
+    let limit = EventReadLimit::new(200).expect("event read limit");
+    let mut request = EventReadRequest::new(session_id, limit);
+    let mut narrations = Vec::new();
+    loop {
+        let page = runtime
+            .event_log()
+            .read_page(request)
+            .await
+            .expect("read session events");
+        for event in &page.events {
+            if let everruns_core::EventData::ToolStarted(data) = &event.data
+                && data.tool_call.name == "spawn_agent"
+                && let Some(narration) = &data.narration
+            {
+                narrations.push(narration.clone());
+            }
+        }
+        let Some(cursor) = page.next_cursor else {
+            return narrations;
+        };
+        request = EventReadRequest::from_cursor(cursor, limit);
     }
 }
 
@@ -410,6 +439,15 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
         "child transcript should contain its marker: {child_reply}"
     );
 
+    // The transcript line names the spawned agent (the dispatcher owns this
+    // narration; no capability hook covers `spawn_agent`).
+    let narrations = spawn_agent_narrations(&runtime, parent_subagent_session_id).await;
+    assert_eq!(
+        narrations,
+        vec!["Launching Subagent Echo subagent".to_string()],
+        "spawn_agent(subagent) narration must name the spawned agent"
+    );
+
     // ---- Target 2: agent handoff (foreground) ------------------------------
     let turn = runtime
         .run_text_turn(
@@ -451,5 +489,12 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
     assert!(
         handoff_summary.contains(HANDOFF_MARKER),
         "handoff summary should carry the target agent's reply: {handoff_summary}"
+    );
+
+    let narrations = spawn_agent_narrations(&runtime, parent_handoff_session_id).await;
+    assert_eq!(
+        narrations,
+        vec![format!("Launching Handoff Run agent ({HANDOFF_TARGET_ID})")],
+        "spawn_agent(agent) narration must name the configured handoff target"
     );
 }

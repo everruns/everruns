@@ -1580,20 +1580,16 @@ impl Tool for UnifiedSpawnAgentTool {
         // A call still streaming its arguments, or one naming an unknown
         // target, must not fall back to "Running Spawn Agent": narrate the
         // delegation directly so the line always names the agent being spawned.
-        tool_call
+        let from_provider = tool_call
             .arguments
             .get("target")
             .and_then(|target| target.get("type"))
             .and_then(serde_json::Value::as_str)
             .and_then(|target_type| self.provider_for(target_type))
-            .and_then(|tool| tool.narrate(tool_call, phase, locale, ctx))
-            .or_else(|| {
-                Some(crate::tool_narration::narrate_subagent_spawn(
-                    &tool_call.arguments,
-                    phase,
-                    locale,
-                ))
-            })
+            .and_then(|tool| tool.narrate(tool_call, phase, locale, ctx));
+        Some(from_provider.unwrap_or_else(|| {
+            crate::tool_narration::narrate_subagent_spawn(&tool_call.arguments, phase, locale)
+        }))
     }
 
     fn name(&self) -> &str {
