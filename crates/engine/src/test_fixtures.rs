@@ -28,7 +28,7 @@ impl TestMessageRetriever {
             role: input.role,
             content: input.content,
             phase: None,
-            reasoning: Vec::new(),
+            phase_source: None,
             controls: input.controls,
             metadata: input.metadata,
             external_actor: None,

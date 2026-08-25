@@ -489,7 +489,7 @@ mod tests {
             role: MessageRole::Agent,
             content,
             phase: None,
-            reasoning: Vec::new(),
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,

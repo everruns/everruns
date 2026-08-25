@@ -5093,12 +5093,20 @@ async fn test_anthropic_extended_thinking_with_tools() {
                     }
                     "message.agent" => {
                         final_message_found = true;
-                        let has_thinking = event["data"]["message"]["thinking"].is_string();
-                        let has_signature =
-                            event["data"]["message"]["thinking_signature"].is_string();
+                        // Reasoning is ordered `reasoning` content parts; the
+                        // opaque signature is replay state and never published.
+                        let reasoning_parts = event["data"]["message"]["content"]
+                            .as_array()
+                            .map(|parts| {
+                                parts
+                                    .iter()
+                                    .filter(|part| part["type"] == "reasoning")
+                                    .count()
+                            })
+                            .unwrap_or(0);
                         println!(
-                            "    - {} (has_thinking: {}, has_signature: {})",
-                            event_type, has_thinking, has_signature
+                            "    - {} (reasoning_parts: {})",
+                            event_type, reasoning_parts
                         );
                     }
                     "turn.started" | "turn.completed" => {
