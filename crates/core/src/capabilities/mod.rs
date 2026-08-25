@@ -1577,13 +1577,19 @@ impl Tool for UnifiedSpawnAgentTool {
         locale: Option<&str>,
         ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        let target_type = tool_call
+        // A call still streaming its arguments, or one naming an unknown
+        // target, must not fall back to "Running Spawn Agent": narrate the
+        // delegation directly so the line always names the agent being spawned.
+        let from_provider = tool_call
             .arguments
             .get("target")
             .and_then(|target| target.get("type"))
-            .and_then(serde_json::Value::as_str)?;
-        self.provider_for(target_type)
-            .and_then(|tool| tool.narrate(tool_call, phase, locale, ctx))
+            .and_then(serde_json::Value::as_str)
+            .and_then(|target_type| self.provider_for(target_type))
+            .and_then(|tool| tool.narrate(tool_call, phase, locale, ctx));
+        Some(from_provider.unwrap_or_else(|| {
+            crate::tool_narration::narrate_subagent_spawn(&tool_call.arguments, phase, locale)
+        }))
     }
 
     fn name(&self) -> &str {
@@ -2728,6 +2734,82 @@ mod tests {
     // that contributes nothing, one that contributes plain tools, and one
     // that carries mounts plus a dependency.
     // -------------------------------------------------------------------------
+
+    struct StubSubagentSpawnTool;
+
+    #[async_trait]
+    impl Tool for StubSubagentSpawnTool {
+        fn name(&self) -> &str {
+            "spawn_agent"
+        }
+        fn description(&self) -> &str {
+            "stub subagent delegation"
+        }
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({ "type": "object" })
+        }
+        fn narrate(
+            &self,
+            tool_call: &ToolCall,
+            phase: crate::tool_narration::ToolNarrationPhase,
+            locale: Option<&str>,
+            _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        ) -> Option<String> {
+            Some(crate::tool_narration::narrate_subagent_spawn(
+                &tool_call.arguments,
+                phase,
+                locale,
+            ))
+        }
+        async fn execute(&self, _arguments: serde_json::Value) -> crate::ToolExecutionResult {
+            crate::ToolExecutionResult::success(serde_json::json!({}))
+        }
+    }
+
+    fn spawn_agent_call(arguments: serde_json::Value) -> ToolCall {
+        ToolCall {
+            id: "call-1".to_string(),
+            name: "spawn_agent".to_string(),
+            arguments,
+        }
+    }
+
+    /// The dispatcher always names the agent being spawned, including when the
+    /// call carries no usable `target.type` yet.
+    #[test]
+    fn unified_spawn_agent_narration_names_the_agent() {
+        let tool = UnifiedSpawnAgentTool::new(vec![DelegationTargetProvider {
+            target_type: "subagent",
+            tool: Box::new(StubSubagentSpawnTool),
+        }]);
+        let ctx = crate::tool_narration::ToolNarrationContext::default();
+
+        assert_eq!(
+            tool.narrate(
+                &spawn_agent_call(serde_json::json!({
+                    "name": "Orbit Scout",
+                    "target": { "type": "subagent" },
+                    "blueprint": "github_scout"
+                })),
+                crate::tool_narration::ToolNarrationPhase::Started,
+                None,
+                ctx,
+            )
+            .as_deref(),
+            Some("Launching Orbit Scout subagent (github_scout)")
+        );
+
+        assert_eq!(
+            tool.narrate(
+                &spawn_agent_call(serde_json::json!({ "name": "Orbit Scout" })),
+                crate::tool_narration::ToolNarrationPhase::Started,
+                None,
+                ctx,
+            )
+            .as_deref(),
+            Some("Launching Orbit Scout subagent")
+        );
+    }
 
     /// Contributes nothing: no tools, no prompt, no dependencies.
     struct NoopFixture;

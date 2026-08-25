@@ -2257,7 +2257,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.18.3"
+version = "0.18.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2665,7 +2665,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-filesystem"
-version = "0.18.1"
+version = "0.18.2"
 dependencies = [
  "anyhow",
  "async-trait",

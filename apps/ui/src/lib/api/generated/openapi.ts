@@ -2741,44 +2741,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/chat": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * POST /v1/sessions/chat - Get or create global chat session
-     * @description Returns the user's singleton global chat session. Creates one if it doesn't exist.
-     *     Uses the Platform Chat harness and tags for per-user singleton management.
-     */
-    post: operations["get_or_create_chat_session"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/sessions/chat/voice": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** @description Create a voice session for the user's Platform Chat. Returns connection details for the realtime audio channel. Requires the `voice` feature flag; returns 404 when disabled. */
-    post: operations["create_chat_voice_session"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/v1/sessions/facets": {
     parameters: {
       query?: never;
@@ -7707,11 +7669,6 @@ export interface components {
       placeholder?: string | null;
       /** @description Whether the field is required. */
       required: boolean;
-    };
-    /** @description Request body for the `get_or_create_chat_session` operation. */
-    GetOrCreateChatSessionRequest: {
-      /** @description Browser locale for seeding the global chat session (BCP 47, e.g. `uk-UA`). */
-      locale?: string | null;
     };
     /** @description Query parameters for GET requests */
     GetQuery: {
@@ -27703,75 +27660,6 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  get_or_create_chat_session: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: {
-      content: {
-        "application/json": null | components["schemas"]["GetOrCreateChatSessionRequest"];
-      };
-    };
-    responses: {
-      /** @description Chat session returned */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["WithUrls_Session"];
-        };
-      };
-      /** @description Authentication required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  create_chat_voice_session: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["VoiceCallRequest"];
-      };
-    };
-    responses: {
-      /** @description Platform chat session and realtime call created */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["VoiceSessionResponse_VoiceCallResponse"];
-        };
-      };
-      /** @description Voice is disabled for the org */
-      404: {
         headers: {
           [name: string]: unknown;
         };

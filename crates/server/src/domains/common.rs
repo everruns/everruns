@@ -409,8 +409,6 @@ pub struct Ctx {
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     pub fallback_harness_name: Option<String>,
-    pub chat_harness_name: Option<String>,
-    pub chat_session_title: Option<String>,
     /// Outbound HTTP boundary. Used by commands that make sanctioned egress
     /// calls (e.g. plugin sync/fetch from GitHub or a URL source).
     pub egress_service: Option<Arc<dyn EgressService>>,
@@ -474,8 +472,6 @@ impl Ctx {
             workflow_store: None,
             runner: None,
             fallback_harness_name: None,
-            chat_harness_name: None,
-            chat_session_title: None,
             egress_service: None,
             utility_llm_service: None,
             health_check_service: None,
@@ -677,16 +673,6 @@ impl Ctx {
 
     pub fn with_fallback_harness_name(mut self, name: Option<String>) -> Self {
         self.fallback_harness_name = name;
-        self
-    }
-
-    pub fn with_chat_harness_name(mut self, name: Option<String>) -> Self {
-        self.chat_harness_name = name;
-        self
-    }
-
-    pub fn with_chat_session_title(mut self, title: Option<String>) -> Self {
-        self.chat_session_title = title;
         self
     }
 

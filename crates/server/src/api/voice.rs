@@ -9,7 +9,7 @@ use crate::api::messages::{InputMessage, MessageRole};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::messages::{CreateMessage, MessageService};
-use crate::domains::sessions::{CreateSession, GetOrCreateChatSession, SessionService};
+use crate::domains::sessions::{CreateSession, SessionService};
 use crate::event_delivery::EventDelivery;
 use crate::kernel_imports::{
     Caller, ContentPart, Event, InputContentPart, LeasedResource, UpsertLeasedResource,
@@ -77,8 +77,6 @@ pub struct AppState {
     pub feature_flags: FeatureFlags,
     pub runner: Arc<dyn everruns_worker::AgentRunner>,
     pub fallback_default_harness_name: Option<String>,
-    pub chat_harness_name: Option<String>,
-    pub chat_session_title: Option<String>,
 }
 
 pub struct AppDependencies {
@@ -119,16 +117,6 @@ impl AppState {
                 everruns_platform::BuiltInHarnessRole::Default,
             )
             .map(|h| h.name.clone()),
-            chat_harness_name: everruns_platform::harness_for_role(
-                built_in_harnesses,
-                everruns_platform::BuiltInHarnessRole::Chat,
-            )
-            .map(|h| h.name.clone()),
-            chat_session_title: everruns_platform::harness_for_role(
-                built_in_harnesses,
-                everruns_platform::BuiltInHarnessRole::Chat,
-            )
-            .map(|h| h.display_name.clone()),
         }
     }
 
@@ -144,8 +132,6 @@ impl AppState {
         .with_runner(self.runner.clone())
         .with_message_service(self.message_service.clone())
         .with_fallback_harness_name(self.fallback_default_harness_name.clone())
-        .with_chat_harness_name(self.chat_harness_name.clone())
-        .with_chat_session_title(self.chat_session_title.clone())
     }
 }
 
@@ -170,7 +156,6 @@ pub fn routes(state: AppState) -> Router {
             "/v1/agents/{agent_id}/voice/sessions",
             post(create_agent_voice_session),
         )
-        .route("/v1/sessions/chat/voice", post(create_chat_voice_session))
         .with_state(state)
 }
 
@@ -557,30 +542,6 @@ pub async fn create_agent_voice_session(
         StatusCode::CREATED,
         Json(VoiceSessionResponse { session, voice }),
     ))
-}
-
-#[utoipa::path(
-    description = "Create a voice session for the user's Platform Chat. Returns connection details for the realtime audio channel. Requires the `voice` feature flag; returns 404 when disabled.",
-    post,
-    path = "/v1/sessions/chat/voice",
-    request_body = VoiceCallRequest,
-    responses(
-        (status = 200, description = "Platform chat session and realtime call created", body = VoiceSessionResponse<VoiceCallResponse>),
-        (status = 404, description = "Voice is disabled for the org"),
-    ),
-    tag = "voice"
-)]
-pub async fn create_chat_voice_session(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Json(req): Json<VoiceCallRequest>,
-) -> Result<Json<VoiceSessionResponse<VoiceCallResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    ensure_voice_enabled(&org)?;
-    let session = GetOrCreateChatSession { locale: None }
-        .run(&state.ctx(&org))
-        .await?;
-    let voice = bootstrap_call(&state, &org, session.id, req).await?;
-    Ok(Json(VoiceSessionResponse { session, voice }))
 }
 
 async fn bootstrap_call(

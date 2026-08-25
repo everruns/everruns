@@ -77,8 +77,15 @@ During capability assembly, the framework wraps each applied capability in a
 [`ToolCallHook`](../../crates/core/src/capabilities/mod.rs) channel) and registers
 it on the act atom. These adapters are appended **after** every explicit
 tool-call hook, so model-authored narration (the `human_intent` capability)
-keeps precedence. The first hook to return `Some` wins; if none do, the act
-atom falls back to [`render_tool_narration_with_locale`](../../crates/core/src/tool_narration.rs).
+keeps precedence. The first hook to return `Some` wins.
+
+Capability hooks only reach tools a capability lists in `tools()`. Tools
+assembled outside a capability still own their narration — the unified
+`spawn_agent` dispatcher built from delegation targets, registry
+augmentations, MCP proxy tools — so when no hook answers, the act atom asks
+the executing tool in the session's tool registry for its `Tool::narrate`.
+Only then does it fall back to
+[`render_tool_narration_with_locale`](../../crates/core/src/tool_narration.rs).
 
 The default `Capability::narrate` constructs `self.tools()` per call to find the
 match; narration is low-frequency, but a capability with expensive `tools()` can

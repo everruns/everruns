@@ -1,6 +1,6 @@
 [package]
 name = "everruns-builtins"
-version = "0.18.3"
+version = "0.18.4"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

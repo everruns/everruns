@@ -1,8 +1,7 @@
 use super::queries as q;
 use super::types::{
     AddSessionParticipantRequest, CancelStatus, CancelTurnResponse, CreateSessionRequest,
-    ForkSessionRequest, GetOrCreateChatSessionRequest, SessionFacetsResponse, SessionStatsResponse,
-    UpdateSessionRequest,
+    ForkSessionRequest, SessionFacetsResponse, SessionStatsResponse, UpdateSessionRequest,
 };
 use crate::domains::common::*;
 use crate::services::PrincipalService;
@@ -1076,33 +1075,6 @@ mod tests {
         .id
     }
 
-    async fn chat_test_ctx(session_rpm: u32) -> (Ctx, crate::auth::rate_limit::OrgRateLimiter) {
-        let db = Arc::new(StorageBackend::in_memory());
-        crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
-            .await
-            .expect("initialize built-in harnesses");
-        let user = db
-            .create_user(crate::storage::models::CreateUserRow {
-                email: format!("chat-owner-{}@example.com", Uuid::now_v7()),
-                name: "Chat Owner".to_string(),
-                avatar_url: None,
-                roles: vec!["user".to_string()],
-                password_hash: None,
-                email_verified: true,
-                auth_provider: None,
-                auth_provider_id: None,
-                external_id: None,
-            })
-            .await
-            .expect("create chat owner");
-        let limiter =
-            crate::auth::rate_limit::OrgRateLimiter::for_test_with_session_rpm(session_rpm);
-        let ctx = external_test_ctx(db, user.id)
-            .with_chat_harness_name(Some("platform-chat".to_string()))
-            .with_org_rate_limiter(limiter.clone());
-        (ctx, limiter)
-    }
-
     #[tokio::test]
     async fn create_session_enforces_shared_org_rate_limit() {
         let db = Arc::new(StorageBackend::in_memory());
@@ -1147,48 +1119,6 @@ mod tests {
         assert!(matches!(err.kind, CommandErrorKind::RateLimited(_)));
         assert_eq!(err.code.as_deref(), Some("rate_limited"));
         assert_eq!(err.retry_after_seconds, Some(60));
-    }
-
-    #[tokio::test]
-    async fn get_or_create_chat_session_enforces_rate_limit_when_creating() {
-        let (ctx, limiter) = chat_test_ctx(1).await;
-        limiter
-            .check_session_create(DEFAULT_ORG_ID)
-            .await
-            .expect("initial permit");
-
-        let err = GetOrCreateChatSession { locale: None }
-            .execute(&ctx)
-            .await
-            .expect_err("exhausted per-org bucket must reject chat session creation");
-
-        assert!(
-            matches!(err.kind, CommandErrorKind::RateLimited(_)),
-            "unexpected error: {err:?}"
-        );
-        assert_eq!(err.code.as_deref(), Some("rate_limited"));
-        assert_eq!(err.retry_after_seconds, Some(60));
-    }
-
-    #[tokio::test]
-    async fn get_or_create_chat_session_reuse_does_not_consume_rate_limit() {
-        let (ctx, limiter) = chat_test_ctx(1).await;
-
-        let created = GetOrCreateChatSession { locale: None }
-            .execute(&ctx)
-            .await
-            .expect("first request creates within the available permit");
-        assert!(
-            limiter.check_session_create(DEFAULT_ORG_ID).await.is_err(),
-            "create branch must consume the shared bucket"
-        );
-
-        let reused = GetOrCreateChatSession { locale: None }
-            .execute(&ctx)
-            .await
-            .expect("reuse must not check or consume the exhausted bucket");
-
-        assert_eq!(reused.id, created.id);
     }
 
     // Minimal runner whose `cancel_run` succeeds without a real durable backend,
@@ -1722,76 +1652,6 @@ impl Command for DeleteSession {
 }
 
 inventory::submit! { CommandDescriptor::of::<DeleteSession>() }
-
-#[derive(Debug, Deserialize)]
-pub struct GetOrCreateChatSession {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub locale: Option<String>,
-}
-
-impl CommandSchema for GetOrCreateChatSession {
-    fn param_schema() -> serde_json::Value {
-        delegated_param_schema::<GetOrCreateChatSessionRequest>()
-    }
-}
-
-impl Command for GetOrCreateChatSession {
-    type Output = Session;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_or_create_chat_session",
-            category: "sessions",
-            description: "Get or create the user's global chat session.",
-            method: "POST",
-            path: "/v1/sessions/chat",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::SESSION_MANAGE)
-    }
-
-    async fn execute(self, ctx: &Ctx) -> Result<Session, CommandError> {
-        let locale = crate::api::validation::normalize_locale(self.locale)
-            .map_err(limit_validation_error)?;
-        let user_id = ctx.caller.user_id.unwrap_or(ANONYMOUS_USER_ID);
-        let chat_harness_name = ctx.chat_harness_name.clone().ok_or_else(|| {
-            CommandError::not_found_msg(
-                "Global chat is not configured for this platform".to_string(),
-            )
-        })?;
-        let chat_harness_id =
-            q::resolve_named_built_in_harness_id(&ctx.db, ctx.org_id(), &chat_harness_name)
-                .await
-                .map_err(classify_anyhow)?;
-        let title = ctx
-            .chat_session_title
-            .as_deref()
-            .unwrap_or(chat_harness_name.as_str());
-
-        q::session_service(ctx)?
-            .get_or_create_chat_session(
-                &ctx.caller,
-                user_id,
-                chat_harness_id.uuid(),
-                title,
-                locale,
-                ctx.org_rate_limiter.as_ref(),
-            )
-            .await
-            .map_err(|error| match error {
-                super::service::GetOrCreateChatSessionError::RateLimited => {
-                    CommandError::rate_limited("Too many requests. Please try again later.")
-                        .with_code("rate_limited")
-                        .with_retry_after(60)
-                }
-                super::service::GetOrCreateChatSessionError::Other(error) => classify_anyhow(error),
-            })
-    }
-}
-
-inventory::submit! { CommandDescriptor::of::<GetOrCreateChatSession>() }
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct GetSessionStats;

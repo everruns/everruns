@@ -905,6 +905,20 @@ where
                 return narration;
             }
         }
+        // Capability hooks only reach tools a capability lists in `tools()`.
+        // Tools assembled outside any capability — the unified `spawn_agent`
+        // dispatcher built from delegation targets, registry-augmented and
+        // proxied tools — still own narration, so ask the executing tool
+        // directly before falling back to the generic display-name phrasing.
+        if let Some(narration) = self
+            .context_services
+            .tool_registry
+            .as_ref()
+            .and_then(|registry| registry.get(&tool_call.name))
+            .and_then(|tool| tool.narrate(tool_call, phase, locale, ctx))
+        {
+            return narration;
+        }
         render_tool_narration_with_locale(tool_def, tool_call, phase, locale)
     }
 
@@ -1992,6 +2006,35 @@ mod tests {
             )
             .as_deref(),
             Some("Searched files twice")
+        );
+    }
+
+    /// Tools assembled outside any capability (the unified `spawn_agent`
+    /// dispatcher, registry augmentations, MCP proxies) have no
+    /// `CapabilityNarrationHook`, so the act atom must consult the registry
+    /// before the generic "Running {display_name}" fallback.
+    #[test]
+    fn registry_owned_tool_narrates_itself_without_a_capability_hook() {
+        let mut registry = ToolRegistry::new();
+        registry.register_boxed(Box::new(NarratingGrepTool));
+        let atom = ActAtom::new(ToolRegistry::new(), NoopEventEmitter)
+            .with_tool_registry(Arc::new(registry));
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let tool_call = ToolCall {
+            id: "grep-1".to_string(),
+            name: "grep_files".to_string(),
+            arguments: json!({ "pattern": "full_name" }),
+        };
+
+        assert_eq!(
+            atom.render_tool_narration(
+                &context,
+                None,
+                &tool_call,
+                ToolNarrationPhase::Started,
+                None,
+            ),
+            "Searching files for full_name"
         );
     }
 
