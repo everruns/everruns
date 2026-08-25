@@ -1240,6 +1240,7 @@ async fn inject_thread_context(
             role: everruns_core::MessageRole::User,
             content: vec![everruns_core::ContentPart::text(text)],
             phase: None,
+            phase_source: None,
             controls: None,
             metadata: reply.ts.as_ref().map(|ts| {
                 [(

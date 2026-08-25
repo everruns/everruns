@@ -168,6 +168,7 @@ impl MessageService {
                 role: everruns_core::MessageRole::User,
                 content: content.clone(),
                 phase: None,
+                phase_source: None,
                     controls: req.controls.clone(),
                 metadata: req.metadata.clone(),
                 external_actor: req.external_actor.clone(),

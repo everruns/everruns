@@ -458,6 +458,7 @@ impl crate::storage::session_task_store::SessionTaskWaker for GrpcSessionTaskWak
             role: everruns_core::MessageRole::User,
             content: vec![everruns_core::ContentPart::text(text)],
             phase: None,
+            phase_source: None,
             controls: None,
             metadata: None,
             external_actor: None,

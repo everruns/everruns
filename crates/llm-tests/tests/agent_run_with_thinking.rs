@@ -200,16 +200,18 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 
     // Replay state is provider-specific, and without it multi-turn reasoning
     // silently degrades.
-    match config.provider_type {
-        DriverId::Anthropic => assert!(
+    // `DriverId` is a newtype over a string, not an enum, so compare rather
+    // than pattern-match.
+    if config.provider_type == DriverId::Anthropic {
+        assert!(
             reasoning_parts.iter().any(|part| part.signature.is_some()),
             "Anthropic reasoning must carry a per-block signature for multi-turn"
-        ),
-        DriverId::OpenAI => assert!(
+        );
+    } else if config.provider_type == DriverId::OpenAI {
+        assert!(
             reasoning_parts.iter().any(|part| part.item_id.is_some()),
             "OpenAI reasoning items must carry the provider-issued id"
-        ),
-        _ => {}
+        );
     }
 }
 
