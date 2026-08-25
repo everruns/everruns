@@ -399,7 +399,15 @@ pub async fn stream_sse(
     // stays pointing to the most recent durable event.
     fn event_to_sse(event: &Event, retry: Duration) -> Result<SseEvent, Infallible> {
         let event_type = event.event_type.clone();
-        let json = serde_json::to_string(event).unwrap_or_else(|_| "{}".to_string());
+        // Same projection the list path applies (EVE-933): reasoning replay
+        // state is stored but never published. Cloning only for the variants
+        // that carry a message keeps the delta stream allocation-free.
+        let json = if event.data.needs_public_projection() {
+            serde_json::to_string(&event.clone().into_public())
+        } else {
+            serde_json::to_string(event)
+        }
+        .unwrap_or_else(|_| "{}".to_string());
         let mut sse = SseEvent::default()
             .event(&event_type)
             .data(json)

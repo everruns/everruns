@@ -1546,6 +1546,92 @@ async fn test_list_events() {
     assert!(data["data"].is_array());
 }
 
+/// Reasoning replay state is stored but never published (EVE-933).
+///
+/// `GET .../messages` strips `signature` / `encrypted` from reasoning parts via
+/// `Message::into_public`. The events endpoint serves the same message inside
+/// `output.message.completed`, so without its own projection it would republish
+/// exactly what the message endpoint withholds. Writes the event straight to the
+/// store so the assertion does not need a live provider.
+#[tokio::test]
+async fn test_events_do_not_publish_reasoning_replay_state() {
+    let server = TestServer::in_memory().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "events-reasoning-projection-agent",
+                "display_name": "Events Reasoning Projection",
+                "description": "Agent for the events projection test",
+                "system_prompt": "You are a helpful assistant"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session: Session = server
+        .post("/v1/sessions", json!({ "agent_id": agent.public_id }))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session_id = session.id;
+
+    let mut message = everruns_core::Message::assistant("the answer");
+    message.content.push(everruns_core::ContentPart::reasoning(
+        everruns_provider::reasoning::ReasoningContentPart::opaque("anthropic")
+            .with_item_id("rs_abc")
+            .with_signature("sig-do-not-publish")
+            .with_encrypted("enc-do-not-publish")
+            .with_text(everruns_provider::reasoning::ReasoningText::Plain {
+                text: "visible reasoning".to_string(),
+            }),
+    ));
+    let data = everruns_core::EventData::OutputMessageCompleted(
+        everruns_core::events::OutputMessageCompletedData::new(message),
+    );
+
+    server
+        .db
+        .create_event(everruns_server::storage::models::CreateEventRow {
+            session_id,
+            event_type: "output.message.completed".to_string(),
+            ts: chrono::Utc::now(),
+            context: serde_json::to_value(everruns_core::EventContext::empty()).unwrap(),
+            data: serde_json::to_value(&data).unwrap(),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("store the event with its replay state intact");
+
+    let body: Value = server
+        .get(&format!("/v1/sessions/{}/events", session.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    let published = serde_json::to_string(&body).expect("serialize response");
+    assert!(
+        !published.contains("sig-do-not-publish"),
+        "reasoning signature must not reach the events API: {published}"
+    );
+    assert!(
+        !published.contains("enc-do-not-publish"),
+        "encrypted reasoning payload must not reach the events API: {published}"
+    );
+    assert!(
+        published.contains("visible reasoning"),
+        "readable reasoning is content and must still be published: {published}"
+    );
+    assert!(
+        published.contains("rs_abc"),
+        "the provider-issued id is an identifier, not replay state: {published}"
+    );
+}
+
 /// Tests the events endpoint with limit=1 returns only the last event
 /// (used by CLI chat to efficiently snapshot before sending a message).
 #[tokio::test]
