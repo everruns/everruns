@@ -1363,7 +1363,7 @@ mod tests {
             .parts
             .iter()
             .filter_map(|p| match p {
-                GeminiPart::text(text) => Some(text.as_str()),
+                GeminiPart::Text { text, .. } => Some(text.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()
@@ -1751,15 +1751,14 @@ mod tests {
         let request = GeminiRequest {
             contents: vec![GeminiContent {
                 role: Some("user".to_string()),
-                parts: vec![GeminiPart::Text {
-                    text: "Summarize this".to_string(),
-                }],
+                parts: vec![GeminiPart::text("Summarize this")],
             }],
             system_instruction: None,
             tools: None,
             generation_config: Some(GeminiGenerationConfig {
                 temperature: None,
                 max_output_tokens: Some(256),
+                thinking_config: None,
             }),
             cached_content: Some("cachedContents/demo-cache".to_string()),
         };
