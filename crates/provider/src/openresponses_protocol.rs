@@ -3995,8 +3995,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_input_with_thinking_signature() {
-        // Assistant message with thinking and thinking_signature (encrypted_content)
+    fn test_build_input_replays_reasoning_before_its_message() {
         let messages = vec![
             LlmMessage::text(LlmMessageRole::User, "Think about this deeply"),
             LlmMessage {
@@ -4005,7 +4004,11 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                reasoning: Vec::new(),
+                reasoning: vec![
+                    crate::reasoning::ReasoningContentPart::opaque("openai")
+                        .with_item_id("rs_reply")
+                        .with_encrypted("encrypted_reasoning_token_123"),
+                ],
             },
             LlmMessage::text(LlmMessageRole::User, "What else?"),
         ];
@@ -4020,9 +4023,11 @@ mod tests {
         assert_eq!(json["role"], "user");
         assert_eq!(json["content"], "Think about this deeply");
 
-        // Second is reasoning item (before assistant message)
+        // Second is the reasoning item, ahead of the message it belongs to, and
+        // keyed by the id the provider issued.
         let json = serde_json::to_value(&input[1]).unwrap();
         assert_eq!(json["type"], "reasoning");
+        assert_eq!(json["id"], "rs_reply");
         assert_eq!(json["encrypted_content"], "encrypted_reasoning_token_123");
 
         // Third is assistant message
@@ -4036,10 +4041,9 @@ mod tests {
     }
 
     #[test]
-    fn test_build_input_with_thinking_signature_and_tool_calls() {
+    fn test_build_input_replays_reasoning_with_tool_calls() {
         use crate::tool_types::ToolCall;
 
-        // Assistant message with thinking, tool calls, and thinking_signature
         let messages = vec![
             LlmMessage::text(LlmMessageRole::User, "What time is it? Think carefully."),
             LlmMessage {
@@ -4052,7 +4056,11 @@ mod tests {
                 }]),
                 tool_call_id: None,
                 phase: None,
-                reasoning: Vec::new(),
+                reasoning: vec![
+                    crate::reasoning::ReasoningContentPart::opaque("openai")
+                        .with_item_id("rs_tool")
+                        .with_encrypted("encrypted_token_xyz"),
+                ],
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -4072,6 +4080,7 @@ mod tests {
         // Reasoning item comes before assistant message
         let json = serde_json::to_value(&input[1]).unwrap();
         assert_eq!(json["type"], "reasoning");
+        assert_eq!(json["id"], "rs_tool");
         assert_eq!(json["encrypted_content"], "encrypted_token_xyz");
 
         // Assistant message
@@ -4611,8 +4620,14 @@ mod tests {
     }
 
     #[test]
-    fn test_build_input_multiple_reasoning_items_get_unique_ids() {
-        // Multiple assistant messages with thinking_signature should get unique reasoning IDs
+    /// Each reasoning item replays under the id the provider issued for it.
+    ///
+    /// This previously asserted only that synthesized ids were *unique*, which
+    /// a counter satisfies. Uniqueness was never the requirement: the API
+    /// resolves reasoning items by the `rs_…` id it handed out, so an id the
+    /// provider never issued is not usable however distinct it is.
+    #[test]
+    fn test_build_input_reasoning_items_keep_provider_ids() {
         let messages = vec![
             LlmMessage::text(LlmMessageRole::User, "First question"),
             LlmMessage {
@@ -4621,7 +4636,11 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                reasoning: Vec::new(),
+                reasoning: vec![
+                    crate::reasoning::ReasoningContentPart::opaque("openai")
+                        .with_item_id("rs_alpha")
+                        .with_encrypted("encrypted_1"),
+                ],
             },
             LlmMessage::text(LlmMessageRole::User, "Second question"),
             LlmMessage {
@@ -4630,22 +4649,27 @@ mod tests {
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
-                reasoning: Vec::new(),
+                reasoning: vec![
+                    crate::reasoning::ReasoningContentPart::opaque("openai")
+                        .with_item_id("rs_beta")
+                        .with_encrypted("encrypted_2"),
+                ],
             },
         ];
 
         let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
 
-        // Should have: user, reasoning_1, assistant, user, reasoning_2, assistant
+        // user, reasoning_1, assistant, user, reasoning_2, assistant
         assert_eq!(input.len(), 6);
 
         let r1 = serde_json::to_value(&input[1]).unwrap();
         let r2 = serde_json::to_value(&input[4]).unwrap();
 
         assert_eq!(r1["type"], "reasoning");
-        assert_eq!(r2["type"], "reasoning");
-        assert_ne!(r1["id"], r2["id"], "Reasoning items should have unique IDs");
+        assert_eq!(r1["id"], "rs_alpha");
         assert_eq!(r1["encrypted_content"], "encrypted_1");
+        assert_eq!(r2["type"], "reasoning");
+        assert_eq!(r2["id"], "rs_beta");
         assert_eq!(r2["encrypted_content"], "encrypted_2");
     }
 
