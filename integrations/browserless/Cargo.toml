@@ -6,7 +6,7 @@
 [package]
 name = "everruns-integrations-browserless"
 readme = "README.md"
-version = "0.18.1"
+version = "0.18.2"
 rust-version.workspace = true
 homepage.workspace = true
 repository.workspace = true
