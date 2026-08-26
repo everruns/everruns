@@ -9,8 +9,15 @@ on:
 
 # Cancel in-progress runs for the same PR/branch on new pushes.
 # On main, let every run finish so merged commits aren't silently skipped.
+#
+# Label events get their own group. They resolve `run_ci=false` for anything
+# outside the ci:skip-* set, so all their jobs skip; sharing a group with the
+# real run let that no-op cancel it and survive as the run of record. Dependabot
+# applies its labels in the same second it opens the PR, so this was not a rare
+# race — every Dependabot PR was green having run no CI at all (EVE-939).
+# Separated, label runs can only ever cancel each other.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}-${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && 'label' || 'code' }}
   cancel-in-progress: true
 
 permissions:
@@ -1999,6 +2006,17 @@ jobs:
     steps:
       - name: Verify all jobs passed
         run: |
+          # A run gated off by the label event (run_ci=false) skips every job,
+          # and an all-"skipped" result set would otherwise read as a pass. That
+          # turns "nothing ran" into a green required check, which is how four
+          # Dependabot PRs became mergeable with no CI behind them (EVE-939).
+          # Refuse to speak for a run that executed nothing; the real run's own
+          # Build Check is the one that carries the verdict.
+          if [ "${{ needs.changes.outputs.run_ci }}" != "true" ]; then
+            echo "run_ci=false: this run executed no jobs, so it has nothing to attest"
+            exit 1
+          fi
+
           results='${{ toJson(needs.*.result) }}'
           echo "Job results: $results"
           if echo "$results" | grep -qE '"failure"|"cancelled"'; then
