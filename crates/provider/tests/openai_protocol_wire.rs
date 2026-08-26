@@ -56,6 +56,10 @@ enum Golden {
         finish: Option<String>,
     },
     Error(String),
+    Reasoning(String),
+    ReasoningItem {
+        text: Option<String>,
+    },
 }
 
 fn golden(event: LlmStreamEvent) -> Golden {
@@ -86,6 +90,10 @@ fn golden(event: LlmStreamEvent) -> Golden {
             }
         }
         LlmStreamEvent::Error(e) => Golden::Error(e.to_string()),
+        LlmStreamEvent::ReasoningDelta { delta, .. } => Golden::Reasoning(delta),
+        LlmStreamEvent::ReasoningItem(part) => Golden::ReasoningItem {
+            text: part.display_text(),
+        },
         other => panic!("unexpected event variant in golden capture: {other:?}"),
     }
 }
@@ -307,4 +315,68 @@ async fn extra_headers_reach_the_wire() {
         request.headers.get("host").unwrap().to_str().unwrap(),
         "elsewhere.example"
     );
+}
+
+/// Reasoning models reached over Chat Completions stream their reasoning on the
+/// delta, not as content. Before this was parsed, DeepSeek-R1, Qwen, Groq and
+/// Fireworks reasoning was received and discarded: the field was never read, so
+/// the reasoning channel stayed empty and nothing was persisted to replay.
+///
+/// Vendors split between two names for the same field, so both must map.
+#[tokio::test]
+async fn chat_completions_reasoning_content_reaches_the_reasoning_channel() {
+    for field in ["reasoning_content", "reasoning"] {
+        let server = MockServer::start().await;
+        let body = [
+            format!(
+                r#"data: {{"id":"chatcmpl-r","choices":[{{"index":0,"delta":{{"{field}":"weighing the options"}},"finish_reason":null}}]}}"#
+            ),
+            String::new(),
+            r#"data: {"id":"chatcmpl-r","choices":[{"index":0,"delta":{"content":"Answer"},"finish_reason":null}]}"#.to_string(),
+            String::new(),
+            r#"data: {"id":"chatcmpl-r","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#.to_string(),
+            String::new(),
+            "data: [DONE]".to_string(),
+            String::new(),
+            String::new(),
+        ]
+        .join("\n");
+        mount_sse(&server, body).await;
+
+        let stream = driver(&server)
+            .chat_completion_stream(
+                vec![LlmMessage::text(LlmMessageRole::User, "think")],
+                &config("deepseek-r1"),
+            )
+            .await
+            .expect("stream should start");
+
+        let events = drain_golden(stream).await;
+
+        assert!(
+            events
+                .iter()
+                .any(|g| matches!(g, Golden::Reasoning(t) if t == "weighing the options")),
+            "`{field}` should reach the reasoning channel, got: {events:?}"
+        );
+
+        // The durable artifact is what survives the turn; a delta alone leaves
+        // nothing persisted.
+        assert!(
+            events.iter().any(|g| matches!(
+                g,
+                Golden::ReasoningItem { text: Some(t) } if t == "weighing the options"
+            )),
+            "`{field}` should produce a durable reasoning artifact, got: {events:?}"
+        );
+
+        // Reasoning must not double as the answer: routed to the text channel
+        // it would persist as the model's reply and replay as its own output.
+        assert!(
+            !events
+                .iter()
+                .any(|g| matches!(g, Golden::Text(t) if t.contains("weighing"))),
+            "reasoning from `{field}` leaked into the answer text: {events:?}"
+        );
+    }
 }

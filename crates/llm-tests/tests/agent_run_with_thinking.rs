@@ -226,6 +226,9 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
+// Gemini binds a thoughtSignature to the function-call part it belongs to;
+// that binding only happens on a reasoning turn that calls a tool.
+#[case::gemini_flash(GEMINI_FLASH)]
 #[tokio::test]
 async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
     if config.model().is_none() {

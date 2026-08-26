@@ -15,6 +15,7 @@ use everruns_provider::driver_registry::{
     CacheDiagnosticsConfig, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole,
     LlmResponseStream, LlmStreamEvent,
 };
+use everruns_provider::model::ReasoningEffort;
 use everruns_provider::{Provider, StaticHeaderAuth};
 use futures::StreamExt;
 use wiremock::matchers::{method, path};
@@ -650,4 +651,72 @@ async fn redacted_thinking_survives_as_an_opaque_artifact() {
         )),
         "redacted_thinking must survive as an opaque artifact, got: {events:?}"
     );
+}
+
+/// Every effort that asks for reasoning must put a thinking budget on the wire.
+///
+/// `minimal` is the case this guards. It had no arm in the effort-to-budget
+/// mapping and fell through to "no budget", so the request went out with no
+/// thinking block at all: selecting the lowest non-zero effort was silently
+/// identical to selecting none. A user asking for a little reasoning got none,
+/// with nothing logged and nothing failing.
+///
+/// `none` is the deliberate opposite and must stay absent from the wire.
+#[tokio::test]
+async fn every_reasoning_effort_sends_a_thinking_budget() {
+    for (effort, expected) in [
+        (ReasoningEffort::Minimal, Some(1024)),
+        (ReasoningEffort::Low, Some(1024)),
+        (ReasoningEffort::Medium, Some(4096)),
+        (ReasoningEffort::High, Some(16384)),
+        (ReasoningEffort::Xhigh, Some(32768)),
+        (ReasoningEffort::None, None),
+    ] {
+        let server = MockServer::start().await;
+        mount_sse(
+            &server,
+            sse_event("message_stop", r#"{"type":"message_stop"}"#),
+        )
+        .await;
+
+        let mut call_config = config("claude-sonnet-4-5");
+        call_config.reasoning_effort = Some(effort);
+
+        let stream = driver(&server)
+            .chat_completion_stream(
+                vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+                &call_config,
+            )
+            .await
+            .expect("stream should start");
+        let _ = drain_golden(stream).await;
+
+        let requests = server.received_requests().await.expect("recorded requests");
+        let sent: serde_json::Value =
+            serde_json::from_slice(&requests.first().expect("one request").body)
+                .expect("json body");
+
+        match expected {
+            Some(budget) => {
+                assert_eq!(
+                    sent["thinking"]["budget_tokens"].as_u64(),
+                    Some(budget),
+                    "effort {effort} must request a {budget}-token thinking budget, \
+                     sent: {}",
+                    sent["thinking"]
+                );
+                assert_eq!(
+                    sent["thinking"]["type"].as_str(),
+                    Some("enabled"),
+                    "effort {effort} must enable thinking"
+                );
+            }
+            None => assert!(
+                sent.get("thinking").is_none_or(serde_json::Value::is_null),
+                "effort {effort} means no reasoning, so no thinking block belongs \
+                 on the wire, sent: {}",
+                sent["thinking"]
+            ),
+        }
+    }
 }

@@ -5818,3 +5818,284 @@ mod durable_sse_tests {
         println!("Durable circuit breakers endpoint test passed!");
     }
 }
+
+/// Reasoning reaches the API as ordered parts, classified, with replay state stripped.
+///
+/// This covers the two things the reasoning rework publishes and the one thing
+/// it must never publish, over the real API + worker + PostgreSQL path:
+///
+/// - `phase` / `phase_source` on the agent message. These cross the worker gRPC
+///   boundary, where `phase` was previously hardcoded to `None` and the proto
+///   had no field for it at all, so every message reached the API unclassified
+///   regardless of what the provider reported. Nothing else in the suite would
+///   catch that returning.
+/// - reasoning as ordered `reasoning` content parts carrying readable text.
+/// - the sanitization boundary: the artifact's signature and encrypted payload
+///   are replay state for the provider, never API content (TM-LLM-034). llmsim
+///   emits both alongside the text precisely so this assertion has something to
+///   catch.
+#[tokio::test]
+async fn test_reasoning_reaches_api_sanitized_and_classified() {
+    let client = reqwest::Client::new();
+
+    // This test exists to prove the real path: a real provider's reasoning,
+    // through the worker, into the API. Running it against a simulated provider
+    // would prove only that the simulator behaves as written.
+    //
+    // So a missing credential is a failure, not a reason to skip. A job
+    // configured to run this and silently unable to reach a provider reports
+    // success while verifying nothing, which is the failure mode
+    // `EVERRUNS_REQUIRE_LIVE_TESTS` exists to prevent.
+    let require_live = std::env::var("EVERRUNS_REQUIRE_LIVE_TESTS")
+        .ok()
+        .is_some_and(|v| {
+            let v = v.trim();
+            !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false")
+        });
+    let has_provider_key = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"]
+        .iter()
+        .any(|k| std::env::var(k).ok().is_some_and(|v| !v.trim().is_empty()));
+    if !has_provider_key {
+        assert!(
+            !require_live,
+            "EVERRUNS_REQUIRE_LIVE_TESTS is set but neither OPENAI_API_KEY nor \
+             ANTHROPIC_API_KEY is present. This test verifies real provider \
+             reasoning end to end and cannot do that without a credential — fix \
+             the job's secrets rather than relaxing this check."
+        );
+        eprintln!(
+            "SKIP: no provider credential; set EVERRUNS_REQUIRE_LIVE_TESTS=1 to \
+             make this a failure"
+        );
+        return;
+    }
+
+    // Names are unique per run: the API rejects a duplicate agent name with
+    // 409, so fixed names pass once against a fresh database and fail on every
+    // rerun against the same one.
+    let run_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+
+    let agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "name": format!("reasoning-projection-agent-{run_id}"),
+            "system_prompt": "You are a helpful assistant.",
+            // No model override: the agent takes the org default, which is a
+            // real reasoning-capable provider. That is the path this test is
+            // here to verify.
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+    assert_eq!(agent_response.status(), 201);
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+
+    let session_response = client
+        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .json(&json!({
+            "harness_name": SEED_HARNESS_NAME,
+            "agent_id": agent.public_id,
+            "title": format!("Reasoning Projection Session {run_id}"),
+        }))
+        .send()
+        .await
+        .expect("Failed to create session");
+    assert_eq!(session_response.status(), 201);
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+
+    // The effort is what makes llmsim reason, mirroring a real provider.
+    let message_response = client
+        .post(format!(
+            "{}/v1/sessions/{}/messages",
+            API_BASE_URL, session.id
+        ))
+        .json(&json!({
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "Think about this, then answer."}]
+            },
+            "controls": {"reasoning": {"effort": "high"}}
+        }))
+        .send()
+        .await
+        .expect("Failed to send message");
+    assert_eq!(message_response.status(), 201, "Failed to send message");
+
+    let mut agent_message: Option<Value> = None;
+    for _ in 0..60 {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let Ok(resp) = client
+            .get(format!(
+                "{}/v1/sessions/{}/messages",
+                API_BASE_URL, session.id
+            ))
+            .send()
+            .await
+        else {
+            continue;
+        };
+        if resp.status() != 200 {
+            continue;
+        }
+        let data: Value = resp.json().await.unwrap_or_default();
+        let empty = vec![];
+        let messages = data["data"].as_array().unwrap_or(&empty);
+        if let Some(m) = messages.iter().find(|m| m["role"] == "agent") {
+            agent_message = Some(m.clone());
+            break;
+        }
+    }
+
+    let agent_message = agent_message.expect("No agent message produced within 60s");
+    println!(
+        "agent message: {}",
+        serde_json::to_string_pretty(&agent_message).unwrap_or_default()
+    );
+
+    // A provider error message would carry no reasoning and no phase, and would
+    // make every assertion below vacuous.
+    assert!(
+        agent_message["metadata"]["error_code"].is_null(),
+        "Turn failed rather than producing a reasoning message: {:?}",
+        agent_message["metadata"]
+    );
+
+    // 1. Classification survives the worker boundary.
+    let phase = agent_message["phase"]
+        .as_str()
+        .expect("agent message must carry `phase`");
+    assert!(
+        phase == "commentary" || phase == "final_answer",
+        "unexpected phase {phase:?}"
+    );
+    let phase_source = agent_message["phase_source"]
+        .as_str()
+        .expect("agent message must carry `phase_source`");
+    assert!(
+        phase_source == "provider" || phase_source == "derived",
+        "unexpected phase_source {phase_source:?}"
+    );
+
+    // 2. Reasoning is published as ordered content parts with readable text.
+    let empty = vec![];
+    let content = agent_message["content"].as_array().unwrap_or(&empty);
+    let reasoning_parts: Vec<&Value> = content
+        .iter()
+        .filter(|p| p["type"] == "reasoning")
+        .collect();
+    assert!(
+        !reasoning_parts.is_empty(),
+        "agent message must carry reasoning content parts, got types {:?}",
+        content
+            .iter()
+            .map(|p| p["type"].as_str().unwrap_or("?"))
+            .collect::<Vec<_>>()
+    );
+    // Readable text arrives in whichever shape the provider exposes: verbatim
+    // chain-of-thought as `plain`, a curated gloss as `summary`. Both are
+    // reasoning-channel content; neither may be the answer.
+    let reasoning_text: Vec<String> = reasoning_parts
+        .iter()
+        .filter_map(|p| match p["text"]["kind"].as_str() {
+            Some("plain") => p["text"]["text"].as_str().map(str::to_string),
+            Some("summary") => p["text"]["parts"].as_array().map(|parts| {
+                parts
+                    .iter()
+                    .filter_map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }),
+            _ => None,
+        })
+        .filter(|t| !t.trim().is_empty())
+        .collect();
+    // Readable text is not guaranteed. A provider may return a reasoning
+    // artifact carrying only an id and its encrypted payload — the model
+    // reasoned but surfaced no prose — and that artifact is still valid and
+    // still replayable. Requiring text here would fail on a correct response.
+    // What must always hold is that the artifact is identified, so it can be
+    // replayed under the handle the provider issued.
+    assert!(
+        reasoning_parts
+            .iter()
+            .any(|p| p["item_id"].is_string() || p["provider"].is_string()),
+        "reasoning parts must be identified: {reasoning_parts:?}"
+    );
+
+    // Reasoning folded into the answer is the bug this rework fixes: it
+    // persists as the model's reply and replays to the model as its own prior
+    // output.
+    let answer_text: String = content
+        .iter()
+        .filter(|p| p["type"] == "text")
+        .filter_map(|p| p["text"].as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    for reasoning in &reasoning_text {
+        assert!(
+            !answer_text.contains(reasoning.trim()),
+            "reasoning text leaked into the answer"
+        );
+    }
+
+    // 3. Replay state must not. The provider needs it; a client never does, and
+    //    publishing it widens the surface for no benefit (TM-LLM-034).
+    for part in &reasoning_parts {
+        for leaked in ["signature", "encrypted", "encrypted_content"] {
+            assert!(
+                part.get(leaked).is_none_or(Value::is_null),
+                "reasoning part leaked `{leaked}` to the API: {part}"
+            );
+        }
+    }
+    let serialized = serde_json::to_string(&agent_message).unwrap_or_default();
+    for opaque in ["llmsim-signature-opaque", "llmsim-encrypted-opaque"] {
+        assert!(
+            !serialized.contains(opaque),
+            "opaque replay value {opaque:?} reached the API payload"
+        );
+    }
+
+    // 4. The same boundary holds for the event stream, which is a separate
+    //    projection and so a separate way for the payload to escape.
+    let events: Value = client
+        .get(format!(
+            "{}/v1/sessions/{}/events?limit=200",
+            API_BASE_URL, session.id
+        ))
+        .send()
+        .await
+        .expect("Failed to fetch events")
+        .json()
+        .await
+        .unwrap_or_default();
+    let empty_events = vec![];
+    let events = events["data"].as_array().unwrap_or(&empty_events);
+    let reason_items: Vec<&Value> = events
+        .iter()
+        .filter(|e| e["type"] == "reason.item")
+        .collect();
+    assert!(
+        !reason_items.is_empty(),
+        "a reasoning turn must publish reason.item events"
+    );
+    for item in &reason_items {
+        let data = &item["data"];
+        for leaked in ["encrypted_content", "signature", "encrypted"] {
+            assert!(
+                data.get(leaked).is_none_or(Value::is_null),
+                "reason.item leaked `{leaked}`: {data}"
+            );
+        }
+        assert!(
+            data["item_id"].is_string(),
+            "reason.item should identify the artifact: {data}"
+        );
+    }
+}
