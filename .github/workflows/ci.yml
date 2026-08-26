@@ -606,8 +606,8 @@ jobs:
   # tests by name, so a new crates/server/tests/*.rs file is never run until
   # someone adds a `--test` line. This check fails if any server test file is
   # neither wired into a CI job nor explicitly allowlisted (EVE-664).
-  server-test-enumeration:
-    name: Server Test Enumeration
+  test-enumeration:
+    name: Test Enumeration
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true'
@@ -616,8 +616,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Check every server test file is run by CI or allowlisted
-        run: bash scripts/lib/check-server-test-enumeration.sh
+      - name: Check every crate test file is run by a workflow or allowlisted
+        run: bash scripts/lib/check-test-enumeration.sh
 
   clippy:
     name: Clippy Lints
@@ -690,6 +690,22 @@ jobs:
           # Production-safe deterministic simulator plus its optional host
           # extension. Pure llmsim; no credentials or network.
           cargo test -p everruns-llmsim --all-features
+          # The provider SPI and the crates below reach CI here for the first
+          # time: none of them had ever appeared in a `cargo test -p` line in
+          # any workflow, so their tests/ files had never run. everruns-provider
+          # was the costly one — its wire tests are wiremock-based (no network,
+          # no credentials) and one of them was failing against committed code
+          # while CI stayed green, because nothing executed it. Run the whole
+          # suite, not --lib: the point is the integration tests.
+          cargo test -p everruns-provider --all-features
+          cargo test -p everruns-engine -p everruns-builtins --all-features
+          cargo test -p everruns-integrations-docker --all-features
+          # everruns-platform is in CI, but by named target: these four files
+          # were never added to the list and so never ran. capability_boundary
+          # is deliberately absent — it fails against current code and is parked
+          # in the enumeration allowlist rather than wired in red.
+          cargo test -p everruns-platform --test background_execution_test \
+            --test citation_pipeline_test --test prompt_budget --test subagent_test
           # Test-support (EVE-875): in-memory loop, test doubles, fixture
           # capabilities, and llmsim-driven suites that moved out of core.
           cargo test -p everruns-test-support --all-features
@@ -1030,8 +1046,8 @@ jobs:
       # These files existed under crates/server/tests/ but were never named in any
       # CI step, so ~17 files silently never ran. These pass on a fresh migrated DB;
       # the still-failing ones are allowlisted in
-      # scripts/lib/check-server-test-enumeration.sh with tracking issues
-      # (EVE-667). The Server Test Enumeration job enforces that every server test
+      # scripts/lib/check-test-enumeration.sh with tracking issues
+      # (EVE-667). The Test Enumeration job enforces that every crate test
       # file is either run here or explicitly allowlisted.
       - name: Run previously-unenumerated domain integration tests
         run: |

@@ -128,7 +128,7 @@ fi
 # 8. Server integration test enumeration
 echo "8/22 Server test enumeration"
 if SERVER_TEST_ENUM_OUTPUT="$(
-  bash "$PROJECT_ROOT/scripts/lib/check-server-test-enumeration.sh" 2>&1
+  bash "$PROJECT_ROOT/scripts/lib/check-test-enumeration.sh" 2>&1
 )"; then
   pass "$SERVER_TEST_ENUM_OUTPUT"
 else
