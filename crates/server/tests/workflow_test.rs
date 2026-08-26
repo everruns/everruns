@@ -5852,23 +5852,23 @@ async fn test_reasoning_reaches_api_sanitized_and_classified() {
             let v = v.trim();
             !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false")
         });
-    let has_provider_key = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"]
-        .iter()
-        .any(|k| std::env::var(k).ok().is_some_and(|v| !v.trim().is_empty()));
-    if !has_provider_key {
-        assert!(
-            !require_live,
-            "EVERRUNS_REQUIRE_LIVE_TESTS is set but neither OPENAI_API_KEY nor \
-             ANTHROPIC_API_KEY is present. This test verifies real provider \
-             reasoning end to end and cannot do that without a credential — fix \
-             the job's secrets rather than relaxing this check."
-        );
-        eprintln!(
-            "SKIP: no provider credential; set EVERRUNS_REQUIRE_LIVE_TESTS=1 to \
-             make this a failure"
-        );
-        return;
-    }
+    let api_key = match std::env::var("OPENAI_API_KEY") {
+        Ok(key) if !key.trim().is_empty() => key,
+        _ => {
+            assert!(
+                !require_live,
+                "EVERRUNS_REQUIRE_LIVE_TESTS is set but OPENAI_API_KEY is not \
+                 present. This test verifies real provider reasoning end to end \
+                 and cannot do that without a credential — fix the job's secrets \
+                 rather than relaxing this check."
+            );
+            eprintln!(
+                "SKIP: no OPENAI_API_KEY; set EVERRUNS_REQUIRE_LIVE_TESTS=1 to \
+                 make this a failure"
+            );
+            return;
+        }
+    };
 
     // Names are unique per run: the API rejects a duplicate agent name with
     // 409, so fixed names pass once against a fresh database and fail on every
@@ -5878,14 +5878,57 @@ async fn test_reasoning_reaches_api_sanitized_and_classified() {
         .expect("clock after epoch")
         .as_nanos();
 
+    // The test brings its own provider rather than relying on an org default.
+    // The server and worker in CI start outside `doppler run` and hold no
+    // provider credential of their own; creating the provider here is what puts
+    // a usable key in the database for the worker to pick up. Relying on the org
+    // default passed locally, where the stack is Doppler-fed, and failed in CI
+    // against a fresh database — the turn had no credential to run with.
+    let provider_response = client
+        .post(format!("{}/v1/providers", API_BASE_URL))
+        .json(&json!({
+            "name": format!("reasoning-projection-provider-{run_id}"),
+            "provider_type": "openai",
+            "api_key": api_key,
+            "enabled": true
+        }))
+        .send()
+        .await
+        .expect("Failed to create provider");
+    assert_eq!(provider_response.status(), 201);
+    let provider: Provider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+
+    // A reasoning-capable model: the whole point is a turn that produces
+    // reasoning artifacts.
+    let model_response = client
+        .post(format!(
+            "{}/v1/providers/{}/models",
+            API_BASE_URL, provider.id
+        ))
+        .json(&json!({
+            "model_id": "gpt-5.2",
+            "display_name": format!("Reasoning Projection Model {run_id}"),
+            "enabled": true
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+    if model_response.status() != 201 {
+        let status = model_response.status();
+        let body = model_response.text().await.unwrap_or_default();
+        panic!("Failed to create model: status={status}, body={body}");
+    }
+    let model: Model = model_response.json().await.expect("Failed to parse model");
+
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
             "name": format!("reasoning-projection-agent-{run_id}"),
             "system_prompt": "You are a helpful assistant.",
-            // No model override: the agent takes the org default, which is a
-            // real reasoning-capable provider. That is the path this test is
-            // here to verify.
+            "default_model_id": model.id,
         }))
         .send()
         .await
