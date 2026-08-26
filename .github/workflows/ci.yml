@@ -226,6 +226,14 @@ jobs:
             # surface, durable engine stores, and provider live tests that
             # currently run inside the same CI job. Keep this narrower than the
             # general Rust filter so unrelated crates do not start PostgreSQL.
+            #
+            # The provider entries are directory-wide on purpose. They used to
+            # enumerate openai/anthropic/gemini, so every driver added later
+            # fell outside the gate and `crates/provider` — which owns the wire
+            # protocols the live matrix exists to validate — was never listed at
+            # all. PR #3280 fixed an openresponses_protocol.rs regression and
+            # the live matrix was skipped on that very PR (EVE-936).
+            # scripts/test-ci-postgres-integration-filter.sh pins the invariant.
             postgres_integration:
               - 'crates/server/**'
               - 'crates/durable/**'
@@ -233,9 +241,8 @@ jobs:
               - 'crates/config/**'
               - 'crates/session-sqldb/**'
               - 'crates/llm-tests/**'
-              - 'crates/drivers/openai/**'
-              - 'crates/drivers/anthropic/**'
-              - 'crates/drivers/gemini/**'
+              - 'crates/provider/**'
+              - 'crates/drivers/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
