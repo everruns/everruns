@@ -413,7 +413,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.18.4"
+version = "0.19.1"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -435,7 +435,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.18.4"
+version = "0.18.5"
 dependencies = [
  "async-trait",
  "chrono",
@@ -452,7 +452,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-capability"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "async-trait",
  "schemars",
@@ -462,7 +462,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -492,7 +492,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.18.1"
+version = "0.18.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -511,7 +511,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.20.2"
+version = "0.20.3"
 dependencies = [
  "async-trait",
  "chrono",
@@ -535,7 +535,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-filesystem"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -551,7 +551,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.18.3"
+version = "0.18.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -574,7 +574,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-provider"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "async-trait",
