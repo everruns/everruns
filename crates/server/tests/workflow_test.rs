@@ -4673,7 +4673,7 @@ async fn test_anthropic_extended_thinking() {
     let mut thinking_started_found = false;
     let mut thinking_delta_found = false;
     let mut thinking_completed_found = false;
-    let mut message_agent_with_thinking = false;
+    let mut message_agent_with_reasoning = false;
     let mut all_events: Vec<Value> = Vec::new();
 
     for i in 1..=90 {
@@ -4740,14 +4740,26 @@ async fn test_anthropic_extended_thinking() {
                             thinking_content.len()
                         );
                     }
-                    // Check if message has thinking field
-                    "message.agent" if event["data"]["message"]["thinking"].is_string() => {
-                        message_agent_with_thinking = true;
-                        let thinking = event["data"]["message"]["thinking"].as_str().unwrap_or("");
-                        println!(
-                            "  Found message.agent with thinking field ({} chars)",
-                            thinking.len()
-                        );
+                    // Reasoning reaches the message as ordered `reasoning`
+                    // content parts, not a scalar `thinking` field on the
+                    // message — see ContentPart::Reasoning in crates/core.
+                    everruns_core::events::OUTPUT_MESSAGE_COMPLETED => {
+                        let reasoning_parts = event["data"]["message"]["content"]
+                            .as_array()
+                            .map(|parts| {
+                                parts
+                                    .iter()
+                                    .filter(|part| part["type"] == "reasoning")
+                                    .count()
+                            })
+                            .unwrap_or(0);
+                        if reasoning_parts > 0 {
+                            message_agent_with_reasoning = true;
+                            println!(
+                                "  Found message.agent with {} reasoning content part(s)",
+                                reasoning_parts
+                            );
+                        }
                     }
                     _ => {}
                 }
@@ -4768,8 +4780,8 @@ async fn test_anthropic_extended_thinking() {
         thinking_completed_found
     );
     println!(
-        "  message.agent with thinking: {}",
-        message_agent_with_thinking
+        "  message.agent with reasoning parts: {}",
+        message_agent_with_reasoning
     );
     println!("  Total events: {}", all_events.len());
 
@@ -4862,8 +4874,8 @@ async fn test_anthropic_extended_thinking() {
         "Should have reason.thinking.completed event with thinking content"
     );
     assert!(
-        message_agent_with_thinking,
-        "message.agent event should have thinking field populated"
+        message_agent_with_reasoning,
+        "message.agent event should carry reasoning content parts"
     );
     assert!(
         followup_complete,
@@ -5086,17 +5098,19 @@ async fn test_anthropic_extended_thinking_with_tools() {
                         thinking_found = true;
                         println!("    - {}", event_type);
                     }
-                    "tool.call_started" => {
+                    everruns_core::events::TOOL_STARTED => {
                         tool_call_found = true;
-                        let tool_name = event["data"]["tool_name"].as_str().unwrap_or("?");
+                        // The invoked tool is carried inside `tool_call`, which
+                        // is the payload `tool.started` actually publishes.
+                        let tool_name = event["data"]["tool_call"]["name"].as_str().unwrap_or("?");
                         println!("    - {} (tool: {})", event_type, tool_name);
                     }
-                    "tool.call_completed" => {
+                    everruns_core::events::TOOL_COMPLETED => {
                         tool_completed_found = true;
                         let success = event["data"]["success"].as_bool().unwrap_or(false);
                         println!("    - {} (success: {})", event_type, success);
                     }
-                    "message.agent" => {
+                    everruns_core::events::OUTPUT_MESSAGE_COMPLETED => {
                         final_message_found = true;
                         // Reasoning is ordered `reasoning` content parts; the
                         // opaque signature is replay state and never published.
@@ -5216,12 +5230,9 @@ async fn test_anthropic_extended_thinking_with_tools() {
     );
     assert!(
         tool_call_found,
-        "Should have tool.call_started event - model should use current_time when asked for time"
+        "Should have tool.started event - model should use current_time when asked for time"
     );
-    assert!(
-        tool_completed_found,
-        "Should have tool.call_completed event"
-    );
+    assert!(tool_completed_found, "Should have tool.completed event");
     assert!(
         final_message_found,
         "Should have at least one message.agent event"
