@@ -702,7 +702,7 @@ mod tests {
                 org_id,
                 CreateModelRow {
                     provider_id: provider_row.id,
-                    model_id: "gpt-4o".to_string(),
+                    model_id: "gpt-5.2".to_string(),
                     display_name: "GPT-4o".to_string(),
                     capabilities: vec!["chat".to_string()],
                     // Resolver paths require `enabled = TRUE`; these tests
@@ -733,7 +733,7 @@ mod tests {
             .unwrap();
         assert!(result.is_some());
         let resolved = result.unwrap();
-        assert_eq!(resolved.model_id, "gpt-4o");
+        assert_eq!(resolved.model_id, "gpt-5.2");
         assert_eq!(resolved.provider_type, "openai");
 
         // Run pending moka tasks so entry_count updates
@@ -746,7 +746,7 @@ mod tests {
             .await
             .unwrap();
         assert!(result2.is_some());
-        assert_eq!(result2.unwrap().model_id, "gpt-4o");
+        assert_eq!(result2.unwrap().model_id, "gpt-5.2");
 
         // Still one entry
         assert_eq!(resolver.cache_entry_count(), 1);
@@ -892,7 +892,7 @@ mod tests {
                 org_id,
                 CreateModelRow {
                     provider_id: provider_row.id,
-                    model_id: "gpt-4o".to_string(),
+                    model_id: "gpt-5.2".to_string(),
                     display_name: "GPT-4o".to_string(),
                     capabilities: vec![],
                     enabled: true,
@@ -915,7 +915,7 @@ mod tests {
             .await
             .unwrap();
         assert!(result.is_some());
-        assert_eq!(result.unwrap().model_id, "gpt-4o");
+        assert_eq!(result.unwrap().model_id, "gpt-5.2");
 
         resolver.cache.run_pending_tasks().await;
         assert_eq!(resolver.cache_entry_count(), 1);
@@ -926,7 +926,7 @@ mod tests {
             .await
             .unwrap();
         assert!(result2.is_some());
-        assert_eq!(result2.unwrap().model_id, "gpt-4o");
+        assert_eq!(result2.unwrap().model_id, "gpt-5.2");
     }
 
     #[tokio::test]
@@ -1182,7 +1182,7 @@ mod tests {
                 org_id,
                 CreateModelRow {
                     provider_id: provider_row.id,
-                    model_id: "gpt-4o".to_string(),
+                    model_id: "gpt-5.2".to_string(),
                     display_name: "GPT-4o".to_string(),
                     capabilities: vec![],
                     enabled: true,

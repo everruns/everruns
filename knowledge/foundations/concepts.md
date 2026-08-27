@@ -248,7 +248,7 @@ A configured API provider such as OpenAI or Anthropic. Stores encrypted API keys
 
 ### LLM Model
 
-A specific model within a provider (e.g., `gpt-4o`, `claude-sonnet-4`).
+A specific model within a provider (e.g., `gpt-5.2`, `claude-sonnet-5`).
 
 - Each model belongs to one provider
 - Sources: predefined, discovered from the provider API, or manually added

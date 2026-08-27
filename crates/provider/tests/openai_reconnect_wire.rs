@@ -154,7 +154,7 @@ async fn driver_reconnects_on_truncated_first_response() {
     let stream = driver
         .chat_completion_stream(
             vec![LlmMessage::text(LlmMessageRole::User, "hi")],
-            &config("gpt-4o"),
+            &config("gpt-5.2"),
         )
         .await
         .expect("stream should start (reconnect happens before first event)");
@@ -186,7 +186,7 @@ async fn driver_surfaces_error_after_exhausting_reconnects() {
     let result = driver
         .chat_completion_stream(
             vec![LlmMessage::text(LlmMessageRole::User, "hi")],
-            &config("gpt-4o"),
+            &config("gpt-5.2"),
         )
         .await;
     let error = match result {

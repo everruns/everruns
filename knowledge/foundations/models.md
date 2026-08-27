@@ -293,7 +293,7 @@ Read-only metadata describing model capabilities, costs, and limits. Computed at
 
 See `crates/provider/src/model.rs` for `ModelProfile`, `ModelCost`, `ModelLimits`, and `ReasoningEffortConfig` types.
 
-Profiles matched by provider_type + model_id with version normalization (e.g., "gpt-4o-2024-11-20" → "gpt-4o").
+Profiles matched by provider_type + model_id with version normalization (e.g., "gpt-5.2-2025-12-11" → "gpt-5.2").
 
 ### Model Discovery
 

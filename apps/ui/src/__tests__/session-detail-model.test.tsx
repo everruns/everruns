@@ -32,7 +32,7 @@ const mockSession: Session = {
 const mockModel: ModelWithProvider = {
   id: "model-1",
   provider_id: "provider-1",
-  model_id: "gpt-4o",
+  model_id: "gpt-5.2",
   display_name: "GPT-4o",
   capabilities: ["chat"],
   enabled: false,

@@ -3378,7 +3378,7 @@ mod tests {
                 harness_id: HarnessId::from_seed(1),
                 agent_id: Some(AgentId::new()),
                 metadata: Some(ModelMetadata {
-                    model: "gpt-4o".to_string(),
+                    model: "gpt-5.2".to_string(),
                     model_id: None,
                     provider_id: None,
                 }),
@@ -3462,7 +3462,7 @@ mod tests {
             tools,
             Some("Hi there!".to_string()),
             tool_calls,
-            "gpt-4o".to_string(),
+            "gpt-5.2".to_string(),
             Some("openai".to_string()),
             Some(TokenUsage {
                 input_tokens: 10,
@@ -3483,7 +3483,7 @@ mod tests {
         assert_eq!(data.output.text, Some("Hi there!".to_string()));
         assert!(data.output.tool_calls.is_empty());
         assert!(data.metadata.success);
-        assert_eq!(data.metadata.model, "gpt-4o");
+        assert_eq!(data.metadata.model, "gpt-5.2");
         assert_eq!(data.metadata.provider, Some("openai".to_string()));
         assert!(data.metadata.error.is_none());
         // New fields for gen-ai semantic conventions
@@ -3533,7 +3533,7 @@ mod tests {
         let data = LlmGenerationData::failure(
             messages,
             vec![],
-            "gpt-4o".to_string(),
+            "gpt-5.2".to_string(),
             Some("openai".to_string()),
             "Rate limit exceeded".to_string(),
             Some(50),
@@ -3987,7 +3987,7 @@ mod tests {
             vec![],
             Some("Hi!".to_string()),
             vec![],
-            "gpt-4o".to_string(),
+            "gpt-5.2".to_string(),
             Some("openai".to_string()),
             Some(TokenUsage {
                 input_tokens: 10,
@@ -4335,7 +4335,7 @@ mod contract_tests {
         let data = OutputMessageStartedData {
             turn_id: test_turn_id(),
             message_id: test_message_id(),
-            model: Some("gpt-4o".to_string()),
+            model: Some("gpt-5.2".to_string()),
             iteration: None,
             phase: None,
         };
@@ -4448,7 +4448,7 @@ mod contract_tests {
             harness_id: test_harness_id(),
             agent_id: Some(test_agent_id()),
             metadata: Some(ModelMetadata {
-                model: "gpt-4o".to_string(),
+                model: "gpt-5.2".to_string(),
                 model_id: None,
                 provider_id: None,
             }),
@@ -4559,7 +4559,7 @@ mod contract_tests {
             }],
             Some("Hi there!".to_string()),
             vec![],
-            "gpt-4o".to_string(),
+            "gpt-5.2".to_string(),
             Some("openai".to_string()),
             Some(TokenUsage::new(10, 5)),
             Some(100),

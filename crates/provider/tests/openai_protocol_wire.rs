@@ -152,7 +152,7 @@ async fn text_stream_golden_events() {
     let stream = driver(&server)
         .chat_completion_stream(
             vec![LlmMessage::text(LlmMessageRole::User, "hi")],
-            &config("gpt-4o"),
+            &config("gpt-5.2"),
         )
         .await
         .expect("stream should start");
@@ -201,7 +201,7 @@ async fn fragmented_tool_call_golden_events() {
     let stream = driver(&server)
         .chat_completion_stream(
             vec![LlmMessage::text(LlmMessageRole::User, "weather?")],
-            &config("gpt-4o"),
+            &config("gpt-5.2"),
         )
         .await
         .expect("stream should start");
@@ -248,7 +248,7 @@ async fn empty_content_with_tool_calls_finish_golden_events() {
     let stream = driver(&server)
         .chat_completion_stream(
             vec![LlmMessage::text(LlmMessageRole::User, "ping")],
-            &config("gpt-4o"),
+            &config("gpt-5.2"),
         )
         .await
         .expect("stream should start");

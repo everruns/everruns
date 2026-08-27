@@ -67,7 +67,7 @@ pub struct Model {
     /// Owning provider's prefixed public identifier.
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "provider_01933b5a00007000800000000000001"))]
     pub provider_id: ProviderId,
-    /// Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`).
+    /// Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`, `claude-sonnet-5`).
     pub model_id: String,
     /// Human-readable display name. Safe to render in user-facing messages.
     pub display_name: String,
@@ -95,7 +95,7 @@ pub struct ModelWithProvider {
     /// Owning provider's prefixed public identifier.
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "provider_01933b5a00007000800000000000001"))]
     pub provider_id: ProviderId,
-    /// Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).
+    /// Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
     #[cfg_attr(feature = "openapi", schema(example = "claude-sonnet-4-5"))]
     pub model_id: String,
     /// Human-readable display name.

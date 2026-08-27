@@ -6232,7 +6232,7 @@ export interface components {
       is_favorite?: boolean;
       /**
        * @description The model identifier used by the provider's API (e.g., "gpt-5.6-sol", "claude-opus-5").
-       * @example gpt-4o
+       * @example gpt-5.2
        */
       model_id: string;
     };
@@ -10386,7 +10386,7 @@ export interface components {
         id: string;
         /** @description Whether this model is starred in the UI for quick access. */
         is_favorite: boolean;
-        /** @description Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`). */
+        /** @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`, `claude-sonnet-5`). */
         model_id: string;
         /**
          * @description Owning provider's prefixed public identifier.
@@ -10467,7 +10467,7 @@ export interface components {
          */
         is_favorite: boolean;
         /**
-         * @description Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).
+         * @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
          * @example claude-sonnet-4-5
          */
         model_id: string;
@@ -11550,7 +11550,7 @@ export interface components {
       id: string;
       /** @description Whether this model is starred in the UI for quick access. */
       is_favorite: boolean;
-      /** @description Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`). */
+      /** @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`, `claude-sonnet-5`). */
       model_id: string;
       /**
        * @description Owning provider's prefixed public identifier.
@@ -11757,7 +11757,7 @@ export interface components {
        */
       is_favorite: boolean;
       /**
-       * @description Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).
+       * @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
        * @example claude-sonnet-4-5
        */
       model_id: string;
@@ -16470,7 +16470,7 @@ export interface components {
       is_favorite?: boolean | null;
       /**
        * @description The model identifier used by the provider's API.
-       * @example gpt-4o-mini
+       * @example gpt-5.4-mini
        */
       model_id?: string | null;
       /**
@@ -17830,7 +17830,7 @@ export interface components {
       id: string;
       /** @description Whether this model is starred in the UI for quick access. */
       is_favorite: boolean;
-      /** @description Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`). */
+      /** @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`, `claude-sonnet-5`). */
       model_id: string;
       /**
        * @description Owning provider's prefixed public identifier.
@@ -17913,7 +17913,7 @@ export interface components {
        */
       is_favorite: boolean;
       /**
-       * @description Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).
+       * @description Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
        * @example claude-sonnet-4-5
        */
       model_id: string;

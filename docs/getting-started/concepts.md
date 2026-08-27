@@ -173,7 +173,7 @@ An LLM Provider is a configured API provider such as OpenAI or Anthropic. Provid
 
 ### LLM Model
 
-An LLM Model is a specific model within a provider (e.g., `gpt-4o`, `claude-sonnet-4`).
+An LLM Model is a specific model within a provider (e.g., `gpt-5.2`, `claude-sonnet-5`).
 
 - Each model belongs to one provider
 - Sources: predefined, discovered from the provider API, or manually added

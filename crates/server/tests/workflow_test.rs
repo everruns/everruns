@@ -378,7 +378,7 @@ async fn test_model_profile() {
             API_BASE_URL, provider.id
         ))
         .json(&json!({
-            "model_id": "gpt-4o",
+            "model_id": "gpt-5.2",
             "display_name": "GPT-4o",
             "capabilities": ["chat", "vision"],
             "enabled": false
@@ -414,7 +414,7 @@ async fn test_model_profile() {
 
     let gpt4o_model = models
         .iter()
-        .find(|m| m["model_id"] == "gpt-4o")
+        .find(|m| m["model_id"] == "gpt-5.2")
         .expect("Should find gpt-4o in model list");
 
     // Verify profile exists and has expected fields
@@ -426,7 +426,7 @@ async fn test_model_profile() {
     if !profile.is_null() {
         assert_eq!(profile["name"], "GPT-4o", "Profile name should be GPT-4o");
         assert_eq!(
-            profile["family"], "gpt-4o",
+            profile["family"], "gpt-5.2",
             "Profile family should be gpt-4o"
         );
         assert!(
@@ -1833,7 +1833,7 @@ async fn test_no_duplicate_tool_calls() {
             API_BASE_URL, provider.id
         ))
         .json(&json!({
-            "model_id": "gpt-4o-mini",
+            "model_id": "gpt-5.4-mini",
             "display_name": "GPT-4o Mini Test",
             "enabled": true
         }))
@@ -3430,14 +3430,14 @@ async fn test_agent_execution_openai_with_tool_calls() {
         .expect("Failed to parse provider");
     println!("Created OpenAI provider: {}", provider.id);
 
-    // Create model (gpt-4o-mini for cost-effectiveness)
+    // Create model (gpt-5.4-mini for cost-effectiveness)
     let model_response = client
         .post(format!(
             "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
-            "model_id": "gpt-4o-mini",
+            "model_id": "gpt-5.4-mini",
             "display_name": "GPT-4o Mini (Tool Test)",
             "enabled": true
         }))

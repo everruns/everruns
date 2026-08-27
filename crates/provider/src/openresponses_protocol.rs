@@ -587,7 +587,7 @@ impl OpenResponsesProtocolChatDriver {
     /// let driver = OpenResponsesProtocolChatDriver::new();
     ///
     /// let request = CompactRequest {
-    ///     model: "gpt-4o".to_string(),
+    ///     model: "gpt-5.2".to_string(),
     ///     input: vec![
     ///         CompactInputItem::Message {
     ///             role: "user".to_string(),
@@ -2108,7 +2108,7 @@ mod tests {
             include: None,
             text: None,
             service_tier: None,
-            model: "gpt-4o".to_string(),
+            model: "gpt-5.2".to_string(),
             input: vec![ResponsesInputItem::Message {
                 r#type: "message".to_string(),
                 role: "user".to_string(),
@@ -2128,7 +2128,7 @@ mod tests {
         };
 
         let json = serde_json::to_value(&request).unwrap();
-        assert_eq!(json["model"], "gpt-4o");
+        assert_eq!(json["model"], "gpt-5.2");
         assert_eq!(json["stream"], true);
         assert_eq!(json["instructions"], "You are helpful");
         assert!(json["input"].is_array());
@@ -2177,7 +2177,7 @@ mod tests {
             include: None,
             text: None,
             service_tier: None,
-            model: "gpt-4o".to_string(),
+            model: "gpt-5.2".to_string(),
             input: vec![ResponsesInputItem::Message {
                 r#type: "message".to_string(),
                 role: "user".to_string(),
@@ -3844,7 +3844,7 @@ mod tests {
     #[test]
     fn test_compact_request_serialization() {
         let request = CompactRequest {
-            model: "gpt-4o".to_string(),
+            model: "gpt-5.2".to_string(),
             input: vec![
                 CompactInputItem::Message {
                     role: "user".to_string(),
@@ -3860,7 +3860,7 @@ mod tests {
         };
 
         let json = serde_json::to_value(&request).unwrap();
-        assert_eq!(json["model"], "gpt-4o");
+        assert_eq!(json["model"], "gpt-5.2");
         assert_eq!(json["instructions"], "Be helpful");
         assert!(json["input"].is_array());
         assert_eq!(json["input"].as_array().unwrap().len(), 2);

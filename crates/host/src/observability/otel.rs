@@ -1458,7 +1458,7 @@ mod tests {
                 }],
             },
             metadata: LlmGenerationMetadata {
-                model: "gpt-4o".to_string(),
+                model: "gpt-5.2".to_string(),
                 provider: Some("openai".to_string()),
                 usage: Some(TokenUsage::new(20, 15)),
                 duration_ms: Some(200),
@@ -2039,7 +2039,7 @@ mod tests {
                 }],
             },
             metadata: LlmGenerationMetadata {
-                model: "gpt-4o".to_string(),
+                model: "gpt-5.2".to_string(),
                 provider: Some("openai".to_string()),
                 usage: Some(TokenUsage::new(50, 20)),
                 duration_ms: Some(300),
@@ -2184,7 +2184,7 @@ mod tests {
                 tool_calls: vec![],
             },
             metadata: LlmGenerationMetadata {
-                model: "gpt-4o".to_string(),
+                model: "gpt-5.2".to_string(),
                 provider: Some("openai".to_string()),
                 usage: Some(TokenUsage::new(100, 80)),
                 duration_ms: Some(400),

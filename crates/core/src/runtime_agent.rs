@@ -231,7 +231,7 @@ impl RuntimeAgentBuilder {
     ///     .with_harness(&harness, &registry, &ctx).await
     ///     .with_agent(&agent, &registry, &ctx).await
     ///     .with_capabilities(&session_caps, &registry, &ctx).await
-    ///     .model("gpt-4o")
+    ///     .model("gpt-5.2")
     ///     .build();
     /// ```
     pub async fn with_agent(

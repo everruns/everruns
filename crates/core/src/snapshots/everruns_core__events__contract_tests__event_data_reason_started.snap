@@ -6,6 +6,6 @@ expression: data
   "harness_id": "harness_00000000000000000000000000000005",
   "agent_id": "agent_00000000000000000000000000000004",
   "metadata": {
-    "model": "gpt-4o"
+    "model": "gpt-5.2"
   }
 }
