@@ -1012,6 +1012,14 @@ async fn test_session_filesystem_workspace_prefix() {
 /// Skips if no API key is available.
 #[tokio::test]
 async fn test_agent_filesystem_and_bash_workspace_integration() {
+    // Unique per run: the API rejects a duplicate name with 409, and the name
+    // stays claimed by the soft-deleted row after the test cleans up, so fixed
+    // names pass once against a given database and fail on every rerun.
+    let run_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+
     use std::time::Duration;
 
     let client = reqwest::Client::builder()
@@ -1035,7 +1043,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     let provider_response = client
         .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
-            "name": "FS Bash Integration Test Provider",
+            "name": format!("fs-bash-provider-{run_id}"),
             "provider_type": "anthropic",
             "api_key": api_key,
             "enabled": false
@@ -1065,8 +1073,8 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
             API_BASE_URL, provider.id
         ))
         .json(&json!({
-            "model_id": "claude-3-5-haiku-latest",
-            "display_name": "Claude 3.5 Haiku (FS Bash Test)",
+            "model_id": "claude-haiku-4-5",
+            "display_name": "Claude Haiku 4.5 (FS Bash Test)",
             "enabled": true
         }))
         .send()
@@ -1089,7 +1097,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "fs-bash-test-agent",
+            "name": format!("fs-bash-test-agent-{run_id}"),
             "display_name": "FS Bash Test Agent",
             "system_prompt": "You are a file system assistant. When asked to create a file, use the write_file tool to create it. Always confirm what you did.",
             "capabilities": [
@@ -3620,6 +3628,14 @@ async fn test_agent_execution_openai_with_tool_calls() {
 /// Skips if no API key is available.
 #[tokio::test]
 async fn test_agent_execution_anthropic_with_tool_calls() {
+    // Unique per run: the API rejects a duplicate name with 409, and the name
+    // stays claimed by the soft-deleted row after the test cleans up, so fixed
+    // names pass once against a given database and fail on every rerun.
+    let run_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+
     use std::time::Duration;
 
     // Check if Anthropic API key is available
@@ -3645,7 +3661,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     let provider_response = client
         .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
-            "name": "Anthropic Tool Test Provider",
+            "name": format!("anthropic-tool-provider-{run_id}"),
             "provider_type": "anthropic",
             "api_key": api_key,
             "enabled": false
@@ -3675,8 +3691,8 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
             API_BASE_URL, provider.id
         ))
         .json(&json!({
-            "model_id": "claude-3-5-haiku-latest",
-            "display_name": "Claude 3.5 Haiku (Tool Test)",
+            "model_id": "claude-haiku-4-5",
+            "display_name": "Claude Haiku 4.5 (Tool Test)",
             "enabled": true
         }))
         .send()
@@ -3696,7 +3712,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "anthropic-dad-jokes-agent",
+            "name": format!("anthropic-dad-jokes-agent-{run_id}"),
             "display_name": "Anthropic Dad Jokes Agent",
             "system_prompt": "You are a dad jokes comedian. When the user asks for a joke about the time, you MUST first use the get_current_time tool to get the current time, then tell a short dad joke that somehow references the time you received. Keep your response brief.",
             "capabilities": [{"ref": "current_time", "config": {}}],
@@ -4524,6 +4540,14 @@ async fn test_cancel_turn_endpoint() {
 /// Skips if no API key is available.
 #[tokio::test]
 async fn test_anthropic_extended_thinking() {
+    // Unique per run: the API rejects a duplicate name with 409, and the name
+    // stays claimed by the soft-deleted row after the test cleans up, so fixed
+    // names pass once against a given database and fail on every rerun.
+    let run_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+
     use std::time::Duration;
 
     let client = reqwest::Client::builder()
@@ -4546,7 +4570,7 @@ async fn test_anthropic_extended_thinking() {
     let provider_response = client
         .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
-            "name": "Anthropic Thinking Test Provider",
+            "name": format!("anthropic-thinking-provider-{run_id}"),
             "provider_type": "anthropic",
             "api_key": api_key,
             "enabled": false
@@ -4597,7 +4621,7 @@ async fn test_anthropic_extended_thinking() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "thinking-test-agent",
+            "name": format!("thinking-test-agent-{run_id}"),
             "display_name": "Thinking Test Agent",
             "system_prompt": "You are a helpful assistant. Think through problems step by step.",
             "default_model_id": model.id
@@ -4876,6 +4900,14 @@ async fn test_anthropic_extended_thinking() {
 /// Requirements: API + Worker running, ANTHROPIC_API_KEY environment variable set.
 #[tokio::test]
 async fn test_anthropic_extended_thinking_with_tools() {
+    // Unique per run: the API rejects a duplicate name with 409, and the name
+    // stays claimed by the soft-deleted row after the test cleans up, so fixed
+    // names pass once against a given database and fail on every rerun.
+    let run_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+
     use std::time::Duration;
 
     let client = reqwest::Client::builder()
@@ -4898,7 +4930,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     let provider_response = client
         .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
-            "name": "Anthropic Thinking+Tools Test",
+            "name": format!("anthropic-thinking-tools-provider-{run_id}"),
             "provider_type": "anthropic",
             "api_key": api_key,
             "enabled": false
@@ -4949,7 +4981,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "time-reporter-agent",
+            "name": format!("time-reporter-agent-{run_id}"),
             "display_name": "Time Reporter Agent",
             "system_prompt": "You help users with simple requests. When asked for the time, call the current_time tool once and report the result.",
             "default_model_id": model.id,
