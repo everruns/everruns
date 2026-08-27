@@ -4613,11 +4613,12 @@ async fn test_anthropic_extended_thinking() {
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!(
-            "{}/v1/agents/{}/sessions",
-            API_BASE_URL, agent.public_id
-        ))
-        .json(&json!({"title": "Extended Thinking Test Session"}))
+        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .json(&json!({
+            "harness_name": SEED_HARNESS_NAME,
+            "agent_id": agent.public_id,
+            "title": "Extended Thinking Test Session"
+        }))
         .send()
         .await
         .expect("Failed to create session");
@@ -4634,8 +4635,8 @@ async fn test_anthropic_extended_thinking() {
     println!("\nStep 4: Sending message with reasoning effort=low...");
     let message_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.public_id, session.id
+            "{}/v1/sessions/{}/messages",
+            API_BASE_URL, session.id
         ))
         .json(&json!({
             "message": {
@@ -4668,10 +4669,7 @@ async fn test_anthropic_extended_thinking() {
 
         // Check session status
         let session_response = client
-            .get(format!(
-                "{}/v1/agents/{}/sessions/{}",
-                API_BASE_URL, agent.public_id, session.id
-            ))
+            .get(format!("{}/v1/sessions/{}", API_BASE_URL, session.id))
             .send()
             .await;
 
@@ -4695,8 +4693,8 @@ async fn test_anthropic_extended_thinking() {
     // Fetch all events (requires agent_id in path)
     let events_response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions/{}/events",
-            API_BASE_URL, agent.public_id, session.id
+            "{}/v1/sessions/{}/events",
+            API_BASE_URL, session.id
         ))
         .send()
         .await
@@ -4768,8 +4766,8 @@ async fn test_anthropic_extended_thinking() {
     println!("\nStep 6: Sending follow-up message to test multi-turn with thinking...");
     let followup_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.public_id, session.id
+            "{}/v1/sessions/{}/messages",
+            API_BASE_URL, session.id
         ))
         .json(&json!({
             "message": {
@@ -4794,10 +4792,7 @@ async fn test_anthropic_extended_thinking() {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let session_response = client
-            .get(format!(
-                "{}/v1/agents/{}/sessions/{}",
-                API_BASE_URL, agent.public_id, session.id
-            ))
+            .get(format!("{}/v1/sessions/{}", API_BASE_URL, session.id))
             .send()
             .await;
 
@@ -4976,11 +4971,12 @@ async fn test_anthropic_extended_thinking_with_tools() {
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!(
-            "{}/v1/agents/{}/sessions",
-            API_BASE_URL, agent.public_id
-        ))
-        .json(&json!({"title": "Time Reporting with Thinking Test"}))
+        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .json(&json!({
+            "harness_name": SEED_HARNESS_NAME,
+            "agent_id": agent.public_id,
+            "title": "Time Reporting with Thinking Test"
+        }))
         .send()
         .await
         .expect("Failed to create session");
@@ -4997,8 +4993,8 @@ async fn test_anthropic_extended_thinking_with_tools() {
     println!("\nStep 4: Sending message (expecting thinking + tool use)...");
     let message_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.public_id, session.id
+            "{}/v1/sessions/{}/messages",
+            API_BASE_URL, session.id
         ))
         .json(&json!({
             "message": {
@@ -5029,10 +5025,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let session_response = client
-            .get(format!(
-                "{}/v1/agents/{}/sessions/{}",
-                API_BASE_URL, agent.public_id, session.id
-            ))
+            .get(format!("{}/v1/sessions/{}", API_BASE_URL, session.id))
             .send()
             .await;
 
@@ -5063,8 +5056,8 @@ async fn test_anthropic_extended_thinking_with_tools() {
     // Fetch all events
     let events_response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions/{}/events",
-            API_BASE_URL, agent.public_id, session.id
+            "{}/v1/sessions/{}/events",
+            API_BASE_URL, session.id
         ))
         .send()
         .await
@@ -5123,8 +5116,8 @@ async fn test_anthropic_extended_thinking_with_tools() {
     println!("\nStep 6: Sending follow-up message (multi-turn with thinking+tools)...");
     let followup_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.public_id, session.id
+            "{}/v1/sessions/{}/messages",
+            API_BASE_URL, session.id
         ))
         .json(&json!({
             "message": {
@@ -5149,10 +5142,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let session_response = client
-            .get(format!(
-                "{}/v1/agents/{}/sessions/{}",
-                API_BASE_URL, agent.public_id, session.id
-            ))
+            .get(format!("{}/v1/sessions/{}", API_BASE_URL, session.id))
             .send()
             .await;
 
