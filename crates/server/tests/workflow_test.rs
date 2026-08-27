@@ -370,8 +370,8 @@ async fn test_model_profile() {
 
     println!("Created provider: {} ({})", provider.name, provider.id);
 
-    // Step 2: Create a known model (gpt-4o) that has a profile
-    println!("\nStep 2: Creating gpt-4o model...");
+    // Step 2: Create a known model (gpt-5.2) that has a profile
+    println!("\nStep 2: Creating gpt-5.2 model...");
     let create_model_response = client
         .post(format!(
             "{}/v1/providers/{}/models",
@@ -379,7 +379,7 @@ async fn test_model_profile() {
         ))
         .json(&json!({
             "model_id": "gpt-5.2",
-            "display_name": "GPT-4o",
+            "display_name": "GPT-5.2",
             "capabilities": ["chat", "vision"],
             "enabled": false
         }))
@@ -412,26 +412,26 @@ async fn test_model_profile() {
         .as_array()
         .expect("Response should have data array");
 
-    let gpt4o_model = models
+    let gpt52_model = models
         .iter()
         .find(|m| m["model_id"] == "gpt-5.2")
-        .expect("Should find gpt-4o in model list");
+        .expect("Should find gpt-5.2 in model list");
 
     // Verify profile exists and has expected fields
-    let profile = &gpt4o_model["profile"];
+    let profile = &gpt52_model["profile"];
     println!("Profile: {:?}", profile);
 
     // Profile may be null if the model profile lookup isn't working
     // For now, just verify we can list models - profile lookup is optional
     if !profile.is_null() {
-        assert_eq!(profile["name"], "GPT-4o", "Profile name should be GPT-4o");
+        assert_eq!(profile["name"], "GPT-5.2", "Profile name should be GPT-5.2");
         assert_eq!(
             profile["family"], "gpt-5.2",
-            "Profile family should be gpt-4o"
+            "Profile family should be gpt-5.2"
         );
         assert!(
             profile["tool_call"].as_bool().unwrap_or(false),
-            "GPT-4o should support tool calls"
+            "GPT-5.2 should support tool calls"
         );
         println!("Profile verified successfully");
     } else {
@@ -1834,7 +1834,7 @@ async fn test_no_duplicate_tool_calls() {
         ))
         .json(&json!({
             "model_id": "gpt-5.4-mini",
-            "display_name": "GPT-4o Mini Test",
+            "display_name": "GPT-5.4 Mini Test",
             "enabled": true
         }))
         .send()
@@ -3438,7 +3438,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
         ))
         .json(&json!({
             "model_id": "gpt-5.4-mini",
-            "display_name": "GPT-4o Mini (Tool Test)",
+            "display_name": "GPT-5.4 Mini (Tool Test)",
             "enabled": true
         }))
         .send()

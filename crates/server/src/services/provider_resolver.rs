@@ -703,7 +703,7 @@ mod tests {
                 CreateModelRow {
                     provider_id: provider_row.id,
                     model_id: "gpt-5.2".to_string(),
-                    display_name: "GPT-4o".to_string(),
+                    display_name: "GPT-5.2".to_string(),
                     capabilities: vec!["chat".to_string()],
                     // Resolver paths require `enabled = TRUE`; these tests
                     // exercise successful resolution, so create as enabled.
@@ -893,7 +893,7 @@ mod tests {
                 CreateModelRow {
                     provider_id: provider_row.id,
                     model_id: "gpt-5.2".to_string(),
-                    display_name: "GPT-4o".to_string(),
+                    display_name: "GPT-5.2".to_string(),
                     capabilities: vec![],
                     enabled: true,
                     is_favorite: false,
@@ -1183,7 +1183,7 @@ mod tests {
                 CreateModelRow {
                     provider_id: provider_row.id,
                     model_id: "gpt-5.2".to_string(),
-                    display_name: "GPT-4o".to_string(),
+                    display_name: "GPT-5.2".to_string(),
                     capabilities: vec![],
                     enabled: true,
                     is_favorite: false,

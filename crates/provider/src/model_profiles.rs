@@ -30,7 +30,7 @@ fn effort(value: ReasoningEffort, name: &str) -> ReasoningEffortValue {
     }
 }
 
-/// Standard reasoning efforts for pre-gpt-5.1 models (o1, o1-mini, o3-mini)
+/// Standard reasoning efforts for pre-gpt-5.1 reasoning models (o3, o4-mini)
 /// Default: medium, supports: low, medium, high
 fn reasoning_effort_standard() -> ReasoningEffortConfig {
     ReasoningEffortConfig {
@@ -43,7 +43,7 @@ fn reasoning_effort_standard() -> ReasoningEffortConfig {
     }
 }
 
-/// Reasoning effort for o1-pro (only high)
+/// Reasoning effort for pro-tier reasoning models (only high)
 fn reasoning_effort_high_only() -> ReasoningEffortConfig {
     ReasoningEffortConfig {
         values: vec![effort(ReasoningEffort::High, "High")],
