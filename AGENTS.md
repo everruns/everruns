@@ -92,19 +92,11 @@ export CARGO_INCREMENTAL=0
 # Then use the canonical command in "Local dev" above.
 ```
 
-For non-GitHub tools, failing auth means the token was not passed through, not that it expired:
+Failing auth usually means the token was not passed through, not that it expired:
 
 ```bash
 doppler run -- bash -lc 'TOKEN="$SOME_TOKEN" <command>'
 ```
-
-**The GitHub API is the exception: no token you supply reaches it.** The agent egress proxy
-rewrites the `Authorization` header for `api.github.com`, so requests authenticate as the
-session's own GitHub App installation whatever you pass — a deliberately invalid token, and no
-token at all, both answer `200` as the session user. So `doppler run -- ... GH_TOKEN=...` cannot
-widen GitHub access, and an endpoint the installation lacks scope for (Dependabot alerts, EVE-926)
-answers `403 Resource not accessible by integration` no matter which token is in hand. Fix such a
-403 by widening the App installation, never by hunting for a better token.
 
 ### Commits
 
