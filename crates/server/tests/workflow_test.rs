@@ -4600,7 +4600,7 @@ async fn test_anthropic_extended_thinking() {
             API_BASE_URL, provider.id
         ))
         .json(&json!({
-            "model_id": "claude-sonnet-4-20250514",
+            "model_id": "claude-sonnet-4-6",
             "display_name": "Claude Sonnet 4 (Thinking Test)",
             "enabled": true
         }))
@@ -4752,14 +4752,25 @@ async fn test_anthropic_extended_thinking() {
                             thinking_content.len()
                         );
                     }
-                    // Check if message has thinking field
-                    "message.agent" if event["data"]["message"]["thinking"].is_string() => {
+                    // Reasoning rides on the message as ordered content parts.
+                    // The flat `message.thinking` string this used to read was
+                    // removed with the reasoning rework: one field per message
+                    // cannot express several thinking blocks, each with its own
+                    // signature and position, which is what providers require.
+                    // `message.agent` is not an event type. The message events
+                    // are `output.message.started` / `.delta` / `.completed`;
+                    // the completed one carries the finished message.
+                    "output.message.completed"
+                        if event["data"]["message"]["content"].as_array().is_some_and(
+                            |parts| parts.iter().any(|p| p["type"] == "reasoning"),
+                        ) =>
+                    {
                         message_agent_with_thinking = true;
-                        let thinking = event["data"]["message"]["thinking"].as_str().unwrap_or("");
-                        println!(
-                            "  Found message.agent with thinking field ({} chars)",
-                            thinking.len()
-                        );
+                        let parts = event["data"]["message"]["content"]
+                            .as_array()
+                            .map(|p| p.iter().filter(|x| x["type"] == "reasoning").count())
+                            .unwrap_or(0);
+                        println!("  Found message.agent with {parts} reasoning part(s)");
                     }
                     _ => {}
                 }
@@ -4875,7 +4886,7 @@ async fn test_anthropic_extended_thinking() {
     );
     assert!(
         message_agent_with_thinking,
-        "message.agent event should have thinking field populated"
+        "message.agent should carry reasoning content parts"
     );
     assert!(
         followup_complete,
@@ -4960,7 +4971,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
             API_BASE_URL, provider.id
         ))
         .json(&json!({
-            "model_id": "claude-sonnet-4-20250514",
+            "model_id": "claude-sonnet-4-6",
             "display_name": "Claude Sonnet 4 (Thinking+Tools Test)",
             "enabled": true
         }))
@@ -5106,17 +5117,20 @@ async fn test_anthropic_extended_thinking_with_tools() {
                         thinking_found = true;
                         println!("    - {}", event_type);
                     }
-                    "tool.call_started" => {
+                    // The emitted names are `tool.call_requested` and
+                    // `tool.completed`; `tool.call_started` / `tool.call_completed`
+                    // were never event types this runtime publishes.
+                    "tool.call_requested" | "tool.started" => {
                         tool_call_found = true;
                         let tool_name = event["data"]["tool_name"].as_str().unwrap_or("?");
                         println!("    - {} (tool: {})", event_type, tool_name);
                     }
-                    "tool.call_completed" => {
+                    "tool.completed" => {
                         tool_completed_found = true;
                         let success = event["data"]["success"].as_bool().unwrap_or(false);
                         println!("    - {} (success: {})", event_type, success);
                     }
-                    "message.agent" => {
+                    "output.message.completed" => {
                         final_message_found = true;
                         // Reasoning is ordered `reasoning` content parts; the
                         // opaque signature is replay state and never published.
@@ -5244,7 +5258,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     );
     assert!(
         final_message_found,
-        "Should have at least one message.agent event"
+        "Should have at least one output.message.completed event"
     );
 
     // Multi-turn test may not complete if first turn hit max iterations
