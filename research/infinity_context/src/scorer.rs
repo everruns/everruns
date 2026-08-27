@@ -426,7 +426,7 @@ pub async fn check_llm_judge_health() -> HealthCheckResult {
         }
     };
 
-    let model = "claude-3-5-haiku-20241022".to_string();
+    let model = "claude-haiku-4-5".to_string();
     let config = JudgeConfig {
         model: model.clone(),
         api_key,

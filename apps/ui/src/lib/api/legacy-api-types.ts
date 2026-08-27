@@ -3603,7 +3603,7 @@ export interface VerbosityConfig {
 export interface ModelProfile {
   /** Display name of the model */
   name: string;
-  /** Model family (e.g., "gpt-4o", "claude-3-5-sonnet") */
+  /** Model family (e.g., "gpt-5.6-sol", "claude-sonnet-5") */
   family: string;
   /** Short human-readable description of the model's strengths and intended use */
   description?: string;

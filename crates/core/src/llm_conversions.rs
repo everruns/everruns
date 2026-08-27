@@ -313,13 +313,13 @@ mod tests {
     fn test_llm_call_config_builder_with_all_options() {
         let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
         let llm_config = llm_call_config_builder_from_agent(&runtime_agent)
-            .model("claude-3-opus")
+            .model("claude-opus-5")
             .reasoning_effort(ReasoningEffort::Medium)
             .temperature(0.7)
             .max_tokens(1000)
             .build();
 
-        assert_eq!(llm_config.model, "claude-3-opus");
+        assert_eq!(llm_config.model, "claude-opus-5");
         assert_eq!(llm_config.reasoning_effort, Some(ReasoningEffort::Medium));
         assert_eq!(llm_config.temperature, Some(0.7));
         assert_eq!(llm_config.max_tokens, Some(1000));

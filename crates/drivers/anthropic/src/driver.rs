@@ -1587,7 +1587,7 @@ const MILLION_CONTEXT_FAMILIES: &[&str] = &[
 /// The suffix is honored only when the bare id belongs to a family that
 /// actually supports the 1M window (`MILLION_CONTEXT_FAMILIES`). A
 /// manually-configured id that merely ends in `[1m]` but is not 1M-capable —
-/// e.g. `claude-3-haiku[1m]` or `claude-sonnet-4-5[1m]` — is left untouched. We
+/// e.g. `claude-haiku-4-5[1m]` or `claude-sonnet-4-5[1m]` — is left untouched. We
 /// must never rewrite an arbitrary configured id or send the `context-1m` beta
 /// header to a model that does not support the 1M window (it can 400 or
 /// silently truncate on models where the header was retired). Date-suffixed 1M
@@ -3195,8 +3195,8 @@ mod tests {
     fn test_normalize_anthropic_id_preserves_base_ids() {
         assert_eq!(normalize_anthropic_id("claude-opus-4-5"), "claude-opus-4-5");
         assert_eq!(
-            normalize_anthropic_id("claude-3-5-sonnet"),
-            "claude-3-5-sonnet"
+            normalize_anthropic_id("claude-sonnet-4-6"),
+            "claude-sonnet-4-6"
         );
     }
 
@@ -3256,8 +3256,8 @@ mod tests {
         // untouched — never strip them or send `context-1m` (it can 400 or
         // silently truncate, e.g. on sonnet-4-5 where the header was retired).
         for not_1m in [
-            "claude-3-haiku[1m]",
-            "claude-3-haiku-20240307[1m]",
+            "claude-haiku-4-5[1m]",
+            "claude-haiku-4-5-20251001[1m]",
             "claude-sonnet-4-5[1m]",
             "totally-made-up[1m]",
         ] {

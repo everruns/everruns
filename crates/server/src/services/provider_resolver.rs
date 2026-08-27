@@ -142,7 +142,7 @@ pub fn provider_request_options(
 /// Credential-free resolved model identity.
 #[derive(Debug, Clone)]
 pub struct ResolvedModel {
-    /// The model identifier (e.g., "gpt-4", "claude-3-opus")
+    /// The model identifier (e.g., "gpt-5.6-sol", "claude-opus-5")
     pub model_id: String,
     /// Provider type (e.g., "openai", "anthropic")
     pub provider_type: String,
@@ -820,8 +820,8 @@ mod tests {
                 org_id,
                 CreateModelRow {
                     provider_id: provider_row.id,
-                    model_id: "claude-3-opus".to_string(),
-                    display_name: "Claude 3 Opus".to_string(),
+                    model_id: "claude-opus-5".to_string(),
+                    display_name: "Claude Opus 5".to_string(),
                     capabilities: vec![],
                     // Resolver paths require `enabled = TRUE`.
                     enabled: true,
@@ -838,8 +838,8 @@ mod tests {
                 org_id,
                 CreateModelRow {
                     provider_id: provider_row.id,
-                    model_id: "claude-3-sonnet".to_string(),
-                    display_name: "Claude 3 Sonnet".to_string(),
+                    model_id: "claude-sonnet-5".to_string(),
+                    display_name: "Claude Sonnet 5".to_string(),
                     capabilities: vec![],
                     enabled: true,
                     is_favorite: false,
@@ -860,8 +860,8 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(ra.unwrap().model_id, "claude-3-opus");
-        assert_eq!(rb.unwrap().model_id, "claude-3-sonnet");
+        assert_eq!(ra.unwrap().model_id, "claude-opus-5");
+        assert_eq!(rb.unwrap().model_id, "claude-sonnet-5");
 
         resolver.cache.run_pending_tasks().await;
         assert_eq!(resolver.cache_entry_count(), 2);

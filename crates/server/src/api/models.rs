@@ -70,7 +70,7 @@ impl_dispatchable!(AppState);
 /// Request to create a new LLM model for a provider
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateModelRequest {
-    /// The model identifier used by the provider's API (e.g., "gpt-4", "claude-3-opus").
+    /// The model identifier used by the provider's API (e.g., "gpt-5.6-sol", "claude-opus-5").
     #[schema(example = "gpt-4o")]
     pub model_id: String,
     /// Human-readable display name for the model.

@@ -1187,7 +1187,7 @@ mod tests {
 
         let started = ReasonThinkingStartedData {
             turn_id,
-            model: Some("claude-3-opus".to_string()),
+            model: Some("claude-opus-5".to_string()),
         };
         let event = event_with_context(
             session_id,
@@ -1494,7 +1494,7 @@ mod tests {
                 tool_calls: vec![],
             },
             metadata: LlmGenerationMetadata {
-                model: "claude-3".to_string(),
+                model: "claude-opus-5".to_string(),
                 provider: None,
                 usage: None,
                 duration_ms: None,
@@ -1530,7 +1530,7 @@ mod tests {
                 tool_calls: vec![],
             },
             metadata: LlmGenerationMetadata {
-                model: "claude-3-5-sonnet".to_string(),
+                model: "claude-sonnet-5".to_string(),
                 provider: Some("anthropic".to_string()),
                 usage: Some(TokenUsage {
                     input_tokens: 100,

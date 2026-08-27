@@ -217,7 +217,7 @@ mod tests {
     #[test]
     fn test_chat_span_name() {
         assert_eq!(chat_span_name("gpt-4"), "chat gpt-4");
-        assert_eq!(chat_span_name("claude-3-opus"), "chat claude-3-opus");
+        assert_eq!(chat_span_name("claude-opus-5"), "chat claude-opus-5");
     }
 
     #[test]

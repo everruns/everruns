@@ -51,7 +51,7 @@ Tool search requires model-level support. Per Anthropic, it is available on:
 | Sonnet 4.x (`claude-sonnet-4*`) | Yes |
 | Haiku 4.5 (`claude-haiku-4-5`) | Yes |
 | Fable 5 (`claude-fable-5`) | Yes |
-| Claude 3.x and earlier | No (capability is silently ignored) |
+| Retired pre-4 Claude models | No (capability is silently ignored) |
 
 When the capability is enabled but the model doesn't support tool search, the feature is **silently skipped, full tool schemas are sent as usual**. This standalone capability does *not* add a client-side fallback: on an unsupported model it simply does nothing (no error, no behavior change). For automatic fallback to client-side deferral, use [Auto Tool Search](/capabilities/auto-tool-search/) (or add the [Tool Search](/capabilities/tool-search/) capability explicitly).
 
@@ -90,7 +90,7 @@ Lower thresholds activate tool search with fewer tools. Set to `1` to always act
 ## Limitations
 
 - **Claude-only**: this is an Anthropic Messages API feature; other providers (OpenAI, Gemini) ignore this capability. Use [Auto Tool Search](/capabilities/auto-tool-search/) for cross-provider agents.
-- **Supported Claude models only**: Claude 3.x and earlier don't support hosted tool search.
+- **Supported Claude models only**: pre-4 Claude models don't support hosted tool search.
 - **First-party transport only**: Claude models reached via Bedrock (ConverseStream) or OpenRouter don't get hosted tool search; with this capability alone they send full schemas. Use [Auto Tool Search](/capabilities/auto-tool-search/) for client-side deferral there.
 - **No standalone fallback**: on an unsupported model/transport this capability is a no-op (full schemas), not a switch to client-side deferral. Combine with `auto_tool_search`, or add `tool_search`, if you want a fallback.
 

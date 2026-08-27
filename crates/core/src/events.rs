@@ -529,7 +529,7 @@ use everruns_provider::execution_phase::ExecutionPhase;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ModelMetadata {
-    /// Model name (e.g., "gpt-4o", "claude-3-sonnet")
+    /// Model name (e.g., "gpt-5.6-sol", "claude-sonnet-5")
     pub model: String,
 
     /// Model ID (internal identifier)
@@ -3499,7 +3499,7 @@ mod tests {
             vec![],
             Some("Hi!".to_string()),
             vec![],
-            "claude-3-opus".to_string(),
+            "claude-opus-5".to_string(),
             Some("anthropic".to_string()),
             Some(TokenUsage {
                 input_tokens: 5,
@@ -3517,7 +3517,7 @@ mod tests {
         );
 
         assert!(data.metadata.success);
-        assert_eq!(data.metadata.model, "claude-3-opus");
+        assert_eq!(data.metadata.model, "claude-opus-5");
         assert_eq!(data.metadata.provider, Some("anthropic".to_string()));
         assert_eq!(data.metadata.time_to_first_token_ms, Some(25));
         assert_eq!(
@@ -3930,7 +3930,7 @@ mod tests {
         let data = OutputMessageStartedData {
             turn_id,
             message_id: MessageId::new(),
-            model: Some("claude-3".to_string()),
+            model: Some("claude-opus-5".to_string()),
             iteration: None,
             phase: None,
         };
@@ -3945,7 +3945,7 @@ mod tests {
         match deserialized {
             EventData::OutputMessageStarted(at) => {
                 assert_eq!(at.turn_id, turn_id);
-                assert_eq!(at.model, Some("claude-3".to_string()));
+                assert_eq!(at.model, Some("claude-opus-5".to_string()));
             }
             _ => panic!("Expected OutputMessageStarted, got different variant"),
         }
@@ -3960,7 +3960,7 @@ mod tests {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = ReasonThinkingStartedData {
             turn_id,
-            model: Some("claude-3".to_string()),
+            model: Some("claude-opus-5".to_string()),
         };
 
         // Serialize to JSON
@@ -3973,7 +3973,7 @@ mod tests {
         match deserialized {
             EventData::ReasonThinkingStarted(at) => {
                 assert_eq!(at.turn_id, turn_id);
-                assert_eq!(at.model, Some("claude-3".to_string()));
+                assert_eq!(at.model, Some("claude-opus-5".to_string()));
             }
             other => panic!("Expected ReasonThinkingStarted, got {}", other.event_type()),
         }

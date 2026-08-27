@@ -6231,7 +6231,7 @@ export interface components {
        */
       is_favorite?: boolean;
       /**
-       * @description The model identifier used by the provider's API (e.g., "gpt-4", "claude-3-opus").
+       * @description The model identifier used by the provider's API (e.g., "gpt-5.6-sol", "claude-opus-5").
        * @example gpt-4o
        */
       model_id: string;
@@ -11614,7 +11614,7 @@ export interface components {
     };
     /** @description Metadata about the model used for generation */
     ModelMetadata: {
-      /** @description Model name (e.g., "gpt-4o", "claude-3-sonnet") */
+      /** @description Model name (e.g., "gpt-5.6-sol", "claude-sonnet-5") */
       model: string;
       /**
        * Format: uuid
@@ -11638,11 +11638,8 @@ export interface components {
      * @description LLM Model Profile describing model capabilities
      *     Based on models.dev structure (<https://models.dev/api.json>)
      *
-     *     NOTE: Currently only includes profiles for:
-     *     - OpenAI: gpt-4o, gpt-4o-mini, o1, o1-mini, o1-pro, o3-mini
-     *     - Anthropic: claude-3-5-sonnet, claude-3-5-haiku, claude-3-opus, claude-3-sonnet, claude-3-haiku, claude-sonnet-4, claude-opus-4
-     *
-     *     Additional model profiles can be added as needed.
+     *     The registry of profiles lives in `model_profiles.rs`; retired models are
+     *     dropped from it as vendors sunset them.
      */
     ModelProfile: {
       /** @description Whether the model supports file/image attachments */
@@ -11650,7 +11647,7 @@ export interface components {
       cost?: null | components["schemas"]["ModelCost"];
       /** @description Short human-readable description of the model's strengths and intended use */
       description?: string | null;
-      /** @description Model family (e.g., "gpt-4o", "claude-3-5-sonnet") */
+      /** @description Model family (e.g., "gpt-5.6-sol", "claude-sonnet-5") */
       family: string;
       /** @description Knowledge cutoff date (YYYY-MM-DD format) */
       knowledge?: string | null;

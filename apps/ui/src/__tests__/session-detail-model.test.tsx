@@ -69,14 +69,14 @@ describe("SessionCard - LLM Model Display", () => {
     const claudeModel: ModelWithProvider = {
       ...mockModel,
       id: "model-2",
-      display_name: "Claude 3.5 Sonnet",
+      display_name: "Claude Sonnet 5",
       provider_name: "Anthropic",
       provider_type: "anthropic",
     };
 
     render(<SessionCard session={mockSession} model={claudeModel} />);
 
-    expect(screen.getByText("Claude 3.5 Sonnet")).toBeInTheDocument();
+    expect(screen.getByText("Claude Sonnet 5")).toBeInTheDocument();
   });
 
   it("links to org-level session URL", async () => {

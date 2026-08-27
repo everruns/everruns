@@ -1070,7 +1070,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
         .expect("Failed to parse provider");
     println!("Created Anthropic provider: {}", provider.id);
 
-    // Create model (claude-3-5-haiku for cost-effectiveness)
+    // Create model (claude-haiku-4-5 for cost-effectiveness)
     let model_response = client
         .post(format!(
             "{}/v1/providers/{}/models",
@@ -3680,7 +3680,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
         .expect("Failed to parse provider");
     println!("Created Anthropic provider: {}", provider.id);
 
-    // Create model (claude-3-5-haiku for cost-effectiveness)
+    // Create model (claude-haiku-4-5 for cost-effectiveness)
     let model_response = client
         .post(format!(
             "{}/v1/providers/{}/models",

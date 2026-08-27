@@ -395,15 +395,8 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["claude-opus-4-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-sonnet-4-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-haiku-4-5"], ModelVendor::Anthropic, ANTHROPIC),
-    md(&["claude-opus-4-1"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-sonnet-4"], ModelVendor::Anthropic, ANTHROPIC),
-    md(&["claude-3-7-sonnet"], ModelVendor::Anthropic, ANTHROPIC),
-    md(&["claude-3-5-sonnet"], ModelVendor::Anthropic, ANTHROPIC),
-    md(&["claude-3-5-haiku"], ModelVendor::Anthropic, ANTHROPIC),
-    md(&["claude-3-opus"], ModelVendor::Anthropic, ANTHROPIC),
-    md(&["claude-3-sonnet"], ModelVendor::Anthropic, ANTHROPIC),
-    md(&["claude-3-haiku"], ModelVendor::Anthropic, ANTHROPIC),
     // Google Gemini
     md(&["gemini-3.1-pro-preview"], ModelVendor::Google, GEMINI),
     md(&["gemini-3.5-flash"], ModelVendor::Google, GEMINI),
@@ -411,8 +404,6 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["gemini-2.5-pro"], ModelVendor::Google, GEMINI),
     md(&["gemini-2.5-flash"], ModelVendor::Google, GEMINI),
     md(&["gemini-2.0-flash"], ModelVendor::Google, GEMINI),
-    md(&["gemini-1.5-pro"], ModelVendor::Google, GEMINI),
-    md(&["gemini-1.5-flash"], ModelVendor::Google, GEMINI),
     // Third-party, OpenAI-compatible
     md(
         &[
@@ -2660,7 +2651,6 @@ fn anthropic_family_supports_tool_search(family: &str) -> bool {
             | "claude-opus-4-7"
             | "claude-opus-4-6"
             | "claude-opus-4-5"
-            | "claude-opus-4-1"
             | "claude-opus-4"
             | "claude-sonnet-5"
             | "claude-sonnet-4-6"
@@ -3111,44 +3101,6 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             supports_phases: false,
         }),
 
-        // Claude 4.1 series
-        "claude-opus-4-1" => Some(ModelProfile {
-            name: "Claude Opus 4.1".into(),
-            family: "claude-opus-4-1".into(),
-            description: None,
-            release_date: Some("2025-08-05".into()),
-            last_updated: Some("2025-08-05".into()),
-            attachment: true,
-            reasoning: true,
-            temperature: true,
-            knowledge: Some("2025-03-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 15.00,
-                output: 75.00,
-                cache_read: Some(1.50),
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 200_000,
-                input: None,
-                output: 32_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
         // Claude 4 series
         "claude-sonnet-4" => Some(ModelProfile {
             name: "Claude Sonnet 4".into(),
@@ -3217,230 +3169,6 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        // Claude 3.7 series
-        "claude-3-7-sonnet" => Some(ModelProfile {
-            name: "Claude 3.7 Sonnet".into(),
-            family: "claude-3-7-sonnet".into(),
-            description: None,
-            release_date: Some("2025-02-19".into()),
-            last_updated: Some("2025-02-19".into()),
-            attachment: true,
-            reasoning: true, // Extended thinking mode
-            temperature: true,
-            knowledge: Some("2024-11-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 3.00,
-                output: 15.00,
-                cache_read: Some(0.30),
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 200_000,
-                input: None,
-                output: 64_000, // Extended output with thinking
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        // Claude 3.5 series
-        "claude-3-5-sonnet" => Some(ModelProfile {
-            name: "Claude 3.5 Sonnet".into(),
-            family: "claude-3-5-sonnet".into(),
-            description: None,
-            release_date: Some("2024-06-20".into()),
-            last_updated: Some("2024-10-22".into()),
-            attachment: true,
-            reasoning: false,
-            temperature: true,
-            knowledge: Some("2024-04-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 3.00,
-                output: 15.00,
-                cache_read: Some(0.30),
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 200_000,
-                input: None,
-                output: 8_192,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: None,
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        "claude-3-5-haiku" => Some(ModelProfile {
-            name: "Claude 3.5 Haiku".into(),
-            family: "claude-3-5-haiku".into(),
-            description: None,
-            release_date: Some("2024-10-22".into()),
-            last_updated: Some("2024-10-22".into()),
-            attachment: true,
-            reasoning: false,
-            temperature: true,
-            knowledge: Some("2024-07-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 1.00,
-                output: 5.00,
-                cache_read: Some(0.10),
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 200_000,
-                input: None,
-                output: 8_192,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: None,
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        "claude-3-opus" => Some(ModelProfile {
-            name: "Claude 3 Opus".into(),
-            family: "claude-3-opus".into(),
-            description: None,
-            release_date: Some("2024-02-29".into()),
-            last_updated: Some("2024-02-29".into()),
-            attachment: true,
-            reasoning: false,
-            temperature: true,
-            knowledge: Some("2023-08-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 15.00,
-                output: 75.00,
-                cache_read: Some(1.50),
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 200_000,
-                input: None,
-                output: 4_096,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: None,
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        "claude-3-sonnet" => Some(ModelProfile {
-            name: "Claude 3 Sonnet".into(),
-            family: "claude-3-sonnet".into(),
-            description: None,
-            release_date: Some("2024-02-29".into()),
-            last_updated: Some("2024-02-29".into()),
-            attachment: true,
-            reasoning: false,
-            temperature: true,
-            knowledge: Some("2023-08-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 3.00,
-                output: 15.00,
-                cache_read: Some(0.30),
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 200_000,
-                input: None,
-                output: 4_096,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: None,
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        "claude-3-haiku" => Some(ModelProfile {
-            name: "Claude 3 Haiku".into(),
-            family: "claude-3-haiku".into(),
-            description: None,
-            release_date: Some("2024-03-07".into()),
-            last_updated: Some("2024-03-07".into()),
-            attachment: true,
-            reasoning: false,
-            temperature: true,
-            knowledge: Some("2023-08-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 0.25,
-                output: 1.25,
-                cache_read: Some(0.03),
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 200_000,
-                input: None,
-                output: 4_096,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: None,
             speed: None,
             verbosity: None,
             tool_search: false,
@@ -3726,90 +3454,6 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supports_phases: false,
         }),
 
-        "gemini-1.5-pro" => Some(ModelProfile {
-            name: "Gemini 1.5 Pro".into(),
-            family: "gemini-1.5-pro".into(),
-            description: None,
-            release_date: Some("2024-02-15".into()),
-            last_updated: Some("2024-09-24".into()),
-            attachment: true,
-            reasoning: false,
-            temperature: true,
-            knowledge: Some("2024-04-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 1.25,
-                output: 5.00,
-                cache_read: Some(0.31),
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 2_097_152,
-                input: None,
-                output: 8_192,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![
-                    Modality::Text,
-                    Modality::Image,
-                    Modality::Audio,
-                    Modality::Video,
-                ],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: None,
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        "gemini-1.5-flash" => Some(ModelProfile {
-            name: "Gemini 1.5 Flash".into(),
-            family: "gemini-1.5-flash".into(),
-            description: None,
-            release_date: Some("2024-05-24".into()),
-            last_updated: Some("2024-09-24".into()),
-            attachment: true,
-            reasoning: false,
-            temperature: true,
-            knowledge: Some("2024-04-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 0.075,
-                output: 0.30,
-                cache_read: Some(0.01875),
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 1_048_576,
-                input: None,
-                output: 8_192,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![
-                    Modality::Text,
-                    Modality::Image,
-                    Modality::Audio,
-                    Modality::Video,
-                ],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: None,
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
         _ => None,
     }
 }
@@ -3940,15 +3584,8 @@ mod tests {
         (DriverId::Anthropic, "claude-opus-4-5"),
         (DriverId::Anthropic, "claude-sonnet-4-5"),
         (DriverId::Anthropic, "claude-haiku-4-5"),
-        (DriverId::Anthropic, "claude-opus-4-1"),
         (DriverId::Anthropic, "claude-sonnet-4"),
         (DriverId::Anthropic, "claude-opus-4"),
-        (DriverId::Anthropic, "claude-3-7-sonnet"),
-        (DriverId::Anthropic, "claude-3-5-sonnet"),
-        (DriverId::Anthropic, "claude-3-5-haiku"),
-        (DriverId::Anthropic, "claude-3-opus"),
-        (DriverId::Anthropic, "claude-3-sonnet"),
-        (DriverId::Anthropic, "claude-3-haiku"),
         // Gemini
         (DriverId::Gemini, "gemini-3.1-pro-preview"),
         (DriverId::Gemini, "gemini-3.5-flash"),
@@ -3956,8 +3593,6 @@ mod tests {
         (DriverId::Gemini, "gemini-2.5-pro"),
         (DriverId::Gemini, "gemini-2.5-flash"),
         (DriverId::Gemini, "gemini-2.0-flash"),
-        (DriverId::Gemini, "gemini-1.5-flash"),
-        (DriverId::Gemini, "gemini-1.5-pro"),
     ];
 
     /// Structural invariants that must hold for every registered profile. This
@@ -4138,16 +3773,12 @@ mod tests {
     #[test]
     fn test_normalize_anthropic_model_id() {
         assert_eq!(
-            normalize_anthropic_model_id("claude-3-5-sonnet"),
-            "claude-3-5-sonnet"
+            normalize_anthropic_model_id("claude-sonnet-5"),
+            "claude-sonnet-5"
         );
         assert_eq!(
-            normalize_anthropic_model_id("claude-3-5-sonnet-20241022"),
-            "claude-3-5-sonnet"
-        );
-        assert_eq!(
-            normalize_anthropic_model_id("claude-3-5-sonnet-latest"),
-            "claude-3-5-sonnet"
+            normalize_anthropic_model_id("claude-sonnet-5-latest"),
+            "claude-sonnet-5"
         );
         assert_eq!(
             normalize_anthropic_model_id("claude-sonnet-4-20250514"),
@@ -4912,18 +4543,6 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_claude_41_model_ids() {
-        assert_eq!(
-            normalize_anthropic_model_id("claude-opus-4-1"),
-            "claude-opus-4-1"
-        );
-        assert_eq!(
-            normalize_anthropic_model_id("claude-opus-4-1-20250805"),
-            "claude-opus-4-1"
-        );
-    }
-
-    #[test]
     fn test_normalize_claude_45_model_ids() {
         assert_eq!(
             normalize_anthropic_model_id("claude-opus-4-5-20251101"),
@@ -4936,18 +4555,6 @@ mod tests {
         assert_eq!(
             normalize_anthropic_model_id("claude-haiku-4-5-20251001"),
             "claude-haiku-4-5"
-        );
-    }
-
-    #[test]
-    fn test_normalize_claude_37_model_ids() {
-        assert_eq!(
-            normalize_anthropic_model_id("claude-3-7-sonnet"),
-            "claude-3-7-sonnet"
-        );
-        assert_eq!(
-            normalize_anthropic_model_id("claude-3-7-sonnet-20250219"),
-            "claude-3-7-sonnet"
         );
     }
 
@@ -5204,7 +4811,6 @@ mod tests {
             "claude-opus-4-7",
             "claude-opus-4-6",
             "claude-opus-4-5",
-            "claude-opus-4-1",
             "claude-opus-4",
             "claude-sonnet-4-6",
             "claude-sonnet-4-5",
@@ -5221,12 +4827,8 @@ mod tests {
                 .unwrap()
                 .tool_search
         );
-        // Pre-4 Claude does not support it.
-        assert!(
-            !get_model_profile(&DriverId::Anthropic, "claude-3-5-haiku")
-                .map(|p| p.tool_search)
-                .unwrap_or(false)
-        );
+        // Retired pre-4 Claude models are no longer in the registry at all.
+        assert!(get_model_profile(&DriverId::Anthropic, "claude-3-5-haiku").is_none());
         // Reached via a non-first-party transport (Bedrock ConverseStream lacks
         // server-side tool search; OpenRouter's stateless shim doesn't implement
         // it), the same model must not advertise hosted tool_search — it falls

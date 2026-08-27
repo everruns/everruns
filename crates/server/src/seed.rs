@@ -139,9 +139,6 @@ mod seed_ids {
     pub const CLAUDE_HAIKU_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000303);
     pub const CLAUDE_OPUS_4: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000304);
     pub const CLAUDE_SONNET_4: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000305);
-    pub const CLAUDE_3_7_SONNET: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000306);
-    pub const CLAUDE_3_5_SONNET: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000307);
-    pub const CLAUDE_3_5_HAIKU: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000308);
     // 1M-context variants (`[1m]` model ids), 0x3a0+ sub-range.
     pub const CLAUDE_OPUS_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a8);
     pub const CLAUDE_OPUS_4_7_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a7);
@@ -158,12 +155,6 @@ mod seed_ids {
     pub const GEMINI_25_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
     pub const GEMINI_25_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000602);
     pub const GEMINI_20_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
-
-    // Bedrock Models (0x700-0x7FF)
-    pub const BEDROCK_CLAUDE_HAIKU_35: Uuid =
-        Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000701);
-    pub const BEDROCK_CLAUDE_SONNET_35: Uuid =
-        Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000702);
 }
 
 // ============================================
@@ -2028,32 +2019,6 @@ const SEED_MODELS: &[SeedModel] = &[
         enabled: false,
         is_favorite: false,
     },
-    // Anthropic Claude 3.7
-    SeedModel {
-        id: seed_ids::CLAUDE_3_7_SONNET,
-        provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-3-7-sonnet-latest",
-        display_name: "Claude 3.7 Sonnet",
-        enabled: false,
-        is_favorite: false,
-    },
-    // Anthropic Claude 3.5
-    SeedModel {
-        id: seed_ids::CLAUDE_3_5_SONNET,
-        provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-3-5-sonnet-latest",
-        display_name: "Claude 3.5 Sonnet",
-        enabled: false,
-        is_favorite: false,
-    },
-    SeedModel {
-        id: seed_ids::CLAUDE_3_5_HAIKU,
-        provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-3-5-haiku-latest",
-        display_name: "Claude 3.5 Haiku",
-        enabled: false,
-        is_favorite: false,
-    },
     // Google Gemini 3.x series (current gen)
     SeedModel {
         id: seed_ids::GEMINI_31_PRO_PREVIEW,
@@ -2101,23 +2066,6 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::GEMINI_PROVIDER,
         model_id: "gemini-2.0-flash",
         display_name: "Gemini 2.0 Flash",
-        enabled: false,
-        is_favorite: false,
-    },
-    // AWS Bedrock (ConverseStream API)
-    SeedModel {
-        id: seed_ids::BEDROCK_CLAUDE_HAIKU_35,
-        provider_id: seed_ids::BEDROCK_PROVIDER,
-        model_id: "anthropic.claude-3-5-haiku-20241022-v1:0",
-        display_name: "Claude 3.5 Haiku (Bedrock)",
-        enabled: false,
-        is_favorite: false,
-    },
-    SeedModel {
-        id: seed_ids::BEDROCK_CLAUDE_SONNET_35,
-        provider_id: seed_ids::BEDROCK_PROVIDER,
-        model_id: "anthropic.claude-3-5-sonnet-20241022-v2:0",
-        display_name: "Claude 3.5 Sonnet v2 (Bedrock)",
         enabled: false,
         is_favorite: false,
     },

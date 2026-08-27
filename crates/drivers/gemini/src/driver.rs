@@ -1810,9 +1810,12 @@ mod tests {
         // Known Gemini models should resolve max_tokens from profile
         let profile = everruns_provider::get_model_profile(
             &everruns_provider::DriverId::Gemini,
-            "gemini-1.5-pro",
+            "gemini-3.1-pro-preview",
         );
-        assert!(profile.is_some(), "gemini-1.5-pro should have a profile");
+        assert!(
+            profile.is_some(),
+            "gemini-3.1-pro-preview should have a profile"
+        );
         let limits = profile.unwrap().limits.expect("profile should have limits");
         assert!(limits.output > 0, "output limit should be positive");
     }
