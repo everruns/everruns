@@ -31,6 +31,18 @@ const API_BASE_URL: &str = "http://localhost:9000/api";
 /// and no longer stable). Passed via `harness_name` on session creation.
 const SEED_HARNESS_NAME: &str = "base";
 
+/// Live Anthropic model ids used by the tests in this file that talk to the
+/// real provider.
+///
+/// Pinned to explicit dated ids rather than `-latest` aliases so a failure
+/// names the model it actually asked for. Anthropic retires models, and a
+/// retired id comes back as `model_unavailable` rather than a test-logic
+/// failure — when that happens, re-point these two constants at current ids
+/// (`GET /v1/models`) instead of editing each test.
+const LIVE_ANTHROPIC_FAST_MODEL: &str = "claude-haiku-4-5-20251001";
+/// Extended thinking requires a model that supports it; Haiku does not.
+const LIVE_ANTHROPIC_THINKING_MODEL: &str = "claude-sonnet-4-5-20250929";
+
 #[tokio::test]
 async fn test_full_agent_session_workflow() {
     let client = reqwest::Client::new();
@@ -1065,8 +1077,8 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
             API_BASE_URL, provider.id
         ))
         .json(&json!({
-            "model_id": "claude-3-5-haiku-latest",
-            "display_name": "Claude 3.5 Haiku (FS Bash Test)",
+            "model_id": LIVE_ANTHROPIC_FAST_MODEL,
+            "display_name": "Anthropic Fast (FS Bash Test)",
             "enabled": true
         }))
         .send()
@@ -3675,8 +3687,8 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
             API_BASE_URL, provider.id
         ))
         .json(&json!({
-            "model_id": "claude-3-5-haiku-latest",
-            "display_name": "Claude 3.5 Haiku (Tool Test)",
+            "model_id": LIVE_ANTHROPIC_FAST_MODEL,
+            "display_name": "Anthropic Fast (Tool Test)",
             "enabled": true
         }))
         .send()
@@ -4576,8 +4588,8 @@ async fn test_anthropic_extended_thinking() {
             API_BASE_URL, provider.id
         ))
         .json(&json!({
-            "model_id": "claude-sonnet-4-20250514",
-            "display_name": "Claude Sonnet 4 (Thinking Test)",
+            "model_id": LIVE_ANTHROPIC_THINKING_MODEL,
+            "display_name": "Anthropic Thinking (Thinking Test)",
             "enabled": true
         }))
         .send()
@@ -4613,11 +4625,12 @@ async fn test_anthropic_extended_thinking() {
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!(
-            "{}/v1/agents/{}/sessions",
-            API_BASE_URL, agent.public_id
-        ))
-        .json(&json!({"title": "Extended Thinking Test Session"}))
+        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .json(&json!({
+            "harness_name": SEED_HARNESS_NAME,
+            "agent_id": agent.public_id,
+            "title": "Extended Thinking Test Session"
+        }))
         .send()
         .await
         .expect("Failed to create session");
@@ -4634,8 +4647,8 @@ async fn test_anthropic_extended_thinking() {
     println!("\nStep 4: Sending message with reasoning effort=low...");
     let message_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.public_id, session.id
+            "{}/v1/sessions/{}/messages",
+            API_BASE_URL, session.id
         ))
         .json(&json!({
             "message": {
@@ -4660,7 +4673,7 @@ async fn test_anthropic_extended_thinking() {
     let mut thinking_started_found = false;
     let mut thinking_delta_found = false;
     let mut thinking_completed_found = false;
-    let mut message_agent_with_thinking = false;
+    let mut message_agent_with_reasoning = false;
     let mut all_events: Vec<Value> = Vec::new();
 
     for i in 1..=90 {
@@ -4668,10 +4681,7 @@ async fn test_anthropic_extended_thinking() {
 
         // Check session status
         let session_response = client
-            .get(format!(
-                "{}/v1/agents/{}/sessions/{}",
-                API_BASE_URL, agent.public_id, session.id
-            ))
+            .get(format!("{}/v1/sessions/{}", API_BASE_URL, session.id))
             .send()
             .await;
 
@@ -4692,11 +4702,11 @@ async fn test_anthropic_extended_thinking() {
         }
     }
 
-    // Fetch all events (requires agent_id in path)
+    // Fetch all events
     let events_response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions/{}/events",
-            API_BASE_URL, agent.public_id, session.id
+            "{}/v1/sessions/{}/events",
+            API_BASE_URL, session.id
         ))
         .send()
         .await
@@ -4730,14 +4740,26 @@ async fn test_anthropic_extended_thinking() {
                             thinking_content.len()
                         );
                     }
-                    // Check if message has thinking field
-                    "message.agent" if event["data"]["message"]["thinking"].is_string() => {
-                        message_agent_with_thinking = true;
-                        let thinking = event["data"]["message"]["thinking"].as_str().unwrap_or("");
-                        println!(
-                            "  Found message.agent with thinking field ({} chars)",
-                            thinking.len()
-                        );
+                    // Reasoning reaches the message as ordered `reasoning`
+                    // content parts, not a scalar `thinking` field on the
+                    // message — see ContentPart::Reasoning in crates/core.
+                    everruns_core::events::OUTPUT_MESSAGE_COMPLETED => {
+                        let reasoning_parts = event["data"]["message"]["content"]
+                            .as_array()
+                            .map(|parts| {
+                                parts
+                                    .iter()
+                                    .filter(|part| part["type"] == "reasoning")
+                                    .count()
+                            })
+                            .unwrap_or(0);
+                        if reasoning_parts > 0 {
+                            message_agent_with_reasoning = true;
+                            println!(
+                                "  Found message.agent with {} reasoning content part(s)",
+                                reasoning_parts
+                            );
+                        }
                     }
                     _ => {}
                 }
@@ -4758,8 +4780,8 @@ async fn test_anthropic_extended_thinking() {
         thinking_completed_found
     );
     println!(
-        "  message.agent with thinking: {}",
-        message_agent_with_thinking
+        "  message.agent with reasoning parts: {}",
+        message_agent_with_reasoning
     );
     println!("  Total events: {}", all_events.len());
 
@@ -4768,8 +4790,8 @@ async fn test_anthropic_extended_thinking() {
     println!("\nStep 6: Sending follow-up message to test multi-turn with thinking...");
     let followup_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.public_id, session.id
+            "{}/v1/sessions/{}/messages",
+            API_BASE_URL, session.id
         ))
         .json(&json!({
             "message": {
@@ -4794,10 +4816,7 @@ async fn test_anthropic_extended_thinking() {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let session_response = client
-            .get(format!(
-                "{}/v1/agents/{}/sessions/{}",
-                API_BASE_URL, agent.public_id, session.id
-            ))
+            .get(format!("{}/v1/sessions/{}", API_BASE_URL, session.id))
             .send()
             .await;
 
@@ -4855,8 +4874,8 @@ async fn test_anthropic_extended_thinking() {
         "Should have reason.thinking.completed event with thinking content"
     );
     assert!(
-        message_agent_with_thinking,
-        "message.agent event should have thinking field populated"
+        message_agent_with_reasoning,
+        "message.agent event should carry reasoning content parts"
     );
     assert!(
         followup_complete,
@@ -4933,8 +4952,8 @@ async fn test_anthropic_extended_thinking_with_tools() {
             API_BASE_URL, provider.id
         ))
         .json(&json!({
-            "model_id": "claude-sonnet-4-20250514",
-            "display_name": "Claude Sonnet 4 (Thinking+Tools Test)",
+            "model_id": LIVE_ANTHROPIC_THINKING_MODEL,
+            "display_name": "Anthropic Thinking (Thinking+Tools Test)",
             "enabled": true
         }))
         .send()
@@ -4976,11 +4995,12 @@ async fn test_anthropic_extended_thinking_with_tools() {
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!(
-            "{}/v1/agents/{}/sessions",
-            API_BASE_URL, agent.public_id
-        ))
-        .json(&json!({"title": "Time Reporting with Thinking Test"}))
+        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .json(&json!({
+            "harness_name": SEED_HARNESS_NAME,
+            "agent_id": agent.public_id,
+            "title": "Time Reporting with Thinking Test"
+        }))
         .send()
         .await
         .expect("Failed to create session");
@@ -4997,8 +5017,8 @@ async fn test_anthropic_extended_thinking_with_tools() {
     println!("\nStep 4: Sending message (expecting thinking + tool use)...");
     let message_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.public_id, session.id
+            "{}/v1/sessions/{}/messages",
+            API_BASE_URL, session.id
         ))
         .json(&json!({
             "message": {
@@ -5029,10 +5049,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let session_response = client
-            .get(format!(
-                "{}/v1/agents/{}/sessions/{}",
-                API_BASE_URL, agent.public_id, session.id
-            ))
+            .get(format!("{}/v1/sessions/{}", API_BASE_URL, session.id))
             .send()
             .await;
 
@@ -5063,8 +5080,8 @@ async fn test_anthropic_extended_thinking_with_tools() {
     // Fetch all events
     let events_response = client
         .get(format!(
-            "{}/v1/agents/{}/sessions/{}/events",
-            API_BASE_URL, agent.public_id, session.id
+            "{}/v1/sessions/{}/events",
+            API_BASE_URL, session.id
         ))
         .send()
         .await
@@ -5081,17 +5098,19 @@ async fn test_anthropic_extended_thinking_with_tools() {
                         thinking_found = true;
                         println!("    - {}", event_type);
                     }
-                    "tool.call_started" => {
+                    everruns_core::events::TOOL_STARTED => {
                         tool_call_found = true;
-                        let tool_name = event["data"]["tool_name"].as_str().unwrap_or("?");
+                        // The invoked tool is carried inside `tool_call`, which
+                        // is the payload `tool.started` actually publishes.
+                        let tool_name = event["data"]["tool_call"]["name"].as_str().unwrap_or("?");
                         println!("    - {} (tool: {})", event_type, tool_name);
                     }
-                    "tool.call_completed" => {
+                    everruns_core::events::TOOL_COMPLETED => {
                         tool_completed_found = true;
                         let success = event["data"]["success"].as_bool().unwrap_or(false);
                         println!("    - {} (success: {})", event_type, success);
                     }
-                    "message.agent" => {
+                    everruns_core::events::OUTPUT_MESSAGE_COMPLETED => {
                         final_message_found = true;
                         // Reasoning is ordered `reasoning` content parts; the
                         // opaque signature is replay state and never published.
@@ -5123,8 +5142,8 @@ async fn test_anthropic_extended_thinking_with_tools() {
     println!("\nStep 6: Sending follow-up message (multi-turn with thinking+tools)...");
     let followup_response = client
         .post(format!(
-            "{}/v1/agents/{}/sessions/{}/messages",
-            API_BASE_URL, agent.public_id, session.id
+            "{}/v1/sessions/{}/messages",
+            API_BASE_URL, session.id
         ))
         .json(&json!({
             "message": {
@@ -5149,10 +5168,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let session_response = client
-            .get(format!(
-                "{}/v1/agents/{}/sessions/{}",
-                API_BASE_URL, agent.public_id, session.id
-            ))
+            .get(format!("{}/v1/sessions/{}", API_BASE_URL, session.id))
             .send()
             .await;
 
@@ -5214,12 +5230,9 @@ async fn test_anthropic_extended_thinking_with_tools() {
     );
     assert!(
         tool_call_found,
-        "Should have tool.call_started event - model should use current_time when asked for time"
+        "Should have tool.started event - model should use current_time when asked for time"
     );
-    assert!(
-        tool_completed_found,
-        "Should have tool.call_completed event"
-    );
+    assert!(tool_completed_found, "Should have tool.completed event");
     assert!(
         final_message_found,
         "Should have at least one message.agent event"
