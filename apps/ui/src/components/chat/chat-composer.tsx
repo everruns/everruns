@@ -3,6 +3,9 @@
  * - Keep submit/readiness logic in one component so the parent only coordinates network state.
  * - Preserve slash-command UX: autocomplete owns keyboard navigation whenever visible.
  * - Image upload affordances stay next to text entry because they share send readiness.
+ * - When no model resolves, lock the whole composer (text, attachments, voice, drop zone) instead
+ *   of only the send button: typing a message that can never be sent is a dead end. The model menu
+ *   stays enabled because it is how the user recovers.
  */
 "use client";
 
@@ -139,6 +142,9 @@ export function ChatComposer({
   const hasCommands = commands.length > 0;
   const inputPlaceholder =
     placeholder ?? (hasCommands ? t("type_message_or_commands") : t("type_message"));
+  // No usable model means nothing can be sent, so the whole entry surface is locked. While the
+  // lookup is still in flight the composer stays open so opening a session never flashes disabled.
+  const composerDisabled = !modelReady && !modelLoading;
 
   useEffect(() => {
     setShowCommands(hasCommands && shouldShowCommandAutocomplete(inputValue));
@@ -225,9 +231,12 @@ export function ChatComposer({
         <div
           className={cn(
             chatSurfaceStyles.composerInputShell,
-            isDraggingOver && "bg-[hsl(var(--accent)/0.07)] ring-1 ring-accent/60",
+            !composerDisabled &&
+              isDraggingOver &&
+              "bg-[hsl(var(--accent)/0.07)] ring-1 ring-accent/60",
+            composerDisabled && "opacity-60",
           )}
-          {...dropZoneProps}
+          {...(composerDisabled ? {} : dropZoneProps)}
         >
           <ParticipantMentionAutocomplete
             options={mentionOptions}
@@ -282,6 +291,7 @@ export function ChatComposer({
             onPaste={handlePaste}
             role="combobox"
             tabIndex={0}
+            disabled={composerDisabled}
             placeholder={inputPlaceholder}
             className={chatSurfaceStyles.composerTextarea}
             aria-autocomplete="list"
@@ -299,6 +309,7 @@ export function ChatComposer({
               variant="outline"
               size="icon-lg"
               className={chatSurfaceStyles.composerIconButton}
+              disabled={composerDisabled}
               onClick={() => fileInputRef.current?.click()}
               title={t("attach_images")}
             >
@@ -337,7 +348,7 @@ export function ChatComposer({
                   chatSurfaceStyles.composerIconButton,
                   voiceActive && "border-emerald-500/50 text-emerald-600",
                 )}
-                disabled={voicePending}
+                disabled={voicePending || composerDisabled}
                 onClick={onToggleVoice}
                 title={voiceActive ? "End voice session" : "Start voice session"}
               >

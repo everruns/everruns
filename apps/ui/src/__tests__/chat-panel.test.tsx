@@ -414,6 +414,18 @@ describe("ChatPanel placeholder", () => {
     expect(screen.getByText(/Choose a model/)).toBeInTheDocument();
   });
 
+  it("locks the composer while no model is available", () => {
+    mockSessionContext.llmModel = null;
+    mockSessionContext.llmModelLoading = false;
+
+    render(<ChatPanel />);
+
+    expect(screen.getByRole("combobox")).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Attach images (PNG, JPEG, GIF, WebP)" }),
+    ).toBeDisabled();
+  });
+
   it("waits for default model resolution before enabling submission", () => {
     mockSessionContext.llmModel = null;
     mockSessionContext.llmModelLoading = true;
@@ -424,6 +436,15 @@ describe("ChatPanel placeholder", () => {
 
     expect(screen.getByText("Checking model availability…")).toBeInTheDocument();
     expect(container.querySelector('button[type="submit"]')).toBeDisabled();
+  });
+
+  it("keeps the composer usable while model availability is still loading", () => {
+    mockSessionContext.llmModel = null;
+    mockSessionContext.llmModelLoading = true;
+
+    render(<ChatPanel />);
+
+    expect(screen.getByRole("combobox")).not.toBeDisabled();
   });
 
   it("sends an explicit model when no default is available", async () => {
