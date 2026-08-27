@@ -150,7 +150,8 @@ mod tests {
 
     #[test]
     fn test_native_support_lookup() {
-        // Claude 4-family models support hosted tool_search; 3.x do not.
+        // Claude 4-family models support hosted tool_search; retired pre-4
+        // models are no longer in the registry and resolve to false.
         assert!(model_supports_native_tool_search("claude-opus-4-8"));
         assert!(model_supports_native_tool_search("claude-sonnet-5"));
         assert!(model_supports_native_tool_search("claude-sonnet-4-6"));

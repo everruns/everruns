@@ -48,7 +48,7 @@ Events](#reasoning-events)) and its own channel.
   "type": "output.message.started",
   "data": {
     "turn_id": "turn_...",
-    "model": "gpt-4o"
+    "model": "gpt-5.2"
   }
 }
 ```
@@ -339,7 +339,7 @@ Emitted when LLM inference begins.
   "data": {
     "agent_id": "agent_...",
     "metadata": {
-      "model": "gpt-4o"
+      "model": "gpt-5.2"
     }
   }
 }
@@ -492,7 +492,7 @@ Full visibility into LLM API calls. Emitted after each call.
       "tool_calls": []
     },
     "metadata": {
-      "model": "gpt-4o",
+      "model": "gpt-5.2",
       "provider": "openai",
       "usage": {"input_tokens": 100, "output_tokens": 50},
       "duration_ms": 1200,
@@ -600,7 +600,7 @@ Information about the model used.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `model` | string | Model name (e.g., "gpt-4o") |
+| `model` | string | Model name (e.g., "gpt-5.2") |
 | `model_id` | string? | Internal model ID |
 | `provider_id` | string? | Internal provider ID |
 

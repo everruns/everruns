@@ -70,8 +70,8 @@ impl_dispatchable!(AppState);
 /// Request to create a new LLM model for a provider
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateModelRequest {
-    /// The model identifier used by the provider's API (e.g., "gpt-4", "claude-3-opus").
-    #[schema(example = "gpt-4o")]
+    /// The model identifier used by the provider's API (e.g., "gpt-5.6-sol", "claude-opus-5").
+    #[schema(example = "gpt-5.2")]
     pub model_id: String,
     /// Human-readable display name for the model.
     #[schema(example = "GPT-4o")]
@@ -116,7 +116,7 @@ pub struct UpdateModelRequest {
     pub provider_id: Option<String>,
     /// The model identifier used by the provider's API.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "gpt-4o-mini")]
+    #[schema(example = "gpt-5.4-mini")]
     pub model_id: Option<String>,
     /// Human-readable display name for the model.
     #[serde(skip_serializing_if = "Option::is_none")]

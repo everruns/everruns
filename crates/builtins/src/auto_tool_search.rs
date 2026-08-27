@@ -158,7 +158,8 @@ mod tests {
     #[test]
     fn test_resolves_to_generic_on_non_native_model() {
         // A model with no hosted tool_search support on either provider (here a
-        // pre-4 Claude) falls back to the safe client-side mechanism.
+        // retired pre-4 Claude, no longer in the profile registry) falls back to
+        // the safe client-side mechanism.
         let cap = AutoToolSearchCapability::new();
         let resolved = cap
             .resolve_for_model(Some("claude-3-5-haiku"))

@@ -102,17 +102,11 @@ mod seed_ids {
     pub const GPT_4_1: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000210);
     pub const GPT_4_1_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000211);
     pub const GPT_4_1_NANO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000212);
-    pub const GPT_4O: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000213);
-    pub const GPT_4O_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000214);
     pub const O4_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000215);
     pub const O4_MINI_DEEP_RESEARCH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000216);
     pub const O3: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000217);
-    pub const O3_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000218);
     pub const O3_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000219);
     pub const O3_DEEP_RESEARCH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021a);
-    pub const O1: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021b);
-    pub const O1_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021c);
-    pub const O1_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021d);
     pub const GPT_5_4: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021f);
     pub const GPT_5_4_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000220);
     pub const GPT_5_4_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000221);
@@ -125,7 +119,6 @@ mod seed_ids {
     pub const GPT_5_6_LUNA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000228);
     pub const TEXT_EMBEDDING_3_SMALL: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000229);
-    pub const O1_PREVIEW: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021e);
 
     // Anthropic Models (0x300-0x3FF)
     pub const CLAUDE_OPUS_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030e);
@@ -139,9 +132,6 @@ mod seed_ids {
     pub const CLAUDE_HAIKU_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000303);
     pub const CLAUDE_OPUS_4: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000304);
     pub const CLAUDE_SONNET_4: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000305);
-    pub const CLAUDE_3_7_SONNET: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000306);
-    pub const CLAUDE_3_5_SONNET: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000307);
-    pub const CLAUDE_3_5_HAIKU: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000308);
     // 1M-context variants (`[1m]` model ids), 0x3a0+ sub-range.
     pub const CLAUDE_OPUS_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a8);
     pub const CLAUDE_OPUS_4_7_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a7);
@@ -160,10 +150,9 @@ mod seed_ids {
     pub const GEMINI_20_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
 
     // Bedrock Models (0x700-0x7FF)
-    pub const BEDROCK_CLAUDE_HAIKU_35: Uuid =
-        Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000701);
-    pub const BEDROCK_CLAUDE_SONNET_35: Uuid =
-        Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000702);
+    pub const BEDROCK_CLAUDE_OPUS_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000703);
+    pub const BEDROCK_CLAUDE_SONNET_5: Uuid =
+        Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000704);
 }
 
 // ============================================
@@ -1804,23 +1793,6 @@ const SEED_MODELS: &[SeedModel] = &[
         enabled: false,
         is_favorite: false,
     },
-    // OpenAI GPT-4 series
-    SeedModel {
-        id: seed_ids::GPT_4O,
-        provider_id: seed_ids::OPENAI_PROVIDER,
-        model_id: "gpt-4o",
-        display_name: "GPT-4o",
-        enabled: false,
-        is_favorite: false,
-    },
-    SeedModel {
-        id: seed_ids::GPT_4O_MINI,
-        provider_id: seed_ids::OPENAI_PROVIDER,
-        model_id: "gpt-4o-mini",
-        display_name: "GPT-4o mini",
-        enabled: false,
-        is_favorite: false,
-    },
     // OpenAI Reasoning models (o-series)
     SeedModel {
         id: seed_ids::O4_MINI,
@@ -1847,14 +1819,6 @@ const SEED_MODELS: &[SeedModel] = &[
         is_favorite: false,
     },
     SeedModel {
-        id: seed_ids::O3_MINI,
-        provider_id: seed_ids::OPENAI_PROVIDER,
-        model_id: "o3-mini",
-        display_name: "o3 mini",
-        enabled: false,
-        is_favorite: false,
-    },
-    SeedModel {
         id: seed_ids::O3_PRO,
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "o3-pro",
@@ -1867,38 +1831,6 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "o3-deep-research",
         display_name: "o3 Deep Research",
-        enabled: false,
-        is_favorite: false,
-    },
-    SeedModel {
-        id: seed_ids::O1,
-        provider_id: seed_ids::OPENAI_PROVIDER,
-        model_id: "o1",
-        display_name: "o1",
-        enabled: false,
-        is_favorite: false,
-    },
-    SeedModel {
-        id: seed_ids::O1_MINI,
-        provider_id: seed_ids::OPENAI_PROVIDER,
-        model_id: "o1-mini",
-        display_name: "o1 mini",
-        enabled: false,
-        is_favorite: false,
-    },
-    SeedModel {
-        id: seed_ids::O1_PRO,
-        provider_id: seed_ids::OPENAI_PROVIDER,
-        model_id: "o1-pro",
-        display_name: "o1 Pro",
-        enabled: false,
-        is_favorite: false,
-    },
-    SeedModel {
-        id: seed_ids::O1_PREVIEW,
-        provider_id: seed_ids::OPENAI_PROVIDER,
-        model_id: "o1-preview",
-        display_name: "o1 Preview",
         enabled: false,
         is_favorite: false,
     },
@@ -2028,32 +1960,6 @@ const SEED_MODELS: &[SeedModel] = &[
         enabled: false,
         is_favorite: false,
     },
-    // Anthropic Claude 3.7
-    SeedModel {
-        id: seed_ids::CLAUDE_3_7_SONNET,
-        provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-3-7-sonnet-latest",
-        display_name: "Claude 3.7 Sonnet",
-        enabled: false,
-        is_favorite: false,
-    },
-    // Anthropic Claude 3.5
-    SeedModel {
-        id: seed_ids::CLAUDE_3_5_SONNET,
-        provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-3-5-sonnet-latest",
-        display_name: "Claude 3.5 Sonnet",
-        enabled: false,
-        is_favorite: false,
-    },
-    SeedModel {
-        id: seed_ids::CLAUDE_3_5_HAIKU,
-        provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-3-5-haiku-latest",
-        display_name: "Claude 3.5 Haiku",
-        enabled: false,
-        is_favorite: false,
-    },
     // Google Gemini 3.x series (current gen)
     SeedModel {
         id: seed_ids::GEMINI_31_PRO_PREVIEW,
@@ -2104,20 +2010,28 @@ const SEED_MODELS: &[SeedModel] = &[
         enabled: false,
         is_favorite: false,
     },
-    // AWS Bedrock (ConverseStream API)
+    // AWS Bedrock (ConverseStream API).
+    //
+    // Current Claude models have no in-region Bedrock availability at all — only
+    // the geo (`us.`/`eu.`/`au.`) and global cross-region inference profiles — so
+    // the bare `anthropic.claude-*` ids would fail everywhere. `global.` is the
+    // one prefix offered in every commercial region, which makes it the only
+    // sound default for a seed. Accounts with data-residency requirements (or on
+    // GovCloud, where global is unavailable) should add the matching geo id
+    // instead.
     SeedModel {
-        id: seed_ids::BEDROCK_CLAUDE_HAIKU_35,
+        id: seed_ids::BEDROCK_CLAUDE_OPUS_5,
         provider_id: seed_ids::BEDROCK_PROVIDER,
-        model_id: "anthropic.claude-3-5-haiku-20241022-v1:0",
-        display_name: "Claude 3.5 Haiku (Bedrock)",
+        model_id: "global.anthropic.claude-opus-5",
+        display_name: "Claude Opus 5 (Bedrock)",
         enabled: false,
         is_favorite: false,
     },
     SeedModel {
-        id: seed_ids::BEDROCK_CLAUDE_SONNET_35,
+        id: seed_ids::BEDROCK_CLAUDE_SONNET_5,
         provider_id: seed_ids::BEDROCK_PROVIDER,
-        model_id: "anthropic.claude-3-5-sonnet-20241022-v2:0",
-        display_name: "Claude 3.5 Sonnet v2 (Bedrock)",
+        model_id: "global.anthropic.claude-sonnet-5",
+        display_name: "Claude Sonnet 5 (Bedrock)",
         enabled: false,
         is_favorite: false,
     },

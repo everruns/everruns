@@ -204,7 +204,7 @@ pub struct OpenAiModelsResponse {
 /// Individual model info from OpenAI's models API
 #[derive(Debug, Clone, Deserialize)]
 pub struct OpenAiModelInfo {
-    /// Model identifier (e.g., "gpt-5.2", "gpt-4o")
+    /// Model identifier (e.g., "gpt-5.2", "gpt-5.4-mini")
     pub id: String,
     /// Unix timestamp of model creation
     pub created: i64,

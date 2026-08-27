@@ -201,7 +201,7 @@ Usage is captured in the `llm.generation` event metadata:
   "type": "llm.generation",
   "data": {
     "metadata": {
-      "model": "gpt-4o",
+      "model": "gpt-5.2",
       "provider": "openai",
       "usage": {
         "input_tokens": 100,

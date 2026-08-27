@@ -32,7 +32,7 @@ pub struct RuntimeAgent {
     /// System prompt that defines the agent's behavior
     pub system_prompt: String,
 
-    /// Model identifier (e.g., "gpt-5.2", "claude-3-opus")
+    /// Model identifier (e.g., "gpt-5.2", "claude-opus-5")
     pub model: String,
 
     /// Available tools for the agent
@@ -231,7 +231,7 @@ impl RuntimeAgentBuilder {
     ///     .with_harness(&harness, &registry, &ctx).await
     ///     .with_agent(&agent, &registry, &ctx).await
     ///     .with_capabilities(&session_caps, &registry, &ctx).await
-    ///     .model("gpt-4o")
+    ///     .model("gpt-5.2")
     ///     .build();
     /// ```
     pub async fn with_agent(
@@ -630,11 +630,11 @@ mod tests {
     fn test_builder_basic() {
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Custom prompt")
-            .model("claude-3-opus")
+            .model("claude-opus-5")
             .build();
 
         assert_eq!(runtime_agent.system_prompt, "Custom prompt");
-        assert_eq!(runtime_agent.model, "claude-3-opus");
+        assert_eq!(runtime_agent.model, "claude-opus-5");
     }
 
     #[test]
@@ -1120,8 +1120,9 @@ mod tests {
 
     #[test]
     fn test_build_clears_tool_search_for_non_native_model() {
-        // A pre-4 Claude model has no hosted tool_search support on either
-        // provider, so a hosted config is cleared (full schemas sent).
+        // A retired pre-4 Claude model has no profile (and no hosted
+        // tool_search support on either provider), so a hosted config is
+        // cleared (full schemas sent).
         let agent = RuntimeAgentBuilder::new()
             .model("claude-3-5-haiku")
             .tool_search(ToolSearchConfig {

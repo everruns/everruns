@@ -226,7 +226,7 @@ const sampleJSON = {
     status: "active",
     capabilities: ["code_execution", "file_operations", "web_search"],
     config: {
-      model: "claude-3-sonnet",
+      model: "claude-sonnet-5",
       temperature: 0.7,
       maxTokens: 4096,
     },

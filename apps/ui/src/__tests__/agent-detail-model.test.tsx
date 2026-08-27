@@ -139,7 +139,7 @@ const mockModels: ModelWithProvider[] = [
   {
     id: "model-1",
     provider_id: "provider-1",
-    model_id: "gpt-4o",
+    model_id: "gpt-5.2",
     display_name: "GPT-4o",
     capabilities: ["chat"],
     enabled: false,
@@ -153,8 +153,8 @@ const mockModels: ModelWithProvider[] = [
   {
     id: "model-2",
     provider_id: "provider-2",
-    model_id: "claude-3-5-sonnet",
-    display_name: "Claude 3.5 Sonnet",
+    model_id: "claude-sonnet-5",
+    display_name: "Claude Sonnet 5",
     capabilities: ["chat"],
     enabled: false,
     healthy: true,
@@ -330,7 +330,7 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
 
     // Model badges should not be visible
     expect(screen.queryByText("GPT-4o")).not.toBeInTheDocument();
-    expect(screen.queryByText("Claude 3.5 Sonnet")).not.toBeInTheDocument();
+    expect(screen.queryByText("Claude Sonnet 5")).not.toBeInTheDocument();
   });
 
   it("does not display model badge when model_id has no matching model", async () => {
@@ -428,7 +428,7 @@ describe("AgentDetailPage - Default Model Display in Configuration", () => {
     await renderWithSuspense({ agentId: "agent-1" });
 
     expect(screen.getByText("Default Model")).toBeInTheDocument();
-    expect(screen.getAllByText("Claude 3.5 Sonnet").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Claude Sonnet 5").length).toBeGreaterThan(0);
     expect(screen.getByTestId("provider-icon-anthropic")).toBeInTheDocument();
   });
 

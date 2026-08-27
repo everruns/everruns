@@ -26,7 +26,7 @@ expression: data
     "text": "Hi there!"
   },
   "metadata": {
-    "model": "gpt-4o",
+    "model": "gpt-5.2",
     "provider": "openai",
     "usage": {
       "input_tokens": 10,

@@ -354,7 +354,7 @@ async fn non_reasoning_request_omits_include() {
     let stream = driver(&server)
         .chat_completion_stream(
             vec![LlmMessage::text(LlmMessageRole::User, "hi")],
-            &config("gpt-4o"),
+            &config("gpt-5.2"),
         )
         .await
         .expect("stream should start");

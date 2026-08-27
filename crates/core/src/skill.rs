@@ -1243,13 +1243,13 @@ Lint instructions.
         let content = r#"---
 name: my-skill
 description: A skill.
-model: gpt-4o
+model: gpt-5.2
 ---
 
 Body.
 "#;
         let parsed = parse_skill_md(content).unwrap();
-        assert_eq!(parsed.model.as_deref(), Some("gpt-4o"));
+        assert_eq!(parsed.model.as_deref(), Some("gpt-5.2"));
         assert_eq!(parsed.context, SkillContext::Inline);
     }
 
@@ -1271,7 +1271,7 @@ Body.
         let content = r#"---
 name: my-skill
 description: A skill.
-model: gpt-4o
+model: gpt-5.2
 ---
 
 Body.

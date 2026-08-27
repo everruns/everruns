@@ -335,7 +335,7 @@ fn create_judge_config() -> Option<JudgeConfig> {
     std::env::var("ANTHROPIC_API_KEY")
         .ok()
         .map(|api_key| JudgeConfig {
-            model: "claude-3-5-haiku-20241022".to_string(),
+            model: "claude-haiku-4-5".to_string(),
             api_key,
         })
 }

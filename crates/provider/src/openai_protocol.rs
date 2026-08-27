@@ -1123,7 +1123,7 @@ mod tests {
         let request = OpenAiRequest {
             verbosity: None,
             service_tier: None,
-            model: "gpt-4o".to_string(),
+            model: "gpt-5.2".to_string(),
             messages: vec![OpenAiMessage {
                 role: "user".to_string(),
                 content: Some(OpenAiContent::Text("Hello".to_string())),
@@ -1157,7 +1157,7 @@ mod tests {
         let request = OpenAiRequest {
             verbosity: None,
             service_tier: None,
-            model: "gpt-4o".to_string(),
+            model: "gpt-5.2".to_string(),
             messages: vec![OpenAiMessage {
                 role: "user".to_string(),
                 content: Some(OpenAiContent::Text("Hello".to_string())),
@@ -1187,7 +1187,7 @@ mod tests {
             "id": "chatcmpl-123",
             "object": "chat.completion.chunk",
             "created": 1234567890,
-            "model": "gpt-4o",
+            "model": "gpt-5.2",
             "choices": [],
             "usage": {
                 "prompt_tokens": 150,
@@ -1459,7 +1459,7 @@ mod tests {
         let request = OpenAiRequest {
             verbosity: None,
             service_tier: None,
-            model: "gpt-4o-mini".to_string(),
+            model: "gpt-5.4-mini".to_string(),
             messages: vec![OpenAiMessage {
                 role: "user".to_string(),
                 content: Some(OpenAiContent::Text("Hello".to_string())),
@@ -1490,7 +1490,7 @@ mod tests {
         let request = OpenAiRequest {
             verbosity: None,
             service_tier: None,
-            model: "o3-mini".to_string(),
+            model: "o4-mini".to_string(),
             messages: vec![OpenAiMessage {
                 role: "user".to_string(),
                 content: Some(OpenAiContent::Text("Hello".to_string())),
@@ -1522,7 +1522,7 @@ mod tests {
             let request = OpenAiRequest {
                 verbosity: None,
                 service_tier: None,
-                model: "gpt-4o-mini".to_string(),
+                model: "gpt-5.4-mini".to_string(),
                 messages: vec![OpenAiMessage {
                     role: "user".to_string(),
                     content: Some(OpenAiContent::Text("Hello".to_string())),
@@ -1556,7 +1556,7 @@ mod tests {
             let request = OpenAiRequest {
                 service_tier: tier.map(str::to_string),
                 verbosity: None,
-                model: "gpt-4o-mini".to_string(),
+                model: "gpt-5.4-mini".to_string(),
                 messages: vec![OpenAiMessage {
                     role: "user".to_string(),
                     content: Some(OpenAiContent::Text("Hello".to_string())),

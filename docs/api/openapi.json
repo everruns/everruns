@@ -19905,8 +19905,8 @@
           },
           "model_id": {
             "type": "string",
-            "description": "The model identifier used by the provider's API (e.g., \"gpt-4\", \"claude-3-opus\").",
-            "example": "gpt-4o"
+            "description": "The model identifier used by the provider's API (e.g., \"gpt-5.6-sol\", \"claude-opus-5\").",
+            "example": "gpt-5.2"
           }
         }
       },
@@ -27179,7 +27179,7 @@
                     },
                     "model_id": {
                       "type": "string",
-                      "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`)."
+                      "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`, `claude-sonnet-5`)."
                     },
                     "provider_id": {
                       "type": "string",
@@ -27309,7 +27309,7 @@
                     },
                     "model_id": {
                       "type": "string",
-                      "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
+                      "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).",
                       "example": "claude-sonnet-4-5"
                     },
                     "model_vendor": {
@@ -29349,7 +29349,7 @@
           },
           "model_id": {
             "type": "string",
-            "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`)."
+            "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`, `claude-sonnet-5`)."
           },
           "provider_id": {
             "type": "string",
@@ -29447,7 +29447,7 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "Model name (e.g., \"gpt-4o\", \"claude-3-sonnet\")"
+            "description": "Model name (e.g., \"gpt-5.6-sol\", \"claude-sonnet-5\")"
           },
           "model_id": {
             "type": [
@@ -29493,7 +29493,7 @@
       },
       "ModelProfile": {
         "type": "object",
-        "description": "LLM Model Profile describing model capabilities\nBased on models.dev structure (<https://models.dev/api.json>)\n\nNOTE: Currently only includes profiles for:\n- OpenAI: gpt-4o, gpt-4o-mini, o1, o1-mini, o1-pro, o3-mini\n- Anthropic: claude-3-5-sonnet, claude-3-5-haiku, claude-3-opus, claude-3-sonnet, claude-3-haiku, claude-sonnet-4, claude-opus-4\n\nAdditional model profiles can be added as needed.",
+        "description": "LLM Model Profile describing model capabilities\nBased on models.dev structure (<https://models.dev/api.json>)\n\nThe registry of profiles lives in `model_profiles.rs`; retired models are\ndropped from it as vendors sunset them.",
         "required": [
           "name",
           "family",
@@ -29529,7 +29529,7 @@
           },
           "family": {
             "type": "string",
-            "description": "Model family (e.g., \"gpt-4o\", \"claude-3-5-sonnet\")"
+            "description": "Model family (e.g., \"gpt-5.6-sol\", \"claude-sonnet-5\")"
           },
           "knowledge": {
             "type": [
@@ -29740,7 +29740,7 @@
           },
           "model_id": {
             "type": "string",
-            "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
+            "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).",
             "example": "claude-sonnet-4-5"
           },
           "model_vendor": {
@@ -37928,7 +37928,7 @@
               "null"
             ],
             "description": "The model identifier used by the provider's API.",
-            "example": "gpt-4o-mini"
+            "example": "gpt-5.4-mini"
           },
           "provider_id": {
             "type": [
@@ -40309,7 +40309,7 @@
               },
               "model_id": {
                 "type": "string",
-                "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`)."
+                "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`, `claude-sonnet-5`)."
               },
               "provider_id": {
                 "type": "string",
@@ -40426,7 +40426,7 @@
               },
               "model_id": {
                 "type": "string",
-                "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
+                "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).",
                 "example": "claude-sonnet-4-5"
               },
               "model_vendor": {

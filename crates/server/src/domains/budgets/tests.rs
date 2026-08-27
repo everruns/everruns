@@ -276,7 +276,7 @@ fn test_compute_debit_tokens_currency() {
         500,
         0,
         0,
-        Some("gpt-4o"),
+        Some("gpt-5.2"),
         Some("openai"),
         None,
     );
@@ -293,7 +293,7 @@ fn test_compute_debit_usd_with_known_model() {
         500_000,
         0,
         0,
-        Some("gpt-4o"),
+        Some("gpt-5.2"),
         Some("openai"),
         None,
     );
@@ -313,7 +313,7 @@ fn test_compute_debit_usd_prefers_provider_cost() {
         500_000,
         0,
         0,
-        Some("gpt-4o"),
+        Some("gpt-5.2"),
         Some("openai"),
         Some(0.0123),
     );
@@ -448,7 +448,7 @@ fn test_compute_debit_zero_tokens() {
 fn test_compute_debit_usd_discounts_cached_tokens() {
     let (svc, _) = make_service();
     // Disjoint buckets: `input_tokens` is non-cached, `cache_read_tokens`
-    // additive. gpt-4o: input $2.50/M, cache_read $1.25/M. A 1M-token prompt
+    // additive. gpt-5.2: input $1.75/M, cache_read $0.175/M. A 1M-token prompt
     // split as 200K non-cached + 800K cache reads.
     let cached = svc.compute_debit(
         "usd",
@@ -457,7 +457,7 @@ fn test_compute_debit_usd_discounts_cached_tokens() {
         0,
         800_000,
         0,
-        Some("gpt-4o"),
+        Some("gpt-5.2"),
         Some("openai"),
         None,
     );
@@ -469,13 +469,13 @@ fn test_compute_debit_usd_discounts_cached_tokens() {
         0,
         0,
         0,
-        Some("gpt-4o"),
+        Some("gpt-5.2"),
         Some("openai"),
         None,
     );
-    // 200K * 2.50 + 800K * 1.25 = 0.50 + 1.00 = 1.50, well below the cache-blind 2.50.
-    assert!((cached - 1.50).abs() < 1e-9, "cached debit {cached}");
-    assert!((naive - 2.50).abs() < 1e-9, "naive debit {naive}");
+    // 200K * 1.75 + 800K * 0.175 = 0.35 + 0.14 = 0.49, well below the cache-blind 1.75.
+    assert!((cached - 0.49).abs() < 1e-9, "cached debit {cached}");
+    assert!((naive - 1.75).abs() < 1e-9, "naive debit {naive}");
 }
 
 // ========================================================================

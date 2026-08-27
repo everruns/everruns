@@ -67,7 +67,7 @@ pub struct Model {
     /// Owning provider's prefixed public identifier.
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "provider_01933b5a00007000800000000000001"))]
     pub provider_id: ProviderId,
-    /// Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`).
+    /// Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`, `claude-sonnet-5`).
     pub model_id: String,
     /// Human-readable display name. Safe to render in user-facing messages.
     pub display_name: String,
@@ -95,7 +95,7 @@ pub struct ModelWithProvider {
     /// Owning provider's prefixed public identifier.
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "provider_01933b5a00007000800000000000001"))]
     pub provider_id: ProviderId,
-    /// Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).
+    /// Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).
     #[cfg_attr(feature = "openapi", schema(example = "claude-sonnet-4-5"))]
     pub model_id: String,
     /// Human-readable display name.
@@ -403,17 +403,14 @@ impl ModelVendor {
 /// LLM Model Profile describing model capabilities
 /// Based on models.dev structure (<https://models.dev/api.json>)
 ///
-/// NOTE: Currently only includes profiles for:
-/// - OpenAI: gpt-4o, gpt-4o-mini, o1, o1-mini, o1-pro, o3-mini
-/// - Anthropic: claude-3-5-sonnet, claude-3-5-haiku, claude-3-opus, claude-3-sonnet, claude-3-haiku, claude-sonnet-4, claude-opus-4
-///
-/// Additional model profiles can be added as needed.
+/// The registry of profiles lives in `model_profiles.rs`; retired models are
+/// dropped from it as vendors sunset them.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ModelProfile {
     /// Display name of the model
     pub name: String,
-    /// Model family (e.g., "gpt-4o", "claude-3-5-sonnet")
+    /// Model family (e.g., "gpt-5.6-sol", "claude-sonnet-5")
     pub family: String,
     /// Short human-readable description of the model's strengths and intended use
     #[serde(skip_serializing_if = "Option::is_none")]

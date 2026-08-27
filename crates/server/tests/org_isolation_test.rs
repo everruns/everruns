@@ -665,8 +665,8 @@ async fn test_multi_org_full_isolation() {
             org2,
             CreateModelRow {
                 provider_id: org2_provider.id,
-                model_id: "claude-3".to_string(),
-                display_name: "Claude 3".to_string(),
+                model_id: "claude-opus-5".to_string(),
+                display_name: "Claude Opus 5".to_string(),
                 capabilities: vec![],
                 enabled: true,
                 is_favorite: false,
@@ -717,7 +717,7 @@ async fn test_multi_org_full_isolation() {
 
     let org2_models = db.list_all_models(org2).await.unwrap();
     assert_eq!(org2_models.len(), 1);
-    assert_eq!(org2_models[0].model_id, "claude-3");
+    assert_eq!(org2_models[0].model_id, "claude-opus-5");
 
     let org2_servers = db.list_mcp_servers(org2, None, false).await.unwrap();
     assert_eq!(org2_servers.len(), 1);

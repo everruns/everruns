@@ -5,5 +5,5 @@ expression: data
 {
   "turn_id": "turn_00000000000000000000000000000002",
   "message_id": "message_00000000000000000000000000000003",
-  "model": "gpt-4o"
+  "model": "gpt-5.2"
 }

@@ -187,7 +187,7 @@ const sampleModels = {
   openai: {
     id: "model-uuid-openai",
     provider_id: "provider-openai",
-    model_id: "gpt-4o",
+    model_id: "gpt-5.2",
     display_name: "GPT-4o",
     capabilities: ["chat", "tools"],
     enabled: false,

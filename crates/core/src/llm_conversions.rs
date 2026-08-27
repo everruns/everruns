@@ -229,10 +229,10 @@ mod tests {
 
     #[test]
     fn test_llm_call_config_builder_from_runtime_agent() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
+        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-5.2");
         let llm_config = llm_call_config_builder_from_agent(&runtime_agent).build();
 
-        assert_eq!(llm_config.model, "gpt-4o");
+        assert_eq!(llm_config.model, "gpt-5.2");
         assert!(llm_config.reasoning_effort.is_none());
         assert!(llm_config.temperature.is_none());
         assert!(llm_config.max_tokens.is_none());
@@ -268,7 +268,7 @@ mod tests {
 
     #[test]
     fn test_llm_call_config_builder_with_metadata() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
+        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-5.2");
         let llm_config = llm_call_config_builder_from_agent(&runtime_agent)
             .with_metadata("session_id", "session_abc123")
             .with_metadata("agent_id", "agent_xyz789")
@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn test_llm_call_config_builder_with_metadata_hashmap() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
+        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-5.2");
         let mut metadata = HashMap::new();
         metadata.insert("key1".to_string(), "value1".to_string());
         metadata.insert("key2".to_string(), "value2".to_string());
@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     fn test_llm_call_config_builder_with_reasoning_effort() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
+        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-5.2");
         let llm_config = llm_call_config_builder_from_agent(&runtime_agent)
             .reasoning_effort(ReasoningEffort::High)
             .build();
@@ -311,15 +311,15 @@ mod tests {
 
     #[test]
     fn test_llm_call_config_builder_with_all_options() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
+        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-5.2");
         let llm_config = llm_call_config_builder_from_agent(&runtime_agent)
-            .model("claude-3-opus")
+            .model("claude-opus-5")
             .reasoning_effort(ReasoningEffort::Medium)
             .temperature(0.7)
             .max_tokens(1000)
             .build();
 
-        assert_eq!(llm_config.model, "claude-3-opus");
+        assert_eq!(llm_config.model, "claude-opus-5");
         assert_eq!(llm_config.reasoning_effort, Some(ReasoningEffort::Medium));
         assert_eq!(llm_config.temperature, Some(0.7));
         assert_eq!(llm_config.max_tokens, Some(1000));
