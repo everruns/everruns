@@ -1410,9 +1410,37 @@ jobs:
       - name: Make binaries executable
         run: chmod +x ./bin/*
 
+      # The server, not the test process, is what needs a provider credential
+      # for the org-default path: tenant execution resolves keys fail-closed
+      # from the database (provider_resolver.rs), with no env fallback. The
+      # bridge is seeding — under DEPLOYMENT_GRADE=dev the server copies
+      # DEFAULT_<PROVIDER>_API_KEY into the seeded provider rows (encrypted) at
+      # startup, so the normal DB path can resolve them (seed.rs).
+      #
+      # Started without those vars the seed fills nothing and every org-default
+      # turn fails `provider_misconfigured`, however well-credentialed the test
+      # process is. Doppler names the secrets OPENAI_API_KEY/ANTHROPIC_API_KEY,
+      # so map them the way scripts/lib/services.sh does for local dev.
+      #
+      # Only the server needs this: the worker receives resolved credentials
+      # over the gRPC control-plane and reads no DEFAULT_* var itself.
+      # Fetched as two named secrets rather than `doppler run`, so only these
+      # variables are added to the server's environment and `$!` stays the
+      # server's own PID for the stop step.
       - name: Start API server
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: |
-          ./bin/everruns-server > server.log 2>&1 &
+          set -euo pipefail
+          openai_key="$(doppler secrets get OPENAI_API_KEY --plain)"
+          anthropic_key="$(doppler secrets get ANTHROPIC_API_KEY --plain)"
+          if [ -z "$openai_key" ] || [ -z "$anthropic_key" ]; then
+            echo "Doppler returned an empty provider key; the org-default tests cannot run." >&2
+            exit 1
+          fi
+          DEFAULT_OPENAI_API_KEY="$openai_key" \
+          DEFAULT_ANTHROPIC_API_KEY="$anthropic_key" \
+            ./bin/everruns-server > server.log 2>&1 &
           echo $! > server.pid
           echo "Server PID: $(cat server.pid)"
 
