@@ -90,8 +90,8 @@ const STEP_DELAY_MS = 400;
 // sync with the current-gen models seeded in `crates/server/src/seed.rs` so the
 // first screen a new org sees never advertises a superseded generation.
 const PROVIDER_OPTIONS: { type: SetupProviderType; label: string; models: string }[] = [
-  { type: "openai", label: "OpenAI", models: "GPT-5.6 Sol, o-series" },
-  { type: "anthropic", label: "Anthropic", models: "Claude Opus 5, Sonnet 5" },
+  { type: "openai", label: "OpenAI", models: "GPT-5.6 Sol" },
+  { type: "anthropic", label: "Anthropic", models: "Claude Opus, Sonnet" },
 ];
 
 // The setup form features the two most common providers; the rest of the

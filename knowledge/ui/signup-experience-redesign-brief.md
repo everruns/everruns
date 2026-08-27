@@ -372,9 +372,8 @@ For the design agent, copy that needs changing before build:
   proton, hotmail…), never suggest an org named "Gmail." (B-org.)
 - **"Encrypted at rest with AES-256":** state AES-256 only if literally true; else
   "encrypted at rest." Verify against provider-credential storage before shipping the claim.
-- **Model names**: pull from the real catalog (the current-gen entries in
-  `crates/server/src/seed.rs`) or soften; don't ship wrong, placeholder, or superseded
-  names. Currently "GPT-5.6 Sol, o-series" and "Claude Opus 5, Sonnet 5".
+- **Model names** ("GPT-5.5, o-series"): pull from the real catalog or soften; don't ship
+  wrong/placeholder names. ("Claude Opus, Sonnet" is fine.)
 - **Done screen** "…connected to Anthropic": must be **conditional**: false if the user
   skipped provider setup. Provide skipped-vs-configured variants.
 - British "organisation" spelling is used consistently, keep it.
