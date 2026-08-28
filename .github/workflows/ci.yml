@@ -62,6 +62,7 @@ jobs:
       docs_notebooks: ${{ steps.core_filter.outputs.docs_notebooks }}
       docker: ${{ steps.core_filter.outputs.docker }}
       postgres_integration: ${{ steps.core_filter.outputs.postgres_integration }}
+      provider_live: ${{ steps.core_filter.outputs.provider_live }}
       object_storage: ${{ steps.core_filter.outputs.object_storage }}
       brave_search_integration: ${{ steps.core_filter.outputs.brave_search_integration }}
       duckduckgo_integration: ${{ steps.core_filter.outputs.duckduckgo_integration }}
@@ -230,26 +231,41 @@ jobs:
               - '.github/workflows/ci.yml'
               - '.github/workflows/docker-publish.yml'
             # PostgreSQL integration tests cover the server persistence/API
-            # surface, durable engine stores, and provider live tests that
-            # currently run inside the same CI job. Keep this narrower than the
+            # surface and the durable engine stores. Keep this narrower than the
             # general Rust filter so unrelated crates do not start PostgreSQL.
             #
-            # The provider entries are directory-wide on purpose. They used to
-            # enumerate openai/anthropic/gemini, so every driver added later
-            # fell outside the gate and `crates/provider` — which owns the wire
-            # protocols the live matrix exists to validate — was never listed at
-            # all. PR #3280 fixed an openresponses_protocol.rs regression and
-            # the live matrix was skipped on that very PR (EVE-936).
-            # scripts/test-ci-postgres-integration-filter.sh pins the invariant.
+            # `crates/provider` and `crates/drivers` stay listed because the
+            # server suites execute provider code paths, not because the live
+            # matrix lives here — it no longer does (EVE-938). The gate that
+            # decides whether provider wire protocols get live-tested is
+            # `provider_live` below.
             postgres_integration:
               - 'crates/server/**'
               - 'crates/durable/**'
               - 'crates/core/**'
               - 'crates/config/**'
               - 'crates/session-sqldb/**'
-              - 'crates/llm-tests/**'
               - 'crates/provider/**'
               - 'crates/drivers/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - '.github/workflows/ci.yml'
+            # Gate for the live provider matrix (`live-provider-matrix` job).
+            # Shaped around the crates that own provider wire behaviour, which
+            # is what that matrix exists to validate.
+            #
+            # The provider entries are directory-wide on purpose. The gate used
+            # to enumerate openai/anthropic/gemini, so every driver added later
+            # fell outside it and `crates/provider` — which owns the wire
+            # protocols themselves — was never listed at all. PR #3280 fixed an
+            # openresponses_protocol.rs regression and the live matrix was
+            # skipped on that very PR (EVE-936).
+            # scripts/test-ci-provider-live-filter.sh pins the invariant.
+            provider_live:
+              - 'crates/provider/**'
+              - 'crates/drivers/**'
+              - 'crates/llm-tests/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
@@ -975,12 +991,11 @@ jobs:
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
-      # Neither DOPPLER_TOKEN nor LLM provider keys are exposed at job scope:
-      # this job runs PR-controlled cargo test (and therefore arbitrary
-      # build.rs / proc-macro / test code) which would otherwise be able to
-      # read them from process env. The two steps that need them (Slack
-      # integration tests + Run LLM integration tests) are gated to push events
-      # and inject DOPPLER_TOKEN via step env below.
+      # DOPPLER_TOKEN is not exposed at job scope: this job runs PR-controlled
+      # cargo test (and therefore arbitrary build.rs / proc-macro / test code)
+      # which would otherwise be able to read it from process env. The one step
+      # that needs it (Slack integration tests) is gated to push events and
+      # injects DOPPLER_TOKEN via step env below.
 
     steps:
       - uses: actions/checkout@v7
@@ -1108,14 +1123,45 @@ jobs:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run --preserve-env="DATABASE_URL" -- cargo test -p everruns-server --test slack_integration_test -- --test-threads=1
 
-      # Gated to push events so PR-controlled cargo test cannot exfiltrate the
-      # Doppler vault via env (build.rs, proc-macros, test bodies). PR coverage
-      # of the LLM matrix is still mocked in `unit-test`.
+  # Live provider matrix — validates real provider wire protocols.
+  #
+  # Split out of `Integration Tests (PostgreSQL)` (EVE-938). `crates/llm-tests`
+  # never reads DATABASE_URL, so the matrix needed provider credentials, not a
+  # database; the old `--preserve-env="DATABASE_URL"` was vestigial. Living
+  # inside a PostgreSQL-gated job meant its gate was shaped around server
+  # persistence rather than around providers, which is how `crates/provider`
+  # came to be missing from the filter deciding whether provider wire
+  # protocols get live-tested at all (EVE-936). Its own job carries its own
+  # provider-shaped gate, and provider-only changes no longer start PostgreSQL.
+  #
+  # Gated to push events so PR-controlled cargo test cannot exfiltrate the
+  # Doppler vault via env (build.rs, proc-macros, test bodies) — the same
+  # TM-CI-001/TM-CI-002 boundary the step carried before the split. PR coverage
+  # of the LLM matrix is still mocked in `unit-test`.
+  live-provider-matrix:
+    name: Live Provider Matrix
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.provider_live == 'true' && github.event_name == 'push'
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "test"
+
       - name: Run LLM integration tests (skips providers without API keys or out of quota)
-        if: github.event_name == 'push'
-        timeout-minutes: 15
         # Provider API keys come from Doppler (the repo has no per-provider
-        # GitHub secrets), matching the Slack live step above. `doppler run`
+        # GitHub secrets), matching the Slack live step. `doppler run`
         # injects ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY /
         # OPENROUTER_API_KEY; the matrix runs every provider and skips only
         # those whose key is absent from the vault, or whose account is out of
@@ -1129,7 +1175,7 @@ jobs:
         # a turn that never called the advertised tool proves nothing about the
         # provider's wire serialization, which is what this matrix exists to
         # check. `--nocapture` exposes the generations behind the failure.
-        run: doppler run --preserve-env="DATABASE_URL" -- cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --test subagent_live_test --all-features -- --nocapture
+        run: doppler run -- cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --test subagent_live_test --all-features -- --nocapture
 
   # S3 blob-backend integration tests.
   # The PostgreSQL `integration-test` job above only exercises the inline
