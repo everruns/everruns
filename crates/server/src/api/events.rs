@@ -51,6 +51,12 @@ use utoipa::{IntoParams, ToSchema};
 pub struct EventsQuery {
     /// Filter events with ID greater than this event ID (prefixed format: event_{32-hex})
     pub since_id: Option<EventId>,
+    /// Forward cursor: replay durable events with `sequence` greater than this
+    /// value before switching to live streaming. `after_sequence=0` replays the
+    /// session from its first event — that is what a client with an empty
+    /// snapshot must send, otherwise events written between its snapshot and
+    /// this subscription are never delivered. Mutually exclusive with `since_id`.
+    pub after_sequence: Option<i32>,
     /// Positive type filter: only return events matching these types (can be specified multiple times).
     /// When empty, all types are returned. Example: ?types=turn.started&types=turn.completed
     #[serde(default)]
@@ -69,6 +75,18 @@ impl EventsQuery {
     fn validate(&self) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
         validate_event_type_list(&self.types, "types")?;
         validate_event_type_list(&self.exclude, "exclude")?;
+        if self.since_id.is_some() && self.after_sequence.is_some() {
+            return Err(ErrorResponse::new(
+                "since_id and after_sequence are mutually exclusive".to_string(),
+            )
+            .into_response(StatusCode::BAD_REQUEST));
+        }
+        if self.after_sequence.is_some_and(|seq| seq < 0) {
+            return Err(
+                ErrorResponse::new("after_sequence must be >= 0".to_string())
+                    .into_response(StatusCode::BAD_REQUEST),
+            );
+        }
         Ok(())
     }
 }
@@ -344,6 +362,11 @@ pub async fn stream_sse(
 
     let event_service = state.event_service.clone();
     let initial_since_id = query.since_id.map(|id| id.uuid());
+    // A client that holds no events sends `after_sequence=0` instead of a
+    // `since_id`; without it the stream would start live and silently drop
+    // everything written before the subscription (EVE: first message of a fresh
+    // chat landed nowhere in the transcript).
+    let initial_after_sequence = query.after_sequence;
     let filter_types = query.types;
     let exclude_types = query.exclude;
 
@@ -450,6 +473,9 @@ pub async fn stream_sse(
     struct StreamState {
         phase: StreamPhase,
         last_id: Option<Uuid>,
+        /// Forward sequence cursor for the one-time PG replay. Only set when the
+        /// client has no `since_id` (empty snapshot); cleared once replayed.
+        last_sequence: Option<i32>,
         backoff_ms: u64,
         config: SseStreamConfig,
         filter_types: Vec<String>,
@@ -462,6 +488,7 @@ pub async fn stream_sse(
     let initial_state = StreamState {
         phase: StreamPhase::SendConnected,
         last_id: initial_since_id,
+        last_sequence: initial_after_sequence,
         backoff_ms: config.min_backoff_ms,
         max_duration,
         config,
@@ -517,9 +544,10 @@ pub async fn stream_sse(
                         .data(r#"{"status":"connected"}"#)
                         .retry(state.config.retry_hint(state.backoff_ms)));
 
-                    // If reconnecting (since_id set), replay from PG first.
-                    // Otherwise go straight to streaming.
-                    let next_phase = if state.last_id.is_some() {
+                    // If the client gave a cursor (reconnect `since_id`, or
+                    // `after_sequence` from an empty snapshot), replay from PG
+                    // first. Otherwise go straight to streaming.
+                    let next_phase = if state.last_id.is_some() || state.last_sequence.is_some() {
                         StreamPhase::ReplayFromPg
                     } else if use_push {
                         StreamPhase::Streaming
@@ -538,8 +566,8 @@ pub async fn stream_sse(
                     // One-time PG query to catch up on missed durable events.
                     // Ephemeral events (deltas) that were missed during disconnection
                     // are gone — the completed event has the full content.
-                    tracing::debug!(session_id = %session_id, last_id = ?state.last_id, "SSE: replaying missed durable events from PG");
-                    match event_service.list(session_id, None, state.last_id, &state.filter_types, &state.exclude_types, None, None).await {
+                    tracing::debug!(session_id = %session_id, last_id = ?state.last_id, after_sequence = ?state.last_sequence, "SSE: replaying missed durable events from PG");
+                    match event_service.list(session_id, state.last_sequence, state.last_id, &state.filter_types, &state.exclude_types, None, None).await {
                         Ok(events) => {
                             let new_last_id = events.last().map(|e| e.id.uuid()).or(state.last_id);
                             let retry_duration = state.config.retry_hint(state.config.min_backoff_ms);
@@ -565,6 +593,15 @@ pub async fn stream_sse(
                             let new_state = StreamState {
                                 phase: next_phase,
                                 last_id: new_last_id,
+                                // Replay is one-time. Keep the sequence cursor only
+                                // while no event id is known yet, so the polling
+                                // fallback still filters instead of re-listing the
+                                // whole session on every poll.
+                                last_sequence: if new_last_id.is_some() {
+                                    None
+                                } else {
+                                    state.last_sequence
+                                },
                                 backoff_ms: state.config.min_backoff_ms,
                                 ..state
                             };
@@ -637,7 +674,7 @@ pub async fn stream_sse(
                         }));
                     }
 
-                    match event_service.list(session_id, None, state.last_id, &state.filter_types, &state.exclude_types, None, None).await {
+                    match event_service.list(session_id, state.last_sequence, state.last_id, &state.filter_types, &state.exclude_types, None, None).await {
                         Ok(events) if !events.is_empty() => {
                             let new_last_id = Some(events.last().unwrap().id.uuid());
                             let retry_duration = state.config.retry_hint(state.config.min_backoff_ms);
@@ -649,6 +686,7 @@ pub async fn stream_sse(
                             Some((stream::iter(sse_events), StreamState {
                                 phase: StreamPhase::PollingFallback,
                                 last_id: new_last_id,
+                                last_sequence: None,
                                 backoff_ms: state.config.min_backoff_ms,
                                 ..state
                             }))

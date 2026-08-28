@@ -41,6 +41,12 @@ data: <json>
 * `id:`, event id cursor (`event_{32-hex}` format). Reconnecting
   clients pass it back as the `since_id` query parameter to resume
   without missing events.
+  A client that holds **no** events cannot name a cursor by id: it passes
+  `after_sequence=0` instead, and the server replays the session from its
+  first event before going live. Subscribing with neither cursor starts the
+  stream live, so anything written between the client's snapshot and the
+  subscription is never delivered. The two parameters are mutually
+  exclusive (400).
 * `retry:`, server-suggested reconnect delay in milliseconds; see
   the per-endpoint description for the cycling policy.
 * `data:`, the per-event JSON body. The shape depends on the

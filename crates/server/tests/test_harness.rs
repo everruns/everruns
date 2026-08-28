@@ -849,6 +849,50 @@ impl TestServer {
         }
     }
 
+    /// GET a streaming endpoint (SSE) and return the text received until the
+    /// stream falls quiet for `idle` or `max_bytes` have arrived. SSE streams
+    /// never end on their own, so a normal request would hang here.
+    pub async fn get_stream_prefix(
+        &self,
+        uri: &str,
+        max_bytes: usize,
+        idle: std::time::Duration,
+    ) -> String {
+        let normalized_uri = Self::normalize_uri(uri);
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri(&normalized_uri)
+            .body(Body::empty())
+            .expect("Failed to build request");
+
+        let response = self
+            .router
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("Request failed");
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "streaming request {normalized_uri} failed"
+        );
+
+        let mut body = response.into_body();
+        let mut text = String::new();
+        while text.len() < max_bytes {
+            match tokio::time::timeout(idle, body.frame()).await {
+                Ok(Some(Ok(frame))) => {
+                    if let Some(chunk) = frame.data_ref() {
+                        text.push_str(&String::from_utf8_lossy(chunk));
+                    }
+                }
+                // Stream ended, errored, or went idle — return what arrived.
+                Ok(_) | Err(_) => break,
+            }
+        }
+        text
+    }
+
     /// Make a request with custom method and optional body
     async fn request<T: Serialize>(
         &self,

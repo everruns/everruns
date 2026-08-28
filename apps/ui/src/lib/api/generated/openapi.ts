@@ -29184,6 +29184,14 @@ export interface operations {
         /** @description Filter events with ID greater than this event ID (prefixed format: event_{32-hex}) */
         since_id?: null | components["schemas"]["eventId"];
         /**
+         * @description Forward cursor: replay durable events with `sequence` greater than this
+         *     value before switching to live streaming. `after_sequence=0` replays the
+         *     session from its first event — that is what a client with an empty
+         *     snapshot must send, otherwise events written between its snapshot and
+         *     this subscription are never delivered. Mutually exclusive with `since_id`.
+         */
+        after_sequence?: number | null;
+        /**
          * @description Positive type filter: only return events matching these types (can be specified multiple times).
          *     When empty, all types are returned. Example: ?types=turn.started&types=turn.completed
          */

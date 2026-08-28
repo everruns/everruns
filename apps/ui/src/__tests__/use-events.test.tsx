@@ -25,6 +25,10 @@ jest.mock("@/lib/api/events", () => ({
   DEFAULT_EXCLUDED_EVENTS: [],
 }));
 
+const { getSseUrl } = jest.requireMock("@/lib/api/events") as {
+  getSseUrl: jest.Mock;
+};
+
 jest.mock("@/providers/org-provider", () => ({
   useOrg: () => ({ currentOrg: { public_id: "org-1" } }),
 }));
@@ -45,6 +49,7 @@ describe("useEvents SSE handling", () => {
   beforeEach(() => {
     queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     for (const key of Object.keys(mockSseListeners)) delete mockSseListeners[key];
+    getSseUrl.mockClear();
   });
 
   async function mountAndConnect() {
@@ -53,6 +58,33 @@ describe("useEvents SSE handling", () => {
     await waitFor(() => expect(mockSseListeners["input.message"]?.length).toBeGreaterThan(0));
     return view;
   }
+
+  // Regression: an empty snapshot used to open the stream with no cursor, so
+  // events written before the subscription (the first message of a fresh chat)
+  // were never delivered and the optimistic bubble for them stayed pinned at the
+  // bottom of the transcript.
+  it("asks for a full replay when the initial snapshot is empty", async () => {
+    await mountAndConnect();
+
+    expect(getSseUrl).toHaveBeenCalledWith("session-1", { afterSequence: 0 });
+  });
+
+  it("resumes from the last received event once one is known", async () => {
+    await mountAndConnect();
+    act(() => {
+      fireSse({ id: "e1" });
+    });
+
+    // Reconnecting now must resume from e1, not replay the session again.
+    getSseUrl.mockClear();
+    act(() => {
+      for (const handler of mockSseListeners["disconnecting"] ?? []) {
+        handler({ data: JSON.stringify({ retry_ms: 0 }) } as MessageEvent);
+      }
+    });
+
+    await waitFor(() => expect(getSseUrl).toHaveBeenCalledWith("session-1", { sinceId: "e1" }));
+  });
 
   it("deduplicates events with the same id", async () => {
     const { result } = await mountAndConnect();
