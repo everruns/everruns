@@ -81,15 +81,33 @@ export async function listEventsPaginated(
   };
 }
 
+/**
+ * Cursor the SSE stream resumes from.
+ *
+ * `sinceId` is the normal case: everything after that event is replayed, then the
+ * stream goes live. A client that holds no events at all cannot express that with
+ * an id, so it sends `afterSequence: 0` — replay the session from its first event.
+ * Without a cursor the server starts live, and anything written between the
+ * client's REST snapshot and the subscription is dropped for good.
+ */
+export interface SseCursor {
+  sinceId?: string;
+  afterSequence?: number;
+}
+
 // Get SSE URL for real-time event streaming
-// Uses since_id for incremental updates (resolved to sequence for reliable ordering)
-// Optional exclude parameter to filter out event types (e.g., delta events)
+// Takes the cursor to resume from (see SseCursor) and an optional exclude list
+// filtering out event types (e.g. delta events)
 // Note: Org is sent via everruns_org cookie (EventSource sends cookies automatically)
-export function getSseUrl(sessionId: string, sinceId?: string, exclude?: string[]): string {
+export function getSseUrl(sessionId: string, cursor?: SseCursor, exclude?: string[]): string {
   const baseUrl = getApiBaseUrl();
   const params = new URLSearchParams();
+  const { sinceId, afterSequence } = cursor ?? {};
   if (sinceId) {
     params.set("since_id", sinceId);
+  } else if (afterSequence !== undefined) {
+    // Mutually exclusive with since_id on the server.
+    params.set("after_sequence", String(afterSequence));
   }
   if (exclude) {
     for (const type of exclude) {

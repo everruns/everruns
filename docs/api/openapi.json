@@ -13197,6 +13197,19 @@
             }
           },
           {
+            "name": "after_sequence",
+            "in": "query",
+            "description": "Forward cursor: replay durable events with `sequence` greater than this\nvalue before switching to live streaming. `after_sequence=0` replays the\nsession from its first event — that is what a client with an empty\nsnapshot must send, otherwise events written between its snapshot and\nthis subscription are never delivered. Mutually exclusive with `since_id`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
+          },
+          {
             "name": "types",
             "in": "query",
             "description": "Positive type filter: only return events matching these types (can be specified multiple times).\nWhen empty, all types are returned. Example: ?types=turn.started&types=turn.completed",

@@ -593,7 +593,13 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
     const connectSSE = () => {
       cleanup();
 
-      const sseUrl = getSseUrl(sessionId, lastEventIdRef.current ?? undefined);
+      // No event id yet means the REST snapshot was empty (a fresh session) or
+      // failed: resume from sequence 0 so the server replays everything written
+      // before this subscription instead of starting live and dropping it.
+      const sseUrl = getSseUrl(
+        sessionId,
+        lastEventIdRef.current ? { sinceId: lastEventIdRef.current } : { afterSequence: 0 },
+      );
       const eventSource = createEventStream(sseUrl, { withCredentials: true });
       eventSourceRef.current = eventSource;
 
