@@ -191,22 +191,114 @@ async fn session_provider_account_block(
     messages_provider_account_block(&body).map(str::to_owned)
 }
 
+/// Renders one skip line for GitHub's step summary.
+///
+/// Separate from the file write so the wording is testable without touching the
+/// environment.
+fn provider_account_skip_line(test: &str, code: &str) -> String {
+    format!(
+        "- **Skipped `{test}`** — live provider account unavailable (`{code}`). \
+         The turn never reached the provider, so these live assertions did not run."
+    )
+}
+
+/// Records a skipped live test somewhere a *green* run still shows it.
+///
+/// `libtest` captures stdout for tests that pass, and the `workflow-test` job
+/// runs without `--nocapture`, so a bare `println!` here is swallowed by exactly
+/// the green run that most needs to disclose the missing coverage. That is the
+/// silent-green blind spot EVE-935 exists to close, so the skip is also appended
+/// to GitHub's step summary, which the test process writes directly and libtest
+/// does not capture. (`doppler run --preserve-env` passes `GITHUB_STEP_SUMMARY`
+/// through untouched — it only arbitrates names Doppler itself defines.)
+///
+/// Best effort by design: a missing, unset, or unwritable summary file must
+/// never turn a skip into a failure. Outside Actions the `println!` still
+/// carries the line under `--nocapture`.
+fn report_provider_account_skip(code: &str) {
+    let test = std::thread::current()
+        .name()
+        .unwrap_or("unknown test")
+        .to_owned();
+    println!("SKIP: {test}: live provider account unavailable ({code})");
+
+    if let Ok(path) = std::env::var("GITHUB_STEP_SUMMARY") {
+        append_skip_to_summary(std::path::Path::new(&path), &test, code);
+    }
+}
+
+/// Appends one skip line to the step-summary file, swallowing every I/O error.
+///
+/// Split out so the append is covered by a test rather than only ever running
+/// inside Actions.
+fn append_skip_to_summary(path: &std::path::Path, test: &str, code: &str) {
+    use std::io::Write;
+
+    let Ok(mut file) = std::fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(path)
+    else {
+        return;
+    };
+    let _ = writeln!(file, "{}", provider_account_skip_line(test, code));
+}
+
+#[test]
+fn append_skip_to_summary_accumulates_and_never_panics() {
+    let dir = std::env::temp_dir().join(format!("everruns-skip-summary-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let path = dir.join("summary.md");
+
+    // Appends rather than truncating: several tests can skip in one run and the
+    // summary must list every one of them.
+    append_skip_to_summary(&path, "test_one", "provider_quota_exhausted");
+    append_skip_to_summary(&path, "test_two", "provider_usage_limit_reached");
+    let written = std::fs::read_to_string(&path).expect("summary written");
+    assert_eq!(written.lines().count(), 2, "{written}");
+    assert!(written.contains("test_one"), "{written}");
+    assert!(written.contains("test_two"), "{written}");
+
+    // An unwritable path is silently ignored — a skip must never become a
+    // failure because Actions moved where the summary lives.
+    append_skip_to_summary(
+        &dir.join("no-such-directory").join("summary.md"),
+        "test_three",
+        "provider_quota_exhausted",
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn provider_account_skip_line_names_the_test_and_code() {
+    let line = provider_account_skip_line(
+        "test_agent_execution_openai_with_tool_calls",
+        "provider_quota_exhausted",
+    );
+    // A reader scanning a green run's summary needs both: which test lost its
+    // coverage, and why.
+    assert!(
+        line.contains("test_agent_execution_openai_with_tool_calls"),
+        "{line}"
+    );
+    assert!(line.contains("provider_quota_exhausted"), "{line}");
+    // Markdown list item, so it renders in the step summary rather than running
+    // together with neighbouring lines.
+    assert!(line.starts_with("- "), "{line}");
+    assert!(!line.contains('\n'), "must stay one line: {line}");
+}
+
 /// Skips the current test when a previously captured
 /// `session_provider_account_block` says the live provider account is unusable.
 ///
 /// Takes an already-captured value rather than polling itself, so callers can
 /// read the block while the session is still intact and act on it after they
 /// have torn their fixtures down.
-///
-/// Loud on purpose: the run log names the code, so an operator reading a green
-/// build can still see that the live assertions did not execute.
 macro_rules! skip_on_provider_account_block {
     ($block:expr) => {
         if let Some(code) = $block {
-            println!(
-                "SKIP: live provider account unavailable ({code}); \
-                 the turn never reached the provider, so nothing is verifiable here"
-            );
+            report_provider_account_skip(&code);
             return;
         }
     };
