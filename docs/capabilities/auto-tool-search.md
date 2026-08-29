@@ -21,7 +21,7 @@ This is the recommended default for harnesses that may run on different models. 
 `auto_tool_search` resolves to one of three underlying mechanisms based on the model:
 
 - **Models with native OpenAI tool search** (GPT-5.4 and newer) → the hosted mechanism described in [OpenAI Tool Search](/capabilities/openai-tool-search/): namespaces + `defer_loading` + a `{"type": "tool_search"}` activator. No extra tool is added; the provider handles search server-side.
-- **Models with native Claude tool search** (Sonnet 4, Opus 4, Haiku 4.5, and Fable 5 and newer) → the hosted mechanism described in [Claude Tool Search](/capabilities/claude-tool-search/): per-tool `defer_loading` + a `tool_search_tool_bm25_20251119` server tool. No extra tool is added; the provider handles search server-side.
+- **Models with native Claude tool search** (Opus 4, Sonnet 4.5, Haiku 4.5, and Fable 5 and newer) → the hosted mechanism described in [Claude Tool Search](/capabilities/claude-tool-search/): per-tool `defer_loading` + a `tool_search_tool_bm25_20251119` server tool. No extra tool is added; the provider handles search server-side.
 - **All other models** (Gemini, OpenAI Completions, Claude/GPT reached via a gateway that doesn't implement the hosted format, …) → the client-side mechanism described in [Tool Search](/capabilities/tool-search/): schemas are stripped to stubs and a `tool_search` tool loads them back on demand.
 
 The choice is made when the agent's capabilities are assembled, once the model is known. You don't have to know in advance which provider an agent will use.

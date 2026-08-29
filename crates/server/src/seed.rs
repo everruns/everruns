@@ -131,7 +131,6 @@ mod seed_ids {
     pub const CLAUDE_SONNET_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000302);
     pub const CLAUDE_HAIKU_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000303);
     pub const CLAUDE_OPUS_4: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000304);
-    pub const CLAUDE_SONNET_4: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000305);
     // 1M-context variants (`[1m]` model ids), 0x3a0+ sub-range.
     pub const CLAUDE_OPUS_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a8);
     pub const CLAUDE_OPUS_4_7_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a7);
@@ -1949,14 +1948,6 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-opus-4",
         display_name: "Claude Opus 4",
-        enabled: false,
-        is_favorite: false,
-    },
-    SeedModel {
-        id: seed_ids::CLAUDE_SONNET_4,
-        provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-sonnet-4",
-        display_name: "Claude Sonnet 4",
         enabled: false,
         is_favorite: false,
     },

@@ -4581,7 +4581,7 @@ async fn test_anthropic_extended_thinking() {
         .expect("Failed to parse provider");
     println!("Created Anthropic provider: {}", provider.id);
 
-    // Create model (claude-sonnet-4 supports extended thinking)
+    // Create model (the live thinking model supports extended thinking)
     let model_response = client
         .post(format!(
             "{}/v1/providers/{}/models",
@@ -4945,7 +4945,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
         .expect("Failed to parse provider");
     println!("Created Anthropic provider: {}", provider.id);
 
-    // Create model (claude-sonnet-4 supports extended thinking)
+    // Create model (the live thinking model supports extended thinking)
     let model_response = client
         .post(format!(
             "{}/v1/providers/{}/models",

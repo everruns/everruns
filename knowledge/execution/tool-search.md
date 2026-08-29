@@ -73,7 +73,7 @@ There are four capabilities, two mechanisms (hosted vs client-side). The two hos
 `auto_tool_search` is a runtime dispatcher, not a separate mechanism. `AutoToolSearchCapability` owns an `OpenAiToolSearchCapability`, a `ClaudeToolSearchCapability`, and a `ToolSearchCapability`, and implements `Capability::resolve_for_model`. The agent's model is carried on `SystemPromptContext::model`, so capability collection knows it and delegates to exactly one inner capability, collecting *its* contributions in place of the dispatcher's:
 
 - **Model has native OpenAI support** (`openai_tool_search::model_supports_native_tool_search`, GPT-5.4+): resolves to `openai_tool_search`.
-- **Model has native Anthropic support** (`claude_tool_search::model_supports_native_tool_search`, Claude Sonnet 4 / Opus 4 / Haiku 4.5 / Fable 5 and newer): resolves to `claude_tool_search`.
+- **Model has native Anthropic support** (`claude_tool_search::model_supports_native_tool_search`, Claude Opus 4 / Sonnet 4.5 / Haiku 4.5 / Fable 5 and newer): resolves to `claude_tool_search`.
 - Either hosted branch makes collection set the hosted `ToolSearchConfig` (keyed on the resolved `effective.id()`, which is one of the two hosted ids); no client-side tool or hook is contributed.
 - **Model lacks native support, or model is unknown:** resolves to the generic `tool_search`. Collection contributes its `DeferSchemaHook` + `tool_search` tool + system-prompt note and sets no hosted config.
 
