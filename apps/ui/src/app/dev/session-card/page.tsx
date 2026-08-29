@@ -173,8 +173,8 @@ const sampleModels = {
   anthropic: {
     id: "model-uuid-anthropic",
     provider_id: "provider-anthropic",
-    model_id: "claude-sonnet-4-20250514",
-    display_name: "Claude Sonnet 4",
+    model_id: "claude-sonnet-4-6",
+    display_name: "Claude Sonnet 4.6",
     capabilities: ["chat", "tools"],
     enabled: true,
     is_favorite: true,

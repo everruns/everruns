@@ -389,7 +389,6 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["claude-sonnet-4-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-haiku-4-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4"], ModelVendor::Anthropic, ANTHROPIC),
-    md(&["claude-sonnet-4"], ModelVendor::Anthropic, ANTHROPIC),
     // Google Gemini
     md(&["gemini-3.1-pro-preview"], ModelVendor::Google, GEMINI),
     md(&["gemini-3.5-flash"], ModelVendor::Google, GEMINI),
@@ -2389,7 +2388,6 @@ fn anthropic_family_supports_tool_search(family: &str) -> bool {
             | "claude-sonnet-5"
             | "claude-sonnet-4-6"
             | "claude-sonnet-4-5"
-            | "claude-sonnet-4"
             | "claude-haiku-4-5"
     )
 }
@@ -2836,43 +2834,6 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
         }),
 
         // Claude 4 series
-        "claude-sonnet-4" => Some(ModelProfile {
-            name: "Claude Sonnet 4".into(),
-            family: "claude-sonnet-4".into(),
-            description: None,
-            release_date: Some("2025-05-14".into()),
-            last_updated: Some("2025-05-14".into()),
-            attachment: true,
-            reasoning: true,
-            temperature: true,
-            knowledge: Some("2025-03-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 3.00,
-                output: 15.00,
-                cache_read: Some(0.30),
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 200_000,
-                input: None,
-                output: 64_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
         "claude-opus-4" => Some(ModelProfile {
             name: "Claude Opus 4".into(),
             family: "claude-opus-4".into(),
@@ -3311,7 +3272,6 @@ mod tests {
         (DriverId::Anthropic, "claude-opus-4-5"),
         (DriverId::Anthropic, "claude-sonnet-4-5"),
         (DriverId::Anthropic, "claude-haiku-4-5"),
-        (DriverId::Anthropic, "claude-sonnet-4"),
         (DriverId::Anthropic, "claude-opus-4"),
         // Gemini
         (DriverId::Gemini, "gemini-3.1-pro-preview"),
@@ -3506,10 +3466,6 @@ mod tests {
         assert_eq!(
             normalize_anthropic_model_id("claude-sonnet-5-latest"),
             "claude-sonnet-5"
-        );
-        assert_eq!(
-            normalize_anthropic_model_id("claude-sonnet-4-20250514"),
-            "claude-sonnet-4"
         );
     }
 
@@ -4538,7 +4494,6 @@ mod tests {
             "claude-opus-4",
             "claude-sonnet-4-6",
             "claude-sonnet-4-5",
-            "claude-sonnet-4",
             "claude-haiku-4-5",
         ] {
             let p = get_model_profile(&DriverId::Anthropic, id)
