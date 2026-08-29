@@ -103,6 +103,69 @@ fn provider_account_block_matches_only_billing_codes() {
     assert_eq!(provider_account_block(&json!({})), None);
 }
 
+/// Finds the first provider account block in a `GET /v1/sessions/{id}/messages`
+/// response body.
+///
+/// Split from the request so the extraction can be tested against a real
+/// captured response rather than first exercised during the incident it exists
+/// to report — the same approach `scripts/test-provider-credits.sh` takes for
+/// the credit-health classifier (EVE-935).
+fn messages_provider_account_block(body: &Value) -> Option<&str> {
+    body["data"]
+        .as_array()?
+        .iter()
+        .find_map(provider_account_block)
+}
+
+#[test]
+fn messages_provider_account_block_reads_a_real_quota_response() {
+    // Captured verbatim from the agent message printed by
+    // `test_reasoning_reaches_api_sanitized_and_classified` in CI run
+    // 33227749538, the run this guard exists to stop misreporting.
+    let body = json!({"data": [
+        {
+            "content": [{"text": "Think about this, then answer.", "type": "text"}],
+            "id": "message_2f1c9a4e6b7d4f0e8a1c3d5e7f902468",
+            "role": "user",
+            "sequence": 1,
+            "session_id": "session_01a04b5180217dd1a2665373ba3447ad"
+        },
+        {
+            "content": [{
+                "text": "The AI provider account is out of credits or quota. Add credits \
+                         or raise the provider account limits to continue.",
+                "type": "text"
+            }],
+            "created_at": "2026-08-29T02:20:30.955249511Z",
+            "id": "message_572957841c0f4ee995c3e70e426d70e3",
+            "metadata": {
+                "error_code": "provider_quota_exhausted",
+                "error_disclosure": "standard",
+                "error_fields": {"model_id": "gpt-5.6-terra", "provider": "openai"},
+                "source_error_code": "provider_quota_exhausted"
+            },
+            "role": "agent",
+            "sequence": 8,
+            "session_id": "session_01a04b5180217dd1a2665373ba3447ad"
+        }
+    ]});
+    assert_eq!(
+        messages_provider_account_block(&body),
+        Some("provider_quota_exhausted")
+    );
+
+    // A healthy transcript yields no block, so assertions still run.
+    let healthy = json!({"data": [
+        {"role": "user", "content": [{"text": "hi", "type": "text"}]},
+        {"role": "agent", "content": [{"text": "hello", "type": "text"}], "metadata": {}}
+    ]});
+    assert_eq!(messages_provider_account_block(&healthy), None);
+
+    // Shapes that must not panic or be mistaken for a block.
+    assert_eq!(messages_provider_account_block(&json!({"data": []})), None);
+    assert_eq!(messages_provider_account_block(&json!({})), None);
+}
+
 /// Polls a session's messages once and reports the first provider account block
 /// found on an agent message.
 ///
@@ -124,11 +187,8 @@ async fn session_provider_account_block(
     if response.status() != 200 {
         return None;
     }
-    let data: Value = response.json().await.ok()?;
-    data["data"]
-        .as_array()?
-        .iter()
-        .find_map(|message| provider_account_block(message).map(str::to_owned))
+    let body: Value = response.json().await.ok()?;
+    messages_provider_account_block(&body).map(str::to_owned)
 }
 
 /// Skips the current test when a previously captured
