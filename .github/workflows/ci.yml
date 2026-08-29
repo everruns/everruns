@@ -1525,9 +1525,35 @@ jobs:
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
           EVERRUNS_REQUIRE_LIVE_TESTS: "1"
+          # Live tests skipped by a provider account block append one line here.
+          # Named in --preserve-env so the value survives `doppler run` whatever
+          # the vault holds.
+          EVERRUNS_LIVE_SKIP_REPORT: ${{ github.workspace }}/live-provider-skips.md
         run: >-
-          doppler run --preserve-env="DATABASE_URL,API_BASE_URL,AUTH_MODE,DEPLOYMENT_GRADE,WORKER_GRPC_AUTH_TOKEN,SECRETS_ENCRYPTION_KEY,RATE_LIMIT_API_REQUESTS_PER_MINUTE,EVERRUNS_REQUIRE_LIVE_TESTS"
+          doppler run --preserve-env="DATABASE_URL,API_BASE_URL,AUTH_MODE,DEPLOYMENT_GRADE,WORKER_GRPC_AUTH_TOKEN,SECRETS_ENCRYPTION_KEY,RATE_LIMIT_API_REQUESTS_PER_MINUTE,EVERRUNS_REQUIRE_LIVE_TESTS,EVERRUNS_LIVE_SKIP_REPORT"
           -- cargo test -p everruns-server --test workflow_test -- --test-threads=1
+
+      # libtest captures stdout for tests that pass, so a skipped live test is
+      # invisible in a green run unless it is re-emitted here. Step summaries are
+      # not readable over the Actions API, so the log is the only channel a
+      # scheduled maintenance session can check — the same reason
+      # security-alerts.yml tees its report instead of only writing the summary.
+      #
+      # `always()`: the report matters just as much when a later assertion failed.
+      - name: Report skipped live tests
+        if: always()
+        run: |
+          report="${{ github.workspace }}/live-provider-skips.md"
+          if [ -s "$report" ]; then
+            echo "::warning::Live provider tests were skipped — see the lines below; their assertions did not run."
+            cat "$report"
+            {
+              echo "### Skipped live provider tests"
+              cat "$report"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No live provider tests were skipped; live assertions ran."
+          fi
 
       - name: Stop services
         if: always()

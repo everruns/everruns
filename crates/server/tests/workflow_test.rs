@@ -222,16 +222,24 @@ fn report_provider_account_skip(code: &str) {
         .to_owned();
     println!("SKIP: {test}: live provider account unavailable ({code})");
 
-    if let Ok(path) = std::env::var("GITHUB_STEP_SUMMARY") {
-        append_skip_to_summary(std::path::Path::new(&path), &test, code);
+    // Writes one file; the `Report skipped live tests` step in ci.yml renders it
+    // into both the job log and the step summary. Deliberately not written
+    // straight to GITHUB_STEP_SUMMARY: only the log is readable back over the
+    // Actions API, which is the channel a scheduled maintenance session has —
+    // the same reasoning security-alerts.yml states for teeing its report. A
+    // skip only a human can see is how OpenAI coverage stayed dark for days
+    // (EVE-943). Routing through the workflow also keeps the rendering in one
+    // place instead of appending to the summary from two directions.
+    if let Ok(path) = std::env::var("EVERRUNS_LIVE_SKIP_REPORT") {
+        append_skip_to_report(std::path::Path::new(&path), &test, code);
     }
 }
 
-/// Appends one skip line to the step-summary file, swallowing every I/O error.
+/// Appends one skip line to the report file, swallowing every I/O error.
 ///
 /// Split out so the append is covered by a test rather than only ever running
 /// inside Actions.
-fn append_skip_to_summary(path: &std::path::Path, test: &str, code: &str) {
+fn append_skip_to_report(path: &std::path::Path, test: &str, code: &str) {
     use std::io::Write;
 
     let Ok(mut file) = std::fs::OpenOptions::new()
@@ -245,24 +253,24 @@ fn append_skip_to_summary(path: &std::path::Path, test: &str, code: &str) {
 }
 
 #[test]
-fn append_skip_to_summary_accumulates_and_never_panics() {
-    let dir = std::env::temp_dir().join(format!("everruns-skip-summary-{}", std::process::id()));
+fn append_skip_to_report_accumulates_and_never_panics() {
+    let dir = std::env::temp_dir().join(format!("everruns-skip-report-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp dir");
-    let path = dir.join("summary.md");
+    let path = dir.join("live-provider-skips.md");
 
     // Appends rather than truncating: several tests can skip in one run and the
-    // summary must list every one of them.
-    append_skip_to_summary(&path, "test_one", "provider_quota_exhausted");
-    append_skip_to_summary(&path, "test_two", "provider_usage_limit_reached");
-    let written = std::fs::read_to_string(&path).expect("summary written");
+    // report must list every one of them.
+    append_skip_to_report(&path, "test_one", "provider_quota_exhausted");
+    append_skip_to_report(&path, "test_two", "provider_usage_limit_reached");
+    let written = std::fs::read_to_string(&path).expect("report written");
     assert_eq!(written.lines().count(), 2, "{written}");
     assert!(written.contains("test_one"), "{written}");
     assert!(written.contains("test_two"), "{written}");
 
     // An unwritable path is silently ignored — a skip must never become a
-    // failure because Actions moved where the summary lives.
-    append_skip_to_summary(
-        &dir.join("no-such-directory").join("summary.md"),
+    // failure because the report path changed or was never created.
+    append_skip_to_report(
+        &dir.join("no-such-directory").join("live-provider-skips.md"),
         "test_three",
         "provider_quota_exhausted",
     );
