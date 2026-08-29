@@ -43,6 +43,115 @@ const LIVE_ANTHROPIC_FAST_MODEL: &str = "claude-haiku-4-5-20251001";
 /// Extended thinking requires a model that supports it; Haiku does not.
 const LIVE_ANTHROPIC_THINKING_MODEL: &str = "claude-sonnet-4-5-20250929";
 
+/// Returns the error code when a turn was blocked by a live provider *account*
+/// condition — the account is out of credits, or a subscription usage limit was
+/// reached — rather than by a defect in the code under test.
+///
+/// The live provider matrix already skips on this signal (`skip_if_quota!` in
+/// `crates/llm-tests/tests/llm_test_matrix/mod.rs`, and the comment on the
+/// `live-provider-matrix` CI job). The live tests in this file drive the same
+/// shared provider accounts through the worker, so they skip on it too: a turn
+/// that never reached the provider proves nothing about tool-call serialization
+/// or reasoning projection, and failing on it reports a code regression that
+/// does not exist. Main went red exactly this way on 2026-08-29.
+///
+/// Deliberately narrow. A missing or invalid credential
+/// (`provider_misconfigured`) and every genuine API or contract break still
+/// fail loudly — see `EVERRUNS_REQUIRE_LIVE_TESTS` in the CI workflow, which
+/// exists so a silently absent key cannot report a vacuous pass.
+fn provider_account_block(message: &Value) -> Option<&str> {
+    use everruns_provider::user_facing_error::codes;
+
+    let code = message["metadata"]["error_code"].as_str()?;
+    (code == codes::PROVIDER_QUOTA_EXHAUSTED || code == codes::PROVIDER_USAGE_LIMIT_REACHED)
+        .then_some(code)
+}
+
+#[test]
+fn provider_account_block_matches_only_billing_codes() {
+    use everruns_provider::user_facing_error::codes;
+
+    let with_code = |code: &str| json!({"metadata": {"error_code": code}});
+
+    assert_eq!(
+        provider_account_block(&with_code(codes::PROVIDER_QUOTA_EXHAUSTED)),
+        Some(codes::PROVIDER_QUOTA_EXHAUSTED)
+    );
+    assert_eq!(
+        provider_account_block(&with_code(codes::PROVIDER_USAGE_LIMIT_REACHED)),
+        Some(codes::PROVIDER_USAGE_LIMIT_REACHED)
+    );
+
+    // A bad or absent credential is an operator error in the CI setup, not a
+    // billing condition — it must keep failing loudly.
+    assert_eq!(
+        provider_account_block(&with_code(codes::PROVIDER_MISCONFIGURED)),
+        None
+    );
+    // Genuine regressions the live tests exist to catch.
+    for code in [
+        codes::INVALID_TOOL_SCHEMA,
+        codes::PROCESSING_ERROR,
+        codes::MODEL_UNAVAILABLE,
+        codes::PROVIDER_RATE_LIMITED,
+    ] {
+        assert_eq!(provider_account_block(&with_code(code)), None, "{code}");
+    }
+
+    // A healthy turn carries no error code at all.
+    assert_eq!(provider_account_block(&json!({"metadata": {}})), None);
+    assert_eq!(provider_account_block(&json!({})), None);
+}
+
+/// Polls a session's messages once and reports the first provider account block
+/// found on an agent message.
+///
+/// Returns the code so the caller can name it in the skip line. Any transport
+/// or decode failure reports `None`: an unreachable API is a real failure and
+/// must not be laundered into a skip.
+async fn session_provider_account_block(
+    client: &reqwest::Client,
+    session_id: impl std::fmt::Display,
+) -> Option<String> {
+    let response = client
+        .get(format!(
+            "{}/v1/sessions/{}/messages",
+            API_BASE_URL, session_id
+        ))
+        .send()
+        .await
+        .ok()?;
+    if response.status() != 200 {
+        return None;
+    }
+    let data: Value = response.json().await.ok()?;
+    data["data"]
+        .as_array()?
+        .iter()
+        .find_map(|message| provider_account_block(message).map(str::to_owned))
+}
+
+/// Skips the current test when a previously captured
+/// `session_provider_account_block` says the live provider account is unusable.
+///
+/// Takes an already-captured value rather than polling itself, so callers can
+/// read the block while the session is still intact and act on it after they
+/// have torn their fixtures down.
+///
+/// Loud on purpose: the run log names the code, so an operator reading a green
+/// build can still see that the live assertions did not execute.
+macro_rules! skip_on_provider_account_block {
+    ($block:expr) => {
+        if let Some(code) = $block {
+            println!(
+                "SKIP: live provider account unavailable ({code}); \
+                 the turn never reached the provider, so nothing is verifiable here"
+            );
+            return;
+        }
+    };
+}
+
 #[tokio::test]
 async fn test_full_agent_session_workflow() {
     let client = reqwest::Client::new();
@@ -1214,6 +1323,8 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
         }
     }
 
+    skip_on_provider_account_block!(session_provider_account_block(&client, &session.id).await);
+
     assert!(
         write_file_called,
         "Agent should have called write_file tool"
@@ -1955,6 +2066,8 @@ async fn test_no_duplicate_tool_calls() {
             println!("  Still waiting... ({}s)", i);
         }
     }
+
+    skip_on_provider_account_block!(session_provider_account_block(&client, &session.id).await);
 
     // Step 7: Get all messages and check for duplicates
     println!("\nStep 7: Checking for duplicate tool calls...");
@@ -3581,6 +3694,10 @@ async fn test_agent_execution_openai_with_tool_calls() {
     let is_error_response = final_response_text.contains("encountered an error")
         || final_response_text.contains("try again later");
 
+    // Read the account block while the session is still intact; act on it once
+    // the fixtures below are torn down.
+    let account_block = session_provider_account_block(&client, &session.id).await;
+
     // Cleanup first before assertions
     println!("\nCleaning up...");
     client
@@ -3601,6 +3718,8 @@ async fn test_agent_execution_openai_with_tool_calls() {
         .send()
         .await
         .expect("Failed to delete provider");
+
+    skip_on_provider_account_block!(account_block);
 
     // If we got an error response, skip the test (transient API issue)
     if is_error_response {
@@ -3831,6 +3950,10 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     let is_error_response = final_response_text.contains("encountered an error")
         || final_response_text.contains("try again later");
 
+    // Read the account block while the session is still intact; act on it once
+    // the fixtures below are torn down.
+    let account_block = session_provider_account_block(&client, &session.id).await;
+
     // Cleanup first before assertions
     println!("\nCleaning up...");
     client
@@ -3851,6 +3974,8 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
         .send()
         .await
         .expect("Failed to delete provider");
+
+    skip_on_provider_account_block!(account_block);
 
     // If we got an error response, skip the test (transient API issue)
     if is_error_response {
@@ -4842,6 +4967,10 @@ async fn test_anthropic_extended_thinking() {
         followup_complete
     );
 
+    // Read the account block while the session is still intact; act on it once
+    // the fixtures below are torn down.
+    let account_block = session_provider_account_block(&client, &session.id).await;
+
     // Cleanup
     println!("\nCleaning up...");
     client
@@ -4862,6 +4991,8 @@ async fn test_anthropic_extended_thinking() {
         .send()
         .await
         .expect("Failed to delete provider");
+
+    skip_on_provider_account_block!(account_block);
 
     // Assertions
     assert!(response_complete, "First turn should complete");
@@ -5186,11 +5317,20 @@ async fn test_anthropic_extended_thinking_with_tools() {
                 followup_complete = true;
                 break;
             } else if status == "failed" {
+                // A turn the provider account blocked never exercised the
+                // thinking+tools path, so it is a skip rather than a failure.
+                skip_on_provider_account_block!(
+                    session_provider_account_block(&client, &session.id).await
+                );
                 let error = session_data["error"].as_str().unwrap_or("unknown");
                 panic!("Follow-up failed with error: {}", error);
             }
         }
     }
+
+    // Read the account block while the session is still intact; act on it once
+    // the fixtures below are torn down.
+    let account_block = session_provider_account_block(&client, &session.id).await;
 
     println!("\nResults:");
     println!("  First turn complete: {}", response_complete);
@@ -5220,6 +5360,8 @@ async fn test_anthropic_extended_thinking_with_tools() {
         .send()
         .await
         .expect("Failed to delete provider");
+
+    skip_on_provider_account_block!(account_block);
 
     // Assertions
     // Note: With interleaved thinking, the model may hit max iterations (tool loop).
@@ -5970,6 +6112,10 @@ async fn test_reasoning_reaches_api_sanitized_and_classified() {
         "agent message: {}",
         serde_json::to_string_pretty(&agent_message).unwrap_or_default()
     );
+
+    // An unusable provider account is a billing condition, not a regression in
+    // the reasoning projection this test covers.
+    skip_on_provider_account_block!(provider_account_block(&agent_message));
 
     // A provider error message would carry no reasoning and no phase, and would
     // make every assertion below vacuous.
