@@ -1,6 +1,8 @@
 //! Canonical host event persistence, bounded replay, and message projection.
 
 use std::collections::HashMap;
+#[cfg(unix)]
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
@@ -891,28 +893,33 @@ impl JsonlEventLog {
         {
             tokio::fs::create_dir_all(parent).await?;
         }
+        let mut options = tokio::fs::OpenOptions::new();
+        options.create(true).read(true).append(true);
+        #[cfg(unix)]
+        {
+            // THREAT[TM-FS-014]: open and validate the log through one handle
+            // so canonical envelopes cannot be redirected through a symlink.
+            options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+        }
+        let mut file = options.open(&path).await?;
+        ensure_private_event_log(&file, &path).await?;
+
         // THREAT[TM-DOS-035]: local state is not assumed trustworthy after a
         // crash or operator edit. Read through `take` so a concurrently growing
         // file cannot force an unbounded allocation during index recovery.
-        let bytes = match tokio::fs::File::open(&path).await {
-            Ok(file) => {
-                let mut bytes = Vec::new();
-                file.take(max_bytes as u64 + 1)
-                    .read_to_end(&mut bytes)
-                    .await?;
-                if bytes.len() > max_bytes {
-                    return Err(EventLogError::RecoveryLimitExceeded {
-                        detail: format!(
-                            "{} exceeds the {max_bytes}-byte local recovery limit",
-                            path.display()
-                        ),
-                    });
-                }
-                bytes
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-            Err(error) => return Err(error.into()),
-        };
+        let mut bytes = Vec::new();
+        (&mut file)
+            .take(max_bytes as u64 + 1)
+            .read_to_end(&mut bytes)
+            .await?;
+        if bytes.len() > max_bytes {
+            return Err(EventLogError::RecoveryLimitExceeded {
+                detail: format!(
+                    "{} exceeds the {max_bytes}-byte local recovery limit",
+                    path.display()
+                ),
+            });
+        }
         let committed_len = bytes
             .iter()
             .rposition(|byte| *byte == b'\n')
@@ -937,15 +944,6 @@ impl JsonlEventLog {
                 })?;
             index.insert_existing(event)?;
         }
-        let mut options = tokio::fs::OpenOptions::new();
-        options.create(true).read(true).append(true);
-        #[cfg(unix)]
-        {
-            // THREAT[TM-FS-014]: canonical envelopes can contain prompts,
-            // tool results, and metadata; newly created logs are owner-only.
-            options.mode(0o600);
-        }
-        let file = options.open(&path).await?;
         if bytes.len() != committed_len {
             file.set_len(committed_len as u64).await?;
             file.sync_data().await?;
@@ -964,6 +962,37 @@ impl JsonlEventLog {
     pub fn path(&self) -> &Path {
         &self.path
     }
+}
+
+#[cfg(unix)]
+async fn ensure_private_event_log(file: &tokio::fs::File, path: &Path) -> std::io::Result<()> {
+    let metadata = file.metadata().await?;
+    if !metadata.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("event log path is not a regular file: {}", path.display()),
+        ));
+    }
+    // SAFETY: getuid has no preconditions and cannot fail.
+    if metadata.uid() != unsafe { libc::getuid() } {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!(
+                "event log is not owned by the current user: {}",
+                path.display()
+            ),
+        ));
+    }
+    if metadata.permissions().mode() & 0o077 != 0 {
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))
+            .await?;
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+async fn ensure_private_event_log(_file: &tokio::fs::File, _path: &Path) -> std::io::Result<()> {
+    Ok(())
 }
 
 #[async_trait]
@@ -1452,6 +1481,46 @@ mod tests {
         EventContext, InputMessageData, OutputMessageDeltaData, SessionStartedData,
     };
     use everruns_provider::typed_id::{HarnessId, TurnId};
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn jsonl_open_rejects_symlinks_without_touching_the_target() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().expect("tempdir");
+        let target = root.path().join("target");
+        let path = root.path().join("events.jsonl");
+        tokio::fs::write(&target, b"unchanged")
+            .await
+            .expect("write target");
+        symlink(&target, &path).expect("create symlink");
+
+        let error = JsonlEventLog::open(&path)
+            .await
+            .err()
+            .expect("symlink is rejected");
+
+        assert!(matches!(error, EventLogError::Backend { .. }));
+        assert_eq!(tokio::fs::read(&target).await.unwrap(), b"unchanged");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn jsonl_open_hardens_existing_file_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("events.jsonl");
+        tokio::fs::write(&path, b"").await.expect("write fixture");
+        tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
+            .await
+            .expect("set fixture permissions");
+
+        let _log = JsonlEventLog::open(&path).await.expect("open event log");
+
+        let mode = std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
 
     #[tokio::test]
     async fn jsonl_recovery_rejects_oversize_files_before_indexing() {
