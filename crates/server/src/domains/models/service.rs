@@ -65,12 +65,11 @@ impl ModelService {
         provider_id: Uuid,
         req: CreateModelRequest,
     ) -> Result<Model> {
-        let provider_id = self
-            .validate_provider_id(caller.org_id, provider_id)
-            .await?;
+        let provider = self.get_provider(caller.org_id, provider_id).await?;
+        Self::require_unmanaged_provider(&provider)?;
 
         let input = CreateModelRow {
-            provider_id: provider_id.into(),
+            provider_id: provider.id,
             model_id: req.model_id,
             display_name: req.display_name,
             capabilities: req.capabilities,
@@ -232,6 +231,25 @@ impl ModelService {
         id: Uuid,
         req: UpdateModelRequest,
     ) -> Result<Option<Model>> {
+        let existing = match self.db.get_model(caller.org_id, id).await? {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+        let existing_provider = self
+            .get_provider(caller.org_id, existing.provider_id.uuid())
+            .await?;
+
+        // THREAT[TM-AUTHZ]: managed providers own their model catalog. Tenant
+        // admins may change only org preferences on those catalog rows.
+        if existing_provider.managed
+            && (req.provider_id.is_some()
+                || req.model_id.is_some()
+                || req.display_name.is_some()
+                || req.capabilities.is_some())
+        {
+            return Err(Self::managed_catalog_error());
+        }
+
         let provider_id = match req.provider_id.as_deref() {
             Some(provider_id) => Some(
                 provider_id
@@ -242,16 +260,15 @@ impl ModelService {
             None => None,
         };
         let provider_id = if let Some(provider_id) = provider_id {
-            Some(
-                self.validate_provider_id(caller.org_id, provider_id)
-                    .await?,
-            )
+            let provider = self.get_provider(caller.org_id, provider_id).await?;
+            Self::require_unmanaged_provider(&provider)?;
+            Some(provider.id)
         } else {
             None
         };
 
         let input = UpdateModel {
-            provider_id: provider_id.map(Into::into),
+            provider_id,
             model_id: req.model_id,
             display_name: req.display_name,
             capabilities: req.capabilities,
@@ -277,6 +294,13 @@ impl ModelService {
     }
 
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
+        if let Some(model) = self.db.get_model(caller.org_id, id).await? {
+            let provider = self
+                .get_provider(caller.org_id, model.provider_id.uuid())
+                .await?;
+            Self::require_unmanaged_provider(&provider)?;
+        }
+
         // Before deleting, check if this was the org default
         let was_default = self.is_org_default(caller.org_id, id).await?;
         let deleted = self.db.delete_model(caller.org_id, id).await?;
@@ -335,13 +359,30 @@ impl ModelService {
         Ok(())
     }
 
-    async fn validate_provider_id(&self, org_id: i64, provider_id: Uuid) -> Result<Uuid> {
+    async fn get_provider(
+        &self,
+        org_id: i64,
+        provider_id: Uuid,
+    ) -> Result<crate::storage::models::ProviderRow> {
         self.db
             .get_provider(org_id, provider_id)
             .await?
-            .ok_or_else(|| ResourceNotFoundError::new("Provider"))?;
+            .ok_or_else(|| ResourceNotFoundError::new("Provider").into())
+    }
 
-        Ok(provider_id)
+    fn require_unmanaged_provider(provider: &crate::storage::models::ProviderRow) -> Result<()> {
+        if provider.managed {
+            return Err(Self::managed_catalog_error());
+        }
+        Ok(())
+    }
+
+    fn managed_catalog_error() -> anyhow::Error {
+        everruns_core::PolicyError::denied(
+            "provider_managed",
+            "This provider's model catalog is managed by the host and cannot be modified.",
+        )
+        .into()
     }
 
     fn row_to_model(row: &ModelRow) -> Model {
@@ -457,7 +498,7 @@ impl ModelService {
 mod tests {
     use super::*;
     use crate::storage::{CreateOrganizationRow, CreateProviderRow};
-    use everruns_core::DEFAULT_ORG_ID;
+    use everruns_core::{DEFAULT_ORG_ID, PolicyError};
 
     fn build_create_request() -> CreateModelRequest {
         CreateModelRequest {
@@ -501,6 +542,138 @@ mod tests {
         .await
         .unwrap()
         .id
+    }
+
+    async fn mark_provider_managed(db: &StorageBackend, provider_id: ProviderId) {
+        assert!(
+            db.set_provider_managed(DEFAULT_ORG_ID, provider_id.uuid(), true)
+                .await
+                .unwrap()
+        );
+    }
+
+    fn assert_managed_policy_error(err: anyhow::Error) {
+        assert!(err.downcast_ref::<PolicyError>().is_some(), "{err:#}");
+    }
+
+    #[tokio::test]
+    async fn create_rejects_managed_provider() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = ModelService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
+        mark_provider_managed(&db, provider_id).await;
+
+        let err = service
+            .create(&caller, provider_id.uuid(), build_create_request())
+            .await
+            .unwrap_err();
+
+        assert_managed_policy_error(err);
+    }
+
+    #[tokio::test]
+    async fn managed_model_allows_preference_updates_only() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = ModelService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
+        let model = service
+            .create(&caller, provider_id.uuid(), build_create_request())
+            .await
+            .unwrap();
+        mark_provider_managed(&db, provider_id).await;
+
+        let updated = service
+            .update(
+                &caller,
+                model.id.uuid(),
+                UpdateModelRequest {
+                    provider_id: None,
+                    model_id: None,
+                    display_name: None,
+                    capabilities: None,
+                    enabled: Some(false),
+                    is_favorite: Some(true),
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(!updated.enabled);
+        assert!(updated.is_favorite);
+    }
+
+    #[tokio::test]
+    async fn managed_model_rejects_catalog_update_and_delete() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = ModelService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
+        let model = service
+            .create(&caller, provider_id.uuid(), build_create_request())
+            .await
+            .unwrap();
+        mark_provider_managed(&db, provider_id).await;
+
+        let err = service
+            .update(
+                &caller,
+                model.id.uuid(),
+                UpdateModelRequest {
+                    provider_id: None,
+                    model_id: Some("unauthorized-model".to_string()),
+                    display_name: None,
+                    capabilities: None,
+                    enabled: None,
+                    is_favorite: None,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_managed_policy_error(err);
+
+        let err = service.delete(&caller, model.id.uuid()).await.unwrap_err();
+        assert_managed_policy_error(err);
+        assert!(
+            db.get_model(DEFAULT_ORG_ID, model.id.uuid())
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn update_cannot_move_model_to_managed_provider() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = ModelService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let first_provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
+        let managed_provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
+        mark_provider_managed(&db, managed_provider_id).await;
+        let model = service
+            .create(&caller, first_provider_id.uuid(), build_create_request())
+            .await
+            .unwrap();
+
+        let err = service
+            .update(
+                &caller,
+                model.id.uuid(),
+                UpdateModelRequest {
+                    provider_id: Some(managed_provider_id.to_string()),
+                    model_id: None,
+                    display_name: None,
+                    capabilities: None,
+                    enabled: None,
+                    is_favorite: None,
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert_managed_policy_error(err);
     }
 
     #[tokio::test]
