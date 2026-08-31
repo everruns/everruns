@@ -441,7 +441,7 @@ impl ModelService {
             modalities: hardcoded.modalities.or(discovered.modalities),
             reasoning_effort: hardcoded.reasoning_effort.or(discovered.reasoning_effort),
             speed: hardcoded.speed.or(discovered.speed),
-            verbosity: None,
+            verbosity: hardcoded.verbosity.or(discovered.verbosity),
             tool_search: hardcoded.tool_search,
             supported_parameters: if hardcoded.supported_parameters.is_empty() {
                 discovered.supported_parameters
@@ -708,6 +708,26 @@ mod tests {
 
         let merged = ModelService::merge_profiles(hardcoded, discovered);
         assert_eq!(merged.limits.unwrap().context, 128_000);
+    }
+
+    #[test]
+    fn merge_preserves_hardcoded_verbosity() {
+        use everruns_provider::model::{Verbosity, VerbosityConfig, VerbosityValue};
+
+        let hardcoded = ModelProfile {
+            verbosity: Some(VerbosityConfig {
+                values: vec![VerbosityValue {
+                    value: Verbosity::Medium,
+                    name: "Medium".into(),
+                }],
+                default: Verbosity::Medium,
+            }),
+            ..base_profile()
+        };
+
+        let merged = ModelService::merge_profiles(hardcoded, base_profile());
+
+        assert_eq!(merged.verbosity.unwrap().default, Verbosity::Medium);
     }
 
     #[test]
