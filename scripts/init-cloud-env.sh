@@ -41,8 +41,46 @@ install_just() {
 
     info "Installing just (pre-built binary)..."
 
-    # Use official installer script - downloads pre-built binary
-    curl --proto '=https' --tlsv1.2 -sSf --connect-timeout 10 --max-time 60 --retry 2 --retry-delay 2 https://just.systems/install.sh | bash -s -- --to "$INSTALL_DIR"
+    # Detect architecture
+    ARCH=$(uname -m)
+    case "$ARCH" in
+        x86_64)  JUST_ARCH="x86_64" ;;
+        aarch64) JUST_ARCH="aarch64" ;;
+        *)       error "Unsupported architecture: $ARCH" ;;
+    esac
+
+    # Pinned version — the upstream just.systems installer resolves the version
+    # through api.github.com/repos/casey/just/releases/latest, and a cloud-agent
+    # session scopes the GitHub API to this repository, so that call returns 403
+    # and the install fails. Release assets on github.com are not scoped, so
+    # pinning and fetching the asset directly is what works here — the same
+    # reason gh, caddy and doppler below are pinned.
+    JUST_VERSION="1.58.0"
+    JUST_SHA256=""
+    case "$JUST_ARCH" in
+        x86_64)  JUST_SHA256="4a5cc2f53e6f0f8c59092a6cc38291eb729d46a7dd95d3ae582008881b84931d" ;;
+        aarch64) JUST_SHA256="748237128c4c40cbdabc65e841d05ceba13cc23a91eaba395495894c1d9764df" ;;
+        *)       error "Unsupported architecture for checksum verification: $JUST_ARCH" ;;
+    esac
+
+    JUST_TARBALL="just-${JUST_VERSION}-${JUST_ARCH}-unknown-linux-musl.tar.gz"
+    JUST_URL="https://github.com/casey/just/releases/download/${JUST_VERSION}/${JUST_TARBALL}"
+
+    # Download and extract
+    TEMP_DIR=$(mktemp -d)
+    trap "rm -rf $TEMP_DIR" EXIT
+
+    info "Downloading just v${JUST_VERSION}..."
+    curl -fsSL --connect-timeout 10 --max-time 60 --retry 2 --retry-delay 2 "$JUST_URL" -o "$TEMP_DIR/$JUST_TARBALL"
+
+    info "Verifying just checksum..."
+    echo "${JUST_SHA256}  $TEMP_DIR/$JUST_TARBALL" | sha256sum -c - >/dev/null
+
+    tar -xzf "$TEMP_DIR/$JUST_TARBALL" -C "$TEMP_DIR"
+
+    # Install binary
+    cp "$TEMP_DIR/just" "$INSTALL_DIR/just"
+    chmod +x "$INSTALL_DIR/just"
 
     if command -v just &> /dev/null; then
         info "just installed: $(just --version)"
