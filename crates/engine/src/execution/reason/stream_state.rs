@@ -14,6 +14,17 @@ pub(super) enum StreamReplayState {
 }
 
 impl StreamReplayState {
+    /// Start committed when the request grants the provider tools it executes
+    /// internally. Those side effects are not reported as agent tool calls, so
+    /// the stream cannot prove that replay is safe.
+    pub(super) fn for_request(has_provider_executed_tools: bool) -> Self {
+        if has_provider_executed_tools {
+            Self::Committed
+        } else {
+            Self::Replayable
+        }
+    }
+
     pub(super) fn observe(&mut self, event: &LlmStreamEvent) {
         if matches!(self, Self::Committed) {
             return;
@@ -124,7 +135,7 @@ mod tests {
 
     #[test]
     fn reasoning_only_attempt_remains_replayable() {
-        let mut state = StreamReplayState::default();
+        let mut state = StreamReplayState::for_request(false);
         state.observe(&LlmStreamEvent::ReasoningDelta {
             delta: "analysis".to_string(),
             summary: false,
@@ -138,6 +149,15 @@ mod tests {
 
         let stall = LlmStreamError::new("provider stream stall: no tokens for 120s");
         assert!(state.should_retry(&stall, 0, 2));
+    }
+
+    #[test]
+    fn provider_executed_tools_commit_attempt_before_stream_activity() {
+        let state = StreamReplayState::for_request(true);
+        let stall = LlmStreamError::new("provider stream stall: no tokens for 120s");
+
+        assert_eq!(state, StreamReplayState::Committed);
+        assert!(!state.should_retry(&stall, 0, 2));
     }
 
     #[test]
