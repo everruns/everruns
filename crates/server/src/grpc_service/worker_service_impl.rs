@@ -3716,7 +3716,7 @@ impl WorkerService for WorkerServiceImpl {
             }
             None => everruns_core::Caller::internal(req.org_id),
         };
-        let ctx = self.domain_ctx_for_caller(caller);
+        let ctx = self.org_domain_ctx_for_caller(caller).await?;
         let response = match crate::domains::common::dispatch(&req.name, params, &ctx).await {
             Ok(ok_json) => ExecuteCommandResponse {
                 result: Some(proto::execute_command_response::Result::OkJson(
@@ -3920,7 +3920,7 @@ impl WorkerService for WorkerServiceImpl {
         };
 
         use crate::domains::common::Command;
-        let ctx = self.domain_ctx(req.org_id);
+        let ctx = self.org_domain_ctx(req.org_id).await?;
         let harness = crate::domains::harnesses::CreateHarness(create_req)
             .run(&ctx)
             .await
@@ -3966,7 +3966,7 @@ impl WorkerService for WorkerServiceImpl {
         use crate::domains::common::Command;
         let harness_public_id =
             everruns_provider::typed_id::HarnessId::from_uuid(harness_id).to_string();
-        let ctx = self.domain_ctx(req.org_id);
+        let ctx = self.org_domain_ctx(req.org_id).await?;
         let harness = crate::domains::harnesses::UpdateHarnessCmd {
             id: harness_public_id,
             req: update_req,
@@ -3990,7 +3990,7 @@ impl WorkerService for WorkerServiceImpl {
         use crate::domains::common::Command;
         let harness_public_id =
             everruns_provider::typed_id::HarnessId::from_uuid(harness_id).to_string();
-        let ctx = self.domain_ctx(req.org_id);
+        let ctx = self.org_domain_ctx(req.org_id).await?;
         crate::domains::harnesses::DeleteHarness {
             id: harness_public_id,
         }
@@ -4011,7 +4011,7 @@ impl WorkerService for WorkerServiceImpl {
         use crate::domains::common::Command;
         let harness_public_id =
             everruns_provider::typed_id::HarnessId::from_uuid(harness_id).to_string();
-        let ctx = self.domain_ctx(req.org_id);
+        let ctx = self.org_domain_ctx(req.org_id).await?;
         let harness = crate::domains::harnesses::CopyHarness {
             id: harness_public_id,
         }
@@ -4105,7 +4105,7 @@ impl WorkerService for WorkerServiceImpl {
         };
 
         use crate::domains::common::Command;
-        let ctx = self.domain_ctx(req.org_id);
+        let ctx = self.org_domain_ctx(req.org_id).await?;
         let agent = crate::domains::agents::CreateAgent(create_req)
             .run(&ctx)
             .await
@@ -4145,7 +4145,7 @@ impl WorkerService for WorkerServiceImpl {
         };
 
         use crate::domains::common::Command;
-        let ctx = self.domain_ctx(req.org_id);
+        let ctx = self.org_domain_ctx(req.org_id).await?;
         let updated = crate::domains::agents::UpdateAgentCmd {
             id: public_id,
             req: update_req,
@@ -4168,7 +4168,7 @@ impl WorkerService for WorkerServiceImpl {
 
         use crate::domains::common::Command;
         let public_id = everruns_provider::typed_id::AgentId::from_uuid(agent_id).to_string();
-        let ctx = self.domain_ctx(req.org_id);
+        let ctx = self.org_domain_ctx(req.org_id).await?;
         crate::domains::agents::DeleteAgent { id: public_id }
             .run(&ctx)
             .await

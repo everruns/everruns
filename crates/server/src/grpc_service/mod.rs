@@ -713,11 +713,6 @@ impl WorkerServiceImpl {
         }
     }
 
-    /// Build a domain command context for the given org.
-    fn domain_ctx(&self, org_id: i64) -> crate::domains::common::Ctx {
-        self.domain_ctx_for_caller(everruns_core::Caller::internal(org_id))
-    }
-
     fn domain_ctx_for_caller(&self, caller: everruns_core::Caller) -> crate::domains::common::Ctx {
         let resolver: Arc<dyn PermissionResolver> = if caller.is_internal {
             Arc::new(everruns_core::DefaultPermissionResolver)
@@ -758,6 +753,33 @@ impl WorkerServiceImpl {
         }
 
         ctx
+    }
+
+    /// Build a domain command context using the organization's effective feature flags.
+    async fn org_domain_ctx_for_caller(
+        &self,
+        caller: everruns_core::Caller,
+    ) -> Result<crate::domains::common::Ctx, Status> {
+        let org_id = caller.org_id;
+        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
+            &self.db,
+            org_id,
+            &everruns_platform::FeatureFlags::current(),
+        )
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, org_id, "Failed to resolve gRPC command feature flags");
+            Status::internal("Failed to resolve organization feature flags")
+        })?;
+
+        Ok(self
+            .domain_ctx_for_caller(caller)
+            .with_feature_flags(feature_flags))
+    }
+
+    async fn org_domain_ctx(&self, org_id: i64) -> Result<crate::domains::common::Ctx, Status> {
+        self.org_domain_ctx_for_caller(everruns_core::Caller::internal(org_id))
+            .await
     }
 
     /// Get durable store or return unavailable error
