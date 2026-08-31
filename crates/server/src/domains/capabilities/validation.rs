@@ -21,6 +21,48 @@ use everruns_mcp::{is_mcp_capability, parse_mcp_capability_id};
 
 use crate::domains::common::CommandError;
 
+/// Keep hydrated capability payloads comfortably below the 16 MiB worker gRPC limit.
+/// The remaining budget accommodates the enclosing agent or harness protobuf fields.
+// THREAT[TM-DOS-037]: Bound expanded configs before they can reach durable transport.
+const MAX_HYDRATED_CAPABILITY_BYTES: usize = 8 * 1024 * 1024;
+
+pub fn validate_hydrated_capability_size(
+    capabilities: &[AgentCapabilityConfig],
+) -> Result<(), CommandError> {
+    let mut total = 0usize;
+    for capability in capabilities {
+        let size = serde_json::to_vec(capability)
+            .map_err(|error| {
+                CommandError::bad_request(format!("Invalid capability config: {error}"))
+            })?
+            .len();
+        total = total
+            .checked_add(size)
+            .ok_or_else(|| CommandError::bad_request("Capability configs exceed allowed limits"))?;
+        if total > MAX_HYDRATED_CAPABILITY_BYTES {
+            return Err(CommandError::bad_request(
+                "Capability configs exceed allowed limits",
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub async fn validate_hydrated_capability_size_for_org(
+    db: &StorageBackend,
+    org_id: i64,
+    capabilities: &[AgentCapabilityConfig],
+) -> Result<(), CommandError> {
+    let hydrated = crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+        db,
+        org_id,
+        capabilities.to_vec(),
+    )
+    .await
+    .map_err(|error| CommandError::bad_request(format!("Invalid capability config: {error}")))?;
+    validate_hydrated_capability_size(&hydrated)
+}
+
 pub fn validate_feature_gated_capability_refs(
     feature_flags: &everruns_platform::FeatureFlags,
     capabilities: &[AgentCapabilityConfig],
@@ -183,6 +225,22 @@ mod tests {
     use everruns_provider::typed_id::PluginInstallId;
     use std::sync::Arc;
     use uuid::Uuid;
+
+    #[test]
+    fn hydrated_capabilities_have_an_aggregate_size_limit() {
+        let below_limit = AgentCapabilityConfig::with_config(
+            "test",
+            serde_json::json!({"payload": "x".repeat(MAX_HYDRATED_CAPABILITY_BYTES - 1024)}),
+        );
+        assert!(validate_hydrated_capability_size(&[below_limit]).is_ok());
+
+        let oversized = AgentCapabilityConfig::with_config(
+            "test",
+            serde_json::json!({"payload": "x".repeat(MAX_HYDRATED_CAPABILITY_BYTES)}),
+        );
+        let error = validate_hydrated_capability_size(&[oversized]).unwrap_err();
+        assert_eq!(error.message(), "Capability configs exceed allowed limits");
+    }
 
     #[test]
     fn feature_gated_capability_requires_effective_flag() {
