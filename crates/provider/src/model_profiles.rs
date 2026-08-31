@@ -328,6 +328,18 @@ const META_ONLY: &[DriverId] = &[DriverId::Meta];
 static REGISTRY: &[ModelDescriptor] = &[
     // OpenAI
     md_service(
+        &["text-embedding-3-small"],
+        ModelVendor::OpenAi,
+        OPENAI,
+        ServiceKind::Embeddings,
+    ),
+    md_service(
+        &["text-embedding-3-large"],
+        ModelVendor::OpenAi,
+        OPENAI,
+        ServiceKind::Embeddings,
+    ),
+    md_service(
         &["gpt-realtime-2"],
         ModelVendor::OpenAi,
         OPENAI,
@@ -711,8 +723,57 @@ fn meta_profile_data(model_id: &str) -> Option<ModelProfile> {
     })
 }
 
+fn openai_embedding_profile(name: &str, family: &str, input_cost: f64) -> ModelProfile {
+    ModelProfile {
+        name: name.into(),
+        family: family.into(),
+        description: None,
+        release_date: Some("2024-01-25".into()),
+        last_updated: Some("2024-01-25".into()),
+        attachment: false,
+        reasoning: false,
+        temperature: false,
+        knowledge: None,
+        tool_call: false,
+        structured_output: false,
+        open_weights: false,
+        cost: Some(ModelCost {
+            input: input_cost,
+            output: 0.0,
+            cache_read: None,
+            cost_tiers: vec![],
+        }),
+        limits: Some(ModelLimits {
+            context: 8_191,
+            input: None,
+            output: 0,
+            max_media: None,
+        }),
+        modalities: Some(ModelModalities {
+            input: vec![Modality::Text],
+            output: vec![],
+        }),
+        reasoning_effort: None,
+        speed: None,
+        verbosity: None,
+        tool_search: false,
+        supported_parameters: Vec::new(),
+        supports_phases: false,
+    }
+}
+
 fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
     match model_id {
+        "text-embedding-3-small" => Some(openai_embedding_profile(
+            "Text Embedding 3 Small",
+            "text-embedding-3-small",
+            0.02,
+        )),
+        "text-embedding-3-large" => Some(openai_embedding_profile(
+            "Text Embedding 3 Large",
+            "text-embedding-3-large",
+            0.13,
+        )),
         "gpt-realtime-2" => Some(ModelProfile {
             name: "GPT Realtime 2".into(),
             family: "gpt-realtime".into(),
@@ -4645,6 +4706,24 @@ mod tests {
     #[test]
     fn test_estimate_cost_usd_unknown_model_is_none() {
         assert!(estimate_cost_usd(&DriverId::OpenAI, "no-such-model", 100, 50, 0, 0).is_none());
+    }
+
+    #[test]
+    fn test_estimate_cost_usd_openai_embedding_model() {
+        let estimate = estimate_cost_usd(
+            &DriverId::OpenAI,
+            "text-embedding-3-small",
+            1_000_000,
+            0,
+            0,
+            0,
+        );
+
+        assert_eq!(estimate, Some(0.02));
+        assert_eq!(
+            get_model_service_kind(&DriverId::OpenAI, "text-embedding-3-small"),
+            ServiceKind::Embeddings
+        );
     }
 
     #[test]

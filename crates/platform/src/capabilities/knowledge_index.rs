@@ -25,6 +25,7 @@ use everruns_core::events::{
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_provider::tool_types::ToolHints;
+use everruns_provider::{model::DriverId, model_profiles::estimate_cost_usd};
 
 /// Stable string id for the knowledge index capability.
 pub const KNOWLEDGE_INDEX_CAPABILITY_ID: &str = "knowledge_index";
@@ -401,6 +402,13 @@ async fn emit_embedding_usage(context: &ToolContext, usage: &[EmbeddingCallUsage
     };
 
     for call in usage {
+        let estimated_cost_usd = call
+            .provider
+            .as_deref()
+            .and_then(|provider| provider.parse::<DriverId>().ok())
+            .and_then(|provider| {
+                estimate_cost_usd(&provider, &call.model, call.total_tokens, 0, 0, 0)
+            });
         // An embedding call has no messages, tools, or generated output — only
         // billed usage. The remaining fields stay empty rather than synthesized.
         let data = LlmGenerationData::success(
@@ -416,7 +424,7 @@ async fn emit_embedding_usage(context: &ToolContext, usage: &[EmbeddingCallUsage
                 cache_read_tokens: None,
                 cache_creation_tokens: None,
                 actual_cost_usd: call.actual_cost_usd,
-                estimated_cost_usd: None,
+                estimated_cost_usd,
                 effective_cost_usd: None,
             }),
             None,
@@ -610,7 +618,8 @@ mod tests {
                         model: "text-embedding-3-small".to_string(),
                         provider: Some("openai".to_string()),
                         total_tokens: 7,
-                        actual_cost_usd: Some(0.25),
+                        // Direct OpenAI reports tokens but not an inline cost.
+                        actual_cost_usd: None,
                     }],
                 })
             }
@@ -647,6 +656,7 @@ mod tests {
         assert_eq!(data.metadata.provider.as_deref(), Some("openai"));
         let usage = data.metadata.usage.as_ref().expect("usage recorded");
         assert_eq!(usage.input_tokens, 7);
-        assert_eq!(usage.actual_cost_usd, Some(0.25));
+        assert_eq!(usage.actual_cost_usd, None);
+        assert_eq!(usage.estimated_cost_usd, Some(0.000_000_14));
     }
 }

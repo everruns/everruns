@@ -424,6 +424,24 @@ fn test_compute_debit_usd_with_unknown_model_falls_back_to_tokens() {
 }
 
 #[test]
+fn test_compute_debit_usd_estimates_openai_embedding_cost() {
+    let (svc, _) = make_service();
+    let debit = svc.compute_debit(
+        "usd",
+        1500,
+        1500,
+        0,
+        0,
+        0,
+        Some("text-embedding-3-small"),
+        Some("openai"),
+        None,
+    );
+
+    assert_eq!(debit, 0.000_03);
+}
+
+#[test]
 fn test_compute_debit_credits_currency() {
     let (svc, _) = make_service();
     let debit = svc.compute_debit("credits", 5000, 3000, 2000, 0, 0, None, None, None);
