@@ -148,9 +148,9 @@ fn llm_judge(prompt: &str) -> GuardrailRule {
 /// Natural-language policy for the secret-leak judge. Describes the *class* of
 /// content to block (secret material rendered in cleartext) rather than any
 /// specific value, so it catches opaque secrets not known at config time.
-const SECRET_LEAK_JUDGE_POLICY: &str = "Block any tool call whose arguments would print, echo, log, \
-    diff, display, or transmit secret or credential material in cleartext — API keys, access tokens, \
-    passwords, private keys, connection strings, or values read from a secrets manager. Allow \
+const SECRET_LEAK_JUDGE_POLICY: &str = "Block any tool call, tool argument, tool result, log, diff, or \
+    other content that displays or transmits secret or credential material in cleartext — API keys, \
+    access tokens, passwords, private keys, connection strings, or values read from a secrets manager. Allow \
     comparisons that only reveal a hash, fingerprint, length, or redacted form. Allow reads or \
     writes that store or move a secret without displaying its value.";
 
@@ -389,6 +389,21 @@ mod tests {
         let shell = find_guardrail_gallery_item("block-shell-access").expect("present");
         assert_eq!(shell.check_types(), vec!["tool_pattern"]);
         assert_eq!(shell.stages(), vec!["tool_use"]);
+    }
+
+    #[test]
+    fn secret_leak_judge_policy_covers_tool_results() {
+        let item = find_guardrail_gallery_item("secret-leak-judge").expect("present");
+        let check = item
+            .config
+            .checks
+            .iter()
+            .find(|check| check.stage == GuardrailStage::ToolOutput)
+            .expect("tool-output check");
+        let GuardrailRule::LlmJudge { prompt } = &check.rule else {
+            panic!("tool-output check must use an LLM judge");
+        };
+        assert!(prompt.contains("tool result"));
     }
 
     #[test]
