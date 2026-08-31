@@ -57,14 +57,15 @@ async fn real_workspace_seeding_and_context_inspection_use_framework_types() {
 }
 
 #[tokio::test]
-async fn local_plugin_contributes_to_the_same_inspected_context() {
+async fn agent_plugin_with_dotted_name_contributes_to_the_inspected_context() {
     let plugin = tempfile::tempdir().expect("plugin dir");
     fs::create_dir_all(plugin.path().join(".claude-plugin")).expect("manifest dir");
     fs::create_dir_all(plugin.path().join("agents")).expect("agents dir");
     fs::write(
         plugin.path().join(".claude-plugin/plugin.json"),
         r#"{
-          "name": "offline-helper",
+          "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+          "name": "com.example.tool",
           "version": "0.1.0",
           "description": "Offline fixture",
           "agents": "./agents/"
