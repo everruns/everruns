@@ -23,8 +23,9 @@ use std::path::{Component, Path, PathBuf};
 use std::time::Instant;
 
 use everruns::{
-    Agent, CapabilityRef, ContentPart, Controls, ImageContentPart, InMemoryEngine, InputMessage,
-    Provider, ReasoningConfig, ReasoningEffort, Session, SessionEvent, SessionEventKind,
+    Agent, CapabilityRef, ContentPart, Controls, EventStreamError, ImageContentPart,
+    InMemoryEngine, InputMessage, Provider, ReasoningConfig, ReasoningEffort, Session,
+    SessionEvent, SessionEventKind,
 };
 
 use mira::subject::summarize_events;
@@ -146,8 +147,16 @@ impl Subject for GenericRuntimeSubject {
         }
 
         // Normalize the Framework event stream: usage + ordered tool-call names.
-        while let Ok(Some(event)) = events.try_recv() {
-            transcript.events.push(event_value(event));
+        loop {
+            match events.try_recv() {
+                Ok(Some(event)) => transcript.events.push(event_value(event)),
+                Ok(None) => break,
+                Err(error) => {
+                    mark_event_stream_error(&mut transcript, error);
+                    transcript.timing.duration_ms = started.elapsed().as_millis() as u64;
+                    return transcript;
+                }
+            }
         }
         let (usage, _) = summarize_events(&transcript.events);
         transcript.usage = usage;
@@ -168,6 +177,11 @@ impl Subject for GenericRuntimeSubject {
         transcript.timing.duration_ms = started.elapsed().as_millis() as u64;
         transcript
     }
+}
+
+fn mark_event_stream_error(transcript: &mut Transcript, error: EventStreamError) {
+    transcript.error_kind = ErrorKind::Infra;
+    transcript.error = Some(format!("Framework event stream incomplete: {error}"));
 }
 
 fn event_value(event: SessionEvent) -> serde_json::Value {
@@ -467,6 +481,19 @@ mod tests {
             let t = subject.run(&sample, &cx).await;
             assert!(t.errored_infra(), "{axis}={value} should be infra");
         }
+    }
+
+    #[test]
+    fn event_stream_lag_is_an_infra_error() {
+        let mut transcript = Transcript::default();
+
+        mark_event_stream_error(&mut transcript, EventStreamError::Lagged { missed: 12 });
+
+        assert!(transcript.errored_infra());
+        assert_eq!(
+            transcript.error.as_deref(),
+            Some("Framework event stream incomplete: event stream lagged by 12 events")
+        );
     }
 
     #[test]
