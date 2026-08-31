@@ -2124,6 +2124,7 @@ jobs:
       - worker-test
       - shell-test
       - integration-test
+      - live-provider-matrix
       - s3-integration-test
       - build-binaries
       - workflow-test
