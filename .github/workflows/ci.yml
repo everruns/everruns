@@ -178,6 +178,10 @@ jobs:
               # drops a timeout-minutes must run the guard even when it touches
               # nothing under scripts/.
               - '.github/workflows/ci.yml'
+              # scripts/test-cloud-env-tooling.sh reads the cloud bootstrap, so
+              # a PR that unpins a tool there must run the guard even when it
+              # touches no scripts/test-*.sh.
+              - 'scripts/init-cloud-env.sh'
               - 'Cargo.toml'
               - 'crates/*/Cargo.toml'
               - 'integrations/*/Cargo.toml'
