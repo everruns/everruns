@@ -3,13 +3,14 @@ use everruns_builtins::InfinityContextCapability;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
-    AgentDefinition, CapabilityRegistry, ExecutionSession, InitialFile, Message, MessageRole,
-    WorkspacePolicy, session_files::SessionFileSystem,
+    AgentDefinition, Capability, CapabilityRegistry, CapabilityStatus, ExecutionSession,
+    InitialFile, Message, MessageRole, WorkspacePolicy, session_files::SessionFileSystem,
 };
 use everruns_host::HostComposition;
 use everruns_host::{
-    AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntimeBuilder, RealDiskFileStore,
-    SessionBuilder, SessionFileSystemFactory, SessionFileSystemFactoryContext, TurnStopReason,
+    AcceptedTurnInput, AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntimeBuilder,
+    RealDiskFileStore, SessionBuilder, SessionFileSystemFactory, SessionFileSystemFactoryContext,
+    TurnStopReason,
 };
 use everruns_llmsim::LlmSimConfig;
 use everruns_llmsim::LlmSimRuntimeExt;
@@ -21,6 +22,76 @@ use everruns_provider::tool_types::ToolCall;
 use everruns_test_support::TestMathCapability;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+#[cfg(feature = "bashkit")]
+struct BlockingPromptCapability;
+
+#[cfg(feature = "bashkit")]
+impl Capability for BlockingPromptCapability {
+    fn id(&self) -> &str {
+        "blocking_prompt"
+    }
+    fn name(&self) -> &str {
+        "Blocking prompt"
+    }
+    fn description(&self) -> &str {
+        "Blocks submitted prompts"
+    }
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+    fn user_hooks(&self) -> Vec<everruns_core::user_hook_types::UserHookSpec> {
+        use everruns_core::user_hook_types::{
+            ExecutorSpec, HookEvent, HookMatcher, HookSource, OnError, UserHookSpec,
+        };
+        vec![UserHookSpec {
+            id: Some("block".into()),
+            event: HookEvent::UserPromptSubmit,
+            matcher: HookMatcher::default(),
+            executor: ExecutorSpec::Bash {
+                command:
+                    r#"echo '{"decision":"block","reason":"policy","user_message":"blocked"}'"#
+                        .into(),
+                env: Default::default(),
+            },
+            timeout_ms: 5000,
+            on_error: OnError::Warn,
+            description: None,
+            source: HookSource::UserConfig,
+        }]
+    }
+}
+
+#[cfg(feature = "bashkit")]
+#[tokio::test]
+async fn accepted_input_persisted_after_a_turn_ends_is_prompt_hook_enforced() {
+    let runtime = InProcessRuntimeBuilder::new()
+        .capability(BlockingPromptCapability)
+        .llm_sim_as_default(LlmSimConfig::fixed("unused"))
+        .single_session(|session| {
+            session
+                .harness("guarded", "Guard every prompt.")
+                .harness_capability("blocking_prompt")
+                .agent("guarded-agent", "Reply safely.")
+        })
+        .build()
+        .await
+        .expect("runtime builds");
+    let session_id = runtime.default_session_id().expect("default session");
+
+    runtime
+        .append_accepted_inputs(
+            session_id,
+            everruns_provider::typed_id::TurnId::new(),
+            vec![AcceptedTurnInput::new("raw unsafe prompt")],
+        )
+        .await
+        .expect("accepted input persists");
+
+    let messages = runtime.messages(session_id).await.expect("history loads");
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].content_to_llm_string(), "blocked");
+}
 
 fn minimal_platform() -> HostComposition {
     let mut capabilities = CapabilityRegistry::new();

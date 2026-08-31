@@ -1127,15 +1127,16 @@ pub async fn execute_input_activity<A: RuntimeHostAdapter>(
 /// skipped early). Errors loading specs are logged and treated as "no hooks"
 /// so a hook-collection failure never blocks a turn that wasn't asking to be
 /// hooked.
-struct UserPromptHookResult {
-    decision: everruns_core::lifecycle_hooks::UserPromptDecision,
-    original_message: String,
+pub(crate) struct UserPromptHookResult {
+    pub(crate) decision: everruns_core::lifecycle_hooks::UserPromptDecision,
+    pub(crate) original_message: String,
 }
 
-async fn run_user_prompt_submit_for_turn<A: RuntimeHostAdapter>(
+pub(crate) async fn run_user_prompt_submit_for_message<A: RuntimeHostAdapter>(
     adapter: &A,
     org_id: i64,
     input: &ReasonInput,
+    message_text: String,
 ) -> everruns_provider::error::Result<Option<UserPromptHookResult>> {
     let (specs, dispatcher) = match collect_lifecycle_hook_specs(
         adapter,
@@ -1165,15 +1166,6 @@ async fn run_user_prompt_submit_for_turn<A: RuntimeHostAdapter>(
         return Ok(None);
     }
 
-    let message_text = adapter
-        .message_store()
-        .get(input.context.session_id, input.context.input_message_id)
-        .await
-        .ok()
-        .flatten()
-        .map(|m| m.content_to_llm_string())
-        .unwrap_or_default();
-
     let ctx = everruns_core::lifecycle_hooks::TurnHookContext {
         session_id: input.context.session_id,
         turn_id: Some(input.context.turn_id),
@@ -1188,6 +1180,22 @@ async fn run_user_prompt_submit_for_turn<A: RuntimeHostAdapter>(
         decision,
         original_message,
     }))
+}
+
+async fn run_user_prompt_submit_for_turn<A: RuntimeHostAdapter>(
+    adapter: &A,
+    org_id: i64,
+    input: &ReasonInput,
+) -> everruns_provider::error::Result<Option<UserPromptHookResult>> {
+    let message_text = adapter
+        .message_store()
+        .get(input.context.session_id, input.context.input_message_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|m| m.content_to_llm_string())
+        .unwrap_or_default();
+    run_user_prompt_submit_for_message(adapter, org_id, input, message_text).await
 }
 
 pub async fn execute_reason_activity<A: RuntimeHostAdapter>(

@@ -13,7 +13,7 @@ use crate::builders::SingleSessionBuilder;
 use crate::events::{EventHistory, EventLog, EventReadLimit, EventReadRequest, HostEventEmitter};
 use crate::host::{
     ResolvedTurnInputs, RuntimeHostAdapter, execute_act_activity, execute_input_activity,
-    execute_reason_activity_with_prompt_messages,
+    execute_reason_activity_with_prompt_messages, run_user_prompt_submit_for_message,
 };
 use crate::in_memory::{InMemorySessionFileStore, InMemorySessionFileSystemFactory};
 use async_trait::async_trait;
@@ -31,7 +31,8 @@ use everruns_core::events::{
     Event, EventContext, EventRequest, InputMessageData, SessionStartedData,
 };
 use everruns_core::harness_definition::HarnessDefinition;
-use everruns_core::message::Message;
+use everruns_core::lifecycle_hooks::UserPromptDecision;
+use everruns_core::message::{ContentPart, Message};
 use everruns_core::plugins::{PluginFileSet, compile_plugin};
 #[cfg(feature = "mcp")]
 use everruns_core::resolve_runtime_capabilities;
@@ -1383,7 +1384,7 @@ impl InProcessRuntime {
                 // already been marked `waiting_for_tool_results` by the effect.
                 TurnPlan::WaitForToolResults { .. } => {
                     steering.close();
-                    self.inject_steering_inputs(session_id, steering.drain())
+                    self.append_accepted_inputs(session_id, turn_id, steering.drain())
                         .await?;
                     return Ok(finish_turn(
                         turn_id,
@@ -1431,11 +1432,69 @@ impl InProcessRuntime {
     pub async fn append_accepted_inputs(
         &self,
         session_id: SessionId,
+        turn_id: TurnId,
         inputs: Vec<AcceptedTurnInput>,
     ) -> Result<()> {
-        self.inject_steering_inputs(session_id, inputs)
-            .await
-            .map(|_| ())
+        if inputs.is_empty() {
+            return Ok(());
+        }
+
+        let snapshot = self.resolved_execution_snapshot(session_id).await?;
+        let org_id = in_process_internal_org_id(&snapshot.organization_id);
+        for input in inputs {
+            let mut message = input.into_message();
+            let hook_input = ReasonInput {
+                context: ExecutionContext::new(session_id, turn_id, message.id)
+                    .with_workspace_id(snapshot.workspace_id),
+                harness_id: snapshot.harness_id,
+                agent_id: snapshot.agent_id,
+                org_id,
+                mcp_tool_definitions: vec![],
+                previous_response_id: None,
+                iteration: 1,
+            };
+            if let Some(result) = run_user_prompt_submit_for_message(
+                self,
+                org_id,
+                &hook_input,
+                message.content_to_llm_string(),
+            )
+            .await?
+            {
+                let enforced = match result.decision {
+                    UserPromptDecision::Continue { message }
+                        if message != result.original_message =>
+                    {
+                        Some((message, false))
+                    }
+                    UserPromptDecision::Block {
+                        reason,
+                        user_message,
+                    } => Some((user_message.unwrap_or(reason), true)),
+                    UserPromptDecision::Continue { .. } => None,
+                };
+                if let Some((safe_text, blocked)) = enforced {
+                    // No reason boundary remains to carry a provider-only override.
+                    // Persist the enforced form so later history cannot expose raw input.
+                    if blocked {
+                        message.content.clear();
+                    } else {
+                        message
+                            .content
+                            .retain(|part| !matches!(part, ContentPart::Text(_)));
+                    }
+                    message.content.insert(0, ContentPart::text(safe_text));
+                }
+            }
+            self.event_emitter
+                .emit(EventRequest::new(
+                    session_id,
+                    EventContext::empty(),
+                    InputMessageData::new(message),
+                ))
+                .await?;
+        }
+        Ok(())
     }
 
     /// Drain any queued task wakes for `session_id` and inject them into the

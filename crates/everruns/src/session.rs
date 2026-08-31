@@ -588,7 +588,7 @@ impl SessionActor {
         let finalization = async {
             let remaining = steering.close_and_drain();
             runtime
-                .append_accepted_inputs(self.session_id, remaining)
+                .append_accepted_inputs(self.session_id, turn_id, remaining)
                 .await?;
             if cancelled {
                 let (_, request) = self
