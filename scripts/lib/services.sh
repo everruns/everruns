@@ -304,7 +304,7 @@ case "$cmd" in
     export RUST_LOG=${RUST_LOG:-info}
 
     if configure_local_development_encryption_key; then
-      echo "   ✅ Using default encryption key"
+      echo "   ✅ Using private per-prefix encryption key"
     fi
 
     print_doppler_secret_hint

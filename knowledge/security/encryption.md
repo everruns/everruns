@@ -104,12 +104,11 @@ Field descriptions:
 
 ### Local Development
 
-Local databases persist encrypted provider credentials across process and worktree restarts, so
-the default local-development KEK must remain stable. Local launchers share the public,
-non-production default defined in
-[`scripts/lib/local-development-secrets.sh`](../../scripts/lib/local-development-secrets.sh) when
-`SECRETS_ENCRYPTION_KEY` is absent. Changing the effective key requires migrating or resetting the
-corresponding local database; otherwise existing encrypted records cannot be unwrapped.
+Local databases persist encrypted provider credentials across process and worktree restarts. When
+`SECRETS_ENCRYPTION_KEY` is absent, local launchers generate a private per-prefix KEK under
+`.local/agent-dev/` and retain the former public development key as a previous key for migration.
+Changing or deleting the effective key requires migrating or resetting the corresponding local
+database; otherwise encrypted records written with it cannot be unwrapped.
 
 ### Encrypted Fields
 

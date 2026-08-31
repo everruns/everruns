@@ -170,6 +170,7 @@ Display:   evr_pat_<first-8-chars>...      (prefix for identification)
 | TM-CRYPTO-006 | Re-encryption job missing | Low | CLI tool `reencrypt_secrets` implemented with batch processing, dry-run mode, and key rotation detection | MITIGATED |
 | TM-CRYPTO-007 | Limited encryption scope | Medium | LLM API keys encrypted; system prompt encryption reverted (PII should not be in prompts) | **OPEN** |
 | TM-CRYPTO-008 | Machine-payment wallet key exposure | Critical | When machine payments are disabled, custody UI/navigation is hidden, payment commands are omitted from Platform/MCP discovery, and payment account/policy/attempt routes return a structured `feature_not_enabled` 404; when enabled, wallet private keys are accepted only on payment account create/update, encrypted with the server envelope encryption service, never returned from API responses, decrypted only inside `ServerPaymentAuthority` immediately before native rail signing, and never sent to workers | MITIGATED |
+| TM-CRYPTO-009 | Public local KEK exposes persisted provider credentials | Medium | Local launchers generate a private per-prefix KEK with mode 0600; the former public key is accepted only as a previous key for migration | MITIGATED |
 
 ### Mitigation Details
 
