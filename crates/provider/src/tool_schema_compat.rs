@@ -18,6 +18,159 @@ pub fn sanitize_openai_tool_schema(schema: &Value) -> Value {
     sanitized
 }
 
+/// Normalize a tool schema for OpenAI strict structured outputs.
+///
+/// Returns `None` when the schema uses constructs whose object shape cannot be
+/// closed without risking a semantic change. Callers must then use the
+/// sanitized non-strict schema instead.
+pub fn strict_openai_tool_schema(schema: &Value) -> Option<Value> {
+    let mut normalized = sanitize_openai_tool_schema(schema);
+    if normalized.get("type").and_then(Value::as_str) != Some("object") {
+        return None;
+    }
+    normalize_strict_node(&mut normalized)?;
+    Some(normalized)
+}
+
+fn normalize_strict_node(node: &mut Value) -> Option<()> {
+    let object = node.as_object_mut()?;
+
+    // Strict structured outputs support only a JSON Schema subset. Decline
+    // unknown keywords rather than sending a request the provider may reject.
+    if object.keys().any(|key| {
+        !matches!(
+            key.as_str(),
+            "type"
+                | "properties"
+                | "required"
+                | "additionalProperties"
+                | "items"
+                | "enum"
+                | "anyOf"
+                | "description"
+                | "title"
+        )
+    }) {
+        return None;
+    }
+
+    if let Some(any_of) = object.get_mut("anyOf") {
+        let variants = any_of.as_array_mut()?;
+        if variants.is_empty() {
+            return None;
+        }
+        for variant in variants {
+            normalize_strict_node(variant)?;
+        }
+    }
+
+    let schema_type = object.get("type").cloned();
+    let types = match schema_type.as_ref() {
+        Some(Value::String(value)) => vec![value.as_str()],
+        Some(Value::Array(values)) if !values.is_empty() => values
+            .iter()
+            .map(Value::as_str)
+            .collect::<Option<Vec<_>>>()?,
+        None if object.contains_key("anyOf") || object.contains_key("enum") => Vec::new(),
+        _ => return None,
+    };
+
+    let is_object = types.contains(&"object");
+    let is_array = types.contains(&"array");
+    if (object.contains_key("properties") || object.contains_key("required")) && !is_object {
+        return None;
+    }
+    if object.contains_key("items") && !is_array {
+        return None;
+    }
+
+    if is_object {
+        // A union containing object and another non-null type has no unambiguous
+        // place for object-only strict constraints.
+        if types
+            .iter()
+            .any(|value| *value != "object" && *value != "null")
+        {
+            return None;
+        }
+        let originally_required: std::collections::HashSet<String> = object
+            .get("required")
+            .map(|required| required.as_array().map(Vec::as_slice))
+            .unwrap_or(Some(&[]))?
+            .iter()
+            .map(|value| value.as_str().map(str::to_owned))
+            .collect::<Option<_>>()?;
+        let property_names = {
+            let properties = object
+                .entry("properties")
+                .or_insert_with(|| Value::Object(serde_json::Map::new()))
+                .as_object_mut()?;
+            if originally_required
+                .iter()
+                .any(|name| !properties.contains_key(name))
+            {
+                return None;
+            }
+
+            for (name, property) in properties.iter_mut() {
+                normalize_strict_node(property)?;
+                if !originally_required.contains(name) {
+                    make_nullable(property)?;
+                }
+            }
+            properties.keys().cloned().map(Value::String).collect()
+        };
+        object.insert("required".to_string(), Value::Array(property_names));
+        object.insert("additionalProperties".to_string(), Value::Bool(false));
+    }
+
+    if is_array {
+        if types
+            .iter()
+            .any(|value| *value != "array" && *value != "null")
+        {
+            return None;
+        }
+        normalize_strict_node(object.get_mut("items")?)?;
+    }
+
+    Some(())
+}
+
+fn make_nullable(schema: &mut Value) -> Option<()> {
+    let object = schema.as_object_mut()?;
+    if let Some(schema_type) = object.get_mut("type") {
+        match schema_type {
+            Value::String(value) if value != "null" => {
+                *schema_type = Value::Array(vec![
+                    Value::String(value.clone()),
+                    Value::String("null".into()),
+                ]);
+            }
+            Value::String(_) => {}
+            Value::Array(types) => {
+                if !types.iter().all(Value::is_string) {
+                    return None;
+                }
+                if !types.iter().any(|value| value.as_str() == Some("null")) {
+                    types.push(Value::String("null".into()));
+                }
+            }
+            _ => return None,
+        }
+        return Some(());
+    }
+
+    let variants = object.get_mut("anyOf")?.as_array_mut()?;
+    if !variants
+        .iter()
+        .any(|variant| variant.get("type").and_then(Value::as_str) == Some("null"))
+    {
+        variants.push(serde_json::json!({"type": "null"}));
+    }
+    Some(())
+}
+
 fn sanitize_node(node: &mut Value) {
     match node {
         Value::Object(object) => {
@@ -154,6 +307,74 @@ mod tests {
         assert_eq!(
             sanitized["items"]["description"],
             "Tenant-scoped identifier. Validation for this value is enforced by the tool."
+        );
+    }
+}
+
+#[cfg(test)]
+mod strict_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn strict_schema_closes_nested_objects_and_makes_optional_fields_nullable() {
+        let normalized = strict_openai_tool_schema(&json!({
+            "type": "object",
+            "properties": {
+                "fixed": {"type": "string"},
+                "nested": {
+                    "type": "object",
+                    "properties": {"value": {"type": "integer"}},
+                    "required": ["value"]
+                },
+                "list": {"type": "array", "items": {
+                    "type": "object", "properties": {"flag": {"type": "boolean"}}
+                }}
+            },
+            "required": ["fixed"]
+        }))
+        .unwrap();
+
+        assert_eq!(normalized["required"], json!(["fixed", "list", "nested"]));
+        assert_eq!(normalized["additionalProperties"], false);
+        assert_eq!(normalized["properties"]["fixed"]["type"], "string");
+        assert_eq!(
+            normalized["properties"]["nested"]["type"],
+            json!(["object", "null"])
+        );
+        assert_eq!(
+            normalized["properties"]["nested"]["additionalProperties"],
+            false
+        );
+        assert_eq!(
+            normalized["properties"]["nested"]["properties"]["value"]["type"],
+            "integer"
+        );
+        assert_eq!(
+            normalized["properties"]["list"]["items"]["additionalProperties"],
+            false
+        );
+        assert_eq!(
+            normalized["properties"]["list"]["items"]["properties"]["flag"]["type"],
+            json!(["boolean", "null"])
+        );
+    }
+
+    #[test]
+    fn strict_schema_declines_ambiguous_composition() {
+        assert!(
+            strict_openai_tool_schema(&json!({
+                "type": "object",
+                "allOf": [{"type": "object", "properties": {"value": {"type": "string"}}}]
+            }))
+            .is_none()
+        );
+        assert!(
+            strict_openai_tool_schema(&json!({
+                "type": "object",
+                "properties": {"value": {"type": "string", "pattern": "^[a-z]+$"}}
+            }))
+            .is_none()
         );
     }
 }

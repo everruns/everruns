@@ -356,15 +356,23 @@ impl OpenAIProtocolChatDriver {
     fn convert_tools(tools: &[ToolDefinition]) -> Vec<OpenAiTool> {
         tools
             .iter()
-            .map(|tool| OpenAiTool {
-                r#type: "function".to_string(),
-                function: OpenAiFunction {
-                    name: tool.name().to_string(),
-                    description: tool.description().to_string(),
-                    parameters: crate::tool_schema_compat::sanitize_openai_tool_schema(
-                        tool.parameters(),
-                    ),
-                },
+            .map(|tool| {
+                let strict_parameters =
+                    crate::tool_schema_compat::strict_openai_tool_schema(tool.parameters());
+                let strict = strict_parameters.is_some().then_some(true);
+                OpenAiTool {
+                    r#type: "function".to_string(),
+                    function: OpenAiFunction {
+                        name: tool.name().to_string(),
+                        description: tool.description().to_string(),
+                        parameters: strict_parameters.unwrap_or_else(|| {
+                            crate::tool_schema_compat::sanitize_openai_tool_schema(
+                                tool.parameters(),
+                            )
+                        }),
+                        strict,
+                    },
+                }
             })
             .collect()
     }
@@ -873,6 +881,8 @@ struct OpenAiFunction {
     name: String,
     description: String,
     parameters: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    strict: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1924,5 +1934,43 @@ mod tests {
         ];
         let filtered = drop_orphaned_tool_messages(&messages);
         assert_eq!(filtered.len(), 2);
+    }
+
+    #[test]
+    fn function_tools_serialize_strict_only_for_compatible_schemas() {
+        use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
+        let make_tool = |parameters| {
+            ToolDefinition::Builtin(BuiltinTool {
+                name: "lookup".into(),
+                display_name: None,
+                description: "Lookup".into(),
+                parameters,
+                policy: ToolPolicy::Auto,
+                category: None,
+                deferrable: DeferrablePolicy::Never,
+                hints: ToolHints::default(),
+                full_parameters: None,
+            })
+        };
+        let compatible = OpenAIProtocolChatDriver::convert_tools(&[make_tool(json!({
+            "type": "object", "properties": {"query": {"type": "string"}}
+        }))]);
+        let serialized = serde_json::to_value(&compatible[0]).unwrap();
+        assert_eq!(serialized["function"]["strict"], true);
+        assert_eq!(
+            serialized["function"]["parameters"]["required"],
+            json!(["query"])
+        );
+        assert_eq!(
+            serialized["function"]["parameters"]["properties"]["query"]["type"],
+            json!(["string", "null"])
+        );
+
+        let incompatible = OpenAIProtocolChatDriver::convert_tools(&[make_tool(json!({
+            "type": "object", "allOf": [{"type": "object"}]
+        }))]);
+        let serialized = serde_json::to_value(&incompatible[0]).unwrap();
+        assert!(serialized["function"].get("strict").is_none());
+        assert!(serialized["function"]["parameters"].get("allOf").is_some());
     }
 }

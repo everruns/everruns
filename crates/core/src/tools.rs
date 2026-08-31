@@ -25,7 +25,7 @@ use crate::{
     tool_context::ToolContext, tool_context::ToolContextService, tool_context::ToolContextServices,
 };
 
-use crate::error::Result;
+use crate::error::{AgentLoopError, Result};
 use crate::tool_execution::ToolExecutor;
 // EVE-888: `spawn_background`, its session-task mirroring, the background
 // event sink and the reattach path moved to `everruns-platform`
@@ -687,6 +687,39 @@ impl std::fmt::Debug for ToolRegistry {
     }
 }
 
+fn validate_tool_arguments(tool: &dyn Tool, tool_call: &ToolCall) -> Result<Option<String>> {
+    let arguments = tool_call.execution_arguments();
+    let definition = tool.to_definition();
+    let validator = jsonschema::validator_for(definition.parameters()).map_err(|error| {
+        AgentLoopError::config(format!(
+            "Tool '{}' has an invalid parameters schema: {error}",
+            tool_call.name
+        ))
+    })?;
+    let issues: Vec<_> = validator
+        .iter_errors(&arguments)
+        .map(|error| {
+            serde_json::json!({
+                "instance_path": error.instance_path().to_string(),
+                "message": error.to_string(),
+                "schema_path": error.schema_path().to_string(),
+            })
+        })
+        .collect();
+    if issues.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(
+        serde_json::json!({
+            "code": "invalid_tool_arguments",
+            "tool": tool_call.name,
+            "issues": issues,
+        })
+        .to_string(),
+    ))
+}
+
 #[async_trait]
 impl ToolExecutor for ToolRegistry {
     async fn execute(
@@ -698,7 +731,12 @@ impl ToolExecutor for ToolRegistry {
             crate::error::AgentLoopError::tool(format!("Tool not found: {}", tool_call.name))
         })?;
 
-        let result = tool.execute(tool_call.arguments.clone()).await;
+        if let Some(error) = validate_tool_arguments(tool.as_ref(), tool_call)? {
+            return Ok(ToolExecutionResult::tool_error(error)
+                .into_tool_result(&tool_call.id, &tool_call.name));
+        }
+
+        let result = tool.execute(tool_call.execution_arguments()).await;
         Ok(result.into_tool_result(&tool_call.id, &tool_call.name))
     }
 
@@ -712,10 +750,14 @@ impl ToolExecutor for ToolRegistry {
             crate::error::AgentLoopError::tool(format!("Tool not found: {}", tool_call.name))
         })?;
 
-        // Use execute_with_context for all tools - context-aware tools will use it,
-        // regular tools will delegate to execute() via the default implementation
+        if let Some(error) = validate_tool_arguments(tool.as_ref(), tool_call)? {
+            return Ok(ToolExecutionResult::tool_error(error)
+                .into_tool_result(&tool_call.id, &tool_call.name));
+        }
+
+        // Context-aware tools use the supplied context; regular tools delegate to execute().
         let result = tool
-            .execute_with_context(tool_call.arguments.clone(), context)
+            .execute_with_context(tool_call.execution_arguments(), context)
             .await;
         Ok(result.into_tool_result(&tool_call.id, &tool_call.name))
     }
@@ -1153,6 +1195,100 @@ mod tests {
                 def.name()
             );
         }
+    }
+
+    fn invalid_arguments_error(result: ToolResult) -> serde_json::Value {
+        let message = result.error.expect("expected tool error");
+        serde_json::from_str(&message).expect("tool error should be valid JSON")
+    }
+
+    #[tokio::test]
+    async fn test_tool_registry_rejects_missing_required_argument() {
+        let mut registry = ToolRegistry::new();
+        registry.register(EchoTool);
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            name: "echo".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let tool_def = registry.get("echo").unwrap().to_definition();
+
+        let error = invalid_arguments_error(registry.execute(&tool_call, &tool_def).await.unwrap());
+
+        assert_eq!(error["code"], "invalid_tool_arguments");
+        assert_eq!(error["tool"], "echo");
+        assert_eq!(error["issues"][0]["instance_path"], "");
+        assert!(
+            error["issues"][0]["message"]
+                .as_str()
+                .unwrap()
+                .contains("required")
+        );
+        assert!(
+            error["issues"][0]["schema_path"]
+                .as_str()
+                .unwrap()
+                .contains("required")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_tool_registry_rejects_wrong_argument_type() {
+        let mut registry = ToolRegistry::new();
+        registry.register(EchoTool);
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            name: "echo".to_string(),
+            arguments: serde_json::json!({"message": 42}),
+        };
+        let tool_def = registry.get("echo").unwrap().to_definition();
+
+        let error = invalid_arguments_error(registry.execute(&tool_call, &tool_def).await.unwrap());
+
+        assert_eq!(error["code"], "invalid_tool_arguments");
+        assert_eq!(error["tool"], "echo");
+        assert_eq!(error["issues"][0]["instance_path"], "/message");
+        assert!(
+            error["issues"][0]["message"]
+                .as_str()
+                .unwrap()
+                .contains("string")
+        );
+        assert!(
+            error["issues"][0]["schema_path"]
+                .as_str()
+                .unwrap()
+                .contains("type")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_tool_registry_rejects_unknown_argument() {
+        let mut registry = ToolRegistry::new();
+        registry.register(EchoTool);
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            name: "echo".to_string(),
+            arguments: serde_json::json!({"message": "test", "unexpected": true}),
+        };
+        let tool_def = registry.get("echo").unwrap().to_definition();
+
+        let error = invalid_arguments_error(registry.execute(&tool_call, &tool_def).await.unwrap());
+
+        assert_eq!(error["code"], "invalid_tool_arguments");
+        assert_eq!(error["tool"], "echo");
+        assert!(
+            error["issues"][0]["message"]
+                .as_str()
+                .unwrap()
+                .contains("unexpected")
+        );
+        assert!(
+            error["issues"][0]["schema_path"]
+                .as_str()
+                .unwrap()
+                .contains("additionalProperties")
+        );
     }
 
     #[tokio::test]

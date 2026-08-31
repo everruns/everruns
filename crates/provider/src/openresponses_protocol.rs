@@ -457,14 +457,23 @@ impl OpenResponsesProtocolChatDriver {
     fn convert_tools(tools: &[ToolDefinition]) -> Vec<ResponsesTool> {
         tools
             .iter()
-            .map(|tool| ResponsesTool::Function {
-                r#type: "function".to_string(),
-                name: tool.name().to_string(),
-                description: tool.description().to_string(),
-                parameters: Self::sanitize_parameters(tool.parameters()),
-                defer_loading: None,
-            })
+            .map(|tool| Self::function_tool(tool, None))
             .collect()
+    }
+
+    fn function_tool(tool: &ToolDefinition, defer_loading: Option<bool>) -> ResponsesTool {
+        let strict_parameters =
+            crate::tool_schema_compat::strict_openai_tool_schema(tool.parameters());
+        ResponsesTool::Function {
+            r#type: "function".to_string(),
+            name: tool.name().to_string(),
+            description: tool.description().to_string(),
+            parameters: strict_parameters
+                .clone()
+                .unwrap_or_else(|| Self::sanitize_parameters(tool.parameters())),
+            strict: strict_parameters.as_ref().map(|_| true),
+            defer_loading,
+        }
     }
 
     /// Convert tools with tool_search support: groups tools into namespaces,
@@ -488,13 +497,7 @@ impl OpenResponsesProtocolChatDriver {
                 DeferrablePolicy::Automatic | DeferrablePolicy::Always => true,
             };
 
-            let func = ResponsesTool::Function {
-                r#type: "function".to_string(),
-                name: tool.name().to_string(),
-                description: tool.description().to_string(),
-                parameters: Self::sanitize_parameters(tool.parameters()),
-                defer_loading: if should_defer { Some(true) } else { None },
-            };
+            let func = Self::function_tool(tool, if should_defer { Some(true) } else { None });
 
             if !should_defer {
                 never_defer.push(func);
@@ -2075,6 +2078,8 @@ enum ResponsesTool {
         description: String,
         parameters: Value,
         #[serde(skip_serializing_if = "Option::is_none")]
+        strict: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         defer_loading: Option<bool>,
     },
     /// Namespace grouping for tool_search (groups related deferred tools)
@@ -2563,6 +2568,7 @@ mod tests {
                 },
                 "required": ["location"]
             }),
+            strict: Some(true),
             defer_loading: None,
         };
 
@@ -3834,7 +3840,16 @@ mod tests {
         assert_eq!(tool["type"], "function");
         assert_eq!(tool["name"], "get_current_time");
         assert_eq!(tool["parameters"]["type"], "object");
-        assert_eq!(tool["parameters"]["required"], json!(["timezone"]));
+        assert_eq!(tool["strict"], true);
+        assert_eq!(
+            tool["parameters"]["required"],
+            json!(["format", "timezone"])
+        );
+        assert_eq!(
+            tool["parameters"]["properties"]["format"]["type"],
+            json!(["string", "null"])
+        );
+        assert_eq!(tool["parameters"]["additionalProperties"], false);
     }
 
     // ========================================================================
@@ -5056,6 +5071,7 @@ mod tests {
                 name: "read_file".to_string(),
                 description: "Read a file".to_string(),
                 parameters: json!({}),
+                strict: None,
                 defer_loading: Some(true),
             }],
         };
@@ -5556,5 +5572,40 @@ mod tests {
             2,
             "refreshable auth must be resolved per HTTP attempt, including retries"
         );
+    }
+
+    #[test]
+    fn function_tools_serialize_strict_only_for_compatible_schemas() {
+        let mut compatible = make_tool("lookup", None, crate::tool_types::DeferrablePolicy::Never);
+        match &mut compatible {
+            ToolDefinition::Builtin(tool) => {
+                tool.parameters = json!({
+                    "type": "object", "properties": {"query": {"type": "string"}}
+                })
+            }
+            ToolDefinition::ClientSide(_) => unreachable!(),
+        }
+        let serialized =
+            serde_json::to_value(&OpenResponsesProtocolChatDriver::convert_tools(&[compatible])[0])
+                .unwrap();
+        assert_eq!(serialized["strict"], true);
+        assert_eq!(serialized["parameters"]["required"], json!(["query"]));
+
+        let mut incompatible =
+            make_tool("lookup", None, crate::tool_types::DeferrablePolicy::Never);
+        match &mut incompatible {
+            ToolDefinition::Builtin(tool) => {
+                tool.parameters = json!({
+                    "type": "object", "allOf": [{"type": "object"}]
+                })
+            }
+            ToolDefinition::ClientSide(_) => unreachable!(),
+        }
+        let serialized = serde_json::to_value(
+            &OpenResponsesProtocolChatDriver::convert_tools(&[incompatible])[0],
+        )
+        .unwrap();
+        assert!(serialized.get("strict").is_none());
+        assert!(serialized["parameters"].get("allOf").is_some());
     }
 }
