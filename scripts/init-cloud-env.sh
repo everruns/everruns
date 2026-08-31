@@ -108,6 +108,14 @@ install_gh() {
 
     # Pinned version — skip GitHub API call to avoid rate limits and hangs
     GH_VERSION="2.63.2"
+    # From gh_${GH_VERSION}_checksums.txt in the same release.
+    GH_SHA256=""
+    case "$GH_ARCH" in
+        amd64) GH_SHA256="912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00" ;;
+        arm64) GH_SHA256="0f31e2a8549c64b5c1679f0b99ce5e0dac7c91da9e86f6246adb8805b0f0b4bb" ;;
+        armv6) GH_SHA256="483c64a4502a56eee1be592e50e6a6ae41663a2f0471c2187dc550c6a3f63696" ;;
+        *)     error "Unsupported architecture for checksum verification: $GH_ARCH" ;;
+    esac
 
     GH_TARBALL="gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz"
     GH_URL="https://github.com/cli/cli/releases/download/v${GH_VERSION}/${GH_TARBALL}"
@@ -118,6 +126,9 @@ install_gh() {
 
     info "Downloading gh v${GH_VERSION}..."
     curl -fsSL --connect-timeout 10 --max-time 60 --retry 2 --retry-delay 2 "$GH_URL" -o "$TEMP_DIR/$GH_TARBALL"
+
+    info "Verifying gh checksum..."
+    echo "${GH_SHA256}  $TEMP_DIR/$GH_TARBALL" | sha256sum -c - >/dev/null
 
     tar -xzf "$TEMP_DIR/$GH_TARBALL" -C "$TEMP_DIR"
 
@@ -200,6 +211,15 @@ install_caddy() {
     esac
 
     CADDY_VERSION="2.9.1"
+    # Caddy publishes sha512, not sha256, in caddy_${CADDY_VERSION}_checksums.txt.
+    # ci.yml's shell-test job verifies the same artifact the same way.
+    CADDY_SHA512=""
+    case "$CADDY_ARCH" in
+        amd64) CADDY_SHA512="0412057ba591c33bdb66034d7f32209619ce635147dac3084c79abcbc118a761145e695199f57c6798d88fab077f2b0d9cb999f52ded904c6d464a4eba202932" ;;
+        arm64) CADDY_SHA512="80b917c2bd8aa0892f1386ff97af9e776067dd8cdc4793238869aca7e13f7280f89d1799a1fef08b49af92dbd86684c3ba7a38b9d44afc55ef2eeb33b49e1cbd" ;;
+        *)     error "Unsupported architecture for checksum verification: $CADDY_ARCH" ;;
+    esac
+
     CADDY_TARBALL="caddy_${CADDY_VERSION}_linux_${CADDY_ARCH}.tar.gz"
     CADDY_URL="https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/${CADDY_TARBALL}"
 
@@ -209,6 +229,9 @@ install_caddy() {
 
     info "Downloading caddy v${CADDY_VERSION}..."
     curl -fsSL --connect-timeout 10 --max-time 60 --retry 2 --retry-delay 2 "$CADDY_URL" -o "$TEMP_DIR/$CADDY_TARBALL"
+
+    info "Verifying caddy checksum..."
+    echo "${CADDY_SHA512}  $TEMP_DIR/$CADDY_TARBALL" | sha512sum -c - >/dev/null
 
     tar -xzf "$TEMP_DIR/$CADDY_TARBALL" -C "$TEMP_DIR" caddy
 
