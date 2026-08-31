@@ -21,7 +21,7 @@ pub enum SkillsCommands {
 }
 
 const SKILLS: Resource = Resource {
-    path: "/skills",
+    path: "/v1/skills",
     collection_key: "skills",
     empty_message: "No skills found.",
     columns: &[
@@ -63,14 +63,14 @@ pub async fn run(
                 .with_context(|| format!("Failed to read SKILL.md at {}", path.display()))?;
             let body = create_request(&skill_md);
             let response = ApiClient::new(api_url, api_key, org_id)
-                .post("/skills", Some(&body))
+                .post(SKILLS.path, Some(&body))
                 .await?;
             format.print_value(&response);
             Ok(())
         }
         SkillsCommands::Delete { id } => {
             let response = ApiClient::new(api_url, api_key, org_id)
-                .delete(&super::discovery::resource_path("/skills", &id))
+                .delete(&super::discovery::resource_path(SKILLS.path, &id))
                 .await?;
             format.print_value(&response);
             Ok(())
@@ -94,12 +94,22 @@ fn create_request(skill_md: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::create_request;
+    use super::{SKILLS, create_request};
+    use crate::commands::discovery::resource_path;
     use serde_json::json;
 
     #[test]
     fn create_request_preserves_exact_skill_md_content() {
         let content = "---\nname: example\n---\n\n# Example\n";
         assert_eq!(create_request(content), json!({ "skill_md": content }));
+    }
+
+    #[test]
+    fn request_paths_match_versioned_server_routes() {
+        assert_eq!(SKILLS.path, "/v1/skills");
+        assert_eq!(
+            resource_path(SKILLS.path, "skill/id"),
+            "/v1/skills/skill%2Fid"
+        );
     }
 }

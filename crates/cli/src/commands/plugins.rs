@@ -22,7 +22,7 @@ pub enum PluginsCommands {
 }
 
 const PLUGINS: Resource = Resource {
-    path: "/plugins",
+    path: "/v1/plugins",
     collection_key: "plugins",
     empty_message: "No plugins found.",
     columns: &[
@@ -65,14 +65,14 @@ pub async fn run(
         } => {
             let body = install_request(&marketplace_id, &plugin_name);
             let response = ApiClient::new(api_url, api_key, org_id)
-                .post("/plugins", Some(&body))
+                .post(PLUGINS.path, Some(&body))
                 .await?;
             format.print_value(&response);
             Ok(())
         }
         PluginsCommands::Uninstall { id } => {
             let response = ApiClient::new(api_url, api_key, org_id)
-                .delete(&super::discovery::resource_path("/plugins", &id))
+                .delete(&super::discovery::resource_path(PLUGINS.path, &id))
                 .await?;
             format.print_value(&response);
             Ok(())
@@ -96,7 +96,8 @@ fn install_request(marketplace_id: &str, plugin_name: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::install_request;
+    use super::{PLUGINS, install_request};
+    use crate::commands::discovery::resource_path;
     use serde_json::json;
 
     #[test]
@@ -107,6 +108,15 @@ mod tests {
                 "marketplace_id": "marketplace-id",
                 "plugin_name": "plugin-name"
             })
+        );
+    }
+
+    #[test]
+    fn request_paths_match_versioned_server_routes() {
+        assert_eq!(PLUGINS.path, "/v1/plugins");
+        assert_eq!(
+            resource_path(PLUGINS.path, "plugin/id"),
+            "/v1/plugins/plugin%2Fid"
         );
     }
 }
