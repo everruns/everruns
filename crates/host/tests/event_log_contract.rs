@@ -629,3 +629,26 @@ async fn jsonl_collapses_exact_duplicates_and_rejects_id_or_sequence_conflicts()
         Err(EventLogError::Corruption { .. })
     ));
 }
+
+#[tokio::test]
+async fn jsonl_rejects_append_from_stale_second_writer_without_corrupting_log() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("events.jsonl");
+    let session = SessionId::new();
+    let first = JsonlEventLog::open(&path).await.unwrap();
+    let stale = JsonlEventLog::open(&path).await.unwrap();
+
+    let accepted = first.append(input(session, "first")).await.unwrap();
+    assert_eq!(accepted.sequence, Some(1));
+    assert!(matches!(
+        stale.append(input(session, "conflict")).await,
+        Err(EventLogError::Backend { .. })
+    ));
+
+    drop(first);
+    drop(stale);
+    let reopened = JsonlEventLog::open(&path).await.unwrap();
+    let events = read_all(&reopened, session).await;
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].id, accepted.id);
+}
