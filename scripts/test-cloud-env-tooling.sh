@@ -27,6 +27,13 @@
 # reach api.github.com, and none may pipe a remote script into a shell — the two
 # shapes that put version resolution back on a network path a cloud session
 # cannot use. Both fail closed here instead of at 3am in someone's session.
+#
+# It also requires every installer to verify what it downloaded (EVE-945).
+# Pinning the URL settles which version is fetched; it says nothing about the
+# bytes that arrive. These binaries then run with the Doppler vault reachable —
+# `configure_gh_auth` invokes `gh` under `doppler run` on every session — and
+# agent sessions fetch through an egress proxy that terminates TLS, so
+# "HTTPS was end-to-end" is not an argument available here.
 
 set -euo pipefail
 
@@ -81,12 +88,15 @@ for tool in just gh doppler caddy; do
   fi
 done
 
-# 4. Checksum ratchet. `just` and `doppler` verify what they downloaded; `gh`
-#    and `caddy` do not yet (EVE-945). This list may only grow — dropping a
-#    verified tool back to unverified fails here.
-for tool in just doppler; do
-  if ! awk "/^install_${tool}\\(\\)/,/^}/" "$TARGET" | grep -q 'sha256sum -c'; then
-    echo "FAIL: install_${tool} no longer verifies a sha256 checksum" >&2
+# 4. Checksum ratchet, now covering every installer (EVE-945). A pinned URL
+#    stops an attacker choosing the version; it does not notice the bytes at
+#    that URL changing, and these binaries then run with DOPPLER_TOKEN in the
+#    environment — `configure_gh_auth` hands the vault to `gh` on every session.
+#    Either digest is accepted because upstream decides which it publishes: gh,
+#    just and doppler publish sha256, caddy publishes sha512.
+for tool in just gh doppler caddy; do
+  if ! awk "/^install_${tool}\\(\\)/,/^}/" "$TARGET" | grep -qE 'sha(256|512)sum -c'; then
+    echo "FAIL: install_${tool} does not verify a checksum" >&2
     status=1
   fi
 done
@@ -95,4 +105,4 @@ if [ "$status" -ne 0 ]; then
   exit 1
 fi
 
-echo "PASS: init-cloud-env.sh pins every tool and needs no GitHub API access"
+echo "PASS: init-cloud-env.sh pins and verifies every tool, and needs no GitHub API access"
