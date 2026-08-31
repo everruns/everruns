@@ -24,7 +24,7 @@ use std::time::Instant;
 
 use everruns::{
     Agent, CapabilityRef, ContentPart, Controls, ImageContentPart, InMemoryEngine, InputMessage,
-    Provider, ReasoningConfig, Session, SessionEvent, SessionEventKind,
+    Provider, ReasoningConfig, ReasoningEffort, Session, SessionEvent, SessionEventKind,
 };
 
 use mira::subject::summarize_events;
@@ -57,9 +57,17 @@ impl Subject for GenericRuntimeSubject {
         let Some(config) = profiles::config_profile(config_name) else {
             return Transcript::infra_error(format!("unknown config profile '{config_name}'"));
         };
-        if !profiles::EFFORT_VALUES.contains(&effort) {
-            return Transcript::infra_error(format!("unknown effort '{effort}'"));
-        }
+        // `default` means "send no override"; every other axis value must name a
+        // real `ReasoningEffort`. Parsing against the enum rather than matching
+        // the string list keeps the axis from drifting out of sync with it.
+        let effort_override = if effort == DEFAULT_EFFORT {
+            None
+        } else {
+            match ReasoningEffort::parse(effort) {
+                Some(parsed) => Some(parsed),
+                None => return Transcript::infra_error(format!("unknown effort '{effort}'")),
+            }
+        };
 
         let mut transcript = Transcript::default();
         transcript
@@ -99,10 +107,10 @@ impl Subject for GenericRuntimeSubject {
             if index == 0 {
                 input.content.extend(attachments.iter().cloned());
             }
-            if effort != DEFAULT_EFFORT {
+            if let Some(effort) = effort_override {
                 input.controls = Some(Controls {
                     reasoning: Some(ReasoningConfig {
-                        effort: Some(effort.to_string()),
+                        effort: Some(effort),
                     }),
                     ..Default::default()
                 });

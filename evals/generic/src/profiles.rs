@@ -94,13 +94,10 @@ pub fn config_profile(name: &str) -> Option<&'static ConfigProfile> {
     CONFIG_PROFILES.iter().find(|p| p.name == name)
 }
 
-/// Reasoning-effort axis values the subject accepts. `default` sends no
-/// override; the rest map onto `Controls.reasoning.effort` (see
-/// the provider's supported reasoning-effort values).
-pub const EFFORT_VALUES: &[&str] = &[
-    "default", "none", "minimal", "low", "medium", "high", "xhigh",
-];
-
+/// Reasoning-effort axis value that sends no override. Every other value the
+/// axis accepts is parsed straight into `ReasoningEffort` by the subject, so
+/// the enum is the single source of truth — a list here duplicating its
+/// variants is what previously let the axis drift out of sync with it.
 pub const DEFAULT_EFFORT: &str = "default";
 
 #[cfg(test)]
@@ -111,7 +108,6 @@ mod tests {
     fn defaults_resolve() {
         assert!(harness_profile(DEFAULT_HARNESS).is_some());
         assert!(config_profile(DEFAULT_CONFIG).is_some());
-        assert!(EFFORT_VALUES.contains(&DEFAULT_EFFORT));
     }
 
     #[test]
