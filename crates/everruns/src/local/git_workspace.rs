@@ -127,6 +127,9 @@ impl LocalGitWorkspaceProvider {
 
     async fn git(&self, repository: &Path, args: &[&str]) -> Result<String, WorkspaceError> {
         let output = Command::new("git")
+            // THREAT[TM-FS-018]: a repository may contain executable hooks. Never
+            // run them in the provider process when inspecting or checking it out.
+            .args(["-c", "core.hooksPath=/dev/null"])
             .arg("-C")
             .arg(repository)
             .args(args)
@@ -503,6 +506,30 @@ mod tests {
             LocalGitWorkspaceProvider::new(state.path()),
             Err(WorkspaceError::InvalidRequest(_))
         ));
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn creating_a_head_does_not_execute_repository_hooks() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let repository = repository();
+        let hook = repository.path().join(".git/hooks/post-checkout");
+        std::fs::write(
+            &hook,
+            "#!/bin/sh\ntouch \"$(dirname \"$0\")/../hook-ran\"\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        let state = tempfile::tempdir().unwrap();
+        let provider = Arc::new(LocalGitWorkspaceProvider::new(state.path()).unwrap());
+        let workspace = Workspace::open(provider, repository.path().to_string_lossy())
+            .await
+            .unwrap();
+        workspace.head("safe").create().await.unwrap();
+
+        assert!(!repository.path().join(".git/hook-ran").exists());
     }
 
     #[tokio::test]
