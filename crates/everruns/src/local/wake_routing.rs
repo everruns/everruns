@@ -20,13 +20,14 @@
 //! with the host, because that part is genuinely host-specific.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use everruns_core::session::ExecutionSession;
 use everruns_platform::{PlatformCreateSessionRequest, PlatformMessage};
 use everruns_provider::error::Result;
 use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
+use tokio::sync::Mutex as AsyncMutex;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 use super::platform_store::LocalSessionRunner;
@@ -38,7 +39,7 @@ use super::platform_store::LocalSessionRunner;
 /// or closed host does not keep swallowing wakes.
 #[derive(Debug, Clone, Default)]
 pub struct WakeRoutes {
-    routes: Arc<Mutex<HashMap<SessionId, UnboundedSender<String>>>>,
+    routes: Arc<AsyncMutex<HashMap<SessionId, UnboundedSender<String>>>>,
 }
 
 impl WakeRoutes {
@@ -51,34 +52,20 @@ impl WakeRoutes {
     ///
     /// Registering a session that already has a route replaces it — the newest
     /// loop wins, which is what a reconnecting host wants.
-    pub fn register(&self, session_id: SessionId) -> UnboundedReceiver<String> {
+    pub async fn register(&self, session_id: SessionId) -> UnboundedReceiver<String> {
         let (sender, receiver) = unbounded_channel();
-        self.routes.lock().unwrap().insert(session_id, sender);
+        self.routes.lock().await.insert(session_id, sender);
         receiver
     }
 
     /// Stop routing to `session_id`.
-    pub fn unregister(&self, session_id: SessionId) {
-        self.routes.lock().unwrap().remove(&session_id);
+    pub async fn unregister(&self, session_id: SessionId) {
+        self.routes.lock().await.remove(&session_id);
     }
 
     /// Sessions currently claimed by a host loop.
-    pub fn live_sessions(&self) -> Vec<SessionId> {
-        self.routes.lock().unwrap().keys().copied().collect()
-    }
-
-    /// Deliver to a registered host, pruning a closed route atomically with
-    /// the failed send so a concurrent registration cannot be removed.
-    fn try_send(&self, session_id: SessionId, content: &str) -> bool {
-        let mut routes = self.routes.lock().unwrap();
-        let Some(sender) = routes.get(&session_id) else {
-            return false;
-        };
-        if sender.send(content.to_string()).is_err() {
-            routes.remove(&session_id);
-            return false;
-        }
-        true
+    pub async fn live_sessions(&self) -> Vec<SessionId> {
+        self.routes.lock().await.keys().copied().collect()
     }
 }
 
@@ -113,7 +100,7 @@ impl<R: LocalSessionRunner> LocalSessionRunner for HostRoutedRunner<R> {
         // Live host sessions are always routable. If the inner runner scopes
         // its own routes, union the two; if it routes everything (`None`), so
         // do we.
-        let live = self.routes.live_sessions();
+        let live = self.routes.live_sessions().await;
         match self.inner.routable_session_ids().await? {
             None => Ok(None),
             Some(mut inner) => {
@@ -128,13 +115,18 @@ impl<R: LocalSessionRunner> LocalSessionRunner for HostRoutedRunner<R> {
     }
 
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {
-        if self.routes.try_send(session_id, content) {
-            return Ok(());
+        let mut routes = self.routes.routes.lock().await;
+        if let Some(sender) = routes.get(&session_id) {
+            if sender.send(content.to_string()).is_ok() {
+                return Ok(());
+            }
+            routes.remove(&session_id);
         }
 
         // Nobody is driving this session, or its host went away. Deliver this
         // wake synchronously now because immediate background completions are
-        // not retried.
+        // not retried. Keep registration serialized until the turn finishes so
+        // a reconnecting host cannot start driving the same session underneath it.
         self.inner.send_message(session_id, content).await
     }
 
@@ -187,6 +179,7 @@ impl<R: LocalSessionRunner> LocalSessionRunner for HostRoutedRunner<R> {
 mod tests {
     use super::*;
     use everruns_provider::error::AgentLoopError;
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[derive(Default)]
@@ -248,7 +241,7 @@ mod tests {
     async fn a_live_host_session_receives_the_wake_instead_of_running_a_turn() {
         let routes = WakeRoutes::new();
         let session_id = SessionId::new_random();
-        let mut receiver = routes.register(session_id);
+        let mut receiver = routes.register(session_id).await;
         let runner = HostRoutedRunner::new(RecordingRunner::default(), routes);
 
         runner
@@ -287,7 +280,7 @@ mod tests {
     async fn a_closed_host_channel_prunes_the_route_and_delivers_synchronously() {
         let routes = WakeRoutes::new();
         let session_id = SessionId::new_random();
-        let receiver = routes.register(session_id);
+        let receiver = routes.register(session_id).await;
         drop(receiver); // the host went away
         let runner = HostRoutedRunner::new(RecordingRunner::default(), routes.clone());
 
@@ -296,7 +289,7 @@ mod tests {
             .await
             .expect("a dead receiver should fall through to the inner runner");
         assert!(
-            routes.live_sessions().is_empty(),
+            routes.live_sessions().await.is_empty(),
             "the dead route must be pruned"
         );
         assert_eq!(runner.inner().turns_run.load(Ordering::SeqCst), 1);
@@ -310,9 +303,9 @@ mod tests {
     async fn re_registering_replaces_the_route_and_a_stale_send_does_not_prune_it() {
         let routes = WakeRoutes::new();
         let session_id = SessionId::new_random();
-        let stale = routes.register(session_id);
+        let stale = routes.register(session_id).await;
         drop(stale);
-        let mut fresh = routes.register(session_id);
+        let mut fresh = routes.register(session_id).await;
         let runner = HostRoutedRunner::new(RecordingRunner::default(), routes.clone());
 
         runner
@@ -324,7 +317,104 @@ mod tests {
             fresh.try_recv().expect("fresh host receives"),
             "second wake"
         );
-        assert_eq!(routes.live_sessions(), vec![session_id]);
+        assert_eq!(routes.live_sessions().await, vec![session_id]);
+    }
+
+    #[tokio::test]
+    async fn reconnect_waits_for_a_synchronous_turn_to_finish() {
+        use tokio::sync::Notify;
+        use tokio::time::{Duration, timeout};
+
+        struct BlockingRunner {
+            entered: Arc<Notify>,
+            release: Arc<Notify>,
+        }
+
+        #[async_trait]
+        impl LocalSessionRunner for BlockingRunner {
+            async fn create_session(
+                &self,
+                _harness_id: HarnessId,
+                _agent_id: Option<AgentId>,
+                _title: Option<&str>,
+                _locale: Option<&str>,
+                _parent_session_id: Option<SessionId>,
+            ) -> Result<ExecutionSession> {
+                Err(AgentLoopError::tool("create_session unused in these tests"))
+            }
+
+            async fn send_message(&self, _session_id: SessionId, _content: &str) -> Result<()> {
+                self.entered.notify_one();
+                self.release.notified().await;
+                Ok(())
+            }
+
+            async fn list_sessions(
+                &self,
+                _limit: Option<usize>,
+                _agent_id: Option<AgentId>,
+            ) -> Result<Vec<ExecutionSession>> {
+                Ok(vec![])
+            }
+
+            async fn get_session(
+                &self,
+                _session_id: SessionId,
+            ) -> Result<Option<ExecutionSession>> {
+                Ok(None)
+            }
+
+            async fn get_messages(
+                &self,
+                _session_id: SessionId,
+                _limit: Option<usize>,
+            ) -> Result<Vec<PlatformMessage>> {
+                Ok(vec![])
+            }
+
+            async fn get_session_status(&self, _session_id: SessionId) -> Result<Option<String>> {
+                Ok(None)
+            }
+        }
+
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let routes = WakeRoutes::new();
+        let session_id = SessionId::new_random();
+        let runner = Arc::new(HostRoutedRunner::new(
+            BlockingRunner {
+                entered: entered.clone(),
+                release: release.clone(),
+            },
+            routes.clone(),
+        ));
+
+        let send = tokio::spawn({
+            let runner = runner.clone();
+            async move { runner.send_message(session_id, "first wake").await }
+        });
+        entered.notified().await;
+
+        let mut registration = tokio::spawn({
+            let routes = routes.clone();
+            async move { routes.register(session_id).await }
+        });
+        assert!(
+            timeout(Duration::from_millis(20), &mut registration)
+                .await
+                .is_err(),
+            "a reconnect must not become live while the inner turn is running"
+        );
+
+        release.notify_one();
+        send.await.expect("send task should finish").unwrap();
+        let mut receiver = registration.await.expect("registration should finish");
+
+        runner
+            .send_message(session_id, "second wake")
+            .await
+            .expect("wake should reach the reconnected host");
+        assert_eq!(receiver.try_recv().unwrap(), "second wake");
     }
 
     #[tokio::test]
@@ -378,7 +468,7 @@ mod tests {
         let child = SessionId::new_random();
         let host_session = SessionId::new_random();
         let routes = WakeRoutes::new();
-        let _receiver = routes.register(host_session);
+        let _receiver = routes.register(host_session).await;
         let runner = HostRoutedRunner::new(ScopedRunner(child), routes);
 
         let routable = runner
