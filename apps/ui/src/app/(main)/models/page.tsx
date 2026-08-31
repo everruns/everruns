@@ -146,8 +146,8 @@ export default function ModelsPage() {
     await queryClient.invalidateQueries({ queryKey: queryKeys.providers.all });
   };
 
-  const handleSetDefaultModel = async (modelId: string) => {
-    await updateOrg.mutateAsync({ default_model_id: modelId || undefined });
+  const handleSetDefaultModel = async (modelId: string | null) => {
+    await updateOrg.mutateAsync({ default_model_id: modelId });
   };
 
   return (
@@ -310,7 +310,7 @@ export default function ModelsPage() {
                     <Select
                       value={org?.default_model_id ?? "none"}
                       onValueChange={(value) =>
-                        handleSetDefaultModel(value === "none" ? "" : value)
+                        handleSetDefaultModel(value === "none" ? null : value)
                       }
                       disabled={updateOrg.isPending}
                     >

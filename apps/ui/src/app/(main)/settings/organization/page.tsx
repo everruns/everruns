@@ -183,7 +183,6 @@ export default function OrganizationPage() {
 
     if (
       (group === "identity" && !nextDraft.name.trim()) ||
-      (group === "models" && !nextDraft.defaultModelId) ||
       (group === "harnesses" && (!nextDraft.defaultHarnessId || !nextDraft.baseHarnessId))
     ) {
       return;
@@ -200,7 +199,7 @@ export default function OrganizationPage() {
         group === "identity"
           ? { name: nextDraft.name.trim() }
           : group === "models"
-            ? { default_model_id: nextDraft.defaultModelId }
+            ? { default_model_id: nextDraft.defaultModelId || null }
             : {
                 default_harness_id: nextDraft.defaultHarnessId,
                 base_harness_id: nextDraft.baseHarnessId,
