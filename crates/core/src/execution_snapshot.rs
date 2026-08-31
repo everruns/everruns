@@ -37,13 +37,10 @@ use crate::typed_id::{AgentId, HarnessId, ModelId, SessionId, WorkspaceId};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SnapshotMcpServer {
     pub transport_type: McpServerTransportType,
-    pub url: String,
     /// Header names only; header values never enter the snapshot.
     pub header_names: Vec<String>,
     /// Env var names only; env values never enter the snapshot.
     pub env_names: Vec<String>,
-    pub command: Option<String>,
-    pub args: Vec<String>,
     pub auth_mode: McpServerAuthMode,
     pub protocol_mode: McpProtocolMode,
     pub oauth_provider_id: Option<String>,
@@ -58,11 +55,8 @@ impl From<&ScopedMcpServer> for SnapshotMcpServer {
         env_names.sort();
         Self {
             transport_type: server.transport_type.clone(),
-            url: server.url.clone(),
             header_names,
             env_names,
-            command: server.command.clone(),
-            args: server.args.clone(),
             auth_mode: server.auth_mode.clone(),
             protocol_mode: server.protocol_mode,
             oauth_provider_id: server.oauth_provider_id.clone(),
@@ -404,6 +398,7 @@ mod tests {
             "docs".into(),
             ScopedMcpServer {
                 url: "https://session.example.com/mcp".into(),
+                auth_mode: McpServerAuthMode::OAuth,
                 ..Default::default()
             },
         );
@@ -411,8 +406,8 @@ mod tests {
         let snapshot =
             ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
         assert_eq!(
-            snapshot.mcp_servers.get("docs").map(|s| s.url.as_str()),
-            Some("https://session.example.com/mcp")
+            snapshot.mcp_servers.get("docs").map(|s| &s.auth_mode),
+            Some(&McpServerAuthMode::OAuth)
         );
     }
 
@@ -506,7 +501,7 @@ mod tests {
         session.mcp_servers.insert(
             "docs".into(),
             ScopedMcpServer {
-                url: "https://mcp.example.com".into(),
+                url: "https://user:SECRET-URL-MARKER@mcp.example.com".into(),
                 headers: [(
                     "Authorization".to_string(),
                     "Bearer SECRET-HEADER-MARKER".to_string(),
@@ -516,6 +511,8 @@ mod tests {
                 env: [("API_KEY".to_string(), "SECRET-ENV-MARKER".to_string())]
                     .into_iter()
                     .collect(),
+                command: Some("SECRET-COMMAND-MARKER".into()),
+                args: vec!["--api-key=SECRET-ARG-MARKER".into()],
                 ..Default::default()
             },
         );
@@ -529,14 +526,16 @@ mod tests {
             // Credential values from scoped MCP config never appear.
             assert!(!surface.contains("SECRET-HEADER-MARKER"), "{surface}");
             assert!(!surface.contains("SECRET-ENV-MARKER"), "{surface}");
+            assert!(!surface.contains("SECRET-URL-MARKER"), "{surface}");
+            assert!(!surface.contains("SECRET-COMMAND-MARKER"), "{surface}");
+            assert!(!surface.contains("SECRET-ARG-MARKER"), "{surface}");
             // UI/platform-only session metadata never appears.
             assert!(!surface.contains("UI-TITLE-MARKER"), "{surface}");
             assert!(!surface.contains("UI-PREVIEW-MARKER"), "{surface}");
         }
 
-        // Non-secret scope survives: server name, url, and header *names*.
+        // Non-secret scope survives: server name and credential field names.
         let docs = snapshot.mcp_servers.get("docs").unwrap();
-        assert_eq!(docs.url, "https://mcp.example.com");
         assert_eq!(docs.header_names, vec!["Authorization".to_string()]);
         assert_eq!(docs.env_names, vec!["API_KEY".to_string()]);
     }
