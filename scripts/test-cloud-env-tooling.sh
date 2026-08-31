@@ -57,7 +57,7 @@ fi
 
 # 2. No remote script piped into a shell. That hands version resolution to a
 #    vendor installer, which is how the api.github.com call got in unnoticed.
-if grep -nE 'curl[^|]*\|[[:space:]]*(ba)?sh' "$TARGET"; then
+if grep -nE 'curl[^|]*\|[[:space:]]*(ba)?sh' <<<"$CODE"; then
   echo "FAIL: $TARGET pipes a remote installer into a shell." >&2
   echo "      Vendor installers resolve versions over the GitHub API; pin the" >&2
   echo "      version and download the release asset directly." >&2
