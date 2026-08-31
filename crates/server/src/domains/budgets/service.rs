@@ -730,7 +730,7 @@ impl EventListener for BudgetService {
             output_tokens,
             cache_read_tokens,
             cache_creation_tokens,
-            usage.actual_cost_usd,
+            usage.effective_cost_usd(),
             data.metadata.finish_reasons.as_deref(),
         )
         .await;
