@@ -80,8 +80,9 @@ setup and `.deepsec/AGENTS.md` for agent usage.
 - **Dependency updates**: handled by Dependabot (`.github/dependabot.yml`),
   which covers the `cargo`, `docker`, and `npm` ecosystems, with security alerts
   reviewed in the GitHub Security tab.
-- **Alert visibility**: `.github/workflows/security-alerts.yml` publishes open
-  code-scanning and Dependabot alerts into a job log daily. The alert APIs are
+- **Alert visibility**: `.github/workflows/security-alerts.yml` publishes only
+  aggregate code-scanning and Dependabot alert counts into a job log daily; alert
+  details remain protected by the security-alert API's access control. The alert APIs are
   unreadable from a scheduled agent session, so this is how such a session sees
   them; a workflow token reaches code scanning but not Dependabot alerts, which
   still need `security_events` on the GitHub App installation (EVE-926).

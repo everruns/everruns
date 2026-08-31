@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print open Dependabot and code-scanning alerts as Markdown.
+"""Print aggregate open Dependabot and code-scanning alert counts as Markdown.
 
 Usage: GH_TOKEN=... scripts/report_security_alerts.py [owner/repo]
 
@@ -15,9 +15,9 @@ scanners — which cannot see GitHub-only advisories, triage state, or CodeQL
 findings at all.
 
 An Actions job can grant itself `security-events: read` on the built-in
-GITHUB_TOKEN with no org or app administration. Running this there and printing
-to the job log turns the alerts into something a later session can read back
-over the Actions API, which it already has access to.
+GITHUB_TOKEN with no org or app administration. The report deliberately emits
+only aggregate counts because job logs have a broader audience than security
+alert details.
 
 That covers code scanning but not all of it. Measured on run 32458309940: with
 `security-events: read` the job read code-scanning alerts fine and was still
@@ -114,26 +114,7 @@ def format_dependabot(alerts: list) -> list[str]:
         return ["No open Dependabot alerts."]
 
     counts = Counter(alert["security_advisory"]["severity"] for alert in alerts)
-    lines = [
-        f"{len(alerts)} open ({summarize(counts)}).",
-        "",
-        "| Severity | Package | Ecosystem | Advisory | Manifest |",
-        "| --- | --- | --- | --- | --- |",
-    ]
-    for alert in sorted(
-        alerts, key=lambda a: severity_rank(a["security_advisory"]["severity"])
-    ):
-        advisory = alert["security_advisory"]
-        package = alert["dependency"].get("package") or {}
-        manifest = alert["dependency"].get("manifest_path", "?")
-        lines.append(
-            f"| {advisory['severity']} "
-            f"| `{package.get('name', '?')}` "
-            f"| {package.get('ecosystem', '?')} "
-            f"| [{advisory['ghsa_id']}]({alert['html_url']}) "
-            f"| `{manifest}` |"
-        )
-    return lines
+    return [f"{len(alerts)} open ({summarize(counts)})."]
 
 
 def code_scanning_section(repo: str, token: str) -> tuple[list[str], bool]:
@@ -161,24 +142,7 @@ def format_code_scanning(alerts: list) -> list[str]:
         return rule.get("security_severity_level") or rule.get("severity") or "unknown"
 
     counts = Counter(severity_of(alert) for alert in alerts)
-    lines = [
-        f"{len(alerts)} open ({summarize(counts)}).",
-        "",
-        "| Severity | Rule | Tool | Location |",
-        "| --- | --- | --- | --- |",
-    ]
-    for alert in sorted(alerts, key=lambda a: severity_rank(severity_of(a))):
-        location = (alert.get("most_recent_instance") or {}).get("location") or {}
-        where = location.get("path", "?")
-        if location.get("start_line"):
-            where += f":{location['start_line']}"
-        lines.append(
-            f"| {severity_of(alert)} "
-            f"| [{alert['rule'].get('id', '?')}]({alert['html_url']}) "
-            f"| {alert.get('tool', {}).get('name', '?')} "
-            f"| `{where}` |"
-        )
-    return lines
+    return [f"{len(alerts)} open ({summarize(counts)})."]
 
 
 def main() -> int:

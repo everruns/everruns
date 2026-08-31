@@ -1,7 +1,8 @@
 name: Security Alerts
 
-# Publishes open Dependabot and code-scanning alerts into a job log a scheduled
-# maintenance session can actually read.
+# Publishes aggregate Dependabot and code-scanning alert counts into a job log
+# a scheduled maintenance session can actually read. Alert details stay behind
+# the security-alert API's stricter access control.
 #
 # Those two APIs are 403 for such a session, and no token it holds changes that:
 # the agent egress proxy rewrites `Authorization` for api.github.com, so every
@@ -61,9 +62,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Goes to the log (readable over the Actions API, which is the channel
-          # a scheduled session has), the summary, and an artifact. The report is
-          # still worth publishing when the script exits non-zero — that exit
+          # Goes to the log, summary, and an artifact. Only aggregate counts are
+          # safe for these broader-access channels. The report is still worth
+          # publishing when the script exits non-zero — that exit
           # means an endpoint was unreadable, and the reason is in the report.
           set +e
           scripts/report_security_alerts.py | tee security-alerts.md

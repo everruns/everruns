@@ -64,12 +64,9 @@ check(
     rows[0] == "3 open (1 critical, 1 moderate, 1 low).",
     rows[0],
 )
-check(
-    "dependabot rows are ordered by severity",
-    body.index("log4j") < body.index("nanoid") < body.index("left-pad"),
-)
-check("dependabot renders the advisory link", "GHSA-crit" in body)
-check("dependabot renders the manifest", "apps/ui/package.json" in body)
+check("dependabot omits package details", "log4j" not in body)
+check("dependabot omits advisory details", "GHSA-crit" not in body)
+check("dependabot omits manifest details", "apps/ui/package.json" not in body)
 
 
 def scanning_alert(level, rule_id, line):
@@ -92,11 +89,8 @@ check(
     rows[0] == "2 open (1 high, 1 low).",
     rows[0],
 )
-check(
-    "code-scanning rows are ordered by severity",
-    body.index("rs/high-rule") < body.index("rs/low-rule"),
-)
-check("code-scanning renders path and line", "crates/server/src/main.rs:20" in body)
+check("code-scanning omits rule details", "rs/high-rule" not in body)
+check("code-scanning omits path and line", "crates/server/src/main.rs:20" not in body)
 
 # A rule with no security_severity_level still has to render.
 rows = r.format_code_scanning(
@@ -109,7 +103,7 @@ rows = r.format_code_scanning(
         }
     ]
 )
-check("code-scanning falls back to rule severity", "warning" in "\n".join(rows))
+check("code-scanning falls back to rule severity", rows == ["1 open (1 warning)."])
 
 # A 403 must never read as "clean" — but the two endpoints mean different
 # things by it, and collapsing them is the mistake this guards against.
