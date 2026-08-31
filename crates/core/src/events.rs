@@ -595,8 +595,13 @@ pub struct TokenUsage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estimated_cost_usd: Option<f64>,
 
-    /// Best-effort USD cost for already-aggregated usage. Per-generation usage
-    /// leaves this unset and derives the effective cost from actual/estimated.
+    /// Best-effort USD cost when it cannot be derived from actual/estimated
+    /// alone: already-aggregated usage, or a generation carrying a cost that
+    /// belongs to neither slot. Per-generation usage normally leaves this unset
+    /// and derives the effective cost from actual-else-estimated; the exception
+    /// is a turn whose compaction cost is folded in, where the combined total
+    /// has to live here precisely so the generation's own actual-vs-estimated
+    /// distinction survives (EVE-895).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effective_cost_usd: Option<f64>,
 }
@@ -646,9 +651,10 @@ impl TokenUsage {
         self
     }
 
-    /// Set the precomputed best-effort USD cost for aggregate usage, returning
-    /// `self` for chaining. Generation usage should leave this unset so the
-    /// best-effort cost remains actual-else-estimated for that generation.
+    /// Set the precomputed best-effort USD cost, returning `self` for chaining.
+    /// Generation usage should leave this unset so the best-effort cost remains
+    /// actual-else-estimated for that generation, unless a cost outside those
+    /// two slots is folded in (see the field's documentation).
     pub fn with_effective_cost(mut self, effective_cost_usd: Option<f64>) -> Self {
         self.effective_cost_usd = effective_cost_usd;
         self
