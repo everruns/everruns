@@ -14,8 +14,8 @@ use axum::{
 };
 use chrono::Utc;
 use everruns_core::{
-    Caller, DeploymentGrade, InitialFile, OrgRole, ResourceConfigResponse, ScopedMcpServers,
-    evaluate_policies_with,
+    Caller, DeploymentGrade, InitialFile, OrgRole, PermissionResolver, ResourceConfigResponse,
+    ScopedMcpServers, evaluate_policies_with,
 };
 use everruns_host::HostComposition;
 use everruns_platform::Agent;
@@ -38,6 +38,7 @@ use crate::domains::agents::types::{
     SetDefaultAgentVersionRequest, UpdateAgentRequest,
 };
 use crate::domains::common::Command;
+use crate::domains::harnesses::HARNESS_VIEW;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -288,6 +289,15 @@ fn harness_status(value: &str) -> AgentHarnessStatus {
         "deleted" => AgentHarnessStatus::Deleted,
         _ => AgentHarnessStatus::Unresolved,
     }
+}
+
+fn authorize_effective_harness_view(
+    resolver: &dyn PermissionResolver,
+    caller: &Caller,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    HARNESS_VIEW
+        .evaluate_with(resolver, caller)
+        .map_err(|error| ErrorResponse::new(error.message).into_response(StatusCode::FORBIDDEN))
 }
 
 async fn resolve_agent_harnesses(
@@ -601,6 +611,8 @@ pub async fn list_agents(
     .run(&state.ctx(&org))
     .await?;
 
+    authorize_effective_harness_view(state.auth.permission_resolver.as_ref(), &Caller::from(&org))?;
+
     let fallback_harness_name =
         everruns_platform::harness_for_role(&state.built_in_harnesses, BuiltInHarnessRole::Default)
             .map(|harness| harness.name.as_str());
@@ -639,6 +651,7 @@ pub async fn get_agent(
     }
     .run(&state.ctx(&org))
     .await?;
+    authorize_effective_harness_view(state.auth.permission_resolver.as_ref(), &Caller::from(&org))?;
     let fallback_harness_name =
         everruns_platform::harness_for_role(&state.built_in_harnesses, BuiltInHarnessRole::Default)
             .map(|harness| harness.name.as_str());
@@ -1729,7 +1742,20 @@ mod high_risk_admin_gate_tests {
     use super::*;
     use crate::services::CapabilityService;
     use crate::storage::StorageBackend;
+    use everruns_core::{DefaultPermissionResolver, Permission};
     use std::sync::Arc;
+
+    struct AgentsOnlyResolver;
+
+    impl PermissionResolver for AgentsOnlyResolver {
+        fn has_permission(&self, _caller: &Caller, permission: &Permission) -> bool {
+            matches!(permission, Permission::OrgAgentsManage)
+        }
+
+        fn caller_permissions(&self, _caller: &Caller) -> Vec<Permission> {
+            vec![Permission::OrgAgentsManage]
+        }
+    }
 
     fn capability_service() -> CapabilityService {
         let db = Arc::new(StorageBackend::in_memory());
@@ -1845,5 +1871,21 @@ mod high_risk_admin_gate_tests {
         let svc = capability_service();
         let result = require_admin_for_high_risk(&org_with_role(OrgRole::Member), &[], &svc);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn effective_harness_metadata_requires_harness_view() {
+        let caller = Caller::from(&org_with_role(OrgRole::Owner));
+        let (status, _) = authorize_effective_harness_view(&AgentsOnlyResolver, &caller)
+            .expect_err("agent permission must not grant access to harness metadata");
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn effective_harness_metadata_allows_harness_view() {
+        let caller = Caller::from(&org_with_role(OrgRole::Owner));
+
+        assert!(authorize_effective_harness_view(&DefaultPermissionResolver, &caller).is_ok());
     }
 }
