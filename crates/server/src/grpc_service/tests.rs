@@ -356,6 +356,42 @@ async fn test_execute_command_lists_seeded_harnesses() {
 }
 
 #[tokio::test]
+async fn test_execute_command_denies_org_disabled_feature() {
+    let service = test_worker_service().await;
+    service
+        .db
+        .replace_org_feature_flags(
+            everruns_core::DEFAULT_ORG_ID,
+            &std::collections::HashMap::from([("skills".to_string(), false)]),
+        )
+        .await
+        .expect("disable skills for the organization");
+
+    let response = service
+        .execute_command(Request::new(ExecuteCommandRequest {
+            name: "list_skills".to_string(),
+            api_version: "v1".to_string(),
+            params_json: br#"{}"#.to_vec(),
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            user_id: None,
+            idempotency_key: None,
+            metadata: Default::default(),
+        }))
+        .await
+        .expect("execute_command should return a structured command error")
+        .into_inner();
+
+    let proto::execute_command_response::Result::Error(error) =
+        response.result.expect("command result should be present")
+    else {
+        panic!("expected Error response");
+    };
+
+    assert_eq!(error.kind, 3);
+    assert_eq!(error.message, "Feature 'skills' is not enabled");
+}
+
+#[tokio::test]
 async fn test_execute_command_unknown_command_returns_bad_request_kind() {
     let service = test_worker_service().await;
 
