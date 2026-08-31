@@ -15583,8 +15583,13 @@ export interface components {
       cache_read_tokens?: number | null;
       /**
        * Format: double
-       * @description Best-effort USD cost for already-aggregated usage. Per-generation usage
-       *     leaves this unset and derives the effective cost from actual/estimated.
+       * @description Best-effort USD cost when it cannot be derived from actual/estimated
+       *     alone: already-aggregated usage, or a generation carrying a cost that
+       *     belongs to neither slot. Per-generation usage normally leaves this unset
+       *     and derives the effective cost from actual-else-estimated; the exception
+       *     is a turn whose compaction cost is folded in, where the combined total
+       *     has to live here precisely so the generation's own actual-vs-estimated
+       *     distinction survives (EVE-895).
        */
       effective_cost_usd?: number | null;
       /**
