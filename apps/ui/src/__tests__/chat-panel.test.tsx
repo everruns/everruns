@@ -1053,4 +1053,51 @@ describe("ChatPanel placeholder", () => {
       ),
     ).not.toBeInTheDocument();
   });
+
+  it("keeps the stop control enabled when the active model becomes unavailable", async () => {
+    mockSessionContext.sessionId = "session-1";
+    const stopTrack = jest.fn();
+    const getUserMedia = jest.fn().mockResolvedValue({
+      getTracks: () => [{ stop: stopTrack }],
+    });
+    const close = jest.fn();
+    class MockRTCPeerConnection {
+      ontrack: ((event: { streams: MediaStream[] }) => void) | null = null;
+      addTrack = jest.fn();
+      close = close;
+      createOffer = jest.fn().mockResolvedValue({ type: "offer", sdp: "local-sdp" });
+      setLocalDescription = jest.fn();
+      setRemoteDescription = jest.fn();
+    }
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+    Object.defineProperty(globalThis, "RTCPeerConnection", {
+      configurable: true,
+      value: MockRTCPeerConnection,
+    });
+    mockUseFeatureFlag.mockReturnValue(true);
+    mockStartSessionVoice.mockResolvedValue({
+      answer_sdp: "remote-sdp",
+      voice_connection_id: "voice-1",
+    });
+    mockEndSessionVoice.mockResolvedValue(undefined);
+
+    const { rerender } = render(<ChatPanel />);
+    fireEvent.click(screen.getByTitle("Start voice session"));
+    const stopButton = await screen.findByTitle("End voice session");
+
+    mockSessionContext.llmModel = null;
+    rerender(<ChatPanel />);
+
+    expect(stopButton).not.toBeDisabled();
+    fireEvent.click(stopButton);
+
+    await waitFor(() => {
+      expect(stopTrack).toHaveBeenCalledTimes(1);
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(mockEndSessionVoice).toHaveBeenCalledWith("session-1", "voice-1", "client_ended");
+    });
+  });
 });
