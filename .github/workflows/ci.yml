@@ -2119,6 +2119,7 @@ jobs:
       - format
       - lockfile
       - msrv
+      - knowledge
       - clippy
       - unit-test
       - worker-test
