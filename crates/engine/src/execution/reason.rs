@@ -1277,6 +1277,13 @@ impl ReasonAtom {
         // Batch deltas every 100ms to reduce event volume while providing real-time feedback
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let retry_config = self.provider_retry_config.clone();
+        // OpenRouter server tools execute inside the provider and therefore do
+        // not surface as agent ToolCalls. Reissuing their request can duplicate
+        // side effects even when the stream has emitted only reasoning.
+        let has_provider_executed_tools = llm_config
+            .openrouter_routing
+            .as_ref()
+            .is_some_and(|routing| !routing.server_tools.is_empty());
         let mut stream_retry_metadata = RetryMetadata::default();
         let mut retry_started_at = None;
         // Best-effort streamed phase hint (EVE-774). Starts `None` ("not yet
@@ -1382,6 +1389,7 @@ impl ReasonAtom {
                 Err(e)
                     if e.is_transient_llm_error()
                         && !e.llm_retry_handled()
+                        && !has_provider_executed_tools
                         && stream_retry_metadata.attempts < retry_config.max_retries =>
                 {
                     let proposed_wait =
@@ -1424,7 +1432,7 @@ impl ReasonAtom {
             let mut thinking = String::new();
             let mut tool_calls = Vec::new();
             let mut termination = StreamTermination::Exhausted;
-            let mut replay_state = StreamReplayState::default();
+            let mut replay_state = StreamReplayState::for_request(has_provider_executed_tools);
             let mut pending_delta = String::new();
             let mut pending_thinking_delta = String::new();
             let mut last_delta_emit = Instant::now();
