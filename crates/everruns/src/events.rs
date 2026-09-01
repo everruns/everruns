@@ -534,9 +534,11 @@ impl SessionEvent {
 
     /// Build the reviewed `data` payload for a projected event.
     ///
-    /// Mirrors [`SessionEventKind`] field for field. Adding a variant field
-    /// means adding it here; an event whose kind promotes nothing gets an empty
-    /// object rather than its internal payload.
+    /// Every arm names the fields it promotes — mirroring the variant's own
+    /// fields where it has them, an explicit list where it does not. Adding a
+    /// field means adding it here; an event that promotes nothing gets an empty
+    /// object rather than its internal payload. No arm clones `data`, so no
+    /// event type gains public surface without someone deciding it should.
     fn reviewed_data(kind: &SessionEventKind, data: &Value) -> Value {
         // Operator-authored display text, reviewed as safe wherever it appears:
         // a human wrote it for a timeline, so it carries no model or tool
@@ -622,9 +624,21 @@ impl SessionEvent {
                 "duration_ms": duration_ms,
                 "success": success,
             }),
-            // Reviewed safe in full: turn id, cancellation reason, and usage
-            // totals. The payload carries no conversation content.
-            SessionEventKind::TurnCancelled => data.clone(),
+            // Turn id, cancellation reason and usage totals are reviewed safe —
+            // none carries conversation content. Named explicitly rather than
+            // cloned wholesale: `TurnCancelled` promotes no variant fields, so a
+            // clone would make this the one event where a field added inside the
+            // runtime joins the public surface on its own, which is exactly what
+            // the reviewed/canonical split exists to prevent.
+            SessionEventKind::TurnCancelled => {
+                let mut cancelled = serde_json::Map::new();
+                for field in ["turn_id", "reason", "usage"] {
+                    if let Some(value) = data.get(field) {
+                        cancelled.insert(field.to_string(), value.clone());
+                    }
+                }
+                Value::Object(cancelled)
+            }
             SessionEventKind::Other { .. }
             | SessionEventKind::TurnStarted
             | SessionEventKind::TurnCompleted
@@ -947,6 +961,31 @@ mod tests {
         assert_eq!(reviewed["tool_call_id"], "call_1");
         assert_eq!(reviewed["narration"], "Looking it up");
         assert!(!reviewed.contains_key("result"));
+    }
+
+    #[test]
+    fn a_cancellation_field_nobody_promoted_stays_off_the_reviewed_surface() {
+        // `TurnCancelled` is the one kind whose reviewed payload comes entirely
+        // from the event data rather than from variant fields, so it is the one
+        // most likely to drift back into a wholesale clone. A field added to the
+        // cancellation payload inside the runtime must not become public API
+        // just by existing.
+        let canonical = json!({
+            "turn_id": "turn_1",
+            "reason": "user cancelled",
+            "usage": { "input_tokens": 12, "output_tokens": 3 },
+            "partial_output": "the model had written this far",
+        });
+
+        let reviewed = SessionEvent::reviewed_data(&SessionEventKind::TurnCancelled, &canonical);
+
+        assert_eq!(reviewed["turn_id"], "turn_1");
+        assert_eq!(reviewed["reason"], "user cancelled");
+        assert_eq!(reviewed["usage"]["input_tokens"], 12);
+        assert!(
+            reviewed.get("partial_output").is_none(),
+            "an unpromoted cancellation field must not reach the reviewed surface"
+        );
     }
 
     #[tokio::test]
