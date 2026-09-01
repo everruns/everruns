@@ -21,6 +21,7 @@ pub mod grpc_adapters;
 pub mod grpc_durable_store;
 pub mod grpc_worker_adapters;
 pub mod leased_resource_cleanup;
+pub mod mcp_elicitation_consent;
 pub mod mcp_executor;
 pub mod platform;
 pub mod runner;
