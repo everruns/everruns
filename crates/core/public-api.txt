@@ -430,6 +430,7 @@ everruns_core::events::EventData::ReasonThinkingDelta	variant
 everruns_core::events::EventData::ReasonThinkingStarted	variant
 everruns_core::events::EventData::SessionActivated	variant
 everruns_core::events::EventData::SessionIdled	variant
+everruns_core::events::EventData::SessionModelChanged	variant
 everruns_core::events::EventData::SessionStarted	variant
 everruns_core::events::EventData::SessionTitleUpdated	variant
 everruns_core::events::EventData::TaskCreated	variant
@@ -503,10 +504,12 @@ everruns_core::events::RecoveryMode::Restart	variant
 everruns_core::events::SCHEDULE_TRIGGERED	constant
 everruns_core::events::SESSION_ACTIVATED	constant
 everruns_core::events::SESSION_IDLED	constant
+everruns_core::events::SESSION_MODEL_CHANGED	constant
 everruns_core::events::SESSION_STARTED	constant
 everruns_core::events::SESSION_TITLE_UPDATED	constant
 everruns_core::events::SessionActivatedData	struct
 everruns_core::events::SessionIdledData	struct
+everruns_core::events::SessionModelChangedData	struct
 everruns_core::events::SessionStartedData	struct
 everruns_core::events::SessionTaskEventData	struct
 everruns_core::events::SessionTitleUpdatedData	struct
