@@ -42,8 +42,5 @@ base64.workspace = true
 http = "1"
 urlencoding = "2.1"
 
-[features]
-deno-live-tests = []
-
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

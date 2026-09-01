@@ -860,7 +860,11 @@ Always delete sandboxes when done."#,
             SeedCapability::new("session_storage"),
             SeedCapability::new("session_file_system"),
         ],
-        dev_only: false,
+        // Dev-only: the Deno integration is unsupported and has no live coverage,
+        // because sandboxes require a paid Deno plan the project does not hold
+        // (EVE-946). Offering it as a product example would advertise a path that
+        // fails at the first tool call on a Free-plan account.
+        dev_only: true,
     },
     SeedAgent {
         id: seed_ids::SPRITES_CODER_AGENT,

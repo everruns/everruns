@@ -129,7 +129,14 @@ See `knowledge/security/threat-model.md` for the Deno-specific threat section.
 
 ## Testing
 
-- `tests/live_api_test.rs` is feature-gated behind `deno-live-tests`.
-- Missing-credential behavior is **fail-closed**: with the feature flag on, the test panics when `DENO_DEPLOY_TOKEN` is missing, or when a personal `ddp_...` token is used without `DENO_DEPLOY_ORG`. See `knowledge/integrations/integrations.md`.
-- `DENO_SANDBOX_REGION` optionally overrides the create region for live tests. CI pins Deno live coverage to `ams` because upstream `ord` websocket handshakes were returning transport errors while `ams` continued to provision sandboxes successfully.
-- `.github/workflows/ci.yml` runs the live test only on pushes to `main` when `integrations/deno/**` changes; `.github/workflows/integration-live-sweep.yml` reruns it weekly and on demand as the shared-code backstop.
+- **Unsupported: there is no live coverage.** The Deno sandbox API is only
+  available on a paid Deno plan; the project's account is on the Free plan, where
+  `create_sandbox` returns `400 VERIFICATION_REQUIRED_FOR_SANDBOXES`. The
+  fail-closed live tests could therefore never pass, so they were removed rather
+  than left to skip. See EVE-946.
+- What remains is the mock-backed unit coverage in `src/client.rs`
+  (`cargo test -p everruns-integrations-deno`). It exercises request shaping,
+  error mapping, and proxy handling, and it never reaches the network — so it
+  cannot catch an upstream wire-protocol change.
+- Restoring live coverage means restoring a sandbox-capable plan and re-adding
+  the live test plus its CI jobs (EVE-946).

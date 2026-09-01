@@ -42,7 +42,6 @@ Cloud and container sandbox environments for isolated code execution.
 | Capability | ID | Tools |
 |---|---|---|
 | [Daytona](/capabilities/daytona/) | `daytona` | 10 |
-| [Deno Sandboxes](/capabilities/deno/) | `deno` | 6 |
 | [E2B](/capabilities/e2b/) | `e2b` | 6 |
 | [Docker Container](/capabilities/docker/) | `docker_container` | 5 |
 
@@ -228,7 +227,6 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Bashkit Shell](/capabilities/bashkit-shell/) | [File System](/capabilities/file-system/) |
 | [Agent Skills](/capabilities/agent-skills/) | [File System](/capabilities/file-system/) |
 | [GitHub Scout](/capabilities/github-scout/) | [Sub Agents](/capabilities/sub-agents/) |
-| [Deno Sandboxes](/capabilities/deno/) | [Storage](/capabilities/session-storage/) |
 | [E2B](/capabilities/e2b/) | [Storage](/capabilities/session-storage/) |
 
 ### Features
