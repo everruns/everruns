@@ -1196,6 +1196,13 @@ before the Daytona API call, and persisted sandbox state is still scoped by sess
 
 Deno sandboxes are remote Linux microVMs managed over a websocket + REST control plane. Everruns creates sandboxes with a fixed timeout, reconnects for each tool call, and deletes them via leased-resource cleanup.
 
+> **The integration is unsupported and untested against the live service.** Deno
+> sandboxes require a paid plan the project does not hold, so the live tests were
+> removed rather than left to skip (EVE-946). Every `MITIGATED` status below is
+> therefore asserted against mock-backed unit coverage and code review only — none
+> of it is exercised against the real control plane. Treat these as unverified
+> until live coverage is restored.
+
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
 | TM-DENO-001 | Service-wide token misuse via env fallback | High | Env fallback removed; credential resolves exclusively from user connection (`connection_resolver`); tools return `ConnectionRequired` when no connection is configured | MITIGATED |

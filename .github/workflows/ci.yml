@@ -50,7 +50,6 @@ jobs:
       run_ci: ${{ steps.ci_event.outputs.run_ci }}
       rust: ${{ steps.core_filter.outputs.rust }}
       daytona: ${{ steps.live_filter.outputs.daytona }}
-      deno: ${{ steps.live_filter.outputs.deno }}
       cursor: ${{ steps.live_filter.outputs.cursor }}
       browserless: ${{ steps.live_filter.outputs.browserless }}
       e2b: ${{ steps.live_filter.outputs.e2b }}
@@ -309,7 +308,7 @@ jobs:
         with:
           predicate-quantifier: every
           filters: |
-            # Live API jobs (daytona/deno/browserless/e2b) hit real external
+            # Live API jobs (daytona/browserless/e2b) hit real external
             # services and cost real API budget. Exclude doc-only changes so
             # SPEC.md tweaks don't trigger the full paid matrix on every push
             # to main. The weekly `integration-live-sweep.yml` backstop still
@@ -317,9 +316,6 @@ jobs:
             daytona:
               - 'integrations/daytona/**'
               - '!integrations/daytona/**/*.md'
-            deno:
-              - 'integrations/deno/**'
-              - '!integrations/deno/**/*.md'
             cursor:
               - 'integrations/cursor/**'
               - '!integrations/cursor/**/*.md'
@@ -941,33 +937,15 @@ jobs:
       - name: Run E2B live integration tests
         run: doppler run -- cargo test -p everruns-integrations-e2b --features e2b-live-tests --test live_api_test -- --test-threads=1
 
-  # Live Deno API tests — only when integrations/deno/** changes
-  deno-live-test:
-    name: Deno Live API Tests
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.deno == 'true' && github.event_name == 'push'
-    timeout-minutes: 10
-    env:
-      DENO_SANDBOX_REGION: ams
-      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install Doppler CLI
-        uses: dopplerhq/cli-action@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "test"
-
-      - name: Run Deno live integration tests
-        run: doppler run -- cargo test -p everruns-integrations-deno --features deno-live-tests --test live_api_test -- --test-threads=1
+  # The `deno-live-test` job is quarantined: the Deno organization's plan no
+  # longer includes sandboxes, so `create_sandbox` returns 400
+  # VERIFICATION_REQUIRED_FOR_SANDBOXES and the fail-closed live tests can never
+  # pass. Per the fail-closed contract we remove the job rather than let it
+  # silently skip/pass. The mock-backed unit tests still run above via
+  # `cargo test -p everruns-integrations-deno`, so the client stays covered.
+  # Restoring it means re-adding this job, its `deno` path filter and `changes`
+  # output, its entry in the `build-check` needs list, and the matrix entry in
+  # integration-live-sweep.yml. See EVE-946.
 
   # Integration tests requiring PostgreSQL
   # Tests API endpoints, repositories, and durable execution against real database
@@ -2140,7 +2118,6 @@ jobs:
       - browserless-live-test
       - daytona-live-test
       - e2b-live-test
-      - deno-live-test
     timeout-minutes: 10
     steps:
       - name: Verify all jobs passed

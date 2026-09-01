@@ -244,7 +244,6 @@ export default defineConfig({
                       collapsed: true,
                       items: [
                         { label: "Daytona", slug: "capabilities/daytona" },
-                        { label: "Deno Sandboxes", slug: "capabilities/deno" },
                         { label: "E2B", slug: "capabilities/e2b" },
                         { label: "Docker Container", slug: "capabilities/docker" },
                       ],
@@ -353,7 +352,6 @@ export default defineConfig({
                     { label: "Daytona", slug: "integrations/daytona" },
                     { label: "E2B", slug: "integrations/e2b" },
                     { label: "Container Sandbox", slug: "integrations/container-sandbox" },
-                    { label: "Deno", slug: "integrations/deno" },
                     { label: "Sprites", slug: "integrations/sprites" },
                     { label: "Cursor", slug: "integrations/cursor" },
                   ],

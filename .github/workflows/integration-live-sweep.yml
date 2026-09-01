@@ -29,7 +29,6 @@ jobs:
     timeout-minutes: 10
     env:
       DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-      DENO_SANDBOX_REGION: ${{ matrix.deno_sandbox_region || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -40,9 +39,15 @@ jobs:
             command: cargo test -p everruns-integrations-browserless --features browserless-live-tests --test live_api -- --test-threads=1
           - name: E2B Live API Tests
             command: cargo test -p everruns-integrations-e2b --features e2b-live-tests --test live_api_test -- --test-threads=1
-          - name: Deno Live API Tests
-            command: cargo test -p everruns-integrations-deno --features deno-live-tests --test live_api_test -- --test-threads=1
-            deno_sandbox_region: ams
+          # Deno Live API Tests are quarantined: the Deno organization's plan no
+          # longer includes sandboxes, so `create_sandbox` returns 400
+          # VERIFICATION_REQUIRED_FOR_SANDBOXES and the fail-closed live tests can
+          # never pass. Per the fail-closed contract we remove the job rather
+          # than let it silently skip/pass. The mock-backed unit tests
+          # (`cargo test -p everruns-integrations-deno`) still cover the client.
+          # Re-add this entry, and the `DENO_SANDBOX_REGION` passthrough in the
+          # job `env:` above, once a sandbox-capable plan is restored.
+          # See EVE-946.
           - name: Cursor Live API Tests
             command: cargo test -p everruns-integrations-cursor --features cursor-live-tests --test live_api_test -- --test-threads=1
           - name: Sprites Live API Tests
