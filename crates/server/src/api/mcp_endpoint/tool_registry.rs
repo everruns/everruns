@@ -61,7 +61,112 @@ pub fn tool_definitions(
     if supports_rich_tool_shape(protocol_version) {
         tools.push(agent_get_card_tool(protocol_version, org_id_description));
     }
+    // Credential-collecting tools answer with a URL mode elicitation, which is
+    // delivered as an MRTR `input_required` result. MRTR exists only in
+    // 2026-07-28, and without it the tool could not do its job without asking
+    // the client for the credential itself — exactly what it must never do. So
+    // 2025-era clients do not see them at all.
+    if supports_url_elicitation(protocol_version) {
+        tools.push(session_set_secret_tool(
+            protocol_version,
+            org_id_description,
+        ));
+        tools.push(connect_tool(protocol_version, org_id_description));
+    }
     tools
+}
+
+/// Whether the negotiated protocol can carry a URL mode elicitation (MRTR,
+/// 2026-07-28).
+pub(super) fn supports_url_elicitation(protocol_version: &str) -> bool {
+    protocol_version == super::MCP_PROTOCOL_VERSION_LATEST
+}
+
+fn session_set_secret_tool(
+    protocol_version: &str,
+    org_id_description: &str,
+) -> McpEndpointToolDefinition {
+    tool(
+        protocol_version,
+        "session_set_secret",
+        "Set Session Secret",
+        "Store an encrypted secret (API key, token, password) on a session. This tool never \
+         accepts the value: pass only the secret's name, and Everruns responds with a URL for \
+         the user to open, where a form served by Everruns collects the value directly. The \
+         value therefore never passes through this MCP client or the model. Call it again \
+         after the user reports finishing to confirm the secret is stored.",
+        with_organization_id(
+            object_schema(
+                vec![
+                    id_property("session_id", "Session to store the secret on"),
+                    (
+                        "name",
+                        json!({
+                            "type": "string",
+                            "description": "Secret name, e.g. OPENAI_API_KEY. Names are case-sensitive.",
+                            "minLength": 1,
+                            "maxLength": 255
+                        }),
+                    ),
+                ],
+                vec!["session_id", "name"],
+            ),
+            org_id_description,
+        ),
+        Some(json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "name": { "type": "string" },
+                "session_id": { "type": "string" },
+                "stored": { "type": "boolean" },
+                "message": { "type": "string" }
+            },
+            "required": ["name", "session_id", "stored"]
+        })),
+        None,
+        15_000,
+    )
+}
+
+fn connect_tool(protocol_version: &str, org_id_description: &str) -> McpEndpointToolDefinition {
+    tool(
+        protocol_version,
+        "connect",
+        "Connect a Provider",
+        "Authorize Everruns to act on the user's behalf in a third-party provider (the \
+         connection an agent needs when a tool reports connection_required). This tool never \
+         accepts credentials: Everruns responds with a URL for the user to open, and the \
+         authorization happens between the user and the provider. Call it again after the \
+         user reports finishing to confirm the connection exists.",
+        with_organization_id(
+            object_schema(
+                vec![(
+                    "provider",
+                    json!({
+                        "type": "string",
+                        "description": "Provider to connect, e.g. github. Use discover to see which providers an agent's capabilities require.",
+                        "minLength": 1,
+                        "maxLength": 255
+                    }),
+                )],
+                vec!["provider"],
+            ),
+            org_id_description,
+        ),
+        Some(json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "provider": { "type": "string" },
+                "connected": { "type": "boolean" },
+                "message": { "type": "string" }
+            },
+            "required": ["provider", "connected"]
+        })),
+        None,
+        15_000,
+    )
 }
 
 pub fn tool_definition(
@@ -642,6 +747,52 @@ mod tests {
         for (mcp, description, platform_schema) in cases {
             assert_eq!(mcp.description, description);
             assert_eq!(without_organization_id(mcp.input_schema), platform_schema);
+        }
+    }
+
+    #[test]
+    fn credential_tools_exist_only_where_elicitation_can_be_delivered() {
+        let names = |version: &str| {
+            tool_definitions(version, "org")
+                .into_iter()
+                .map(|tool| tool.name)
+                .collect::<Vec<_>>()
+        };
+        let latest = names("2026-07-28");
+        assert!(latest.contains(&"session_set_secret".to_string()));
+        assert!(latest.contains(&"connect".to_string()));
+        // MRTR — and therefore URL mode elicitation — does not exist before
+        // 2026-07-28, so the tools are not offered at all rather than falling
+        // back to asking the client for the value.
+        for version in ["2025-06-18", "2025-03-26"] {
+            let names = names(version);
+            assert!(!names.contains(&"session_set_secret".to_string()));
+            assert!(!names.contains(&"connect".to_string()));
+        }
+    }
+
+    #[test]
+    fn credential_tools_have_no_parameter_that_could_carry_a_secret() {
+        // The whole point of URL mode elicitation: there must be no way for a
+        // client (or a model) to pass the value in-band.
+        for tool in ["session_set_secret", "connect"] {
+            let definition = tool_definition(tool, "2026-07-28", "org").expect("tool present");
+            let properties = definition.input_schema["properties"]
+                .as_object()
+                .expect("object schema");
+            for forbidden in [
+                "value",
+                "secret",
+                "token",
+                "password",
+                "api_key",
+                "credential",
+            ] {
+                assert!(
+                    !properties.contains_key(forbidden),
+                    "{tool} must not accept '{forbidden}'"
+                );
+            }
         }
     }
 }

@@ -619,7 +619,16 @@ impl TestServer {
             capability_service.clone(),
             Some(sqldb_store.clone()),
         )
-        .with_virtual_registry(virtual_registry.clone());
+        .with_virtual_registry(virtual_registry.clone())
+        // URL mode elicitation pages hang off the same root `/mcp` is served
+        // under, matching app_builder.
+        .with_elicitation_base_url(auth::builtin::root_url_from_api_base(&auth_config.base_url));
+        let mcp_elicitation_state = api::mcp_elicitation::AppState::new(
+            db.clone(),
+            encryption.clone(),
+            auth_state.clone(),
+            auth_config.base_url.clone(),
+        );
 
         // Build API routes
         let mut api_routes = Router::new()
@@ -705,6 +714,7 @@ impl TestServer {
 
         let root_routes = Router::new()
             .merge(api::mcp_endpoint::routes(mcp_endpoint_state))
+            .merge(api::mcp_elicitation::routes(mcp_elicitation_state))
             .merge(auth::cli_auth::cli_auth_public_routes(
                 auth::cli_auth::CliAuthState {
                     db: db.clone(),

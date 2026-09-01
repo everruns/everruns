@@ -84,8 +84,10 @@ fn build_personal_access_token_cache() -> Cache<String, AuthUser> {
 /// Strip the API prefix from the base URL to recover the public root origin.
 /// Used by MCP metadata endpoints and the MCP 401 `WWW-Authenticate` header
 /// so clients can locate `/.well-known/oauth-protected-resource/mcp` (RFC 9728
-/// §3.1 path-derived for the `/mcp` resource).
-pub(crate) fn root_url_from_api_base(api_base_url: &str) -> String {
+/// §3.1 path-derived for the `/mcp` resource), and by the URL mode elicitation
+/// pages that hang off the same root. `pub` so test harnesses can wire the
+/// routes exactly as `app_builder` does.
+pub fn root_url_from_api_base(api_base_url: &str) -> String {
     let trimmed = api_base_url.trim_end_matches('/');
     if let Ok(api_prefix) = std::env::var("API_PREFIX") {
         let api_prefix = api_prefix.trim_end_matches('/');

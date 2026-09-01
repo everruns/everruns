@@ -35,6 +35,7 @@ pub mod images;
 pub mod internal_images;
 pub mod knowledge_bases;
 pub mod knowledge_indexes;
+pub mod mcp_elicitation;
 pub mod mcp_endpoint;
 pub mod mcp_servers;
 pub mod memory;
