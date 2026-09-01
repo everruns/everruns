@@ -16297,6 +16297,14 @@
             "description": "Top-level tool argument injected by the server.",
             "example": "channel_key"
           },
+          "retained_existing_value": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Create only: the binding already held a value, which this request kept.\n\n`configured: true` then describes a credential provisioned by an earlier\nrequest, not by this one. Callers must not report the binding as\nsatisfying the current request until they confirm the stored value is\nthe intended credential, or replace it with\n`set_agent_credential_value`.",
+            "example": false
+          },
           "setup_url": {
             "type": "string",
             "description": "Relative UI route where the user can securely provision the value.",
@@ -24796,6 +24804,14 @@
                   "type": "string",
                   "description": "Top-level tool argument injected by the server.",
                   "example": "channel_key"
+                },
+                "retained_existing_value": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ],
+                  "description": "Create only: the binding already held a value, which this request kept.\n\n`configured: true` then describes a credential provisioned by an earlier\nrequest, not by this one. Callers must not report the binding as\nsatisfying the current request until they confirm the stored value is\nthe intended credential, or replace it with\n`set_agent_credential_value`.",
+                  "example": false
                 },
                 "setup_url": {
                   "type": "string",
