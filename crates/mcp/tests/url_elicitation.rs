@@ -14,8 +14,9 @@ use everruns_core::{
     EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,
 };
 use everruns_mcp::{
-    ElicitationAction, McpClient, McpConnection, McpExecutor, NoAuthProvider, RelayUrlElicitations,
-    StaticConnectionResolver, UrlElicitation, UrlElicitationHandler,
+    ConsentingUrlElicitations, ElicitationAction, ElicitationConsentStore, GrantedConsent,
+    McpClient, McpConnection, McpExecutor, NoAuthProvider, RelayUrlElicitations,
+    StaticConnectionResolver, StoredConsent, UrlElicitation, UrlElicitationHandler,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -30,6 +31,10 @@ const ELICITATION_URL: &str = "https://mcp.example.com/connect?state=abc";
 struct ElicitingEgress {
     elicitation_url: &'static str,
     complete_after: usize,
+    /// When set, the server completes as soon as a call answers `accept` —
+    /// which is how a real one behaves: it keeps eliciting until the
+    /// out-of-band interaction is done, then serves the call.
+    honor_accept: bool,
     requests: Mutex<Vec<Value>>,
 }
 
@@ -38,6 +43,17 @@ impl ElicitingEgress {
         Arc::new(Self {
             elicitation_url,
             complete_after,
+            honor_accept: false,
+            requests: Mutex::new(Vec::new()),
+        })
+    }
+
+    /// A server that elicits forever until a call tells it the human consented.
+    fn awaiting_accept(elicitation_url: &'static str) -> Arc<Self> {
+        Arc::new(Self {
+            elicitation_url,
+            complete_after: usize::MAX,
+            honor_accept: true,
             requests: Mutex::new(Vec::new()),
         })
     }
@@ -69,8 +85,15 @@ impl EgressService for ElicitingEgress {
         if parsed["method"] != "tools/call" {
             return Ok(Self::ok(json!({ "jsonrpc": "2.0", "id": 1, "result": {} })));
         }
+        let accepted = parsed["params"]["inputResponses"]
+            .as_object()
+            .is_some_and(|responses| {
+                responses
+                    .values()
+                    .any(|response| response["action"] == "accept")
+            });
         let prior = self.calls().len();
-        if prior > self.complete_after {
+        if (self.honor_accept && accepted) || prior > self.complete_after {
             return Ok(Self::ok(json!({
                 "jsonrpc": "2.0", "id": 1,
                 "result": {
@@ -294,4 +317,137 @@ async fn the_relay_host_hands_the_user_the_url_as_an_actionable_result() {
     assert!(payload["error"].as_str().unwrap().contains(ELICITATION_URL));
     // Not a transport failure: the model should relay it, not retry blindly.
     assert!(result.error.is_none());
+}
+
+/// The consent a user gave, as the host records it between the two calls.
+#[derive(Default)]
+struct RecordedConsents {
+    records: Mutex<Vec<StoredConsent>>,
+}
+
+impl RecordedConsents {
+    fn record(&self, consent: StoredConsent) {
+        self.records.lock().unwrap().push(consent);
+    }
+}
+
+#[async_trait]
+impl ElicitationConsentStore for RecordedConsents {
+    async fn take_consent(
+        &self,
+        server: &str,
+        tool: &str,
+    ) -> anyhow::Result<Option<GrantedConsent>> {
+        let mut records = self.records.lock().unwrap();
+        let found = records
+            .iter()
+            .position(|record| record.server == server && record.tool == tool);
+        Ok(found.and_then(|index| {
+            records
+                .remove(index)
+                .grant_for(server, tool, chrono::Utc::now())
+        }))
+    }
+}
+
+#[tokio::test]
+async fn a_consenting_host_pauses_once_and_then_answers_accept() {
+    // The full session shape: the first call has nothing to go on and stands
+    // down with the URL, the user consents out of band, and the next run of the
+    // same tool answers the server `accept`.
+    let egress = ElicitingEgress::awaiting_accept(ELICITATION_URL);
+    let consents = Arc::new(RecordedConsents::default());
+    let client = Arc::new(McpClient::with_url_elicitation(
+        egress.clone(),
+        Arc::new(NoAuthProvider),
+        Arc::new(ConsentingUrlElicitations::new(consents.clone())),
+    ));
+    let executor = McpExecutor::new(
+        client,
+        Arc::new(StaticConnectionResolver::from_connections([
+            McpConnection::http("docs", URL),
+        ])),
+    );
+    let tool_call = everruns_provider::tool_types::ToolCall {
+        id: "call_1".to_string(),
+        name: "mcp_docs__search".to_string(),
+        arguments: json!({}),
+    };
+
+    let paused = everruns_core::McpToolInvoker::invoke(&executor, &tool_call)
+        .await
+        .expect("a pending elicitation is a result, not a failure");
+    let payload = paused.result.expect("structured result");
+    assert_eq!(payload["code"], "url_elicitation_required");
+    assert_eq!(payload["server"], "docs");
+    assert_eq!(payload["tool"], "search");
+    // What the engine needs to name the call to re-run after consent.
+    assert_eq!(payload["retry_tool"], "mcp_docs__search");
+    assert_eq!(payload["url_host"], "mcp.example.com");
+
+    // The user clicks through; the host records what they consented to.
+    consents.record(StoredConsent::new(
+        payload["server"].as_str().unwrap(),
+        payload["tool"].as_str().unwrap(),
+        payload["url_host"].as_str().unwrap(),
+        chrono::Utc::now(),
+    ));
+
+    let completed = everruns_core::McpToolInvoker::invoke(&executor, &tool_call)
+        .await
+        .expect("the retry runs the tool");
+    assert!(completed.error.is_none());
+    assert!(
+        everruns_provider::tool_types::UrlElicitationRequired::from_tool_result(&completed)
+            .is_none(),
+        "the second call must not stand down again"
+    );
+
+    let calls = egress.calls();
+    assert_eq!(
+        calls.len(),
+        3,
+        "one paused call, then the retry and its accept"
+    );
+    // Only the round that had consent behind it answered.
+    assert!(calls[0]["params"]["inputResponses"].is_null());
+    assert!(calls[1]["params"]["inputResponses"].is_null());
+    assert_eq!(
+        calls[2]["params"]["inputResponses"]["connect"],
+        json!({ "action": "accept" })
+    );
+    assert_eq!(calls[2]["params"]["requestState"], "opaque-state");
+}
+
+#[tokio::test]
+async fn a_consent_for_another_domain_is_not_reused() {
+    let egress = ElicitingEgress::awaiting_accept(ELICITATION_URL);
+    let consents = Arc::new(RecordedConsents::default());
+    // Consent given for a different domain than the server now elicits.
+    consents.record(StoredConsent::new(
+        "docs",
+        "search",
+        "not-the-domain-you-saw.example",
+        chrono::Utc::now(),
+    ));
+    let client = McpClient::with_url_elicitation(
+        egress.clone(),
+        Arc::new(NoAuthProvider),
+        Arc::new(ConsentingUrlElicitations::new(consents)),
+    );
+
+    let error = client
+        .call(&McpConnection::http("docs", URL), "search", json!({}))
+        .await
+        .expect_err("a consent for another domain must not answer this elicitation");
+    assert!(
+        error
+            .downcast_ref::<everruns_mcp::UrlElicitationPending>()
+            .is_some(),
+        "unexpected: {error}"
+    );
+    assert!(
+        egress.calls()[0]["params"]["inputResponses"].is_null(),
+        "nothing may be answered without matching consent"
+    );
 }

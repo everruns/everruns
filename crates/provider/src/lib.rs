@@ -102,8 +102,9 @@ pub use runtime_provider::{
     StaticHeaderAuth,
 };
 pub use tool_types::{
-    BuiltinTool, ClientSideTool, DeferrablePolicy, SideEffectClass, ToolCall, ToolDefinition,
-    ToolHints, ToolPolicy, ToolResult, ToolResultImage,
+    BuiltinTool, CONFIRM_URL_ELICITATION_TOOL, ClientSideTool, DeferrablePolicy, SideEffectClass,
+    ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult, ToolResultImage,
+    URL_ELICITATION_REQUIRED_CODE, UrlElicitationRequired,
 };
 pub use url_validation::{
     UrlValidationError, is_blocked_ip, validate_safe_url, validate_url_dns_pinned,

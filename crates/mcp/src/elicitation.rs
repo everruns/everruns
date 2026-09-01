@@ -19,6 +19,7 @@
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
+use std::sync::Arc;
 use url::Url;
 
 /// A server's request that a human visit a URL out of band.
@@ -122,6 +123,171 @@ impl UrlElicitationHandler for RelayUrlElicitations {
     }
 }
 
+/// A consent a human gave for one URL mode elicitation, recorded durably so the
+/// tool call that follows the consent can be answered `accept`.
+///
+/// Consent is bound to the domain the user actually saw. A server that elicits
+/// `pay.example.com`, waits for the click, then elicits `evil.example` on the
+/// retry gets no reuse of the first consent: the host is compared before the
+/// grant is honoured.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GrantedConsent {
+    /// Host the user consented to, as shown on the consent surface.
+    pub host: String,
+}
+
+/// Durable, single-use record of "a human consented to open this server's URL
+/// for this tool".
+///
+/// A turn cannot block on a browser: the turn that hit the elicitation ends,
+/// the user consents out of band, and a *later* turn re-runs the tool. The
+/// consent therefore has to outlive the process that asked for it, which is why
+/// this is a store rather than a channel.
+#[async_trait]
+pub trait ElicitationConsentStore: Send + Sync {
+    /// Consume the consent recorded for `server`/`tool`, if any.
+    ///
+    /// Taking is destructive by contract: one consent authorises exactly one
+    /// `accept`. A server that elicits again on the next call gets a fresh
+    /// prompt rather than a silent replay of an old decision.
+    async fn take_consent(&self, server: &str, tool: &str) -> Result<Option<GrantedConsent>>;
+}
+
+/// Handler for hosts that can pause a turn, show a consent surface, and resume:
+/// it answers `accept` when — and only when — a human already consented.
+///
+/// The first call finds no consent and reports the elicitation through
+/// [`UrlElicitationPending`], which pauses the turn and puts the URL in front of
+/// the user. When they consent, the host records it and the tool runs again;
+/// this time the consent is found and the server is told `accept`, so it can
+/// check whether the out-of-band interaction completed.
+///
+/// It still never opens the URL and never invents consent — the only thing it
+/// can do without a stored decision is stand down.
+pub struct ConsentingUrlElicitations {
+    store: Arc<dyn ElicitationConsentStore>,
+}
+
+impl ConsentingUrlElicitations {
+    pub fn new(store: Arc<dyn ElicitationConsentStore>) -> Self {
+        Self { store }
+    }
+}
+
+#[async_trait]
+impl UrlElicitationHandler for ConsentingUrlElicitations {
+    async fn request_url_consent(&self, elicitation: &UrlElicitation) -> Result<ElicitationAction> {
+        // A store that is unreachable must not turn into an implicit "yes".
+        let consent = match self
+            .store
+            .take_consent(&elicitation.server_name, &elicitation.tool_name)
+            .await
+        {
+            Ok(consent) => consent,
+            Err(error) => {
+                tracing::warn!(
+                    server = %elicitation.server_name,
+                    tool = %elicitation.tool_name,
+                    %error,
+                    "Could not read recorded elicitation consent; asking the user again"
+                );
+                None
+            }
+        };
+        let Some(consent) = consent else {
+            return Ok(ElicitationAction::Cancel);
+        };
+        if consent.host != elicitation.host {
+            tracing::warn!(
+                server = %elicitation.server_name,
+                tool = %elicitation.tool_name,
+                consented_host = %consent.host,
+                requested_host = %elicitation.host,
+                "MCP server elicited a different domain than the user consented to; \
+                 asking again"
+            );
+            return Ok(ElicitationAction::Cancel);
+        }
+        Ok(ElicitationAction::Accept)
+    }
+}
+
+/// How long a recorded consent stays usable.
+///
+/// Long enough for a real out-of-band interaction (sign in, approve, pay),
+/// short enough that a consent cannot be replayed against an elicitation the
+/// user has forgotten about.
+pub const CONSENT_TTL: chrono::Duration = chrono::Duration::minutes(30);
+
+/// The durable form of a consent: what was consented to, by which pairing, and
+/// until when.
+///
+/// Written by whoever collects the decision (the API that serves the consent
+/// surface) and read by the MCP client on the retry, so it is serialized rather
+/// than passed in memory. It holds no secret and no `requestState` — the value
+/// the server wants never travels this path, and each retry carries its own
+/// round's state.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StoredConsent {
+    /// Logical MCP server the consent is for. Re-checked on read so a key
+    /// collision fails closed instead of granting the wrong server an accept.
+    pub server: String,
+    /// MCP tool the consent is for. Re-checked on read for the same reason.
+    pub tool: String,
+    /// Domain the user actually saw and agreed to open.
+    pub host: String,
+    /// When the consent stops being usable.
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl StoredConsent {
+    pub fn new(server: &str, tool: &str, host: &str, now: chrono::DateTime<chrono::Utc>) -> Self {
+        Self {
+            server: server.to_string(),
+            tool: tool.to_string(),
+            host: host.to_string(),
+            expires_at: now + CONSENT_TTL,
+        }
+    }
+
+    /// Honour the record only for the pairing it names and only while fresh.
+    pub fn grant_for(
+        &self,
+        server: &str,
+        tool: &str,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Option<GrantedConsent> {
+        if self.server != server || self.tool != tool || self.expires_at <= now {
+            return None;
+        }
+        Some(GrantedConsent {
+            host: self.host.clone(),
+        })
+    }
+}
+
+/// Session-storage key a consent for `server`/`tool` is recorded under.
+///
+/// Session storage keys are flat strings that a user can see, so the key is
+/// readable rather than hashed; characters that would make it ambiguous are
+/// folded to `_`. Folding can in principle collide, which is why
+/// [`StoredConsent`] repeats the pairing and [`StoredConsent::grant_for`]
+/// re-checks it.
+pub fn consent_storage_key(server: &str, tool: &str) -> String {
+    fn fold(part: &str) -> String {
+        part.chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect()
+    }
+    format!("mcp/elicitation-consent/{}/{}", fold(server), fold(tool))
+}
+
 /// Handler for hosts with no human in the loop: declines everything.
 ///
 /// Not the same as injecting no handler at all. No handler means the client
@@ -208,5 +374,137 @@ mod tests {
             validate_elicitation_url("https://xn--80ak6aa92e.com/connect").expect("accepted");
         assert_eq!(host, "xn--80ak6aa92e.com");
         assert!(punycode);
+    }
+
+    /// A consent store that hands out one prepared record, and remembers that
+    /// it was taken.
+    struct OneShotConsents {
+        record: std::sync::Mutex<Option<StoredConsent>>,
+    }
+
+    impl OneShotConsents {
+        fn holding(record: StoredConsent) -> Self {
+            Self {
+                record: std::sync::Mutex::new(Some(record)),
+            }
+        }
+
+        fn empty() -> Self {
+            Self {
+                record: std::sync::Mutex::new(None),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl ElicitationConsentStore for OneShotConsents {
+        async fn take_consent(&self, server: &str, tool: &str) -> Result<Option<GrantedConsent>> {
+            let taken = self.record.lock().expect("lock").take();
+            Ok(taken.and_then(|record| record.grant_for(server, tool, chrono::Utc::now())))
+        }
+    }
+
+    fn elicitation(host: &str) -> UrlElicitation {
+        UrlElicitation {
+            server_name: "billing".to_string(),
+            tool_name: "charge".to_string(),
+            key: "pay".to_string(),
+            message: "Complete the payment".to_string(),
+            url: format!("https://{host}/pay/1"),
+            host: host.to_string(),
+            punycode: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn accepts_only_once_a_human_has_consented() {
+        let handler = ConsentingUrlElicitations::new(Arc::new(OneShotConsents::empty()));
+        assert_eq!(
+            handler
+                .request_url_consent(&elicitation("pay.example.com"))
+                .await
+                .expect("handled"),
+            ElicitationAction::Cancel,
+            "no recorded consent must never become an implicit accept"
+        );
+
+        let handler = ConsentingUrlElicitations::new(Arc::new(OneShotConsents::holding(
+            StoredConsent::new("billing", "charge", "pay.example.com", chrono::Utc::now()),
+        )));
+        assert_eq!(
+            handler
+                .request_url_consent(&elicitation("pay.example.com"))
+                .await
+                .expect("handled"),
+            ElicitationAction::Accept
+        );
+    }
+
+    #[tokio::test]
+    async fn refuses_to_reuse_a_consent_for_another_domain() {
+        let handler = ConsentingUrlElicitations::new(Arc::new(OneShotConsents::holding(
+            StoredConsent::new("billing", "charge", "pay.example.com", chrono::Utc::now()),
+        )));
+        // The user consented to pay.example.com; the retry elicits somewhere
+        // else. That is the swap the consent record exists to catch.
+        assert_eq!(
+            handler
+                .request_url_consent(&elicitation("evil.example"))
+                .await
+                .expect("handled"),
+            ElicitationAction::Cancel
+        );
+    }
+
+    #[tokio::test]
+    async fn consent_is_single_use() {
+        let store = Arc::new(OneShotConsents::holding(StoredConsent::new(
+            "billing",
+            "charge",
+            "pay.example.com",
+            chrono::Utc::now(),
+        )));
+        let handler = ConsentingUrlElicitations::new(store);
+        let first = handler
+            .request_url_consent(&elicitation("pay.example.com"))
+            .await
+            .expect("handled");
+        let second = handler
+            .request_url_consent(&elicitation("pay.example.com"))
+            .await
+            .expect("handled");
+        assert_eq!(first, ElicitationAction::Accept);
+        assert_eq!(
+            second,
+            ElicitationAction::Cancel,
+            "one consent authorises exactly one accept"
+        );
+    }
+
+    #[test]
+    fn expired_or_mismatched_records_grant_nothing() {
+        let now = chrono::Utc::now();
+        let record = StoredConsent::new("billing", "charge", "pay.example.com", now);
+        assert!(record.grant_for("billing", "charge", now).is_some());
+        assert!(record.grant_for("other", "charge", now).is_none());
+        assert!(record.grant_for("billing", "refund", now).is_none());
+        assert!(
+            record
+                .grant_for("billing", "charge", now + CONSENT_TTL)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn consent_keys_stay_readable_and_scoped() {
+        assert_eq!(
+            consent_storage_key("billing", "charge"),
+            "mcp/elicitation-consent/billing/charge"
+        );
+        // Separators inside a name must not invent extra key segments.
+        assert_eq!(
+            consent_storage_key("acme/billing", "charge"),
+            "mcp/elicitation-consent/acme_billing/charge"
+        );
     }
 }
