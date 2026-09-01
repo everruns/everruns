@@ -1204,6 +1204,43 @@ mod tests {
     }
 
     #[test]
+    fn credential_provisioning_is_write_only_and_execute_only() {
+        let commands = inventory::iter::<crate::domains::common::CommandDescriptor>
+            .into_iter()
+            .map(|desc| ((desc.meta)(), desc))
+            .collect::<Vec<_>>();
+        let find = |name: &str| {
+            commands
+                .iter()
+                .find(|(meta, _)| meta.name == name)
+                .unwrap_or_else(|| panic!("{name} command descriptor"))
+        };
+
+        // Provisioning accepts a secret, so it must never be reachable through
+        // the read-only `query` toolset.
+        let (set_meta, set_desc) = find("set_agent_credential_value");
+        assert!(exposed_to_scripting(set_meta));
+        assert!(!(set_desc.read_only)(), "value writes are execute-only");
+
+        // The asymmetry that makes chat provisioning safe: nothing reads a
+        // stored value back. Listing returns metadata only.
+        let (list_meta, list_desc) = find("list_agent_credential_bindings");
+        assert!(exposed_to_scripting(list_meta));
+        assert!((list_desc.read_only)());
+        let list_output = (list_desc.output_schema)().to_string();
+        assert!(
+            !list_output.contains("\"value\""),
+            "credential listing must not expose a value field: {list_output}"
+        );
+        assert!(
+            !commands
+                .iter()
+                .any(|(meta, _)| meta.name == "get_agent_credential_value"),
+            "no command may read a stored credential back"
+        );
+    }
+
+    #[test]
     fn read_only_query_excludes_preview_commands_with_network_side_effects() {
         assert!(excluded_from_read_only_query("preview_agent"));
         assert!(excluded_from_read_only_query("preview_harness"));

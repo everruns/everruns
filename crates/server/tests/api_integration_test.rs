@@ -223,6 +223,82 @@ async fn test_create_agent() {
 }
 
 #[tokio::test]
+async fn test_credential_binding_reports_a_value_provisioned_by_an_earlier_request() {
+    let server = TestServer::in_memory().await;
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "credential-reuse",
+                "display_name": "Credential Reuse",
+                "system_prompt": "Use the attached test tool",
+                "mcpServers": {
+                    "visti-test": { "url": "https://example.com/mcp" }
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let created: Value = server
+        .post(
+            &format!("/v1/agents/{}/credentials", agent.public_id),
+            json!({
+                "mcp_server_name": "visti-test",
+                "tool_name": "visti_send",
+                "parameter_name": "channel_key",
+                "label": "Visti channel key"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(created["configured"], false);
+    assert_eq!(created["retained_existing_value"], false);
+    let binding_id = created["id"].as_str().unwrap().to_string();
+
+    server
+        .put(
+            &format!("/v1/agents/{}/credentials/{binding_id}", agent.public_id),
+            json!({ "value": "first-request-channel-key" }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    // A later request for the same parameter upserts onto the existing row and
+    // keeps its value. `configured: true` alone would let a caller report the
+    // Agent ready while it still holds the earlier request's credential.
+    let reused: Value = server
+        .post(
+            &format!("/v1/agents/{}/credentials", agent.public_id),
+            json!({
+                "mcp_server_name": "visti-test",
+                "tool_name": "visti_send",
+                "parameter_name": "channel_key",
+                "label": "Visti channel key"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(reused["id"].as_str().unwrap(), binding_id);
+    assert_eq!(reused["configured"], true);
+    assert_eq!(
+        reused["retained_existing_value"], true,
+        "a create that kept an earlier value must say so: {reused}"
+    );
+
+    // Listing is metadata only and carries no create-time signal.
+    let listed: Value = server
+        .get(&format!("/v1/agents/{}/credentials", agent.public_id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert!(listed["data"][0].get("retained_existing_value").is_none());
+}
+
+#[tokio::test]
 async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
     let server = TestServer::in_memory().await;
     let sentinel = "security-test-secret-must-not-be-returned";

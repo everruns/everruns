@@ -10,6 +10,8 @@ use uuid::Uuid;
 use super::AGENT_MANAGE;
 
 const MAX_NAME_LEN: usize = 255;
+/// Upper bound for a stored credential value, matching the HTTP setup form.
+const MAX_VALUE_LEN: usize = 64 * 1024;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 /// Metadata for a write-only credential bound to one agent and MCP tool parameter.
@@ -51,6 +53,16 @@ pub struct AgentCredentialBinding {
     /// Relative UI route where the user can securely provision the value.
     #[schema(example = "/agents/agent_01933b5a000070008000000000000001?tab=credentials")]
     pub setup_url: String,
+    /// Create only: the binding already held a value, which this request kept.
+    ///
+    /// `configured: true` then describes a credential provisioned by an earlier
+    /// request, not by this one. Callers must not report the binding as
+    /// satisfying the current request until they confirm the stored value is
+    /// the intended credential, or replace it with
+    /// `set_agent_credential_value`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = false)]
+    pub retained_existing_value: Option<bool>,
 }
 
 impl AgentCredentialBinding {
@@ -68,6 +80,7 @@ impl AgentCredentialBinding {
             created_at: row.created_at.to_rfc3339(),
             updated_at: row.updated_at.to_rfc3339(),
             setup_url: format!("/agents/{public_agent_id}?tab=credentials"),
+            retained_existing_value: None,
         }
     }
 }
@@ -145,6 +158,25 @@ impl Command for CreateAgentCredentialBinding {
         let mcp_server_url =
             resolve_attached_server_url(ctx, &agent, &self.mcp_server_name).await?;
 
+        // This create is an upsert, and the upsert keeps an existing encrypted
+        // value when the server URL is unchanged. Without knowing that, a
+        // caller reads `configured: true` off the result and reports the Agent
+        // ready — even when the stored value was provisioned for an earlier
+        // request against a different channel or account. Capture the
+        // pre-state so the result says whose value it is.
+        let had_value_before = ctx
+            .db
+            .list_agent_mcp_secret_bindings(ctx.org_id(), agent.id)
+            .await
+            .map_err(classify_anyhow)?
+            .into_iter()
+            .any(|row| {
+                row.mcp_server_name == self.mcp_server_name
+                    && row.tool_name == self.tool_name
+                    && row.parameter_name == self.parameter_name
+                    && row.value_encrypted.is_some()
+            });
+
         let row = ctx
             .db
             .upsert_agent_mcp_secret_binding(UpsertAgentMcpSecretBindingRow {
@@ -159,11 +191,150 @@ impl Command for CreateAgentCredentialBinding {
             })
             .await
             .map_err(classify_anyhow)?;
-        Ok(AgentCredentialBinding::from_row(row, &public_agent_id))
+        let retained_existing_value = had_value_before && row.value_encrypted.is_some();
+        let mut binding = AgentCredentialBinding::from_row(row, &public_agent_id);
+        binding.retained_existing_value = Some(retained_existing_value);
+        Ok(binding)
     }
 }
 
 inventory::submit! { crate::domains::common::CommandDescriptor::of::<CreateAgentCredentialBinding>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+/// Encrypt and store the write-only value for one agent credential binding.
+///
+/// This is the one command that accepts a credential value. It is deliberately
+/// asymmetric: no command anywhere returns a stored value, and no `get` variant
+/// exists, so a caller that can provision a credential still cannot read one
+/// back. Session Storage secrets are the opposite shape — the model can read
+/// those with `secret_store get` — which is why they are not a substitute here.
+pub struct SetAgentCredentialValue {
+    /// Agent that owns the binding. Populated from the request path by the HTTP API.
+    #[serde(default)]
+    #[schema(example = "agent_01933b5a000070008000000000000001")]
+    pub agent_id: String,
+    /// Binding to provision, as returned by `create_agent_credential_binding`.
+    #[schema(example = "01933b5a-0000-7000-8000-000000000001")]
+    pub binding_id: Uuid,
+    /// The credential value. Encrypted at rest, never returned by any command,
+    /// and removed from the model-visible MCP tool schema at call time. Never
+    /// echo it back to the user or repeat it in a later message.
+    #[schema(example = "vsk_disposable_example")]
+    pub value: String,
+}
+
+impl Command for SetAgentCredentialValue {
+    type Output = AgentCredentialBinding;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "set_agent_credential_value",
+            category: "agents",
+            description: "Encrypt and store the write-only value for an Agent credential binding. Accepts the secret; never returns it, and no command reads it back. Prefer the binding's setup_url when the user has not already provided the value.",
+            method: "PUT",
+            path: "/v1/agents/{agent_id}/credentials/{binding_id}",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&AGENT_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        if self.value.is_empty() || self.value.len() > MAX_VALUE_LEN {
+            return Err(CommandError::bad_request(
+                "Credential value must be between 1 byte and 64 KiB",
+            ));
+        }
+        let public_agent_id = self.agent_id.clone();
+        let agent_id: AgentId = self
+            .agent_id
+            .parse()
+            .map_err(|_| CommandError::bad_request("Invalid agent ID"))?;
+        let agent = ctx
+            .db
+            .get_agent(ctx.org_id(), agent_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Agent"))?;
+        let encryption = ctx.encryption.as_ref().ok_or_else(|| {
+            CommandError::bad_request(
+                "Credential encryption is not configured for this deployment",
+            )
+        })?;
+        let encrypted = encryption
+            .encrypt_string(&self.value)
+            .map_err(classify_anyhow)?;
+        let row = ctx
+            .db
+            .set_agent_mcp_secret_binding_value(
+                ctx.org_id(),
+                agent.id,
+                self.binding_id,
+                encrypted,
+            )
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Credential binding"))?;
+        Ok(AgentCredentialBinding::from_row(row, &public_agent_id))
+    }
+}
+
+inventory::submit! { crate::domains::common::CommandDescriptor::of::<SetAgentCredentialValue>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+/// List an agent's credential bindings. Metadata only — never values.
+pub struct ListAgentCredentialBindings {
+    /// Agent whose bindings to list.
+    #[schema(example = "agent_01933b5a000070008000000000000001")]
+    pub agent_id: String,
+}
+
+impl Command for ListAgentCredentialBindings {
+    type Output = Vec<AgentCredentialBinding>;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "list_agent_credential_bindings",
+            category: "agents",
+            description: "List an Agent's MCP credential bindings with their configured status and secure setup URL. Never returns credential values.",
+            method: "GET",
+            path: "/v1/agents/{agent_id}/credentials",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&AGENT_MANAGE)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("agent_id")
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        let public_agent_id = self.agent_id.clone();
+        let agent_id: AgentId = self
+            .agent_id
+            .parse()
+            .map_err(|_| CommandError::bad_request("Invalid agent ID"))?;
+        let agent = ctx
+            .db
+            .get_agent(ctx.org_id(), agent_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Agent"))?;
+        Ok(ctx
+            .db
+            .list_agent_mcp_secret_bindings(ctx.org_id(), agent.id)
+            .await
+            .map_err(classify_anyhow)?
+            .into_iter()
+            .map(|row| AgentCredentialBinding::from_row(row, &public_agent_id))
+            .collect())
+    }
+}
+
+inventory::submit! { crate::domains::common::CommandDescriptor::of::<ListAgentCredentialBindings>() }
 
 fn validate_component(label: &str, value: &str) -> Result<(), CommandError> {
     let trimmed = value.trim();

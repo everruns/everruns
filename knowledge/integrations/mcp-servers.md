@@ -452,6 +452,33 @@ session-per-invocation triggers without granting the same credential to other
 Agents. Rotation applies to future calls immediately; deletion revokes the
 binding. An endpoint mismatch fails closed as unconfigured.
 
+#### Provisioning a value from chat
+
+The secure setup form is the preferred path, and the only one an assistant may
+steer a user toward when it does not already hold the value: it must never ask
+for a credential in chat. When the user has already supplied the value
+themselves, refusing to use it is not a security win — it strands a
+half-configured Agent and pushes the user to re-enter a secret that is already
+in the transcript. `set_agent_credential_value` therefore accepts a value from
+the scripted command surface, under one asymmetry that bounds the risk: **write
+only, never read back**. No command returns a stored value and none exists to
+fetch one, so a caller that can provision a credential still cannot exfiltrate
+one. Session Storage secrets are the opposite shape (`secret_store get` reads
+them back), which is why they remain unsuitable for this purpose.
+
+The residual exposure is the transcript of the conversation the user pasted
+into, not the platform's storage: the value is encrypted at rest, absent from
+the model-visible schema at call time, and scrubbed from evals/ATIF exports by
+`scrub_secrets`. Assistants tell the user a chat-supplied value lives in that
+transcript so they can rotate it when retention warrants.
+
+`create_agent_credential_binding` is an upsert that keeps an existing value when
+the endpoint is unchanged, so `configured: true` alone does not mean the current
+request provisioned anything. The create result carries
+`retained_existing_value` for exactly this: when true, the stored credential
+predates the request and may target a different account or channel, and the
+caller must replace it or confirm it before reporting the Agent ready.
+
 ## Seed Data
 
 The following MCP server is seeded by default:

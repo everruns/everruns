@@ -12,7 +12,14 @@ Agent instructions, memory, or session storage.
 3. Add or open the exact server, tool, and parameter binding.
 4. Enter the value in the masked form and save it.
 
-The value is encrypted and is never shown again. Everruns removes the bound
+Platform Chat can also provision a value it was already given, so you do not
+have to re-enter a key you already sent it. It never asks for one: if you have
+not supplied a value, it hands you the secure setup link instead. A value sent
+through chat stays in that conversation's transcript, so rotate it if the
+transcript is kept somewhere the credential should not be.
+
+The value is encrypted and is never shown again. Nothing reads it back:
+no API or agent command returns a stored value. Everruns removes the bound
 parameter from the model-visible tool schema and injects the value only when it
 sends the MCP request. The same Agent binding works for a shared session and
 for triggers that create a new session per invocation.

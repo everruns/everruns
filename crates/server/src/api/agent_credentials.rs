@@ -1,6 +1,8 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::agents::AGENT_MANAGE;
-use crate::domains::agents::credentials::{AgentCredentialBinding, CreateAgentCredentialBinding};
+use crate::domains::agents::credentials::{
+    AgentCredentialBinding, CreateAgentCredentialBinding, SetAgentCredentialValue,
+};
 use crate::domains::common::{Command, Ctx};
 use crate::kernel_imports::{Caller, everruns_provider::typed_id::AgentId};
 use crate::storage::{EncryptionService, StorageBackend};
@@ -156,27 +158,18 @@ pub async fn set_credential_value(
     Path((agent_id, binding_id)): Path<(String, Uuid)>,
     Json(body): Json<SetAgentCredentialValueRequest>,
 ) -> ApiResult<AgentCredentialBinding> {
-    let (internal_id, public_id) = resolve_agent(&state, &org, &agent_id).await?;
-    if body.value.is_empty() || body.value.len() > 64 * 1024 {
-        return Err(
-            ErrorResponse::new("Credential value must be between 1 byte and 64 KiB")
-                .into_response(StatusCode::BAD_REQUEST),
-        );
-    }
-    let encryption = state
-        .encryption
-        .as_ref()
-        .ok_or_else(ErrorResponse::internal_error)?;
-    let encrypted = encryption
-        .encrypt_string(&body.value)
-        .map_err(|_| ErrorResponse::internal_error())?;
-    let row = state
-        .db
-        .set_agent_mcp_secret_binding_value(org.org_id, internal_id, binding_id, encrypted)
-        .await
-        .map_err(|_| ErrorResponse::internal_error())?
-        .ok_or_else(|| ErrorResponse::not_found("Credential binding"))?;
-    Ok(Json(AgentCredentialBinding::from_row(row, &public_id)))
+    // Share one implementation with the `set_agent_credential_value` command so
+    // the form and the scripted surface enforce the same validation, encryption,
+    // and write-only response shape.
+    Ok(Json(
+        SetAgentCredentialValue {
+            agent_id,
+            binding_id,
+            value: body.value,
+        }
+        .run(&state.ctx(&org))
+        .await?,
+    ))
 }
 
 #[utoipa::path(

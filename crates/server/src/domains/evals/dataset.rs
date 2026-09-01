@@ -113,6 +113,11 @@ static SECRET_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
         r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{16,}",
         // key/secret/password/token assignments: api_key=..., "secret": "..."
         r#"(?i)\b(api[_-]?key|secret|password|passwd|token|access[_-]?key)\b\s*["']?\s*[:=]\s*["']?[A-Za-z0-9._~+/=-]{6,}"#,
+        // Credential values passed to a scripted command as a flag, which is how
+        // `set_agent_credential_value --value '<secret>'` reaches a transcript.
+        r#"(?i)--(value|channel[_-]?key|api[_-]?key|token|secret|password)[= ]+["']?[A-Za-z0-9._~+/=-]{6,}["']?"#,
+        // Visti-style scoped channel keys: vsk_<channel>_<name>_<secret>
+        r"\bvsk_[A-Za-z0-9-]+_[A-Za-z0-9-]+_[A-Za-z0-9]{16,}\b",
     ]
     .iter()
     .map(|p| Regex::new(p).expect("valid secret regex"))
@@ -467,6 +472,25 @@ mod tests {
                 min_score: Some(0.5)
             }
         ));
+    }
+
+    #[test]
+    fn scrub_secrets_redacts_credential_flags_and_scoped_channel_keys() {
+        // `set_agent_credential_value` is the one command that carries a secret,
+        // so its flag form must never survive into an export.
+        let scrubbed = scrub_secrets(
+            "set_agent_credential_value --binding_id 01933b5a --value 'vsk_channel-08d9ba08_silver-owl_fgw52m8g1abfkmyk5qf02gcejw'",
+        );
+        assert!(scrubbed.contains(REDACTED));
+        assert!(!scrubbed.contains("fgw52m8g1abfkmyk5qf02gcejw"), "{scrubbed}");
+        assert!(scrubbed.contains("set_agent_credential_value"));
+
+        let bare = scrub_secrets("channel is vsk_channel-08d9ba08_silver-owl_fgw52m8g1abfkmyk5qf02gcejw today");
+        assert!(!bare.contains("fgw52m8g1abfkmyk5qf02gcejw"), "{bare}");
+
+        // Conservative: ordinary flags are left alone.
+        let untouched = scrub_secrets("create_agent --name 'hourly-visti-jokes'");
+        assert!(!untouched.contains(REDACTED), "{untouched}");
     }
 
     #[test]
