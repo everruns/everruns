@@ -420,3 +420,26 @@ export async function submitToolResults(
   );
   return response.data;
 }
+
+// ============================================
+// URL Mode Elicitation Consent
+// ============================================
+
+/**
+ * Answer a URL an MCP server asked the user to open.
+ *
+ * Only the decision travels: the server, tool and domain it applies to come
+ * from the `confirm_url_elicitation` call the backend itself emitted, so the
+ * browser cannot record consent for something the user was never shown.
+ */
+export async function submitElicitationConsent(
+  sessionId: string,
+  toolCallId: string,
+  action: "accept" | "decline",
+): Promise<{ host: string; status: string }> {
+  const response = await api.post<{ host: string; status: string }>(
+    `/v1/sessions/${sessionId}/mcp-elicitation-consent`,
+    { tool_call_id: toolCallId, action },
+  );
+  return response.data;
+}

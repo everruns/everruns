@@ -402,6 +402,41 @@ export function getDevChatFixture(kind: "tool-activity" | "chat-components"): De
           ],
         },
       },
+      {
+        // A URL mode elicitation: an MCP server needs a person to finish
+        // something in their browser, so the turn holds on a consent card.
+        id: "tool-url-elicitation",
+        type: "tool.call_requested",
+        ts: "2026-03-07T21:21:22Z",
+        session_id: sessionId,
+        context: {},
+        data: {
+          headline: "Waiting for the user",
+          tool_calls: [
+            {
+              id: "url-elicitation-1",
+              name: "confirm_url_elicitation",
+              arguments: {
+                server: "Example Billing",
+                tool: "charge",
+                retry_tool: "mcp_example_billing_charge",
+                message: "Authorize the sandbox subscription to continue.",
+                url: "https://billing.example.com/authorize/9f2c1b?session=demo",
+                url_host: "billing.example.com",
+                url_is_punycode: false,
+              },
+            },
+          ],
+          tool_summaries: [
+            {
+              id: "url-elicitation-1",
+              name: "confirm_url_elicitation",
+              display_name: "Confirm URL",
+              narration: "Waiting for browser authorization",
+            },
+          ],
+        },
+      },
       makeOutputEvent({
         id: "tool-agent-3",
         sequence: 5,

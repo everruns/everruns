@@ -41,6 +41,10 @@ import {
 } from "@/components/chat/chat-work-log-events";
 import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
 import { SetupConnectionToolCall } from "@/components/chat/setup-connection-tool-call";
+import {
+  UrlElicitationToolCall,
+  type UrlElicitationArguments,
+} from "@/components/chat/url-elicitation-tool-call";
 import { ToolActivityTimelineGroup } from "@/components/chat/tool-activity-timeline-group";
 import { buildToolActivityGroups } from "@/components/chat/tool-activity-groups";
 import {
@@ -364,6 +368,9 @@ export const ChatMessageList = memo(function ChatMessageList({
       const requested = getEventData(event, "tool.call_requested");
       const connectionCalls =
         requested?.tool_calls.filter((toolCall) => toolCall.name === "setup_connection") ?? [];
+      const elicitationCalls =
+        requested?.tool_calls.filter((toolCall) => toolCall.name === "confirm_url_elicitation") ??
+        [];
       return (
         <div key={event.id} className="space-y-1">
           <ToolActivityTimelineGroup
@@ -377,6 +384,15 @@ export const ChatMessageList = memo(function ChatMessageList({
               sessionId={sessionId}
               toolCallId={toolCall.id}
               provider={(toolCall.arguments as { provider?: string })?.provider ?? "unknown"}
+              toolResultsMap={toolResultsMap}
+            />
+          ))}
+          {elicitationCalls.map((toolCall) => (
+            <UrlElicitationToolCall
+              key={toolCall.id}
+              sessionId={sessionId}
+              toolCallId={toolCall.id}
+              elicitation={(toolCall.arguments ?? {}) as UrlElicitationArguments}
               toolResultsMap={toolResultsMap}
             />
           ))}
@@ -394,6 +410,9 @@ export const ChatMessageList = memo(function ChatMessageList({
     const connectionCalls = reqData.tool_calls.filter(
       (toolCall) => toolCall.name === "setup_connection",
     );
+    const elicitationCalls = reqData.tool_calls.filter(
+      (toolCall) => toolCall.name === "confirm_url_elicitation",
+    );
 
     return (
       <div key={event.id} className="space-y-1">
@@ -403,6 +422,15 @@ export const ChatMessageList = memo(function ChatMessageList({
             sessionId={sessionId}
             toolCallId={toolCall.id}
             provider={(toolCall.arguments as { provider?: string })?.provider ?? "unknown"}
+            toolResultsMap={toolResultsMap}
+          />
+        ))}
+        {elicitationCalls.map((toolCall) => (
+          <UrlElicitationToolCall
+            key={toolCall.id}
+            sessionId={sessionId}
+            toolCallId={toolCall.id}
+            elicitation={(toolCall.arguments ?? {}) as UrlElicitationArguments}
             toolResultsMap={toolResultsMap}
           />
         ))}
