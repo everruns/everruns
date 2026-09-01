@@ -861,8 +861,17 @@ impl EventLog for InMemoryEventLog {
 
 struct JsonlState {
     file: tokio::fs::File,
+    lock_file: std::fs::File,
     committed_len: u64,
     index: EventIndex,
+}
+
+struct FileLockGuard(std::fs::File);
+
+impl Drop for FileLockGuard {
+    fn drop(&mut self) {
+        let _ = fs2::FileExt::unlock(&self.0);
+    }
 }
 
 /// Crash-durable JSONL log containing complete canonical [`Event`] envelopes.
@@ -903,6 +912,10 @@ impl JsonlEventLog {
         }
         let mut file = options.open(&path).await?;
         ensure_private_event_log(&file, &path).await?;
+        // Cloned from the validated handle so the advisory lock guards the same
+        // file the symlink check just accepted, not whatever the path resolves
+        // to later.
+        let lock_file = file.try_clone().await?.into_std().await;
 
         // THREAT[TM-DOS-035]: local state is not assumed trustworthy after a
         // crash or operator edit. Read through `take` so a concurrently growing
@@ -952,6 +965,7 @@ impl JsonlEventLog {
             path,
             state: Mutex::new(JsonlState {
                 file,
+                lock_file,
                 committed_len: committed_len as u64,
                 index,
             }),
@@ -1014,6 +1028,21 @@ impl EventLog for JsonlEventLog {
             });
         }
         let mut state = self.state.lock().await;
+        let lock_file = state.lock_file.try_clone()?;
+        fs2::FileExt::try_lock_exclusive(&lock_file).map_err(|error| EventLogError::Backend {
+            detail: format!("cannot lock {} for append: {error}", self.path.display()),
+        })?;
+        let _file_lock = FileLockGuard(lock_file);
+        let actual_len = state.file.metadata().await?.len();
+        if actual_len != state.committed_len {
+            return Err(EventLogError::Backend {
+                detail: format!(
+                    "{} was modified by another writer (expected {} bytes, found {actual_len})",
+                    self.path.display(),
+                    state.committed_len
+                ),
+            });
+        }
         let sequence = state.index.next_sequence(request.session_id)?;
         let event = request.into_event(EventId::new(), sequence);
         let mut encoded =

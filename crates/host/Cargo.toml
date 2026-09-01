@@ -23,6 +23,7 @@ categories = ["development-tools", "asynchronous"]
 async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true
+fs2.workspace = true
 ignore.workspace = true
 reqwest = { workspace = true, optional = true, features = ["json", "stream", "rustls", "blocking"] }
 regex.workspace = true

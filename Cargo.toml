@@ -75,6 +75,7 @@ repository = "https://github.com/everruns/everruns"
 tokio = { version = "1.50", features = ["full"] }
 tokio-stream = "0.1"
 futures = "0.3"
+fs2 = "0.4"
 
 # Global allocator for binaries (sharded, low-fragmentation; MIT-licensed)
 mimalloc = "0.1"
