@@ -25,7 +25,7 @@ pub enum KnowledgeBasesCommands {
 }
 
 const KNOWLEDGE_BASES: Resource = Resource {
-    path: "/knowledge-bases",
+    path: "/v1/knowledge-bases",
     collection_key: "knowledge_bases",
     empty_message: "No knowledge bases found.",
     columns: &[
@@ -68,14 +68,14 @@ pub async fn run(
         } => {
             let body = create_request(name, description, embedding_model_id);
             let response = ApiClient::new(api_url, api_key, org_id)
-                .post("/knowledge-bases", Some(&body))
+                .post(KNOWLEDGE_BASES.path, Some(&body))
                 .await?;
             format.print_value(&response);
             Ok(())
         }
         KnowledgeBasesCommands::Delete { id } => {
             let response = ApiClient::new(api_url, api_key, org_id)
-                .delete(&super::discovery::resource_path("/knowledge-bases", &id))
+                .delete(&super::discovery::resource_path(KNOWLEDGE_BASES.path, &id))
                 .await?;
             format.print_value(&response);
             Ok(())
@@ -107,7 +107,8 @@ fn create_request(
 
 #[cfg(test)]
 mod tests {
-    use super::create_request;
+    use super::{KNOWLEDGE_BASES, create_request};
+    use crate::commands::discovery::resource_path;
     use serde_json::json;
 
     #[test]
@@ -131,6 +132,15 @@ mod tests {
                 "description": null,
                 "embedding_model_id": null
             })
+        );
+    }
+
+    #[test]
+    fn request_paths_match_versioned_server_routes() {
+        assert_eq!(KNOWLEDGE_BASES.path, "/v1/knowledge-bases");
+        assert_eq!(
+            resource_path(KNOWLEDGE_BASES.path, "kb/id"),
+            "/v1/knowledge-bases/kb%2Fid"
         );
     }
 }
