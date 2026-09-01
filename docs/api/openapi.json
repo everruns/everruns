@@ -34666,7 +34666,7 @@
       },
       "SessionModelChangedData": {
         "type": "object",
-        "description": "Data for `session.model.changed`.\n\nNames are captured at emission time so the transcript stays readable after a\nmodel is renamed, disabled, or deleted.",
+        "description": "Data for `session.model.changed`.\n\nNames are the provider's own model identifiers, captured at emission time so\nthe transcript stays readable after a model is renamed or removed from the\norganization. Clients that still have the model may prefer its display name.",
         "required": [
           "model_id",
           "model_name"
@@ -34679,7 +34679,7 @@
           },
           "model_name": {
             "type": "string",
-            "description": "Display name of the selected model, captured at emission time."
+            "description": "Name of the selected model, captured at emission time."
           },
           "previous_model_id": {
             "type": [
@@ -34694,7 +34694,7 @@
               "string",
               "null"
             ],
-            "description": "Display name of the previous model, captured at emission time."
+            "description": "Name of the previous model, captured at emission time."
           }
         }
       },

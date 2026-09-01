@@ -156,14 +156,26 @@ English fallback text. Disclosure policy is defined in
 
 A session's answering model can change between turns, which silently changes
 every answer that follows. `session.model.changed` records that switch as part
-of the conversation, emitted before the input message that carries the new
-model so consumers can render it at the point where the change happened.
+of the conversation. It is emitted where the runtime resolves a turn's model —
+the host's reason path, at the turn's first iteration — so every host records
+it: the durable worker behind the API and the in-process framework runtime
+alike. An emitter bound to one API's message-create path would leave embedded
+sessions unmarked.
 
 Only an explicit override replacing a different explicit override is reported.
-A turn without an override runs on an inherited default the emission path
-cannot name, and naming it by guess would produce phantom switches. The payload
-carries model names captured at emission time, because a transcript must stay
-readable after a model is renamed, disabled, or deleted.
+A turn without an override runs on an inherited default, and the history the
+host sees is capability-filtered: treating a missing override as "the default"
+would report a switch whenever an older message was filtered out. A requested
+model that does not survive resolution is not reported either, because the turn
+then runs on a fallback the marker would misname.
+
+The payload carries the provider's own model identifiers, captured at emission
+time, so a transcript stays readable after a model is renamed or removed.
+Consumers that still hold the model may prefer its display name.
+
+The marker is turn-scoped and best effort. A retried reason activity can emit
+it twice for one turn; consumers that render it collapse a repeat of the same
+switch rather than treating the second as new history.
 
 `llm.generation` remains the per-call record of which model actually ran. It is
 diagnostic, not conversational, and does not replace this marker.

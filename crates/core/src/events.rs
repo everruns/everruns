@@ -114,10 +114,10 @@ pub const SESSION_IDLED: &str = "session.idled";
 /// Session title changed through a mutation path that participates in the
 /// semantic event protocol.
 pub const SESSION_TITLE_UPDATED: &str = "session.title.updated";
-/// The model answering the session changed between turns. Emitted when a user
-/// message carries a model override that differs from the previous turn's, so
-/// the transcript records where the switch happened instead of leaving readers
-/// to infer it from `llm.generation`.
+/// The model answering the session changed between turns. Emitted at the start
+/// of a turn whose input carries a model override differing from the previous
+/// turn's, so the transcript records where the switch happened instead of
+/// leaving readers to infer it from `llm.generation`.
 pub const SESSION_MODEL_CHANGED: &str = "session.model.changed";
 
 // Schedule events
@@ -2319,8 +2319,9 @@ pub struct SessionTitleUpdatedData {
 
 /// Data for `session.model.changed`.
 ///
-/// Names are captured at emission time so the transcript stays readable after a
-/// model is renamed, disabled, or deleted.
+/// Names are the provider's own model identifiers, captured at emission time so
+/// the transcript stays readable after a model is renamed or removed from the
+/// organization. Clients that still have the model may prefer its display name.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct SessionModelChangedData {
@@ -2330,7 +2331,7 @@ pub struct SessionModelChangedData {
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001"))]
     pub previous_model_id: Option<ModelId>,
 
-    /// Display name of the previous model, captured at emission time.
+    /// Name of the previous model, captured at emission time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_model_name: Option<String>,
 
@@ -2338,7 +2339,7 @@ pub struct SessionModelChangedData {
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "model_01933b5a00007000800000000000002"))]
     pub model_id: ModelId,
 
-    /// Display name of the selected model, captured at emission time.
+    /// Name of the selected model, captured at emission time.
     pub model_name: String,
 }
 

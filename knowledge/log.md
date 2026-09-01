@@ -5,12 +5,20 @@
 * **A model switch is a conversation event, not a setting.** Changing the model
   mid-session silently changes every answer after it, but the only record was
   `llm.generation`, which is diagnostic and off the reading path.
-  `session.model.changed` now marks the switch in the transcript, emitted before
-  the message that carries the new model and carrying names captured at emission
-  time so an old session stays readable after a rename. Only explicit override →
-  explicit override transitions are reported: an inherited default cannot be
-  named, and guessing it would produce phantom switches. See
+  `session.model.changed` now marks the switch in the transcript, carrying names
+  captured at emission time so an old session stays readable after a rename.
+  Only explicit override → explicit override transitions are reported: an
+  inherited default cannot be named against capability-filtered history, and
+  guessing it would produce phantom switches. See
   `knowledge/execution/events.md`.
+
+* **A conversation event belongs where the runtime decides, not where one API
+  writes.** The first cut emitted the model switch from the server's
+  message-create path, which left the in-process framework runtime — a peer host
+  that writes its own `input.message` — silent. Detection moved to the host's
+  reason path, the single place both hosts resolve a turn's model. The cost is
+  ordering: the marker now follows the input message instead of preceding it.
+  See `knowledge/execution/events.md`.
 
 ## 2026-08-25
 

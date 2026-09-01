@@ -14826,8 +14826,9 @@ export interface components {
     /**
      * @description Data for `session.model.changed`.
      *
-     *     Names are captured at emission time so the transcript stays readable after a
-     *     model is renamed, disabled, or deleted.
+     *     Names are the provider's own model identifiers, captured at emission time so
+     *     the transcript stays readable after a model is renamed or removed from the
+     *     organization. Clients that still have the model may prefer its display name.
      */
     SessionModelChangedData: {
       /**
@@ -14835,7 +14836,7 @@ export interface components {
        * @example model_01933b5a00007000800000000000002
        */
       model_id: string;
-      /** @description Display name of the selected model, captured at emission time. */
+      /** @description Name of the selected model, captured at emission time. */
       model_name: string;
       /**
        * @description Model used before the switch. `None` when the previous turn ran on an
@@ -14843,7 +14844,7 @@ export interface components {
        * @example model_01933b5a00007000800000000000001
        */
       previous_model_id?: string | null;
-      /** @description Display name of the previous model, captured at emission time. */
+      /** @description Name of the previous model, captured at emission time. */
       previous_model_name?: string | null;
     };
     /** @description Session participant - an agent or user that has joined a session. */

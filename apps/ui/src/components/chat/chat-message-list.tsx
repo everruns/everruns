@@ -251,6 +251,22 @@ export const ChatMessageList = memo(function ChatMessageList({
     [chatEvents, t],
   );
 
+  // A retried reason activity re-emits the turn's model-change marker, and the
+  // same switch twice in a row is noise, not history. Keep the first of each
+  // consecutive run; a genuine switch back (A→B→A) still renders every step.
+  const repeatedModelChangeIds = useMemo(() => {
+    const repeated = new Set<string>();
+    let previous: string | undefined;
+    for (const event of chatEvents) {
+      const data = getEventData(event, "session.model.changed");
+      if (!data) continue;
+      const change = `${data.previous_model_id ?? ""}→${data.model_id}`;
+      if (change === previous) repeated.add(event.id);
+      previous = change;
+    }
+    return repeated;
+  }, [chatEvents]);
+
   // Agent display-name lookup for participant system lines.
   const agentNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -452,7 +468,7 @@ export const ChatMessageList = memo(function ChatMessageList({
 
           if (event.type === "session.model.changed") {
             const modelChangedData = getEventData(event, "session.model.changed");
-            return modelChangedData ? (
+            return modelChangedData && !repeatedModelChangeIds.has(event.id) ? (
               <ModelChangeDivider key={event.id} data={modelChangedData} />
             ) : null;
           }
