@@ -70,11 +70,13 @@ connection:
 | `io.modelcontextprotocol/clientInfo` | `{name, version}` |
 | `io.modelcontextprotocol/clientCapabilities` | `{}` |
 
-The empty capabilities object is essential, not a placeholder. `elicitation`,
-`sampling`, and `roots` each require a user or model to answer a server-initiated
-request mid-call, which this transport cannot reach. Under MRTR a server **MUST
-NOT** ask for an input type the client did not declare, so declaring them absent
-is what stops servers blocking on prompts nobody can answer.
+The capabilities object is a real declaration, not a placeholder. `sampling` and
+`roots` are always absent: each requires a model or a filesystem view to answer a
+request mid-call, which this transport cannot reach. `elicitation` is declared —
+in `url` mode only — when the host supplied a consent handler, and absent
+otherwise. Under MRTR a server **MUST NOT** ask for an input type the client did
+not declare, so an accurate declaration is what stops servers blocking on prompts
+nobody can answer.
 
 #### Cacheable list results
 
@@ -98,13 +100,49 @@ shapes (`crates/mcp/src/http.rs::resolve_input_required`):
 - **No `inputRequests`**: the server only needs the round trip, having stashed
   context in `requestState`. Retry once, echoing `requestState` verbatim under a
   *different* JSON-RPC id, since MRTR treats the retry as an independent request.
-- **`inputRequests` present**: the server is asking for elicitation, sampling,
-  or roots, none of which this client declares. Fail with an error naming the
-  requested keys rather than returning the empty result a caller would misread as
-  success.
+- **A URL mode `elicitation/create`**: handled, see [URL mode
+  elicitation](#url-mode-elicitation) below.
+- **Anything else** (form mode elicitation, sampling, roots): the client
+  declares none of these. Fail with an error naming the requested keys rather
+  than returning the empty result a caller would misread as success.
 
-Retried at most once: this client has nothing new to offer on a second pass, so
-looping would only burn the call timeout.
+Bounded at two rounds (`MAX_INPUT_REQUIRED_ROUNDS`): a server may keep asking,
+but each round costs a human interaction and holds the turn open, so looping
+would only burn the call timeout.
+
+#### URL mode elicitation
+
+A server that needs a secret, a third-party authorization, or a payment must not
+ask the client for it. It sends a URL mode `elicitation/create` inside the MRTR
+`input_required` result, and the client gets a human to complete the interaction
+out of band. Everruns' half:
+
+- **Declared only when answerable.** The host injects a
+  `UrlElicitationHandler` (`crates/mcp/src/elicitation.rs`); without one the
+  client declares no `elicitation` capability and a compliant server cannot ask.
+  Unattended runs inject nothing, so a background worker never stalls on a
+  prompt nobody can answer.
+- **The URL is validated before anyone sees it** (`validate_elicitation_url`):
+  `https` only, with loopback `http` allowed for local development, so a consent
+  surface is never handed a `javascript:`/`file:`/`data:` URL. The host also
+  receives the host name and a Punycode flag so it can highlight the domain and
+  warn on ambiguous ones.
+- **Never fetched.** The client must not pre-fetch the URL or its metadata, and
+  does not.
+- **Consent, then retry.** `accept` retries the call with
+  `inputResponses: {<key>: {action: "accept"}}` plus the echoed `requestState`;
+  the server decides whether the out-of-band interaction finished. `decline` and
+  `cancel` end the call with an error naming the host, because there is nothing
+  to send that would let the server proceed.
+
+This is 2026-07-28 only. In 2025-era servers elicitation is a server-initiated
+request over a server→client stream this transport does not open, so the
+handshake declares nothing regardless of host capabilities.
+
+Not yet built: a per-server opt-in policy (today any server the operator
+configured may elicit, gated only by the host's handler) and the UI pause/resume
+surface that would let an in-flight agent turn wait on the human. Until that
+lands the only hosts that can supply a handler are ones with a synchronous user.
 
 #### `protocol_mode`
 

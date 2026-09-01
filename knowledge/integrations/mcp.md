@@ -190,6 +190,75 @@ Implementation: `crates/server/src/api/mcp_endpoint/tasks.rs` (mapping helpers,
 capability gating, task-handle shapes) and `mod.rs` (`handle_tasks_method` and
 the `handle_tools_call` augmentation).
 
+## URL mode elicitation (2026-07-28)
+
+Some values must never reach an MCP client. A session secret and a third-party
+connection are both credentials: taken as `tools/call` arguments they would cross
+the client, the model's context, and the event log. URL mode elicitation is the
+protocol's answer, and Everruns implements the server half of it for two tools:
+
+| Tool | Takes | Elicits |
+|------|-------|---------|
+| `session_set_secret` | `session_id`, `name` (never a value) | A server-rendered form that posts the value straight back to Everruns |
+| `connect` | `provider` | A page that verifies the visitor, then hands off to the user-connections OAuth flow |
+
+Both are registered only under the negotiated `2026-07-28` protocol
+(`crates/server/src/api/mcp_endpoint/tool_registry.rs`). Before it there is no
+MRTR to carry an elicitation, and the only other way to serve the call would be
+to ask the client for the credential, which is precisely what must not happen.
+
+### Delivery
+
+The elicitation rides in an MRTR `input_required` result, never as a
+server-initiated `elicitation/create` request: `/mcp` is stateless with no
+server→client stream, and `2026-07-28` requires MRTR regardless. SEP-1036's
+`-32042` URLElicitationRequiredError belonged to `2025-11-25` only and this
+version forbids emitting it.
+
+The round trip, all of it driven by the request:
+
+1. The tool answers `input_required` with the elicitation and a `requestState`.
+2. The user opens the URL and completes the interaction on an Everruns page.
+3. The client retries the call, echoing `requestState` and its `accept`.
+4. The retry finds the secret stored (or the connection live) and returns a
+   normal result. That is how the client learns it worked.
+
+A `decline` or `cancel` comes back as an ordinary result with `stored`/
+`connected` false, not an error: the model should tell the user nothing was
+stored rather than retry. A client that did not declare `elicitation.url` in
+`_meta` gets `MissingRequiredClientCapability` (`-32021`) with
+`data.requiredCapabilities`, per the per-request capability rule.
+
+### State without a table
+
+The endpoint stores nothing between rounds. The intent — collect secret X for
+session Y, on behalf of user Z — is HMAC-signed (the JWT signing secret) into one
+token that travels as both the URL's `token` parameter and `requestState`, with
+the authenticated principal, the org, a nonce, and a 15-minute expiry inside.
+MRTR treats `requestState` as attacker-controlled input, so it is verified for
+integrity, expiry, and principal on every use, and state minted for another
+intent is ignored rather than trusted.
+
+### The pages, and the phishing rule
+
+`GET/POST /mcp/elicitations/secret` and `GET /mcp/elicitations/connect`
+(`crates/server/src/api/mcp_elicitation.rs`) are browser surfaces, not MCP
+surfaces: they authenticate through the ordinary `AuthUser` extractor (cookie
+session), not the MCP token path.
+
+The token authenticates nothing on its own. Every page additionally requires the
+visitor's own session **and** refuses to act unless that session is the principal
+the token was minted for. That check is the mitigation for the attack the
+elicitation spec describes: an elicitation URL handed to a different user, who
+completes the authorization and has the resulting tokens bound to the attacker's
+identity. It is also why `connect` points at an Everruns page rather than
+straight at the third party's authorize endpoint — there has to be somewhere to
+make the check. Org membership is re-read from the database at submit time
+rather than trusted from the token, since it can be revoked in between.
+
+The pages carry no scripts and no external resources, are never cached or framed,
+and send `Referrer-Policy: no-referrer` so the token cannot leak onward.
+
 ## Architecture
 
 The Tier-2 `discover`, `query`, and `execute` tools share their catalog search,
@@ -566,7 +635,7 @@ known to be transient still ships `retryable: true`.
 Deliberate gaps, recorded so the next pass does not have to re-derive them:
 
 - **Client ID Metadata Documents (CIMD).** The replacement for DCR. Implementing it means the authorization server fetches an arbitrary client-supplied HTTPS URL during `/oauth/authorize`, which is a new SSRF surface on an unauthenticated-ish path and needs a decision on whether any HTTPS origin may act as a client or only an allowlisted set. DCR keeps working throughout the deprecation window, so this is a scoped follow-up rather than a blocker.
-- **MRTR on the server side.** Everruns' `/mcp` never answers `tools/call` with `resultType: "input_required"`; long-running work is expressed through the Tasks extension instead, which covers the same need for the tools we expose. (The *client* does handle receiving `input_required`, see [mcp-servers.md](mcp-servers.md).)
+- **MRTR beyond elicitation.** `/mcp` answers `tools/call` with `resultType: "input_required"` only to carry a URL mode elicitation (see [URL mode elicitation](#url-mode-elicitation-2026-07-28)); long-running work is expressed through the Tasks extension instead, and `prompts/get`/`resources/read` never elicit. (The *client* side is in [mcp-servers.md](mcp-servers.md).)
 - **`subscriptions/listen`.** The consolidated notification stream. Task progress is polled through `tasks/get`, so nothing currently needs server push.
 - **Roots, Sampling, Logging.** Deprecated in `2026-07-28` with a 12-month window. Everruns implements none of them, so there is nothing to remove.
 
@@ -575,6 +644,9 @@ Deliberate gaps, recorded so the next pass does not have to re-derive them:
 See `crates/server/src/auth/mcp_oauth.rs` for the OAuth implementation.
 See `crates/server/src/api/mcp_endpoint/caching.rs` for the cacheable-result decoration.
 See `crates/server/src/api/mcp_endpoint/mod.rs` for the MCP endpoint and multi-org tool handlers.
+See `crates/server/src/api/mcp_endpoint/elicitation.rs` for URL mode elicitation
+results and the signed intent token, and
+`crates/server/src/api/mcp_elicitation.rs` for the pages that complete one.
 See `crates/core/src/mcp_server.rs` for the `McpExecuteError` /
 `McpErrorCode` / `McpErrorCategory` types backing the structured
 error envelope.
