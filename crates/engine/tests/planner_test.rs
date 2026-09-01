@@ -245,7 +245,9 @@ fn act_blocked_completes_end_turn() {
         ActOutcome {
             blocked: true,
             waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
         },
+        false,
         false,
     );
     assert!(effects.is_empty());
@@ -295,8 +297,10 @@ fn act_waiting_pauses_when_hint_enabled() {
         ActOutcome {
             blocked: false,
             waiting_for_tool_results: true,
+            waiting_for_url_elicitation: false,
         },
         true,
+        false,
     );
     match plan {
         TurnPlan::WaitForToolResults { resume } => {
@@ -321,7 +325,9 @@ fn act_waiting_continues_when_hint_absent() {
         ActOutcome {
             blocked: false,
             waiting_for_tool_results: true,
+            waiting_for_url_elicitation: false,
         },
+        false,
         false,
     );
     assert!(effects.is_empty());
@@ -376,4 +382,27 @@ fn serialize_deserialize_plan_round_trip_is_equal() {
         serde_json::to_value(&data_a.usage).unwrap(),
         serde_json::to_value(&data_b.usage).unwrap()
     );
+}
+
+/// A URL elicitation consent card is only worth pausing for when the client
+/// said it can render one. The `setup_connection` hint does not stand in for
+/// that: a client that renders connection cards need not render this one.
+#[test]
+fn act_waiting_on_a_url_elicitation_pauses_only_on_its_own_hint() {
+    let state = turn_state();
+    let outcome = ActOutcome {
+        blocked: false,
+        waiting_for_tool_results: true,
+        waiting_for_url_elicitation: true,
+    };
+
+    let (plan, effects) = plan_after_act(&state, outcome, false, true);
+    assert!(matches!(plan, TurnPlan::WaitForToolResults { .. }));
+    assert_eq!(effects.len(), 1);
+
+    // No hint for it: the elicitation reaches the user as an ordinary tool
+    // result instead of stalling the turn on a card nobody draws.
+    let (plan, effects) = plan_after_act(&state, outcome, false, false);
+    assert!(matches!(plan, TurnPlan::ScheduleReason(_)));
+    assert!(effects.is_empty());
 }

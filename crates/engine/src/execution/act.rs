@@ -165,6 +165,12 @@ pub struct ActResult {
     /// the act paused.
     #[serde(default)]
     pub waiting_for_tool_results: bool,
+    /// True when the pause is specifically a URL mode elicitation waiting on a
+    /// human to open a link. Kept apart from the generic flag because only a
+    /// client that renders the consent card can answer it — see
+    /// `plan_after_act`, which will not hold a turn for a card nobody can draw.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub waiting_for_url_elicitation: bool,
     /// True when execution stopped before tool execution because a dependency was archived or deleted.
     #[serde(default, skip_serializing_if = "is_false")]
     pub blocked: bool,
@@ -309,11 +315,13 @@ where
         self
     }
 
-    /// Default hooks: ConnectionSetup (synthetic setup_connection calls)
-    /// and ClientSideTool (emit tool.call_requested for client-side tools).
+    /// Default hooks: ConnectionSetup (synthetic setup_connection calls),
+    /// UrlElicitation (synthetic confirm_url_elicitation calls) and
+    /// ClientSideTool (emit tool.call_requested for client-side tools).
     fn default_hooks() -> Vec<Box<dyn PostActHook>> {
         vec![
             Box::new(act_hooks::ConnectionSetupHook),
+            Box::new(act_hooks::UrlElicitationHook),
             Box::new(act_hooks::ClientSideToolHook),
         ]
     }
@@ -627,6 +635,7 @@ where
                 success_count: 0,
                 error_count: 0,
                 waiting_for_tool_results: false,
+                waiting_for_url_elicitation: false,
                 blocked: false,
                 client_tool_calls: vec![],
                 client_tool_definitions: vec![],
@@ -642,6 +651,7 @@ where
                 success_count: 0,
                 error_count: 0,
                 waiting_for_tool_results: false,
+                waiting_for_url_elicitation: false,
                 blocked: false,
                 client_tool_calls,
                 client_tool_definitions,
@@ -865,6 +875,7 @@ where
             success_count,
             error_count,
             waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
             blocked: false,
             client_tool_calls,
             client_tool_definitions,
@@ -2833,6 +2844,7 @@ mod tests {
             success_count: 0,
             error_count: 0,
             waiting_for_tool_results: true,
+            waiting_for_url_elicitation: false,
             blocked: false,
             client_tool_calls: vec![],
             client_tool_definitions: vec![],

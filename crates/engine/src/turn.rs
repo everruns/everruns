@@ -139,6 +139,9 @@ pub enum TurnLifecycleEffect {
 pub struct ActOutcome {
     pub blocked: bool,
     pub waiting_for_tool_results: bool,
+    /// The pause is a URL mode elicitation consent card, which only a client
+    /// that declared `url_elicitation` can answer.
+    pub waiting_for_url_elicitation: bool,
 }
 
 /// Session facts the host pre-resolves for the reason→act scheduling case.
@@ -176,6 +179,7 @@ pub enum ActivityOutcome {
 pub struct HostFacts {
     pub act_scheduling: Option<ActSchedulingFacts>,
     pub setup_connection_hint_enabled: bool,
+    pub url_elicitation_hint_enabled: bool,
 }
 
 fn preview_final_answer(text: &str) -> Option<String> {
@@ -288,9 +292,12 @@ pub fn plan_next_turn(
             now,
             facts.act_scheduling,
         ),
-        ActivityOutcome::Act(outcome) => {
-            plan_after_act(state, outcome, facts.setup_connection_hint_enabled)
-        }
+        ActivityOutcome::Act(outcome) => plan_after_act(
+            state,
+            outcome,
+            facts.setup_connection_hint_enabled,
+            facts.url_elicitation_hint_enabled,
+        ),
     }
 }
 
@@ -446,13 +453,15 @@ pub fn plan_after_reason(
 
 /// Plan the next step after an `act` activity finishes.
 ///
-/// `setup_connection_hint_enabled` is the resolved session hint; the host reads
-/// it only when the act reported `waiting_for_tool_results`, so passing `false`
-/// otherwise matches the original short-circuit exactly.
+/// `setup_connection_hint_enabled` and `url_elicitation_hint_enabled` are the
+/// resolved session hints; the host reads them only when the act reported
+/// `waiting_for_tool_results`, so passing `false` otherwise matches the original
+/// short-circuit exactly.
 pub fn plan_after_act(
     state: &TurnState,
     outcome: ActOutcome,
     setup_connection_hint_enabled: bool,
+    url_elicitation_hint_enabled: bool,
 ) -> (TurnPlan, Vec<TurnLifecycleEffect>) {
     if outcome.blocked {
         return (
@@ -464,8 +473,14 @@ pub fn plan_after_act(
         );
     }
 
-    let should_pause_for_tool_results =
-        outcome.waiting_for_tool_results && setup_connection_hint_enabled;
+    // A pause is only useful if the client on the other end can answer it. A
+    // URL elicitation waits on a consent card, so it needs a client that
+    // declared it renders one; everything else rides the `setup_connection`
+    // hint as before. Without the matching hint the turn continues and the
+    // elicitation reaches the user as an ordinary tool result instead.
+    let should_pause_for_tool_results = outcome.waiting_for_tool_results
+        && (setup_connection_hint_enabled
+            || (outcome.waiting_for_url_elicitation && url_elicitation_hint_enabled));
 
     let next = TurnState {
         iteration: state.iteration.saturating_add(1),
@@ -482,7 +497,8 @@ pub fn plan_after_act(
     if outcome.waiting_for_tool_results {
         info!(
             session_id = %state.session_id,
-            "setup_connection hint absent, continuing turn instead of pausing"
+            waiting_for_url_elicitation = outcome.waiting_for_url_elicitation,
+            "no hint declares this client can answer the pause, continuing turn instead"
         );
     }
 

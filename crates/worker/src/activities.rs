@@ -339,6 +339,7 @@ mod tests {
             success_count: 1,
             error_count: 0,
             waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
             blocked: false,
             client_tool_calls: vec![],
             client_tool_definitions: vec![],

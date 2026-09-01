@@ -87,18 +87,21 @@ pub async fn advance_host_execution<A: RuntimeHostAdapter, E: Execution>(
                     .get("waiting_for_tool_results")
                     .and_then(|value| value.as_bool())
                     .unwrap_or(false),
+                waiting_for_url_elicitation: output
+                    .get("waiting_for_url_elicitation")
+                    .and_then(|value| value.as_bool())
+                    .unwrap_or(false),
             };
 
-            let setup_connection_hint_enabled =
-                resolve_setup_connection_hint(adapter, state.org_id, state.session_id, outcome)
-                    .await;
+            let hints = resolve_pause_hints(adapter, state.org_id, state.session_id, outcome).await;
 
             let transition = execution.advance(
                 ActivityOutcome::Act(outcome),
                 pending_user_message_count,
                 Utc::now(),
                 HostFacts {
-                    setup_connection_hint_enabled,
+                    setup_connection_hint_enabled: hints.setup_connection,
+                    url_elicitation_hint_enabled: hints.url_elicitation,
                     ..HostFacts::default()
                 },
             );
@@ -137,20 +140,41 @@ pub(crate) async fn resolve_act_scheduling<A: RuntimeHostAdapter>(
     }))
 }
 
-/// Resolve the `setup_connection` hint only when the act actually paused for
-/// tool results — the same short-circuit the pre-extraction planner used. A
-/// blocked act returns before the hint is consulted, so gate on `!blocked` too
-/// to avoid any extra fetch.
-pub(crate) async fn resolve_setup_connection_hint<A: RuntimeHostAdapter>(
+/// The pause hints a session declares: which kinds of pause its client can
+/// actually answer.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct PauseHints {
+    pub setup_connection: bool,
+    pub url_elicitation: bool,
+}
+
+/// Resolve the pause hints only when the act actually paused for tool results,
+/// so the session fetch happens under exactly the original condition.
+pub(crate) async fn resolve_pause_hints<A: RuntimeHostAdapter>(
     adapter: &A,
     org_id: i64,
     session_id: SessionId,
     outcome: ActOutcome,
-) -> bool {
+) -> PauseHints {
     if outcome.blocked || !outcome.waiting_for_tool_results {
-        return false;
+        return PauseHints::default();
     }
-    setup_connection_hint_enabled(adapter, org_id, session_id).await
+    match adapter.session_store(org_id).get_session(session_id).await {
+        Ok(Some(session)) => {
+            let hints = Controls::resolve_hints(session.hints.as_ref(), None);
+            let flag = |name: &str| {
+                hints
+                    .get(name)
+                    .and_then(|value| value.as_bool())
+                    .unwrap_or(false)
+            };
+            PauseHints {
+                setup_connection: flag("setup_connection"),
+                url_elicitation: flag("url_elicitation"),
+            }
+        }
+        _ => PauseHints::default(),
+    }
 }
 
 /// Perform the engine-returned lifecycle effects, in list order, via
@@ -220,21 +244,4 @@ pub(crate) async fn perform_effects<A: RuntimeHostAdapter>(
         }
     }
     Ok(())
-}
-
-async fn setup_connection_hint_enabled<A: RuntimeHostAdapter>(
-    adapter: &A,
-    org_id: i64,
-    session_id: SessionId,
-) -> bool {
-    match adapter.session_store(org_id).get_session(session_id).await {
-        Ok(Some(session)) => {
-            let hints = Controls::resolve_hints(session.hints.as_ref(), None);
-            hints
-                .get("setup_connection")
-                .and_then(|value| value.as_bool())
-                .unwrap_or(false)
-        }
-        _ => false,
-    }
 }
