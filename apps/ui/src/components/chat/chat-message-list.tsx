@@ -54,6 +54,7 @@ import { RunCards } from "@/components/chat/run-card";
 import type { ChatRun } from "@/components/chat/run-cards";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { CompactionDivider } from "@/components/chat/compaction-divider";
+import { ModelChangeDivider } from "@/components/chat/model-change-divider";
 import type { ToolCallContent } from "@/components/chat/tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
 import {
@@ -447,6 +448,13 @@ export const ChatMessageList = memo(function ChatMessageList({
           if (event.type === "context.compacted") {
             const compactedData = getEventData(event, "context.compacted");
             return compactedData ? <CompactionDivider key={event.id} data={compactedData} /> : null;
+          }
+
+          if (event.type === "session.model.changed") {
+            const modelChangedData = getEventData(event, "session.model.changed");
+            return modelChangedData ? (
+              <ModelChangeDivider key={event.id} data={modelChangedData} />
+            ) : null;
           }
 
           const turnFailedData = getEventData(event, "turn.failed");

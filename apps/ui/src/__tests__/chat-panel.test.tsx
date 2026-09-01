@@ -378,6 +378,56 @@ describe("ChatPanel compaction divider", () => {
   });
 });
 
+describe("ChatPanel model change divider", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockExecuteSessionCommand.mockReset();
+    mockSessionContext.chatEvents = [];
+    mockSessionContext.llmModel = availableDefaultModel;
+    mockSessionContext.reasoningEffort = "";
+    mockSessionContext.sessionId = "session-1";
+    mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
+  });
+
+  const modelChangedEvent = (data: Record<string, unknown>) => ({
+    id: "evt-model-changed-1",
+    type: "session.model.changed",
+    session_id: "session-1",
+    ts: new Date().toISOString(),
+    context: {},
+    data,
+  });
+
+  it("names both models in the transcript", () => {
+    mockSessionContext.chatEvents = [
+      modelChangedEvent({
+        previous_model_id: "model_1",
+        previous_model_name: "GPT-5.6 Sol",
+        model_id: "model_2",
+        model_name: "GPT-5.6 Terra",
+      }),
+    ];
+
+    render(<ChatPanel />);
+
+    expect(screen.getByText("Model changed from GPT-5.6 Sol to GPT-5.6 Terra")).toBeInTheDocument();
+  });
+
+  it("falls back to the model id when the previous name is unknown", () => {
+    mockSessionContext.chatEvents = [
+      modelChangedEvent({
+        previous_model_id: "model_1",
+        model_id: "model_2",
+        model_name: "GPT-5.6 Terra",
+      }),
+    ];
+
+    render(<ChatPanel />);
+
+    expect(screen.getByText("Model changed from model_1 to GPT-5.6 Terra")).toBeInTheDocument();
+  });
+});
+
 describe("ChatPanel placeholder", () => {
   beforeEach(() => {
     jest.clearAllMocks();

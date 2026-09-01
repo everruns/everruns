@@ -1,5 +1,17 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-01
+
+* **A model switch is a conversation event, not a setting.** Changing the model
+  mid-session silently changes every answer after it, but the only record was
+  `llm.generation`, which is diagnostic and off the reading path.
+  `session.model.changed` now marks the switch in the transcript, emitted before
+  the message that carries the new model and carrying names captured at emission
+  time so an old session stays readable after a rename. Only explicit override →
+  explicit override transitions are reported: an inherited default cannot be
+  named, and guessing it would produce phantom switches. See
+  `knowledge/execution/events.md`.
+
 ## 2026-08-25
 
 * **A projection applied at one read boundary is not applied at the others.**

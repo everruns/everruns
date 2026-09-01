@@ -21356,6 +21356,9 @@
             "$ref": "#/components/schemas/SessionTitleUpdatedData"
           },
           {
+            "$ref": "#/components/schemas/SessionModelChangedData"
+          },
+          {
             "$ref": "#/components/schemas/SessionTaskEventData"
           },
           {
@@ -34658,6 +34661,40 @@
                 "description": "Cumulative token usage for the session at this point"
               }
             ]
+          }
+        }
+      },
+      "SessionModelChangedData": {
+        "type": "object",
+        "description": "Data for `session.model.changed`.\n\nNames are captured at emission time so the transcript stays readable after a\nmodel is renamed, disabled, or deleted.",
+        "required": [
+          "model_id",
+          "model_name"
+        ],
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "description": "Model selected for the next turn.",
+            "example": "model_01933b5a00007000800000000000002"
+          },
+          "model_name": {
+            "type": "string",
+            "description": "Display name of the selected model, captured at emission time."
+          },
+          "previous_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model used before the switch. `None` when the previous turn ran on an\ninherited default that the emitter could not name.",
+            "example": "model_01933b5a00007000800000000000001"
+          },
+          "previous_model_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name of the previous model, captured at emission time."
           }
         }
       },

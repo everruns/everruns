@@ -17,10 +17,11 @@ use anyhow::Result;
 use chrono::Utc;
 use everruns_core::Event;
 use everruns_core::events::{
-    EventContext, EventRequest, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
+    EventContext, EventData, EventRequest, INPUT_MESSAGE, InputMessageData,
+    OutputMessageCompletedData, SessionModelChangedData, ToolCompletedData,
 };
 use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
-use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, PrincipalId, SessionId};
+use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, ModelId, PrincipalId, SessionId};
 use everruns_worker::AgentRunner;
 use serde_json::json;
 use std::sync::Arc;
@@ -34,6 +35,9 @@ pub struct MessageService {
     runner: Arc<dyn AgentRunner>,
     caps: OrgCaps,
 }
+
+/// How many recent user messages to scan for the previous model override.
+const MODEL_CHANGE_LOOKBACK: i32 = 20;
 
 pub struct CreateMessageContext {
     pub org_id: i64,
@@ -193,6 +197,26 @@ impl MessageService {
                 self.session_owner_message_metadata(ctx.org_id, session_id_typed)
                     .await
             };
+            // A model switch is only visible in `llm.generation` today, which is
+            // diagnostic rather than conversational. Emitting it before the
+            // input message puts the switch at the point in the transcript
+            // where the user made it.
+            if let Some(model_changed) = self
+                .detect_model_change(ctx.org_id, session_id_typed, req.controls.as_ref())
+                .await
+                && let Err(e) = self
+                    .event_service
+                    .emit(EventRequest::new(
+                        session_id_typed,
+                        EventContext::empty(),
+                        model_changed,
+                    ))
+                    .await
+            {
+                // Best effort: a missing marker must not reject the message.
+                tracing::warn!(error = %e, "Failed to emit session.model.changed event");
+            }
+
             let mut event_request = EventRequest::new(
                 session_id_typed,
                 EventContext::empty(),
@@ -285,6 +309,74 @@ impl MessageService {
             );
         }
         result
+    }
+
+    /// Build a `session.model.changed` payload when this message picks a model
+    /// different from the one the previous turn ran on.
+    ///
+    /// Only explicit override → explicit override transitions are reported. A
+    /// turn with no override runs on an inherited default this layer cannot
+    /// name, and guessing would produce phantom switches.
+    async fn detect_model_change(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        controls: Option<&everruns_core::Controls>,
+    ) -> Option<SessionModelChangedData> {
+        let model_id = controls?.model_id?;
+        let previous_model_id = self.previous_message_model_id(session_id).await?;
+        if previous_model_id == model_id {
+            return None;
+        }
+
+        Some(SessionModelChangedData {
+            previous_model_id: Some(previous_model_id),
+            previous_model_name: self.model_display_name(org_id, previous_model_id).await,
+            model_id,
+            model_name: self
+                .model_display_name(org_id, model_id)
+                .await
+                .unwrap_or_else(|| model_id.to_string()),
+        })
+    }
+
+    /// Model override carried by the most recent user message that had one.
+    ///
+    /// Mirrors the runtime's own resolution (`latest_model_override` in
+    /// `everruns-host`), bounded to a recent window so message creation stays
+    /// a small read.
+    async fn previous_message_model_id(&self, session_id: SessionId) -> Option<ModelId> {
+        let params = crate::storage::models::ListEventsParams {
+            session_id,
+            filter_types: vec![INPUT_MESSAGE.to_string()],
+            order_desc: true,
+            limit: Some(MODEL_CHANGE_LOOKBACK),
+            ..Default::default()
+        };
+        let events = match self.event_service.list_advanced(&params).await {
+            Ok(events) => events,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to read prior messages for model-change detection");
+                return None;
+            }
+        };
+
+        events.into_iter().find_map(|event| match event.data {
+            EventData::InputMessage(data) => data.message.controls.and_then(|c| c.model_id),
+            _ => None,
+        })
+    }
+
+    /// Display name captured at emission time so the transcript survives a
+    /// model rename or removal.
+    async fn model_display_name(&self, org_id: i64, model_id: ModelId) -> Option<String> {
+        match self.db.get_model(org_id, model_id.uuid()).await {
+            Ok(model) => model.map(|model| model.display_name),
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to resolve model display name");
+                None
+            }
+        }
     }
 
     /// Access the registered durable runner. Used by sibling callers that
@@ -493,7 +585,7 @@ mod tests {
         models::{CreateUserRow, UpdateSession},
     };
     use async_trait::async_trait;
-    use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+    use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, ModelId, SessionId};
 
     struct NoopRunner;
 
@@ -613,6 +705,188 @@ mod tests {
             err.to_string().contains("Too many active turns"),
             "got: {err}"
         );
+    }
+
+    /// Seed an enabled model and return its typed id.
+    async fn seed_model(db: &StorageBackend, org_id: i64, display_name: &str) -> ModelId {
+        let provider = db
+            .create_provider(
+                org_id,
+                crate::storage::models::CreateProviderRow {
+                    name: format!("provider for {display_name}"),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        db.create_model(
+            org_id,
+            crate::storage::models::CreateModelRow {
+                provider_id: provider.id,
+                model_id: display_name.to_lowercase().replace(' ', "-"),
+                display_name: display_name.to_string(),
+                capabilities: vec!["chat".to_string()],
+                is_favorite: false,
+                enabled: true,
+                source: "manual".to_string(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap()
+        .id
+    }
+
+    fn user_message_with_model(text: &str, model_id: ModelId) -> CreateMessageRequest {
+        let mut req = CreateMessageRequest::user(text);
+        req.controls = Some(everruns_core::Controls {
+            model_id: Some(model_id),
+            ..Default::default()
+        });
+        req
+    }
+
+    async fn model_change_events(db: &StorageBackend, session_id: SessionId) -> Vec<Event> {
+        let delivery = crate::event_delivery::EventDelivery::in_memory();
+        EventService::new(Arc::new(db.clone()), delivery)
+            .list(
+                session_id.uuid(),
+                None,
+                None,
+                &[everruns_core::SESSION_MODEL_CHANGED.to_string()],
+                &[],
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+    }
+
+    /// Build a service wired to an in-memory backend with generous caps.
+    fn model_change_service(db: Arc<StorageBackend>) -> MessageService {
+        MessageService::new(
+            db,
+            Arc::new(NoopRunner) as Arc<dyn AgentRunner>,
+            false,
+            crate::event_delivery::EventDelivery::in_memory(),
+        )
+        .with_caps(OrgCaps {
+            max_concurrent_sessions: 10_000,
+            max_active_turns: 10_000,
+        })
+    }
+
+    #[tokio::test]
+    async fn switching_model_emits_session_model_changed_once() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = model_change_service(db.clone());
+        let session = create_test_session(&db, 1).await;
+        let sol = seed_model(&db, 1, "GPT-5.6 Sol").await;
+        let terra = seed_model(&db, 1, "GPT-5.6 Terra").await;
+
+        let ctx = || CreateMessageContext {
+            org_id: 1,
+            user_id: None,
+            harness_id: session.id.uuid(),
+            agent_id: None,
+            session_id: session.id.uuid(),
+            event_metadata: None,
+            request_id: None,
+        };
+
+        svc.create(ctx(), user_message_with_model("first", sol))
+            .await
+            .unwrap();
+        assert!(
+            model_change_events(&db, session.id).await.is_empty(),
+            "the first message establishes the model, it does not change it"
+        );
+
+        svc.create(ctx(), user_message_with_model("second", terra))
+            .await
+            .unwrap();
+        svc.create(ctx(), user_message_with_model("third", terra))
+            .await
+            .unwrap();
+
+        let events = model_change_events(&db, session.id).await;
+        assert_eq!(events.len(), 1, "only the switch itself is an event");
+        match &events[0].data {
+            everruns_core::EventData::SessionModelChanged(data) => {
+                assert_eq!(data.previous_model_id, Some(sol));
+                assert_eq!(data.previous_model_name.as_deref(), Some("GPT-5.6 Sol"));
+                assert_eq!(data.model_id, terra);
+                assert_eq!(data.model_name, "GPT-5.6 Terra");
+            }
+            data => panic!("unexpected event data: {data:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn model_change_event_precedes_the_message_that_switched() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = model_change_service(db.clone());
+        let session = create_test_session(&db, 1).await;
+        let sol = seed_model(&db, 1, "GPT-5.6 Sol").await;
+        let terra = seed_model(&db, 1, "GPT-5.6 Terra").await;
+
+        let ctx = || CreateMessageContext {
+            org_id: 1,
+            user_id: None,
+            harness_id: session.id.uuid(),
+            agent_id: None,
+            session_id: session.id.uuid(),
+            event_metadata: None,
+            request_id: None,
+        };
+
+        svc.create(ctx(), user_message_with_model("first", sol))
+            .await
+            .unwrap();
+        let switched = svc
+            .create(ctx(), user_message_with_model("second", terra))
+            .await
+            .unwrap();
+
+        let change = model_change_events(&db, session.id).await;
+        assert_eq!(change.len(), 1);
+        assert!(
+            change[0].sequence.unwrap() < switched.sequence,
+            "the marker must render above the message that switched the model"
+        );
+    }
+
+    #[tokio::test]
+    async fn message_without_model_override_never_reports_a_change() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = model_change_service(db.clone());
+        let session = create_test_session(&db, 1).await;
+        let sol = seed_model(&db, 1, "GPT-5.6 Sol").await;
+
+        let ctx = || CreateMessageContext {
+            org_id: 1,
+            user_id: None,
+            harness_id: session.id.uuid(),
+            agent_id: None,
+            session_id: session.id.uuid(),
+            event_metadata: None,
+            request_id: None,
+        };
+
+        svc.create(ctx(), user_message_with_model("first", sol))
+            .await
+            .unwrap();
+        // An inherited default cannot be named here, so it must not be
+        // reported as a switch away from the explicit model.
+        svc.create(ctx(), CreateMessageRequest::user("second"))
+            .await
+            .unwrap();
+
+        assert!(model_change_events(&db, session.id).await.is_empty());
     }
 
     #[tokio::test]

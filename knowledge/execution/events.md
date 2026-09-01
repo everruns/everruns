@@ -152,6 +152,22 @@ fields when available. Clients localize from those fields rather than matching
 English fallback text. Disclosure policy is defined in
 [`error-disclosure.md`](error-disclosure.md).
 
+### Model changes
+
+A session's answering model can change between turns, which silently changes
+every answer that follows. `session.model.changed` records that switch as part
+of the conversation, emitted before the input message that carries the new
+model so consumers can render it at the point where the change happened.
+
+Only an explicit override replacing a different explicit override is reported.
+A turn without an override runs on an inherited default the emission path
+cannot name, and naming it by guess would produce phantom switches. The payload
+carries model names captured at emission time, because a transcript must stay
+readable after a model is renamed, disabled, or deleted.
+
+`llm.generation` remains the per-call record of which model actually ran. It is
+diagnostic, not conversational, and does not replace this marker.
+
 ### Session tasks
 
 Session-task events carry full task snapshots for reconciliation. Message
