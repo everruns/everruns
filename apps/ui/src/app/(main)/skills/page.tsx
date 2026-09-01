@@ -14,7 +14,7 @@ import {
   serverGet,
   serverGetList,
 } from "@/lib/server-query";
-import type { ResourceConfigResponse, Skill } from "@/lib/api/types";
+import type { FeatureFlags, ResourceConfigResponse, Skill } from "@/lib/api/types";
 import SkillsPageClient from "./skills-page-client";
 
 export default async function SkillsPage() {
@@ -23,14 +23,22 @@ export default async function SkillsPage() {
   const { currentOrgId } = await prefetchAuthBootstrap(queryClient, requestContext);
 
   if (currentOrgId) {
-    await Promise.all([
-      seedQueryData(queryClient, [...queryKeys.skills.list(false), currentOrgId], () =>
-        serverGetList<Skill>(requestContext, "/v1/skills"),
-      ),
-      seedQueryData(queryClient, [...queryKeys.policies.config("skills"), currentOrgId], () =>
-        serverGet<ResourceConfigResponse>(requestContext, "/v1/skills/config"),
-      ),
-    ]);
+    // Same key `useOrgFeatureFlags` reads, so the client reuses this instead of
+    // refetching the flags it was just handed.
+    const flags = await seedQueryData(queryClient, ["org-feature-flags", currentOrgId], () =>
+      serverGet<FeatureFlags>(requestContext, `/v1/orgs/${currentOrgId}/feature-flags`),
+    );
+
+    if (flags?.skills) {
+      await Promise.all([
+        seedQueryData(queryClient, [...queryKeys.skills.list(false), currentOrgId], () =>
+          serverGetList<Skill>(requestContext, "/v1/skills"),
+        ),
+        seedQueryData(queryClient, [...queryKeys.policies.config("skills"), currentOrgId], () =>
+          serverGet<ResourceConfigResponse>(requestContext, "/v1/skills/config"),
+        ),
+      ]);
+    }
   }
 
   return (
