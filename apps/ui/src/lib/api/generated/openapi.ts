@@ -3107,6 +3107,27 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/mcp-elicitation-consent": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * POST /v1/sessions/{session_id}/mcp-elicitation-consent
+     * @description Records a user's decision about a URL an MCP server asked them to open, and
+     *     resumes the paused turn.
+     */
+    post: operations["submit_elicitation_consent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/messages": {
     parameters: {
       query?: never;
@@ -5435,6 +5456,11 @@ export interface components {
       scopes?: string | null;
     };
     /**
+     * @description What the user decided about opening the URL.
+     * @enum {string}
+     */
+    ConsentAction: "accept" | "decline";
+    /**
      * @description A part of message content - can be text, image, image_file, tool_call, or tool_result
      *
      *     This is the canonical content part type used across the system.
@@ -6560,9 +6586,15 @@ export interface components {
        * @description Session-level client hints — arbitrary key-value pairs that tell the
        *     server what the client can handle. These are defaults for every turn;
        *     per-message `controls.hints` override these key-by-key (shallow merge).
+       *
+       *     Two hints decide whether a turn may pause for the user rather than talk
+       *     past them: `setup_connection` (the client renders connection setup) and
+       *     `url_elicitation` (the client renders consent for a URL an MCP server
+       *     asks the user to open).
        * @example {
        *       "rich_media": true,
-       *       "setup_connection": true
+       *       "setup_connection": true,
+       *       "url_elicitation": true
        *     }
        */
       hints?: {
@@ -6937,6 +6969,26 @@ export interface components {
     };
     /** @description LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta. Any other string is treated as an embedder-defined external provider. */
     DriverId: string;
+    /** @description Request to answer a pending URL mode elicitation. */
+    ElicitationConsentRequest: {
+      /** @description The user's decision. */
+      action: components["schemas"]["ConsentAction"];
+      /**
+       * @description The `confirm_url_elicitation` tool call being answered.
+       * @example url_elicitation_01933b5a00007000800000000000001
+       */
+      tool_call_id: string;
+    };
+    /** @description Result of answering a pending URL mode elicitation. */
+    ElicitationConsentResponse: {
+      /**
+       * @description Domain the consent was recorded against, echoed so a client can confirm
+       *     it showed the same one.
+       */
+      host: string;
+      /** @description Session status after the decision. */
+      status: string;
+    };
     /** @description Options for enqueuing a standalone task */
     EnqueueTaskOptions: {
       /**
@@ -28697,6 +28749,61 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["GitRefInfo"][];
         };
+      };
+    };
+  };
+  submit_elicitation_consent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID (prefixed, e.g., session_...) */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ElicitationConsentRequest"];
+      };
+    };
+    responses: {
+      /** @description Decision recorded and workflow resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ElicitationConsentResponse"];
+        };
+      };
+      /** @description Invalid session ID or request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or pending elicitation not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session is not waiting for tool results */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
