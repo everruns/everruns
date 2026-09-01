@@ -49,7 +49,7 @@ async fn stream_emits_ordered_start_delta_completion() {
         .expect("an output.message.started event");
     let output_completed = position(|e| matches!(e.kind, SessionEventKind::OutputCompleted { .. }))
         .expect("an output.message.completed event");
-    let model_generation = position(|e| matches!(e.kind, SessionEventKind::ModelGeneration))
+    let model_generation = position(|e| matches!(e.kind, SessionEventKind::ModelGeneration { .. }))
         .expect("an llm.generation event");
 
     assert!(
@@ -129,10 +129,17 @@ async fn stream_emits_ordered_start_delta_completion() {
         .find(|event| event.event_type() == "output.message.completed")
         .expect("canonical assistant message");
     assert!(matches!(input.kind, SessionEventKind::InputMessage { .. }));
-    assert_eq!(input.data()["message"]["role"], "user");
-    assert!(input.data()["message"]["content"].is_array());
-    assert_eq!(output.data()["message"]["role"], "agent");
-    assert!(output.data()["message"]["content"].is_array());
+
+    // The reviewed surface promotes identity, not conversation content.
+    assert_eq!(input.data()["message"], serde_json::Value::Null);
+    assert!(input.data()["message_id"].is_string());
+
+    // History stays fully rebuildable from the canonical envelope — the whole
+    // point of keeping it rather than sanitizing in place.
+    assert_eq!(input.canonical_json()["data"]["message"]["role"], "user");
+    assert!(input.canonical_json()["data"]["message"]["content"].is_array());
+    assert_eq!(output.canonical_json()["data"]["message"]["role"], "agent");
+    assert!(output.canonical_json()["data"]["message"]["content"].is_array());
     assert!(input.sequence().unwrap() < output.sequence().unwrap());
 
     // Correlation ids are preserved: turn-scoped events share one turn id, and

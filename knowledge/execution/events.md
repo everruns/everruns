@@ -79,6 +79,43 @@ filter registry, OpenAPI export, emission path, and round-trip tests must stay
 coherent. Tests in `crates/core/src/events.rs` are the executable contract for
 that coherence.
 
+## Embedding facade surfaces
+
+`everruns::Session::events()` exposes a *reviewed* surface and a *canonical*
+surface, and the split is deliberate. See
+[`crates/everruns/src/events.rs`](../../crates/everruns/src/events.rs).
+
+| Surface | Accessors | Contract |
+|---|---|---|
+| Reviewed | `SessionEventKind`, `SessionEvent::data()`, `as_json()` | Only fields someone promoted. Stable, safe to log or forward. |
+| Canonical | `SessionEvent::canonical_json()` | The complete envelope, nothing withheld. Runtime-internal shape, may change in a patch release. |
+
+Two rules govern it:
+
+1. **Reviewed is opt-in, not opt-out.** A field reaches the reviewed surface
+   only by being promoted onto a `SessionEventKind` variant. This is the
+   embedding-facade half of the rule already stated under *Security and privacy*
+   — unknown event data is not passed through as an untyped public payload.
+   Passing internal payloads through by default makes every field added to the
+   runtime a public API addition nobody reviewed, and ships it wherever the
+   application forwards the envelopes.
+2. **Canonical loses nothing.** Sanitizing in place would destroy data an
+   embedder legitimately needs — auditing, replay, cost accounting — with no way
+   to recover it, because the facade exposes no other event path. The default is
+   narrow; the complete record stays one explicit call away.
+
+The reviewed payload must be a **subset** of the canonical one: it may drop
+fields, never invent them. A synthesised field is a value no consumer can
+correlate with the durable record. `reviewed_data_never_exceeds_the_canonical_payload`
+is the executable form of that invariant.
+
+Promoting a field is the intended way to answer "the reviewed surface lacks
+what I need". Judge it on whether it carries conversation content: identity,
+outcome, token usage, timing, and operator-authored display text are promoted;
+prompts, tool arguments, tool results, and unrecognized event payloads are not.
+Model-generation accounting is promoted precisely because tracking spend must
+not require reaching for the unstable surface.
+
 ## Correlation and tracing
 
 Turn-scoped events carry correlation context. A turn is the trace root;
