@@ -23,7 +23,9 @@ export default async function SkillsPage() {
   const { currentOrgId } = await prefetchAuthBootstrap(queryClient, requestContext);
 
   if (currentOrgId) {
-    const flags = await seedQueryData(queryClient, ["feature-flags", "org", currentOrgId], () =>
+    // Same key `useOrgFeatureFlags` reads, so the client reuses this instead of
+    // refetching the flags it was just handed.
+    const flags = await seedQueryData(queryClient, ["org-feature-flags", currentOrgId], () =>
       serverGet<FeatureFlags>(requestContext, `/v1/orgs/${currentOrgId}/feature-flags`),
     );
 

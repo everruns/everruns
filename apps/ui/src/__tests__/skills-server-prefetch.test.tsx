@@ -41,6 +41,12 @@ describe("SkillsPage server prefetch", () => {
     expect(mockServerGet).toHaveBeenCalledWith(expect.anything(), "/v1/orgs/org_1/feature-flags");
     expect(mockServerGetList).not.toHaveBeenCalled();
     expect(mockSeedQueryData).toHaveBeenCalledTimes(1);
+    // Must match `useOrgFeatureFlags`, or the client refetches what it was handed.
+    expect(mockSeedQueryData).toHaveBeenCalledWith(
+      expect.anything(),
+      ["org-feature-flags", "org_1"],
+      expect.any(Function),
+    );
   });
 
   it("preserves skill and policy prefetching when skills are enabled", async () => {
