@@ -533,12 +533,6 @@ pub async fn update_organization(
 ) -> ApiResult<OrganizationResponse> {
     use crate::storage::models::UpdateOrganization;
 
-    let updates_org_settings = req.default_model_id.is_some()
-        || req.default_harness_id.is_some()
-        || req.default_harness_name.is_some()
-        || req.base_harness_id.is_some()
-        || req.default_provider_per_service.is_some();
-
     // Validate format
     if !validate_org_public_id(&org_public_id) {
         return Err(ErrorResponse::not_found("Organization"));
@@ -549,10 +543,8 @@ pub async fn update_organization(
         return Err(ErrorResponse::not_found("Organization"));
     }
 
-    // Only admin+ can update org-level defaults.
-    if updates_org_settings
-        && !is_org_admin_of_public_db(&state.db, user.id, &org_public_id).await?
-    {
+    // Every field accepted by this endpoint mutates organization settings.
+    if !is_org_admin_of_public_db(&state.db, user.id, &org_public_id).await? {
         return Err(ErrorResponse::new(
             "Only organization admins can update organization settings",
         )
@@ -1265,9 +1257,13 @@ mod tests {
     }
 
     fn update_default_org_json_request(body: impl Into<Body>) -> Request<Body> {
+        update_org_json_request("org_00000000000000000000000000000001", body)
+    }
+
+    fn update_org_json_request(org_public_id: &str, body: impl Into<Body>) -> Request<Body> {
         Request::builder()
             .method("PATCH")
-            .uri("/v1/orgs/org_00000000000000000000000000000001")
+            .uri(format!("/v1/orgs/{org_public_id}"))
             .header("Authorization", "Bearer test-token")
             .header("content-type", "application/json")
             .body(body.into())
@@ -1325,6 +1321,37 @@ mod tests {
             json["detail"],
             "Only organization admins can update organization settings"
         );
+    }
+
+    #[tokio::test]
+    async fn organization_name_update_requires_database_admin_role() {
+        use crate::storage::models::CreateOrganizationRow;
+
+        let (app, db, user_id) = create_org_app(None);
+        let public_id = generate_org_public_id();
+        let org = db
+            .create_organization(CreateOrganizationRow {
+                public_id: public_id.clone(),
+                name: "Original Name".to_string(),
+                created_by: None,
+            })
+            .await
+            .unwrap();
+        db.add_organization_member(org.org_id, user_id, "member")
+            .await
+            .unwrap();
+
+        let response = app
+            .oneshot(update_org_json_request(
+                &public_id,
+                r#"{"name":"Member Renamed"}"#,
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let persisted = db.get_organization(org.org_id).await.unwrap().unwrap();
+        assert_eq!(persisted.name, "Original Name");
     }
 
     #[tokio::test]
