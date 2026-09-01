@@ -7,6 +7,27 @@ use serde_json::json;
 use std::collections::HashMap;
 
 #[test]
+fn compaction_cost_preserves_estimated_generation_cost() {
+    let mut usage = TokenUsage::new(1_000_000, 500_000).with_cost(None, Some(7.5));
+
+    add_compaction_cost(&mut usage, 0.0125);
+
+    assert_eq!(usage.actual_cost_usd, None);
+    assert_eq!(usage.estimated_cost_usd, Some(7.5));
+    assert_eq!(usage.effective_cost_usd(), Some(7.5125));
+}
+
+#[test]
+fn compaction_cost_combines_with_actual_generation_cost() {
+    let mut usage = TokenUsage::new(10, 5).with_cost(Some(0.25), Some(0.2));
+
+    add_compaction_cost(&mut usage, 0.0125);
+
+    assert_eq!(usage.actual_cost_usd, Some(0.2625));
+    assert_eq!(usage.effective_cost_usd(), Some(0.2625));
+}
+
+#[test]
 fn material_reduction_requires_five_percent_at_normal_sizes() {
     assert!(!materially_reduced(1_000, 951));
     assert!(materially_reduced(1_000, 950));

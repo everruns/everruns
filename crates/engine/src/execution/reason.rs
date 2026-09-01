@@ -23,6 +23,14 @@ use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 
+fn add_compaction_cost(usage: &mut TokenUsage, compaction_cost: f64) {
+    let generation_cost = usage.effective_cost_usd();
+    usage.effective_cost_usd = Some(generation_cost.unwrap_or(0.0) + compaction_cost);
+    if let Some(actual_cost) = usage.actual_cost_usd.as_mut() {
+        *actual_cost += compaction_cost;
+    }
+}
+
 use super::ExecutionContext;
 use crate::annotation_hook::{collect_annotations, verify_annotations};
 use crate::capabilities::CapabilityRegistry;
@@ -2169,17 +2177,15 @@ impl ReasonAtom {
         );
 
         // Add compaction info if compaction was performed. Compaction is a
-        // separate billable model call on the same turn, so its cost is folded
-        // into the generation's actual cost — `UsageTrackingListener` reads only
-        // `metadata.usage`, so that is the only path to budgets and
-        // `llm_generations`. `compaction.cost_usd` keeps the split visible
-        // (EVE-895).
+        // separate billable model call on the same turn. Preserve whether the
+        // generation cost was actual or estimated while recording their combined
+        // best-effort cost for budgets and usage totals. `compaction.cost_usd`
+        // keeps the split visible (EVE-895).
         if let Some(info) = compaction_info {
             if let Some(compaction_cost) = info.cost_usd {
                 match generation_data.metadata.usage.as_mut() {
                     Some(usage) => {
-                        usage.actual_cost_usd =
-                            Some(usage.actual_cost_usd.unwrap_or(0.0) + compaction_cost);
+                        add_compaction_cost(usage, compaction_cost);
                     }
                     // The generation itself reported no usage — a provider may
                     // price compaction without returning usage on the retry.
