@@ -207,6 +207,24 @@ describe("OrganizationPage", () => {
     jest.useRealTimers();
   });
 
+  it("clears the default model override when the selection is empty", async () => {
+    jest.useFakeTimers();
+
+    render(<OrganizationPage />);
+
+    fireEvent.change(screen.getByLabelText("Default Model"), {
+      target: { value: "" },
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(700);
+      await Promise.resolve();
+    });
+
+    expect(mockUpdateOrganization).toHaveBeenLastCalledWith({ default_model_id: null });
+    jest.useRealTimers();
+  });
+
   it("keeps model errors next to Models without changing Harnesses status", async () => {
     jest.useFakeTimers();
     mockUpdateOrganization.mockRejectedValueOnce(

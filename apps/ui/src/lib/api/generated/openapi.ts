@@ -16510,7 +16510,8 @@ export interface components {
        */
       default_harness_name?: string | null;
       /**
-       * @description Default LLM model for this organization. Must be an enabled model.
+       * @description Default LLM model for this organization. Must be enabled; pass null to use the platform
+       *     default.
        * @example model_01933b5a00007000800000000000001
        */
       default_model_id?: string | null;

@@ -943,7 +943,7 @@ export interface CreateOrganizationRequest {
 /** Request to update an organization */
 export interface UpdateOrganizationRequest {
   name?: string;
-  default_model_id?: string;
+  default_model_id?: string | null;
   default_harness_id?: string;
   base_harness_id?: string;
   /**

@@ -152,10 +152,11 @@ pub struct UpdateOrganizationRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Acme Corporation")]
     pub name: Option<String>,
-    /// Default LLM model for this organization. Must be an enabled model.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Default LLM model for this organization. Must be enabled; pass null to use the platform
+    /// default.
+    #[serde(default, deserialize_with = "double_option")]
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
-    pub default_model_id: Option<everruns_provider::typed_id::ModelId>,
+    pub default_model_id: Option<Option<everruns_provider::typed_id::ModelId>>,
     /// Default harness to preselect in the UI for new sessions.
     /// Mutually exclusive with `default_harness_name`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -183,6 +184,14 @@ pub struct UpdateOrganizationRequest {
             everruns_provider::typed_id::ProviderId,
         >,
     >,
+}
+
+fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Option::<T>::deserialize(de).map(Some)
 }
 
 /// Response for organization operations
@@ -610,7 +619,7 @@ pub async fn update_organization(
     }
 
     // Validate referenced IDs exist (skip if already resolved from name)
-    if let Some(ref model_id) = default_model_id {
+    if let Some(Some(model_id)) = default_model_id.as_ref() {
         // Verify the model exists and is enabled
         let model = state
             .db
@@ -680,8 +689,11 @@ pub async fn update_organization(
             .patch_organization_settings(
                 org_row.org_id,
                 UpdateOrganizationSettings {
-                    default_model_id: default_model_id
-                        .map_or(UpdateField::Unchanged, UpdateField::Set),
+                    default_model_id: match default_model_id {
+                        None => UpdateField::Unchanged,
+                        Some(None) => UpdateField::Clear,
+                        Some(Some(model_id)) => UpdateField::Set(model_id),
+                    },
                     default_harness_id: default_harness_id
                         .map_or(UpdateField::Unchanged, UpdateField::Set),
                     base_harness_id: base_harness_id
@@ -1711,6 +1723,7 @@ mod tests {
         let json = r#"{}"#;
         let req: UpdateOrganizationRequest = serde_json::from_str(json).unwrap();
         assert!(req.name.is_none());
+        assert!(req.default_model_id.is_none());
         assert!(req.default_harness_id.is_none());
         assert!(req.base_harness_id.is_none());
 
@@ -1723,5 +1736,9 @@ mod tests {
         assert_eq!(req.name.unwrap(), "New Name");
         assert!(req.default_harness_id.is_some());
         assert!(req.base_harness_id.is_some());
+
+        let req: UpdateOrganizationRequest =
+            serde_json::from_str(r#"{"default_model_id":null}"#).unwrap();
+        assert_eq!(req.default_model_id, Some(None));
     }
 }
