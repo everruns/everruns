@@ -278,6 +278,30 @@ fn append_skip_to_report_accumulates_and_never_panics() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// Returns the same preview the live tests print, so the truncation is covered
+/// without needing a provider.
+fn response_preview(text: &str) -> String {
+    text.chars().take(100).collect::<String>()
+}
+
+#[test]
+fn response_preview_truncates_on_char_boundaries() {
+    // A byte slice at 100 panics here: the model's curly apostrophe occupies
+    // bytes 98..101, so index 100 lands inside it. Live OpenAI output containing
+    // one took main red once the account had credits again and these tests
+    // resumed running.
+    let text = format!("{}\u{2019}s trailing text", "a".repeat(98));
+    assert!(!text.is_char_boundary(100));
+
+    let preview = response_preview(&text);
+    assert_eq!(preview.chars().count(), 100);
+    assert!(preview.starts_with(&"a".repeat(98)));
+
+    // Shorter-than-limit and empty input must pass through unchanged.
+    assert_eq!(response_preview("short"), "short");
+    assert_eq!(response_preview(""), "");
+}
+
 #[test]
 fn provider_account_skip_line_names_the_test_and_code() {
     let line = provider_account_skip_line(
@@ -3846,7 +3870,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
     if !final_response_text.is_empty() {
         println!(
             "  Response preview: {}...",
-            &final_response_text[..final_response_text.len().min(100)]
+            response_preview(&final_response_text)
         );
     }
 
@@ -4102,7 +4126,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     if !final_response_text.is_empty() {
         println!(
             "  Response preview: {}...",
-            &final_response_text[..final_response_text.len().min(100)]
+            response_preview(&final_response_text)
         );
     }
 
