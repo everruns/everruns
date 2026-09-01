@@ -25,7 +25,7 @@ use std::time::Instant;
 use everruns::{
     Agent, CapabilityRef, ContentPart, Controls, EventStreamError, ImageContentPart,
     InMemoryEngine, InputMessage, Provider, ReasoningConfig, ReasoningEffort, Session,
-    SessionEvent, SessionEventKind, WorkspacePolicy,
+    SessionEvent, WorkspacePolicy,
 };
 
 use mira::subject::summarize_events;
@@ -185,46 +185,16 @@ fn mark_event_stream_error(transcript: &mut Transcript, error: EventStreamError)
 }
 
 fn event_value(event: SessionEvent) -> serde_json::Value {
-    let event_type = event.event_type().to_string();
-    let event_id = event.event_id;
-    let session_id = event.session_id;
-    let turn_id = event.turn_id;
-    let data = match event.kind {
-        SessionEventKind::TurnStarted | SessionEventKind::TurnCompleted => serde_json::json!({}),
-        SessionEventKind::TurnFailed { error } => serde_json::json!({ "error": error }),
-        SessionEventKind::TurnCancelled => serde_json::json!({ "cancelled": true }),
-        SessionEventKind::TextDelta { delta } => serde_json::json!({ "delta": delta }),
-        SessionEventKind::ToolStarted {
-            tool_call_id,
-            tool_name,
-        } => serde_json::json!({ "tool_call_id": tool_call_id, "tool_name": tool_name }),
-        SessionEventKind::ToolCompleted {
-            tool_call_id,
-            tool_name,
-            success,
-        } => serde_json::json!({
-            "tool_call_id": tool_call_id,
-            "tool_name": tool_name,
-            "success": success
-        }),
-        SessionEventKind::ToolProgress {
-            tool_call_id,
-            tool_name,
-            message,
-        } => serde_json::json!({
-            "tool_call_id": tool_call_id,
-            "tool_name": tool_name,
-            "message": message
-        }),
-        SessionEventKind::Other { payload, .. } => payload,
-        _ => serde_json::json!({}),
-    };
+    // Record the canonical payload, not the reviewed projection. This is an
+    // offline eval recorder: scorers grade usage, tool arguments, and results,
+    // so it wants the full envelope and explicitly opts into it. Application
+    // code should prefer `SessionEventKind` and `data()`.
     serde_json::json!({
-        "type": event_type,
-        "event_id": event_id,
-        "session_id": session_id,
-        "turn_id": turn_id,
-        "data": data
+        "type": event.event_type(),
+        "event_id": event.event_id.clone(),
+        "session_id": event.session_id.clone(),
+        "turn_id": event.turn_id.clone(),
+        "data": event.canonical_json().get("data").cloned().unwrap_or(serde_json::Value::Null),
     })
 }
 

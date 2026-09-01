@@ -23,8 +23,9 @@ let mut events = session.events();
 let observer = tokio::spawn(async move {
     let mut canonical_events = Vec::new();
     while let Some(event) = events.recv().await? {
-        // Record the public event envelope.
-        canonical_events.push(event.as_json().clone());
+        // Recording for replay, so take the canonical envelope: it withholds
+        // nothing. `as_json()` carries the reviewed projection instead.
+        canonical_events.push(event.canonical_json().clone());
 
         // Typed rendering for common terminal/service UI concerns.
         match event.kind {
@@ -58,21 +59,34 @@ promotes assistant output lifecycle and deltas, model reasoning/generation,
 tool lifecycle/progress/output, and turn terminal states. It is non-exhaustive,
 so match it with a fallback arm.
 
-`SessionEvent::as_json()` returns the canonical envelope used by the public
-Everruns event protocol, including
-the event id and type, timestamp, optional persisted sequence, correlation
-context, typed payload, metadata, and tags. Live `output.message.delta`
-envelopes omit the redundant `data.accumulated` prefix; retaining every growing
-prefix in a slow subscriber's buffer would use quadratic memory. Concatenate
-the typed `TextDelta::delta` values to reconstruct streamed text, or use the
-subsequent `output.message.completed` event for the complete message.
-`SessionEvent::data()` accesses the retained payload directly. Use it for
-details intentionally not duplicated into the convenience projection, such as:
+`SessionEvent` exposes two surfaces, and which one you want depends on whether
+you are rendering or recording.
 
-- tool arguments, results, status, narration, and duration;
-- complete structured assistant messages, phases, model metadata, and usage;
-- stable failure codes and localization fields;
-- newly added event types unknown to this version of the Framework.
+`SessionEvent::as_json()` and `SessionEvent::data()` return the **reviewed**
+form: the event envelope — id, type, timestamp, optional persisted sequence,
+correlation context, metadata, tags — with a `data` payload holding only the
+fields promoted onto `SessionEventKind`. Nothing else reaches it, so a field
+added inside the runtime cannot become part of the Framework's public surface,
+or travel to wherever your application forwards these envelopes, without being
+promoted first. This is the form to log, forward, or expose to clients.
+
+`SessionEvent::canonical_json()` returns the **canonical** envelope with the
+complete payload: prompts, tool arguments, tool results, structured assistant
+messages, and the payloads of event types this version does not recognize.
+Nothing observable is lost — this is the form for recording, auditing, and
+replay. It follows the runtime's internal shape rather than the Framework's
+reviewed surface, so treat what you read from it as unstable, and do not forward
+it anywhere the conversation itself should not go.
+
+Live `output.message.delta` envelopes omit the redundant `data.accumulated`
+prefix on both surfaces; retaining every growing prefix in a slow subscriber's
+buffer would use quadratic memory. Concatenate the typed `TextDelta::delta`
+values to reconstruct streamed text, or use the subsequent
+`output.message.completed` event for the complete message.
+
+Model-generation accounting — model, provider, token counts, cost, and duration
+— is promoted onto `SessionEventKind::ModelGeneration`, so tracking spend never
+requires the unstable surface.
 
 This bridge does not define a second wire schema. The canonical event contract,
 compatibility rules, and lifecycle semantics remain documented in
