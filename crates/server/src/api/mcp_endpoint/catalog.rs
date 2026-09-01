@@ -140,14 +140,24 @@ fn bashkit_inventory_schema(mut schema: serde_json::Value) -> serde_json::Value 
         .or_else(|| schema.get("definitions"))
         .and_then(|value| value.as_object())
         .cloned();
-    retype_aggregate_properties_in_place(&mut schema, defs_snapshot.as_ref(), 0);
+    retype_aggregate_properties_in_place(&mut schema, defs_snapshot.as_ref(), 0, false);
     schema
 }
 
+/// Retype the flags bashkit's parser cannot coerce into JSON text.
+///
+/// `composed` marks a schema reached through `$defs` or an `allOf`/`oneOf`/
+/// `anyOf` branch. Bashkit coerces scalar flags only for direct top-level
+/// properties, so a `#[serde(flatten)]` field such as `create_agent_trigger
+/// --enabled true` arrived as the string "true" and bashkit's own schema
+/// validation rejected it before dispatch. Under composition we therefore
+/// retype scalars too and let `coerce_json_text_params` parse them back.
+/// Direct top-level scalars keep their declared type.
 fn retype_aggregate_properties_in_place(
     schema: &mut serde_json::Value,
     defs: Option<&serde_json::Map<String, serde_json::Value>>,
     depth: u8,
+    composed: bool,
 ) {
     if depth >= SCHEMA_WALK_MAX_DEPTH {
         return;
@@ -157,7 +167,9 @@ fn retype_aggregate_properties_in_place(
         .and_then(|value| value.as_object_mut())
     {
         for (_name, property) in properties.iter_mut() {
-            if !property_is_aggregate(property, defs, 0) {
+            let retype = property_is_aggregate(property, defs, 0)
+                || (composed && property_has_json_scalar_type(property, defs, 0));
+            if !retype {
                 continue;
             }
             let Some(object) = property.as_object_mut() else {
@@ -198,13 +210,13 @@ fn retype_aggregate_properties_in_place(
         && let Some(defs_obj) = schema.get_mut(key).and_then(|value| value.as_object_mut())
     {
         for (_, def) in defs_obj.iter_mut() {
-            retype_aggregate_properties_in_place(def, defs, depth + 1);
+            retype_aggregate_properties_in_place(def, defs, depth + 1, true);
         }
     }
     for key in ["allOf", "oneOf", "anyOf"] {
         if let Some(branches) = schema.get_mut(key).and_then(|value| value.as_array_mut()) {
             for branch in branches.iter_mut() {
-                retype_aggregate_properties_in_place(branch, defs, depth + 1);
+                retype_aggregate_properties_in_place(branch, defs, depth + 1, true);
             }
         }
     }
@@ -878,6 +890,43 @@ mod tests {
         assert!(error.contains("--auth_mode"));
         assert_eq!(params["api_key"], "secret");
         assert!(params.get("api-key").is_none());
+    }
+
+    #[test]
+    fn inventory_schema_retypes_composed_scalars_so_bashkit_accepts_flag_text() {
+        // `create_agent_trigger --enabled true` failed with
+        // "schema error: input.enabled must be boolean": bashkit does not
+        // coerce scalars reached through `allOf`/`$ref`, so its own validation
+        // rejected the raw flag text before dispatch could repair it.
+        let schema = serde_json::json!({
+            "$defs": {
+                "CreateAgentTriggerRequest": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": { "type": "boolean" },
+                        "cron_expression": { "type": "string" },
+                        "max_runs": { "type": "integer" }
+                    }
+                }
+            },
+            "type": "object",
+            "properties": { "verbose": { "type": "boolean" } },
+            "allOf": [
+                { "$ref": "#/$defs/CreateAgentTriggerRequest" },
+                { "type": "object", "properties": { "agent_id": { "type": "string" } } }
+            ]
+        });
+
+        let rewritten = bashkit_inventory_schema(schema);
+
+        let composed = rewritten["$defs"]["CreateAgentTriggerRequest"]["properties"]
+            .as_object()
+            .expect("composed properties");
+        assert_eq!(composed["enabled"]["type"], "string");
+        assert_eq!(composed["max_runs"]["type"], "string");
+        assert_eq!(composed["cron_expression"]["type"], "string");
+        // Direct top-level scalars are coerced by bashkit itself; leave them typed.
+        assert_eq!(rewritten["properties"]["verbose"]["type"], "boolean");
     }
 
     #[test]
