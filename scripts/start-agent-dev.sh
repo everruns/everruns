@@ -73,7 +73,7 @@ if [ ! -x "$PROJECT_ROOT/apps/ui/node_modules/.bin/next" ]; then
 fi
 
 if configure_local_development_encryption_key; then
-  echo "Using the stable repository local-development encryption key."
+  echo "Using the private per-prefix local-development encryption key."
 fi
 
 cd "$PROJECT_ROOT"

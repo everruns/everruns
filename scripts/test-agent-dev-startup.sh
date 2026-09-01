@@ -50,7 +50,7 @@ EOF
 cat > "$TEST_DIR/bin/just" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "$PORT_PREFIX|$AUTH_MODE|${OPENAI_API_KEY:-}|${ANTHROPIC_API_KEY:-}|${SECRETS_ENCRYPTION_KEY:-}|$*" > "$AGENT_START_CAPTURE"
+printf '%s\n' "$PORT_PREFIX|$AUTH_MODE|${OPENAI_API_KEY:-}|${ANTHROPIC_API_KEY:-}|${SECRETS_ENCRYPTION_KEY:-}|${SECRETS_ENCRYPTION_KEY_PREVIOUS:-}|$*" > "$AGENT_START_CAPTURE"
 EOF
 
 for command_name in sqlx pnpm caddy nats-server pg_ctl valkey-server; do
@@ -76,7 +76,7 @@ PATH="$TEST_DIR/bin:$PATH" \
   AGENT_START_CAPTURE="$capture" \
   "$PROJECT_ROOT/scripts/start-agent-dev.sh"
 
-expected='271|none|injected-openai|injected-anthropic|test-only-not-a-secret|start-all --no-watch'
+expected='271|none|injected-openai|injected-anthropic|test-only-not-a-secret||start-all --no-watch'
 actual="$(<"$capture")"
 [ "$actual" = "$expected" ] || {
   echo "FAIL: expected '$expected', got '$actual'" >&2
@@ -84,23 +84,38 @@ actual="$(<"$capture")"
 }
 
 env -u SECRETS_ENCRYPTION_KEY \
+  -u SECRETS_ENCRYPTION_KEY_PREVIOUS \
   PATH="$TEST_DIR/bin:$PATH" \
+  LOCAL_DEVELOPMENT_SECRETS_DIR="$TEST_DIR/secrets" \
   PORT_PREFIX=272 \
   AUTH_MODE=none \
   AGENT_START_CAPTURE="$capture" \
   "$PROJECT_ROOT/scripts/start-agent-dev.sh"
 
-expected="272|none|injected-openai|injected-anthropic|$DEFAULT_LOCAL_SECRETS_ENCRYPTION_KEY|start-all --no-watch"
 actual="$(<"$capture")"
-[ "$actual" = "$expected" ] || {
-  echo "FAIL: expected stable local encryption key, got '$actual'" >&2
+IFS='|' read -r prefix auth openai anthropic generated previous command <<< "$actual"
+[ "$prefix|$auth|$openai|$anthropic|$previous|$command" = \
+  "272|none|injected-openai|injected-anthropic|$LEGACY_LOCAL_SECRETS_ENCRYPTION_KEY|start-all --no-watch" ] || {
+  echo "FAIL: private-key startup contract mismatch: '$actual'" >&2
+  exit 1
+}
+[ "$generated" != "$LEGACY_LOCAL_SECRETS_ENCRYPTION_KEY" ]
+[ "$(stat -c '%a' "$TEST_DIR/secrets/secrets-encryption-key-272")" = 600 ]
+
+env -u SECRETS_ENCRYPTION_KEY -u SECRETS_ENCRYPTION_KEY_PREVIOUS \
+  PATH="$TEST_DIR/bin:$PATH" LOCAL_DEVELOPMENT_SECRETS_DIR="$TEST_DIR/secrets" \
+  PORT_PREFIX=272 AUTH_MODE=none AGENT_START_CAPTURE="$capture" \
+  "$PROJECT_ROOT/scripts/start-agent-dev.sh"
+restarted="$(<"$capture")"
+[ "$restarted" = "$actual" ] || {
+  echo "FAIL: local encryption key changed across restarts" >&2
   exit 1
 }
 
-default_key_definitions="$(rg -lF "$DEFAULT_LOCAL_SECRETS_ENCRYPTION_KEY" \
+legacy_key_definitions="$(rg -lF "$LEGACY_LOCAL_SECRETS_ENCRYPTION_KEY" \
   "$PROJECT_ROOT/scripts" | wc -l | tr -d ' ')"
-[ "$default_key_definitions" = "1" ] || {
-  echo "FAIL: expected one local development encryption key definition, found $default_key_definitions" >&2
+[ "$legacy_key_definitions" = "1" ] || {
+  echo "FAIL: expected one legacy local encryption key definition, found $legacy_key_definitions" >&2
   exit 1
 }
 
