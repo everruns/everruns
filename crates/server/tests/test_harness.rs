@@ -335,6 +335,12 @@ impl TestServer {
         if let Some(max_bytes) = atif_export_max_bytes {
             messages_state = messages_state.with_atif_export_max_bytes(max_bytes);
         }
+        let tool_results_state = api::tool_results::AppState::new(
+            db.clone(),
+            runner.clone(),
+            auth_state.clone(),
+            event_delivery.clone(),
+        );
         let sse_tracker = Arc::new(everruns_server::api::sse::SseConnectionTracker::new(
             everruns_server::api::sse::SseConnectionLimits::default(),
         ));
@@ -643,6 +649,7 @@ impl TestServer {
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
             .merge(api::messages::routes(messages_state))
+            .merge(api::tool_results::routes(tool_results_state))
             .merge(api::events::routes(events_state))
             .merge(api::models::routes(models_state))
             .merge(api::knowledge_indexes::routes(knowledge_indexes_state))

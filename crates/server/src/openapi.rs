@@ -394,6 +394,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::session_storage::delete_secret,
         // Client-side tool results
         api::tool_results::submit_tool_results,
+        api::mcp_url_consent::submit_elicitation_consent,
         // Skills
         api::skills::create_skill,
         api::skills::upload_skill,
@@ -571,6 +572,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::tool_results::SubmitToolResultsRequest,
             api::tool_results::ClientToolResult,
             api::tool_results::SubmitToolResultsResponse,
+            api::mcp_url_consent::ElicitationConsentRequest,
+            api::mcp_url_consent::ConsentAction,
+            api::mcp_url_consent::ElicitationConsentResponse,
             // MCP Server types
             McpServer, McpServerStatus, McpServerTransportType,
             everruns_core::mcp_server::McpToolAnnotations,

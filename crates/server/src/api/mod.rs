@@ -38,6 +38,7 @@ pub mod knowledge_indexes;
 pub mod mcp_elicitation;
 pub mod mcp_endpoint;
 pub mod mcp_servers;
+pub mod mcp_url_consent;
 pub mod memory;
 pub mod memory_files;
 pub mod messages;

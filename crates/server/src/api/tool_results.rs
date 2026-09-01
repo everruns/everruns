@@ -92,13 +92,17 @@ impl AppState {
 
 impl_auth_state!(AppState);
 
-/// Create tool results routes
+/// Create tool results routes.
+///
+/// URL mode elicitation consent is merged in here: it resumes a paused turn the
+/// same way a client tool result does, just with a decision instead of output.
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
             "/v1/sessions/{session_id}/tool-results",
             post(submit_tool_results),
         )
+        .merge(super::mcp_url_consent::routes())
         .with_state(state)
 }
 
