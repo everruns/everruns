@@ -8,6 +8,7 @@
 //! (knowledge/integrations/runtime-mcp.md D5).
 
 use crate::client::McpClient;
+use crate::elicitation::{ElicitationAction, UrlElicitationPending};
 use crate::transport::McpConnection;
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
@@ -230,11 +231,61 @@ impl McpExecutor {
                 redact_tool_result(&mut result, &injected_secrets);
                 Ok(result)
             }
+            // A URL mode elicitation the user has not completed yet. Like a
+            // missing credential binding, this is an expected, user-actionable
+            // state rather than a transport failure, so it comes back as a
+            // structured result the client can render and the model can relay —
+            // and the user re-runs the tool once they are done.
+            Err(error) if error.downcast_ref::<UrlElicitationPending>().is_some() => {
+                let pending = error
+                    .downcast_ref::<UrlElicitationPending>()
+                    .expect("checked above");
+                Ok(url_elicitation_result(tool_call.id.clone(), pending))
+            }
             // Redacting an error flattens it to a string, so keep the original
             // chain intact whenever there is nothing to scrub.
             Err(error) if injected_secrets.is_empty() => Err(error),
             Err(error) => Err(anyhow!(redact_text(&error.to_string(), &injected_secrets))),
         }
+    }
+}
+
+/// Turn a pending URL elicitation into the tool result the user sees.
+///
+/// The URL is passed through untouched (it was validated before any human saw
+/// it) and is the only actionable part; the server's message explains why.
+fn url_elicitation_result(tool_call_id: String, pending: &UrlElicitationPending) -> ToolResult {
+    let declined = pending.action == ElicitationAction::Decline;
+    let error = if declined {
+        format!(
+            "You declined to open {}, so '{}' did not run.",
+            pending.host, pending.tool_name
+        )
+    } else {
+        format!(
+            "{} Open {} in your browser to continue, then run '{}' again.",
+            pending.message, pending.url, pending.tool_name
+        )
+    };
+    ToolResult {
+        tool_call_id,
+        result: Some(serde_json::json!({
+            "code": "url_elicitation_required",
+            "error": error,
+            "url": pending.url,
+            "url_host": pending.host,
+            // Internationalized domains are legitimate, but a client should
+            // warn before a user trusts one.
+            "url_is_punycode": pending.punycode,
+            "server": pending.server_name,
+            "message": pending.message,
+            "declined": declined,
+        })),
+        images: None,
+        // Structured, expected state — not a transport failure.
+        error: None,
+        connection_required: None,
+        raw_output: None,
     }
 }
 

@@ -82,6 +82,46 @@ pub trait UrlElicitationHandler: Send + Sync {
     async fn request_url_consent(&self, elicitation: &UrlElicitation) -> Result<ElicitationAction>;
 }
 
+/// A URL elicitation that stopped a tool call, kept typed so the executor can
+/// hand the user an actionable affordance instead of a flat error string.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error(
+    "MCP server '{server_name}' needs you to complete an interaction at {host} before tool \
+     '{tool_name}' can run"
+)]
+pub struct UrlElicitationPending {
+    pub server_name: String,
+    pub tool_name: String,
+    pub message: String,
+    pub url: String,
+    pub host: String,
+    pub punycode: bool,
+    /// What the handler answered. `Cancel` from the relay handler means "shown
+    /// to the user, not yet completed"; `Decline` means they refused.
+    pub action: ElicitationAction,
+}
+
+/// Handler for hosts that can show a URL to the session's user but cannot block
+/// on them: the elicitation is reported through the tool result, and the user
+/// re-runs the tool once they have finished.
+///
+/// It answers `cancel`, never `accept`: the client must not claim consent it did
+/// not obtain, and it never opens the URL itself. The elicitation surfaces to
+/// the user through [`UrlElicitationPending`], and the retry that follows is the
+/// manual continuation the spec asks clients to provide when an out-of-band
+/// interaction cannot be waited on.
+pub struct RelayUrlElicitations;
+
+#[async_trait]
+impl UrlElicitationHandler for RelayUrlElicitations {
+    async fn request_url_consent(
+        &self,
+        _elicitation: &UrlElicitation,
+    ) -> Result<ElicitationAction> {
+        Ok(ElicitationAction::Cancel)
+    }
+}
+
 /// Handler for hosts with no human in the loop: declines everything.
 ///
 /// Not the same as injecting no handler at all. No handler means the client

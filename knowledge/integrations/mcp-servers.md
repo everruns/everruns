@@ -139,10 +139,24 @@ This is 2026-07-28 only. In 2025-era servers elicitation is a server-initiated
 request over a server→client stream this transport does not open, so the
 handshake declares nothing regardless of host capabilities.
 
+#### How the session hosts answer
+
+The worker and runtime hosts inject `RelayUrlElicitations`
+(`crates/mcp/src/executor.rs`): they can put a URL in front of the session's
+user, but cannot hold a turn open waiting on a browser. So they declare the
+capability, never consent, and never open anything. The elicitation comes back
+as a structured tool result (`code: "url_elicitation_required"` with `url`,
+`url_host`, `url_is_punycode`, and the server's message) alongside the existing
+`credential_required` / `connection_required` affordances — an expected,
+user-actionable state rather than a transport failure. The user opens the URL,
+finishes, and re-runs the tool; that retry is the manual continuation the spec
+asks clients to provide when an out-of-band interaction cannot be waited on.
+
 Not yet built: a per-server opt-in policy (today any server the operator
-configured may elicit, gated only by the host's handler) and the UI pause/resume
-surface that would let an in-flight agent turn wait on the human. Until that
-lands the only hosts that can supply a handler are ones with a synchronous user.
+configured may elicit, gated only by the host's handler), and a UI pause/resume
+surface that would hold the turn and answer `accept` on explicit consent instead
+of relaying — the pieces exist (`tool.call_requested` pause/resume,
+`knowledge/execution/client-side-tools.md`) but are not wired to elicitation.
 
 #### `protocol_mode`
 

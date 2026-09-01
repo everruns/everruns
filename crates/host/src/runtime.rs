@@ -932,9 +932,13 @@ impl InProcessRuntime {
     /// configured auth provider.
     #[cfg(feature = "mcp")]
     fn mcp_client(&self) -> Arc<everruns_mcp::McpClient> {
-        Arc::new(everruns_mcp::McpClient::new(
+        // URL mode elicitation is relayed to the session's user through the
+        // tool result rather than answered here — the runtime cannot block a
+        // turn on a browser interaction. See `RelayUrlElicitations`.
+        Arc::new(everruns_mcp::McpClient::with_url_elicitation(
             self.host_composition.egress_service(),
             self.mcp_auth_provider.clone(),
+            Arc::new(everruns_mcp::RelayUrlElicitations),
         ))
     }
 

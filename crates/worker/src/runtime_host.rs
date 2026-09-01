@@ -421,7 +421,15 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         session_id: SessionId,
     ) -> Option<Arc<dyn everruns_core::McpToolInvoker>> {
         let egress = self.adapters.egress_service()?;
-        let client = Arc::new(McpClient::new(egress, Arc::new(NoAuthProvider)));
+        // A session has a user who can be handed a URL through the tool result,
+        // so this host declares URL mode elicitation. It never opens anything
+        // and never claims consent: the elicitation surfaces as an actionable
+        // result and the user re-runs the tool once they have finished.
+        let client = Arc::new(McpClient::with_url_elicitation(
+            egress,
+            Arc::new(NoAuthProvider),
+            Arc::new(everruns_mcp::RelayUrlElicitations),
+        ));
         let resolver = Arc::new(WorkerMcpResolver {
             adapters: self.adapters.clone(),
             org_id,

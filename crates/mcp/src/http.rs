@@ -14,7 +14,8 @@
 
 use crate::auth::McpCredential;
 use crate::elicitation::{
-    ElicitationAction, UrlElicitation, UrlElicitationHandler, validate_elicitation_url,
+    ElicitationAction, UrlElicitation, UrlElicitationHandler, UrlElicitationPending,
+    validate_elicitation_url,
 };
 use crate::protocol::{self, ClientCapabilities, Negotiated};
 use crate::result::extract_json_from_response;
@@ -595,13 +596,19 @@ async fn gather_input_responses(
                     serde_json::json!({ "action": "accept" }),
                 );
             }
+            // Not consented, so there is nothing to send that would let the
+            // server proceed. Typed rather than a flat error string so the
+            // caller can hand the user the URL as an affordance.
             ElicitationAction::Decline | ElicitationAction::Cancel => {
-                return Err(anyhow!(
-                    "MCP server '{server_name}' needs you to complete an interaction at {} \
-                     before tool '{tool_name}' can run, and the request was {}",
-                    elicitation_request.host,
-                    action.as_str()
-                ));
+                return Err(anyhow!(UrlElicitationPending {
+                    server_name: elicitation_request.server_name,
+                    tool_name: elicitation_request.tool_name,
+                    message: elicitation_request.message,
+                    url: elicitation_request.url,
+                    host: elicitation_request.host,
+                    punycode: elicitation_request.punycode,
+                    action,
+                }));
             }
         }
     }

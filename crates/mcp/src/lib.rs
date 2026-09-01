@@ -51,8 +51,8 @@ pub use capability::{
 };
 pub use client::McpClient;
 pub use elicitation::{
-    DeclineUrlElicitations, ElicitationAction, UrlElicitation, UrlElicitationHandler,
-    validate_elicitation_url,
+    DeclineUrlElicitations, ElicitationAction, RelayUrlElicitations, UrlElicitation,
+    UrlElicitationHandler, UrlElicitationPending, validate_elicitation_url,
 };
 pub use executor::{McpConnectionResolver, McpExecutor, StaticConnectionResolver};
 pub use http::{HttpTransport, http_call_tool, http_list_tools, http_send_rpc};

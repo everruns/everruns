@@ -14,8 +14,8 @@ use everruns_core::{
     EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,
 };
 use everruns_mcp::{
-    ElicitationAction, McpClient, McpConnection, NoAuthProvider, UrlElicitation,
-    UrlElicitationHandler,
+    ElicitationAction, McpClient, McpConnection, McpExecutor, NoAuthProvider, RelayUrlElicitations,
+    StaticConnectionResolver, UrlElicitation, UrlElicitationHandler,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -185,9 +185,16 @@ async fn a_declined_elicitation_fails_the_call_without_retrying() {
         .call(&McpConnection::http("docs", URL), "search", json!({}))
         .await
         .expect_err("a declined elicitation must fail the call");
-    let error = error.to_string();
-    assert!(error.contains("mcp.example.com"), "unexpected: {error}");
-    assert!(error.contains("decline"), "unexpected: {error}");
+    assert!(
+        error.to_string().contains("mcp.example.com"),
+        "unexpected: {error}"
+    );
+    // Typed, so a host can render the URL rather than parse a string.
+    let pending = error
+        .downcast_ref::<everruns_mcp::UrlElicitationPending>()
+        .expect("typed pending elicitation");
+    assert_eq!(pending.action, ElicitationAction::Decline);
+    assert_eq!(pending.url, ELICITATION_URL);
     assert_eq!(
         egress.calls().len(),
         1,
@@ -248,4 +255,43 @@ async fn a_server_that_keeps_eliciting_is_bounded() {
         3,
         "initial call plus the bounded number of retries"
     );
+}
+
+#[tokio::test]
+async fn the_relay_host_hands_the_user_the_url_as_an_actionable_result() {
+    // What a real session host does: it cannot block a turn on a browser
+    // interaction, so it declares the capability, never consents, and surfaces
+    // the elicitation through the tool result for the user to act on.
+    let egress = ElicitingEgress::new(ELICITATION_URL, usize::MAX);
+    let client = Arc::new(McpClient::with_url_elicitation(
+        egress.clone(),
+        Arc::new(NoAuthProvider),
+        Arc::new(RelayUrlElicitations),
+    ));
+    let executor = McpExecutor::new(
+        client,
+        Arc::new(StaticConnectionResolver::from_connections([
+            McpConnection::http("docs", URL),
+        ])),
+    );
+
+    let result = everruns_core::McpToolInvoker::invoke(
+        &executor,
+        &everruns_provider::tool_types::ToolCall {
+            id: "call_1".to_string(),
+            name: "mcp_docs__search".to_string(),
+            arguments: json!({}),
+        },
+    )
+    .await
+    .expect("a pending elicitation is a result, not a failure");
+
+    let payload = result.result.expect("structured result");
+    assert_eq!(payload["code"], "url_elicitation_required");
+    assert_eq!(payload["url"], ELICITATION_URL);
+    assert_eq!(payload["url_host"], "mcp.example.com");
+    assert_eq!(payload["declined"], false);
+    assert!(payload["error"].as_str().unwrap().contains(ELICITATION_URL));
+    // Not a transport failure: the model should relay it, not retry blindly.
+    assert!(result.error.is_none());
 }
