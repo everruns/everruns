@@ -25,7 +25,7 @@ use std::time::Instant;
 use everruns::{
     Agent, CapabilityRef, ContentPart, Controls, EventStreamError, ImageContentPart,
     InMemoryEngine, InputMessage, Provider, ReasoningConfig, ReasoningEffort, Session,
-    SessionEvent, SessionEventKind,
+    SessionEvent, SessionEventKind, WorkspacePolicy,
 };
 
 use mira::subject::summarize_events;
@@ -323,7 +323,9 @@ fn build_session(
         builder = builder.capability(CapabilityRef::new(*capability));
     }
     if harness.capabilities.contains(&"session_file_system") {
-        builder = builder.workspace(workspace.path());
+        builder = builder
+            .workspace(workspace.path())
+            .workspace_policy(WorkspacePolicy::read_write());
     }
     if let Some(mode) = config.parallel_tool_calls_mode {
         builder = builder.capability(CapabilityRef::with_config(
