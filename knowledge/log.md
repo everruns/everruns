@@ -1,5 +1,28 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-01
+
+* **A spec beside the code is a spec nobody reads.** The last three documents in
+  `crates/server/specs/` (Slack, user connections, caching and rate limiting)
+  described durable design intent, which `knowledge/` owns, while filling
+  themselves with endpoint tables, struct fields, and current rate-limit numbers
+  that the source owns. Predictably, the copies drifted: the connections spec
+  listed an endpoint set the router had outgrown, the cache spec still claimed
+  rate limiting was auth-only after API-surface limiters landed, and both cited
+  `crates/core/src/app.rs` after the type had moved to `crates/platform`. All
+  three are now concepts, holding only the decisions and their reasons and
+  pointing at source for everything else. `crates/server/specs/` is gone; the
+  repository has one place for why and what. See
+  `knowledge/integrations/slack-integration.md`,
+  `knowledge/integrations/user-connections.md`, and
+  `knowledge/operations/caching-and-rate-limiting.md`.
+
+* **A parity requirement should name a home that exists.** The messaging
+  integration checklist required a co-located `crates/server/specs/{platform}-integration.md`
+  for every new platform, which was the mechanism that put design intent outside
+  the bundle in the first place. New platforms now ship a concept under
+  `knowledge/integrations/` instead.
+
 ## 2026-08-25
 
 * **A projection applied at one read boundary is not applied at the others.**

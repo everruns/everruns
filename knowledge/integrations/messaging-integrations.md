@@ -78,7 +78,7 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 
 | Requirement | Description |
 |---|---|
-| **SPEC.md** | Co-located spec (`crates/server/specs/{platform}-integration.md`): architecture, webhook flow, security review. |
+| **Concept** | Platform concept (`knowledge/integrations/{platform}-integration.md`): design decisions, webhook flow, security review. |
 | **Inbound adapter** | Parse platform webhook into `InboundChannelEvent`. Use `build_session_routing_tag()` for session lookup. Track participants via `ThreadContext`. |
 | **Delivery adapter** | Implement `ChannelDeliveryAdapter` trait for outbound message delivery. Handle retry with exponential backoff. |
 | **Signing/auth verification** | Platform-specific request authentication (e.g. HMAC signing secret for Slack, Ed25519 for Discord). |
@@ -118,7 +118,7 @@ Core abstraction types remain in `crates/core/src/channel.rs`. Platform-specific
 
 ### Slack
 
-Reference implementation. See [`crates/server/specs/slack-integration.md`](../../crates/server/specs/slack-integration.md) for full details.
+Reference implementation. See [Slack Integration](slack-integration.md) for full details.
 
 - Webhook: `POST /v1/apps/{app_id}/slack/events`
 - Signing: HMAC-SHA256 via `signing_secret`
@@ -156,5 +156,5 @@ The plumbing exists (`Capability::tools()` returns `Vec<Box<dyn Tool>>`), but no
 - `crates/core/src/progress_reporting.rs`, Generalized tag handling, backward compat
 - `crates/core/src/lib.rs`, Module registration and re-exports
 - `crates/server/src/messaging/`, Platform-specific webhook handlers and delivery adapters
-- `crates/server/specs/slack-integration.md`, Slack-specific implementation spec
+- [`knowledge/integrations/slack-integration.md`](slack-integration.md), Slack-specific concept
 - `knowledge/integrations/messaging-integrations.md`, This spec

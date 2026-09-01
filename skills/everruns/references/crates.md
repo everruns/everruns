@@ -100,7 +100,7 @@ The runtime then exposes it via `ToolContext.connection_resolver`. There is no
 in-memory default: a resolver implies a real credential source the embedder
 owns. When unset, connection-aware tools fall back to their own guidance
 (session secret, then "connect the provider"). See
-`crates/server/specs/user-connections.md` in the repo.
+`knowledge/integrations/user-connections.md` in the repo.
 
 ## Durable local backends
 

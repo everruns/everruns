@@ -13,6 +13,8 @@
 * [A2A Capability](a2a-capability.md) - A2A outbound delegation capability.
 * [FCP (Free Communication Protocol) channel](fcp-channel.md) - FCP inbound channel.
 * [Messaging Integrations](messaging-integrations.md) - Messaging integrations.
+* [Slack Integration](slack-integration.md) - Slack bot channel: per-app Slack App, signing-secret trust, tag-based session routing, event-driven delivery.
+* [User Connections](user-connections.md) - User-scoped links to external accounts and lazy credential resolution.
 * [Everruns Plugins](everruns-dev-plugin.md) - Everruns(Dev) plugin sync contract.
 * [Plugins](plugins.md) - Plugin host: marketplaces and cross-host plugin packages installed as capabilities.
 * [Model Router Specification](model-router.md) - Model Routers.

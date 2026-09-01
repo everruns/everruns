@@ -329,7 +329,7 @@ Two deliberately separate front doors over shared plumbing:
 
 They are not merged: merging would entangle the fail-closed billing invariant with the user-privacy model of connections. What they share is the descriptor layer, credential schema, validation, encryption, form rendering, so adding a new provider driver feels exactly like adding a new connector.
 
-Terminology cleanup on the connector side: `ConnectionProviderPlugin` and "connection provider" become **connector** (`ConnectorPlugin`), eliminating the second meaning of "provider". See `crates/server/specs/user-connections.md`.
+Terminology cleanup on the connector side: `ConnectionProviderPlugin` and "connection provider" become **connector** (`ConnectorPlugin`), eliminating the second meaning of "provider". See [`knowledge/integrations/user-connections.md`](../integrations/user-connections.md).
 
 ## API Surface
 
@@ -360,7 +360,7 @@ The acceptance bar for this refactor: `rg -i "llm_provider|llm-provider|LlmProvi
 | Server | Storage layer, repositories, domains, `seed.rs`, `llm_resolver.rs` → `provider_resolver.rs` (+ `resolve_service`), `model_sync.rs`, API modules `llm_providers.rs`/`llm_models.rs` → `providers.rs`/`models.rs`, OpenAPI schema, voice credential resolution rerouted through `resolve_service`. |
 | Worker / runtime / CLI / examples | Adapter types and gRPC contracts follow core renames. |
 | UI (`apps/ui`) | `lib/api/llm-providers.ts` → `providers.ts`, hooks, Settings → Providers pages (credential forms rendered from driver schemas), model pages grouped by profile with provider as secondary dimension, service-kind filtered pickers. |
-| Connector side | `ConnectionProviderPlugin` → `ConnectorPlugin`; shared credential-schema/validation primitives extracted; `crates/server/specs/user-connections.md` updated. |
+| Connector side | `ConnectionProviderPlugin` → `ConnectorPlugin`; shared credential-schema/validation primitives extracted; [`knowledge/integrations/user-connections.md`](../integrations/user-connections.md) updated. |
 | Specs & docs | `knowledge/foundations/llm-drivers.md` restructured to the ChatDriver wire contract (entity/resolution/key-management content moves here); `knowledge/foundations/concepts.md`, `knowledge/foundations/models.md`, `knowledge/operations/voice.md`, `knowledge/security/usage-tracking.md`, `knowledge/runtime-resources/knowledge-bases.md`, `docs/` (including `docs/how-to/migrate-providers.md`), `test_cases/` updated to the new vocabulary. |
 | Tests | Unit/integration/repository tests follow renames; new coverage: credential-schema validation, profile assignment at sync, `resolve_service` selection and fail-closed behavior, multi-provider-per-driver resolution. The fail-closed env-leak test is preserved under the new resolver name. |
 

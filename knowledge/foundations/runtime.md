@@ -300,7 +300,7 @@ tool execution time. There is no in-memory default: a resolver implies a real
 credential source the embedder owns. When unset, `ToolContext.connection_resolver`
 stays `None` and connection-aware tools fall back to their own guidance
 (session secret, then "connect the provider"). See
-`crates/server/specs/user-connections.md` for the connection model the resolver
+[User Connections](../integrations/user-connections.md) for the connection model the resolver
 serves.
 
 Session files are a platform service: `HostComposition` carries a

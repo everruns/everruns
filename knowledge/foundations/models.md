@@ -306,7 +306,7 @@ Automatic discovery of available models from provider APIs (OpenAI, OpenRouter v
 
 ### UserConnection
 
-A linked external service account. User-scoped (not org-scoped). See [user-connections.md](../../crates/server/specs/user-connections.md) for full specification.
+A linked external service account. User-scoped (not org-scoped). See [User Connections](../integrations/user-connections.md) for the full concept.
 
 See `crates/server/src/storage/models.rs` for the `UserConnectionRow` type.
 

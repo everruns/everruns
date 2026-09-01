@@ -287,4 +287,4 @@ A linked external service account (GitHub, GitLab, etc.) associated with a user.
 - Tokens encrypted at rest via AES-256-GCM envelope encryption
 - Auto-injected into sessions as secrets (e.g., `GITHUB_TOKEN`) when sessions are created
 - Capabilities like `daytona` use injected tokens transparently for private repo access
-- See [user-connections.md](../../crates/server/specs/user-connections.md) for full specification
+- See [User Connections](../integrations/user-connections.md) for the full concept

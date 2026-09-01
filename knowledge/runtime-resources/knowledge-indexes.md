@@ -48,7 +48,7 @@ The pieces this builds on already exist:
   byte/file limits, secret-free source config.
 * **Connections**: GitHub App with on-demand 1-hour installation tokens and the
   `ConnectorPlugin` registry for future OAuth sources
-  (`crates/server/specs/user-connections.md`).
+  ([User Connections](../integrations/user-connections.md)).
 
 ## Concepts
 
