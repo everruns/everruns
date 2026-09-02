@@ -401,6 +401,7 @@ export type OpenApiSessionFacetCount = Schemas["SessionFacetCount"];
 export type OpenApiSessionFacetsResponse = Schemas["SessionFacetsResponse"];
 export type OpenApiSessionFile = Schemas["SessionFile"];
 export type OpenApiSessionIdledData = Schemas["SessionIdledData"];
+export type OpenApiSessionModelChangedData = Schemas["SessionModelChangedData"];
 export type OpenApiSessionParticipant = Schemas["SessionParticipant"];
 export type OpenApiSessionParticipantKind = Schemas["SessionParticipantKind"];
 export type OpenApiSessionParticipantRole = Schemas["SessionParticipantRole"];

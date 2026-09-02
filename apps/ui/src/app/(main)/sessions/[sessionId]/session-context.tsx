@@ -459,7 +459,8 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
             e.type === "tool.progress" ||
             e.type === "tool.completed" ||
             e.type === "tool.call_requested" ||
-            e.type === "context.compacted",
+            e.type === "context.compacted" ||
+            e.type === "session.model.changed",
         )
       : [];
 
