@@ -172,7 +172,7 @@ impl AnthropicChatDriver {
                     //    interleaves on its own).
                     //  - context-1m: opts the `[1m]` model ids into the 1M
                     //    context window. It is GA / silently ignored on Opus 4.6+
-                    //    and Fable 5 (the only ids we attach it to), so always
+                    //    and Fable 5.x (the only ids we attach it to), so always
                     //    sending it is safe.
                     //  - cache-diagnosis: required for the request-level
                     //    `diagnostics` object and the diagnostics payload on
@@ -783,7 +783,7 @@ impl ChatDriver for AnthropicChatDriver {
             Some(Self::convert_tools(&config.tools, prompt_cache_enabled))
         };
 
-        // Sampling parameters are removed on Fable 5 and Opus 4.8/4.7 —
+        // Sampling parameters are removed on Fable 5.x and Opus 5/4.8/4.7 —
         // sending `temperature` returns 400 ("`temperature` is deprecated for
         // this model"). The model profile's `temperature` flag is the source
         // of truth; drop the parameter for models that reject it.
@@ -800,9 +800,9 @@ impl ChatDriver for AnthropicChatDriver {
 
         // Build thinking config from reasoning effort.
         //
-        // Recent Claude models (Fable 5, Opus 4.8/4.7, and the 4.6 family) use
-        // adaptive thinking: `thinking: {type: "adaptive"}` plus
-        // `output_config.effort`. On Fable 5 and Opus 4.8/4.7 the budget-based
+        // Recent Claude models (Fable 5.x, Opus 5/4.8/4.7, and the 4.6 family)
+        // use adaptive thinking: `thinking: {type: "adaptive"}` plus
+        // `output_config.effort`. On Fable 5.x and Opus 5/4.8/4.7 the budget-based
         // `thinking: {type: "enabled", budget_tokens}` form is removed and
         // returns 400, so this split is load-bearing, not stylistic.
         let (thinking, output_config) = match config.reasoning_effort {
@@ -1511,10 +1511,10 @@ enum AnthropicSystemBlock {
 /// Thinking configuration for Claude.
 ///
 /// `Enabled` is the legacy budget-based form; `Adaptive` is required on
-/// Fable 5 and Opus 4.8/4.7 (where `budget_tokens` returns 400) and is the
+/// Fable 5.x and Opus 5/4.8/4.7 (where `budget_tokens` returns 400) and is the
 /// recommended form on the 4.6 family. "No thinking" is always expressed by
 /// omitting the field — an explicit `{type: "disabled"}` is rejected by
-/// Fable 5.
+/// Fable 5.x.
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum AnthropicThinking {
@@ -1523,7 +1523,7 @@ enum AnthropicThinking {
         budget_tokens: u32,
     },
     Adaptive {
-        /// Fable 5 and Opus 4.8/4.7 omit thinking text by default
+        /// Fable 5.x and Opus 5/4.8/4.7 omit thinking text by default
         /// (`display: "omitted"`); "summarized" restores it so assistant
         /// messages keep their thinking content like on budget-based models.
         display: &'static str,
@@ -1552,11 +1552,15 @@ struct AnthropicOutputConfig {
     effort: String,
 }
 
-/// Claude families that use adaptive thinking. On Fable 5, Opus 4.8/4.7, and
-/// Sonnet 5 budget-based thinking is removed (400); on Opus 4.6 / Sonnet 4.6 it
-/// is deprecated and adaptive is the recommended form. Keep in sync with the
+/// Claude families that use adaptive thinking. On Fable 5.x, Opus 5/4.8/4.7,
+/// and Sonnet 5 budget-based thinking is removed (400); on Opus 4.6 / Sonnet 4.6
+/// it is deprecated and adaptive is the recommended form. Keep in sync with the
 /// adaptive-thinking profiles in `everruns_provider::model_profiles`.
+///
+/// `claude-fable-5-1` is listed on its own: `normalize_anthropic_id` only
+/// strips 8-digit date suffixes, so the `-1` does not collapse to Fable 5.
 const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
+    "claude-fable-5-1",
     "claude-fable-5",
     "claude-opus-5",
     "claude-opus-4-8",
@@ -1572,6 +1576,7 @@ const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
 /// capability — kept separate so a future divergence (1M without adaptive
 /// thinking, or vice versa) cannot silently mis-gate either path.
 const MILLION_CONTEXT_FAMILIES: &[&str] = &[
+    "claude-fable-5-1",
     "claude-fable-5",
     "claude-opus-5",
     "claude-opus-4-8",
@@ -2330,6 +2335,8 @@ mod tests {
     fn test_uses_adaptive_thinking_by_family() {
         // Adaptive-only / adaptive-recommended families, with and without
         // dated suffixes.
+        assert!(uses_adaptive_thinking("claude-fable-5-1"));
+        assert!(uses_adaptive_thinking("claude-fable-5-1-20260901"));
         assert!(uses_adaptive_thinking("claude-fable-5"));
         assert!(uses_adaptive_thinking("claude-fable-5-20260601"));
         assert!(uses_adaptive_thinking("claude-opus-5"));
@@ -2347,7 +2354,7 @@ mod tests {
 
     #[test]
     fn test_thinking_config_serialization() {
-        // Adaptive must not carry budget_tokens (400 on Fable 5 / Opus 4.8 /
+        // Adaptive must not carry budget_tokens (400 on Fable 5.x / Opus 4.8 /
         // 4.7); display:"summarized" opts back into visible thinking text,
         // which those models omit by default.
         let adaptive = serde_json::to_value(AnthropicThinking::adaptive()).unwrap();
@@ -3222,6 +3229,10 @@ mod tests {
         assert_eq!(
             split_million_context("claude-opus-4-8[1m]"),
             ("claude-opus-4-8", true)
+        );
+        assert_eq!(
+            split_million_context("claude-fable-5-1[1m]"),
+            ("claude-fable-5-1", true)
         );
         assert_eq!(
             split_million_context("claude-fable-5[1m]"),

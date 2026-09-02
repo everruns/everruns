@@ -87,8 +87,12 @@ impl std::fmt::Display for ProviderModelConfig {
 
 // Not wired into the live matrix: `claude-fable-5` is listed by the Anthropic
 // `/models` endpoint but returns "Model not available" on inference from the
-// CI key. Re-add the `#[case]` entries once it's usable; Anthropic stays
-// covered via haiku/opus/sonnet below.
+// CI key, and `claude-fable-5-1` (its successor, same tier and rate-limit
+// pool) is assumed to behave the same until verified. Re-add the `#[case]`
+// entries once they're usable; Anthropic stays covered via haiku/opus/sonnet
+// below.
+pub const ANTHROPIC_FABLE_5_1: ProviderModelConfig =
+    ProviderModelConfig::new(DriverId::Anthropic, "claude-fable-5-1", "ANTHROPIC_API_KEY");
 pub const ANTHROPIC_FABLE: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Anthropic, "claude-fable-5", "ANTHROPIC_API_KEY");
 

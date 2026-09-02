@@ -150,7 +150,7 @@ fn reasoning_effort_anthropic_extended_thinking() -> ReasoningEffortConfig {
 }
 
 /// Adaptive thinking config for recent Claude reasoning models
-/// (Fable 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6)
+/// (Fable 5.1, Fable 5, Opus 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6)
 /// Uses thinking.type="adaptive" with effort parameter instead of budget_tokens
 /// Default: high, supports: low, medium, high, max (mapped to xhigh)
 fn reasoning_effort_anthropic_adaptive_thinking() -> ReasoningEffortConfig {
@@ -380,6 +380,7 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["gpt-5.6-terra"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-5.6-luna"], ModelVendor::OpenAi, OPENAI),
     // Anthropic
+    md(&["claude-fable-5-1"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-fable-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-8"], ModelVendor::Anthropic, ANTHROPIC),
@@ -389,6 +390,7 @@ static REGISTRY: &[ModelDescriptor] = &[
     // 200K base models (e.g. "Opus 4.8" vs "Opus 4.8 (1M)" in the picker); the
     // driver sends the `context-1m` beta header for them. See
     // `anthropic_1m_variant` for how their profiles are derived.
+    md(&["claude-fable-5-1[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-fable-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-8[1m]"], ModelVendor::Anthropic, ANTHROPIC),
@@ -2450,7 +2452,7 @@ fn anthropic_1m_variant(mut profile: ModelProfile) -> ModelProfile {
 
 /// Whether a Claude model `family` supports Anthropic's hosted tool_search
 /// (the `tool_search_tool_*_20251119` server tools). Per docs.claude.com, this
-/// is Sonnet 4.0+, Opus 4.0+, Haiku 4.5+, and Fable 5 — the 3.x families do not
+/// is Sonnet 4.0+, Opus 4.0+, Haiku 4.5+, and Fable 5.x — the 3.x families do not
 /// support it. Centralized here (rather than per-literal) because the rule is a
 /// clean family cutoff; contrast the OpenAI profiles, which set `tool_search`
 /// per model literal.
@@ -2462,7 +2464,8 @@ fn anthropic_1m_variant(mut profile: ModelProfile) -> ModelProfile {
 fn anthropic_family_supports_tool_search(family: &str) -> bool {
     matches!(
         family,
-        "claude-fable-5"
+        "claude-fable-5-1"
+            | "claude-fable-5"
             | "claude-opus-5"
             | "claude-opus-4-8"
             | "claude-opus-4-7"
@@ -2487,7 +2490,57 @@ fn anthropic_profile_data(model_id: &str) -> Option<ModelProfile> {
 
 fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
     match model_id {
-        // Claude Fable 5 (newest — top tier above Opus)
+        // Claude Fable 5.1 (newest — top tier above Opus; successor to Fable 5)
+        // Source: Anthropic model card (claude-api skill `shared/models.md`) and
+        // docs.claude.com — Fable 5.1 is not yet in models.dev. Same tier, limits
+        // and per-token price as Fable 5 ($10/$50); cache reads drop to $0.25/MTok
+        // (a quarter of Fable 5's $1.00). Same request surface as Fable 5:
+        // adaptive thinking only (an explicit `thinking: {type: "disabled"}`
+        // returns 400, so the param is omitted when no effort is set), sampling
+        // parameters removed (`temperature: false`). Fable 5.1 additionally
+        // rejects forced tool use (`tool_choice` `any`/`tool` return 400); the
+        // Anthropic driver only ever sends `auto`, so no driver change is needed.
+        // Release/knowledge dates are not published in the model card; the
+        // Models API exposes them at runtime.
+        "claude-fable-5-1" => Some(ModelProfile {
+            name: "Claude Fable 5.1".into(),
+            family: "claude-fable-5-1".into(),
+            description: None,
+            release_date: None,
+            last_updated: None,
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: None,
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(ModelCost {
+                input: 10.00,
+                output: 50.00,
+                cache_read: Some(0.25),
+                cost_tiers: vec![],
+            }),
+            limits: Some(ModelLimits {
+                // Bare id is the 200K profile; `claude-fable-5-1[1m]` is the 1M twin.
+                context: 200_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            speed: None,
+            verbosity: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+        }),
+
+        // Claude Fable 5 (previous Fable release; still served, below Fable 5.1)
         // Source: Anthropic model card (claude-api skill `shared/models.md`) and
         // docs.claude.com — Fable 5 is not yet in models.dev. Same API surface as
         // Opus 4.8: adaptive thinking only, sampling parameters removed (temperature
@@ -2534,7 +2587,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             supports_phases: false,
         }),
 
-        // Claude Opus 5 (current Opus; below Fable 5, above Opus 4.8)
+        // Claude Opus 5 (current Opus; below Fable 5.1, above Opus 4.8)
         // Source: Anthropic model card (claude-api skill `shared/models.md`) and
         // docs.claude.com — Opus 5 is not yet in models.dev. A drop-in upgrade at
         // Opus 4.8's pricing ($5/$25, cache-read $0.50) with the same 200K/1M-twin
@@ -2707,6 +2760,9 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
 
         // 1M-context twins of the base profiles above. Same pricing and
         // capabilities; only the context limit and display name differ.
+        "claude-fable-5-1[1m]" => {
+            anthropic_profile_data("claude-fable-5-1").map(anthropic_1m_variant)
+        }
         "claude-fable-5[1m]" => anthropic_profile_data("claude-fable-5").map(anthropic_1m_variant),
         "claude-opus-5[1m]" => anthropic_profile_data("claude-opus-5").map(anthropic_1m_variant),
         "claude-opus-4-8[1m]" => {
@@ -3346,6 +3402,7 @@ mod tests {
         (DriverId::OpenAI, "gpt-5.6-terra"),
         (DriverId::OpenAI, "gpt-5.6-luna"),
         // Anthropic
+        (DriverId::Anthropic, "claude-fable-5-1"),
         (DriverId::Anthropic, "claude-fable-5"),
         (DriverId::Anthropic, "claude-opus-5"),
         (DriverId::Anthropic, "claude-opus-4-8"),
@@ -4413,6 +4470,34 @@ mod tests {
     }
 
     #[test]
+    fn test_claude_fable_5_1_profile_and_1m_variant() {
+        // `claude-fable-5-1` is its own family: the `-1` is not a version
+        // suffix, so it must not fall back to the Fable 5 descriptor.
+        let base = get_model_profile(&DriverId::Anthropic, "claude-fable-5-1").unwrap();
+        assert_eq!(base.name, "Claude Fable 5.1");
+        assert_eq!(base.family, "claude-fable-5-1");
+        assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
+        assert!(base.reasoning);
+        assert!(!base.temperature);
+        assert!(base.tool_search);
+        let base_cost = base.cost.as_ref().unwrap();
+        let fable_5_cost = get_model_profile(&DriverId::Anthropic, "claude-fable-5")
+            .unwrap()
+            .cost
+            .unwrap();
+        // Same per-token price as Fable 5; cache reads are a quarter of it.
+        assert_eq!(base_cost.input, fable_5_cost.input);
+        assert_eq!(base_cost.output, fable_5_cost.output);
+        assert_eq!(base_cost.cache_read, Some(0.25));
+
+        let m1 = get_model_profile(&DriverId::Anthropic, "claude-fable-5-1[1m]").unwrap();
+        assert_eq!(m1.name, "Claude Fable 5.1 (1M)");
+        assert_eq!(m1.family, "claude-fable-5-1");
+        assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
+        assert_eq!(m1.cost.unwrap().input, base_cost.input);
+    }
+
+    #[test]
     fn test_claude_opus_4_7_and_4_6_have_1m_variants() {
         for id in ["claude-opus-4-7[1m]", "claude-opus-4-6[1m]"] {
             let m1 = get_model_profile(&DriverId::Anthropic, id).unwrap();
@@ -4575,6 +4660,7 @@ mod tests {
     fn test_anthropic_native_tool_search_by_family() {
         // Claude 4-family + Fable advertise Anthropic's hosted tool_search.
         for id in [
+            "claude-fable-5-1",
             "claude-fable-5",
             "claude-opus-5",
             "claude-opus-4-8",
