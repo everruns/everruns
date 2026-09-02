@@ -50,7 +50,7 @@ Tool search requires model-level support. Per Anthropic, it is available on:
 | Opus 4.x (`claude-opus-4*`) | Yes |
 | Sonnet 4.5 / 4.6 (`claude-sonnet-4-5`, `claude-sonnet-4-6`) | Yes |
 | Haiku 4.5 (`claude-haiku-4-5`) | Yes |
-| Fable 5 (`claude-fable-5`) | Yes |
+| Fable 5.1 / 5 (`claude-fable-5-1`, `claude-fable-5`) | Yes |
 | Retired pre-4 Claude models | No (capability is silently ignored) |
 
 When the capability is enabled but the model doesn't support tool search, the feature is **silently skipped, full tool schemas are sent as usual**. This standalone capability does *not* add a client-side fallback: on an unsupported model it simply does nothing (no error, no behavior change). For automatic fallback to client-side deferral, use [Auto Tool Search](/capabilities/auto-tool-search/) (or add the [Tool Search](/capabilities/tool-search/) capability explicitly).

@@ -85,10 +85,13 @@ impl std::fmt::Display for ProviderModelConfig {
 // Provider catalogue — add new providers/models here
 // ============================================================================
 
-// Not wired into the live matrix: `claude-fable-5` is listed by the Anthropic
-// `/models` endpoint but returns "Model not available" on inference from the
-// CI key. Re-add the `#[case]` entries once it's usable; Anthropic stays
-// covered via haiku/opus/sonnet below.
+// Fable 5.1 is in the live matrix (top tier, $10/$50 per MTok — keep its
+// cases to the basic/thinking suites). Fable 5 stays out: same tier, same
+// surface, superseded. The earlier "Model not available" on Fable dates from
+// the period when Anthropic had it disabled; both ids serve inference on the
+// Doppler `ANTHROPIC_API_KEY` (verified 2026-09-02).
+pub const ANTHROPIC_FABLE_5_1: ProviderModelConfig =
+    ProviderModelConfig::new(DriverId::Anthropic, "claude-fable-5-1", "ANTHROPIC_API_KEY");
 pub const ANTHROPIC_FABLE: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Anthropic, "claude-fable-5", "ANTHROPIC_API_KEY");
 
@@ -98,18 +101,13 @@ pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
     "ANTHROPIC_API_KEY",
 );
 
-// Bare alias — the API does not serve a dated id for Opus 4.7.
-pub const ANTHROPIC_OPUS: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::Anthropic, "claude-opus-4-7", "ANTHROPIC_API_KEY");
-
+// Current Anthropic tiers only; superseded Opus 4.7 / Sonnet 4.6 entries were
+// dropped when Opus 5 / Sonnet 5 took their matrix rows.
 pub const ANTHROPIC_OPUS5: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Anthropic, "claude-opus-5", "ANTHROPIC_API_KEY");
 
-pub const ANTHROPIC_SONNET: ProviderModelConfig = ProviderModelConfig::new(
-    DriverId::Anthropic,
-    "claude-sonnet-4-6",
-    "ANTHROPIC_API_KEY",
-);
+pub const ANTHROPIC_SONNET5: ProviderModelConfig =
+    ProviderModelConfig::new(DriverId::Anthropic, "claude-sonnet-5", "ANTHROPIC_API_KEY");
 
 pub const OPENAI_GPT56_LUNA: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.6-luna", "OPENAI_API_KEY")
