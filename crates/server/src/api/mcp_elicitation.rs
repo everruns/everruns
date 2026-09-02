@@ -323,7 +323,7 @@ fn secret_form_html(token: &str, session_id: &str, name: &str, org_id: &str) -> 
 (organization <code>{org}</code>).</p>\
 <p class=\"note\">The value is encrypted and stored on the session. It is not shown to the model, \
 not returned by the API, and never passes through the MCP client that asked for it.</p>\
-<form method=\"post\" action=\"/mcp/elicitations/secret\" autocomplete=\"off\">\
+<form method=\"post\" action=\"\" autocomplete=\"off\">\
 <input type=\"hidden\" name=\"token\" value=\"{token}\">\
 <label for=\"value\">{name}</label>\
 <input id=\"value\" name=\"value\" type=\"password\" autocomplete=\"off\" spellcheck=\"false\" autofocus required>\
@@ -406,7 +406,10 @@ mod tests {
     #[test]
     fn the_form_posts_the_value_to_everruns_itself() {
         let html = secret_form_html("tok.sig", "sess_1", "API_KEY", "org_1");
-        assert!(html.contains("action=\"/mcp/elicitations/secret\""));
+        // Posts back to the page's own URL. An absolute path would be wrong
+        // wherever the API is mounted under a prefix (`/api` in a deployment):
+        // the value would be posted at a path that does not serve this form.
+        assert!(html.contains("action=\"\""));
         assert!(html.contains("method=\"post\""));
         assert!(html.contains("name=\"token\" value=\"tok.sig\""));
         // The input is a password field and never carries a prefilled value.

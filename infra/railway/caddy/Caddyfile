@@ -19,6 +19,13 @@
 		reverse_proxy {$SERVER_HOST}:9000
 	}
 
+	# Pages served under the MCP endpoint — the URL mode elicitation forms a
+	# user opens out of band. Matched separately from /mcp so the UI's own
+	# /mcp-servers route is not swallowed by a /mcp* prefix.
+	handle /mcp/* {
+		reverse_proxy {$SERVER_HOST}:9000
+	}
+
 	handle /.well-known/* {
 		reverse_proxy {$SERVER_HOST}:9000
 	}
