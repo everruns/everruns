@@ -114,6 +114,11 @@ pub const SESSION_IDLED: &str = "session.idled";
 /// Session title changed through a mutation path that participates in the
 /// semantic event protocol.
 pub const SESSION_TITLE_UPDATED: &str = "session.title.updated";
+/// The model answering the session changed between turns. Emitted at the start
+/// of a turn whose input carries a model override differing from the previous
+/// turn's, so the transcript records where the switch happened instead of
+/// leaving readers to infer it from `llm.generation`.
+pub const SESSION_MODEL_CHANGED: &str = "session.model.changed";
 
 // Schedule events
 pub const SCHEDULE_TRIGGERED: &str = "schedule.triggered";
@@ -186,6 +191,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     SESSION_ACTIVATED,
     SESSION_IDLED,
     SESSION_TITLE_UPDATED,
+    SESSION_MODEL_CHANGED,
     SCHEDULE_TRIGGERED,
     CONTEXT_COMPACTING,
     CONTEXT_COMPACTED,
@@ -2311,6 +2317,32 @@ pub struct SessionTitleUpdatedData {
     pub title: String,
 }
 
+/// Data for `session.model.changed`.
+///
+/// Names are the provider's own model identifiers, captured at emission time so
+/// the transcript stays readable after a model is renamed or removed from the
+/// organization. Clients that still have the model may prefer its display name.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct SessionModelChangedData {
+    /// Model used before the switch. `None` when the previous turn ran on an
+    /// inherited default that the emitter could not name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001"))]
+    pub previous_model_id: Option<ModelId>,
+
+    /// Name of the previous model, captured at emission time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_model_name: Option<String>,
+
+    /// Model selected for the next turn.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "model_01933b5a00007000800000000000002"))]
+    pub model_id: ModelId,
+
+    /// Name of the selected model, captured at emission time.
+    pub model_name: String,
+}
+
 // ============================================================================
 // Session task event data
 // ============================================================================
@@ -2598,6 +2630,7 @@ pub struct VoiceSessionFailedData {
 /// - `session.activated` → SessionActivatedData
 /// - `session.idled` → SessionIdledData
 /// - `session.title.updated` → SessionTitleUpdatedData
+/// - `session.model.changed` → SessionModelChangedData
 /// - `file.written` → FileWrittenData
 // `untagged` is retained ONLY for encoding and schema, not decoding:
 //   - `Serialize` emits the payload inline (the event `type` lives as a sibling
@@ -2664,6 +2697,7 @@ pub enum EventData {
     SessionActivated(SessionActivatedData),
     SessionIdled(SessionIdledData),
     SessionTitleUpdated(SessionTitleUpdatedData),
+    SessionModelChanged(SessionModelChangedData),
 
     // Session task lifecycle events (full snapshots)
     TaskCreated(SessionTaskEventData),
@@ -2879,6 +2913,7 @@ event_data_kinds! {
     SessionActivated(SessionActivatedData) = SESSION_ACTIVATED,
     SessionIdled(SessionIdledData) = SESSION_IDLED,
     SessionTitleUpdated(SessionTitleUpdatedData) = SESSION_TITLE_UPDATED,
+    SessionModelChanged(SessionModelChangedData) = SESSION_MODEL_CHANGED,
 
     // Context compaction events
     ContextCompacting(ContextCompactingData) = CONTEXT_COMPACTING,
@@ -2958,6 +2993,7 @@ impl_from_event_data! {
     SessionActivatedData => SessionActivated,
     SessionIdledData => SessionIdled,
     SessionTitleUpdatedData => SessionTitleUpdated,
+    SessionModelChangedData => SessionModelChanged,
     ContextCompactingData => ContextCompacting,
     ContextCompactedData => ContextCompacted,
     FileWrittenData => FileWritten,
@@ -4310,6 +4346,12 @@ mod contract_tests {
         ))
     }
 
+    fn test_model_id() -> ModelId {
+        ModelId::from_uuid(uuid::Uuid::from_u128(
+            0x0000_0000_0000_0000_0000_0000_0000_0006,
+        ))
+    }
+
     fn test_harness_id() -> HarnessId {
         HarnessId::from_uuid(uuid::Uuid::from_u128(
             0x0000_0000_0000_0000_0000_0000_0000_0005,
@@ -5072,6 +5114,16 @@ mod contract_tests {
                 SessionTitleUpdatedData {
                     previous_title: Some("Old title".to_string()),
                     title: "New title".to_string(),
+                }
+                .into(),
+            ),
+            (
+                SESSION_MODEL_CHANGED,
+                SessionModelChangedData {
+                    previous_model_id: Some(test_model_id()),
+                    previous_model_name: Some("GPT-5.6 Sol".to_string()),
+                    model_id: test_model_id(),
+                    model_name: "GPT-5.6 Terra".to_string(),
                 }
                 .into(),
             ),

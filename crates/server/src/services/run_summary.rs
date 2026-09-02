@@ -23,14 +23,16 @@
 //!    `AnalyzeAgent`. The Cost tab keeps reporting what the run spent, not what
 //!    we spent describing it.
 
-use std::sync::Arc;
-use std::time::Duration;
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 use crate::kernel_imports::{
     UtilityLlmRequest, UtilityLlmService, everruns_provider::driver_registry::LlmMessage,
     everruns_provider::driver_registry::LlmMessageRole,
 };
 use everruns_provider::typed_id::SessionId;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::storage::StorageBackend;
 
@@ -61,6 +63,63 @@ const MAX_SUMMARY_CHARS: usize = 400;
 /// Completion deadline. A summary that has not arrived by now is not worth
 /// waiting for — nothing downstream is blocked on it.
 const SUMMARY_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Per-process controls for this deployment-funded spend surface. Summary
+/// generation is advisory, so excess work is dropped rather than queued behind
+/// paid calls or allowed to build an unbounded task backlog.
+const MAX_CONCURRENT_SUMMARIES: usize = 4;
+const MAX_SUMMARIES_PER_ORG_WINDOW: usize = 20;
+const SUMMARY_RATE_WINDOW: Duration = Duration::from_secs(60 * 60);
+
+static SUMMARY_ADMISSION: LazyLock<SummaryAdmission> =
+    LazyLock::new(|| SummaryAdmission::new(MAX_CONCURRENT_SUMMARIES, MAX_SUMMARIES_PER_ORG_WINDOW));
+
+struct SummaryAdmission {
+    concurrency: Arc<Semaphore>,
+    per_org_limit: usize,
+    by_org: Mutex<HashMap<i64, VecDeque<Instant>>>,
+}
+
+impl SummaryAdmission {
+    fn new(max_concurrent: usize, per_org_limit: usize) -> Self {
+        Self {
+            concurrency: Arc::new(Semaphore::new(max_concurrent)),
+            per_org_limit,
+            by_org: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Admit a paid call only when both the organization window and the global
+    /// concurrency cap have room. Rejected work does not consume rate headroom.
+    fn try_acquire(&self, org_id: i64) -> Option<OwnedSemaphorePermit> {
+        let now = Instant::now();
+        let mut by_org = self
+            .by_org
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        by_org.retain(|_, calls| {
+            while calls
+                .front()
+                .is_some_and(|call| now.duration_since(*call) >= SUMMARY_RATE_WINDOW)
+            {
+                calls.pop_front();
+            }
+            !calls.is_empty()
+        });
+
+        if by_org
+            .get(&org_id)
+            .is_some_and(|calls| calls.len() >= self.per_org_limit)
+        {
+            return None;
+        }
+
+        let permit = self.concurrency.clone().try_acquire_owned().ok()?;
+        by_org.entry(org_id).or_default().push_back(now);
+        Some(permit)
+    }
+}
 
 const SYSTEM_PROMPT: &str = "\
 You write one sentence describing what an automated agent run did.
@@ -176,6 +235,14 @@ impl RunSummaryService {
         if digest.trim().is_empty() {
             return Ok(());
         }
+
+        // This call uses the deployment utility key rather than the session's
+        // budget. Hold admission through the provider call so hostile terminal
+        // turn floods cannot create unbounded spend or outbound concurrency.
+        let Some(_admission_permit) = SUMMARY_ADMISSION.try_acquire(org_id) else {
+            tracing::debug!(%session_id, %org_id, "run summary admission denied");
+            return Ok(());
+        };
 
         let request = UtilityLlmRequest::new(vec![
             LlmMessage::text(LlmMessageRole::System, SYSTEM_PROMPT),
@@ -477,5 +544,29 @@ mod tests {
         );
         assert_eq!(clean_summary("   ").as_deref(), None);
         assert_eq!(clean_summary(&"x".repeat(MAX_SUMMARY_CHARS + 1)), None);
+    }
+
+    #[test]
+    fn summary_admission_limits_org_spend() {
+        let admission = SummaryAdmission::new(3, 2);
+
+        let first = admission.try_acquire(1).expect("first call admitted");
+        let second = admission.try_acquire(1).expect("second call admitted");
+        assert!(admission.try_acquire(1).is_none());
+
+        drop((first, second));
+        assert!(admission.try_acquire(1).is_none());
+        assert!(admission.try_acquire(2).is_some());
+    }
+
+    #[test]
+    fn summary_admission_limits_global_concurrency_without_charging_rejections() {
+        let admission = SummaryAdmission::new(1, 2);
+
+        let permit = admission.try_acquire(1).expect("first call admitted");
+        assert!(admission.try_acquire(2).is_none());
+        drop(permit);
+
+        assert!(admission.try_acquire(2).is_some());
     }
 }

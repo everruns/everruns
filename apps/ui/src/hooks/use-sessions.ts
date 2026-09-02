@@ -394,6 +394,7 @@ const SSE_EVENT_TYPES = [
   "reason.thinking.completed",
   "reason.item",
   "context.compacted",
+  "session.model.changed",
 ];
 
 /** Default page size for paginated event loading */

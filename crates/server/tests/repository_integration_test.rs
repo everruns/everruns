@@ -1709,6 +1709,26 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
         message_index.0
     );
 
+    // The property migration 084 established is that the query predicate is
+    // *implied by* the index predicate, which is what lets Postgres use this
+    // partial index at all. Assert that directly, with sequential scans
+    // disabled for the planning of this one statement.
+    //
+    // Asserting "the plan contains no Seq Scan" instead would test the
+    // planner's cost comparison rather than the index, and that comparison
+    // depends on how many unrelated rows other tests happen to have left in
+    // the shared `events` table: once a large enough fraction of the table
+    // matches the predicate, a sequential scan is genuinely the cheaper plan
+    // and Postgres is right to choose it. That made the old assertion fail on
+    // `main` without either this query or the index changing.
+    //
+    // `SET LOCAL` scopes the setting to this transaction, which is rolled
+    // back, so no pooled connection escapes with seqscan disabled.
+    let mut tx = pool.begin().await.expect("begin planner-assertion tx");
+    sqlx::query("SET LOCAL enable_seqscan = off")
+        .execute(&mut *tx)
+        .await
+        .expect("disable seq scans for the planner assertion");
     let plan_rows: Vec<(String,)> = sqlx::query_as(
         r#"
         EXPLAIN (ANALYZE, BUFFERS)
@@ -1725,17 +1745,25 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
     )
     .bind(session.id.uuid())
     .bind(everruns_server::storage::repository::MESSAGE_SAFETY_LIMIT as i64)
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await
     .expect("explain bounded message history query");
+    tx.rollback().await.expect("roll back planner-assertion tx");
     let plan = plan_rows
         .into_iter()
         .map(|row| row.0)
         .collect::<Vec<_>>()
         .join("\n");
+    // Widening the query's event types beyond the index predicate, or
+    // narrowing the index back to the pre-084 pair, makes the partial index
+    // unusable and drops the planner onto `idx_events_session_sequence` --
+    // scanning every event type in the session. That is the regression this
+    // catches.
     assert!(
-        !plan.contains("Seq Scan on events"),
-        "message history query should not seq-scan events:\n{plan}"
+        plan.contains("idx_events_messages"),
+        "message history query must be servable by the idx_events_messages \
+         partial index; a plan on another index means the query predicate is \
+         no longer implied by the index predicate (see migration 084):\n{plan}"
     );
 
     println!(
