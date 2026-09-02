@@ -165,6 +165,12 @@ already consented, and otherwise stands the elicitation down:
    tool and domain back out of the emitted event — the browser does not get to
    say what was consented to — records a `StoredConsent` in session storage on
    an accept, completes the synthetic call, and resumes the turn.
+
+   The decision also goes in as a user turn. A tool result cannot carry it: the
+   synthetic call came from the engine, so nothing in the transcript claims that
+   tool call and the lone result is dropped before the provider request is
+   built. Without the spoken line the model never learns consent was given and
+   asks for the link a second time.
 4. **Retry.** The model calls the tool again; the server elicits again with a
    fresh `requestState`; this time the handler finds the consent and answers
    `accept`, so the server can check whether the out-of-band interaction
