@@ -129,7 +129,7 @@ pub const GEMINI_FLASH: ProviderModelConfig =
 // terms are acceptable for these synthetic test prompts.
 pub const META_MUSE_SPARK_CONTRIBUTOR: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Meta,
-    "muse-spark-1.2-contributor",
+    "muse-spark-1.3-contributor",
     "MODEL_API_KEY",
 )
 .reasoning_as_text();

@@ -1,6 +1,6 @@
 ---
 title: Meta Model API
-description: Run Everruns agents on Muse Spark 1.2 through Meta Model API, including the discounted Contributor tier.
+description: Run Everruns agents on Muse Spark 1.3 through Meta Model API, including the discounted Contributor tier.
 sidebar:
   label: Meta Model API
 ---
@@ -22,22 +22,27 @@ replay, message phases, hosted tool search, and server-managed response history.
 The hosted endpoint is used by default. An optional base URL can point the
 driver at a compatible proxy; model discovery is disabled for non-Meta hosts.
 
-## Muse Spark 1.2 tiers
+## Muse Spark 1.3 tiers
 
-Both 1.2 model IDs have a 1,048,576-token context window and accept text,
-images, audio, video, and PDFs while producing text.
+Muse Spark 1.3 is built for long-horizon coding and multi-step agentic work,
+with native tool calling and MCP support. Both 1.3 model IDs have a
+1,048,576-token context window and accept text, images, audio, video, and PDFs
+while producing text.
 
 | Model | Data use | Input / cached input / output per million tokens |
 |---|---|---|
-| `muse-spark-1.2` | Prompts and completions are not used to train Meta models | $1.25 / $0.15 / $4.25 |
-| `muse-spark-1.2-contributor` | Prompts and completions may be used to train future Meta models | $0.10 / $0.002 / $0.20 |
+| `muse-spark-1.3` | Prompts and completions are not used to train Meta models | $1.25 / $0.15 / $4.25 |
+| `muse-spark-1.3-contributor` | Prompts and completions are used to train and improve Meta models; rate-limited by tokens | $0.10 / $0.002 / $0.20 |
 
 Choose the Contributor model only when the organization accepts its data-use
 terms. The distinction is part of the model ID, so changing tiers is an explicit
 model selection rather than a hidden provider setting.
 
+The previous `muse-spark-1.2` and `muse-spark-1.2-contributor` IDs remain
+available with the same tiers and pricing.
+
 ## Links
 
 - [Meta Model API documentation](https://dev.meta.ai/docs/overview/)
-- [Muse Spark 1.2 model page](https://developer.meta.com/ai/models/muse-spark/)
+- [Muse Spark model page](https://developer.meta.com/ai/models/muse-spark/)
 - [Migrate between providers](/how-to/migrate-providers/)
