@@ -86,13 +86,40 @@ use output_hooks::collect_output_hooks;
 use request_controls::resolve_request_controls;
 use stream_state::{
     StreamReplayState, StreamTermination, advances_stall_deadline, append_guarded_thinking_delta,
-    merge_retry_metadata,
+    inspect_guarded_reasoning_item, merge_retry_metadata,
 };
 use transcript::repair_dangling_tool_calls;
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+fn client_visible_guardrail_text(
+    text: &str,
+    streamed_reasoning: &str,
+    reasoning: &[ReasoningContentPart],
+    citation_annotations: &[crate::message::TextAnnotation],
+) -> String {
+    let mut guarded = streamed_reasoning.to_string();
+    if guarded.is_empty() {
+        for item_text in reasoning
+            .iter()
+            .filter_map(ReasoningContentPart::display_text)
+        {
+            if !guarded.is_empty() {
+                guarded.push_str("\n\n");
+            }
+            guarded.push_str(&item_text);
+        }
+    }
+
+    let prose = post_generation_guardrail_text(text, citation_annotations);
+    if !guarded.is_empty() && !prose.is_empty() {
+        guarded.push_str("\n\n");
+    }
+    guarded.push_str(&prose);
+    guarded
+}
 
 /// Apply capability-owned transforms to the finalized model tool-call batch.
 /// The reason atom owns timing and context; each implementation owns its policy.
@@ -1309,10 +1336,6 @@ impl ReasonAtom {
             pending_delta,
             mut tripped,
         ) = 'stream_attempt: loop {
-            // Provider id for reasoning artifacts synthesized after the stream.
-            // Model name for reasoning events emitted from inside the stream,
-            // where `model_with_provider` is no longer borrowable.
-            let stream_model_name = llm_config.model.clone();
             let stream_result = if let Some(remaining) =
                 remaining_retry_time(&retry_config, retry_started_at)
             {
@@ -1676,6 +1699,20 @@ impl ReasonAtom {
                         }
                     }
                     LlmStreamEvent::ReasoningItem(item) => {
+                        if let Some(t) = inspect_guarded_reasoning_item(
+                            &mut armed_guardrails,
+                            &mut thinking,
+                            &item,
+                        ) {
+                            tracing::warn!(
+                                session_id = %session_id,
+                                guardrail_capability_id = %t.capability_id,
+                                guardrail_id = %t.guardrail_id,
+                                "ReasonAtom: output guardrail tripped on completed reasoning item, replacing assistant message"
+                            );
+                            termination = StreamTermination::GuardrailBlocked(t);
+                            break;
+                        }
                         // One durable artifact per provider block, appended in
                         // order. Replay walks these; nothing is collapsed into
                         // a single per-message slot.
@@ -1687,37 +1724,6 @@ impl ReasonAtom {
                             has_encrypted = item.encrypted.is_some(),
                             "ReasonAtom: captured reasoning artifact"
                         );
-                        if let Err(e) = self
-                            .event_emitter
-                            .emit(EventRequest::new(
-                                session_id,
-                                streaming_event_context.clone(),
-                                ReasonItemData {
-                                    turn_id: context.turn_id,
-                                    provider: item.provider.clone(),
-                                    model: Some(stream_model_name.clone()),
-                                    // Opaque payloads are replay state, never
-                                    // event data: `reason.item` carries
-                                    // identity and safe summary only.
-                                    item_id: item.item_id.clone().unwrap_or_default(),
-                                    summary: item
-                                        .display_text()
-                                        .filter(|_| {
-                                            !matches!(item.text, Some(ReasoningText::Plain { .. }))
-                                        })
-                                        .into_iter()
-                                        .collect(),
-                                    token_count: item.tokens,
-                                },
-                            ))
-                            .await
-                        {
-                            tracing::warn!(
-                                session_id = %session_id,
-                                error = %e,
-                                "ReasonAtom: failed to emit reason.item event"
-                            );
-                        }
                         reasoning.push(item);
                     }
                     LlmStreamEvent::ToolCalls(calls) => {
@@ -1969,7 +1975,12 @@ impl ReasonAtom {
             // Post-generation guardrails must inspect citation metadata as well
             // as prose because annotations are persisted and rendered to clients.
             if !citation_annotations.is_empty() && !post_output_providers.is_empty() {
-                let guarded_output = post_generation_guardrail_text(&text, &citation_annotations);
+                let guarded_output = client_visible_guardrail_text(
+                    &text,
+                    &thinking,
+                    &reasoning,
+                    &citation_annotations,
+                );
                 let ctx = PostGenerationOutputContext {
                     system_prompt: &runtime_agent.system_prompt,
                     message_text: &guarded_output,
@@ -1999,11 +2010,12 @@ impl ReasonAtom {
         if tripped.is_none()
             && citation_annotations.is_empty()
             && !post_output_providers.is_empty()
-            && !text.is_empty()
+            && (!text.is_empty() || !thinking.is_empty() || !reasoning.is_empty())
         {
+            let guarded_output = client_visible_guardrail_text(&text, &thinking, &reasoning, &[]);
             let ctx = PostGenerationOutputContext {
                 system_prompt: &runtime_agent.system_prompt,
-                message_text: &text,
+                message_text: &guarded_output,
                 utility_llm_service: self.utility_llm_service.as_ref(),
             };
             tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
@@ -2011,6 +2023,40 @@ impl ReasonAtom {
 
         if tripped.is_some() {
             citation_annotations.clear();
+        }
+
+        // Completed reasoning metadata is withheld until every output
+        // guardrail has allowed the message. Otherwise a summary could escape
+        // through `reason.item` before a later assistant-text block trips.
+        if tripped.is_none() {
+            for item in &reasoning {
+                if let Err(e) = self
+                    .event_emitter
+                    .emit(EventRequest::new(
+                        session_id,
+                        streaming_event_context.clone(),
+                        ReasonItemData {
+                            turn_id: context.turn_id,
+                            provider: item.provider.clone(),
+                            model: Some(llm_config.model.clone()),
+                            item_id: item.item_id.clone().unwrap_or_default(),
+                            summary: item
+                                .display_text()
+                                .filter(|_| !matches!(item.text, Some(ReasoningText::Plain { .. })))
+                                .into_iter()
+                                .collect(),
+                            token_count: item.tokens,
+                        },
+                    ))
+                    .await
+                {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        error = %e,
+                        "ReasonAtom: failed to emit reason.item event"
+                    );
+                }
+            }
         }
 
         // Release buffered text only after post-generation guardrails allow it.
@@ -2076,6 +2122,7 @@ impl ReasonAtom {
             text = t.block.replacement.clone();
             tool_calls.clear();
             thinking.clear();
+            reasoning.clear();
         }
 
         // Finalized tool-call policy seam. This is the smallest provider-neutral
