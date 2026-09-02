@@ -93,7 +93,7 @@ async-trait.workspace = true
 anyhow.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-jsonschema = { version = "0.50.1", default-features = false }
+jsonschema = { version = "0.52.0", default-features = false }
 
 # Outbound A2A delegation (optional).
 a2a = { workspace = true, optional = true }

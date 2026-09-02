@@ -26,8 +26,8 @@ urlencoding = "2"
 http = "1"
 http-body = "1"
 futures.workspace = true
-connectrpc = { version = "0.8.1", features = ["client", "client-tls"] }
-buffa = "0.8.1"
+connectrpc = { version = "0.9.0", features = ["client", "client-tls"] }
+buffa = "0.9"
 rustls.workspace = true
 rustls-native-certs = "0.8"
 
@@ -41,7 +41,7 @@ everruns-platform.workspace = true
 ignored = ["connectrpc-build", "futures", "http-body", "prost", "protox"]
 
 [build-dependencies]
-connectrpc-build = "0.8.0"
+connectrpc-build = "0.9.0"
 protox = "0.9"
 prost.workspace = true
 
