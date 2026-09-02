@@ -435,6 +435,16 @@ static REGISTRY: &[ModelDescriptor] = &[
         MICROSOFT_MAI,
     ),
     md(
+        &["muse-spark-1.3", "meta/muse-spark-1.3"],
+        ModelVendor::Meta,
+        META_MUSE,
+    ),
+    md(
+        &["muse-spark-1.3-contributor"],
+        ModelVendor::Meta,
+        META_ONLY,
+    ),
+    md(
         &["muse-spark-1.2", "meta/muse-spark-1.2"],
         ModelVendor::Meta,
         META_MUSE,
@@ -681,36 +691,59 @@ fn profile_data(canonical: &str) -> Option<ModelProfile> {
 }
 
 fn meta_profile_data(model_id: &str) -> Option<ModelProfile> {
-    let (name, description, cost) = match model_id {
+    // Meta prices the Standard and Contributor tiers identically across Muse
+    // Spark 1.2 and 1.3; only the data-use terms differ between tiers.
+    const MUSE_STANDARD_COST: ModelCost = ModelCost {
+        input: 1.25,
+        output: 4.25,
+        cache_read: Some(0.15),
+        cost_tiers: vec![],
+    };
+    const MUSE_CONTRIBUTOR_COST: ModelCost = ModelCost {
+        input: 0.10,
+        output: 0.20,
+        cache_read: Some(0.002),
+        cost_tiers: vec![],
+    };
+
+    let (name, family, release_date, description, cost) = match model_id {
+        "muse-spark-1.3" => (
+            "Muse Spark 1.3",
+            "muse-spark-1.3",
+            "2026-09-02",
+            "Meta's Muse Spark model for long-horizon coding and multi-step agentic work, with native tool calling and MCP support. Prompts and completions are not used to train Meta models.",
+            MUSE_STANDARD_COST,
+        ),
+        "muse-spark-1.3-contributor" => (
+            "Muse Spark 1.3 Contributor",
+            "muse-spark-1.3",
+            "2026-09-02",
+            "Discounted Muse Spark 1.3 tier with the same model and capabilities as Standard. Prompts and completions are used to train and improve Meta models; rate-limited by tokens.",
+            MUSE_CONTRIBUTOR_COST,
+        ),
         "muse-spark-1.2" => (
             "Muse Spark 1.2",
+            "muse-spark-1.2",
+            "2026-08-05",
             "Meta's coding-optimized Muse Spark model. Prompts and completions are not used to train Meta models.",
-            ModelCost {
-                input: 1.25,
-                output: 4.25,
-                cache_read: Some(0.15),
-                cost_tiers: vec![],
-            },
+            MUSE_STANDARD_COST,
         ),
         "muse-spark-1.2-contributor" => (
             "Muse Spark 1.2 Contributor",
+            "muse-spark-1.2",
+            "2026-08-05",
             "Discounted Muse Spark 1.2 tier where prompts and completions may be used to train future Meta models.",
-            ModelCost {
-                input: 0.10,
-                output: 0.20,
-                cache_read: Some(0.002),
-                cost_tiers: vec![],
-            },
+            MUSE_CONTRIBUTOR_COST,
         ),
         _ => return None,
     };
 
     Some(ModelProfile {
         name: name.into(),
-        family: "muse-spark-1.2".into(),
+        family: family.into(),
         description: Some(description.into()),
-        release_date: Some("2026-08-05".into()),
-        last_updated: Some("2026-08-05".into()),
+        release_date: Some(release_date.into()),
+        last_updated: Some(release_date.into()),
         attachment: true,
         reasoning: true,
         temperature: true,
@@ -4714,9 +4747,10 @@ mod tests {
     }
 
     #[test]
-    fn test_muse_spark_1_2_profiles_and_tiers() {
-        let standard = get_model_profile(&DriverId::Meta, "muse-spark-1.2").unwrap();
-        assert_eq!(standard.name, "Muse Spark 1.2");
+    fn test_muse_spark_1_3_profiles_and_tiers() {
+        let standard = get_model_profile(&DriverId::Meta, "muse-spark-1.3").unwrap();
+        assert_eq!(standard.name, "Muse Spark 1.3");
+        assert_eq!(standard.family, "muse-spark-1.3");
         assert_eq!(standard.limits.as_ref().unwrap().context, 1_048_576);
         assert!(standard.tool_call);
         assert!(standard.tool_search);
@@ -4737,7 +4771,9 @@ mod tests {
         assert_eq!(standard_cost.cache_read, Some(0.15));
         assert_eq!(standard_cost.output, 4.25);
 
-        let contributor = get_model_profile(&DriverId::Meta, "muse-spark-1.2-contributor").unwrap();
+        let contributor = get_model_profile(&DriverId::Meta, "muse-spark-1.3-contributor").unwrap();
+        assert_eq!(contributor.name, "Muse Spark 1.3 Contributor");
+        assert_eq!(contributor.family, "muse-spark-1.3");
         let contributor_cost = contributor.cost.unwrap();
         assert_eq!(contributor_cost.input, 0.10);
         assert_eq!(contributor_cost.cache_read, Some(0.002));
@@ -4747,27 +4783,40 @@ mod tests {
                 .description
                 .as_deref()
                 .unwrap()
-                .contains("may be used to train")
+                .contains("used to train")
         );
         assert_eq!(
-            get_model_profile_key(&DriverId::Meta, "muse-spark-1.2-contributor").as_deref(),
-            Some("meta/muse-spark-1.2-contributor")
+            get_model_profile_key(&DriverId::Meta, "muse-spark-1.3-contributor").as_deref(),
+            Some("meta/muse-spark-1.3-contributor")
         );
     }
 
     #[test]
+    fn test_muse_spark_1_2_profiles_stay_resolvable() {
+        // 1.2 remains served by Meta and referenced by existing model records,
+        // so it keeps its own family and profile next to 1.3.
+        let standard = get_model_profile(&DriverId::Meta, "muse-spark-1.2").unwrap();
+        assert_eq!(standard.name, "Muse Spark 1.2");
+        assert_eq!(standard.family, "muse-spark-1.2");
+        let contributor = get_model_profile(&DriverId::Meta, "muse-spark-1.2-contributor").unwrap();
+        assert_eq!(contributor.name, "Muse Spark 1.2 Contributor");
+        assert_eq!(contributor.family, "muse-spark-1.2");
+        assert!(get_model_profile(&DriverId::OpenRouter, "muse-spark-1.2-contributor").is_none());
+    }
+
+    #[test]
     fn test_muse_surface_capabilities_are_transport_gated() {
-        let direct = get_model_profile(&DriverId::Meta, "muse-spark-1.2").unwrap();
+        let direct = get_model_profile(&DriverId::Meta, "muse-spark-1.3").unwrap();
         assert!(direct.supports_phases);
         assert!(direct.tool_search);
 
-        let openrouter = get_model_profile(&DriverId::OpenRouter, "meta/muse-spark-1.2").unwrap();
+        let openrouter = get_model_profile(&DriverId::OpenRouter, "meta/muse-spark-1.3").unwrap();
         assert!(!openrouter.supports_phases);
         assert!(!openrouter.tool_search);
 
-        assert!(get_model_profile(&DriverId::OpenRouter, "muse-spark-1.2-contributor").is_none());
+        assert!(get_model_profile(&DriverId::OpenRouter, "muse-spark-1.3-contributor").is_none());
         assert_eq!(
-            get_model_vendor(&DriverId::Meta, "muse-spark-1.2"),
+            get_model_vendor(&DriverId::Meta, "muse-spark-1.3"),
             Some(ModelVendor::Meta)
         );
     }
