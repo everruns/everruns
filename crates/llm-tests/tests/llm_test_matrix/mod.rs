@@ -101,18 +101,10 @@ pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
     "ANTHROPIC_API_KEY",
 );
 
-// Bare alias — the API does not serve a dated id for Opus 4.7.
-pub const ANTHROPIC_OPUS: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::Anthropic, "claude-opus-4-7", "ANTHROPIC_API_KEY");
-
+// Current Anthropic tiers only; superseded Opus 4.7 / Sonnet 4.6 entries were
+// dropped when Opus 5 / Sonnet 5 took their matrix rows.
 pub const ANTHROPIC_OPUS5: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Anthropic, "claude-opus-5", "ANTHROPIC_API_KEY");
-
-pub const ANTHROPIC_SONNET: ProviderModelConfig = ProviderModelConfig::new(
-    DriverId::Anthropic,
-    "claude-sonnet-4-6",
-    "ANTHROPIC_API_KEY",
-);
 
 pub const ANTHROPIC_SONNET5: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Anthropic, "claude-sonnet-5", "ANTHROPIC_API_KEY");
