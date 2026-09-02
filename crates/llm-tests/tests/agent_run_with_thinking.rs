@@ -267,7 +267,12 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
                 .unwrap();
             let input = InputMessage {
                 role: MessageRole::User,
-                content: vec![ContentPart::text("What's the current time in UTC?")],
+                // The user turn also asks for a tool check: with the system
+                // instruction alone, Sonnet 5 still skipped the tool on ~2/7
+                // first attempts at low effort.
+                content: vec![ContentPart::text(
+                    "What's the current time in UTC? Check it with your tool rather than guessing.",
+                )],
                 controls: Some(Controls {
                     speed: None,
                     verbosity: None,
