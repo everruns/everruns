@@ -85,12 +85,12 @@ impl std::fmt::Display for ProviderModelConfig {
 // Provider catalogue — add new providers/models here
 // ============================================================================
 
-// Not wired into the live matrix: `claude-fable-5` is listed by the Anthropic
-// `/models` endpoint but returns "Model not available" on inference from the
-// CI key, and `claude-fable-5-1` (its successor, same tier and rate-limit
-// pool) is assumed to behave the same until verified. Re-add the `#[case]`
-// entries once they're usable; Anthropic stays covered via haiku/opus/sonnet
-// below.
+// Not wired into the live matrix. Both `claude-fable-5-1` and `claude-fable-5`
+// serve inference on the Doppler `ANTHROPIC_API_KEY` (verified 2026-09-02 with
+// a `max_tokens: 1` request); the earlier "Model not available" dates from the
+// period when Anthropic had Fable disabled. They stay out of the `#[case]`
+// lists on cost grounds only ($10/$50 per MTok, 2x Opus 5) — Anthropic is
+// covered via haiku/opus/sonnet below. Add a `#[case]` to opt a test in.
 pub const ANTHROPIC_FABLE_5_1: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Anthropic, "claude-fable-5-1", "ANTHROPIC_API_KEY");
 pub const ANTHROPIC_FABLE: ProviderModelConfig =
