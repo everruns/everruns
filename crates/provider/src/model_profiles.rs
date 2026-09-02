@@ -481,14 +481,16 @@ fn resolve_descriptor(
     for descriptor in REGISTRY {
         for alias in descriptor.ids {
             let alias = alias.as_bytes();
-            // Exact (case-insensitive) match, or an `"<alias>-"` prefix (which
-            // covers dated and `-latest` suffixes).
+            // Exact (case-insensitive) match, or a recognized version suffix.
+            // Do not treat semantic variants such as `o3-mini` as versions of
+            // a shorter registered model.
             let id_matches = if id.len() == alias.len() {
                 id.eq_ignore_ascii_case(alias)
             } else {
                 id.len() > alias.len()
                     && id[alias.len()] == b'-'
                     && id[..alias.len()].eq_ignore_ascii_case(alias)
+                    && is_version_suffix(&id[alias.len() + 1..])
             };
             if !id_matches {
                 continue;
@@ -511,6 +513,27 @@ fn resolve_descriptor(
         }
     }
     best_for_surface
+}
+
+fn is_version_suffix(suffix: &[u8]) -> bool {
+    suffix.eq_ignore_ascii_case(b"latest")
+        || (suffix.len() == 8 && suffix.iter().all(u8::is_ascii_digit))
+        || (suffix.len() == 5
+            && suffix[2] == b'-'
+            && suffix[..2].iter().all(u8::is_ascii_digit)
+            && suffix[3..].iter().all(u8::is_ascii_digit))
+        || (suffix.len() == 10
+            && suffix[4] == b'-'
+            && suffix[7] == b'-'
+            && suffix
+                .iter()
+                .enumerate()
+                .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit()))
+        || (suffix.len() == 13
+            && suffix[..8].eq_ignore_ascii_case(b"preview-")
+            && suffix[10] == b'-'
+            && suffix[8..10].iter().all(u8::is_ascii_digit)
+            && suffix[11..].iter().all(u8::is_ascii_digit))
 }
 
 /// Get a model profile by matching provider_type and model_id.
@@ -3498,6 +3521,12 @@ mod tests {
     fn test_get_profile_unknown_model() {
         let profile = get_model_profile(&DriverId::OpenAI, "unknown-model");
         assert!(profile.is_none());
+    }
+
+    #[test]
+    fn test_retired_semantic_variants_do_not_resolve_to_parent_profiles() {
+        assert!(get_model_profile(&DriverId::OpenAI, "o3-mini").is_none());
+        assert!(get_model_profile(&DriverId::Anthropic, "claude-opus-4-1").is_none());
     }
 
     #[test]

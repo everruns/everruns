@@ -256,9 +256,17 @@ fn redact_url(error: reqwest::Error) -> reqwest::Error {
     error.without_url()
 }
 
-fn client() -> Result<reqwest::blocking::Client> {
+fn client_builder() -> reqwest::blocking::ClientBuilder {
     reqwest::blocking::Client::builder()
-        .redirect(reqwest::redirect::Policy::limited(5))
+        // THREAT[TM-API-023]: source URLs are validated before storage, but a
+        // remote-controlled redirect could otherwise bypass that validation
+        // and reach an internal service. Git hosts do not require redirects
+        // for their smart-HTTP endpoints, so fail closed on every 3xx.
+        .redirect(reqwest::redirect::Policy::none())
+}
+
+fn client() -> Result<reqwest::blocking::Client> {
+    client_builder()
         .build()
         .context("failed to build git HTTP client")
 }
@@ -663,6 +671,42 @@ mod tests {
         let redacted = redact_url(error).to_string();
         assert!(!redacted.contains("127.0.0.1:1"), "{redacted}");
         assert!(!redacted.contains("secret-repo"), "{redacted}");
+    }
+
+    #[test]
+    fn git_http_client_does_not_follow_redirects() {
+        let destination = std::net::TcpListener::bind("127.0.0.1:0").expect("destination bind");
+        destination
+            .set_nonblocking(true)
+            .expect("destination nonblocking");
+        let destination_address = destination.local_addr().expect("destination addr");
+
+        let redirector = std::net::TcpListener::bind("127.0.0.1:0").expect("redirector bind");
+        let redirector_address = redirector.local_addr().expect("redirector addr");
+        let handle = std::thread::spawn(move || {
+            let (mut socket, _) = redirector.accept().expect("redirect request");
+            let mut discard = [0u8; 1024];
+            let _ = std::io::Read::read(&mut socket, &mut discard);
+            let response = format!(
+                "HTTP/1.1 302 Found\r\nLocation: http://{destination_address}/internal\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            );
+            std::io::Write::write_all(&mut socket, response.as_bytes()).expect("redirect response");
+        });
+
+        let response = client_builder()
+            .no_proxy()
+            .build()
+            .expect("client")
+            .get(format!("http://{redirector_address}/repo.git/info/refs"))
+            .send()
+            .expect("redirect response");
+        assert_eq!(response.status(), reqwest::StatusCode::FOUND);
+        assert!(
+            matches!(destination.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock),
+            "redirect destination must not receive a request"
+        );
+
+        handle.join().expect("redirector thread");
     }
 
     /// End-to-end against a real remote. Ignored by default because it needs

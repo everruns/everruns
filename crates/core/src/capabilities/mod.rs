@@ -1501,6 +1501,20 @@ struct UnifiedSpawnAgentTool {
     providers: Vec<DelegationTargetProvider>,
 }
 
+fn validate_spawn_agent_target_fields(
+    arguments: &serde_json::Value,
+    target_type: &str,
+) -> Result<(), String> {
+    for field in ["blueprint", "config"] {
+        if target_type != "subagent" && arguments.get(field).is_some_and(|value| !value.is_null()) {
+            return Err(format!(
+                "{field} is only valid for subagent targets, not {target_type}."
+            ));
+        }
+    }
+    Ok(())
+}
+
 impl UnifiedSpawnAgentTool {
     fn new(providers: Vec<DelegationTargetProvider>) -> Self {
         Self { providers }
@@ -1732,6 +1746,9 @@ impl Tool for UnifiedSpawnAgentTool {
                 "Unsupported spawn_agent target.type: \"{target_type}\". Supported target types: {supported}"
             ));
         };
+        if let Err(error) = validate_spawn_agent_target_fields(&arguments, target_type) {
+            return ToolExecutionResult::tool_error(error);
+        }
         if target_type == "external_a2a"
             && arguments
                 .get("lifetime")
@@ -2809,6 +2826,33 @@ mod tests {
             .as_deref(),
             Some("Launching Orbit Scout subagent")
         );
+    }
+
+    #[test]
+    fn unified_spawn_agent_rejects_subagent_fields_for_configured_targets() {
+        for target_type in ["agent", "external_a2a"] {
+            let arguments = serde_json::json!({
+                "target": { "type": target_type, "id": "actual-target" },
+                "blueprint": "decoy-target"
+            });
+            assert_eq!(
+                validate_spawn_agent_target_fields(&arguments, target_type),
+                Err(format!(
+                    "blueprint is only valid for subagent targets, not {target_type}."
+                ))
+            );
+
+            let arguments = serde_json::json!({
+                "target": { "type": target_type, "id": "actual-target" },
+                "config": { "model": "decoy" }
+            });
+            assert_eq!(
+                validate_spawn_agent_target_fields(&arguments, target_type),
+                Err(format!(
+                    "config is only valid for subagent targets, not {target_type}."
+                ))
+            );
+        }
     }
 
     /// Contributes nothing: no tools, no prompt, no dependencies.

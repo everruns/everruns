@@ -378,6 +378,114 @@ describe("ChatPanel compaction divider", () => {
   });
 });
 
+describe("ChatPanel model change divider", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockExecuteSessionCommand.mockReset();
+    mockSessionContext.chatEvents = [];
+    mockSessionContext.llmModel = availableDefaultModel;
+    mockSessionContext.reasoningEffort = "";
+    mockSessionContext.sessionId = "session-1";
+    mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
+  });
+
+  const modelChangedEvent = (id: string, data: Record<string, unknown>) => ({
+    id,
+    type: "session.model.changed",
+    session_id: "session-1",
+    ts: new Date().toISOString(),
+    context: { turn_id: "turn-1" },
+    data,
+  });
+
+  it("names both models in the transcript", () => {
+    mockSessionContext.chatEvents = [
+      modelChangedEvent("evt-model-changed-1", {
+        previous_model_id: "model_1",
+        previous_model_name: "sol-1",
+        model_id: "model_2",
+        model_name: "terra-1",
+      }),
+    ];
+
+    render(<ChatPanel />);
+
+    expect(screen.getByText("Model changed from sol-1 to terra-1")).toBeInTheDocument();
+  });
+
+  it("prefers the org's display name over the name the event captured", () => {
+    mockModels.push(
+      { ...availableDefaultModel, id: "model_1", display_name: "GPT-5.6 Sol" },
+      { ...availableDefaultModel, id: "model_2", display_name: "GPT-5.6 Terra" },
+    );
+    mockSessionContext.chatEvents = [
+      modelChangedEvent("evt-model-changed-1", {
+        previous_model_id: "model_1",
+        previous_model_name: "sol-1",
+        model_id: "model_2",
+        model_name: "terra-1",
+      }),
+    ];
+
+    render(<ChatPanel />);
+
+    expect(screen.getByText("Model changed from GPT-5.6 Sol to GPT-5.6 Terra")).toBeInTheDocument();
+  });
+
+  it("falls back to the model id when the previous name is unknown", () => {
+    mockSessionContext.chatEvents = [
+      modelChangedEvent("evt-model-changed-1", {
+        previous_model_id: "model_1",
+        model_id: "model_2",
+        model_name: "terra-1",
+      }),
+    ];
+
+    render(<ChatPanel />);
+
+    expect(screen.getByText("Model changed from model_1 to terra-1")).toBeInTheDocument();
+  });
+
+  it("collapses a repeated marker from a retried turn", () => {
+    const change = {
+      previous_model_id: "model_1",
+      previous_model_name: "sol-1",
+      model_id: "model_2",
+      model_name: "terra-1",
+    };
+    mockSessionContext.chatEvents = [
+      modelChangedEvent("evt-model-changed-1", change),
+      modelChangedEvent("evt-model-changed-2", change),
+    ];
+
+    render(<ChatPanel />);
+
+    expect(screen.getAllByText("Model changed from sol-1 to terra-1")).toHaveLength(1);
+  });
+
+  it("still renders a switch back to the earlier model", () => {
+    mockSessionContext.chatEvents = [
+      modelChangedEvent("evt-model-changed-1", {
+        previous_model_id: "model_1",
+        previous_model_name: "sol-1",
+        model_id: "model_2",
+        model_name: "terra-1",
+      }),
+      modelChangedEvent("evt-model-changed-2", {
+        previous_model_id: "model_2",
+        previous_model_name: "terra-1",
+        model_id: "model_1",
+        model_name: "sol-1",
+      }),
+    ];
+
+    render(<ChatPanel />);
+
+    expect(screen.getByText("Model changed from sol-1 to terra-1")).toBeInTheDocument();
+    expect(screen.getByText("Model changed from terra-1 to sol-1")).toBeInTheDocument();
+  });
+});
+
 describe("ChatPanel placeholder", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -1052,5 +1160,52 @@ describe("ChatPanel placeholder", () => {
         "Check your browser microphone permissions, then try starting voice again.",
       ),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps the stop control enabled when the active model becomes unavailable", async () => {
+    mockSessionContext.sessionId = "session-1";
+    const stopTrack = jest.fn();
+    const getUserMedia = jest.fn().mockResolvedValue({
+      getTracks: () => [{ stop: stopTrack }],
+    });
+    const close = jest.fn();
+    class MockRTCPeerConnection {
+      ontrack: ((event: { streams: MediaStream[] }) => void) | null = null;
+      addTrack = jest.fn();
+      close = close;
+      createOffer = jest.fn().mockResolvedValue({ type: "offer", sdp: "local-sdp" });
+      setLocalDescription = jest.fn();
+      setRemoteDescription = jest.fn();
+    }
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+    Object.defineProperty(globalThis, "RTCPeerConnection", {
+      configurable: true,
+      value: MockRTCPeerConnection,
+    });
+    mockUseFeatureFlag.mockReturnValue(true);
+    mockStartSessionVoice.mockResolvedValue({
+      answer_sdp: "remote-sdp",
+      voice_connection_id: "voice-1",
+    });
+    mockEndSessionVoice.mockResolvedValue(undefined);
+
+    const { rerender } = render(<ChatPanel />);
+    fireEvent.click(screen.getByTitle("Start voice session"));
+    const stopButton = await screen.findByTitle("End voice session");
+
+    mockSessionContext.llmModel = null;
+    rerender(<ChatPanel />);
+
+    expect(stopButton).not.toBeDisabled();
+    fireEvent.click(stopButton);
+
+    await waitFor(() => {
+      expect(stopTrack).toHaveBeenCalledTimes(1);
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(mockEndSessionVoice).toHaveBeenCalledWith("session-1", "voice-1", "client_ended");
+    });
   });
 });

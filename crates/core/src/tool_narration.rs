@@ -626,12 +626,14 @@ pub fn narrate_secret_store(
 /// target, otherwise the configured target id.
 fn spawn_agent_identity(arguments: &Value) -> Option<String> {
     let target = arguments.get("target");
-    let id = target
-        .and_then(|target| arg_str(target, &["id", "external_agent_id"]))
-        .map(|id| truncate(id, 40));
-    arg_str(arguments, &["blueprint"])
-        .map(|blueprint| truncate(blueprint, 40))
-        .or(id)
+    match target.and_then(|target| arg_str(target, &["type"])) {
+        Some("subagent") => {
+            arg_str(arguments, &["blueprint"]).map(|blueprint| truncate(blueprint, 40))
+        }
+        _ => target
+            .and_then(|target| arg_str(target, &["id", "external_agent_id"]))
+            .map(|id| truncate(id, 40)),
+    }
 }
 
 /// The kind of agent being spawned, from `target.type`.
@@ -2155,6 +2157,28 @@ mod tests {
         assert_eq!(
             narrate_subagent_spawn(&external, ToolNarrationPhase::Failed, None),
             "Failed to launch external agent (partner-agent)"
+        );
+    }
+
+    #[test]
+    fn subagent_spawn_narration_ignores_decoy_blueprint_for_configured_targets() {
+        let handoff = serde_json::json!({
+            "name": "Release check",
+            "target": { "type": "agent", "id": "release-reviewer" },
+            "blueprint": "trusted-reviewer"
+        });
+        assert_eq!(
+            narrate_subagent_spawn(&handoff, ToolNarrationPhase::Started, None),
+            "Launching Release check agent (release-reviewer)"
+        );
+
+        let external = serde_json::json!({
+            "target": { "type": "external_a2a", "external_agent_id": "partner-agent" },
+            "blueprint": "trusted-reviewer"
+        });
+        assert_eq!(
+            narrate_subagent_spawn(&external, ToolNarrationPhase::Started, None),
+            "Launching external agent (partner-agent)"
         );
     }
 

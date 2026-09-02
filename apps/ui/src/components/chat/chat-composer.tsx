@@ -348,7 +348,7 @@ export function ChatComposer({
                   chatSurfaceStyles.composerIconButton,
                   voiceActive && "border-emerald-500/50 text-emerald-600",
                 )}
-                disabled={voicePending || composerDisabled}
+                disabled={voicePending || (composerDisabled && !voiceActive)}
                 onClick={onToggleVoice}
                 title={voiceActive ? "End voice session" : "Start voice session"}
               >

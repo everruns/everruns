@@ -17,7 +17,7 @@ For *why* the platform is shaped this way, see [Events as the primary store](/ex
 | **Thinking** | `reason.thinking.*` | Extended thinking content (Claude, GPT-5.x, o-series) |
 | **Atom** | `reason.*`, `act.*`, `tool.*` | Internal execution phases |
 | **LLM** | `llm.generation` | Full LLM API call details |
-| **Session** | `session.started`, `session.activated`, `session.idled` | Session state changes |
+| **Session** | `session.started`, `session.activated`, `session.idled`, `session.model.changed` | Session state changes |
 | **Subagent** | `subagent.*` | Subagent lifecycle |
 
 ## Event structure

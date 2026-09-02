@@ -78,6 +78,15 @@ if jobs[JOB].get("services"):
         "provider credentials, not infrastructure (EVE-938)"
     )
 
+# Build Check is the branch-protection aggregate. Keep the standalone live job
+# in its dependency set so a provider failure cannot produce a green aggregate.
+aggregate_needs = jobs.get("ci-success", {}).get("needs", [])
+if JOB not in aggregate_needs:
+    sys.exit(
+        f"{workflow}: `ci-success` does not need `{JOB}`, so Build Check cannot "
+        "report failures from the live provider matrix"
+    )
+
 
 def matches(pattern: str, path: str) -> bool:
     """Approximate micromatch: `**` crosses directories, `*` does not."""
