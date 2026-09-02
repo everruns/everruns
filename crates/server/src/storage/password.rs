@@ -7,7 +7,7 @@
 use anyhow::Result;
 use argon2::{
     Algorithm, Argon2, Params, Version,
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
+    password_hash::{PasswordHasher, PasswordVerifier, phc::PasswordHash},
 };
 
 // Pinned Argon2id cost parameters (EVE-630). These match an OWASP-recommended
@@ -35,10 +35,13 @@ fn argon2_hasher() -> Argon2<'static> {
 
 /// Hash a password using Argon2id
 pub fn hash_password(password: &str) -> Result<String> {
-    let salt = SaltString::generate(&mut OsRng);
-
-    let hash = argon2_hasher()
-        .hash_password(password.as_bytes(), &salt)
+    // `password-hash` 0.6 generates the salt itself, from the OS CSPRNG via
+    // `getrandom`, at the same 16-byte recommended length the explicit
+    // `SaltString::generate(&mut OsRng)` call used before. Passing a salt is
+    // still possible (`hash_password_with_salt`) but takes raw bytes and buys
+    // nothing here, so the generated-salt form is the one to use.
+    let hash: PasswordHash = argon2_hasher()
+        .hash_password(password.as_bytes())
         .map_err(|e| anyhow::anyhow!("Failed to hash password: {}", e))?;
 
     Ok(hash.to_string())
