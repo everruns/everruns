@@ -85,12 +85,11 @@ impl std::fmt::Display for ProviderModelConfig {
 // Provider catalogue — add new providers/models here
 // ============================================================================
 
-// Not wired into the live matrix. Both `claude-fable-5-1` and `claude-fable-5`
-// serve inference on the Doppler `ANTHROPIC_API_KEY` (verified 2026-09-02 with
-// a `max_tokens: 1` request); the earlier "Model not available" dates from the
-// period when Anthropic had Fable disabled. They stay out of the `#[case]`
-// lists on cost grounds only ($10/$50 per MTok, 2x Opus 5) — Anthropic is
-// covered via haiku/opus/sonnet below. Add a `#[case]` to opt a test in.
+// Fable 5.1 is in the live matrix (top tier, $10/$50 per MTok — keep its
+// cases to the basic/thinking suites). Fable 5 stays out: same tier, same
+// surface, superseded. The earlier "Model not available" on Fable dates from
+// the period when Anthropic had it disabled; both ids serve inference on the
+// Doppler `ANTHROPIC_API_KEY` (verified 2026-09-02).
 pub const ANTHROPIC_FABLE_5_1: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Anthropic, "claude-fable-5-1", "ANTHROPIC_API_KEY");
 pub const ANTHROPIC_FABLE: ProviderModelConfig =
@@ -114,6 +113,9 @@ pub const ANTHROPIC_SONNET: ProviderModelConfig = ProviderModelConfig::new(
     "claude-sonnet-4-6",
     "ANTHROPIC_API_KEY",
 );
+
+pub const ANTHROPIC_SONNET5: ProviderModelConfig =
+    ProviderModelConfig::new(DriverId::Anthropic, "claude-sonnet-5", "ANTHROPIC_API_KEY");
 
 pub const OPENAI_GPT56_LUNA: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.6-luna", "OPENAI_API_KEY")

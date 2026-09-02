@@ -33,7 +33,9 @@ use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 // its reasoning as public response text with an empty private `thinking` field
 // (observed 6/6 on main), which is not what this private-field assertion checks.
 // Current Opus/Sonnet models surface reasoning on the private field.
+#[case::anthropic_fable_5_1(ANTHROPIC_FABLE_5_1)]
 #[case::anthropic_opus5(ANTHROPIC_OPUS5)]
+#[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::anthropic_sonnet(ANTHROPIC_SONNET)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
@@ -221,7 +223,9 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 // ============================================================================
 
 #[rstest]
+#[case::anthropic_fable_5_1(ANTHROPIC_FABLE_5_1)]
 #[case::anthropic_opus(ANTHROPIC_OPUS)]
+#[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::anthropic_sonnet(ANTHROPIC_SONNET)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
@@ -246,9 +250,16 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
         |r: &TurnResult| r.success && r.tool_calls_count > 0,
         {
             let model = config.model().expect("model set (checked above)");
+            // Firm, tool-naming instruction: Fable 5.1 rejects forced
+            // `tool_choice`, and with adaptive thinking on, Fable 5.1 and
+            // Sonnet 5 answered the softer "use ... when asked about time"
+            // wording without calling the tool (3/3 clean sampling misses).
             let runner = InMemoryAgenticLoop::builder()
                 .agent_name("Thinking Time Agent")
-                .system_prompt("Use get_current_time tool when asked about time.")
+                .system_prompt(
+                    "You have no clock. When asked about the time, always call the \
+                     get_current_time tool first, then answer from its result.",
+                )
                 .model(model)
                 .driver_registry(all_providers_registry())
                 .capability(CurrentTimeCapability)
