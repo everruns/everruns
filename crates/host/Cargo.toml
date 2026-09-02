@@ -95,6 +95,8 @@ required-features = ["mcp"]
 
 [dev-dependencies]
 everruns-builtins.workspace = true
+# In-memory span exporter for the observability listener tests.
+opentelemetry_sdk = { workspace = true, features = ["testing"] }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 # Deterministic simulator for host tests/examples. Version-less path

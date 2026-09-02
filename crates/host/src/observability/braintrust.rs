@@ -2379,6 +2379,9 @@ mod tests {
             turn_id,
             input_message_id: message_id,
             input_content: Some("Hello, how are you?".to_string()),
+            agent_id: None,
+            agent_name: None,
+            agent_description: None,
         };
 
         let event = Event::new(
@@ -2520,6 +2523,9 @@ mod tests {
             turn_id,
             input_message_id,
             input_content: Some("Test input content".to_string()),
+            agent_id: None,
+            agent_name: None,
+            agent_description: None,
         };
         let started_event = Event::new(
             SessionId::new(),
@@ -2879,6 +2885,9 @@ mod tests {
             turn_id,
             input_message_id,
             input_content: Some("Test message".to_string()),
+            agent_id: None,
+            agent_name: None,
+            agent_description: None,
         };
         let turn_event = Event::new(
             SessionId::new(),
@@ -3036,6 +3045,9 @@ mod tests {
             turn_id,
             input_message_id,
             input_content: Some("Test".to_string()),
+            agent_id: None,
+            agent_name: None,
+            agent_description: None,
         };
         let event = Event::new(
             SessionId::new(),
@@ -3398,6 +3410,9 @@ mod tests {
                 turn_id,
                 input_message_id,
                 input_content: Some("hello braintrust".to_string()),
+                agent_id: None,
+                agent_name: None,
+                agent_description: None,
             }),
         )
         .with_sequence(42);
@@ -3512,6 +3527,9 @@ mod tests {
             turn_id,
             input_message_id,
             input_content: Some("secret prompt".to_string()),
+            agent_id: None,
+            agent_name: None,
+            agent_description: None,
         };
         let event = Event::new(
             SessionId::new(),
@@ -3737,6 +3755,9 @@ mod tests {
                 turn_id,
                 input_message_id,
                 input_content: Some("hello".to_string()),
+                agent_id: None,
+                agent_name: None,
+                agent_description: None,
             }),
         );
         let completed = Event::new(
@@ -3799,6 +3820,9 @@ mod tests {
                 turn_id,
                 input_message_id,
                 input_content: Some("hello".to_string()),
+                agent_id: None,
+                agent_name: None,
+                agent_description: None,
             }),
         );
         listener.on_event(&event).await;
@@ -3844,6 +3868,9 @@ mod tests {
                 turn_id,
                 input_message_id,
                 input_content: Some("hello".to_string()),
+                agent_id: None,
+                agent_name: None,
+                agent_description: None,
             }),
         );
         listener.on_event(&event).await;

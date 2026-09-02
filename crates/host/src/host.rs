@@ -722,6 +722,14 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
 }
 
 /// Shared lifecycle helper for runtime-backed hosts.
+/// Agent identity snapshot carried on `turn.started`.
+#[derive(Debug, Default)]
+struct TurnAgentIdentity {
+    id: Option<AgentId>,
+    name: Option<String>,
+    description: Option<String>,
+}
+
 pub struct RuntimeSessionLifecycle<A: RuntimeHostAdapter> {
     adapter: A,
     org_id: i64,
@@ -778,6 +786,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         ))
         .await?;
 
+        let agent = self.agent_identity().await;
         self.emit_event(EventRequest::new(
             self.session_id,
             EventContext::turn(turn_id, input_message_id),
@@ -785,10 +794,46 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
                 turn_id,
                 input_message_id,
                 input_content,
+                agent_id: agent.id,
+                agent_name: agent.name,
+                agent_description: agent.description,
             },
         ))
         .await?;
         Ok(())
+    }
+
+    /// Agent identity for the turn root event, resolved best-effort: a store
+    /// miss or failure yields `None` fields rather than failing the turn, since
+    /// the identity only labels traces.
+    async fn agent_identity(&self) -> TurnAgentIdentity {
+        let agent_id = self
+            .adapter
+            .session_store(self.org_id)
+            .get_session(self.session_id)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|session| session.agent_id);
+        let Some(agent_id) = agent_id else {
+            return TurnAgentIdentity::default();
+        };
+        let agent = self
+            .adapter
+            .agent_store(self.org_id)
+            .get_agent(agent_id)
+            .await
+            .ok()
+            .flatten();
+        TurnAgentIdentity {
+            id: Some(agent_id),
+            // The conventions want the human-readable name; the slug is the
+            // fallback when no display name was set.
+            name: agent
+                .as_ref()
+                .map(|a| a.display_name.clone().unwrap_or_else(|| a.name.clone())),
+            description: agent.and_then(|a| a.description),
+        }
     }
 
     pub async fn emit_turn_completed(

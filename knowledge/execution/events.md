@@ -126,7 +126,13 @@ them.
 Correlation identifiers use Everruns' public prefixed identifier format. The
 exact optional context fields live on `EventContext`; emitters should populate
 the strongest context they possess without fabricating missing ancestry.
-Session-level events may have empty turn context.
+Session-level events may have empty turn context. Streaming-derived events
+such as thinking carry only the phase's `exec_id`; consumers resolve their
+parent through the phase that owns that exec.
+
+The turn root (`turn.started`) snapshots the agent identity (`agent_id`,
+`agent_name`, `agent_description`) so trace exporters can label the turn
+without a store lookup.
 
 ## Lifecycle conventions
 
