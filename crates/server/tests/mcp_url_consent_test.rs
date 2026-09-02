@@ -152,6 +152,43 @@ async fn declining_records_nothing() {
     );
 }
 
+/// The decision has to reach the model, and a tool result cannot carry it: the
+/// synthetic call was emitted by the engine, so nothing in the transcript claims
+/// it and the lone result is dropped before the provider request is built.
+#[tokio::test]
+async fn the_decision_is_spoken_into_the_conversation() {
+    let server = TestServer::in_memory().await;
+    let session_id = waiting_session(&server).await;
+    emit_elicitation_card(&server, session_id, "url_elicitation_6").await;
+
+    post_consent(
+        &server,
+        session_id,
+        json!({ "tool_call_id": "url_elicitation_6", "action": "accept" }),
+    )
+    .await
+    .assert_status(StatusCode::OK);
+
+    let events = server
+        .db
+        .list_events(
+            session_id,
+            None,
+            None,
+            &["input.message".to_string()],
+            &[],
+            None,
+            Some(10),
+        )
+        .await
+        .expect("list events");
+    let spoken = events.last().expect("the decision was said out loud");
+    let text = serde_json::to_string(&spoken.data).expect("serialize");
+    assert!(text.contains("pay.example.com"), "unexpected: {text}");
+    // No internal tool id: a person reads this line in the transcript.
+    assert!(!text.contains("mcp_billing_charge"), "unexpected: {text}");
+}
+
 #[tokio::test]
 async fn the_decision_resumes_the_turn() {
     let server = TestServer::in_memory().await;

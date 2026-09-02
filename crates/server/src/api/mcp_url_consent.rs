@@ -198,6 +198,46 @@ pub async fn submit_elicitation_consent(
         None,
     );
 
+    // The decision also goes in as a turn of the conversation.
+    //
+    // The tool.completed above is what closes the card in the UI, but it cannot
+    // carry the decision to the model: the synthetic call was emitted by the
+    // engine, never by the model, so nothing in the transcript claims that tool
+    // call and the lone result is dropped before the request is built. Saying it
+    // as the user is both what reaches the model and what actually happened —
+    // they answered, with a button instead of the keyboard.
+    // Written the way the user would say it, without internal tool ids: the
+    // model already knows which call it just made, and this line is read by a
+    // person in the transcript.
+    let spoken = match req.action {
+        ConsentAction::Accept => format!(
+            "I opened {} and finished what {} asked for — go ahead.",
+            pending.host, pending.server
+        ),
+        ConsentAction::Decline => format!(
+            "I'd rather not open {}. Carry on without it, and don't ask again.",
+            pending.host
+        ),
+    };
+
+    if let Err(e) = state
+        .event_service
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            everruns_core::events::InputMessageData::new(everruns_core::message::Message::user(
+                spoken,
+            )),
+        ))
+        .await
+    {
+        tracing::warn!(
+            session_id = %session_id,
+            error = %e,
+            "Failed to record the elicitation decision as a message"
+        );
+    }
+
     if let Err(e) = state
         .event_service
         .emit(EventRequest::new(
