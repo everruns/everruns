@@ -70,6 +70,34 @@ transcript carries the report, never the key.
 - **A refusal is final.** Declining ends the call and tells the agent to continue
   without the tool.
 
+### Refusing
+
+<video
+  controls
+  playsinline
+  preload="none"
+  width="1024"
+  poster="/videos/mcp-url-elicitation-decline.jpg"
+  src="/videos/mcp-url-elicitation-decline.mp4">
+</video>
+
+The user declines, and the agent carries on without the tool instead of asking
+again.
+
+### One consent, one domain
+
+<video
+  controls
+  playsinline
+  preload="none"
+  width="1024"
+  poster="/videos/mcp-url-elicitation-domain-swap.jpg"
+  src="/videos/mcp-url-elicitation-domain-swap.mp4">
+</video>
+
+Consent was given for one host. The server elicits a different one on the retry,
+so the consent is not reused: the user is asked afresh, for the new domain.
+
 ## As an MCP server: Everruns serves the form
 
 Everruns' own `/mcp` endpoint uses the same mechanism when a client asks it to
@@ -81,6 +109,18 @@ the call only ever holds the URL.
 The page requires the visitor's own session on top of the signed link, and
 refuses anyone but the user the elicitation was minted for — the link alone
 grants nothing, which is what closes the phishing case the spec warns about.
+
+<video
+  controls
+  playsinline
+  preload="none"
+  width="1024"
+  poster="/videos/mcp-url-elicitation-as-server.jpg"
+  src="/videos/mcp-url-elicitation-as-server.mp4">
+</video>
+
+An MCP client asks Everruns to store a secret, gets a URL back, the user fills in
+the form Everruns serves, and the retry confirms it is stored.
 
 ## Clients that cannot render a card
 
@@ -103,6 +143,11 @@ To complete such a call from your own client, see
 URL mode elicitation is `2026-07-28` only. In earlier eras elicitation is a
 server-initiated request over a server-to-client stream this transport does not
 open, so Everruns declares nothing regardless of what the host can do.
+
+## Try it
+
+`examples/mcp-url-elicitation/` in the repository has a dependency-free MCP
+server that elicits, and a script that drives the whole flow over the API.
 
 ## Related
 

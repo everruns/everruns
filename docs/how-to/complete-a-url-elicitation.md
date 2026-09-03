@@ -178,6 +178,12 @@ answer under the server's own key:
 A client that never declared `elicitation.url` gets `-32021` with the missing
 capability named, rather than being asked for the value.
 
+## A runnable version
+
+`examples/mcp-url-elicitation/` in the repository has both halves: a
+dependency-free MCP server that elicits, and a script that walks the flow above
+end to end against your deployment.
+
 ## Related
 
 - [URL mode elicitation](/features/mcp-url-elicitation/)
