@@ -162,6 +162,17 @@ impl ModelSyncService {
         for org in &orgs {
             let providers = self.db.list_providers(org.org_id).await?;
             for provider in providers {
+                // Seeded catalog providers exist in every org before a key is
+                // configured. Without a key there is nothing to sync, so skip
+                // quietly instead of reporting a failure each interval.
+                if !provider.api_key_set {
+                    tracing::debug!(
+                        provider_id = %provider.id,
+                        org_id = provider.org_id,
+                        "Skipping model sync: no API key configured for provider"
+                    );
+                    continue;
+                }
                 let result = self
                     .sync_provider(provider.org_id, provider.id.uuid())
                     .await
@@ -336,6 +347,34 @@ mod tests {
             }
             _ => panic!("Expected Failed variant"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_sync_all_skips_providers_without_api_key() {
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let db = Arc::new(StorageBackend::in_memory());
+        let registry = Arc::new(DriverRegistry::new());
+        let service = ModelSyncService::new(db.clone(), registry, None);
+
+        db.create_provider(
+            DEFAULT_ORG_ID,
+            CreateProviderRow {
+                name: "OpenAI".to_string(),
+                provider_type: "openai".to_string(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let results = service.sync_all().await.unwrap();
+        assert!(
+            results.is_empty(),
+            "providers without a key must be skipped, not reported as failed: {results:?}"
+        );
     }
 
     // --- resolve_api_key tests ---

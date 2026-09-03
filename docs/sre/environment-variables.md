@@ -297,6 +297,9 @@ NATS_URL=nats://localhost:4222
 
 # Cluster
 NATS_URL=nats://nats1:4222,nats://nats2:4222,nats://nats3:4222
+
+# Server with `authorization { users: [...] }`
+NATS_URL=nats://control:s3cret@nats:4222
 ```
 
 **Notes:**
@@ -306,7 +309,8 @@ NATS_URL=nats://nats1:4222,nats://nats2:4222,nats://nats3:4222
   - **Task notifications**: `task.available.{activity_type}` subjects replace PG NOTIFY for push-based worker notification. Lower latency (~1ms vs ~30ms), supports multi-instance deployments.
 - When NATS event delivery is active, the server skips the legacy PostgreSQL event listener used only for SSE wakeups.
 - NATS JetStream must be enabled on the server (`--jetstream` flag)
-- Fail-graceful: if NATS connection fails at startup, falls back to PG NOTIFY + in-memory delivery with a warning
+- Credentials embedded in the URL (`nats://user:password@host`) are sent as user/password auth; percent-encode reserved characters in the password
+- Fail-graceful: if NATS connection fails at startup, falls back to PG NOTIFY + in-memory delivery with a warning that includes the connection error
 - Only used by control-plane (server); workers communicate via gRPC and don't need NATS access
 - Default port: 4222 (or `PORT_PREFIX22` with `PORT_PREFIX`)
 - `just start-all` automatically starts NATS and exports `NATS_URL` if `nats-server` is installed
@@ -410,7 +414,7 @@ The UI makes all REST API requests (including SSE) to `/api/*` paths. The backen
 | `SSE_MONITORING_CYCLE_SECS` | `600` | Connection cycle interval for durable monitoring streams (seconds) |
 | `SSE_HEARTBEAT_INTERVAL_SECS` | `30` | Interval between heartbeat comments on all SSE streams (seconds) |
 | `SSE_GLOBAL_MAX` | `10000` | Maximum total SSE connections across all users |
-| `SSE_PER_SESSION_MAX` | `5` | Maximum SSE connections per session |
+| `SSE_PER_SESSION_MAX` | `12` | Maximum SSE connections per session |
 | `SSE_PER_ORG_MAX` | `1000` | Maximum SSE connections per organization |
 
 **Notes:**

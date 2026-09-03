@@ -8,8 +8,8 @@
 // invalidate the per-task detail key.
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import {
   cancelSessionTask,
   getSessionTask,
@@ -33,6 +33,132 @@ export function upsertTask(tasks: SessionTask[] | undefined, task: SessionTask):
   return next;
 }
 
+// One SSE stream per session, shared by every `useSessionTasks` instance.
+//
+// Task chips in the header and the Work tab both subscribe to the same
+// session, and the server caps streams per session (SSE_PER_SESSION_MAX). With
+// a stream per hook instance, a couple of tabs on one session exhausted the
+// cap and the client looped on 429 (Sentry EVERRUNS-1M). Ref-counting keeps
+// the last subscriber's stream open and closes it when nobody listens.
+type SessionTaskStream = { refs: number; dispose: () => void };
+const sessionTaskStreams = new Map<string, SessionTaskStream>();
+
+/** Open (or join) the shared task stream for a session. Returns a release
+ *  function; the stream closes when the last subscriber releases it. */
+export function acquireSessionTaskStream(sessionId: string, queryClient: QueryClient): () => void {
+  let entry = sessionTaskStreams.get(sessionId);
+  if (!entry) {
+    entry = { refs: 0, dispose: subscribeSessionTasks(sessionId, queryClient) };
+    sessionTaskStreams.set(sessionId, entry);
+  }
+  const stream = entry;
+  stream.refs += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    stream.refs -= 1;
+    if (stream.refs > 0) return;
+    stream.dispose();
+    if (sessionTaskStreams.get(sessionId) === stream) sessionTaskStreams.delete(sessionId);
+  };
+}
+
+/** Subscribe to one session's SSE stream and patch task snapshots into the
+ *  session task cache. Returns a disposer that stops reconnects and closes
+ *  the stream. */
+function subscribeSessionTasks(sessionId: string, queryClient: QueryClient): () => void {
+  const tracker = createReconnectTracker();
+  let stream: EventStreamLike | null = null;
+  let cancelled = false;
+
+  const closeStream = () => {
+    if (stream) {
+      stream.close();
+      stream = null;
+    }
+  };
+
+  const connect = () => {
+    closeStream();
+
+    // No since_id and no event-type filter: the server rejects unknown
+    // event types in filters, and task.* events are full snapshots patched
+    // over a fresh list fetched on every connect.
+    const source = createEventStream(getSseUrl(sessionId), { withCredentials: true });
+    stream = source;
+
+    source.addEventListener("connected", () => {
+      tracker.reset();
+      // Close the fetch-then-subscribe gap: refetch the snapshot on every
+      // connect (initial + reconnects) so missed events are recovered.
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessionTasks.list(sessionId) });
+    });
+
+    source.addEventListener("disconnecting", (messageEvent) => {
+      try {
+        const data = JSON.parse(messageEvent.data) as { retry_ms?: number };
+        const retryMs = tracker.onGraceful(data.retry_ms ?? 1000);
+        closeStream();
+        setTimeout(() => {
+          if (!cancelled) connect();
+        }, retryMs);
+      } catch {
+        closeStream();
+        if (!cancelled) connect();
+      }
+    });
+
+    // task.created / task.updated carry full task snapshots.
+    const onTaskSnapshot = (messageEvent: MessageEvent) => {
+      try {
+        const event = JSON.parse(messageEvent.data) as { data?: { task?: SessionTask } };
+        const task = event.data?.task;
+        if (!task) return;
+        queryClient.setQueryData<SessionTask[]>(queryKeys.sessionTasks.list(sessionId), (tasks) =>
+          upsertTask(tasks, task),
+        );
+      } catch (e) {
+        console.error("Failed to parse session task event:", e);
+      }
+    };
+    source.addEventListener("task.created", onTaskSnapshot);
+    source.addEventListener("task.updated", onTaskSnapshot);
+
+    // task.message.* only invalidate the per-task detail thread.
+    const onTaskMessage = (messageEvent: MessageEvent) => {
+      try {
+        const event = JSON.parse(messageEvent.data) as { data?: { task_id?: string } };
+        const taskId = event.data?.task_id;
+        if (!taskId) return;
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.sessionTasks.detail(sessionId, taskId),
+        });
+      } catch (e) {
+        console.error("Failed to parse session task message event:", e);
+      }
+    };
+    source.addEventListener("task.message.sent", onTaskMessage);
+    source.addEventListener("task.message.received", onTaskMessage);
+
+    source.onerror = () => {
+      closeStream();
+      const delayMs = tracker.onError();
+      if (delayMs === null) return;
+      setTimeout(() => {
+        if (!cancelled) connect();
+      }, delayMs);
+    };
+  };
+
+  connect();
+
+  return () => {
+    cancelled = true;
+    closeStream();
+  };
+}
+
 /** List a session's tasks with live SSE-driven cache updates. */
 export function useSessionTasks(sessionId: string | undefined) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
@@ -46,104 +172,10 @@ export function useSessionTasks(sessionId: string | undefined) {
     enabled,
   });
 
-  const eventSourceRef = useRef<EventStreamLike | null>(null);
-  const reconnectRef = useRef(createReconnectTracker());
-
-  const cleanup = useCallback(() => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-  }, []);
-
   useEffect(() => {
-    if (!enabled || !sessionId) {
-      cleanup();
-      return;
-    }
-
-    reconnectRef.current = createReconnectTracker();
-    let cancelled = false;
-
-    const connectSSE = () => {
-      cleanup();
-
-      // No since_id and no event-type filter: the server rejects unknown
-      // event types in filters, and task.* events are full snapshots patched
-      // over a fresh list fetched on every connect.
-      const eventSource = createEventStream(getSseUrl(sessionId), { withCredentials: true });
-      eventSourceRef.current = eventSource;
-
-      eventSource.addEventListener("connected", () => {
-        reconnectRef.current.reset();
-        // Close the fetch-then-subscribe gap: refetch the snapshot on every
-        // connect (initial + reconnects) so missed events are recovered.
-        queryClient.invalidateQueries({ queryKey: queryKeys.sessionTasks.list(sessionId) });
-      });
-
-      eventSource.addEventListener("disconnecting", (messageEvent) => {
-        try {
-          const data = JSON.parse(messageEvent.data) as { retry_ms?: number };
-          const retryMs = reconnectRef.current.onGraceful(data.retry_ms ?? 1000);
-          cleanup();
-          setTimeout(() => {
-            if (!cancelled) connectSSE();
-          }, retryMs);
-        } catch {
-          cleanup();
-          if (!cancelled) connectSSE();
-        }
-      });
-
-      // task.created / task.updated carry full task snapshots.
-      const onTaskSnapshot = (messageEvent: MessageEvent) => {
-        try {
-          const event = JSON.parse(messageEvent.data) as { data?: { task?: SessionTask } };
-          const task = event.data?.task;
-          if (!task) return;
-          queryClient.setQueryData<SessionTask[]>(queryKeys.sessionTasks.list(sessionId), (tasks) =>
-            upsertTask(tasks, task),
-          );
-        } catch (e) {
-          console.error("Failed to parse session task event:", e);
-        }
-      };
-      eventSource.addEventListener("task.created", onTaskSnapshot);
-      eventSource.addEventListener("task.updated", onTaskSnapshot);
-
-      // task.message.* only invalidate the per-task detail thread.
-      const onTaskMessage = (messageEvent: MessageEvent) => {
-        try {
-          const event = JSON.parse(messageEvent.data) as { data?: { task_id?: string } };
-          const taskId = event.data?.task_id;
-          if (!taskId) return;
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.sessionTasks.detail(sessionId, taskId),
-          });
-        } catch (e) {
-          console.error("Failed to parse session task message event:", e);
-        }
-      };
-      eventSource.addEventListener("task.message.sent", onTaskMessage);
-      eventSource.addEventListener("task.message.received", onTaskMessage);
-
-      eventSource.onerror = () => {
-        cleanup();
-        const delayMs = reconnectRef.current.onError();
-        if (delayMs === null) return;
-        setTimeout(() => {
-          if (!cancelled) connectSSE();
-        }, delayMs);
-      };
-    };
-
-    connectSSE();
-
-    return () => {
-      cancelled = true;
-      cleanup();
-    };
-  }, [enabled, sessionId, cleanup, queryClient]);
+    if (!enabled || !sessionId) return;
+    return acquireSessionTaskStream(sessionId, queryClient);
+  }, [enabled, sessionId, queryClient]);
 
   return {
     ...query,

@@ -76,6 +76,7 @@ pub mod task_notifications;
 pub use task_notifications::{TaskBroadcaster, TaskNotificationBroadcaster};
 
 // NATS-backed task notification broadcaster
+pub mod nats;
 pub mod nats_task_notifications;
 
 // Event notification broadcaster for push-based SSE delivery (legacy PG NOTIFY)

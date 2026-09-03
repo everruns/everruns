@@ -34,7 +34,7 @@ use rand::RngExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use tokio::time::{self, Duration};
@@ -160,6 +160,12 @@ struct BraintrustState {
     dropped_events: AtomicU64,
     retried_batches: AtomicU64,
     failed_batches: AtomicU64,
+    /// A permanent rejection (auth, unknown project) repeats on every batch
+    /// until the deployment is reconfigured. Report it once per process at
+    /// error level; later repeats are counted in `failed_batches` and logged
+    /// at debug so one misconfiguration does not flood error alerting
+    /// (Sentry EVERRUNS-1K).
+    permanent_failure_logged: AtomicBool,
 }
 
 #[derive(Debug)]
@@ -466,6 +472,7 @@ impl BraintrustListener {
             dropped_events: AtomicU64::new(0),
             retried_batches: AtomicU64::new(0),
             failed_batches: AtomicU64::new(0),
+            permanent_failure_logged: AtomicBool::new(false),
         });
 
         if tokio::runtime::Handle::try_current().is_ok() {
@@ -568,7 +575,9 @@ impl BraintrustListener {
                 {
                     state.retried_batches.fetch_add(1, Ordering::Relaxed);
                     let backoff = Self::retry_delay(&state.config.delivery, attempt);
-                    warn!(
+                    // Retries are the expected handling of transient upstream
+                    // errors; only exhausting them is worth surfacing.
+                    debug!(
                         attempt = attempt + 1,
                         max_retries = state.config.delivery.max_retries,
                         retry_in_ms = backoff.as_millis(),
@@ -577,9 +586,21 @@ impl BraintrustListener {
                     );
                     time::sleep(backoff).await;
                 }
-                DeliveryAttempt::Retryable(reason) | DeliveryAttempt::Permanent(reason) => {
+                DeliveryAttempt::Retryable(reason) => {
                     state.failed_batches.fetch_add(1, Ordering::Relaxed);
                     error!(reason = %reason, "Failed to send Braintrust batch");
+                    return;
+                }
+                DeliveryAttempt::Permanent(reason) => {
+                    state.failed_batches.fetch_add(1, Ordering::Relaxed);
+                    if state.permanent_failure_logged.swap(true, Ordering::Relaxed) {
+                        debug!(reason = %reason, "Braintrust batch rejected again");
+                    } else {
+                        error!(
+                            reason = %reason,
+                            "Braintrust rejected batch; further rejections are logged at debug until reconfigured"
+                        );
+                    }
                     return;
                 }
             }
@@ -3786,6 +3807,54 @@ mod tests {
         assert_eq!(requests.len(), 1);
         let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
         assert_eq!(body["events"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_permanent_rejection_is_reported_once_per_process() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/project_logs/test-project-id/insert"))
+            .respond_with(ResponseTemplate::new(403).set_body_string("forbidden"))
+            .expect(2)
+            .mount(&server)
+            .await;
+
+        let mut config = test_config();
+        config.api_url = server.uri();
+        config.delivery.flush_interval = Duration::from_millis(10);
+        let listener = BraintrustListener::new(config).unwrap();
+        assert!(
+            !listener
+                .state
+                .permanent_failure_logged
+                .load(Ordering::Relaxed)
+        );
+
+        for _ in 0..2 {
+            let turn_id = TurnId::new();
+            let input_message_id = MessageId::new();
+            listener
+                .on_event(&Event::new(
+                    SessionId::new(),
+                    EventContext::turn(turn_id, input_message_id),
+                    EventData::TurnStarted(TurnStartedData {
+                        turn_id,
+                        input_message_id,
+                        input_content: Some("hello".to_string()),
+                    }),
+                ))
+                .await;
+            sleep(Duration::from_millis(60)).await;
+        }
+
+        assert_eq!(listener.state.failed_batches.load(Ordering::Relaxed), 2);
+        assert_eq!(listener.state.retried_batches.load(Ordering::Relaxed), 0);
+        assert!(
+            listener
+                .state
+                .permanent_failure_logged
+                .load(Ordering::Relaxed)
+        );
     }
 
     #[tokio::test]

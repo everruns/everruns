@@ -12,14 +12,14 @@ use crate::storage::{
     EncryptionService, StorageBackend,
     models::{
         CreateMcpServerRow, CreateModelRow, CreateOrganizationRow, CreateProviderRow,
-        CreateUserRow, UpdateProvider,
+        CreateUserRow, ModelRow, UpdateModel, UpdateProvider,
     },
     password::hash_password,
 };
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DeploymentGrade};
 use everruns_host::HostComposition;
 use everruns_platform::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
@@ -2116,6 +2116,12 @@ async fn seed_models_with_host_composition(
     let mut result = SeedResult::default();
     let enabled_provider_ids = enabled_seed_provider_ids(host_composition);
 
+    // Provider discovery may have catalogued a seed model under a generated id
+    // before its seed entry existed. `models(provider_id, model_id)` is unique,
+    // so inserting the seed id would fail on every boot (Sentry EVERRUNS-6).
+    // Adopt the existing row instead of forcing the seed id onto it.
+    let mut existing_by_provider: HashMap<Uuid, Vec<ModelRow>> = HashMap::new();
+
     for seed in SEED_MODELS {
         if !enabled_provider_ids.contains(&seed.provider_id) {
             tracing::debug!(
@@ -2123,6 +2129,49 @@ async fn seed_models_with_host_composition(
                 id = %seed.id,
                 "Skipping seed model because its provider driver is not registered by the platform definition"
             );
+            continue;
+        }
+        let existing = match existing_by_provider.entry(seed.provider_id) {
+            std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+            std::collections::hash_map::Entry::Vacant(entry) => entry.insert(
+                db.list_models_for_provider(DEFAULT_ORG_ID, seed.provider_id)
+                    .await?,
+            ),
+        };
+        if let Some(row) = existing
+            .iter()
+            .find(|row| row.model_id == seed.model_id && row.id.uuid() != seed.id)
+        {
+            let unchanged = row.display_name == seed.display_name
+                && row.is_favorite == seed.is_favorite
+                && row.enabled == seed.enabled;
+            if unchanged {
+                tracing::debug!(
+                    model_id = seed.model_id,
+                    id = %row.id,
+                    "Seed model already catalogued by discovery; up to date"
+                );
+                result.unchanged += 1;
+            } else {
+                db.update_model(
+                    DEFAULT_ORG_ID,
+                    row.id.uuid(),
+                    UpdateModel {
+                        display_name: Some(seed.display_name.to_string()),
+                        is_favorite: Some(seed.is_favorite),
+                        enabled: Some(seed.enabled),
+                        ..UpdateModel::default()
+                    },
+                )
+                .await?;
+                tracing::info!(
+                    model_id = seed.model_id,
+                    id = %row.id,
+                    seed_id = %seed.id,
+                    "Updated seed model on the row discovery catalogued"
+                );
+                result.updated += 1;
+            }
             continue;
         }
         let input = CreateModelRow {
@@ -3262,6 +3311,73 @@ mod tests {
         assert_eq!(terra.model_id, "gpt-5.6-terra");
         assert!(terra.enabled, "gpt-5.6-terra should be enabled");
         assert!(terra.is_favorite, "gpt-5.6-terra should be favorite");
+    }
+
+    /// Discovery can catalogue a model under a generated id before the seed
+    /// entry for it exists. Seeding must adopt that row rather than trip the
+    /// `(provider_id, model_id)` unique index on every boot.
+    #[tokio::test]
+    async fn test_seed_all_adopts_model_discovered_before_seed() {
+        let db = make_db();
+        // Seed once so the provider rows exist, then plant a discovered twin
+        // of a seed model under a different id.
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
+        let seeded = db
+            .get_model(DEFAULT_ORG_ID, seed_ids::TEXT_EMBEDDING_3_SMALL)
+            .await
+            .unwrap()
+            .expect("seed model present");
+        assert!(
+            db.delete_model(DEFAULT_ORG_ID, seeded.id.uuid())
+                .await
+                .unwrap()
+        );
+        let discovered = db
+            .create_model(
+                DEFAULT_ORG_ID,
+                CreateModelRow {
+                    provider_id: seed_ids::OPENAI_PROVIDER.into(),
+                    model_id: "text-embedding-3-small".to_string(),
+                    display_name: "text-embedding-3-small".to_string(),
+                    capabilities: vec![],
+                    is_favorite: false,
+                    enabled: false,
+                    source: "discovered".to_string(),
+                    provider_metadata: None,
+                },
+            )
+            .await
+            .unwrap();
+        assert_ne!(discovered.id.uuid(), seed_ids::TEXT_EMBEDDING_3_SMALL);
+
+        let result = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .expect("seeding must not fail on a discovered twin");
+        assert!(result.updated >= 1, "discovered row must be updated");
+
+        let models = db
+            .list_models_for_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
+            .await
+            .unwrap();
+        let twins: Vec<_> = models
+            .iter()
+            .filter(|m| m.model_id == "text-embedding-3-small")
+            .collect();
+        assert_eq!(twins.len(), 1, "exactly one row per provider/model");
+        assert_eq!(twins[0].id, discovered.id, "discovered row is kept");
+        assert!(
+            twins[0].enabled && twins[0].is_favorite,
+            "seed fields applied"
+        );
+        assert_eq!(twins[0].display_name, "Text Embedding 3 Small");
+
+        // A further run is a no-op.
+        let result = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
+        assert_eq!(result.updated, 0);
     }
 
     #[tokio::test]

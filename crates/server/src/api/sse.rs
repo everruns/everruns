@@ -196,7 +196,11 @@ impl Default for SseConnectionLimits {
     fn default() -> Self {
         Self {
             global_max: 10_000,
-            per_session_max: 5,
+            // A session page holds a chat stream plus a task stream, and the
+            // Work view adds one per live session, so a handful of browser
+            // tabs on one session legitimately reach a dozen streams. The
+            // per-org and global caps carry the DoS protection.
+            per_session_max: 12,
             per_org_max: 1_000,
         }
     }
@@ -872,7 +876,7 @@ mod tests {
         let limits = SseConnectionLimits::from_env();
         assert_eq!(limits.global_max, 10_000);
         assert_eq!(limits.per_org_max, 1_000);
-        assert_eq!(limits.per_session_max, 5);
+        assert_eq!(limits.per_session_max, 12);
 
         // --- multi-instance divides global and org ---
         unsafe {
