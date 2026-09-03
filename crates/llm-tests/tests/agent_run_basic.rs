@@ -33,6 +33,8 @@ use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 
 #[rstest]
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
+#[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
+#[case::anthropic_fable_5_1(ANTHROPIC_FABLE_5_1)]
 #[case::openai_gpt56_luna(OPENAI_GPT56_LUNA)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::gemini_flash(GEMINI_FLASH)]
@@ -78,6 +80,8 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
 
 #[rstest]
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
+#[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
+#[case::anthropic_fable_5_1(ANTHROPIC_FABLE_5_1)]
 #[case::openai_gpt56_luna(OPENAI_GPT56_LUNA)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::gemini_flash(GEMINI_FLASH)]
@@ -131,6 +135,8 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
 
 #[rstest]
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
+#[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
+#[case::anthropic_fable_5_1(ANTHROPIC_FABLE_5_1)]
 #[case::openai_gpt56_luna(OPENAI_GPT56_LUNA)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]

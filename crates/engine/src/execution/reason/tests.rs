@@ -107,6 +107,50 @@ fn test_append_guarded_thinking_delta_allows_safe_pending_emit() {
 }
 
 #[test]
+fn test_completed_reasoning_item_is_guarded() {
+    let mut guardrails = vec![test_armed_guardrail()];
+    let mut inspected = String::new();
+    let item = ReasoningContentPart::opaque("google")
+        .with_signature("signed")
+        .with_text(ReasoningText::Plain {
+            text: "secret instructions".to_string(),
+        });
+
+    let tripped = inspect_guarded_reasoning_item(&mut guardrails, &mut inspected, &item)
+        .expect("completed reasoning should trip guardrail");
+
+    assert_eq!(tripped.block.reason_code, "test_leak");
+    assert_eq!(inspected, "secret instructions");
+}
+
+#[test]
+fn test_completed_reasoning_item_is_not_double_counted_after_deltas() {
+    let mut guardrails = vec![test_armed_guardrail()];
+    let mut inspected = "already streamed".to_string();
+    let item = ReasoningContentPart::opaque("anthropic").with_text(ReasoningText::Plain {
+        text: "already streamed".to_string(),
+    });
+
+    assert!(inspect_guarded_reasoning_item(&mut guardrails, &mut inspected, &item).is_none());
+    assert_eq!(inspected, "already streamed");
+}
+
+#[test]
+fn test_post_generation_guardrail_text_includes_reasoning_and_prose() {
+    let reasoning =
+        vec![
+            ReasoningContentPart::opaque("google").with_text(ReasoningText::Summary {
+                parts: vec!["reasoning canary".to_string()],
+            }),
+        ];
+
+    let guarded = client_visible_guardrail_text("answer", "", &reasoning, &[]);
+
+    assert!(guarded.contains("reasoning canary"));
+    assert!(guarded.contains("answer"));
+}
+
+#[test]
 fn test_reason_result_default() {
     let result = ReasonResult::default();
     assert!(!result.success);
@@ -691,7 +735,12 @@ fn test_build_request_options_omits_gemini_cache_flag_when_disabled() {
         cache_diagnostics: None,
     };
 
-    assert!(build_request_options(&config, "gemini").is_none());
+    // Streaming intent is always recorded, so the options exist; the cache
+    // flag and its provider option must not.
+    let request_options = build_request_options(&config, "gemini").expect("options");
+    assert!(request_options.prompt_cache.is_none());
+    assert!(!request_options.provider_options.contains_key("gemini"));
+    assert_eq!(request_options.stream, Some(true));
 }
 
 #[test]

@@ -150,7 +150,7 @@ fn reasoning_effort_anthropic_extended_thinking() -> ReasoningEffortConfig {
 }
 
 /// Adaptive thinking config for recent Claude reasoning models
-/// (Fable 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6)
+/// (Fable 5.1, Fable 5, Opus 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6)
 /// Uses thinking.type="adaptive" with effort parameter instead of budget_tokens
 /// Default: high, supports: low, medium, high, max (mapped to xhigh)
 fn reasoning_effort_anthropic_adaptive_thinking() -> ReasoningEffortConfig {
@@ -380,6 +380,7 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["gpt-5.6-terra"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-5.6-luna"], ModelVendor::OpenAi, OPENAI),
     // Anthropic
+    md(&["claude-fable-5-1"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-fable-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-8"], ModelVendor::Anthropic, ANTHROPIC),
@@ -389,6 +390,7 @@ static REGISTRY: &[ModelDescriptor] = &[
     // 200K base models (e.g. "Opus 4.8" vs "Opus 4.8 (1M)" in the picker); the
     // driver sends the `context-1m` beta header for them. See
     // `anthropic_1m_variant` for how their profiles are derived.
+    md(&["claude-fable-5-1[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-fable-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-8[1m]"], ModelVendor::Anthropic, ANTHROPIC),
@@ -431,6 +433,16 @@ static REGISTRY: &[ModelDescriptor] = &[
         &["mai-code-1-flash", "microsoft/mai-code-1-flash"],
         ModelVendor::Microsoft,
         MICROSOFT_MAI,
+    ),
+    md(
+        &["muse-spark-1.3", "meta/muse-spark-1.3"],
+        ModelVendor::Meta,
+        META_MUSE,
+    ),
+    md(
+        &["muse-spark-1.3-contributor"],
+        ModelVendor::Meta,
+        META_ONLY,
     ),
     md(
         &["muse-spark-1.2", "meta/muse-spark-1.2"],
@@ -481,14 +493,16 @@ fn resolve_descriptor(
     for descriptor in REGISTRY {
         for alias in descriptor.ids {
             let alias = alias.as_bytes();
-            // Exact (case-insensitive) match, or an `"<alias>-"` prefix (which
-            // covers dated and `-latest` suffixes).
+            // Exact (case-insensitive) match, or a recognized version suffix.
+            // Do not treat semantic variants such as `o3-mini` as versions of
+            // a shorter registered model.
             let id_matches = if id.len() == alias.len() {
                 id.eq_ignore_ascii_case(alias)
             } else {
                 id.len() > alias.len()
                     && id[alias.len()] == b'-'
                     && id[..alias.len()].eq_ignore_ascii_case(alias)
+                    && is_version_suffix(&id[alias.len() + 1..])
             };
             if !id_matches {
                 continue;
@@ -511,6 +525,27 @@ fn resolve_descriptor(
         }
     }
     best_for_surface
+}
+
+fn is_version_suffix(suffix: &[u8]) -> bool {
+    suffix.eq_ignore_ascii_case(b"latest")
+        || (suffix.len() == 8 && suffix.iter().all(u8::is_ascii_digit))
+        || (suffix.len() == 5
+            && suffix[2] == b'-'
+            && suffix[..2].iter().all(u8::is_ascii_digit)
+            && suffix[3..].iter().all(u8::is_ascii_digit))
+        || (suffix.len() == 10
+            && suffix[4] == b'-'
+            && suffix[7] == b'-'
+            && suffix
+                .iter()
+                .enumerate()
+                .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit()))
+        || (suffix.len() == 13
+            && suffix[..8].eq_ignore_ascii_case(b"preview-")
+            && suffix[10] == b'-'
+            && suffix[8..10].iter().all(u8::is_ascii_digit)
+            && suffix[11..].iter().all(u8::is_ascii_digit))
 }
 
 /// Get a model profile by matching provider_type and model_id.
@@ -656,36 +691,59 @@ fn profile_data(canonical: &str) -> Option<ModelProfile> {
 }
 
 fn meta_profile_data(model_id: &str) -> Option<ModelProfile> {
-    let (name, description, cost) = match model_id {
+    // Meta prices the Standard and Contributor tiers identically across Muse
+    // Spark 1.2 and 1.3; only the data-use terms differ between tiers.
+    const MUSE_STANDARD_COST: ModelCost = ModelCost {
+        input: 1.25,
+        output: 4.25,
+        cache_read: Some(0.15),
+        cost_tiers: vec![],
+    };
+    const MUSE_CONTRIBUTOR_COST: ModelCost = ModelCost {
+        input: 0.10,
+        output: 0.20,
+        cache_read: Some(0.002),
+        cost_tiers: vec![],
+    };
+
+    let (name, family, release_date, description, cost) = match model_id {
+        "muse-spark-1.3" => (
+            "Muse Spark 1.3",
+            "muse-spark-1.3",
+            "2026-09-02",
+            "Meta's Muse Spark model for long-horizon coding and multi-step agentic work, with native tool calling and MCP support. Prompts and completions are not used to train Meta models.",
+            MUSE_STANDARD_COST,
+        ),
+        "muse-spark-1.3-contributor" => (
+            "Muse Spark 1.3 Contributor",
+            "muse-spark-1.3",
+            "2026-09-02",
+            "Discounted Muse Spark 1.3 tier with the same model and capabilities as Standard. Prompts and completions are used to train and improve Meta models; rate-limited by tokens.",
+            MUSE_CONTRIBUTOR_COST,
+        ),
         "muse-spark-1.2" => (
             "Muse Spark 1.2",
+            "muse-spark-1.2",
+            "2026-08-05",
             "Meta's coding-optimized Muse Spark model. Prompts and completions are not used to train Meta models.",
-            ModelCost {
-                input: 1.25,
-                output: 4.25,
-                cache_read: Some(0.15),
-                cost_tiers: vec![],
-            },
+            MUSE_STANDARD_COST,
         ),
         "muse-spark-1.2-contributor" => (
             "Muse Spark 1.2 Contributor",
+            "muse-spark-1.2",
+            "2026-08-05",
             "Discounted Muse Spark 1.2 tier where prompts and completions may be used to train future Meta models.",
-            ModelCost {
-                input: 0.10,
-                output: 0.20,
-                cache_read: Some(0.002),
-                cost_tiers: vec![],
-            },
+            MUSE_CONTRIBUTOR_COST,
         ),
         _ => return None,
     };
 
     Some(ModelProfile {
         name: name.into(),
-        family: "muse-spark-1.2".into(),
+        family: family.into(),
         description: Some(description.into()),
-        release_date: Some("2026-08-05".into()),
-        last_updated: Some("2026-08-05".into()),
+        release_date: Some(release_date.into()),
+        last_updated: Some(release_date.into()),
         attachment: true,
         reasoning: true,
         temperature: true,
@@ -2427,7 +2485,7 @@ fn anthropic_1m_variant(mut profile: ModelProfile) -> ModelProfile {
 
 /// Whether a Claude model `family` supports Anthropic's hosted tool_search
 /// (the `tool_search_tool_*_20251119` server tools). Per docs.claude.com, this
-/// is Sonnet 4.0+, Opus 4.0+, Haiku 4.5+, and Fable 5 — the 3.x families do not
+/// is Sonnet 4.0+, Opus 4.0+, Haiku 4.5+, and Fable 5.x — the 3.x families do not
 /// support it. Centralized here (rather than per-literal) because the rule is a
 /// clean family cutoff; contrast the OpenAI profiles, which set `tool_search`
 /// per model literal.
@@ -2439,7 +2497,8 @@ fn anthropic_1m_variant(mut profile: ModelProfile) -> ModelProfile {
 fn anthropic_family_supports_tool_search(family: &str) -> bool {
     matches!(
         family,
-        "claude-fable-5"
+        "claude-fable-5-1"
+            | "claude-fable-5"
             | "claude-opus-5"
             | "claude-opus-4-8"
             | "claude-opus-4-7"
@@ -2464,7 +2523,57 @@ fn anthropic_profile_data(model_id: &str) -> Option<ModelProfile> {
 
 fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
     match model_id {
-        // Claude Fable 5 (newest — top tier above Opus)
+        // Claude Fable 5.1 (newest — top tier above Opus; successor to Fable 5)
+        // Source: Anthropic model card (claude-api skill `shared/models.md`) and
+        // docs.claude.com — Fable 5.1 is not yet in models.dev. Same tier, limits
+        // and per-token price as Fable 5 ($10/$50); cache reads drop to $0.25/MTok
+        // (a quarter of Fable 5's $1.00). Same request surface as Fable 5:
+        // adaptive thinking only (an explicit `thinking: {type: "disabled"}`
+        // returns 400, so the param is omitted when no effort is set), sampling
+        // parameters removed (`temperature: false`). Fable 5.1 additionally
+        // rejects forced tool use (`tool_choice` `any`/`tool` return 400); the
+        // Anthropic driver only ever sends `auto`, so no driver change is needed.
+        // Release/knowledge dates are not published in the model card; the
+        // Models API exposes them at runtime.
+        "claude-fable-5-1" => Some(ModelProfile {
+            name: "Claude Fable 5.1".into(),
+            family: "claude-fable-5-1".into(),
+            description: None,
+            release_date: None,
+            last_updated: None,
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: None,
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(ModelCost {
+                input: 10.00,
+                output: 50.00,
+                cache_read: Some(0.25),
+                cost_tiers: vec![],
+            }),
+            limits: Some(ModelLimits {
+                // Bare id is the 200K profile; `claude-fable-5-1[1m]` is the 1M twin.
+                context: 200_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            speed: None,
+            verbosity: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+        }),
+
+        // Claude Fable 5 (previous Fable release; still served, below Fable 5.1)
         // Source: Anthropic model card (claude-api skill `shared/models.md`) and
         // docs.claude.com — Fable 5 is not yet in models.dev. Same API surface as
         // Opus 4.8: adaptive thinking only, sampling parameters removed (temperature
@@ -2511,7 +2620,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             supports_phases: false,
         }),
 
-        // Claude Opus 5 (current Opus; below Fable 5, above Opus 4.8)
+        // Claude Opus 5 (current Opus; below Fable 5.1, above Opus 4.8)
         // Source: Anthropic model card (claude-api skill `shared/models.md`) and
         // docs.claude.com — Opus 5 is not yet in models.dev. A drop-in upgrade at
         // Opus 4.8's pricing ($5/$25, cache-read $0.50) with the same 200K/1M-twin
@@ -2684,6 +2793,9 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
 
         // 1M-context twins of the base profiles above. Same pricing and
         // capabilities; only the context limit and display name differ.
+        "claude-fable-5-1[1m]" => {
+            anthropic_profile_data("claude-fable-5-1").map(anthropic_1m_variant)
+        }
         "claude-fable-5[1m]" => anthropic_profile_data("claude-fable-5").map(anthropic_1m_variant),
         "claude-opus-5[1m]" => anthropic_profile_data("claude-opus-5").map(anthropic_1m_variant),
         "claude-opus-4-8[1m]" => {
@@ -3323,6 +3435,7 @@ mod tests {
         (DriverId::OpenAI, "gpt-5.6-terra"),
         (DriverId::OpenAI, "gpt-5.6-luna"),
         // Anthropic
+        (DriverId::Anthropic, "claude-fable-5-1"),
         (DriverId::Anthropic, "claude-fable-5"),
         (DriverId::Anthropic, "claude-opus-5"),
         (DriverId::Anthropic, "claude-opus-4-8"),
@@ -3498,6 +3611,12 @@ mod tests {
     fn test_get_profile_unknown_model() {
         let profile = get_model_profile(&DriverId::OpenAI, "unknown-model");
         assert!(profile.is_none());
+    }
+
+    #[test]
+    fn test_retired_semantic_variants_do_not_resolve_to_parent_profiles() {
+        assert!(get_model_profile(&DriverId::OpenAI, "o3-mini").is_none());
+        assert!(get_model_profile(&DriverId::Anthropic, "claude-opus-4-1").is_none());
     }
 
     #[test]
@@ -4384,6 +4503,34 @@ mod tests {
     }
 
     #[test]
+    fn test_claude_fable_5_1_profile_and_1m_variant() {
+        // `claude-fable-5-1` is its own family: the `-1` is not a version
+        // suffix, so it must not fall back to the Fable 5 descriptor.
+        let base = get_model_profile(&DriverId::Anthropic, "claude-fable-5-1").unwrap();
+        assert_eq!(base.name, "Claude Fable 5.1");
+        assert_eq!(base.family, "claude-fable-5-1");
+        assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
+        assert!(base.reasoning);
+        assert!(!base.temperature);
+        assert!(base.tool_search);
+        let base_cost = base.cost.as_ref().unwrap();
+        let fable_5_cost = get_model_profile(&DriverId::Anthropic, "claude-fable-5")
+            .unwrap()
+            .cost
+            .unwrap();
+        // Same per-token price as Fable 5; cache reads are a quarter of it.
+        assert_eq!(base_cost.input, fable_5_cost.input);
+        assert_eq!(base_cost.output, fable_5_cost.output);
+        assert_eq!(base_cost.cache_read, Some(0.25));
+
+        let m1 = get_model_profile(&DriverId::Anthropic, "claude-fable-5-1[1m]").unwrap();
+        assert_eq!(m1.name, "Claude Fable 5.1 (1M)");
+        assert_eq!(m1.family, "claude-fable-5-1");
+        assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
+        assert_eq!(m1.cost.unwrap().input, base_cost.input);
+    }
+
+    #[test]
     fn test_claude_opus_4_7_and_4_6_have_1m_variants() {
         for id in ["claude-opus-4-7[1m]", "claude-opus-4-6[1m]"] {
             let m1 = get_model_profile(&DriverId::Anthropic, id).unwrap();
@@ -4546,6 +4693,7 @@ mod tests {
     fn test_anthropic_native_tool_search_by_family() {
         // Claude 4-family + Fable advertise Anthropic's hosted tool_search.
         for id in [
+            "claude-fable-5-1",
             "claude-fable-5",
             "claude-opus-5",
             "claude-opus-4-8",
@@ -4599,9 +4747,10 @@ mod tests {
     }
 
     #[test]
-    fn test_muse_spark_1_2_profiles_and_tiers() {
-        let standard = get_model_profile(&DriverId::Meta, "muse-spark-1.2").unwrap();
-        assert_eq!(standard.name, "Muse Spark 1.2");
+    fn test_muse_spark_1_3_profiles_and_tiers() {
+        let standard = get_model_profile(&DriverId::Meta, "muse-spark-1.3").unwrap();
+        assert_eq!(standard.name, "Muse Spark 1.3");
+        assert_eq!(standard.family, "muse-spark-1.3");
         assert_eq!(standard.limits.as_ref().unwrap().context, 1_048_576);
         assert!(standard.tool_call);
         assert!(standard.tool_search);
@@ -4622,7 +4771,9 @@ mod tests {
         assert_eq!(standard_cost.cache_read, Some(0.15));
         assert_eq!(standard_cost.output, 4.25);
 
-        let contributor = get_model_profile(&DriverId::Meta, "muse-spark-1.2-contributor").unwrap();
+        let contributor = get_model_profile(&DriverId::Meta, "muse-spark-1.3-contributor").unwrap();
+        assert_eq!(contributor.name, "Muse Spark 1.3 Contributor");
+        assert_eq!(contributor.family, "muse-spark-1.3");
         let contributor_cost = contributor.cost.unwrap();
         assert_eq!(contributor_cost.input, 0.10);
         assert_eq!(contributor_cost.cache_read, Some(0.002));
@@ -4632,27 +4783,40 @@ mod tests {
                 .description
                 .as_deref()
                 .unwrap()
-                .contains("may be used to train")
+                .contains("used to train")
         );
         assert_eq!(
-            get_model_profile_key(&DriverId::Meta, "muse-spark-1.2-contributor").as_deref(),
-            Some("meta/muse-spark-1.2-contributor")
+            get_model_profile_key(&DriverId::Meta, "muse-spark-1.3-contributor").as_deref(),
+            Some("meta/muse-spark-1.3-contributor")
         );
     }
 
     #[test]
+    fn test_muse_spark_1_2_profiles_stay_resolvable() {
+        // 1.2 remains served by Meta and referenced by existing model records,
+        // so it keeps its own family and profile next to 1.3.
+        let standard = get_model_profile(&DriverId::Meta, "muse-spark-1.2").unwrap();
+        assert_eq!(standard.name, "Muse Spark 1.2");
+        assert_eq!(standard.family, "muse-spark-1.2");
+        let contributor = get_model_profile(&DriverId::Meta, "muse-spark-1.2-contributor").unwrap();
+        assert_eq!(contributor.name, "Muse Spark 1.2 Contributor");
+        assert_eq!(contributor.family, "muse-spark-1.2");
+        assert!(get_model_profile(&DriverId::OpenRouter, "muse-spark-1.2-contributor").is_none());
+    }
+
+    #[test]
     fn test_muse_surface_capabilities_are_transport_gated() {
-        let direct = get_model_profile(&DriverId::Meta, "muse-spark-1.2").unwrap();
+        let direct = get_model_profile(&DriverId::Meta, "muse-spark-1.3").unwrap();
         assert!(direct.supports_phases);
         assert!(direct.tool_search);
 
-        let openrouter = get_model_profile(&DriverId::OpenRouter, "meta/muse-spark-1.2").unwrap();
+        let openrouter = get_model_profile(&DriverId::OpenRouter, "meta/muse-spark-1.3").unwrap();
         assert!(!openrouter.supports_phases);
         assert!(!openrouter.tool_search);
 
-        assert!(get_model_profile(&DriverId::OpenRouter, "muse-spark-1.2-contributor").is_none());
+        assert!(get_model_profile(&DriverId::OpenRouter, "muse-spark-1.3-contributor").is_none());
         assert_eq!(
-            get_model_vendor(&DriverId::Meta, "muse-spark-1.2"),
+            get_model_vendor(&DriverId::Meta, "muse-spark-1.3"),
             Some(ModelVendor::Meta)
         );
     }

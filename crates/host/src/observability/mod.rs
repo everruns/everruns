@@ -10,10 +10,11 @@
 
 pub mod braintrust;
 pub mod composite;
+pub mod openinference;
 pub mod otel;
 pub mod telemetry;
 
 pub use braintrust::{BraintrustConfig, BraintrustListener};
 pub use composite::CompositeEventListener;
-pub use otel::OtelEventListener;
+pub use otel::{OtelEventListener, TraceConventions};
 pub use telemetry::{TelemetryConfig, TelemetryGuard, init_telemetry};

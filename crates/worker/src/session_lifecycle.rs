@@ -66,6 +66,25 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
             warn!(error = %e, "Failed to emit session.activated event");
         }
 
+        // Best-effort agent identity for the turn root: it only labels
+        // traces, so a lookup failure degrades to `None` instead of blocking
+        // the turn.
+        let agent_id = self
+            .adapters
+            .get_session(self.org_id, self.session_id.uuid())
+            .await
+            .ok()
+            .flatten()
+            .and_then(|session| session.agent_id);
+        let agent = match agent_id {
+            Some(agent_id) => self
+                .adapters
+                .get_agent(self.org_id, agent_id.uuid())
+                .await
+                .ok()
+                .flatten(),
+            None => None,
+        };
         let turn_started_event = EventRequest::new(
             self.session_id,
             EventContext::turn(turn_id, input_message_id),
@@ -73,6 +92,11 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
                 turn_id,
                 input_message_id,
                 input_content,
+                agent_id,
+                agent_name: agent
+                    .as_ref()
+                    .map(|a| a.display_name.clone().unwrap_or_else(|| a.name.clone())),
+                agent_description: agent.and_then(|a| a.description),
             },
         );
         if let Err(e) = self.adapters.emit_event(turn_started_event).await {

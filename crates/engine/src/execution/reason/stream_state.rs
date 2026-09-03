@@ -1,6 +1,7 @@
 use crate::driver_registry::{LlmCompletionMetadata, LlmStreamError, LlmStreamEvent};
 use crate::llm_retry::{RetryMetadata, is_transient_stream_error};
 use crate::output_guardrail::{ArmedGuardrail, TrippedGuardrail, evaluate_guardrails};
+use everruns_provider::reasoning::ReasoningContentPart;
 
 /// Whether replaying the current provider attempt can duplicate externally
 /// visible output or tool side effects.
@@ -127,6 +128,25 @@ pub(super) fn append_guarded_thinking_delta(
         pending_thinking_delta.push_str(delta);
         None
     }
+}
+
+/// Inspect readable completed reasoning without feeding a provider's streamed
+/// copy through stateful guardrails twice.
+pub(super) fn inspect_guarded_reasoning_item(
+    armed_guardrails: &mut [ArmedGuardrail],
+    inspected_reasoning: &mut String,
+    item: &ReasoningContentPart,
+) -> Option<TrippedGuardrail> {
+    let display_text = item.display_text()?;
+
+    // Anthropic emits the completed signed block after streaming the same text
+    // as deltas. Gemini signed thoughts arrive only as completed items.
+    if inspected_reasoning.ends_with(&display_text) {
+        return None;
+    }
+
+    inspected_reasoning.push_str(&display_text);
+    evaluate_guardrails(armed_guardrails, inspected_reasoning, &display_text)
 }
 
 #[cfg(test)]

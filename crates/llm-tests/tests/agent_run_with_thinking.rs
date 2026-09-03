@@ -29,12 +29,13 @@ use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 // ============================================================================
 
 #[rstest]
-// Uses Opus 5 rather than the `claude-opus-4-7` alias: that alias now returns
-// its reasoning as public response text with an empty private `thinking` field
-// (observed 6/6 on main), which is not what this private-field assertion checks.
-// Current Opus/Sonnet models surface reasoning on the private field.
+// Current Anthropic models only: Fable 5.1, Opus 5 and Sonnet 5 surface
+// reasoning on the private `thinking` field, which is what this assertion
+// checks. The superseded `claude-opus-4-7` alias returned its reasoning as
+// public response text with an empty private field (observed 6/6 on main).
+#[case::anthropic_fable_5_1(ANTHROPIC_FABLE_5_1)]
 #[case::anthropic_opus5(ANTHROPIC_OPUS5)]
-#[case::anthropic_sonnet(ANTHROPIC_SONNET)]
+#[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
@@ -221,8 +222,9 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 // ============================================================================
 
 #[rstest]
-#[case::anthropic_opus(ANTHROPIC_OPUS)]
-#[case::anthropic_sonnet(ANTHROPIC_SONNET)]
+#[case::anthropic_fable_5_1(ANTHROPIC_FABLE_5_1)]
+#[case::anthropic_opus5(ANTHROPIC_OPUS5)]
+#[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
@@ -246,9 +248,16 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
         |r: &TurnResult| r.success && r.tool_calls_count > 0,
         {
             let model = config.model().expect("model set (checked above)");
+            // Firm, tool-naming instruction: Fable 5.1 rejects forced
+            // `tool_choice`, and with adaptive thinking on, Fable 5.1 and
+            // Sonnet 5 answered the softer "use ... when asked about time"
+            // wording without calling the tool (3/3 clean sampling misses).
             let runner = InMemoryAgenticLoop::builder()
                 .agent_name("Thinking Time Agent")
-                .system_prompt("Use get_current_time tool when asked about time.")
+                .system_prompt(
+                    "You have no clock. When asked about the time, always call the \
+                     get_current_time tool first, then answer from its result.",
+                )
                 .model(model)
                 .driver_registry(all_providers_registry())
                 .capability(CurrentTimeCapability)
@@ -258,7 +267,12 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
                 .unwrap();
             let input = InputMessage {
                 role: MessageRole::User,
-                content: vec![ContentPart::text("What's the current time in UTC?")],
+                // The user turn also asks for a tool check: with the system
+                // instruction alone, Sonnet 5 still skipped the tool on ~2/7
+                // first attempts at low effort.
+                content: vec![ContentPart::text(
+                    "What's the current time in UTC? Check it with your tool rather than guessing.",
+                )],
                 controls: Some(Controls {
                     speed: None,
                     verbosity: None,

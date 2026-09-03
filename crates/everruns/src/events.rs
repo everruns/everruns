@@ -5,10 +5,11 @@
 //!
 //! - **Observation.** [`Session::events`](crate::Session::events) returns an
 //!   [`EventStream`] — a live feed of [`SessionEvent`]s projected from the
-//!   host's canonical event emitter. Events retain the canonical event
-//!   protocol as JSON and also exposes a typed convenience projection. The
-//!   stream is bounded, so a slow or dropped consumer can never stall the turn
-//!   that produces the events; lag is reported explicitly to the consumer.
+//!   host's canonical event emitter. Each event carries a reviewed typed
+//!   projection, and the full canonical envelope stays available through
+//!   [`SessionEvent::canonical_json`]. The stream is bounded, so a slow or
+//!   dropped consumer can never stall the turn that produces the events; lag is
+//!   reported explicitly to the consumer.
 //! - **Cancellation.** [`Session::run_with`](crate::Session::run_with) accepts a
 //!   [`RunOptions`] carrying an optional [`CancellationToken`]. Cancelling the
 //!   token stops the in-flight turn by dropping its future — the same
@@ -48,15 +49,23 @@ pub const EVENT_STREAM_CAPACITY: usize = 4096;
 
 /// A single observed event from a running [`Session`](crate::Session).
 ///
-/// This is a typed/raw bridge to Everruns' canonical event
-/// protocol. [`kind`](SessionEvent::kind) is the ergonomic typed projection used
-/// by renderers, while [`as_json`](SessionEvent::as_json) returns the canonical
-/// event envelope with the live-delta exception described below. The JSON
-/// form includes the event timestamp, optional persisted sequence, correlation
-/// context, event-specific data, metadata, and tags. For
+/// Two surfaces, deliberately separated:
+///
+/// - **Reviewed** — [`kind`](SessionEvent::kind) and the matching
+///   [`data`](SessionEvent::data)/[`as_json`](SessionEvent::as_json). Carries
+///   only fields someone chose to promote, so a new internal field cannot
+///   silently become this crate's public API or reach wherever an application
+///   forwards these envelopes.
+/// - **Canonical** — [`canonical_json`](SessionEvent::canonical_json). The
+///   complete envelope, nothing withheld, for auditing and replay. It follows
+///   the runtime's internal shape, may contain prompts and tool results, and is
+///   not covered by this crate's stability guarantees.
+///
+/// Envelope fields — timestamp, optional persisted sequence, correlation
+/// context, metadata, and tags — are complete on both. For
 /// `output.message.delta` events, the redundant `data.accumulated` prefix is
-/// omitted to keep buffered stream memory proportional to output size rather
-/// than quadratic in it. Incremental text remains in
+/// omitted from both to keep buffered stream memory proportional to output size
+/// rather than quadratic in it. Incremental text remains in
 /// [`SessionEventKind::TextDelta`].
 ///
 /// The correlation ids (`event_id`, `session_id`, and the optional `turn_id`)
@@ -76,15 +85,17 @@ pub struct SessionEvent {
     timestamp: String,
     data: Value,
     raw: Value,
+    canonical: Value,
 }
 
 /// The event-specific payload of a [`SessionEvent`].
 ///
 /// Non-exhaustive on purpose: event kinds useful to an application renderer are
-/// promoted here, while every other event is surfaced through
-/// [`Other`](SessionEventKind::Other). The full event remains available through
-/// [`SessionEvent::as_json`] for every variant, including newly added event
-/// types that this version of the crate does not recognize.
+/// promoted here, while every other event is identified through
+/// [`Other`](SessionEventKind::Other). No event is ever dropped — the complete
+/// payload of every variant, including event types this version of the crate
+/// does not recognize, stays available through
+/// [`SessionEvent::canonical_json`].
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum SessionEventKind {
@@ -202,19 +213,39 @@ pub enum SessionEventKind {
     },
     /// A complete model-generation record was emitted.
     ///
-    /// The model input, output, tool requests, usage, and timing remain in the
-    /// canonical payload returned by [`SessionEvent::data`].
-    ModelGeneration,
-    /// Any other canonical event, carried through unprojected.
+    /// The accounting fields are promoted here because tracking spend and
+    /// latency is a first-class reason to observe a session, and none of them
+    /// carry conversation content. The generation's messages, tool requests,
+    /// and output text stay off the reviewed surface; reach them with
+    /// [`SessionEvent::canonical_json`] when you actually need them.
+    ModelGeneration {
+        /// Model identifier used for the generation.
+        model: String,
+        /// Provider that served the generation, when recorded.
+        provider: Option<String>,
+        /// Prompt tokens billed for this generation.
+        input_tokens: Option<u32>,
+        /// Completion tokens billed for this generation.
+        output_tokens: Option<u32>,
+        /// Best-effort USD cost: the provider's actual cost when it reported
+        /// one, otherwise the price-table estimate.
+        cost_usd: Option<f64>,
+        /// Wall-clock duration of the generation.
+        duration_ms: Option<u64>,
+        /// Whether the generation completed successfully.
+        success: bool,
+    },
+    /// Any other canonical event, identified but not projected.
     ///
     /// `event_type` is the stable dot-notation type string (e.g.
-    /// `"act.started"`); `payload` is the raw event data as JSON. This is the
-    /// forward-compatibility fallback — match it with a wildcard arm.
+    /// `"act.started"`). This is the forward-compatibility fallback — match it
+    /// with a wildcard arm. The event's payload is deliberately absent from the
+    /// reviewed surface, because a type this version does not recognize has by
+    /// definition not been reviewed for what it exposes; read it from
+    /// [`SessionEvent::canonical_json`] if you need it.
     Other {
         /// Stable dot-notation event type string.
         event_type: String,
-        /// Raw event payload as JSON.
-        payload: Value,
     },
 }
 
@@ -253,27 +284,52 @@ impl SessionEvent {
         &self.timestamp
     }
 
-    /// The canonical event envelope as JSON.
+    /// The event envelope as JSON, carrying the reviewed `data` projection.
     ///
-    /// This is the same serialized representation used by Everruns' public
-    /// event protocol. No event fields are omitted when [`kind`](Self::kind) is a compact
-    /// renderer-oriented projection or [`SessionEventKind::Other`], except
-    /// `data.accumulated` on `output.message.delta`. That redundant growing
-    /// prefix is omitted so a slow subscriber cannot retain quadratic memory.
+    /// Envelope fields — timestamp, sequence, correlation context, metadata,
+    /// tags — are complete. `data` holds the same reviewed projection as
+    /// [`data`](Self::data) rather than the raw internal payload, so a new
+    /// internal field cannot become part of this crate's public surface, or
+    /// reach whatever an application forwards these envelopes to, without
+    /// someone choosing to promote it.
+    ///
+    /// Use [`canonical_json`](Self::canonical_json) for the untouched payload.
     pub fn as_json(&self) -> &Value {
         &self.raw
     }
 
-    /// Consume the event and return its complete canonical JSON envelope.
+    /// Consume the event and return its envelope with the reviewed `data`
+    /// projection. See [`as_json`](Self::as_json).
     pub fn into_json(self) -> Value {
         self.raw
     }
 
-    /// The canonical event-specific `data` payload.
+    /// The complete canonical event envelope, including the raw internal
+    /// payload.
     ///
-    /// Use this when a renderer needs a field not promoted onto
-    /// [`SessionEventKind`], such as tool narration, a completed message's
-    /// structured content, model token usage, or failure classification.
+    /// Nothing is withheld, so nothing observable is lost: this is the escape
+    /// hatch for auditing, recording, and replay. `data.accumulated` on
+    /// `output.message.delta` is the one exception — that redundant growing
+    /// prefix is dropped at ingest so a slow subscriber cannot retain quadratic
+    /// memory, and the incremental text is in
+    /// [`SessionEventKind::TextDelta`].
+    ///
+    /// The payload here follows the runtime's internal shape rather than this
+    /// crate's reviewed surface. It can contain prompts, tool arguments, and
+    /// tool results, and it can gain or change fields in a patch release. Treat
+    /// what you read from it as unstable, and do not forward it anywhere the
+    /// conversation itself should not go.
+    pub fn canonical_json(&self) -> &Value {
+        &self.canonical
+    }
+
+    /// The reviewed event-specific `data` payload.
+    ///
+    /// Contains the fields promoted onto [`SessionEventKind`] for this event and
+    /// nothing else, so it is safe to log or forward. A renderer needing a field
+    /// that is not promoted should ask for it to be promoted; a consumer that
+    /// genuinely needs the internal payload should call
+    /// [`canonical_json`](Self::canonical_json) and accept its instability.
     pub fn data(&self) -> &Value {
         &self.data
     }
@@ -302,6 +358,9 @@ impl SessionEvent {
                 .and_then(Value::as_object_mut)
                 .and_then(|data| data.remove("accumulated"));
         }
+        // Kept whole before `raw` is narrowed to the reviewed projection, so
+        // `canonical_json` can still hand back everything the runtime emitted.
+        let canonical = raw.clone();
         let turn_id = event.context.turn_id.map(|id| id.to_string());
         let kind = match event.event_type.as_str() {
             events::INPUT_MESSAGE => match &event.data {
@@ -438,9 +497,28 @@ impl SessionEvent {
                 },
                 _ => Self::other_kind(event),
             },
-            events::LLM_GENERATION => SessionEventKind::ModelGeneration,
+            events::LLM_GENERATION => match &event.data {
+                EventData::LlmGeneration(data) => {
+                    let usage = data.metadata.usage.as_ref();
+                    SessionEventKind::ModelGeneration {
+                        model: data.metadata.model.clone(),
+                        provider: data.metadata.provider.clone(),
+                        input_tokens: usage.map(|usage| usage.input_tokens),
+                        output_tokens: usage.map(|usage| usage.output_tokens),
+                        cost_usd: usage.and_then(|usage| usage.effective_cost_usd()),
+                        duration_ms: data.metadata.duration_ms,
+                        success: data.metadata.success,
+                    }
+                }
+                _ => Self::other_kind(event),
+            },
             _ => Self::other_kind(event),
         };
+        // Narrow `data` to what `kind` promotes. Everything the runtime emitted
+        // stays reachable through `canonical`; this is what makes an unreviewed
+        // internal field a deliberate promotion rather than an accident.
+        let data = Self::reviewed_data(&kind, &data);
+        raw["data"] = data.clone();
         Self {
             event_id: event.id.to_string(),
             session_id: event.session_id.to_string(),
@@ -450,14 +528,135 @@ impl SessionEvent {
             timestamp: event.ts.to_rfc3339(),
             data,
             raw,
+            canonical,
         }
+    }
+
+    /// Build the reviewed `data` payload for a projected event.
+    ///
+    /// Every arm names the fields it promotes — mirroring the variant's own
+    /// fields where it has them, an explicit list where it does not. Adding a
+    /// field means adding it here; an event that promotes nothing gets an empty
+    /// object rather than its internal payload. No arm clones `data`, so no
+    /// event type gains public surface without someone deciding it should.
+    fn reviewed_data(kind: &SessionEventKind, data: &Value) -> Value {
+        // Operator-authored display text, reviewed as safe wherever it appears:
+        // a human wrote it for a timeline, so it carries no model or tool
+        // content. `narration()` reads the first of these back.
+        const DISPLAY_FIELDS: [&str; 2] = ["narration", "display_name"];
+        let mut reviewed = match kind {
+            SessionEventKind::InputMessage { message_id }
+            | SessionEventKind::OutputStarted { message_id } => {
+                serde_json::json!({ "message_id": message_id })
+            }
+            SessionEventKind::OutputCompleted { message_id } => {
+                serde_json::json!({ "message_id": message_id })
+            }
+            SessionEventKind::OutputReplaced {
+                message_id,
+                replacement,
+            } => serde_json::json!({ "message_id": message_id, "replacement": replacement }),
+            SessionEventKind::TurnFailed { error } => serde_json::json!({ "error": error }),
+            SessionEventKind::TextDelta { delta } => serde_json::json!({ "delta": delta }),
+            SessionEventKind::ToolStarted {
+                tool_call_id,
+                tool_name,
+            } => serde_json::json!({ "tool_call_id": tool_call_id, "tool_name": tool_name }),
+            SessionEventKind::ToolCompleted {
+                tool_call_id,
+                tool_name,
+                success,
+            } => serde_json::json!({
+                "tool_call_id": tool_call_id,
+                "tool_name": tool_name,
+                "success": success,
+            }),
+            SessionEventKind::ToolProgress {
+                tool_call_id,
+                tool_name,
+                message,
+            } => serde_json::json!({
+                "tool_call_id": tool_call_id,
+                "tool_name": tool_name,
+                "message": message,
+            }),
+            SessionEventKind::ToolOutputDelta {
+                tool_call_id,
+                tool_name,
+                stream,
+                delta,
+            } => serde_json::json!({
+                "tool_call_id": tool_call_id,
+                "tool_name": tool_name,
+                "stream": stream,
+                "delta": delta,
+            }),
+            SessionEventKind::ReasoningDelta { delta, accumulated } => {
+                serde_json::json!({ "delta": delta, "accumulated": accumulated })
+            }
+            SessionEventKind::ReasonCompleted { success, error } => {
+                serde_json::json!({ "success": success, "error": error })
+            }
+            SessionEventKind::ReasoningCompleted { text } => serde_json::json!({ "text": text }),
+            SessionEventKind::ReasoningItem {
+                provider,
+                item_id,
+                summary,
+            } => serde_json::json!({
+                "provider": provider,
+                "item_id": item_id,
+                "summary": summary,
+            }),
+            SessionEventKind::ModelGeneration {
+                model,
+                provider,
+                input_tokens,
+                output_tokens,
+                cost_usd,
+                duration_ms,
+                success,
+            } => serde_json::json!({
+                "model": model,
+                "provider": provider,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cost_usd": cost_usd,
+                "duration_ms": duration_ms,
+                "success": success,
+            }),
+            // Turn id, cancellation reason and usage totals are reviewed safe —
+            // none carries conversation content. Named explicitly rather than
+            // cloned wholesale: `TurnCancelled` promotes no variant fields, so a
+            // clone would make this the one event where a field added inside the
+            // runtime joins the public surface on its own, which is exactly what
+            // the reviewed/canonical split exists to prevent.
+            SessionEventKind::TurnCancelled => {
+                let mut cancelled = serde_json::Map::new();
+                for field in ["turn_id", "reason", "usage"] {
+                    if let Some(value) = data.get(field) {
+                        cancelled.insert(field.to_string(), value.clone());
+                    }
+                }
+                Value::Object(cancelled)
+            }
+            SessionEventKind::Other { .. }
+            | SessionEventKind::TurnStarted
+            | SessionEventKind::TurnCompleted
+            | SessionEventKind::ReasonStarted => serde_json::json!({}),
+        };
+        if let Some(object) = reviewed.as_object_mut() {
+            for field in DISPLAY_FIELDS {
+                if let Some(value) = data.get(field) {
+                    object.insert(field.to_string(), value.clone());
+                }
+            }
+        }
+        reviewed
     }
 
     fn other_kind(event: &Event) -> SessionEventKind {
         SessionEventKind::Other {
             event_type: event.event_type.clone(),
-            payload: serde_json::to_value(&event.data)
-                .expect("canonical event payloads are JSON serializable"),
         }
     }
 }
@@ -707,7 +906,7 @@ mod tests {
     use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
     use serde_json::json;
 
-    use super::{EventStreamError, FacadeEventBus, SessionEventKind};
+    use super::{EventStreamError, FacadeEventBus, SessionEvent, SessionEventKind};
     use crate::{Agent, InMemoryEngine, Model};
 
     fn host(bus: Arc<FacadeEventBus>) -> HostEventEmitter {
@@ -723,12 +922,77 @@ mod tests {
                 turn_id,
                 input_message_id,
                 input_content: Some("hello".to_string()),
+                agent_id: None,
+                agent_name: None,
+                agent_description: None,
             },
         )
     }
 
+    #[test]
+    fn reviewed_data_never_exceeds_the_canonical_payload() {
+        // The reviewed projection must be a *subset* of what the runtime
+        // emitted: it may drop fields, never invent them. A synthesised field
+        // would be a value no consumer could correlate with the canonical
+        // record, and would quietly become API nobody reviewed.
+        let canonical = json!({
+            "tool_call_id": "call_1",
+            "tool_name": "lookup",
+            "success": true,
+            "status": "success",
+            "result": ["secret"],
+            "narration": "Looking it up",
+            "display_name": "Knowledge lookup",
+        });
+        let kind = SessionEventKind::ToolCompleted {
+            tool_call_id: "call_1".to_string(),
+            tool_name: "lookup".to_string(),
+            success: true,
+        };
+
+        let reviewed = SessionEvent::reviewed_data(&kind, &canonical);
+        let reviewed = reviewed.as_object().expect("reviewed data is an object");
+
+        for (key, value) in reviewed {
+            assert_eq!(
+                Some(value),
+                canonical.get(key),
+                "reviewed key {key} is absent from or differs in the canonical payload"
+            );
+        }
+        // Promoted identity and outcome survive; the tool's result does not.
+        assert_eq!(reviewed["tool_call_id"], "call_1");
+        assert_eq!(reviewed["narration"], "Looking it up");
+        assert!(!reviewed.contains_key("result"));
+    }
+
+    #[test]
+    fn a_cancellation_field_nobody_promoted_stays_off_the_reviewed_surface() {
+        // `TurnCancelled` is the one kind whose reviewed payload comes entirely
+        // from the event data rather than from variant fields, so it is the one
+        // most likely to drift back into a wholesale clone. A field added to the
+        // cancellation payload inside the runtime must not become public API
+        // just by existing.
+        let canonical = json!({
+            "turn_id": "turn_1",
+            "reason": "user cancelled",
+            "usage": { "input_tokens": 12, "output_tokens": 3 },
+            "partial_output": "the model had written this far",
+        });
+
+        let reviewed = SessionEvent::reviewed_data(&SessionEventKind::TurnCancelled, &canonical);
+
+        assert_eq!(reviewed["turn_id"], "turn_1");
+        assert_eq!(reviewed["reason"], "user cancelled");
+        assert_eq!(reviewed["usage"]["input_tokens"], 12);
+        assert!(
+            reviewed.get("partial_output").is_none(),
+            "an unpromoted cancellation field must not reach the reviewed surface"
+        );
+    }
+
     #[tokio::test]
-    async fn public_event_json_is_the_exact_canonical_envelope() {
+    async fn envelope_is_complete_while_data_stays_reviewed() {
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
         let bus = Arc::new(FacadeEventBus::new());
@@ -746,10 +1010,23 @@ mod tests {
             .expect("event is delivered");
 
         assert!(matches!(observed.kind, SessionEventKind::TurnStarted));
+
+        // `turn.started` carries the user's prompt in `data.input_content`.
+        // `TurnStarted` promotes nothing, so the reviewed surface omits it —
+        // this is the leak the split exists to close, since an application
+        // forwarding these envelopes would otherwise ship the prompt with them.
+        assert_eq!(observed.data(), &json!({}));
+        assert!(!observed.as_json().to_string().contains("hello"));
+
+        // Nothing is lost: the canonical envelope is byte-for-byte the event
+        // the runtime emitted, prompt included.
         assert_eq!(
-            observed.as_json(),
+            observed.canonical_json(),
             &serde_json::to_value(canonical).expect("canonical event serializes")
         );
+        assert_eq!(observed.canonical_json()["data"]["input_content"], "hello");
+
+        // Envelope fields stay complete on the reviewed form; only `data` differs.
         assert_eq!(observed.event_type(), "turn.started");
         assert_eq!(
             observed.turn_id.as_deref(),
@@ -758,7 +1035,6 @@ mod tests {
         assert_eq!(observed.as_json()["sequence"], 1);
         assert_eq!(observed.sequence(), Some(1));
         assert!(!observed.timestamp().is_empty());
-        assert_eq!(observed.data()["input_content"], "hello");
         assert_eq!(observed.as_json()["metadata"]["provider"], "simulated");
         assert_eq!(observed.as_json()["tags"], json!(["terminal"]));
     }
@@ -967,7 +1243,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unpromoted_event_kind_retains_its_complete_canonical_payload() {
+    async fn unpromoted_event_kind_is_identified_but_not_projected() {
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
         let bus = Arc::new(FacadeEventBus::new());
@@ -989,14 +1265,27 @@ mod tests {
             .expect("event emits");
 
         let observed = stream.recv().await.unwrap().unwrap();
+
+        // Identified, so a renderer can still route it.
         assert!(matches!(
             &observed.kind,
-            SessionEventKind::Other { event_type, payload }
-                if event_type == "act.started" && payload["headline"] == "running tools"
+            SessionEventKind::Other { event_type } if event_type == "act.started"
         ));
+
+        // Not projected: an event type this version does not recognize has by
+        // definition not been reviewed, so its payload stays off the reviewed
+        // surface instead of becoming public API by accident.
+        assert_eq!(observed.data(), &json!({}));
+        assert!(!observed.as_json().to_string().contains("running tools"));
+
+        // But nothing is lost — the complete envelope is one explicit call away.
         assert_eq!(
-            observed.as_json(),
+            observed.canonical_json(),
             &serde_json::to_value(canonical).expect("canonical event serializes")
+        );
+        assert_eq!(
+            observed.canonical_json()["data"]["headline"],
+            "running tools"
         );
     }
 
@@ -1049,7 +1338,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tool_lifecycle_retains_arguments_result_and_order() {
+    async fn tool_lifecycle_keeps_order_and_reaches_arguments_canonically() {
         let tool = crate::FunctionTool::new(
             "lookup",
             "Look up a value.",
@@ -1101,10 +1390,23 @@ mod tests {
             started.sequence().expect("tool start is durable")
                 < completed.sequence().expect("tool completion is durable")
         );
-        assert_eq!(started.data()["tool_call"]["id"], "call_lookup_1");
-        assert_eq!(started.data()["tool_call"]["arguments"]["key"], "answer");
+        // Identity and outcome are promoted, so a timeline renders from the
+        // reviewed surface alone.
+        assert_eq!(started.data()["tool_call_id"], "call_lookup_1");
         assert_eq!(completed.data()["tool_call_id"], "call_lookup_1");
-        assert_eq!(completed.data()["status"], "success");
-        assert!(completed.data()["result"].is_array());
+        assert_eq!(completed.data()["success"], true);
+
+        // Arguments and results are the payload most worth not leaking by
+        // default — a tool call can carry credentials in, and file contents out.
+        assert!(started.data()["tool_call"].is_null());
+        assert!(completed.data()["result"].is_null());
+
+        // Still reachable for an auditor or recorder that asks explicitly.
+        assert_eq!(
+            started.canonical_json()["data"]["tool_call"]["arguments"]["key"],
+            "answer"
+        );
+        assert_eq!(completed.canonical_json()["data"]["status"], "success");
+        assert!(completed.canonical_json()["data"]["result"].is_array());
     }
 }

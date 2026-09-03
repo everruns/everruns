@@ -7208,6 +7208,7 @@ export interface components {
       | components["schemas"]["SessionActivatedData"]
       | components["schemas"]["SessionIdledData"]
       | components["schemas"]["SessionTitleUpdatedData"]
+      | components["schemas"]["SessionModelChangedData"]
       | components["schemas"]["SessionTaskEventData"]
       | components["schemas"]["SessionTaskEventData"]
       | components["schemas"]["TaskMessageEventData"]
@@ -11035,6 +11036,11 @@ export interface components {
      */
     LlmRequestOptions: {
       /**
+       * Format: int32
+       * @description Maximum output tokens requested, when set.
+       */
+      max_tokens?: number | null;
+      /**
        * @description General request metadata passed to the LLM provider for tracking and observability.
        *     Includes embedder-supplied labels merged with system tracking keys (session_id, turn_id, etc.).
        */
@@ -11046,6 +11052,18 @@ export interface components {
       provider_options?: {
         [key: string]: unknown;
       };
+      /**
+       * @description Reasoning / thinking effort level requested, as the string sent to the
+       *     provider (`low`, `medium`, `high`, ...), when set.
+       */
+      reasoning_effort?: string | null;
+      /** @description Whether the request used the provider's streaming mode. */
+      stream?: boolean | null;
+      /**
+       * Format: float
+       * @description Sampling temperature sent with the request, when set.
+       */
+      temperature?: number | null;
       tool_search?: null | components["schemas"]["LlmToolSearchInfo"];
     };
     /** @description Information about rate limit retries during LLM generation */
@@ -14874,6 +14892,30 @@ export interface components {
       turn_id: string;
       usage?: null | components["schemas"]["TokenUsage"];
     };
+    /**
+     * @description Data for `session.model.changed`.
+     *
+     *     Names are the provider's own model identifiers, captured at emission time so
+     *     the transcript stays readable after a model is renamed or removed from the
+     *     organization. Clients that still have the model may prefer its display name.
+     */
+    SessionModelChangedData: {
+      /**
+       * @description Model selected for the next turn.
+       * @example model_01933b5a00007000800000000000002
+       */
+      model_id: string;
+      /** @description Name of the selected model, captured at emission time. */
+      model_name: string;
+      /**
+       * @description Model used before the switch. `None` when the previous turn ran on an
+       *     inherited default that the emitter could not name.
+       * @example model_01933b5a00007000800000000000001
+       */
+      previous_model_id?: string | null;
+      /** @description Name of the previous model, captured at emission time. */
+      previous_model_name?: string | null;
+    };
     /** @description Session participant - an agent or user that has joined a session. */
     SessionParticipant: {
       /**
@@ -16106,6 +16148,18 @@ export interface components {
     };
     /** @description Data for turn.started event */
     TurnStartedData: {
+      /** @description Agent description snapshot at turn start. */
+      agent_description?: string | null;
+      /**
+       * @description Agent the turn runs as, when the session is bound to one. Carried on
+       *     the turn root so trace exporters can label the `invoke_agent` span
+       *     without a store lookup (the Gen-AI conventions want the agent name in
+       *     the span name and `gen_ai.agent.*` attributes).
+       * @example agent_01933b5a00007000800000000000001
+       */
+      agent_id?: string | null;
+      /** @description Human-readable agent name snapshot at turn start. */
+      agent_name?: string | null;
       /** @description Input message content (for observability) */
       input_content?: string | null;
       /**

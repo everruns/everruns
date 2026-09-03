@@ -2323,6 +2323,12 @@ export interface TurnStartedData {
   input_message_id: string;
   /** Input message content (for observability) */
   input_content?: string;
+  /** Agent the turn runs as, when the session is bound to one */
+  agent_id?: string;
+  /** Human-readable agent name snapshot at turn start */
+  agent_name?: string;
+  /** Agent description snapshot at turn start */
+  agent_description?: string;
 }
 
 /** Data for turn.completed event */
@@ -2598,6 +2604,15 @@ export interface ContextCompactedData {
   steps: CompactionStepData[];
 }
 
+/** Data for session.model.changed event (answering model switched between turns) */
+export interface SessionModelChangedData {
+  /** Absent when the previous turn ran on a default the server could not name. */
+  previous_model_id?: string;
+  previous_model_name?: string;
+  model_id: string;
+  model_name: string;
+}
+
 /** Per-session compaction metrics */
 export interface SessionCompactionMetrics {
   compaction_count: number;
@@ -2638,6 +2653,7 @@ export type EventData =
   | ReasonItemData
   | ContextCompactingData
   | ContextCompactedData
+  | SessionModelChangedData
   | Record<string, unknown>; // Raw/unknown event data
 
 // ============================================
@@ -2674,6 +2690,7 @@ export interface EventTypeMap {
   "reason.item": ReasonItemData;
   "context.compacting": ContextCompactingData;
   "context.compacted": ContextCompactedData;
+  "session.model.changed": SessionModelChangedData;
 }
 
 export type KnownEventType = keyof EventTypeMap;

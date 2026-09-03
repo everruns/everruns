@@ -187,7 +187,7 @@ mod tests {
             META_DEFAULT_API_URL
         );
         assert!(driver.supports_stateful_responses());
-        assert!(driver.supports_parallel_tool_calls("muse-spark-1.2"));
+        assert!(driver.supports_parallel_tool_calls("muse-spark-1.3"));
     }
 
     #[test]
@@ -222,7 +222,7 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "object": "list",
                 "data": [{
-                    "id": "muse-spark-1.2",
+                    "id": "muse-spark-1.3",
                     "object": "model",
                     "created": 1_785_888_000_i64,
                     "owned_by": "meta"
@@ -244,7 +244,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(models.len(), 1);
-        assert_eq!(models[0].model_id, "muse-spark-1.2");
+        assert_eq!(models[0].model_id, "muse-spark-1.3");
         assert_eq!(models[0].owned_by.as_deref(), Some("meta"));
         assert!(models[0].created_at.is_some());
     }

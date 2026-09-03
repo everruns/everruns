@@ -27,7 +27,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(None) => break,
                 Err(error) => return Err(error),
             };
-            recorded.push(event.as_json().clone());
+            // Recording for replay, so take the canonical envelope: it withholds
+            // nothing. `as_json()` carries the reviewed projection instead.
+            recorded.push(event.canonical_json().clone());
 
             match event.kind {
                 SessionEventKind::OutputStarted { .. } => print!("assistant: "),

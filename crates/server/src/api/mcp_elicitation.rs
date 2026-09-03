@@ -211,6 +211,10 @@ async fn start_connect(
 }
 
 /// Verify a presented token against the logged-in principal.
+///
+/// THREAT[TM-API-024]: the signed link alone grants nothing. A page only
+/// renders for the principal the elicitation was minted for, so a link handed
+/// to someone else cannot bind a credential to the wrong identity.
 fn resolve(
     state: &AppState,
     auth_user: &AuthUser,

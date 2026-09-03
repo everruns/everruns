@@ -121,6 +121,7 @@ mod seed_ids {
         Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000229);
 
     // Anthropic Models (0x300-0x3FF)
+    pub const CLAUDE_FABLE_5_1: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030f);
     pub const CLAUDE_OPUS_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030e);
     pub const CLAUDE_SONNET_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030c);
     pub const CLAUDE_OPUS_4_8: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030d);
@@ -132,6 +133,7 @@ mod seed_ids {
     pub const CLAUDE_HAIKU_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000303);
     pub const CLAUDE_OPUS_4: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000304);
     // 1M-context variants (`[1m]` model ids), 0x3a0+ sub-range.
+    pub const CLAUDE_FABLE_5_1_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a9);
     pub const CLAUDE_OPUS_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a8);
     pub const CLAUDE_OPUS_4_7_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a7);
     pub const CLAUDE_SONNET_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a5);
@@ -1837,7 +1839,29 @@ const SEED_MODELS: &[SeedModel] = &[
         enabled: false,
         is_favorite: false,
     },
-    // Anthropic current-gen (Opus 5, Sonnet 5, Opus 4.8)
+    // Anthropic current-gen (Fable 5.1, Opus 5, Sonnet 5, Opus 4.8)
+    SeedModel {
+        // Fable 5.1 is Anthropic's top tier above Opus (successor to Fable 5,
+        // which is intentionally not seeded). Priced at 2x Opus 5, so Opus 5
+        // stays the recommended default while Fable 5.1 is available for the
+        // hardest reasoning and long-horizon agentic work.
+        id: seed_ids::CLAUDE_FABLE_5_1,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-fable-5-1",
+        display_name: "Claude Fable 5.1",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        // 1M-context twin of the 200K base above (driver sends the `context-1m`
+        // beta header for `[1m]` ids).
+        id: seed_ids::CLAUDE_FABLE_5_1_1M,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-fable-5-1[1m]",
+        display_name: "Claude Fable 5.1 (1M)",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
     SeedModel {
         // Opus 5 is the current Opus flagship — the recommended Anthropic model.
         id: seed_ids::CLAUDE_OPUS_5,
@@ -3463,6 +3487,16 @@ mod tests {
             .await
             .unwrap();
         let anthropic = by_id(&anthropic);
+        assert_eq!(
+            anthropic.get("claude-fable-5-1"),
+            Some(&(true, true)),
+            "Fable 5.1 must be seeded as an enabled favorite"
+        );
+        assert_eq!(
+            anthropic.get("claude-fable-5-1[1m]"),
+            Some(&(true, true)),
+            "Fable 5.1 (1M) twin must be seeded and enabled"
+        );
         assert_eq!(
             anthropic.get("claude-opus-5"),
             Some(&(true, true)),

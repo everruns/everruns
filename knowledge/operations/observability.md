@@ -21,8 +21,8 @@ All providers trace the same agentic execution model. Events form a tree:
 ```
 agent turn (root)                          # turn.started → turn.completed
 ├── reason (iteration 1)                   # reason.started → reason.completed
-│   ├── thinking (if extended thinking)    # reason.thinking.started → completed
-│   └── llm call (LLM API call)           # llm.generation
+│   └── llm call (LLM API call)            # llm.generation
+│       └── thinking (if extended thinking) # reason.thinking.started → completed
 ├── act (iteration 1)                      # act.started → act.completed
 │   ├── tool call                          # tool.started → tool.completed
 │   └── tool call                          # tool.started → tool.completed
@@ -34,6 +34,12 @@ agent turn (root)                          # turn.started → turn.completed
 │   └── llm call
 └── (no act — turn complete)
 ```
+
+Extended thinking happens inside the model call, so the thinking span nests
+under the LLM call span. The `llm.generation` event is emitted once the call
+returns; exporters that want the call span to have real duration open it at
+`reason.thinking.started` when thinking is on, or backdate it by the event's
+`duration_ms` otherwise (the OpenTelemetry listener does both).
 
 ### Started/Completed Merging
 
@@ -49,89 +55,167 @@ Events with both started and completed phases share the same `span_id`, so provi
 All events within a single turn share the same `turn_id` as their trace root. See `knowledge/execution/events.md` for EventContext fields (`trace_id`, `span_id`, `parent_span_id`). Parent-child relationships:
 
 - reason events: `parent_span_id` = `turn_id`
-- thinking events: `parent_span_id` = `reason_span_id`
 - llm.generation: `parent_span_id` = `reason_span_id`
 - act events: `parent_span_id` = `turn_id`
 - tool events: `parent_span_id` = `act_span_id`
+- thinking events carry no span ids, only the reason phase's `exec_id`;
+  exporters resolve their parent through the phase that owns that exec
+
+The general parent rule an exporter applies is: `parent_span_id`, else the
+phase span that owns the event's `exec_id`, else the turn.
 
 ---
 
 ## OpenTelemetry
 
-Full-featured OpenTelemetry integration following the [Gen-AI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/).
+`OtelEventListener` (`crates/host/src/observability/otel.rs`) turns the agentic
+event stream into spans that follow the OpenTelemetry Gen-AI agent and
+inference conventions and, on the same spans, the OpenInference conventions
+that Arize Phoenix reads. One OTLP stream therefore renders in Gen-AI-aware
+backends (Grafana Tempo, Jaeger, Datadog, Langfuse) and in Phoenix alike.
 
 ### References
 
-- [Gen-AI Agent Spans](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-agent-spans/)
-- [Gen-AI Client Spans](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/)
-- [Gen-AI Events](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-events/)
-- [Attribute Registry](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/)
+- [Gen-AI agent and framework spans](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-agent-spans.md)
+- [Gen-AI inference and tool spans](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-spans.md)
+- [Gen-AI attribute registry](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/registry/attributes/gen-ai.md)
+- [OpenInference semantic conventions](https://arize-ai.github.io/openinference/spec/semantic_conventions.html)
 
 ### Configuration
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Yes (to enable) | - | OTLP endpoint (e.g., `http://localhost:4318`) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Yes (to enable) | - | OTLP/HTTP endpoint (e.g., `http://localhost:4318`) |
 | `OTEL_SERVICE_NAME` | No | `everruns` | Service name in traces |
 | `OTEL_SERVICE_VERSION` | No | crate version | Service version |
 | `OTEL_ENVIRONMENT` | No | - | Deployment environment |
 | `OTEL_SDK_DISABLED` | No | `false` | Disable OTel entirely |
-| `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | No | `false` | Record prompts, completions, tool args/results |
+| `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | No | `false` | Record instructions, messages, tool args/results, reasoning text |
+| `EVERRUNS_TRACE_CONVENTIONS` | No | `gen_ai,openinference` | Attribute vocabularies to write: `gen_ai`, `openinference`, or both |
 
-**Note:** `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` is the standard OTel env var for content capture. The existing `OTEL_RECORD_CONTENT` is kept as a legacy alias.
+`OTEL_RECORD_CONTENT` is kept as a legacy alias of the content-capture switch.
 
-### OTel Span Mapping
+### Span model
 
-| Event Type | OTel Span Name | Span Kind | Semantic Convention |
-|------------|---------------|-----------|---------------------|
-| turn | `invoke_agent {agent_name}` | `INTERNAL` | `gen_ai.invoke_agent` |
-| reason | `reason` | `INTERNAL` | custom (phase span) |
-| thinking | `thinking` | `INTERNAL` | custom (phase span) |
-| act | `act` | `INTERNAL` | custom (phase span) |
-| llm.generation | `chat {model}` | `CLIENT` | `gen_ai.chat` |
-| tool | `execute_tool {name}` | `INTERNAL` | `gen_ai.execute_tool` |
+| Event | Span name | Kind | `gen_ai.operation.name` | `openinference.span.kind` |
+|-------|-----------|------|-------------------------|---------------------------|
+| turn | `invoke_agent {agent name}` (`invoke_agent` when unknown) | `INTERNAL` | `invoke_agent` | `AGENT` |
+| reason | `reason` | `INTERNAL` | none (`everruns.phase=reason`) | `CHAIN` |
+| llm.generation | `chat {model}` | `CLIENT` | `chat` | `LLM` |
+| thinking | `thinking` | `INTERNAL` | none (`everruns.phase=thinking`) | `CHAIN` |
+| act | `act` | `INTERNAL` | none (`everruns.phase=act`) | `CHAIN` |
+| tool | `execute_tool {name}` | `INTERNAL` | `execute_tool` | `TOOL` |
 
-### Span Attributes by Type
+Nesting follows the hierarchy above: `chat` under `reason`, `thinking` under
+the `chat` it belongs to, `execute_tool` under `act`. The reason/act phase
+spans are Everruns intermediates the agent conventions permit; they carry no
+`gen_ai.operation.name` so backends do not count them as Gen-AI operations.
 
-For the complete attribute tables per span type (invoke_agent, chat, execute_tool, reason, act, thinking), see `crates/host/src/observability/otel.rs`. Key attributes follow the OTel Gen-AI semantic conventions:
+Spans are built with the OpenTelemetry API rather than `tracing` spans so they
+start and end at the timestamps of the events they record: the turn root at
+`turn.started`, the chat span at `reason.thinking.started` when thinking is
+on or backdated by the generation's `duration_ms` otherwise, and so on. The
+listener therefore needs the global tracer provider that `init_telemetry`
+installs; without an OTLP endpoint it runs on the no-op tracer.
 
-- **All spans**: `gen_ai.operation.name`, `gen_ai.conversation.id`, `duration_ms`
-- **invoke_agent**: `gen_ai.agent.id`, `gen_ai.agent.name`, `turn.id`, usage tokens
-- **chat**: `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.usage.*`, cache tokens
-- **execute_tool**: `gen_ai.tool.name`, `gen_ai.tool.call.id`, `tool.success`
-- **Content (opt-in)**: `gen_ai.input.messages`, `gen_ai.output.messages`, `gen_ai.tool.call.arguments/result`
+### Attributes
 
-### Trace Context Propagation
+The exact attribute set per span lives in `otel.rs`
+(`chat_detail_attributes`, `tool_attributes`, `turn_usage_attributes`), the
+vocabulary in `crates/core/src/telemetry.rs` (`gen_ai`) and
+`crates/host/src/observability/openinference.rs`. What each span carries:
 
-Spans use the `tracing` crate's native parent-child mechanism. The `OtelEventListener` maintains a `HashMap<String, tracing::Span>` to track active spans. When a child event arrives, the listener looks up the parent span, enters its context, and creates the child span (inheriting the parent). See `crates/host/src/observability/otel.rs` for the full implementation.
+- **invoke_agent**: `gen_ai.agent.id/name/description` (from the agent
+  identity on `turn.started`), `gen_ai.conversation.id`, cumulative
+  `gen_ai.usage.*`, `error.type`; OpenInference `agent.name`, `session.id`,
+  `llm.token_count.*`, `metadata`.
+- **chat**: `gen_ai.provider.name` (plus the deprecated `gen_ai.system`
+  spelling, which several backends still key on), request/response model,
+  `gen_ai.response.id`, `gen_ai.response.finish_reasons` as a string array,
+  `gen_ai.usage.input_tokens/output_tokens/cache_read.input_tokens/cache_write.input_tokens`,
+  `gen_ai.request.temperature/max_tokens/reasoning.level/stream`,
+  `gen_ai.response.time_to_first_chunk`, `gen_ai.conversation.compacted`;
+  OpenInference `llm.model_name/provider/system`, `llm.token_count.*`,
+  `llm.cost.total`, `llm.invocation_parameters`, `llm.tools.N.tool.json_schema`.
+- **execute_tool**: `gen_ai.tool.name/type/call.id`, `gen_ai.tool.description`
+  (learned from the turn's `llm.generation` tool list), `gen_ai.agent.name`;
+  OpenInference `tool.name/description`.
+- **Everruns extras** live under `everruns.*`: turn/exec/input-message ids,
+  `everruns.phase`, iteration and tool-call counters, `everruns.tool.status`,
+  retry counts, `everruns.usage.cost_usd`, and the diagnostic markers
+  `everruns.span.orphaned` (terminal event without a start) and
+  `everruns.span.unterminated` (closed by its turn ending).
 
-HTTP-layer correlation identifiers (`request_id`, `session_id`) are recorded as span fields on every HTTP request span and propagated into durable execution. See [`knowledge/operations/correlation-ids.md`](correlation-ids.md) for the full contract.
+Provider names map from Everruns driver ids to the registry's values
+(`gemini` → `gcp.gemini`, `bedrock` → `aws.bedrock`, `azure_openai` →
+`azure.ai.openai`); drivers without a registry entry keep their id, which the
+spec allows as a custom value.
 
-### Content Recording
+Errors set `error.type` (an explicit error code, else an HTTP status found in
+the message, else `timeout`, else `_OTHER`), an error span status carrying the
+message, and an `exception` span event. Tool failures use the tool status
+(`error`, `timeout`, `cancelled`) as `error.type`.
 
-Disabled by default for privacy. Enable with:
-```bash
-export OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true
-```
+### Content recording
 
-Messages are converted to OpenAI-compatible format using `Message::to_openai_format()` before recording.
+Disabled by default. With `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`
+the chat span carries `gen_ai.system_instructions`, `gen_ai.input.messages`,
+`gen_ai.output.messages`, and `gen_ai.tool.definitions` in the spec's
+`{role, parts}` JSON (built by `everruns_core::telemetry::content`), plus the
+OpenInference `input.value`/`output.value` and flattened
+`llm.input_messages.N.message.*` / `llm.output_messages.0.message.*`. Tool
+spans carry `gen_ai.tool.call.arguments/result` and `input.value`/`output.value`;
+the turn root carries the input message and the final answer preview; the
+thinking span carries the reasoning text as `output.value`.
 
-### Design Decisions
+Two deliberate choices: Everruns models the agent's instructions separately
+from the chat history, so system-role messages go to
+`gen_ai.system_instructions` and are excluded from `gen_ai.input.messages`;
+and the model's reasoning text becomes a `reasoning` part of the output
+message. Image bytes are never copied into telemetry (base64 images become a
+`blob` part naming only the media type).
 
-- **Real duration spans** (not point-in-time): Proper span lifecycle (create on started, end on completed) so trace viewers show actual timing in waterfall views.
-- **Native tracing span nesting**: Uses `tracing` crate's native parent-child mechanism rather than manual ID linking. The `tracing-opentelemetry` bridge translates this into proper OTel trace context.
-- **Standard env var for content**: `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` (the OTel standard) with `OTEL_RECORD_CONTENT` as legacy alias.
-- **Cache token attributes**: `gen_ai.usage.cache_read_tokens` and `gen_ai.usage.cache_creation_tokens` included, not in standard yet but essential for cost monitoring.
-- **Phase spans**: reason/act/thinking spans aren't in OTel Gen-AI spec but provide the hierarchy that makes traces useful for debugging agent behavior.
+### Not emitted
+
+- `server.address`/`server.port`: provider endpoints are not on the events.
+- `gen_ai.request.model` on `invoke_agent`: sessions can switch models
+  mid-session, and the spec says to omit it for agents with dynamic models.
+- `gen_ai.output.type`: Everruns does not request structured output modes.
+- Parameter schemas inside `gen_ai.tool.definitions`: tool summaries on the
+  event carry name and description only.
+
+### Design decisions
+
+- **OpenTelemetry API instead of `tracing` spans**: only the API lets spans
+  start and end at event timestamps; the `tracing` bridge stamps listener
+  time. `init_telemetry` installs the provider globally for this, while HTTP
+  request spans keep flowing through the `tracing` layer.
+- **Agent identity on `turn.started`**: the turn root is the only place to
+  name the agent, and the listener has no store access, so the emitters
+  snapshot `agent_id`, `agent_name`, and `agent_description` on the event.
+- **Both vocabularies by default**: Gen-AI and OpenInference attributes are
+  cheap without content capture, and one stream serving every backend beats a
+  per-backend switch. `EVERRUNS_TRACE_CONVENTIONS` narrows it.
+- **Thinking under chat, opened early**: thinking is part of the model call;
+  opening the chat span at `reason.thinking.started` gives it its real start
+  and lets thinking nest inside it. A chat span left pending when the reason
+  phase ends without a generation record is closed with an error.
+- **Turn end closes stragglers**: whatever is still open under a turn when it
+  completes, fails, or is cancelled is ended at the turn's end timestamp and
+  marked `everruns.span.unterminated`, so no span leaks and no trace stays
+  half-open.
+- **Phase spans stay**: reason/act/thinking are not in the spec but give
+  traces the structure that makes agent behavior debuggable.
 
 ### Implementation
 
 | File | Purpose |
 |------|---------|
-| `crates/host/src/observability/otel.rs` | `OtelEventListener`, all span creation/lifecycle |
-| `crates/host/src/observability/telemetry.rs` | OTLP exporter wiring, tracing-subscriber layers, config, init |
-| `crates/core/src/telemetry.rs` | Neutral gen-AI semantic conventions and span-name helpers |
-| `crates/server/src/main.rs` | Listener registration |
+| `crates/host/src/observability/otel.rs` | `OtelEventListener`, span lifecycle, attribute assembly, `TraceConventions` |
+| `crates/host/src/observability/openinference.rs` | OpenInference vocabulary and flattened message builders |
+| `crates/host/src/observability/telemetry.rs` | OTLP exporter wiring, global tracer provider, tracing-subscriber layers, config, init |
+| `crates/core/src/telemetry.rs` | Gen-AI attribute names, provider mapping, `content` JSON builders, `error_type` |
+| `crates/server/src/app_builder.rs` | Listener registration |
 
 Ownership boundary: core holds only the neutral observability contracts, the `EventListener` trait, event types, and gen-AI span conventions. `everruns-host::observability` owns telemetry initialization, exporter dependencies, and the `CompositeEventListener` fan-out behind an opt-in feature. The isolation guard keeps exporter crates out of core and default Framework/provider dependency trees.
 
@@ -244,7 +328,7 @@ See `crates/host/src/observability/braintrust.rs` for the full request/response 
 
 ### OTel Tests (in otel.rs)
 
-Tests verify span creation, attributes, hierarchy, lifecycle, and content recording. Key scenarios: all 13 event types, turn lifecycle (started/completed/failed/cancelled), span hierarchy parent-child, multiple iterations, concurrent tool calls, orphaned completed events, and end-to-end full agent traces.
+Tests run the listener against an in-memory span exporter and assert on the exported spans: names, kinds, parent ids, event-derived start/end times, Gen-AI and OpenInference attributes, error status and `exception` events, content capture off by default and spec-shaped when on, orphaned and unterminated span handling, and convention narrowing. `crates/core/src/telemetry.rs` covers the content JSON builders, provider mapping, and `error_type`.
 
 ### Braintrust Tests
 

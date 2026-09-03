@@ -570,11 +570,11 @@ WORKER_GRPC_TLS_DOMAIN=control-plane.internal
 
 ## OpenTelemetry Configuration
 
-Everruns supports distributed tracing via OpenTelemetry with OTLP export. Traces follow the [Gen-AI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) for LLM operations.
+Everruns supports distributed tracing via OpenTelemetry with OTLP export. Agent traces follow the OpenTelemetry [Gen-AI agent and inference conventions](https://github.com/open-telemetry/semantic-conventions-genai/tree/main/docs/gen-ai) and, on the same spans, the [OpenInference conventions](https://arize-ai.github.io/openinference/spec/semantic_conventions.html) read by Arize Phoenix, so one OTLP endpoint serves both families of backends.
 
 ### OTEL_EXPORTER_OTLP_ENDPOINT
 
-OTLP endpoint for trace export (e.g., Grafana Tempo, Datadog, or any OTLP-compatible backend).
+OTLP endpoint for trace export (e.g., Grafana Tempo, Arize Phoenix, Datadog, or any OTLP-compatible backend).
 
 | Property | Value |
 |----------|-------|
@@ -584,15 +584,15 @@ OTLP endpoint for trace export (e.g., Grafana Tempo, Datadog, or any OTLP-compat
 **Example:**
 
 ```bash
-# For local OTLP collector
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+# For a local OTLP collector or Phoenix
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 
 # For production Tempo
-OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo.monitoring:4317
+OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo.monitoring:4318
 ```
 
 **Notes:**
-- When set, traces are exported via OTLP/gRPC
+- When set, traces are exported via OTLP over HTTP/protobuf (use the backend's HTTP port, typically 4318)
 - Connect to any OTLP-compatible backend for trace visualization
 - Without this variable, only console logging is enabled
 
@@ -655,9 +655,32 @@ OTEL_RECORD_CONTENT=true
 ```
 
 **Notes:**
-- When enabled, `gen_ai.input.messages`, `gen_ai.output.messages`, `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result`, and thinking content are recorded
+- When enabled, the chat span records `gen_ai.system_instructions`, `gen_ai.input.messages`, `gen_ai.output.messages`, and `gen_ai.tool.definitions` (plus the OpenInference `input.value`, `output.value`, and flattened `llm.input_messages.*`); tool spans record `gen_ai.tool.call.arguments` and `gen_ai.tool.call.result`; the turn root records the input message and final answer; the thinking span records the reasoning text
 - Disabled by default for privacy and data size concerns
 - Only enable in development or when debugging specific issues
+
+### EVERRUNS_TRACE_CONVENTIONS
+
+Which attribute vocabularies agent spans carry.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | `gen_ai,openinference` |
+
+**Example:**
+
+```bash
+# Only the OpenTelemetry Gen-AI attributes (Tempo, Jaeger, Datadog, Langfuse)
+EVERRUNS_TRACE_CONVENTIONS=gen_ai
+
+# Only the OpenInference attributes (Arize Phoenix)
+EVERRUNS_TRACE_CONVENTIONS=openinference
+```
+
+**Notes:**
+- Span names, kinds, and hierarchy are the same under either vocabulary; only attributes differ
+- Unknown values are ignored, and an empty selection falls back to both
 
 ## Local Development with OpenTelemetry
 
@@ -665,21 +688,23 @@ To visualize traces locally, point `OTEL_EXPORTER_OTLP_ENDPOINT` at any OTLP-com
 
 ```bash
 # Set OTLP endpoint for API and Worker
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 
 # Start services
 just start-all
 ```
 
+To see traces in Arize Phoenix, run Phoenix locally and point the same variable at its OTLP/HTTP port (`http://localhost:6006`); spans render as AGENT, LLM, and TOOL spans with token counts and, when content capture is on, the messages.
+
 ### Gen-AI Trace Structure
 
-Traces follow the agentic execution lifecycle with 13 event types:
+Traces follow the agentic execution lifecycle with 13 event types; every span starts and ends at the timestamp of the event it records:
 
 ```
-invoke_agent {turn_id} (root span)
+invoke_agent {agent name} (root span, INTERNAL)
 ├── reason (LLM reasoning phase)
-│   ├── thinking (extended thinking, if enabled)
-│   └── chat {model} (LLM API call)
+│   └── chat {model} (LLM API call, CLIENT)
+│       └── thinking (extended thinking, if enabled)
 ├── act (tool execution phase)
 │   ├── execute_tool {name}
 │   └── execute_tool {name}
@@ -690,31 +715,30 @@ invoke_agent {turn_id} (root span)
 
 ### Gen-AI Trace Attributes
 
-All spans include OpenTelemetry attributes following the Gen-AI semantic conventions:
+Spans carry the OpenTelemetry Gen-AI attributes and the OpenInference attributes side by side (see `EVERRUNS_TRACE_CONVENTIONS`). The most useful ones:
 
 | Attribute | Span Types | Description |
 |-----------|-----------|-------------|
-| `gen_ai.operation.name` | All | Operation type (`invoke_agent`, `chat`, `execute_tool`, `reason`, `act`, `thinking`) |
-| `gen_ai.system` | chat | Provider (`openai`, `anthropic`, `gemini`) |
-| `gen_ai.request.model` | chat, thinking | Requested model name |
-| `gen_ai.response.model` | chat | Model actually used |
-| `gen_ai.response.id` | chat | Response identifier |
-| `gen_ai.response.finish_reasons` | chat | Why generation stopped |
-| `gen_ai.usage.input_tokens` | chat, reason, invoke_agent | Prompt tokens used |
-| `gen_ai.usage.output_tokens` | chat, reason, invoke_agent | Completion tokens used |
-| `gen_ai.usage.cache_read_tokens` | chat | Tokens read from prompt cache |
-| `gen_ai.usage.cache_creation_tokens` | chat | Tokens written to prompt cache |
-| `gen_ai.output.type` | chat | `text` or `tool_calls` |
-| `gen_ai.conversation.id` | All | Session identifier |
-| `gen_ai.tool.name` | execute_tool | Tool name |
-| `gen_ai.tool.call.id` | execute_tool | Tool call identifier |
-| `tool.success` | execute_tool | Whether tool succeeded |
-| `turn.id` | invoke_agent | Turn identifier |
-| `turn.iterations` | invoke_agent | Number of reason/act iterations |
-| `error.type` | invoke_agent, chat, execute_tool | Error description (on failure) |
-| `otel.status_code` | invoke_agent | `ERROR` on failure/cancellation |
-| `duration_ms` | All | Span duration in milliseconds |
-| `time_to_first_token_ms` | chat | Streaming latency |
+| `gen_ai.operation.name` | invoke_agent, chat, execute_tool | `invoke_agent`, `chat`, or `execute_tool` |
+| `gen_ai.agent.id`, `gen_ai.agent.name`, `gen_ai.agent.description` | invoke_agent | Agent the turn runs as |
+| `gen_ai.conversation.id` / `session.id` | All | Session identifier |
+| `gen_ai.provider.name` / `llm.provider` | chat | Provider (`openai`, `anthropic`, `gcp.gemini`, `aws.bedrock`, ...) |
+| `gen_ai.request.model`, `gen_ai.response.model` / `llm.model_name` | chat | Model name |
+| `gen_ai.response.id` | chat | Provider response identifier |
+| `gen_ai.response.finish_reasons` | chat | Why generation stopped (string array) |
+| `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` / `llm.token_count.*` | chat, invoke_agent | Token usage (turn root carries the cumulative total) |
+| `gen_ai.usage.cache_read.input_tokens`, `gen_ai.usage.cache_write.input_tokens` | chat, invoke_agent | Prompt-cache tokens |
+| `gen_ai.request.temperature`, `gen_ai.request.max_tokens`, `gen_ai.request.reasoning.level`, `gen_ai.request.stream` / `llm.invocation_parameters` | chat | Request parameters |
+| `gen_ai.response.time_to_first_chunk` | chat | Streaming latency in seconds |
+| `gen_ai.conversation.compacted` | chat | Context was compacted before the call |
+| `llm.cost.total` / `everruns.usage.cost_usd` | chat, invoke_agent | Cost in USD when known |
+| `gen_ai.tool.name`, `gen_ai.tool.call.id`, `gen_ai.tool.type`, `gen_ai.tool.description` / `tool.name`, `tool.description` | execute_tool | Tool identity |
+| `openinference.span.kind` | All | `AGENT`, `LLM`, `TOOL`, or `CHAIN` |
+| `error.type` | All | Low-cardinality error class on failure (error code, HTTP status, `timeout`, or `_OTHER`); the span status carries the message |
+| `everruns.phase` | reason, act, thinking | Phase span marker |
+| `everruns.turn.id`, `everruns.exec.id` | All | Everruns correlation ids |
+| `everruns.turn.iterations`, `everruns.turn.tool_call_count`, `everruns.turn.llm_call_count` | invoke_agent | Turn counters |
+| `everruns.tool.status` | execute_tool | `success`, `error`, `timeout`, or `cancelled` |
 
 ## Braintrust Integration
 

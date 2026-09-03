@@ -11,7 +11,7 @@ use everruns_provider::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
 };
 
-const LIVE_MODEL: &str = "muse-spark-1.2-contributor";
+const LIVE_MODEL: &str = "muse-spark-1.3-contributor";
 
 fn api_key() -> String {
     std::env::var("MODEL_API_KEY")

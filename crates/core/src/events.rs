@@ -114,6 +114,11 @@ pub const SESSION_IDLED: &str = "session.idled";
 /// Session title changed through a mutation path that participates in the
 /// semantic event protocol.
 pub const SESSION_TITLE_UPDATED: &str = "session.title.updated";
+/// The model answering the session changed between turns. Emitted at the start
+/// of a turn whose input carries a model override differing from the previous
+/// turn's, so the transcript records where the switch happened instead of
+/// leaving readers to infer it from `llm.generation`.
+pub const SESSION_MODEL_CHANGED: &str = "session.model.changed";
 
 // Schedule events
 pub const SCHEDULE_TRIGGERED: &str = "schedule.triggered";
@@ -186,6 +191,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     SESSION_ACTIVATED,
     SESSION_IDLED,
     SESSION_TITLE_UPDATED,
+    SESSION_MODEL_CHANGED,
     SCHEDULE_TRIGGERED,
     CONTEXT_COMPACTING,
     CONTEXT_COMPACTED,
@@ -1648,6 +1654,19 @@ pub struct LlmGenerationOutput {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmRequestOptions {
+    /// Sampling temperature sent with the request, when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    /// Maximum output tokens requested, when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+    /// Reasoning / thinking effort level requested, as the string sent to the
+    /// provider (`low`, `medium`, `high`, ...), when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+    /// Whether the request used the provider's streaming mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream: Option<bool>,
     /// Prompt caching configuration for this request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache: Option<LlmPromptCacheInfo>,
@@ -1665,7 +1684,11 @@ pub struct LlmRequestOptions {
 
 impl LlmRequestOptions {
     pub fn is_empty(&self) -> bool {
-        self.prompt_cache.is_none()
+        self.temperature.is_none()
+            && self.max_tokens.is_none()
+            && self.reasoning_effort.is_none()
+            && self.stream.is_none()
+            && self.prompt_cache.is_none()
             && self.tool_search.is_none()
             && self.provider_options.is_empty()
             && self.metadata.is_empty()
@@ -2122,6 +2145,22 @@ pub struct TurnStartedData {
     /// Input message content (for observability)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_content: Option<String>,
+
+    /// Agent the turn runs as, when the session is bound to one. Carried on
+    /// the turn root so trace exporters can label the `invoke_agent` span
+    /// without a store lookup (the Gen-AI conventions want the agent name in
+    /// the span name and `gen_ai.agent.*` attributes).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001"))]
+    pub agent_id: Option<AgentId>,
+
+    /// Human-readable agent name snapshot at turn start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_name: Option<String>,
+
+    /// Agent description snapshot at turn start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_description: Option<String>,
 }
 
 /// Data for turn.completed event
@@ -2309,6 +2348,32 @@ pub struct SessionTitleUpdatedData {
 
     /// New session title.
     pub title: String,
+}
+
+/// Data for `session.model.changed`.
+///
+/// Names are the provider's own model identifiers, captured at emission time so
+/// the transcript stays readable after a model is renamed or removed from the
+/// organization. Clients that still have the model may prefer its display name.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct SessionModelChangedData {
+    /// Model used before the switch. `None` when the previous turn ran on an
+    /// inherited default that the emitter could not name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001"))]
+    pub previous_model_id: Option<ModelId>,
+
+    /// Name of the previous model, captured at emission time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_model_name: Option<String>,
+
+    /// Model selected for the next turn.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "model_01933b5a00007000800000000000002"))]
+    pub model_id: ModelId,
+
+    /// Name of the selected model, captured at emission time.
+    pub model_name: String,
 }
 
 // ============================================================================
@@ -2598,6 +2663,7 @@ pub struct VoiceSessionFailedData {
 /// - `session.activated` → SessionActivatedData
 /// - `session.idled` → SessionIdledData
 /// - `session.title.updated` → SessionTitleUpdatedData
+/// - `session.model.changed` → SessionModelChangedData
 /// - `file.written` → FileWrittenData
 // `untagged` is retained ONLY for encoding and schema, not decoding:
 //   - `Serialize` emits the payload inline (the event `type` lives as a sibling
@@ -2664,6 +2730,7 @@ pub enum EventData {
     SessionActivated(SessionActivatedData),
     SessionIdled(SessionIdledData),
     SessionTitleUpdated(SessionTitleUpdatedData),
+    SessionModelChanged(SessionModelChangedData),
 
     // Session task lifecycle events (full snapshots)
     TaskCreated(SessionTaskEventData),
@@ -2879,6 +2946,7 @@ event_data_kinds! {
     SessionActivated(SessionActivatedData) = SESSION_ACTIVATED,
     SessionIdled(SessionIdledData) = SESSION_IDLED,
     SessionTitleUpdated(SessionTitleUpdatedData) = SESSION_TITLE_UPDATED,
+    SessionModelChanged(SessionModelChangedData) = SESSION_MODEL_CHANGED,
 
     // Context compaction events
     ContextCompacting(ContextCompactingData) = CONTEXT_COMPACTING,
@@ -2958,6 +3026,7 @@ impl_from_event_data! {
     SessionActivatedData => SessionActivated,
     SessionIdledData => SessionIdled,
     SessionTitleUpdatedData => SessionTitleUpdated,
+    SessionModelChangedData => SessionModelChanged,
     ContextCompactingData => ContextCompacting,
     ContextCompactedData => ContextCompacted,
     FileWrittenData => FileWritten,
@@ -3651,6 +3720,10 @@ mod tests {
             Some(12),
         )
         .with_request_options(LlmRequestOptions {
+            temperature: None,
+            max_tokens: None,
+            reasoning_effort: None,
+            stream: None,
             prompt_cache: Some(LlmPromptCacheInfo {
                 enabled: true,
                 strategy: PromptCacheStrategy::Auto,
@@ -4310,6 +4383,12 @@ mod contract_tests {
         ))
     }
 
+    fn test_model_id() -> ModelId {
+        ModelId::from_uuid(uuid::Uuid::from_u128(
+            0x0000_0000_0000_0000_0000_0000_0000_0006,
+        ))
+    }
+
     fn test_harness_id() -> HarnessId {
         HarnessId::from_uuid(uuid::Uuid::from_u128(
             0x0000_0000_0000_0000_0000_0000_0000_0005,
@@ -4388,6 +4467,9 @@ mod contract_tests {
             turn_id: test_turn_id(),
             input_message_id: test_message_id(),
             input_content: Some("Hello".to_string()),
+            agent_id: None,
+            agent_name: None,
+            agent_description: None,
         };
         with_settings!({
             sort_maps => true,
@@ -4958,6 +5040,9 @@ mod contract_tests {
                     turn_id: test_turn_id(),
                     input_message_id: test_message_id(),
                     input_content: None,
+                    agent_id: None,
+                    agent_name: None,
+                    agent_description: None,
                 }
                 .into(),
             ),
@@ -5072,6 +5157,16 @@ mod contract_tests {
                 SessionTitleUpdatedData {
                     previous_title: Some("Old title".to_string()),
                     title: "New title".to_string(),
+                }
+                .into(),
+            ),
+            (
+                SESSION_MODEL_CHANGED,
+                SessionModelChangedData {
+                    previous_model_id: Some(test_model_id()),
+                    previous_model_name: Some("GPT-5.6 Sol".to_string()),
+                    model_id: test_model_id(),
+                    model_name: "GPT-5.6 Terra".to_string(),
                 }
                 .into(),
             ),

@@ -62,6 +62,14 @@ pub(super) fn build_request_options(
     }
 
     let request_options = LlmRequestOptions {
+        temperature: config.temperature,
+        max_tokens: config.max_tokens,
+        reasoning_effort: config
+            .reasoning_effort
+            .map(|effort| effort.as_str().to_string()),
+        // The reason atom always drives the provider through its streaming
+        // endpoint (`chat_completion_stream`).
+        stream: Some(true),
         prompt_cache,
         tool_search,
         provider_options,
@@ -128,4 +136,31 @@ pub(super) fn capability_usage_snapshot_records(
     }
 
     records
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::llm_conversions::llm_call_config_builder_from_agent;
+    use crate::model::ReasoningEffort;
+    use everruns_core::runtime_agent::RuntimeAgent;
+
+    #[test]
+    fn request_options_capture_sampling_and_streaming_intent() {
+        let agent = RuntimeAgent {
+            model: "claude-sonnet-4-5".to_string(),
+            temperature: Some(0.2),
+            max_tokens: Some(1024),
+            ..RuntimeAgent::default()
+        };
+        let config = llm_call_config_builder_from_agent(&agent)
+            .reasoning_effort(ReasoningEffort::High)
+            .build();
+
+        let options = build_request_options(&config, "anthropic").expect("options are recorded");
+        assert_eq!(options.temperature, Some(0.2));
+        assert_eq!(options.max_tokens, Some(1024));
+        assert_eq!(options.reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(options.stream, Some(true));
+    }
 }

@@ -79,6 +79,43 @@ filter registry, OpenAPI export, emission path, and round-trip tests must stay
 coherent. Tests in `crates/core/src/events.rs` are the executable contract for
 that coherence.
 
+## Embedding facade surfaces
+
+`everruns::Session::events()` exposes a *reviewed* surface and a *canonical*
+surface, and the split is deliberate. See
+[`crates/everruns/src/events.rs`](../../crates/everruns/src/events.rs).
+
+| Surface | Accessors | Contract |
+|---|---|---|
+| Reviewed | `SessionEventKind`, `SessionEvent::data()`, `as_json()` | Only fields someone promoted. Stable, safe to log or forward. |
+| Canonical | `SessionEvent::canonical_json()` | The complete envelope, nothing withheld. Runtime-internal shape, may change in a patch release. |
+
+Two rules govern it:
+
+1. **Reviewed is opt-in, not opt-out.** A field reaches the reviewed surface
+   only by being promoted onto a `SessionEventKind` variant. This is the
+   embedding-facade half of the rule already stated under *Security and privacy*
+   — unknown event data is not passed through as an untyped public payload.
+   Passing internal payloads through by default makes every field added to the
+   runtime a public API addition nobody reviewed, and ships it wherever the
+   application forwards the envelopes.
+2. **Canonical loses nothing.** Sanitizing in place would destroy data an
+   embedder legitimately needs — auditing, replay, cost accounting — with no way
+   to recover it, because the facade exposes no other event path. The default is
+   narrow; the complete record stays one explicit call away.
+
+The reviewed payload must be a **subset** of the canonical one: it may drop
+fields, never invent them. A synthesised field is a value no consumer can
+correlate with the durable record. `reviewed_data_never_exceeds_the_canonical_payload`
+is the executable form of that invariant.
+
+Promoting a field is the intended way to answer "the reviewed surface lacks
+what I need". Judge it on whether it carries conversation content: identity,
+outcome, token usage, timing, and operator-authored display text are promoted;
+prompts, tool arguments, tool results, and unrecognized event payloads are not.
+Model-generation accounting is promoted precisely because tracking spend must
+not require reaching for the unstable surface.
+
 ## Correlation and tracing
 
 Turn-scoped events carry correlation context. A turn is the trace root;
@@ -89,7 +126,13 @@ them.
 Correlation identifiers use Everruns' public prefixed identifier format. The
 exact optional context fields live on `EventContext`; emitters should populate
 the strongest context they possess without fabricating missing ancestry.
-Session-level events may have empty turn context.
+Session-level events may have empty turn context. Streaming-derived events
+such as thinking carry only the phase's `exec_id`; consumers resolve their
+parent through the phase that owns that exec.
+
+The turn root (`turn.started`) snapshots the agent identity (`agent_id`,
+`agent_name`, `agent_description`) so trace exporters can label the turn
+without a store lookup.
 
 ## Lifecycle conventions
 
@@ -151,6 +194,34 @@ User-facing failure events carry stable error classification and interpolation
 fields when available. Clients localize from those fields rather than matching
 English fallback text. Disclosure policy is defined in
 [`error-disclosure.md`](error-disclosure.md).
+
+### Model changes
+
+A session's answering model can change between turns, which silently changes
+every answer that follows. `session.model.changed` records that switch as part
+of the conversation. It is emitted where the runtime resolves a turn's model —
+the host's reason path, at the turn's first iteration — so every host records
+it: the durable worker behind the API and the in-process framework runtime
+alike. An emitter bound to one API's message-create path would leave embedded
+sessions unmarked.
+
+Only an explicit override replacing a different explicit override is reported.
+A turn without an override runs on an inherited default, and the history the
+host sees is capability-filtered: treating a missing override as "the default"
+would report a switch whenever an older message was filtered out. A requested
+model that does not survive resolution is not reported either, because the turn
+then runs on a fallback the marker would misname.
+
+The payload carries the provider's own model identifiers, captured at emission
+time, so a transcript stays readable after a model is renamed or removed.
+Consumers that still hold the model may prefer its display name.
+
+The marker is turn-scoped and best effort. A retried reason activity can emit
+it twice for one turn; consumers that render it collapse a repeat of the same
+switch rather than treating the second as new history.
+
+`llm.generation` remains the per-call record of which model actually ran. It is
+diagnostic, not conversational, and does not replace this marker.
 
 ### Session tasks
 
