@@ -756,7 +756,8 @@ All `/v1/durable/*` HTTP endpoints require explicit platform-user auth. The auth
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
 | TM-OBS-001 | PII in Braintrust events | Medium | Full messages + LLM completions sent to Braintrust; customer responsibility to enable/disable | **CALLER RISK** |
-| TM-OBS-002 | API keys in OTel spans | Medium | API keys not emitted in spans; only token counts and model names traced | MITIGATED |
+| TM-OBS-002 | API keys in OTel spans | Medium | Spans are built from persisted events, which never carry provider credentials (TM-LLM-004); by default they carry only ids, model and provider names, token counts, timing, tool names, and error classes | MITIGATED |
+| TM-OBS-010 | Prompts, completions, reasoning, and tool payloads in OTel spans | Medium | Content capture is off by default and only enabled by the operator through `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` (`crates/host/src/observability/otel.rs`, marker TM-OBS-010). When on, instructions, messages, tool arguments/results, and reasoning text go to the configured OTLP endpoint (TM-OBS-003) in the Gen-AI and OpenInference attribute shapes; image bytes are never copied. Enabling it is the operator's retention decision, as with Braintrust (TM-OBS-001) | **CALLER RISK** |
 | TM-OBS-003 | OTLP endpoint compromise | Medium | OTLP endpoint is configurable; must be trusted internal infrastructure | **CALLER RISK** |
 | TM-OBS-004 | Braintrust API key exposure | Medium | Key stored in env var; not logged | MITIGATED |
 | TM-OBS-005 | Log injection | Low | Structured logging via `tracing` crate; no raw string interpolation in log output | MITIGATED |

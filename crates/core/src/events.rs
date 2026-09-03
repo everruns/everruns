@@ -1654,6 +1654,19 @@ pub struct LlmGenerationOutput {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmRequestOptions {
+    /// Sampling temperature sent with the request, when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    /// Maximum output tokens requested, when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+    /// Reasoning / thinking effort level requested, as the string sent to the
+    /// provider (`low`, `medium`, `high`, ...), when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+    /// Whether the request used the provider's streaming mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream: Option<bool>,
     /// Prompt caching configuration for this request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache: Option<LlmPromptCacheInfo>,
@@ -1671,7 +1684,11 @@ pub struct LlmRequestOptions {
 
 impl LlmRequestOptions {
     pub fn is_empty(&self) -> bool {
-        self.prompt_cache.is_none()
+        self.temperature.is_none()
+            && self.max_tokens.is_none()
+            && self.reasoning_effort.is_none()
+            && self.stream.is_none()
+            && self.prompt_cache.is_none()
             && self.tool_search.is_none()
             && self.provider_options.is_empty()
             && self.metadata.is_empty()
@@ -2128,6 +2145,22 @@ pub struct TurnStartedData {
     /// Input message content (for observability)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_content: Option<String>,
+
+    /// Agent the turn runs as, when the session is bound to one. Carried on
+    /// the turn root so trace exporters can label the `invoke_agent` span
+    /// without a store lookup (the Gen-AI conventions want the agent name in
+    /// the span name and `gen_ai.agent.*` attributes).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001"))]
+    pub agent_id: Option<AgentId>,
+
+    /// Human-readable agent name snapshot at turn start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_name: Option<String>,
+
+    /// Agent description snapshot at turn start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_description: Option<String>,
 }
 
 /// Data for turn.completed event
@@ -3687,6 +3720,10 @@ mod tests {
             Some(12),
         )
         .with_request_options(LlmRequestOptions {
+            temperature: None,
+            max_tokens: None,
+            reasoning_effort: None,
+            stream: None,
             prompt_cache: Some(LlmPromptCacheInfo {
                 enabled: true,
                 strategy: PromptCacheStrategy::Auto,
@@ -4430,6 +4467,9 @@ mod contract_tests {
             turn_id: test_turn_id(),
             input_message_id: test_message_id(),
             input_content: Some("Hello".to_string()),
+            agent_id: None,
+            agent_name: None,
+            agent_description: None,
         };
         with_settings!({
             sort_maps => true,
@@ -5000,6 +5040,9 @@ mod contract_tests {
                     turn_id: test_turn_id(),
                     input_message_id: test_message_id(),
                     input_content: None,
+                    agent_id: None,
+                    agent_name: None,
+                    agent_description: None,
                 }
                 .into(),
             ),

@@ -10984,6 +10984,11 @@ export interface components {
      */
     LlmRequestOptions: {
       /**
+       * Format: int32
+       * @description Maximum output tokens requested, when set.
+       */
+      max_tokens?: number | null;
+      /**
        * @description General request metadata passed to the LLM provider for tracking and observability.
        *     Includes embedder-supplied labels merged with system tracking keys (session_id, turn_id, etc.).
        */
@@ -10995,6 +11000,18 @@ export interface components {
       provider_options?: {
         [key: string]: unknown;
       };
+      /**
+       * @description Reasoning / thinking effort level requested, as the string sent to the
+       *     provider (`low`, `medium`, `high`, ...), when set.
+       */
+      reasoning_effort?: string | null;
+      /** @description Whether the request used the provider's streaming mode. */
+      stream?: boolean | null;
+      /**
+       * Format: float
+       * @description Sampling temperature sent with the request, when set.
+       */
+      temperature?: number | null;
       tool_search?: null | components["schemas"]["LlmToolSearchInfo"];
     };
     /** @description Information about rate limit retries during LLM generation */
@@ -16079,6 +16096,18 @@ export interface components {
     };
     /** @description Data for turn.started event */
     TurnStartedData: {
+      /** @description Agent description snapshot at turn start. */
+      agent_description?: string | null;
+      /**
+       * @description Agent the turn runs as, when the session is bound to one. Carried on
+       *     the turn root so trace exporters can label the `invoke_agent` span
+       *     without a store lookup (the Gen-AI conventions want the agent name in
+       *     the span name and `gen_ai.agent.*` attributes).
+       * @example agent_01933b5a00007000800000000000001
+       */
+      agent_id?: string | null;
+      /** @description Human-readable agent name snapshot at turn start. */
+      agent_name?: string | null;
       /** @description Input message content (for observability) */
       input_content?: string | null;
       /**

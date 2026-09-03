@@ -28323,6 +28323,15 @@
         "type": "object",
         "description": "Request options applied to an LLM generation.\n\nThese fields capture request-side intent such as prompt caching or deferred\ntool loading. They complement `usage`, which captures what actually happened.",
         "properties": {
+          "max_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Maximum output tokens requested, when set.",
+            "minimum": 0
+          },
           "metadata": {
             "type": "object",
             "description": "General request metadata passed to the LLM provider for tracking and observability.\nIncludes embedder-supplied labels merged with system tracking keys (session_id, turn_id, etc.).",
@@ -28351,6 +28360,28 @@
             "propertyNames": {
               "type": "string"
             }
+          },
+          "reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reasoning / thinking effort level requested, as the string sent to the\nprovider (`low`, `medium`, `high`, ...), when set."
+          },
+          "stream": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the request used the provider's streaming mode."
+          },
+          "temperature": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Sampling temperature sent with the request, when set."
           },
           "tool_search": {
             "oneOf": [
@@ -37103,6 +37134,28 @@
           "input_message_id"
         ],
         "properties": {
+          "agent_description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Agent description snapshot at turn start."
+          },
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Agent the turn runs as, when the session is bound to one. Carried on\nthe turn root so trace exporters can label the `invoke_agent` span\nwithout a store lookup (the Gen-AI conventions want the agent name in\nthe span name and `gen_ai.agent.*` attributes).",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          "agent_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable agent name snapshot at turn start."
+          },
           "input_content": {
             "type": [
               "string",

@@ -2323,6 +2323,12 @@ export interface TurnStartedData {
   input_message_id: string;
   /** Input message content (for observability) */
   input_content?: string;
+  /** Agent the turn runs as, when the session is bound to one */
+  agent_id?: string;
+  /** Human-readable agent name snapshot at turn start */
+  agent_name?: string;
+  /** Agent description snapshot at turn start */
+  agent_description?: string;
 }
 
 /** Data for turn.completed event */

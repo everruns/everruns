@@ -588,7 +588,10 @@ Observability is decoupled from business logic through the `EventListener` trait
 **Event-to-span mapping** (following gen-ai semantic conventions):
 - `llm.generation` → `chat {model}` span with tokens, finish_reasons, response_id
 - `tool.started/completed` → `execute_tool {name}` span
-- `turn.started/completed` → `invoke_agent {turn_id}` span
+- `turn.started/completed` → `invoke_agent {agent name}` span
+
+Spans carry both the OpenTelemetry Gen-AI and the OpenInference attribute
+vocabularies; see [observability](../operations/observability.md).
 
 **Benefits of event-listener architecture**:
 - Business logic (LLM drivers, atoms) emits events, not spans

@@ -167,6 +167,10 @@ pub fn init_telemetry(config: TelemetryConfig) -> TelemetryGuard {
         match build_otlp_tracer(endpoint, resource) {
             Ok((provider, tracer)) => {
                 let layer = tracing_opentelemetry::layer().with_tracer(tracer);
+                // `OtelEventListener` builds its Gen-AI spans on the global
+                // tracer so they can carry event timestamps; `tracing` spans
+                // (HTTP requests) keep flowing through the layer above.
+                opentelemetry::global::set_tracer_provider(provider.clone());
                 (Some(provider), Some(layer), Some(Ok(endpoint.clone())))
             }
             Err(e) => (None, None, Some(Err(e.to_string()))),
