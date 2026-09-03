@@ -160,7 +160,11 @@ already consented, and otherwise stands the elicitation down:
    (`knowledge/execution/client-side-tools.md`).
 3. **Consent.** The UI renders the card (`url-elicitation-tool-call.tsx`): the
    full URL with its domain highlighted, a Punycode warning where it applies,
-   and no link that opens without a click. The decision posts to
+   and no link that opens without a click. Consent is collected in two steps —
+   open, then confirm you are done — because the client cannot know when an
+   out-of-band interaction finished. Answering `accept` when the tab opens
+   resumes the turn too early: the server checks, finds nothing done, and
+   elicits again. The decision posts to
    `POST /v1/sessions/{id}/mcp-elicitation-consent`, which reads the server,
    tool and domain back out of the emitted event — the browser does not get to
    say what was consented to — records a `StoredConsent` in session storage on
