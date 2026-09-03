@@ -162,6 +162,17 @@ impl ModelSyncService {
         for org in &orgs {
             let providers = self.db.list_providers(org.org_id).await?;
             for provider in providers {
+                // Seeded catalog providers exist in every org before a key is
+                // configured. Without a key there is nothing to sync, so skip
+                // quietly instead of reporting a failure each interval.
+                if !provider.api_key_set {
+                    tracing::debug!(
+                        provider_id = %provider.id,
+                        org_id = provider.org_id,
+                        "Skipping model sync: no API key configured for provider"
+                    );
+                    continue;
+                }
                 let result = self
                     .sync_provider(provider.org_id, provider.id.uuid())
                     .await
@@ -431,7 +442,7 @@ mod tests {
     // --- sync_all multi-org tests ---
 
     #[tokio::test]
-    async fn test_sync_all_enumerates_providers_across_orgs() {
+    async fn test_sync_all_skips_keyless_providers_across_orgs() {
         use everruns_core::DEFAULT_ORG_ID;
 
         let db = Arc::new(StorageBackend::in_memory());
@@ -481,27 +492,15 @@ mod tests {
             .await
             .unwrap();
 
-        // sync_all should hit providers from both orgs
+        // sync_all walks both orgs, but a provider with no key has nothing to
+        // sync: it is skipped rather than reported as a failure every interval
+        // (Sentry EVERRUNS-A). Cross-org enumeration with keys configured is
+        // covered by `test_sync_all_with_encrypted_keys_across_orgs`.
         let results = service.sync_all().await.unwrap();
-        assert_eq!(
-            results.len(),
-            2,
-            "Expected 2 providers (one per org), got {}",
-            results.len()
+        assert!(
+            results.is_empty(),
+            "keyless providers must be skipped, not reported as failed: {results:?}"
         );
-
-        // Both should fail (no API key available) but the point is they were enumerated
-        for (pid, result) in &results {
-            match result {
-                SyncResult::Failed { error } => {
-                    assert!(
-                        error.contains("No API key"),
-                        "Expected 'No API key' error for {pid}, got: {error}"
-                    );
-                }
-                other => panic!("Expected Failed for {pid}, got: {other:?}"),
-            }
-        }
     }
 
     #[tokio::test]
@@ -661,6 +660,8 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let registry = Arc::new(DriverRegistry::new());
         let service = ModelSyncService::new(db.clone(), registry, None);
+        // Keyed: a provider with no key is skipped entirely, which would make
+        // this assertion pass for the wrong reason.
         let _p1 = db
             .create_provider(
                 DEFAULT_ORG_ID,
@@ -668,7 +669,7 @@ mod tests {
                     name: "OpenAI".to_string(),
                     provider_type: "openai".to_string(),
                     base_url: None,
-                    api_key_encrypted: None,
+                    api_key_encrypted: Some(vec![1, 2, 3]),
                     settings: None,
                 },
             )

@@ -215,7 +215,7 @@ impl TaskBroadcaster {
                 }
                 Err(e) => {
                     warn!(
-                        error = %e,
+                        error = %crate::nats::error_chain(&e),
                         "Failed to connect NATS for task notifications, falling back to PG NOTIFY"
                     );
                 }

@@ -281,9 +281,32 @@ impl InMemoryDatabase {
     // LLM Models (continued)
     // ============================================
 
+    /// Mirror the SQL `idx_models_provider_model` unique index so seed and
+    /// discovery collisions surface in in-memory tests as they do in Postgres.
+    fn ensure_provider_model_unique(
+        models: &std::collections::HashMap<ModelId, ModelRow>,
+        provider_id: ProviderId,
+        model_id: &str,
+    ) -> Result<()> {
+        if models
+            .values()
+            .any(|row| row.provider_id == provider_id && row.model_id == model_id)
+        {
+            anyhow::bail!(
+                "duplicate key value violates unique constraint \"idx_models_provider_model\""
+            );
+        }
+        Ok(())
+    }
+
     pub async fn create_model(&self, org_id: i64, input: CreateModelRow) -> Result<ModelRow> {
         let now = Self::now();
         let id = ModelId::new();
+        Self::ensure_provider_model_unique(
+            &self.models.read(),
+            input.provider_id,
+            &input.model_id,
+        )?;
         let row = ModelRow {
             id,
             org_id,
@@ -333,6 +356,7 @@ impl InMemoryDatabase {
             models.insert(id, row.clone());
             return Ok(Some(row));
         }
+        Self::ensure_provider_model_unique(&models, input.provider_id, &input.model_id)?;
 
         let row = ModelRow {
             id,

@@ -56,7 +56,7 @@ impl EventDelivery {
                 }
                 Err(e) => {
                     warn!(
-                        error = %e,
+                        error = %crate::nats::error_chain(&e),
                         "Failed to connect to NATS — falling back to in-memory event delivery. \
                          SSE will only work within this process instance."
                     );
@@ -215,7 +215,7 @@ pub struct NatsEventDelivery {
 
 impl NatsEventDelivery {
     pub async fn connect(url: &str) -> Result<Self> {
-        let client = async_nats::connect(url)
+        let client = crate::nats::connect(url)
             .await
             .context("Failed to connect to NATS")?;
 

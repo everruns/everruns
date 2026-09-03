@@ -43,7 +43,7 @@ impl NatsTaskNotificationBroadcaster {
     /// Connect to NATS and start listening for task notifications.
     /// Verifies the initial subscription succeeds before returning.
     pub async fn new(nats_url: &str) -> Result<Self> {
-        let client = async_nats::connect(nats_url)
+        let client = crate::nats::connect(nats_url)
             .await
             .context("Failed to connect to NATS for task notifications")?;
 
