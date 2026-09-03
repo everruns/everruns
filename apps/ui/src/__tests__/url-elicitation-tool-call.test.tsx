@@ -60,20 +60,25 @@ describe("UrlElicitationToolCall", () => {
     expect(screen.getAllByText(/Punycode/).length).toBeGreaterThan(0);
   });
 
-  it("opens nothing until the user says so, then records the consent", async () => {
+  it("opens nothing until the user says so, and consents only once they are done", async () => {
     const open = jest.spyOn(window, "open").mockImplementation(() => null);
     renderCard();
 
     expect(open).not.toHaveBeenCalled();
     expect(submitElicitationConsent).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: /Open and continue/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Open link/ }));
 
     expect(open).toHaveBeenCalledWith(
       "https://pay.example.com/authorize/42?token=abc",
       "_blank",
       "noopener,noreferrer",
     );
+    // Opening is not finishing. Consenting here would resume the turn while the
+    // user is still on the other page, and the server would elicit again.
+    expect(submitElicitationConsent).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /I've finished/ }));
     await waitFor(() =>
       expect(submitElicitationConsent).toHaveBeenCalledWith(
         "session_1",

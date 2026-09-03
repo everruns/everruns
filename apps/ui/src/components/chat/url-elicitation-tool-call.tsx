@@ -16,6 +16,11 @@
  * - A Punycode domain is flagged. Internationalized domains are legitimate, but
  *   the user should know before trusting one.
  * - Nothing opens without an explicit click, and the page is never prefetched.
+ *
+ * Consent is collected in two steps — open, then confirm you are done — because
+ * the client cannot know when an out-of-band interaction finished. Answering
+ * "accept" the moment the tab opens resumes the turn too early: the server
+ * checks, finds nothing done yet, and elicits all over again.
  */
 
 import { useState } from "react";
@@ -59,6 +64,9 @@ export function UrlElicitationToolCall({
   toolResultsMap,
 }: UrlElicitationToolCallProps) {
   const [status, setStatus] = useState<"idle" | "submitting" | "accepted" | "declined">("idle");
+  // Opening the link and finishing what is on the other side are two different
+  // moments, and only the person knows when the second one arrives.
+  const [opened, setOpened] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const url = elicitation.url ?? "";
@@ -81,11 +89,11 @@ export function UrlElicitationToolCall({
     }
   };
 
-  const handleOpenAndContinue = () => {
+  const handleOpen = () => {
     // Opened from the click itself, so the browser treats it as user-initiated
     // and `noopener` keeps the opened page away from this one.
     window.open(url, "_blank", "noopener,noreferrer");
-    void decide("accept");
+    setOpened(true);
   };
 
   if (isCompleted) {
@@ -131,7 +139,9 @@ export function UrlElicitationToolCall({
             </p>
           )}
           <p className="mt-2 text-xs text-muted-foreground">
-            Everruns never sees what you enter there. Come back here when you are done.
+            {opened
+              ? "Finish on that page, then come back and continue. Everruns never sees what you enter there."
+              : "Everruns never sees what you enter there. Come back here when you are done."}
           </p>
           {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
         </div>
@@ -144,16 +154,23 @@ export function UrlElicitationToolCall({
           disabled={status === "submitting"}
           className="text-muted-foreground"
         >
-          Don&apos;t open
+          {opened ? "Cancel" : "Don't open"}
         </Button>
-        <Button
-          size="sm"
-          onClick={handleOpenAndContinue}
-          disabled={status === "submitting" || !url}
-        >
-          <ExternalLink className="mr-1 h-3.5 w-3.5" />
-          Open and continue
-        </Button>
+        {opened ? (
+          <Button
+            size="sm"
+            onClick={() => void decide("accept")}
+            disabled={status === "submitting"}
+          >
+            <Check className="mr-1 h-3.5 w-3.5" />
+            I&apos;ve finished — continue
+          </Button>
+        ) : (
+          <Button size="sm" onClick={handleOpen} disabled={status === "submitting" || !url}>
+            <ExternalLink className="mr-1 h-3.5 w-3.5" />
+            Open link
+          </Button>
+        )}
       </div>
     </div>
   );

@@ -189,6 +189,66 @@ async fn the_decision_is_spoken_into_the_conversation() {
     assert!(!text.contains("mcp_billing_charge"), "unexpected: {text}");
 }
 
+/// A turn can be pinned to a model per message. The decision continues that
+/// same turn, so it has to inherit those controls — otherwise the resume runs
+/// on whatever the org default resolves to, switching provider mid-conversation
+/// while carrying the previous provider's response ids.
+#[tokio::test]
+async fn the_decision_inherits_the_runs_model() {
+    let server = TestServer::in_memory().await;
+    let session_id = waiting_session(&server).await;
+
+    // The user's own message, pinned to a model.
+    server
+        .db
+        .create_event(everruns_server::storage::models::CreateEventRow {
+            session_id,
+            event_type: "input.message".to_string(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: json!({
+                "message": {
+                    "id": "message_pinned",
+                    "role": "user",
+                    "content": [{ "type": "text", "text": "charge me" }],
+                    "controls": { "model_id": "model_01933b5a00007000800000000000030c" },
+                }
+            }),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("emit input.message");
+    emit_elicitation_card(&server, session_id, "url_elicitation_7").await;
+
+    post_consent(
+        &server,
+        session_id,
+        json!({ "tool_call_id": "url_elicitation_7", "action": "accept" }),
+    )
+    .await
+    .assert_status(StatusCode::OK);
+
+    let events = server
+        .db
+        .list_events(
+            session_id,
+            None,
+            None,
+            &["input.message".to_string()],
+            &[],
+            None,
+            Some(10),
+        )
+        .await
+        .expect("list events");
+    let spoken = events.last().expect("the decision was said out loud");
+    assert_eq!(
+        spoken.data["message"]["controls"]["model_id"],
+        "model_01933b5a00007000800000000000030c"
+    );
+}
+
 #[tokio::test]
 async fn the_decision_resumes_the_turn() {
     let server = TestServer::in_memory().await;

@@ -220,14 +220,19 @@ pub async fn submit_elicitation_consent(
         ),
     };
 
+    // Inherit the run's controls. A turn's model can be pinned per message, and
+    // a decision that arrived without them would resume the turn on whatever the
+    // org default resolves to — switching provider mid-conversation, carrying
+    // the other provider's response ids with it.
+    let mut message = everruns_core::message::Message::user(spoken);
+    message.controls = latest_user_controls(&state, session_id).await;
+
     if let Err(e) = state
         .event_service
         .emit(EventRequest::new(
             session_id,
             EventContext::empty(),
-            everruns_core::events::InputMessageData::new(everruns_core::message::Message::user(
-                spoken,
-            )),
+            everruns_core::events::InputMessageData::new(message),
         ))
         .await
     {
@@ -288,6 +293,35 @@ pub async fn submit_elicitation_consent(
         host: pending.host,
         status: "active".to_string(),
     }))
+}
+
+/// Controls from the most recent user message in this session, if any.
+///
+/// The decision continues that person's turn, so it has to run under the same
+/// model and reasoning settings they were talking to.
+async fn latest_user_controls(
+    state: &AppState,
+    session_id: SessionId,
+) -> Option<everruns_core::message::Controls> {
+    let events = state
+        .db
+        .list_events(
+            session_id,
+            None,
+            None,
+            &["input.message".to_string()],
+            &[],
+            None,
+            Some(ELICITATION_LOOKBACK_EVENTS),
+        )
+        .await
+        .ok()?;
+    events.iter().rev().find_map(|event| {
+        serde_json::from_value::<everruns_core::message::Controls>(
+            event.data.get("message")?.get("controls")?.clone(),
+        )
+        .ok()
+    })
 }
 
 /// Recover what was actually asked, from the event that asked it.
