@@ -133,6 +133,10 @@ impl Default for TraceConventions {
 
 /// Read the content-capture opt-in. Accepts the boolean spelling and the
 /// mode names used by the reference Python instrumentation.
+///
+/// THREAT[TM-OBS-010]: prompts, completions, reasoning, and tool payloads only
+/// reach the OTLP endpoint when the operator turns this on; every content
+/// attribute below is gated on the resulting `record_content` flag.
 fn record_content_from_env() -> bool {
     let value = std::env::var("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT")
         .or_else(|_| std::env::var("OTEL_RECORD_CONTENT"))
