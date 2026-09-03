@@ -273,28 +273,49 @@ async fn script(
     .await;
 
     match result {
-        Ok(response) if response.exit_code == 0 => Ok(response.stdout),
-        Ok(response) => {
-            let combined = if response.stderr.is_empty() {
-                response.stdout
-            } else if response.stdout.is_empty() {
-                response.stderr
-            } else {
-                format!("{}\n{}", response.stdout, response.stderr)
-            };
-            let trimmed = combined.trim();
-            if trimmed.is_empty() {
-                Err(format!(
-                    "Command failed with exit code {}",
-                    response.exit_code
-                ))
-            } else {
-                Err(sanitize_script_error(trimmed))
-            }
-        }
+        Ok(response) => script_outcome(response.exit_code, response.stdout, response.stderr),
         Err(_) => Err(format!("Command timed out after {timeout_ms}ms")),
     }
 }
+
+/// Shape a finished script run into the tool result.
+///
+/// A multi-command script exits 0 whenever its *last* command succeeds, so a
+/// mid-script failure would otherwise be invisible: the caller sees only the
+/// surviving stdout (often a jq object with null fields) and no hint that a
+/// create failed. Keep stdout first and authoritative, then append the
+/// captured stderr so partial failures are actionable.
+fn script_outcome(exit_code: i32, stdout: String, stderr: String) -> Result<String, String> {
+    if exit_code == 0 {
+        let trimmed_stderr = stderr.trim();
+        if trimmed_stderr.is_empty() {
+            return Ok(stdout);
+        }
+        return Ok(format!(
+            "{}\n\n{PARTIAL_FAILURE_LABEL}\n{}",
+            stdout.trim_end(),
+            sanitize_script_error(trimmed_stderr)
+        ));
+    }
+
+    let combined = if stderr.is_empty() {
+        stdout
+    } else if stdout.is_empty() {
+        stderr
+    } else {
+        format!("{stdout}\n{stderr}")
+    };
+    let trimmed = combined.trim();
+    if trimmed.is_empty() {
+        Err(format!("Command failed with exit code {exit_code}"))
+    } else {
+        Err(sanitize_script_error(trimmed))
+    }
+}
+
+/// Marks stderr captured from a script that still exited 0. Some commands in it
+/// failed, so the caller must verify state with `query` before reporting success.
+const PARTIAL_FAILURE_LABEL: &str = "script_stderr (one or more commands in this script failed even though the script exited 0; verify the resulting state with query before reporting success):";
 
 fn sanitize_script_error(message: &str) -> String {
     if message.contains("jq: runtime error")
@@ -315,6 +336,48 @@ fn sanitize_script_error(message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn script_outcome_surfaces_stderr_from_a_partially_failed_script() {
+        // A create failed mid-script; the trailing `jq -s` still exited 0 and
+        // produced an object with null fields. Without the stderr section the
+        // caller cannot tell a failure from an intentionally empty result.
+        let outcome = script_outcome(
+            0,
+            "{\n  \"agent\": null\n}\n".to_string(),
+            "create_agent: bad_request: Agent name must contain only lowercase letters, digits, and hyphens\n"
+                .to_string(),
+        )
+        .expect("exit code 0 stays a success");
+        assert!(outcome.contains("\"agent\": null"), "stdout is preserved");
+        assert!(
+            outcome.contains(PARTIAL_FAILURE_LABEL),
+            "stderr is labelled"
+        );
+        assert!(
+            outcome.contains("Agent name must contain only lowercase letters"),
+            "the failing command's error is surfaced: {outcome}"
+        );
+    }
+
+    #[test]
+    fn script_outcome_returns_bare_stdout_when_nothing_failed() {
+        let outcome = script_outcome(0, "{\"id\":\"agent_1\"}".to_string(), String::new())
+            .expect("clean run");
+        assert_eq!(outcome, "{\"id\":\"agent_1\"}");
+    }
+
+    #[test]
+    fn script_outcome_reports_a_nonzero_exit_as_an_error() {
+        let error = script_outcome(
+            2,
+            String::new(),
+            "create_agent: bad_request: boom\n".to_string(),
+        )
+        .expect_err("non-zero exit is an error");
+        assert!(error.contains("boom"), "{error}");
+        assert!(!error.contains(PARTIAL_FAILURE_LABEL));
+    }
 
     fn discover_for_test(arguments: &Value) -> Result<String, String> {
         discover(
