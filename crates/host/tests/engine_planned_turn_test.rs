@@ -416,7 +416,8 @@ fn planner_state_survives_a_restart_between_every_step() {
     assert_eq!(resumed.llm_call_count, 1);
 
     // act -> reason
-    let (plan, effects) = plan_after_act(&round_trip(&resumed), ActOutcome::default(), false);
+    let (plan, effects) =
+        plan_after_act(&round_trip(&resumed), ActOutcome::default(), false, false);
     assert!(effects.is_empty());
     let TurnPlan::ScheduleReason(state) = plan else {
         panic!("a completed act must schedule the next reason");

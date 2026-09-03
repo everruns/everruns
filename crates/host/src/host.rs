@@ -1620,6 +1620,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
             success_count: 0,
             error_count: 1,
             waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
             blocked: true,
             client_tool_calls: vec![],
             client_tool_definitions: vec![],

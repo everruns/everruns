@@ -1,6 +1,13 @@
 import type { Event, ToolCallSummary, ToolCompletedData } from "@/lib/api/types";
 import { getEventData } from "@/lib/api/types";
 
+/**
+ * Synthetic tool calls the backend emits to ask the user something directly.
+ * They get their own inline card, so the generic activity timeline leaves them
+ * alone rather than listing them as anonymous pending tool calls.
+ */
+export const INTERACTIVE_TOOL_CALLS = new Set(["setup_connection", "confirm_url_elicitation"]);
+
 export interface TimelineToolRow {
   id: string;
   label: string;
@@ -104,7 +111,9 @@ export function buildToolActivityGroups(events: Event[], workingLabel: string): 
       const summariesById = new Map(
         (request.tool_summaries ?? []).map((summary) => [summary.id, summary]),
       );
-      const genericCalls = request.tool_calls.filter((call) => call.name !== "setup_connection");
+      const genericCalls = request.tool_calls.filter(
+        (call) => !INTERACTIVE_TOOL_CALLS.has(call.name),
+      );
       if (genericCalls.length === 0) continue;
 
       const existingKey = genericCalls
@@ -127,7 +136,8 @@ export function buildToolActivityGroups(events: Event[], workingLabel: string): 
         );
       }
       // Keep mixed request events renderable so specialized cards (for example,
-      // setup_connection) can appear alongside the generic activity group.
+      // setup_connection or confirm_url_elicitation) can appear alongside the
+      // generic activity group.
       if (genericCalls.length === request.tool_calls.length) groupedEventIds.add(event.id);
       continue;
     }

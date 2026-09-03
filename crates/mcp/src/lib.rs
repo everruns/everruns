@@ -31,6 +31,7 @@
 pub mod auth;
 pub mod capability;
 pub mod client;
+pub mod elicitation;
 pub mod executor;
 pub mod http;
 pub mod oauth;
@@ -49,9 +50,14 @@ pub use capability::{
     parse_mcp_capability_id,
 };
 pub use client::McpClient;
+pub use elicitation::{
+    CONSENT_TTL, ConsentingUrlElicitations, DeclineUrlElicitations, ElicitationAction,
+    ElicitationConsentStore, GrantedConsent, RelayUrlElicitations, StoredConsent, UrlElicitation,
+    UrlElicitationHandler, UrlElicitationPending, consent_storage_key, validate_elicitation_url,
+};
 pub use executor::{McpConnectionResolver, McpExecutor, StaticConnectionResolver};
 pub use http::{HttpTransport, http_call_tool, http_list_tools, http_send_rpc};
-pub use protocol::Negotiated;
+pub use protocol::{ClientCapabilities, Negotiated};
 pub use result::{extract_json_from_response, map_tool_call_result};
 pub use transport::{McpConnection, McpEndpoint, McpSecretBinding, McpTransport};
 

@@ -12,7 +12,9 @@
 // and can mutate the result (e.g. persist output to VFS, inject metadata).
 
 use crate::events::{EventContext, EventRequest, ToolCallRequestedData};
-use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use crate::tool_types::{
+    CONFIRM_URL_ELICITATION_TOOL, ToolCall, ToolDefinition, ToolResult, UrlElicitationRequired,
+};
 use crate::{event_emitter::EventEmitter, tool_context::ToolContext};
 use async_trait::async_trait;
 pub(crate) use everruns_core::tool_hooks::{PostToolExecHook, PreToolUseDecision, PreToolUseHook};
@@ -281,6 +283,75 @@ impl PostActHook for ConnectionSetupHook {
 }
 
 // ============================================================================
+// UrlElicitationHook
+// ============================================================================
+
+/// Hook that pauses the turn when an MCP tool stopped on a URL mode
+/// elicitation, and emits a synthetic `confirm_url_elicitation` call so the
+/// client can ask a human whether to open the URL.
+///
+/// The MCP client cannot answer such an elicitation on its own: the value the
+/// server wants is typed into someone's browser, not passed back through the
+/// client, and consent to open a link is a decision only a person can make.
+/// Pausing here is what turns "the model was handed a URL and mentions it in
+/// prose" into "the user is shown the domain and clicks".
+///
+/// The pause itself is still gated by the session's `setup_connection` hint
+/// (see `plan_after_act`): a client that cannot render the card keeps the old
+/// behaviour, where the elicitation is relayed to the user as an ordinary tool
+/// result and they re-run the tool themselves.
+pub struct UrlElicitationHook;
+
+impl PostActHook for UrlElicitationHook {
+    fn on_completed(
+        &self,
+        result: &mut ActResult,
+        _tool_definitions: &[ToolDefinition],
+    ) -> Vec<PostActAction> {
+        let pending: Vec<UrlElicitationRequired> = result
+            .results
+            .iter()
+            .filter_map(|r| UrlElicitationRequired::from_tool_result(&r.result))
+            // A refusal is a finished decision. Asking again in a card would
+            // nag the user for something they just said no to.
+            .filter(|elicitation| !elicitation.declined)
+            .collect();
+
+        if pending.is_empty() {
+            return vec![];
+        }
+
+        result.waiting_for_tool_results = true;
+        result.waiting_for_url_elicitation = true;
+
+        let tool_calls: Vec<ToolCall> = pending
+            .iter()
+            .map(|elicitation| ToolCall {
+                id: format!("url_elicitation_{}", Uuid::now_v7()),
+                name: CONFIRM_URL_ELICITATION_TOOL.to_string(),
+                // The whole elicitation travels in the arguments so the card can
+                // show the server, its reason, and the full URL with the domain
+                // highlighted, without re-reading the tool result.
+                arguments: json!({
+                    "server": elicitation.server,
+                    "tool": elicitation.tool,
+                    "retry_tool": elicitation.retry_tool,
+                    "message": elicitation.message,
+                    "url": elicitation.url,
+                    "url_host": elicitation.url_host,
+                    "url_is_punycode": elicitation.url_is_punycode,
+                }),
+            })
+            .collect();
+
+        vec![PostActAction::EmitToolCallRequested {
+            tool_calls,
+            tool_definitions: vec![],
+        }]
+    }
+}
+
+// ============================================================================
 // ClientSideToolHook
 // ============================================================================
 
@@ -402,6 +473,7 @@ mod tests {
             success_count: 1,
             error_count: 0,
             waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
             blocked: false,
             client_tool_calls: vec![],
             client_tool_definitions: vec![],
@@ -421,6 +493,7 @@ mod tests {
             success_count: 0,
             error_count: 0,
             waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
             blocked: false,
             client_tool_calls: vec![],
             client_tool_definitions: vec![],
@@ -439,6 +512,105 @@ mod tests {
         }
     }
 
+    fn make_elicitation_result(declined: bool) -> ToolCallResult {
+        let payload = UrlElicitationRequired {
+            code: crate::tool_types::URL_ELICITATION_REQUIRED_CODE.to_string(),
+            error: "needs a person".to_string(),
+            url: "https://pay.example.com/authorize/42".to_string(),
+            url_host: "pay.example.com".to_string(),
+            url_is_punycode: false,
+            server: "billing".to_string(),
+            tool: "charge".to_string(),
+            retry_tool: "mcp_billing_charge".to_string(),
+            message: "Authorize the charge".to_string(),
+            declined,
+        };
+        ToolCallResult {
+            tool_call: ToolCall {
+                id: "call_1".to_string(),
+                name: "mcp_billing_charge".to_string(),
+                arguments: json!({}),
+            },
+            result: ToolResult {
+                tool_call_id: "call_1".to_string(),
+                result: Some(serde_json::to_value(&payload).expect("serialize")),
+                images: None,
+                error: None,
+                connection_required: None,
+                raw_output: None,
+            },
+            success: true,
+            status: "success".to_string(),
+            connection_required: None,
+            determinism_fatal: None,
+        }
+    }
+
+    fn act_result(results: Vec<ToolCallResult>) -> ActResult {
+        ActResult {
+            results,
+            completed: true,
+            success_count: 1,
+            error_count: 0,
+            waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
+            blocked: false,
+            client_tool_calls: vec![],
+            client_tool_definitions: vec![],
+        }
+    }
+
+    #[test]
+    fn url_elicitation_hook_pauses_and_asks_for_consent() {
+        let mut result = act_result(vec![make_elicitation_result(false)]);
+
+        let actions = UrlElicitationHook.on_completed(&mut result, &[]);
+
+        assert!(
+            result.waiting_for_tool_results,
+            "the turn must hold while a human decides"
+        );
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            PostActAction::EmitToolCallRequested { tool_calls, .. } => {
+                assert_eq!(tool_calls.len(), 1);
+                assert_eq!(tool_calls[0].name, CONFIRM_URL_ELICITATION_TOOL);
+                let arguments = &tool_calls[0].arguments;
+                // The card needs the full URL and the domain to highlight.
+                assert_eq!(arguments["url"], "https://pay.example.com/authorize/42");
+                assert_eq!(arguments["url_host"], "pay.example.com");
+                assert_eq!(arguments["server"], "billing");
+                assert_eq!(arguments["tool"], "charge");
+                assert_eq!(arguments["retry_tool"], "mcp_billing_charge");
+                assert_eq!(arguments["message"], "Authorize the charge");
+                assert_eq!(arguments["url_is_punycode"], false);
+            }
+        }
+    }
+
+    #[test]
+    fn url_elicitation_hook_does_not_re_ask_after_a_refusal() {
+        let mut result = act_result(vec![make_elicitation_result(true)]);
+
+        let actions = UrlElicitationHook.on_completed(&mut result, &[]);
+
+        assert!(actions.is_empty());
+        assert!(
+            !result.waiting_for_tool_results,
+            "a refusal is a decision; the turn continues"
+        );
+    }
+
+    #[test]
+    fn url_elicitation_hook_ignores_ordinary_results() {
+        let mut result = act_result(vec![make_tool_call_result(None)]);
+
+        let actions = UrlElicitationHook.on_completed(&mut result, &[]);
+
+        assert!(actions.is_empty());
+        assert!(!result.waiting_for_tool_results);
+    }
+
     #[test]
     fn test_client_side_tool_hook_no_client_tools() {
         let hook = ClientSideToolHook;
@@ -448,6 +620,7 @@ mod tests {
             success_count: 0,
             error_count: 0,
             waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
             blocked: false,
             client_tool_calls: vec![],
             client_tool_definitions: vec![],
@@ -473,6 +646,7 @@ mod tests {
             success_count: 0,
             error_count: 0,
             waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
             blocked: false,
             client_tool_calls: vec![client_call.clone()],
             client_tool_definitions: vec![],

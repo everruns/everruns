@@ -8,13 +8,16 @@
 //! (knowledge/integrations/runtime-mcp.md D5).
 
 use crate::client::McpClient;
+use crate::elicitation::{ElicitationAction, UrlElicitationPending};
 use crate::transport::McpConnection;
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use everruns_core::mcp_server::sanitize_mcp_server_name;
 use everruns_core::{McpToolInvoker, parse_mcp_tool_name};
 use everruns_provider::error::{AgentLoopError, Result as CoreResult};
-use everruns_provider::tool_types::{ToolCall, ToolResult};
+use everruns_provider::tool_types::{
+    ToolCall, ToolResult, URL_ELICITATION_REQUIRED_CODE, UrlElicitationRequired,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -230,11 +233,75 @@ impl McpExecutor {
                 redact_tool_result(&mut result, &injected_secrets);
                 Ok(result)
             }
+            // A URL mode elicitation the user has not completed yet. Like a
+            // missing credential binding, this is an expected, user-actionable
+            // state rather than a transport failure, so it comes back as a
+            // structured result the client can render and the model can relay —
+            // and the user re-runs the tool once they are done.
+            Err(error) if error.downcast_ref::<UrlElicitationPending>().is_some() => {
+                let pending = error
+                    .downcast_ref::<UrlElicitationPending>()
+                    .expect("checked above");
+                Ok(url_elicitation_result(
+                    tool_call.id.clone(),
+                    &tool_call.name,
+                    pending,
+                ))
+            }
             // Redacting an error flattens it to a string, so keep the original
             // chain intact whenever there is nothing to scrub.
             Err(error) if injected_secrets.is_empty() => Err(error),
             Err(error) => Err(anyhow!(redact_text(&error.to_string(), &injected_secrets))),
         }
+    }
+}
+
+/// Turn a pending URL elicitation into the tool result the user sees.
+///
+/// The URL is passed through untouched (it was validated before any human saw
+/// it) and is the only actionable part; the server's message explains why.
+fn url_elicitation_result(
+    tool_call_id: String,
+    retry_tool: &str,
+    pending: &UrlElicitationPending,
+) -> ToolResult {
+    let declined = pending.action == ElicitationAction::Decline;
+    let error = if declined {
+        format!(
+            "You declined to open {}, so '{}' did not run.",
+            pending.host, pending.tool_name
+        )
+    } else {
+        // Deliberately no "run it again yourself": a host that can pause the
+        // turn puts a consent card in front of the user and re-runs the tool
+        // itself, and one that cannot still gets an actionable URL here.
+        format!(
+            "{} This needs a person to open {} before '{}' can run.",
+            pending.message, pending.url, pending.tool_name
+        )
+    };
+    let payload = UrlElicitationRequired {
+        code: URL_ELICITATION_REQUIRED_CODE.to_string(),
+        error,
+        url: pending.url.clone(),
+        url_host: pending.host.clone(),
+        // Internationalized domains are legitimate, but a client should warn
+        // before a user trusts one.
+        url_is_punycode: pending.punycode,
+        server: pending.server_name.clone(),
+        tool: pending.tool_name.clone(),
+        retry_tool: retry_tool.to_string(),
+        message: pending.message.clone(),
+        declined,
+    };
+    ToolResult {
+        tool_call_id,
+        result: Some(serde_json::to_value(&payload).unwrap_or(serde_json::Value::Null)),
+        images: None,
+        // Structured, expected state — not a transport failure.
+        error: None,
+        connection_required: None,
+        raw_output: None,
     }
 }
 

@@ -13,7 +13,11 @@
 //! `Mcp-Session-Id`. See [`crate::protocol`] for the pure pieces.
 
 use crate::auth::McpCredential;
-use crate::protocol::{self, Negotiated};
+use crate::elicitation::{
+    ElicitationAction, UrlElicitation, UrlElicitationHandler, UrlElicitationPending,
+    validate_elicitation_url,
+};
+use crate::protocol::{self, ClientCapabilities, Negotiated};
 use crate::result::extract_json_from_response;
 use crate::transport::{McpConnection, McpEndpoint, McpTransport};
 use anyhow::{Result, anyhow};
@@ -36,6 +40,12 @@ const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(30);
 const CALL_TIMEOUT: Duration = Duration::from_secs(60);
 /// How long a per-transport negotiation verdict stays valid before re-probing.
 const NEGOTIATION_TTL: Duration = Duration::from_secs(300);
+/// How many `input_required` rounds one `tools/call` may take before the client
+/// gives up. A server is allowed to keep asking, but each round costs a human
+/// interaction and holds the turn open, so two is the practical ceiling: one to
+/// gather input, one for the server to ask again after the out-of-band
+/// interaction (typically because the user has not finished it yet).
+const MAX_INPUT_REQUIRED_ROUNDS: usize = 2;
 
 /// Raw MCP HTTP response: status, headers, and the (possibly SSE-framed) body
 /// text — without the 2xx check, so negotiation can inspect failures.
@@ -358,6 +368,9 @@ pub async fn http_list_tools(
     headers: &HashMap<String, String>,
     credential: Option<&McpCredential>,
 ) -> Result<Vec<McpToolDefinition>> {
+    // Discovery never elicits — a server MUST NOT answer `tools/list` with an
+    // `input_required` result — so it declares no input capabilities.
+    let capabilities = ClientCapabilities::none();
     let (text, _negotiated) = negotiate_and_send(
         egress,
         url,
@@ -366,7 +379,7 @@ pub async fn http_list_tools(
         McpProtocolMode::Auto,
         "tools/list",
         None,
-        &|version| protocol::tools_list_body(1, version),
+        &|version| protocol::tools_list_body(1, version, capabilities),
         None,
         DISCOVERY_TIMEOUT,
     )
@@ -375,14 +388,24 @@ pub async fn http_list_tools(
 }
 
 /// Execute a tool via `tools/call`. Negotiates the protocol era (`Auto`).
+///
+/// `elicitation` is the host's URL mode elicitation consent handler. Passing
+/// `None` declares no `elicitation` capability, which under MRTR forbids the
+/// server from asking for one.
+#[allow(clippy::too_many_arguments)]
 pub async fn http_call_tool(
     egress: &dyn EgressService,
     url: &str,
     headers: &HashMap<String, String>,
+    server_name: &str,
     tool_name: &str,
     arguments: Value,
     credential: Option<&McpCredential>,
+    elicitation: Option<&dyn UrlElicitationHandler>,
 ) -> Result<McpToolCallResult> {
+    let capabilities = ClientCapabilities {
+        url_elicitation: elicitation.is_some(),
+    };
     let (text, negotiated) = negotiate_and_send(
         egress,
         url,
@@ -391,7 +414,7 @@ pub async fn http_call_tool(
         McpProtocolMode::Auto,
         "tools/call",
         Some(tool_name),
-        &|version| protocol::tools_call_body(1, tool_name, &arguments, version),
+        &|version| protocol::tools_call_body(1, tool_name, &arguments, version, capabilities),
         None,
         CALL_TIMEOUT,
     )
@@ -402,8 +425,11 @@ pub async fn http_call_tool(
         headers,
         credential,
         &negotiated,
+        capabilities,
+        server_name,
         tool_name,
         &arguments,
+        elicitation,
         text,
     )
     .await?;
@@ -413,20 +439,24 @@ pub async fn http_call_tool(
 /// Complete a multi round-trip `tools/call` (MRTR).
 ///
 /// A `2026-07-28` server may answer `tools/call` with
-/// `resultType: "input_required"` instead of a result. Two cases:
+/// `resultType: "input_required"` instead of a result. Three cases:
 ///
 /// - **No `inputRequests`** — the server just needs the round trip (it stashed
-///   context in `requestState`). Retry once, echoing `requestState` under a new
+///   context in `requestState`). Retry, echoing `requestState` under a new
 ///   JSON-RPC id, as the spec requires for an independent request.
-/// - **`inputRequests` present** — the server is asking for elicitation,
-///   sampling, or roots. It must not: this client declares none of those
-///   capabilities in `_meta`, and a server MUST NOT request an input type the
-///   client did not declare. Fail with a message that names the culprit rather
-///   than handing back an empty result the caller would read as success.
+/// - **A URL mode `elicitation/create`** — the server wants a human to complete
+///   something out of band (third-party OAuth, a credential form, a payment).
+///   Ask the host's handler for consent, then retry with the `accept` response
+///   so the server can check whether the interaction completed. A decline or a
+///   cancel ends the call: the client has nothing to send that would let the
+///   server proceed, and retrying would only ask the same human again.
+/// - **Anything else** — form mode elicitation, sampling, or roots. The client
+///   declares none of those in `_meta`, and a server MUST NOT request an input
+///   type the client did not declare. Fail naming the culprit rather than
+///   handing back an empty result the caller would read as success.
 ///
-/// Retried at most once. A server may legitimately ask again, but this client
-/// has nothing new to offer on a second pass, so looping would only burn the
-/// call timeout.
+/// Bounded by [`MAX_INPUT_REQUIRED_ROUNDS`]; a server that keeps asking gets a
+/// clear error instead of an unbounded loop against the call timeout.
 #[allow(clippy::too_many_arguments)]
 async fn resolve_input_required(
     egress: &dyn EgressService,
@@ -434,68 +464,155 @@ async fn resolve_input_required(
     headers: &HashMap<String, String>,
     credential: Option<&McpCredential>,
     negotiated: &Negotiated,
+    capabilities: ClientCapabilities,
+    server_name: &str,
     tool_name: &str,
     arguments: &Value,
+    elicitation: Option<&dyn UrlElicitationHandler>,
     text: String,
 ) -> Result<String> {
-    let Some(json) = extract_json_from_response(&text) else {
-        return Ok(text);
-    };
-    let Some(input_required) = protocol::input_required_from_result(json) else {
-        return Ok(text);
-    };
+    let mut text = text;
+    for round in 0..MAX_INPUT_REQUIRED_ROUNDS {
+        let Some(json) = extract_json_from_response(&text) else {
+            return Ok(text);
+        };
+        let Some(input_required) = protocol::input_required_from_result(json) else {
+            return Ok(text);
+        };
 
-    if !input_required.input_request_keys.is_empty() {
-        return Err(anyhow!(
-            "MCP server '{}' requested inputs ({}) the client does not support; \
-             everruns advertises no elicitation, sampling, or roots capability",
+        let input_responses =
+            gather_input_responses(&input_required, server_name, tool_name, elicitation, url)
+                .await?;
+
+        tracing::debug!(
+            url = %url,
+            tool = %tool_name,
+            round = round,
+            inputs = input_responses.len(),
+            "MCP tools/call returned input_required; retrying"
+        );
+        // A distinct id per attempt: MRTR treats every retry as an independent
+        // request.
+        let body = serde_json::to_vec(&protocol::tools_call_retry_body(
+            round as i64 + 2,
             tool_name,
-            input_required.input_request_keys.join(", ")
-        ));
+            arguments,
+            &negotiated.version,
+            capabilities,
+            input_required.request_state.as_deref(),
+            &input_responses,
+        ))?;
+        let response = send_op(
+            egress,
+            url,
+            headers,
+            credential,
+            negotiated,
+            "tools/call",
+            Some(tool_name),
+            body,
+            CALL_TIMEOUT,
+        )
+        .await?;
+        if !(200..300).contains(&response.status) {
+            return Err(anyhow!(
+                "MCP server returned error on input_required retry: {} - {}",
+                response.status,
+                response.body
+            ));
+        }
+        text = response.body;
     }
 
-    tracing::debug!(
-        url = %url,
-        tool = %tool_name,
-        "MCP tools/call returned input_required with no input requests; retrying"
-    );
-    // A distinct id: MRTR treats the retry as an independent request.
-    let body = serde_json::to_vec(&protocol::tools_call_retry_body(
-        2,
-        tool_name,
-        arguments,
-        &negotiated.version,
-        input_required.request_state.as_deref(),
-    ))?;
-    let response = send_op(
-        egress,
-        url,
-        headers,
-        credential,
-        negotiated,
-        "tools/call",
-        Some(tool_name),
-        body,
-        CALL_TIMEOUT,
-    )
-    .await?;
-    if !(200..300).contains(&response.status) {
-        return Err(anyhow!(
-            "MCP server returned error on input_required retry: {} - {}",
-            response.status,
-            response.body
-        ));
-    }
-    if extract_json_from_response(&response.body)
+    if extract_json_from_response(&text)
         .and_then(protocol::input_required_from_result)
         .is_some()
     {
         return Err(anyhow!(
-            "MCP tool '{tool_name}' still requires input after one retry; \
-             the client has no further input to supply"
+            "MCP tool '{tool_name}' still requires input after {MAX_INPUT_REQUIRED_ROUNDS} \
+             rounds; if you were asked to complete something in your browser, finish it and \
+             run the tool again"
         ));
     }
-    Ok(response.body)
+    Ok(text)
+}
+
+/// Build the `inputResponses` map for one `input_required` round.
+///
+/// Every request must be a URL mode elicitation the host can put in front of a
+/// human; anything else is a server sending an input type this client never
+/// declared, and is reported rather than answered.
+async fn gather_input_responses(
+    input_required: &protocol::InputRequired,
+    server_name: &str,
+    tool_name: &str,
+    elicitation: Option<&dyn UrlElicitationHandler>,
+    url: &str,
+) -> Result<BTreeMap<String, Value>> {
+    let mut responses = BTreeMap::new();
+    for request in &input_required.requests {
+        let Some((message, elicitation_url)) = request.url_elicitation() else {
+            return Err(anyhow!(
+                "MCP server '{server_name}' requested input '{}' ({}) for tool '{tool_name}' \
+                 that this client does not support; everruns declares only URL mode elicitation",
+                request.key,
+                request.method
+            ));
+        };
+        let Some(handler) = elicitation else {
+            return Err(anyhow!(
+                "MCP server '{server_name}' sent a URL elicitation for tool '{tool_name}', \
+                 but this host declared no elicitation capability and has no way to ask a user"
+            ));
+        };
+        // Validated before a human ever sees it: a consent surface must never
+        // be handed a `javascript:` or `file:` URL, and the URL is never
+        // fetched — clients MUST NOT pre-fetch it or its metadata.
+        let (host, punycode) = validate_elicitation_url(&elicitation_url).map_err(|e| {
+            anyhow!("MCP server '{server_name}' sent an unusable elicitation URL: {e}")
+        })?;
+        let elicitation_request = UrlElicitation {
+            server_name: server_name.to_string(),
+            tool_name: tool_name.to_string(),
+            key: request.key.clone(),
+            message,
+            url: elicitation_url,
+            host,
+            punycode,
+        };
+        let action = handler.request_url_consent(&elicitation_request).await?;
+        tracing::info!(
+            url = %url,
+            server = %server_name,
+            tool = %tool_name,
+            elicitation_host = %elicitation_request.host,
+            action = action.as_str(),
+            "MCP URL elicitation resolved"
+        );
+        match action {
+            ElicitationAction::Accept => {
+                responses.insert(
+                    request.key.clone(),
+                    serde_json::json!({ "action": "accept" }),
+                );
+            }
+            // Not consented, so there is nothing to send that would let the
+            // server proceed. Typed rather than a flat error string so the
+            // caller can hand the user the URL as an affordance.
+            ElicitationAction::Decline | ElicitationAction::Cancel => {
+                return Err(anyhow!(UrlElicitationPending {
+                    server_name: elicitation_request.server_name,
+                    tool_name: elicitation_request.tool_name,
+                    message: elicitation_request.message,
+                    url: elicitation_request.url,
+                    host: elicitation_request.host,
+                    punycode: elicitation_request.punycode,
+                    action,
+                }));
+            }
+        }
+    }
+    Ok(responses)
 }
 
 /// MCP transport over the platform [`EgressService`] boundary.
@@ -622,6 +739,10 @@ pub struct HttpTransport {
     /// `tools/list` results held for the server-declared `ttlMs`. Absent for
     /// 2025-era servers, which send no caching hints.
     tools: Mutex<HashMap<ToolsCacheKey, CachedTools>>,
+    /// Host surface that puts a URL elicitation in front of a human. `None`
+    /// (the default) declares no elicitation capability, which under MRTR
+    /// forbids servers from asking.
+    elicitation: Option<Arc<dyn UrlElicitationHandler>>,
 }
 
 impl HttpTransport {
@@ -630,6 +751,21 @@ impl HttpTransport {
             egress,
             negotiations: Mutex::new(HashMap::new()),
             tools: Mutex::new(HashMap::new()),
+            elicitation: None,
+        }
+    }
+
+    /// Enable URL mode elicitation, routing consent through `handler`.
+    pub fn with_elicitation_handler(mut self, handler: Arc<dyn UrlElicitationHandler>) -> Self {
+        self.elicitation = Some(handler);
+        self
+    }
+
+    /// Capabilities to declare on every request, derived from what this
+    /// transport can actually answer.
+    fn capabilities(&self) -> ClientCapabilities {
+        ClientCapabilities {
+            url_elicitation: self.elicitation.is_some(),
         }
     }
 
@@ -721,6 +857,7 @@ impl McpTransport for HttpTransport {
         if let Some(tools) = self.cached_tools(&cache_key) {
             return Ok(tools);
         }
+        let capabilities = self.capabilities();
         let cached = self.cached_negotiation(&cache_key);
         let (text, negotiated) = negotiate_and_send(
             self.egress.as_ref(),
@@ -730,7 +867,7 @@ impl McpTransport for HttpTransport {
             connection.protocol_mode,
             "tools/list",
             None,
-            &|version| protocol::tools_list_body(1, version),
+            &|version| protocol::tools_list_body(1, version, capabilities),
             cached,
             DISCOVERY_TIMEOUT,
         )
@@ -753,6 +890,7 @@ impl McpTransport for HttpTransport {
     ) -> Result<McpToolCallResult> {
         let (url, headers) = Self::http_parts(connection)?;
         let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
+        let capabilities = self.capabilities();
         let cached = self.cached_negotiation(&cache_key);
         let (text, negotiated) = negotiate_and_send(
             self.egress.as_ref(),
@@ -762,7 +900,7 @@ impl McpTransport for HttpTransport {
             connection.protocol_mode,
             "tools/call",
             Some(tool_name),
-            &|version| protocol::tools_call_body(1, tool_name, &arguments, version),
+            &|version| protocol::tools_call_body(1, tool_name, &arguments, version, capabilities),
             cached,
             CALL_TIMEOUT,
         )
@@ -773,8 +911,11 @@ impl McpTransport for HttpTransport {
             headers,
             credential,
             &negotiated,
+            capabilities,
+            &connection.name,
             tool_name,
             &arguments,
+            self.elicitation.as_deref(),
             text,
         )
         .await?;

@@ -307,10 +307,12 @@ fn steering_failure_limit_block_and_wait_branches_are_equivalent() {
             ActivityOutcome::Act(ActOutcome {
                 blocked: true,
                 waiting_for_tool_results: false,
+                waiting_for_url_elicitation: false,
             }),
             ActivityOutcome::Act(ActOutcome {
                 blocked: true,
                 waiting_for_tool_results: false,
+                waiting_for_url_elicitation: false,
             }),
             0,
             HostFacts::default(),
@@ -327,10 +329,12 @@ fn steering_failure_limit_block_and_wait_branches_are_equivalent() {
             ActivityOutcome::Act(ActOutcome {
                 blocked: false,
                 waiting_for_tool_results: true,
+                waiting_for_url_elicitation: false,
             }),
             ActivityOutcome::Act(ActOutcome {
                 blocked: false,
                 waiting_for_tool_results: true,
+                waiting_for_url_elicitation: false,
             }),
             0,
             HostFacts {

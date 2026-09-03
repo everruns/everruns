@@ -133,8 +133,13 @@ pub struct CreateSessionRequest {
     /// Session-level client hints — arbitrary key-value pairs that tell the
     /// server what the client can handle. These are defaults for every turn;
     /// per-message `controls.hints` override these key-by-key (shallow merge).
+    ///
+    /// Two hints decide whether a turn may pause for the user rather than talk
+    /// past them: `setup_connection` (the client renders connection setup) and
+    /// `url_elicitation` (the client renders consent for a URL an MCP server
+    /// asks the user to open).
     #[serde(default)]
-    #[schema(example = json!({"setup_connection": true, "rich_media": true}))]
+    #[schema(example = json!({"setup_connection": true, "url_elicitation": true, "rich_media": true}))]
     pub hints: Option<std::collections::HashMap<String, serde_json::Value>>,
     /// Network access list controlling which hosts/URLs this session can reach.
     /// Merged with harness and agent layers (allowed: intersect, blocked: union).

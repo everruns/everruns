@@ -12702,6 +12702,61 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/mcp-elicitation-consent": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /v1/sessions/{session_id}/mcp-elicitation-consent",
+        "description": "Records a user's decision about a URL an MCP server asked them to open, and\nresumes the paused turn.",
+        "operationId": "submit_elicitation_consent",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ElicitationConsentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Decision recorded and workflow resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElicitationConsentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID or request"
+          },
+          "404": {
+            "description": "Session or pending elicitation not found"
+          },
+          "409": {
+            "description": "Session is not waiting for tool results"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/messages": {
       "get": {
         "tags": [
@@ -18462,6 +18517,14 @@
           }
         }
       },
+      "ConsentAction": {
+        "type": "string",
+        "description": "What the user decided about opening the URL.",
+        "enum": [
+          "accept",
+          "decline"
+        ]
+      },
       "ContentPart": {
         "oneOf": [
           {
@@ -20396,14 +20459,15 @@
               "object",
               "null"
             ],
-            "description": "Session-level client hints — arbitrary key-value pairs that tell the\nserver what the client can handle. These are defaults for every turn;\nper-message `controls.hints` override these key-by-key (shallow merge).",
+            "description": "Session-level client hints — arbitrary key-value pairs that tell the\nserver what the client can handle. These are defaults for every turn;\nper-message `controls.hints` override these key-by-key (shallow merge).\n\nTwo hints decide whether a turn may pause for the user rather than talk\npast them: `setup_connection` (the client renders connection setup) and\n`url_elicitation` (the client renders consent for a URL an MCP server\nasks the user to open).",
             "additionalProperties": {},
             "propertyNames": {
               "type": "string"
             },
             "example": {
               "rich_media": true,
-              "setup_connection": true
+              "setup_connection": true,
+              "url_elicitation": true
             }
           },
           "initial_files": {
@@ -21004,6 +21068,43 @@
       "DriverId": {
         "type": "string",
         "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta. Any other string is treated as an embedder-defined external provider."
+      },
+      "ElicitationConsentRequest": {
+        "type": "object",
+        "description": "Request to answer a pending URL mode elicitation.",
+        "required": [
+          "tool_call_id",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ConsentAction",
+            "description": "The user's decision."
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "The `confirm_url_elicitation` tool call being answered.",
+            "example": "url_elicitation_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "ElicitationConsentResponse": {
+        "type": "object",
+        "description": "Result of answering a pending URL mode elicitation.",
+        "required": [
+          "host",
+          "status"
+        ],
+        "properties": {
+          "host": {
+            "type": "string",
+            "description": "Domain the consent was recorded against, echoed so a client can confirm\nit showed the same one."
+          },
+          "status": {
+            "type": "string",
+            "description": "Session status after the decision."
+          }
+        }
       },
       "EnqueueTaskOptions": {
         "type": "object",

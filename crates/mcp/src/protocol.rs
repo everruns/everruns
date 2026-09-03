@@ -51,16 +51,41 @@ pub fn client_info() -> Value {
     json!({ "name": CLIENT_NAME, "version": CLIENT_VERSION })
 }
 
-/// Capabilities this client advertises.
+/// What this client can answer when a server asks for input mid-call.
 ///
-/// Deliberately empty: `elicitation`, `sampling`, and `roots` all require a
-/// user or model to answer a server-initiated request mid-call, which this
-/// transport has no way to reach. Declaring them absent is load-bearing, not
-/// cosmetic — under MRTR a server **MUST NOT** ask for an input type the client
-/// did not declare, so an accurate declaration is what keeps servers from
-/// blocking on prompts nobody can answer.
-pub fn client_capabilities() -> Value {
-    json!({})
+/// Capability declaration is load-bearing, not cosmetic: under MRTR a server
+/// **MUST NOT** ask for an input type the client did not declare, so an
+/// accurate declaration is what keeps servers from blocking on prompts nobody
+/// can answer. Everything here defaults to "cannot", and a host turns a flag on
+/// only by supplying the machinery that answers it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ClientCapabilities {
+    /// The host can show a URL to a human, take their consent, and open it out
+    /// of band ([`crate::elicitation::UrlElicitationHandler`]).
+    pub url_elicitation: bool,
+}
+
+impl ClientCapabilities {
+    /// Declares nothing — the default for hosts with no human in the loop.
+    pub fn none() -> Self {
+        Self::default()
+    }
+}
+
+/// Capabilities this client advertises, in wire shape.
+///
+/// `sampling` and `roots` are always absent: both require a model or a
+/// filesystem view to answer a request mid-call, which this transport has no
+/// way to reach. `elicitation` is declared only in `url` mode and only when the
+/// host supplied a consent handler; form mode stays undeclared because a form
+/// answer would have to flow back through the model, which is exactly what URL
+/// mode exists to avoid.
+pub fn client_capabilities(capabilities: ClientCapabilities) -> Value {
+    if capabilities.url_elicitation {
+        json!({ "elicitation": { "url": {} } })
+    } else {
+        json!({})
+    }
 }
 
 /// The `_meta` object carried on every request body in the stateless era.
@@ -68,13 +93,13 @@ pub fn client_capabilities() -> Value {
 /// Carries what the `initialize` handshake used to negotiate once: protocol
 /// version, client identity, and client capabilities. Additive for stateful
 /// servers, which ignore unknown `params._meta`.
-pub fn request_meta(version: &str) -> Value {
+pub fn request_meta(version: &str, capabilities: ClientCapabilities) -> Value {
     let mut meta = Map::new();
     meta.insert(PROTOCOL_VERSION_META_KEY.to_string(), json!(version));
     meta.insert(CLIENT_INFO_META_KEY.to_string(), client_info());
     meta.insert(
         CLIENT_CAPABILITIES_META_KEY.to_string(),
-        client_capabilities(),
+        client_capabilities(capabilities),
     );
     Value::Object(meta)
 }
@@ -93,17 +118,23 @@ pub fn routable_headers(version: &str, method: &str, name: Option<&str>) -> Vec<
 }
 
 /// `tools/list` request body, carrying `_meta`.
-pub fn tools_list_body(id: i64, version: &str) -> Value {
+pub fn tools_list_body(id: i64, version: &str, capabilities: ClientCapabilities) -> Value {
     json!({
         "jsonrpc": "2.0",
         "id": id,
         "method": "tools/list",
-        "params": { "_meta": request_meta(version) }
+        "params": { "_meta": request_meta(version, capabilities) }
     })
 }
 
 /// `tools/call` request body, carrying `_meta`.
-pub fn tools_call_body(id: i64, name: &str, arguments: &Value, version: &str) -> Value {
+pub fn tools_call_body(
+    id: i64,
+    name: &str,
+    arguments: &Value,
+    version: &str,
+    capabilities: ClientCapabilities,
+) -> Value {
     json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -111,7 +142,7 @@ pub fn tools_call_body(id: i64, name: &str, arguments: &Value, version: &str) ->
         "params": {
             "name": name,
             "arguments": arguments,
-            "_meta": request_meta(version),
+            "_meta": request_meta(version, capabilities),
         }
     })
 }
@@ -119,21 +150,31 @@ pub fn tools_call_body(id: i64, name: &str, arguments: &Value, version: &str) ->
 /// `tools/call` retry body for a multi round-trip request.
 ///
 /// Echoes `requestState` back verbatim — it is opaque server state that the
-/// client must not inspect or alter — and uses a **different** JSON-RPC id from
-/// the request that produced the `input_required` result, since MRTR treats the
+/// client must not inspect or alter — carries any `inputResponses` gathered for
+/// the server's `inputRequests`, and uses a **different** JSON-RPC id from the
+/// request that produced the `input_required` result, since MRTR treats the
 /// retry as an independent request.
 pub fn tools_call_retry_body(
     id: i64,
     name: &str,
     arguments: &Value,
     version: &str,
+    capabilities: ClientCapabilities,
     request_state: Option<&str>,
+    input_responses: &BTreeMap<String, Value>,
 ) -> Value {
-    let mut body = tools_call_body(id, name, arguments, version);
-    if let Some(request_state) = request_state
-        && let Some(params) = body["params"].as_object_mut()
-    {
+    let mut body = tools_call_body(id, name, arguments, version, capabilities);
+    let Some(params) = body["params"].as_object_mut() else {
+        return body;
+    };
+    if let Some(request_state) = request_state {
         params.insert("requestState".to_string(), json!(request_state));
+    }
+    if !input_responses.is_empty() {
+        params.insert(
+            "inputResponses".to_string(),
+            Value::Object(input_responses.clone().into_iter().collect()),
+        );
     }
     body
 }
@@ -146,6 +187,10 @@ pub fn initialize_body(id: i64, version: &str) -> Value {
         "method": "initialize",
         "params": {
             "protocolVersion": version,
+            // 2025-era elicitation is a server-initiated request over a
+            // server→client stream this transport does not open, so the
+            // handshake declares nothing regardless of host capabilities. URL
+            // mode elicitation is 2026-07-28-only for us, via `_meta`.
             "capabilities": {},
             "clientInfo": client_info(),
         }
@@ -167,16 +212,60 @@ pub fn protocol_version_from_initialize(body: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// One entry of an MRTR `inputRequests` map: the server-assigned key plus the
+/// request it holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InputRequest {
+    /// Key the response must be returned under in `inputResponses`.
+    pub key: String,
+    /// JSON-RPC method the server is asking the client to serve
+    /// (`elicitation/create`, `sampling/createMessage`, `roots/list`).
+    pub method: String,
+    /// The request's params, uninterpreted.
+    pub params: Value,
+}
+
+impl InputRequest {
+    /// The URL mode elicitation this request carries, if that is what it is.
+    ///
+    /// Returns `(message, url)`. A `mode` of `form` (or an absent `mode`, which
+    /// means form) is not a URL elicitation and yields `None` — this client
+    /// declares no form mode, so such a request is a server error, reported by
+    /// the caller rather than silently answered.
+    pub fn url_elicitation(&self) -> Option<(String, String)> {
+        if self.method != "elicitation/create" {
+            return None;
+        }
+        if self.params.get("mode").and_then(Value::as_str)? != "url" {
+            return None;
+        }
+        let url = self.params.get("url").and_then(Value::as_str)?.to_string();
+        let message = self
+            .params
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("The server needs you to complete an interaction in your browser.")
+            .to_string();
+        Some((message, url))
+    }
+}
+
 /// A `resultType: "input_required"` result — the multi round-trip request
 /// (MRTR) pattern that replaced server-initiated requests in `2026-07-28`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputRequired {
-    /// Server-assigned keys naming the inputs it wants (`elicitation/create`,
-    /// `sampling/createMessage`, `roots/list`). Empty when the server only
-    /// needs the round trip itself.
-    pub input_request_keys: Vec<String>,
+    /// The inputs the server wants. Empty when the server only needs the round
+    /// trip itself.
+    pub requests: Vec<InputRequest>,
     /// Opaque server state to echo back on the retry, if any.
     pub request_state: Option<String>,
+}
+
+impl InputRequired {
+    /// Server-assigned keys, in the order they were parsed.
+    pub fn keys(&self) -> Vec<String> {
+        self.requests.iter().map(|r| r.key.clone()).collect()
+    }
 }
 
 /// Read an `input_required` result from a JSON-RPC result body, if that is what
@@ -187,13 +276,26 @@ pub fn input_required_from_result(body: &str) -> Option<InputRequired> {
     if result.get("resultType")?.as_str()? != "input_required" {
         return None;
     }
-    let input_request_keys = result
+    let requests = result
         .get("inputRequests")
         .and_then(Value::as_object)
-        .map(|requests| requests.keys().cloned().collect())
+        .map(|requests| {
+            requests
+                .iter()
+                .map(|(key, request)| InputRequest {
+                    key: key.clone(),
+                    method: request
+                        .get("method")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    params: request.get("params").cloned().unwrap_or(Value::Null),
+                })
+                .collect()
+        })
         .unwrap_or_default();
     Some(InputRequired {
-        input_request_keys,
+        requests,
         request_state: result
             .get("requestState")
             .and_then(Value::as_str)
@@ -335,7 +437,7 @@ mod tests {
 
     #[test]
     fn request_meta_carries_client_info_under_canonical_key() {
-        let meta = request_meta(MCP_PROTOCOL_VERSION_2026_07);
+        let meta = request_meta(MCP_PROTOCOL_VERSION_2026_07, ClientCapabilities::none());
         let info = meta.get(CLIENT_INFO_META_KEY).expect("client info present");
         assert_eq!(info.get("name").and_then(|v| v.as_str()), Some(CLIENT_NAME));
         assert_eq!(
@@ -363,13 +465,14 @@ mod tests {
 
     #[test]
     fn bodies_carry_meta() {
-        let list = tools_list_body(1, MCP_PROTOCOL_VERSION_2026_07);
+        let list = tools_list_body(1, MCP_PROTOCOL_VERSION_2026_07, ClientCapabilities::none());
         assert!(list["params"]["_meta"].is_object());
         let call = tools_call_body(
             2,
             "search",
             &json!({"q": "x"}),
             MCP_PROTOCOL_VERSION_2026_07,
+            ClientCapabilities::none(),
         );
         assert_eq!(call["params"]["name"], "search");
         assert!(call["params"]["_meta"].is_object());
@@ -431,7 +534,7 @@ mod tests {
 
     #[test]
     fn meta_carries_version_capabilities_and_client_info() {
-        let meta = request_meta(MCP_PROTOCOL_VERSION_2026_07);
+        let meta = request_meta(MCP_PROTOCOL_VERSION_2026_07, ClientCapabilities::none());
         assert_eq!(
             meta.get(PROTOCOL_VERSION_META_KEY).and_then(|v| v.as_str()),
             Some(MCP_PROTOCOL_VERSION_2026_07)
@@ -439,18 +542,63 @@ mod tests {
         // An empty capabilities object is a positive declaration that this
         // client answers no server-initiated input requests.
         assert_eq!(meta.get(CLIENT_CAPABILITIES_META_KEY), Some(&json!({})));
+
+        // A host that can reach a human declares URL mode elicitation — and
+        // only URL mode: form mode would route the answer back through the
+        // model, which is what URL mode exists to avoid.
+        let with_elicitation = request_meta(
+            MCP_PROTOCOL_VERSION_2026_07,
+            ClientCapabilities {
+                url_elicitation: true,
+            },
+        );
+        assert_eq!(
+            with_elicitation.get(CLIENT_CAPABILITIES_META_KEY),
+            Some(&json!({ "elicitation": { "url": {} } }))
+        );
+    }
+
+    #[test]
+    fn url_elicitation_requests_are_recognized_and_others_are_not() {
+        let body = r#"{"jsonrpc":"2.0","id":1,"result":{"resultType":"input_required",
+            "inputRequests":{
+              "connect":{"method":"elicitation/create","params":{"mode":"url",
+                "url":"https://mcp.example.com/connect?x=1","message":"Authorize Example."}},
+              "name":{"method":"elicitation/create","params":{"mode":"form","message":"Name?"}},
+              "guess":{"method":"sampling/createMessage","params":{}}
+            },"requestState":"blob"}}"#;
+        let parsed = input_required_from_result(body).expect("input_required");
+        let by_key = |key: &str| {
+            parsed
+                .requests
+                .iter()
+                .find(|r| r.key == key)
+                .expect("request present")
+                .clone()
+        };
+        assert_eq!(
+            by_key("connect").url_elicitation(),
+            Some((
+                "Authorize Example.".to_string(),
+                "https://mcp.example.com/connect?x=1".to_string()
+            ))
+        );
+        // Form mode and sampling are not URL elicitations: this client
+        // declares neither, so the caller reports them instead of answering.
+        assert_eq!(by_key("name").url_elicitation(), None);
+        assert_eq!(by_key("guess").url_elicitation(), None);
     }
 
     #[test]
     fn detects_input_required_results() {
         let bare = r#"{"jsonrpc":"2.0","id":1,"result":{"resultType":"input_required","requestState":"opaque"}}"#;
         let parsed = input_required_from_result(bare).expect("input_required");
-        assert!(parsed.input_request_keys.is_empty());
+        assert!(parsed.requests.is_empty());
         assert_eq!(parsed.request_state.as_deref(), Some("opaque"));
 
         let with_requests = r#"{"jsonrpc":"2.0","id":1,"result":{"resultType":"input_required","inputRequests":{"github_login":{"method":"elicitation/create"}}}}"#;
         let parsed = input_required_from_result(with_requests).expect("input_required");
-        assert_eq!(parsed.input_request_keys, vec!["github_login".to_string()]);
+        assert_eq!(parsed.keys(), vec!["github_login".to_string()]);
         assert_eq!(parsed.request_state, None);
 
         let complete =
@@ -462,21 +610,40 @@ mod tests {
 
     #[test]
     fn retry_body_echoes_request_state_verbatim() {
+        let mut responses = BTreeMap::new();
+        responses.insert("connect".to_string(), json!({ "action": "accept" }));
         let body = tools_call_retry_body(
             2,
             "search",
             &json!({"q": "x"}),
             MCP_PROTOCOL_VERSION_2026_07,
+            ClientCapabilities {
+                url_elicitation: true,
+            },
             Some("AEAD-blob=="),
+            &responses,
         );
         assert_eq!(body["id"], 2);
         assert_eq!(body["params"]["requestState"], "AEAD-blob==");
         assert_eq!(body["params"]["arguments"]["q"], "x");
+        assert_eq!(
+            body["params"]["inputResponses"]["connect"]["action"],
+            "accept"
+        );
 
-        // No state offered means none echoed back.
-        let bare =
-            tools_call_retry_body(2, "search", &json!({}), MCP_PROTOCOL_VERSION_2026_07, None);
+        // No state offered means none echoed back, and no responses gathered
+        // means no `inputResponses` key at all.
+        let bare = tools_call_retry_body(
+            2,
+            "search",
+            &json!({}),
+            MCP_PROTOCOL_VERSION_2026_07,
+            ClientCapabilities::none(),
+            None,
+            &BTreeMap::new(),
+        );
         assert!(bare["params"].get("requestState").is_none());
+        assert!(bare["params"].get("inputResponses").is_none());
     }
 
     #[test]

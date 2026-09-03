@@ -421,7 +421,22 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         session_id: SessionId,
     ) -> Option<Arc<dyn everruns_core::McpToolInvoker>> {
         let egress = self.adapters.egress_service()?;
-        let client = Arc::new(McpClient::new(egress, Arc::new(NoAuthProvider)));
+        // A session has a user who can be shown a URL and asked about it, so
+        // this host declares URL mode elicitation. It never opens anything and
+        // never invents consent: the first call stands the elicitation down and
+        // the turn pauses on a consent card (`UrlElicitationHook`); the run that
+        // follows the user's consent finds it recorded here and answers the
+        // server `accept`.
+        let client = Arc::new(McpClient::with_url_elicitation(
+            egress,
+            Arc::new(NoAuthProvider),
+            Arc::new(everruns_mcp::ConsentingUrlElicitations::new(Arc::new(
+                crate::mcp_elicitation_consent::SessionElicitationConsents::new(
+                    self.adapters.storage_store(),
+                    session_id,
+                ),
+            ))),
+        ));
         let resolver = Arc::new(WorkerMcpResolver {
             adapters: self.adapters.clone(),
             org_id,

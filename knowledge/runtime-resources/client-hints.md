@@ -44,6 +44,7 @@ Any key-value pair is valid. Unknown keys are silently ignored. This ensures thi
 | Key | Type | Meaning |
 | --- | ---- | ------- |
 | `setup_connection` | `bool` | Client can handle inline `setup_connection` tool calls |
+| `url_elicitation` | `bool` | Client renders the consent card for a URL an MCP server asks the user to open |
 
 These are conventions, not a fixed enum.
 
@@ -55,3 +56,20 @@ When a tool returns `ConnectionRequired`, the worker checks the session's `setup
 - **Hint absent/`false`:** Worker skips synthetic tool calls and lets the workflow continue. The tool result already contains `{"connection_required": "<provider>"}` with `success: false`, so the LLM can inform the user that a connection is needed.
 
 The Chat UI auto-declares `setup_connection: true` in `useCreateSession()` so all UI-created sessions get the interactive flow. API-only clients that don't handle synthetic tool calls simply omit the hint and get the fallback behavior.
+
+## `url_elicitation` gating
+
+The same shape, for a different card. When an MCP tool call stops on a URL mode
+elicitation (`knowledge/integrations/mcp-servers.md`), the act sets
+`waiting_for_url_elicitation` and emits a synthetic `confirm_url_elicitation`
+tool call:
+
+- **Hint `true`:** the turn pauses and the client renders the consent card,
+  which answers through `POST /v1/sessions/{id}/mcp-elicitation-consent`.
+- **Hint absent/`false`:** the turn continues. The tool result already carries
+  `code: "url_elicitation_required"` with the URL and the server's reason, so
+  the model can hand the user the link and they re-run the tool themselves.
+
+It is deliberately separate from `setup_connection`: a client that renders
+connection cards does not necessarily render this one, and pausing a turn on a
+card nobody draws just burns the tool-result timeout.

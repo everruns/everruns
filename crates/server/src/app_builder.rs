@@ -1517,7 +1517,10 @@ impl ServerAppBuilder {
         .with_org_rate_limiter(org_rate_limiter.clone())
         .with_virtual_registry(virtual_registry.clone())
         .with_resource_metadata_url(mcp_resource_metadata_url)
-        .with_mcp_resource(mcp_resource);
+        .with_mcp_resource(mcp_resource)
+        // URL mode elicitation pages hang off the same root `/mcp` is served
+        // under, so a client that can reach the endpoint can reach the page.
+        .with_elicitation_base_url(mcp_root_url.clone());
         let mcp_endpoint_state = if let Some(service) = &session_sandbox_service {
             mcp_endpoint_state.with_session_sandbox_service(service.clone())
         } else {
@@ -1739,7 +1742,19 @@ impl ServerAppBuilder {
         // The authenticated MCP product surface is always mounted. Access is
         // enforced per request by MCP-specific auth, org resolution, policy,
         // and the root-route rate limiter below (TM-MCP-001, TM-MCP-006).
-        let mut root_routes = Router::new().merge(api::mcp_endpoint::routes(mcp_endpoint_state));
+        // Pages that complete a URL mode elicitation started over `/mcp`. They
+        // are browser surfaces (cookie session), not MCP surfaces, which is why
+        // they authenticate through the ordinary AuthUser extractor rather than
+        // the MCP token path.
+        let mcp_elicitation_state = api::mcp_elicitation::AppState::new(
+            db.clone(),
+            encryption.clone(),
+            auth_state.clone(),
+            auth_config.base_url.clone(),
+        );
+        let mut root_routes = Router::new()
+            .merge(api::mcp_endpoint::routes(mcp_endpoint_state))
+            .merge(api::mcp_elicitation::routes(mcp_elicitation_state));
 
         if let Some(public_routes) = auth_backend.public_routes() {
             root_routes = root_routes.merge(public_routes);

@@ -665,6 +665,65 @@ pub struct ToolResult {
     pub raw_output: Option<String>,
 }
 
+/// `result.code` marking a tool result that stopped on a URL mode elicitation.
+///
+/// The MCP executor is the only producer; the engine's `UrlElicitationHook` is
+/// the consumer. It lives here, beside [`ToolResult`], because the two crates
+/// must agree on the shape and neither depends on the other.
+pub const URL_ELICITATION_REQUIRED_CODE: &str = "url_elicitation_required";
+
+/// Name of the synthetic client-side tool call that carries a URL mode
+/// elicitation to a human: the engine emits it, the client renders a consent
+/// surface for it, and the API that collects the decision recognises it.
+pub const CONFIRM_URL_ELICITATION_TOOL: &str = "confirm_url_elicitation";
+
+/// Structured payload of a tool result that stopped on a URL mode elicitation.
+///
+/// An MCP server answered `tools/call` by asking that a human visit a URL out
+/// of band (a secret to type, an authorization to grant, a payment to make).
+/// The call did not fail, and no credential is missing — it is waiting on a
+/// person. Everything here is safe to show: the URL was validated before any
+/// human saw it and is never fetched by the client.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UrlElicitationRequired {
+    /// Always [`URL_ELICITATION_REQUIRED_CODE`]; discriminates the payload.
+    pub code: String,
+    /// Model-facing sentence explaining what is being waited on.
+    pub error: String,
+    /// The URL a human must open. Shown in full — never shortened, and never
+    /// turned into a bare "click here" link.
+    pub url: String,
+    /// Host of `url`, so a consent surface can highlight the domain instead of
+    /// re-parsing (clients SHOULD highlight it against subdomain spoofing).
+    pub url_host: String,
+    /// Whether the host carries a Punycode label. Legitimate, but worth a
+    /// warning before a user trusts the domain.
+    pub url_is_punycode: bool,
+    /// Logical MCP server that asked.
+    pub server: String,
+    /// MCP tool the elicitation interrupted. Consent is recorded against this
+    /// pair, so it must survive into the payload.
+    pub tool: String,
+    /// The tool as the model knows it (`mcp_<server>_<tool>`), so whatever
+    /// resumes the work can name the call to make once a human has consented.
+    pub retry_tool: String,
+    /// The server's own explanation of why the interaction is needed.
+    pub message: String,
+    /// True when a human refused. Nothing more to ask; do not prompt again.
+    pub declined: bool,
+}
+
+impl UrlElicitationRequired {
+    /// Recover the payload from a tool result, if that is what it carries.
+    pub fn from_tool_result(result: &ToolResult) -> Option<Self> {
+        let value = result.result.as_ref()?;
+        if value.get("code")?.as_str()? != URL_ELICITATION_REQUIRED_CODE {
+            return None;
+        }
+        serde_json::from_value(value.clone()).ok()
+    }
+}
+
 impl ToolResult {
     /// Construct a minimal error-only ToolResult (used for fingerprinting error paths).
     pub fn error(msg: &str) -> Self {

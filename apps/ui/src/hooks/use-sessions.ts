@@ -206,9 +206,11 @@ export function useCreateSession() {
       createSession({
         ...request,
         locale: request.locale ?? backendLocale,
-        // Auto-declare setup_connection hint so the worker emits synthetic
-        // setup_connection tool calls that the Chat UI can render inline.
-        hints: { setup_connection: true, ...request.hints },
+        // Auto-declare the hints for the interactive cards the Chat UI can
+        // render inline: connection setup, and consent for a URL an MCP server
+        // asks the user to open. Each hint is what lets the backend hold the
+        // turn for that card instead of talking past it.
+        hints: { setup_connection: true, url_elicitation: true, ...request.hints },
       }),
     onSuccess: (_, { request }) => {
       // Invalidate sessions list - both all sessions and agent-specific

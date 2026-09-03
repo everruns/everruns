@@ -658,6 +658,7 @@ impl InMemoryAgenticLoop {
                             ActivityOutcome::Act(ActOutcome {
                                 blocked: act_result.blocked,
                                 waiting_for_tool_results: act_result.waiting_for_tool_results,
+                                waiting_for_url_elicitation: act_result.waiting_for_url_elicitation,
                             }),
                             0,
                             Utc::now(),

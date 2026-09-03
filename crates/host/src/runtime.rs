@@ -932,9 +932,13 @@ impl InProcessRuntime {
     /// configured auth provider.
     #[cfg(feature = "mcp")]
     fn mcp_client(&self) -> Arc<everruns_mcp::McpClient> {
-        Arc::new(everruns_mcp::McpClient::new(
+        // URL mode elicitation is relayed to the session's user through the
+        // tool result rather than answered here — the runtime cannot block a
+        // turn on a browser interaction. See `RelayUrlElicitations`.
+        Arc::new(everruns_mcp::McpClient::with_url_elicitation(
             self.host_composition.egress_service(),
             self.mcp_auth_provider.clone(),
+            Arc::new(everruns_mcp::RelayUrlElicitations),
         ))
     }
 
@@ -1344,18 +1348,19 @@ impl InProcessRuntime {
                     let outcome = ActOutcome {
                         blocked: act_result.blocked,
                         waiting_for_tool_results: act_result.waiting_for_tool_results,
+                        waiting_for_url_elicitation: act_result.waiting_for_url_elicitation,
                     };
-                    let setup_connection_hint_enabled =
-                        crate::turn_strategy::resolve_setup_connection_hint(
-                            self, org_id, session_id, outcome,
-                        )
-                        .await;
+                    let hints = crate::turn_strategy::resolve_pause_hints(
+                        self, org_id, session_id, outcome,
+                    )
+                    .await;
                     let transition = execution.advance(
                         ActivityOutcome::Act(outcome),
                         0,
                         Utc::now(),
                         HostFacts {
-                            setup_connection_hint_enabled,
+                            setup_connection_hint_enabled: hints.setup_connection,
+                            url_elicitation_hint_enabled: hints.url_elicitation,
                             ..HostFacts::default()
                         },
                     );

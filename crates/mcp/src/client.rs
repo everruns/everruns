@@ -2,6 +2,7 @@
 //! selects the transport for a connection's endpoint, and maps results.
 
 use crate::auth::{McpAuthProvider, McpAuthRequest, McpCredential};
+use crate::elicitation::UrlElicitationHandler;
 use crate::http::HttpTransport;
 use crate::result::map_tool_call_result;
 use crate::transport::{McpConnection, McpEndpoint, McpTransport};
@@ -25,6 +26,21 @@ impl McpClient {
     /// provider.
     pub fn new(egress: Arc<dyn EgressService>, auth: Arc<dyn McpAuthProvider>) -> Self {
         Self::with_http(Arc::new(HttpTransport::new(egress)), auth)
+    }
+
+    /// Build a client whose HTTP transport can put URL mode elicitations in
+    /// front of a human via `elicitation`. Hosts with no reachable user (an
+    /// unattended worker run) use [`McpClient::new`] instead, so the client
+    /// declares no elicitation capability and servers must not ask.
+    pub fn with_url_elicitation(
+        egress: Arc<dyn EgressService>,
+        auth: Arc<dyn McpAuthProvider>,
+        elicitation: Arc<dyn UrlElicitationHandler>,
+    ) -> Self {
+        Self::with_http(
+            Arc::new(HttpTransport::new(egress).with_elicitation_handler(elicitation)),
+            auth,
+        )
     }
 
     pub fn with_http(http: Arc<HttpTransport>, auth: Arc<dyn McpAuthProvider>) -> Self {

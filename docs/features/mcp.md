@@ -27,11 +27,19 @@ Register a remote MCP server and its tools appear as a **virtual capability**: a
 - **Tool naming**: discovered tools are namespaced per server so they never collide with built-in capabilities.
 - **Protocol compatibility**: the client negotiates the MCP protocol era per server. By default (`auto`) it issues a session-less `2026-07-28` request and transparently falls back to the stateful `initialize` handshake (`2025-06-18` / `2025-03-26`) for servers that require it, caching the verdict per server. Set the protocol mode to `legacy`, `stable`, or `rc` to pin a specific era and skip negotiation. No setting is needed for the common case.
 
+## When a tool needs a person
+
+Some MCP tools cannot finish without a human: a payment to authorize, an API key
+to paste, a consent screen to click. Under protocol `2026-07-28` the server hands
+back a URL instead of asking for the value, and Everruns holds the turn until
+someone answers. See [URL mode elicitation](/features/mcp-url-elicitation/).
+
 ## Use Everruns from your AI tools
 
 To connect Claude Code, Codex, or Cursor to a deployment via the `everruns-dev` plugin, see [Use in AI tools](/getting-started/use-in-ai-tools/).
 
 ## Related
 
+- [URL mode elicitation](/features/mcp-url-elicitation/), tool calls that need a person
 - [Capabilities](/features/capabilities/), how virtual capabilities fit the capability system
 - [Apps](/features/apps/), publishing agents to channels
