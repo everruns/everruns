@@ -2326,6 +2326,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-coding-review-agent"
+version = "0.1.0"
+dependencies = [
+ "everruns",
+ "everruns-llmsim",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-core"
 version = "0.19.0"
 dependencies = [
@@ -2422,6 +2432,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-framework-support-agent"
+version = "0.1.0"
+dependencies = [
+ "everruns",
+ "everruns-llmsim",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-gemini"
 version = "0.18.2"
 dependencies = [
@@ -2476,6 +2496,16 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "wiremock",
+]
+
+[[package]]
+name = "everruns-incident-commander-agent"
+version = "0.1.0"
+dependencies = [
+ "everruns",
+ "everruns-llmsim",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -3038,6 +3068,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-research-agent"
+version = "0.1.0"
+dependencies = [
+ "everruns",
+ "everruns-llmsim",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-sdk"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3157,6 +3197,16 @@ dependencies = [
  "uuid",
  "wiremock",
  "zip",
+]
+
+[[package]]
+name = "everruns-support-agent"
+version = "0.1.0"
+dependencies = [
+ "everruns",
+ "everruns-llmsim",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

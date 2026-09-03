@@ -36,7 +36,6 @@ pub struct ProcessStats {
 
 /// The kernel reports `/proc` CPU times in USER_HZ, which is fixed at 100 on
 /// Linux regardless of the kernel's internal tick rate.
-#[cfg(target_os = "linux")]
 const USER_HZ: f64 = 100.0;
 
 /// Reads system memory from `/proc/meminfo`.

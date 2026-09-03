@@ -6,6 +6,13 @@ description: Explore complete Framework programs maintained and compiled with th
 The [`crates/everruns/examples` catalog](https://github.com/everruns/everruns/tree/main/crates/everruns/examples)
 contains the maintained public examples. Each imports the `everruns` facade.
 
+For complete Platform agent definitions you can import and run, see the
+root-level [`examples/agents`](https://github.com/everruns/everruns/tree/main/examples/agents)
+catalog. It contains runnable Framework programs and matching importable
+Platform definitions for Support, Everruns Support, Coding Review, Research,
+and Incident Commander agents. Each Framework program runs deterministically
+in CI; each definition has a recommended high-end provider/model profile.
+
 | Example | Demonstrates | Command |
 | --- | --- | --- |
 | [`capability_configuration.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/capability_configuration.rs) | Typed Compaction and ToolSearch, a code-defined Definition, and a dynamic third-party reference through one entrypoint | `cargo run -p everruns --example capability_configuration` |

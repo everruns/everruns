@@ -49,6 +49,11 @@ members = [
     "integrations/browserless",
     "integrations/e2b",
     "integrations/sprites",
+    "examples/support-agent",
+    "examples/everruns-support-agent",
+    "examples/coding-review-agent",
+    "examples/research-agent",
+    "examples/incident-commander-agent",
     "examples/coding-cli",
 ]
 

@@ -1,0 +1,12 @@
+[package]
+name = "everruns-support-agent"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+publish = false
+
+[dependencies]
+everruns = { path = "../../crates/everruns" }
+everruns-llmsim = { path = "../../crates/drivers/llmsim" }
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

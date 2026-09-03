@@ -141,6 +141,12 @@ jobs:
               - 'integrations/**'
               # Public application examples are workspace members and must
               # compile/test whenever their own code changes.
+              - 'examples/agents/**'
+              - 'examples/support-agent/**'
+              - 'examples/everruns-support-agent/**'
+              - 'examples/coding-review-agent/**'
+              - 'examples/research-agent/**'
+              - 'examples/incident-commander-agent/**'
               - 'examples/coding-cli/**'
               - 'scripts/cli-e2e-test.sh'
               - 'scripts/lib/check-everruns-examples.sh'
@@ -717,6 +723,11 @@ jobs:
           # doctests), not just --lib, so integration tests aren't silently skipped.
           # Both are pure (llmsim-based, no credentials or network).
           cargo test -p everruns-core -p everruns --all-features
+          # Root-level Framework agent examples execute deterministic simulated
+          # turns, proving every catalog entry remains runnable without secrets.
+          cargo test -p everruns-support-agent -p everruns-coding-review-agent \
+            -p everruns-research-agent -p everruns-incident-commander-agent \
+            -p everruns-framework-support-agent
           # Production-safe deterministic simulator plus its optional host
           # extension. Pure llmsim; no credentials or network.
           cargo test -p everruns-llmsim --all-features
