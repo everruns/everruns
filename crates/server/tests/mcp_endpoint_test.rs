@@ -1613,6 +1613,31 @@ async fn test_mcp_execute_missing_commands() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_query_allows_empty_jq_result() {
+    // `list_harnesses` returns a bare array and takes no --limit, so the
+    // original script here produced its empty output by failing outright
+    // rather than by matching no rows. Search for a name that cannot exist
+    // instead, so the emptiness is a real empty result set.
+    let server = TestServer::in_memory().await;
+    let resp = mcp_tool_call(
+        &server,
+        "query",
+        json!({
+            "commands": "list_harnesses --search 'no-such-harness-xyz' | jq -c '.[] | {id, name, system_prompt}'"
+        }),
+    )
+    .await;
+
+    assert!(!tool_is_error(&resp), "empty jq output is valid");
+    assert_eq!(tool_text(&resp), "");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_query_surfaces_stderr_from_a_command_that_failed_mid_script() {
+    // A script exits 0 when its last command succeeds, so a failed command
+    // earlier in the pipeline used to vanish: the caller saw empty output and
+    // no indication that anything went wrong. `--limit` is not a
+    // `list_harnesses` flag, so the command fails and jq then succeeds over
+    // empty input.
     let server = TestServer::in_memory().await;
     let resp = mcp_tool_call(
         &server,
@@ -1623,8 +1648,19 @@ async fn test_mcp_query_allows_empty_jq_result() {
     )
     .await;
 
-    assert!(!tool_is_error(&resp), "empty jq output is valid");
-    assert_eq!(tool_text(&resp), "");
+    assert!(
+        !tool_is_error(&resp),
+        "the script itself exited 0; the failure is reported in the result"
+    );
+    let text = tool_text(&resp);
+    assert!(
+        text.contains("unknown flag(s): --limit"),
+        "the failing command's error must be surfaced: {text}"
+    );
+    assert!(
+        text.contains("verify the resulting state with query"),
+        "the partial-failure label must tell the caller to re-verify: {text}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
