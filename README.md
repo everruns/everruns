@@ -6,10 +6,9 @@
 
 [![Website](https://img.shields.io/badge/Website-everruns.com-blue)](https://everruns.com)
 [![Docs](https://img.shields.io/badge/Docs-docs.everruns.com-green)](https://docs.everruns.com)
+[![Crates.io](https://img.shields.io/crates/v/everruns.svg)](https://crates.io/crates/everruns)
 [![CI](https://github.com/everruns/everruns/actions/workflows/ci.yml/badge.svg)](https://github.com/everruns/everruns/actions/workflows/ci.yml)
 [![Repo: Agent Friendly](https://img.shields.io/badge/Repo-Agent%20Friendly-blue)](AGENTS.md)
-
-> **Note:** Everruns is under active development. Expect rapid changes and experimental features.
 
 **Build capable AI agents in Rust. Run them where they belong.**
 
@@ -68,6 +67,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Everruns derives the tool schema from the Rust function, lets the model call it during the turn, and returns the result before producing the final response. [Continue the framework quickstart.](https://docs.everruns.com/framework/quickstart/)
 
+> **Note:** Everruns is under active development. Expect rapid changes and experimental features.
+
 ## The agent framework
 
 The [`everruns`](./crates/everruns) crate keeps the application-facing agent
@@ -88,38 +89,16 @@ loop explicit and embeddable:
 
 ## Choose how you run Everruns
 
-### Use the framework in your application
+| Framework | Self-hosted platform | Hosted Everruns |
+| --- | --- | --- |
+| Start here. Embed Everruns in the Rust application you are building; you own the process, deployment, integrations, and data path.<br><br>[Framework quickstart →](https://docs.everruns.com/framework/quickstart/) | Run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution.<br><br>[Docker Compose quickstart →](https://docs.everruns.com/getting-started/docker-compose/) · [Architecture →](https://docs.everruns.com/explanation/architecture/) | Use the shared runtime and production operations without operating the platform yourself.<br><br>[Open Hosted Everruns →](https://app.everruns.com) |
 
-Start here when Everruns belongs inside the Rust application you are building.
-You own the process, deployment, integrations, and data path.
+### Platform capabilities
 
-[Framework quickstart →](https://docs.everruns.com/framework/quickstart/)
-
-### Run the platform yourself
-
-Use the open-source platform when you need a shared control plane, server,
-workers, UI, and durable deployment in infrastructure you manage. It exposes an
-Open Responses-compatible API for remote clients and SDKs.
-
-[Docker Compose quickstart →](https://docs.everruns.com/getting-started/docker-compose/) · [Platform architecture →](https://docs.everruns.com/explanation/architecture/)
-
-### Use Hosted Everruns
-
-Use [Hosted Everruns](https://app.everruns.com) when you want the shared runtime
-and production operations without operating the platform yourself.
-
-[Open Hosted Everruns →](https://app.everruns.com)
-
-## The Everruns platform
-
-The platform is the optional runtime and control plane for agents that need to
-run beyond one application process. It provides a server, stateless worker pool,
-web UI, remote API, and PostgreSQL-backed durable execution. Workers communicate
-with the control plane over gRPC and do not hold database credentials.
-
-It also provides the operational surfaces for publishing agents to Slack, web
-chat, A2A, webhooks, schedules, voice, HTTP, and MCP; managing organizations and
-permissions; and observing, budgeting, and evaluating production agents.
+The self-hosted and hosted platform adds durable execution, a stateless worker
+pool, a web UI, and a remote API. It also publishes agents to Slack, web chat,
+A2A, webhooks, schedules, voice, HTTP, and MCP; manages organizations and
+permissions; and supports observation, budgeting, and evaluation.
 
 [Platform capabilities](https://docs.everruns.com/features/capabilities/) · [Apps and channels](https://docs.everruns.com/features/apps/) · [Durable execution](https://docs.everruns.com/explanation/durable-execution/) · [Observability](https://docs.everruns.com/observability/)
 
