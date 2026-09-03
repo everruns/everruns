@@ -1,5 +1,9 @@
 # Everruns
 
+<p align="center">
+  <img src="./assets/readme/banner.png" alt="Everruns" width="100%" />
+</p>
+
 [![Website](https://img.shields.io/badge/Website-everruns.com-blue)](https://everruns.com)
 [![Docs](https://img.shields.io/badge/Docs-docs.everruns.com-green)](https://docs.everruns.com)
 [![CI](https://github.com/everruns/everruns/actions/workflows/ci.yml/badge.svg)](https://github.com/everruns/everruns/actions/workflows/ci.yml)
