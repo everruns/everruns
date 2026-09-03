@@ -3841,6 +3841,9 @@ mod tests {
                         turn_id,
                         input_message_id,
                         input_content: Some("hello".to_string()),
+                        agent_id: None,
+                        agent_name: None,
+                        agent_description: None,
                     }),
                 ))
                 .await;

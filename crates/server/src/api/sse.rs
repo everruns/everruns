@@ -738,7 +738,7 @@ mod tests {
     fn test_connection_limits_defaults() {
         let limits = SseConnectionLimits::default();
         assert_eq!(limits.global_max, 10_000);
-        assert_eq!(limits.per_session_max, 5);
+        assert_eq!(limits.per_session_max, 12);
         assert_eq!(limits.per_org_max, 1_000);
     }
 
@@ -891,7 +891,7 @@ mod tests {
         // 1_000 / 4 = 250
         assert_eq!(limits.per_org_max, 250);
         // Per-session NOT divided
-        assert_eq!(limits.per_session_max, 5);
+        assert_eq!(limits.per_session_max, 12);
 
         // Clean up
         unsafe {
