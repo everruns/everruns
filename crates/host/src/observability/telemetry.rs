@@ -213,7 +213,7 @@ fn build_otlp_tracer(
     // Use HTTP OTLP instead of gRPC - more reliable with Docker DNS
     let exporter = SpanExporter::builder()
         .with_http()
-        .with_endpoint(endpoint)
+        .with_endpoint(traces_endpoint(endpoint))
         .with_timeout(Duration::from_secs(10))
         .build()?;
 
@@ -229,9 +229,65 @@ fn build_otlp_tracer(
     Ok((provider, tracer))
 }
 
+/// Resolve the URL spans are POSTed to.
+///
+/// `OTEL_EXPORTER_OTLP_ENDPOINT` is a base endpoint in the OpenTelemetry
+/// specification: the signal path is appended to it. The SDK only does that
+/// for endpoints it reads from the environment itself, and this exporter
+/// passes the value programmatically, so a plain `http://host:4318` would be
+/// POSTed to verbatim and rejected by every collector. Append the traces path
+/// when the configured endpoint carries none, and leave a full signal URL
+/// (`.../v1/traces`, or a gateway's own path) untouched.
+fn traces_endpoint(endpoint: &str) -> String {
+    let trimmed = endpoint.trim_end_matches('/');
+    match trimmed.split_once("://") {
+        Some((_, rest)) if rest.contains('/') => trimmed.to_string(),
+        // No scheme: treat the first slash as the start of the path.
+        None if trimmed.contains('/') => trimmed.to_string(),
+        _ => format!("{trimmed}/v1/traces"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn traces_path_is_appended_to_a_base_endpoint() {
+        assert_eq!(
+            traces_endpoint("http://localhost:4318"),
+            "http://localhost:4318/v1/traces"
+        );
+        assert_eq!(
+            traces_endpoint("http://localhost:4318/"),
+            "http://localhost:4318/v1/traces"
+        );
+        assert_eq!(
+            traces_endpoint("https://tempo.monitoring:4318"),
+            "https://tempo.monitoring:4318/v1/traces"
+        );
+        assert_eq!(
+            traces_endpoint("localhost:4318"),
+            "localhost:4318/v1/traces"
+        );
+    }
+
+    #[test]
+    fn a_full_signal_url_is_left_alone() {
+        assert_eq!(
+            traces_endpoint("http://localhost:4318/v1/traces"),
+            "http://localhost:4318/v1/traces"
+        );
+        assert_eq!(
+            traces_endpoint("http://localhost:6006/v1/traces/"),
+            "http://localhost:6006/v1/traces"
+        );
+        // A collector behind a gateway path keeps that path.
+        assert_eq!(
+            traces_endpoint("https://gw.example.com/otlp/v1/traces"),
+            "https://gw.example.com/otlp/v1/traces"
+        );
+    }
 
     #[test]
     fn test_config_defaults() {
