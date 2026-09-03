@@ -1111,7 +1111,7 @@ impl AgentBuilder {
                 return Err(BuildError::DuplicateWorkspaceProvider { id: id.to_string() });
             }
         }
-        let default_workspace_root = self.workspace_root.clone().or_else(|| {
+        let default_workspace_root = self.workspace_root.clone().or({
             #[cfg(feature = "local")]
             {
                 self.local

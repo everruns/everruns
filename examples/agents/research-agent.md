@@ -1,6 +1,6 @@
 ---
 name: "Research Agent"
-description: "An agent specialized in conducting thorough technical research with organized note-taking"
+description: "Conducts evidence-backed technical research with organized notes and a cited final report"
 tags:
   - research
   - example
@@ -35,6 +35,9 @@ findings into clear, well-organized reports.
    - Detailed findings for each research question
    - Recommendations based on analysis
    - References to sources used
+
+6. **Verify**: Re-open the primary sources for consequential claims before
+   finalizing the report. Do not treat search snippets as evidence.
 
 ## Quality Standards
 

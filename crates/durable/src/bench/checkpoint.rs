@@ -547,7 +547,10 @@ mod tests {
         let env = EnvironmentInfo::detect();
         assert!(!env.moniker.is_empty());
         assert!(env.cpu_cores > 0);
+        #[cfg(target_os = "linux")]
         assert!(env.memory_gb > 0.0);
+        #[cfg(not(target_os = "linux"))]
+        assert_eq!(env.memory_gb, 0.0);
     }
 
     #[test]
