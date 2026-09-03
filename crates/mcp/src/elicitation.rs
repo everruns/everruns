@@ -147,6 +147,8 @@ pub struct GrantedConsent {
 pub trait ElicitationConsentStore: Send + Sync {
     /// Consume the consent recorded for `server`/`tool`, if any.
     ///
+    /// THREAT[TM-TOOL-034]: taking is what keeps a consent from being replayed.
+    ///
     /// Taking is destructive by contract: one consent authorises exactly one
     /// `accept`. A server that elicits again on the next call gets a fresh
     /// prompt rather than a silent replay of an old decision.
@@ -307,6 +309,10 @@ impl UrlElicitationHandler for DeclineUrlElicitations {
 }
 
 /// Validate a server-supplied elicitation URL before showing it to anyone.
+///
+/// THREAT[TM-TOOL-033]: the URL comes from a third-party MCP server and is put
+/// in front of a person. Validate the scheme here, before any handler sees it,
+/// and never fetch it.
 ///
 /// Returns the URL's host and whether it carries a Punycode label. Rejects
 /// anything that is not `https`, with one exception: loopback `http` for local

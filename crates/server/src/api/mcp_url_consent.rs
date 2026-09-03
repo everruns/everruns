@@ -326,6 +326,9 @@ async fn latest_user_controls(
 
 /// Recover what was actually asked, from the event that asked it.
 ///
+/// THREAT[TM-TOOL-035]: the browser posting a decision does not get to say what
+/// was consented to.
+///
 /// The request body names only the tool call; the server, tool, and domain come
 /// from the `confirm_url_elicitation` call Everruns itself emitted, so a client
 /// cannot record consent for a domain the user was never shown.
