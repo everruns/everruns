@@ -350,7 +350,10 @@ mod tests {
         )
         .expect("exit code 0 stays a success");
         assert!(outcome.contains("\"agent\": null"), "stdout is preserved");
-        assert!(outcome.contains(PARTIAL_FAILURE_LABEL), "stderr is labelled");
+        assert!(
+            outcome.contains(PARTIAL_FAILURE_LABEL),
+            "stderr is labelled"
+        );
         assert!(
             outcome.contains("Agent name must contain only lowercase letters"),
             "the failing command's error is surfaced: {outcome}"
@@ -366,8 +369,12 @@ mod tests {
 
     #[test]
     fn script_outcome_reports_a_nonzero_exit_as_an_error() {
-        let error = script_outcome(2, String::new(), "create_agent: bad_request: boom\n".to_string())
-            .expect_err("non-zero exit is an error");
+        let error = script_outcome(
+            2,
+            String::new(),
+            "create_agent: bad_request: boom\n".to_string(),
+        )
+        .expect_err("non-zero exit is an error");
         assert!(error.contains("boom"), "{error}");
         assert!(!error.contains(PARTIAL_FAILURE_LABEL));
     }
