@@ -735,7 +735,12 @@ fn test_build_request_options_omits_gemini_cache_flag_when_disabled() {
         cache_diagnostics: None,
     };
 
-    assert!(build_request_options(&config, "gemini").is_none());
+    // Streaming intent is always recorded, so the options exist; the cache
+    // flag and its provider option must not.
+    let request_options = build_request_options(&config, "gemini").expect("options");
+    assert!(request_options.prompt_cache.is_none());
+    assert!(!request_options.provider_options.contains_key("gemini"));
+    assert_eq!(request_options.stream, Some(true));
 }
 
 #[test]
