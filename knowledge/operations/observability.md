@@ -95,6 +95,13 @@ backends (Grafana Tempo, Jaeger, Datadog, Langfuse) and in Phoenix alike.
 
 `OTEL_RECORD_CONTENT` is kept as a legacy alias of the content-capture switch.
 
+`OTEL_EXPORTER_OTLP_ENDPOINT` is a base endpoint per the OpenTelemetry
+specification, so `build_otlp_tracer` appends `/v1/traces` when the configured
+value carries no path, and leaves a full signal URL alone. The SDK only does
+that appending for endpoints it reads from the environment itself, and this
+exporter passes the value programmatically, so without it a plain
+`http://host:4318` is POSTed to verbatim and every collector rejects it.
+
 ### Span model
 
 | Event | Span name | Kind | `gen_ai.operation.name` | `openinference.span.kind` |

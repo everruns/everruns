@@ -592,8 +592,10 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo.monitoring:4318
 ```
 
 **Notes:**
-- When set, traces are exported via OTLP over HTTP/protobuf (use the backend's HTTP port, typically 4318)
+- When set, traces are exported via OTLP over HTTP/protobuf (use the backend's HTTP port, typically 4318, not the gRPC port 4317)
+- Point this at the base endpoint; the `/v1/traces` path is appended for you, and a full signal URL is used as given
 - Connect to any OTLP-compatible backend for trace visualization
+- See [OpenTelemetry](/observability/opentelemetry/) for the span model and attributes
 - Without this variable, only console logging is enabled
 
 ### OTEL_SERVICE_NAME
