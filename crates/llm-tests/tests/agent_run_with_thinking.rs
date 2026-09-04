@@ -227,6 +227,10 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 #[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
+// GPT-6 Astra never surfaces readable reasoning text (see
+// llm_test_matrix::OPENAI_GPT6_ASTRA), but this test only asserts on the
+// tool call, so it is safe to cover here.
+#[case::openai_gpt6_astra(OPENAI_GPT6_ASTRA)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
 // Gemini binds a thoughtSignature to the function-call part it belongs to;
 // that binding only happens on a reasoning turn that calls a tool.

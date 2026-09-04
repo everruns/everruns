@@ -119,6 +119,7 @@ mod seed_ids {
     pub const GPT_5_6_LUNA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000228);
     pub const TEXT_EMBEDDING_3_SMALL: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000229);
+    pub const GPT_6_ASTRA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022a);
 
     // Anthropic Models (0x300-0x3FF)
     pub const CLAUDE_FABLE_5_1: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030f);
@@ -1599,6 +1600,17 @@ const SEED_MODELS: &[SeedModel] = &[
         display_name: "GPT-5.6 Luna",
         enabled: true, // Enabled by default
         is_favorite: false,
+    },
+    SeedModel {
+        // GPT-6 Astra is OpenAI's current flagship (above the GPT-5.6 series).
+        // GPT-5.6 Terra stays the platform default for now; Astra is available
+        // as an enabled favorite for the hardest reasoning/agentic work.
+        id: seed_ids::GPT_6_ASTRA,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-6-astra",
+        display_name: "GPT-6 Astra",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
     },
     // OpenAI GPT-5.5 series
     SeedModel {
@@ -3597,6 +3609,13 @@ mod tests {
             .expect("default embedding model must be catalogued");
         assert!(embedding.enabled);
         assert_eq!(embedding.capabilities, serde_json::json!(["embeddings"]));
+
+        let openai = by_id(&openai);
+        assert_eq!(
+            openai.get("gpt-6-astra"),
+            Some(&(true, true)),
+            "GPT-6 Astra must be seeded as an enabled favorite"
+        );
 
         let anthropic = db
             .list_models_for_provider(DEFAULT_ORG_ID, seed_ids::ANTHROPIC_PROVIDER)

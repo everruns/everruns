@@ -230,6 +230,9 @@ pub enum ReasoningEffort {
     Medium,
     High,
     Xhigh,
+    /// Highest tier, above `Xhigh`. First offered by GPT-6 Astra
+    /// (`reasoning.effort` accepts `max` there in addition to `xhigh`).
+    Max,
 }
 
 impl ReasoningEffort {
@@ -242,6 +245,7 @@ impl ReasoningEffort {
             Self::Medium => "medium",
             Self::High => "high",
             Self::Xhigh => "xhigh",
+            Self::Max => "max",
         }
     }
 
@@ -255,6 +259,7 @@ impl ReasoningEffort {
             "medium" => Some(Self::Medium),
             "high" => Some(Self::High),
             "xhigh" => Some(Self::Xhigh),
+            "max" => Some(Self::Max),
             _ => None,
         }
     }

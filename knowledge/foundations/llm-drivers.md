@@ -303,7 +303,7 @@ Per-model availability lives in the model profile's `speed` config, sourced from
 
 The verbosity selector maps to OpenAI's `verbosity` request parameter (`low`, `medium`, `high`): a hint for how expansive the final answer should be, orthogonal to reasoning effort (which tunes how much the model thinks). The API rejects values outside the closed set at message creation. It is resolved per turn from the latest user message's `controls.verbosity` and guarded like speed: ReasonAtom strips the value (with a warning log) when the model profile carries no `verbosity` config, and unknown models pass through. When unset, the field is omitted so the provider keeps its default (`medium`).
 
-The two OpenAI drivers place the field differently: the Responses API nests it under `text.verbosity`, while the Chat Completions API takes it as a top-level `verbosity` field. Other drivers ignore it. Per-model availability lives in the model profile's `verbosity` config (currently the GPT-5.5 and GPT-5.6 series).
+The two OpenAI drivers place the field differently: the Responses API nests it under `text.verbosity`, while the Chat Completions API takes it as a top-level `verbosity` field. Other drivers ignore it. Per-model availability lives in the model profile's `verbosity` config (currently the GPT-5.5, GPT-5.6, and GPT-6 Astra series).
 
 ### Completion Metadata
 

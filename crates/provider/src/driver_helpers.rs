@@ -386,7 +386,10 @@ pub mod thinking_budget {
             ReasoningEffort::Low => Some(LOW),
             ReasoningEffort::Medium => Some(MEDIUM),
             ReasoningEffort::High => Some(HIGH),
-            ReasoningEffort::Xhigh => Some(XHIGH),
+            // `Max` (OpenAI-only, above `Xhigh`) collapses onto the same top
+            // budget: Anthropic's own profiles never offer it as a distinct
+            // choice.
+            ReasoningEffort::Xhigh | ReasoningEffort::Max => Some(XHIGH),
         }
     }
 }

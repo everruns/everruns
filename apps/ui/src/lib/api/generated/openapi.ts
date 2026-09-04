@@ -13563,7 +13563,7 @@ export interface components {
      * @description Reasoning effort level for models that support it
      * @enum {string}
      */
-    ReasoningEffort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+    ReasoningEffort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
     /** @description Reasoning effort configuration for a model */
     ReasoningEffortConfig: {
       /** @description Default reasoning effort for this model */
