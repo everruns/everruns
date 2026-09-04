@@ -3577,7 +3577,7 @@ export interface ModelModalities {
 }
 
 /** Reasoning effort level for models that support it */
-export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 /** Named reasoning effort value for UI display */
 export interface ReasoningEffortValue {

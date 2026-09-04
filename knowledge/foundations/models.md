@@ -143,7 +143,7 @@ When `controls.speed` is set (`flex`, `default`, or `priority`), OpenAI requests
 
 **Verbosity:**
 
-When `controls.verbosity` is set (`low`, `medium`, or `high`), OpenAI requests carry the matching `verbosity`, hinting how expansive the model's answer should be (independent of reasoning effort). Only sent to models whose profile advertises a `verbosity` config (currently the GPT-5.5 and GPT-5.6 series); it is stripped for models that do not support it. See [LLM Drivers spec](llm-drivers.md).
+When `controls.verbosity` is set (`low`, `medium`, or `high`), OpenAI requests carry the matching `verbosity`, hinting how expansive the model's answer should be (independent of reasoning effort). Only sent to models whose profile advertises a `verbosity` config (currently the GPT-5.5, GPT-5.6, and GPT-6 Astra series); it is stripped for models that do not support it. See [LLM Drivers spec](llm-drivers.md).
 
 **Extended Thinking:**
 

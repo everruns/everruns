@@ -1638,7 +1638,9 @@ fn adaptive_effort_level(effort: ReasoningEffort) -> Option<&'static str> {
         ReasoningEffort::Minimal | ReasoningEffort::Low => Some("low"),
         ReasoningEffort::Medium => Some("medium"),
         ReasoningEffort::High => Some("high"),
-        ReasoningEffort::Xhigh => Some("max"),
+        // `Max` (OpenAI-only, above `Xhigh`) collapses onto the same "max"
+        // level: Anthropic's own profiles never offer it as a distinct choice.
+        ReasoningEffort::Xhigh | ReasoningEffort::Max => Some("max"),
     }
 }
 
