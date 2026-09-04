@@ -539,6 +539,20 @@ mod quota_detector_tests {
     use everruns_provider::typed_id::TurnId;
     use everruns_test_support::in_memory_loop::{LlmGenerationSummary, TurnResult};
 
+    /// A turn that failed with `error`, for driving the retry macro.
+    fn failed_result(error: &str) -> TurnResult {
+        TurnResult {
+            response: String::new(),
+            iterations: 1,
+            tool_calls_count: 0,
+            success: false,
+            error: Some(error.into()),
+            stop_reason: TurnStopReason::EndTurn,
+            turn_id: TurnId::new(),
+            llm_generations: vec![],
+        }
+    }
+
     fn tool_result(
         available_tools: &[&str],
         output_tool_calls_count: usize,
@@ -740,5 +754,77 @@ mod quota_detector_tests {
         // Capped so a long retry budget cannot unbound the job.
         assert_eq!(live_retry_backoff(4), Duration::from_secs(30));
         assert_eq!(live_retry_backoff(50), Duration::from_secs(30));
+    }
+
+    /// Drive the macro itself with a synthetic turn so the retry/backoff path is
+    /// covered without live provider traffic. `start_paused` auto-advances
+    /// tokio's clock while the runtime is idle, so the real 15s of backoff costs
+    /// no wall-clock time but is still observable via `Instant::now()`.
+    #[tokio::test(start_paused = true)]
+    async fn transient_failure_retries_with_backoff() {
+        use std::cell::Cell;
+        use std::time::Duration;
+        use tokio::time::Instant;
+
+        let config = super::ANTHROPIC_OPUS5;
+        let attempts = Cell::new(0usize);
+        let started = Instant::now();
+
+        let outcome = run_live_turn!(config, 3, |r: &TurnResult| r.success, {
+            attempts.set(attempts.get() + 1);
+            failed_result("LLM error: Anthropic stream error: overloaded_error")
+        });
+
+        assert_eq!(attempts.get(), 3, "every attempt should be spent");
+        assert!(
+            outcome.is_some_and(|r| !r.success),
+            "the last failure is returned so the caller's assertion reports it"
+        );
+        // 5s after attempt 1 + 10s after attempt 2; none after the last.
+        assert_eq!(started.elapsed(), Duration::from_secs(15));
+    }
+
+    /// A model that cleanly declines the tool is not a transport problem, so the
+    /// retries must fire back to back with no delay.
+    #[tokio::test(start_paused = true)]
+    async fn sampling_miss_retries_without_backoff() {
+        use std::cell::Cell;
+        use std::time::Duration;
+        use tokio::time::Instant;
+
+        let config = super::ANTHROPIC_OPUS5;
+        let attempts = Cell::new(0usize);
+        let started = Instant::now();
+
+        let outcome = run_live_turn!(config, 3, |r: &TurnResult| r.tool_calls_count > 0, {
+            attempts.set(attempts.get() + 1);
+            tool_result(&["get_current_time"], 0, &["stop"], 0)
+        });
+
+        assert_eq!(attempts.get(), 3);
+        assert!(outcome.is_some());
+        assert_eq!(started.elapsed(), Duration::ZERO);
+    }
+
+    /// Quota exhaustion still short-circuits to a skip on the first attempt,
+    /// without spending retries or backoff on an account that cannot recover.
+    #[tokio::test(start_paused = true)]
+    async fn quota_exhaustion_skips_immediately() {
+        use std::cell::Cell;
+        use std::time::Duration;
+        use tokio::time::Instant;
+
+        let config = super::ANTHROPIC_OPUS5;
+        let attempts = Cell::new(0usize);
+        let started = Instant::now();
+
+        let outcome = run_live_turn!(config, 3, |r: &TurnResult| r.success, {
+            attempts.set(attempts.get() + 1);
+            failed_result("LLM error: insufficient_quota: You exceeded your current quota")
+        });
+
+        assert_eq!(attempts.get(), 1, "quota is terminal, not worth retrying");
+        assert!(outcome.is_none(), "caller skips on None");
+        assert_eq!(started.elapsed(), Duration::ZERO);
     }
 }
