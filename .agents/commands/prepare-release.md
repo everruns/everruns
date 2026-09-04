@@ -105,13 +105,28 @@ changed, state that explicitly (`No published crate contracts changed this cycle
 dropping the subsection. Keep it consistent with the release PR's audit note and, if the GitHub
 Release notes were already generated at tag time, refresh that release body to match.
 
-## 6. Verify migrations without rewriting them
+## 6. Prepare the release card
+
+Update `release-card.yml` for this release. Keep the card editorial: one short headline, a one-to-three-line
+summary, and no more than three user-facing highlights. Every claim must already be supported by the release's
+`CHANGELOG.md` section. Each highlight's `source` is a PR or commit marker that the renderer verifies in that
+version's changelog section. Validate and render the reviewed card locally:
+
+```bash
+(cd apps/docs && pnpm run release-card --check --expect-version X.Y.Z)
+(cd apps/docs && pnpm run release-card --expect-version X.Y.Z)
+```
+
+The rendered PNG is generated, not committed. The release workflow regenerates it from the tagged commit and
+attaches it to the GitHub Release.
+
+## 7. Verify migrations without rewriting them
 
 Never squash, rename, or delete existing migrations for a release. Confirm the sorted basenames in
 `crates/server/migrations/` still start at `001_` and stay strictly sequential
 (`bash scripts/lib/check-migration-ordering.sh`).
 
-## 7. Refresh lockfiles
+## 8. Refresh lockfiles
 
 ```bash
 cargo generate-lockfile
@@ -119,7 +134,7 @@ cargo generate-lockfile
 (cd apps/docs && pnpm install --lockfile-only)
 ```
 
-## 8. Commit and open the PR
+## 9. Commit and open the PR
 
 Stage the files you touched by name, then:
 

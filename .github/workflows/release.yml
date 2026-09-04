@@ -119,6 +119,22 @@ jobs:
           echo "Release notes extracted:"
           cat release_notes.md
 
+      - name: Install release card renderer
+        run: |
+          set -euo pipefail
+          npm install --global pnpm@10.33.0
+          pnpm --dir apps/docs install --frozen-lockfile
+
+      - name: Render release card
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          pnpm --dir apps/docs run release-card \
+            --input ../../release-card.yml \
+            --expect-version "$VERSION" \
+            --output "../../release-card-v$VERSION.png"
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -128,7 +144,8 @@ jobs:
           gh release create "v$VERSION" \
             --title "v$VERSION" \
             --notes-file release_notes.md \
-            --target "$TARGET_SHA"
+            --target "$TARGET_SHA" \
+            "release-card-v$VERSION.png#Everruns release card"
 
           echo "Created release v$VERSION"
 
