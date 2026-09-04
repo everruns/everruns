@@ -1,9 +1,9 @@
 # Runnable and importable agent examples
 
 Every Framework example is a self-contained Cargo package with its own source,
-test, README, typed tool, and model profile. Each executes a deterministic
-scripted tool loop in CI; a production embedding replaces the simulated model
-with its configured provider and model.
+test, README, typed tool or capability, and model profile. `cargo run` makes a
+real provider call; CI validates that the agent can be constructed without
+credentials and never makes a billed network call.
 
 | Example | Run | Production model profile |
 | --- | --- | --- |

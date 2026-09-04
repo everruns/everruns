@@ -8,4 +8,4 @@ Set Theme "Catppuccin Mocha"
 
 Type "cargo run -q -p everruns-framework-support-agent"
 Enter
-Sleep 3s
+Sleep 30s

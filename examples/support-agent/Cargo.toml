@@ -6,7 +6,5 @@ license.workspace = true
 publish = false
 
 [dependencies]
-everruns = { path = "../../crates/everruns" }
-everruns-llmsim = { path = "../../crates/drivers/llmsim" }
-serde_json.workspace = true
+everruns = { path = "../../crates/everruns", features = ["openai"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

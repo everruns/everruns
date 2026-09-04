@@ -1,18 +1,17 @@
 # Coding Review Agent
 
-A self-contained Framework code-review agent. It attaches a typed trusted-
-workspace inspection tool, then runs review instructions through `Engine`.
+A self-contained Framework code-review agent. It uses Anthropic's
+`claude-sonnet-5`, inspects the included `sample_payment.rs`, and produces a
+real code review.
 
 ## Run
 
 ![Coding Review Agent terminal demo](demo.gif)
 
 ```bash
-cargo run -p everruns-coding-review-agent
+ANTHROPIC_API_KEY=... cargo run -p everruns-coding-review-agent
 cargo test -p everruns-coding-review-agent
 ```
 
-The scripted simulator calls the workspace-inspection tool before the final
-review, so CI exercises the agent tool loop. For production, connect the
-trusted workspace and configure an Anthropic provider with `claude-sonnet-5` or
-the newest compatible Sonnet profile.
+Pass a different review request after `--`. The test only validates agent
+construction; `cargo run` makes the real provider call.

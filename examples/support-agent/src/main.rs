@@ -1,56 +1,70 @@
-//! A self-contained customer-support agent.
+//! A real customer-support agent backed by OpenAI.
 //!
-//! Run with `cargo run -p everruns-support-agent`.
+//! ```text
+//! OPENAI_API_KEY=... cargo run -p everruns-support-agent
+//! ```
 
-use everruns::{Agent, Engine, LlmSimConfig, Model, Turn};
-use everruns_llmsim::{SimToolCall, SimTurn};
-use serde_json::json;
+use everruns::{Agent, Engine, OpenAI, Turn};
 
-const PRODUCTION_MODEL: &str = "gpt-5.6-terra";
+const MODEL: &str = "gpt-5.6-terra";
+const DEFAULT_QUESTION: &str =
+    "cust_demo cannot sign in after resetting their password. What should they do next?";
 
 #[everruns::tool]
-/// Look up safe, public support state without exposing customer details.
+/// Look up the safe, public support state for a demo customer.
 async fn lookup_customer(customer_id: String) -> Result<String, String> {
-    Ok(format!("{customer_id}: account verified"))
+    match customer_id.as_str() {
+        "cust_demo" => Ok("cust_demo: verified account; password reset completed; no active lockout; next safe action is to retry in a private browser window.".into()),
+        _ => Err("Only the self-contained cust_demo record is available in this example.".into()),
+    }
 }
 
-async fn run() -> Result<Turn, Box<dyn std::error::Error>> {
-    let agent = Agent::builder()
+fn build_agent(api_key: &str) -> Result<Agent, everruns::BuildError> {
+    Agent::builder()
         .name("support-agent")
-        .instructions("You are a support agent. Verify facts, protect customer data, and state the next action.")
-        .model(Model::simulated_with_config(LlmSimConfig::scripted(vec![
-            SimTurn::ToolCalls(vec![SimToolCall {
-                name: "lookup_customer".into(),
-                arguments: json!({"customer_id": "cust_demo"}),
-                id: Some("lookup_customer_1".into()),
-            }]),
-            SimTurn::Assistant("I verified the account and created an access-recovery ticket; I will not expose account details in chat.".into()),
-        ])))
+        .instructions("You are a customer-support agent. Use lookup_customer before answering account questions. Do not expose private data. Give a concise answer and a clear next action.")
+        .provider(OpenAI::new(api_key))
+        .model(MODEL)
         .tool(lookup_customer())
-        .build()?;
-    Ok(Engine::new()
-        .create(agent)
-        .send_and_wait("A customer cannot sign in after resetting their password.")
-        .await?)
+        .build()
+}
+
+async fn run(question: &str) -> Result<Turn, Box<dyn std::error::Error>> {
+    let api_key = std::env::var("OPENAI_API_KEY")?;
+    let agent = build_agent(&api_key)?;
+    let engine = Engine::new();
+    let session = engine.create(agent);
+    Ok(session.send_and_wait(question).await?)
+}
+
+fn question_from_args() -> String {
+    let question = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
+    if question.is_empty() {
+        DEFAULT_QUESTION.into()
+    } else {
+        question
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("model profile: {PRODUCTION_MODEL}");
-    let turn = run().await?;
-    println!("tool calls: {}", turn.tool_calls);
-    println!("{}", turn.response);
+    let question = question_from_args();
+    let turn = run(&question).await?;
+    println!("model: {MODEL}");
+    println!("response: {}", turn.response);
+    println!(
+        "iterations: {}, tool calls: {}",
+        turn.iterations, turn.tool_calls
+    );
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::run;
+    use super::build_agent;
 
-    #[tokio::test]
-    async fn runs_without_credentials() {
-        let turn = run().await.unwrap();
-        assert_eq!(turn.tool_calls, 1);
-        assert!(turn.response.contains("access-recovery"));
+    #[test]
+    fn builds_without_contacting_openai() {
+        assert!(build_agent("test-key").is_ok());
     }
 }

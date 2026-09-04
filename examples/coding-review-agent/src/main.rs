@@ -1,56 +1,70 @@
-//! A self-contained code-review agent.
+//! A real code-review agent backed by Anthropic.
 //!
-//! Run with `cargo run -p everruns-coding-review-agent`.
+//! ```text
+//! ANTHROPIC_API_KEY=... cargo run -p everruns-coding-review-agent
+//! ```
 
-use everruns::{Agent, Engine, LlmSimConfig, Model, Turn};
-use everruns_llmsim::{SimToolCall, SimTurn};
-use serde_json::json;
+use everruns::{Agent, Engine, Turn};
 
-const PRODUCTION_MODEL: &str = "claude-sonnet-5";
+const MODEL: &str = "claude-sonnet-5";
+const DEFAULT_QUESTION: &str =
+    "Review the included sample_payment.rs. Report only material, reproducible findings.";
 
 #[everruns::tool]
-/// Inspect a path in the application's trusted code-review workspace.
+/// Read the self-contained code change that this example asks the agent to review.
 async fn inspect_change(path: String) -> Result<String, String> {
-    Ok(format!("reviewed trusted workspace path {path}"))
+    if path != "sample_payment.rs" {
+        return Err("This self-contained example exposes only sample_payment.rs.".into());
+    }
+    Ok(include_str!("../sample_payment.rs").into())
 }
 
-async fn run() -> Result<Turn, Box<dyn std::error::Error>> {
-    let agent = Agent::builder()
+fn build_agent(api_key: &str) -> Result<Agent, everruns::BuildError> {
+    Agent::builder()
         .name("coding-review-agent")
-        .instructions("You are a code reviewer. Report only material, reproducible findings and name the validation performed.")
-        .model(Model::simulated_with_config(LlmSimConfig::scripted(vec![
-            SimTurn::ToolCalls(vec![SimToolCall {
-                name: "inspect_change".into(),
-                arguments: json!({"path": "src/lib.rs"}),
-                id: Some("inspect_change_1".into()),
-            }]),
-            SimTurn::Assistant("Findings: no issue in this simulated review. Validation: inspected the changed path, callers, and focused tests.".into()),
-        ])))
+        .instructions("You are a code reviewer. Use inspect_change before reviewing the sample. Report only material, reproducible findings. For each finding, explain impact, point to the relevant code, and name a focused validation.")
+        .provider(everruns_anthropic::provider("anthropic", api_key))
+        .model(MODEL)
         .tool(inspect_change())
-        .build()?;
-    Ok(Engine::new()
-        .create(agent)
-        .send_and_wait("Review this change before merge.")
-        .await?)
+        .build()
+}
+
+async fn run(question: &str) -> Result<Turn, Box<dyn std::error::Error>> {
+    let api_key = std::env::var("ANTHROPIC_API_KEY")?;
+    let agent = build_agent(&api_key)?;
+    let engine = Engine::new();
+    let session = engine.create(agent);
+    Ok(session.send_and_wait(question).await?)
+}
+
+fn question_from_args() -> String {
+    let question = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
+    if question.is_empty() {
+        DEFAULT_QUESTION.into()
+    } else {
+        question
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("model profile: {PRODUCTION_MODEL}");
-    let turn = run().await?;
-    println!("tool calls: {}", turn.tool_calls);
-    println!("{}", turn.response);
+    let question = question_from_args();
+    let turn = run(&question).await?;
+    println!("model: {MODEL}");
+    println!("response: {}", turn.response);
+    println!(
+        "iterations: {}, tool calls: {}",
+        turn.iterations, turn.tool_calls
+    );
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::run;
+    use super::build_agent;
 
-    #[tokio::test]
-    async fn runs_without_credentials() {
-        let turn = run().await.unwrap();
-        assert_eq!(turn.tool_calls, 1);
-        assert!(turn.response.contains("Findings"));
+    #[test]
+    fn builds_without_contacting_anthropic() {
+        assert!(build_agent("test-key").is_ok());
     }
 }

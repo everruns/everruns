@@ -1,18 +1,17 @@
 # Research Agent
 
-A self-contained Framework research agent. It attaches a typed source-recording
-tool and runs the evidence-first research workflow through `Engine`.
+A self-contained Framework research agent. It uses OpenRouter's
+`z-ai/glm-5.2` with a typed Brave Search tool, then cites source URLs and
+separates facts from inferences.
 
 ## Run
 
 ![Research Agent terminal demo](demo.gif)
 
 ```bash
-cargo run -p everruns-research-agent
+OPENROUTER_API_KEY=... BRAVE_SEARCH_API_KEY=... cargo run -p everruns-research-agent
 cargo test -p everruns-research-agent
 ```
 
-The scripted simulator records a source before the final report, so CI
-exercises the agent tool loop. For production, connect an OpenRouter provider
-and select `z-ai/glm-5.2` or the newest compatible GLM
-profile.
+The test only validates agent construction; `cargo run` makes the real provider
+and web-search calls.

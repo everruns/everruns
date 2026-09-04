@@ -1,56 +1,69 @@
-//! A self-contained production-incident coordinator.
+//! A real incident-commander agent backed by Meta Model API.
 //!
-//! Run with `cargo run -p everruns-incident-commander-agent`.
+//! ```text
+//! MODEL_API_KEY=... cargo run -p everruns-incident-commander-agent
+//! ```
 
-use everruns::{Agent, Engine, LlmSimConfig, Model, Turn};
-use everruns_llmsim::{SimToolCall, SimTurn};
-use serde_json::json;
+use everruns::{Agent, Engine, Turn};
 
-const PRODUCTION_MODEL: &str = "muse-spark-1.3";
+const MODEL: &str = "muse-spark-1.3";
+const DEFAULT_QUESTION: &str = "API errors increased after a deployment. Start an incident update and propose safe next actions.";
 
 #[everruns::tool]
 /// Record a bounded, non-sensitive incident status update.
 async fn record_incident_update(update: String) -> Result<String, String> {
-    Ok(format!("incident update recorded: {update}"))
+    if update.len() > 500 {
+        return Err("Keep incident updates under 500 characters.".into());
+    }
+    Ok(format!("Incident update recorded: {update}"))
 }
 
-async fn run() -> Result<Turn, Box<dyn std::error::Error>> {
-    let agent = Agent::builder()
+fn build_agent(api_key: &str) -> Result<Agent, everruns::BuildError> {
+    Agent::builder()
         .name("incident-commander-agent")
-        .instructions("You are an incident commander. Log evidence, coordinate owners, and never make unsupported production changes.")
-        .model(Model::simulated_with_config(LlmSimConfig::scripted(vec![
-            SimTurn::ToolCalls(vec![SimToolCall {
-                name: "record_incident_update".into(),
-                arguments: json!({"update": "error rate elevated after deployment"}),
-                id: Some("record_incident_update_1".into()),
-            }]),
-            SimTurn::Assistant("I opened the incident log, assessed impact, assigned owners, and will seek approval before any production-changing mitigation.".into()),
-        ])))
+        .instructions("You are an incident commander. Record a concise incident update before answering. State known impact, unknowns, owners, and safe next actions. Never claim that a production change occurred unless the tool result says so.")
+        .provider(everruns_meta::provider("meta", api_key))
+        .model(MODEL)
         .tool(record_incident_update())
-        .build()?;
-    Ok(Engine::new()
-        .create(agent)
-        .send_and_wait("API errors increased after a deployment.")
-        .await?)
+        .build()
+}
+
+async fn run(question: &str) -> Result<Turn, Box<dyn std::error::Error>> {
+    let api_key = std::env::var("MODEL_API_KEY").or_else(|_| std::env::var("META_API_KEY"))?;
+    let agent = build_agent(&api_key)?;
+    let engine = Engine::new();
+    let session = engine.create(agent);
+    Ok(session.send_and_wait(question).await?)
+}
+
+fn question_from_args() -> String {
+    let question = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
+    if question.is_empty() {
+        DEFAULT_QUESTION.into()
+    } else {
+        question
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("model profile: {PRODUCTION_MODEL}");
-    let turn = run().await?;
-    println!("tool calls: {}", turn.tool_calls);
-    println!("{}", turn.response);
+    let question = question_from_args();
+    let turn = run(&question).await?;
+    println!("model: {MODEL}");
+    println!("response: {}", turn.response);
+    println!(
+        "iterations: {}, tool calls: {}",
+        turn.iterations, turn.tool_calls
+    );
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::run;
+    use super::build_agent;
 
-    #[tokio::test]
-    async fn runs_without_credentials() {
-        let turn = run().await.unwrap();
-        assert_eq!(turn.tool_calls, 1);
-        assert!(turn.response.contains("incident log"));
+    #[test]
+    fn builds_without_contacting_meta() {
+        assert!(build_agent("test-key").is_ok());
     }
 }
