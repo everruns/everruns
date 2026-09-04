@@ -6,12 +6,25 @@ description: Explore complete Framework programs maintained and compiled with th
 The [`crates/everruns/examples` catalog](https://github.com/everruns/everruns/tree/main/crates/everruns/examples)
 contains the maintained public examples. Each imports the `everruns` facade.
 
-For complete Platform agent definitions you can import and run, see the
-root-level [`examples/agents`](https://github.com/everruns/everruns/tree/main/examples/agents)
-catalog. It contains runnable Framework programs and matching importable
-Platform definitions for Support, Everruns Support, Coding Review, Research,
-and Incident Commander agents. Each Framework program runs deterministically
-in CI; each definition has a recommended high-end provider/model profile.
+## Complete agents
+
+The root-level [`examples/agents`](https://github.com/everruns/everruns/tree/main/examples/agents)
+catalog pairs importable Platform definitions with five self-contained Framework
+programs. Each `cargo run` uses a real provider and model; CI only constructs
+the agents with placeholder credentials, so it never makes billed calls.
+
+| Example | Provider and model | What it does |
+| --- | --- | --- |
+| [Support Agent](/framework/examples/support-agent/) | OpenAI `gpt-5.6-terra` | Looks up safe customer state and answers support questions. |
+| [Everruns Support Agent](/framework/examples/everruns-support-agent/) | Anthropic `claude-opus-5` | Troubleshoots Framework questions with documentation links. |
+| [Coding Review Agent](/framework/examples/coding-review-agent/) | Anthropic `claude-sonnet-5` | Reads and reviews a self-contained code change. |
+| [Research Agent](/framework/examples/research-agent/) | OpenRouter `z-ai/glm-5.2` | Uses typed Brave web search, cites sources, and reports uncertainty. |
+| [Incident Commander Agent](/framework/examples/incident-commander-agent/) | Meta Model API `muse-spark-1.3` | Records an incident update and coordinates safe next actions. |
+
+Each example page includes source, prerequisite, command, and terminal
+screencast.
+
+## Core crate catalog
 
 | Example | Demonstrates | Command |
 | --- | --- | --- |

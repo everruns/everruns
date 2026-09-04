@@ -1,56 +1,72 @@
-//! A self-contained Everruns Framework support agent.
+//! A real Everruns Framework support agent backed by Anthropic.
 //!
-//! Run with `cargo run -p everruns-framework-support-agent`.
+//! ```text
+//! ANTHROPIC_API_KEY=... cargo run -p everruns-framework-support-agent
+//! ```
 
-use everruns::{Agent, Engine, LlmSimConfig, Model, Turn};
-use everruns_llmsim::{SimToolCall, SimTurn};
-use serde_json::json;
+use everruns::{Agent, Engine, Turn};
 
-const PRODUCTION_MODEL: &str = "claude-opus-5";
+const MODEL: &str = "claude-opus-5";
+const DEFAULT_QUESTION: &str =
+    "My Framework session fails after I add an Anthropic provider. What should I check first?";
 
 #[everruns::tool]
-/// Find the authoritative Everruns documentation relevant to a support question.
+/// Return authoritative Everruns documentation links for a support topic.
 async fn search_docs(topic: String) -> Result<String, String> {
-    Ok(format!("documentation search queued for {topic}"))
+    let topic = topic.to_lowercase();
+    if topic.contains("provider") || topic.contains("model") {
+        Ok("Models and providers: https://docs.everruns.com/framework/models-and-providers/\nCustom providers: https://docs.everruns.com/framework/custom-providers/".into())
+    } else {
+        Ok("Framework overview: https://docs.everruns.com/framework/\nFramework examples: https://docs.everruns.com/framework/examples/".into())
+    }
 }
 
-async fn run() -> Result<Turn, Box<dyn std::error::Error>> {
-    let agent = Agent::builder()
+fn build_agent(api_key: &str) -> Result<Agent, everruns::BuildError> {
+    Agent::builder()
         .name("everruns-support-agent")
-        .instructions("You support Everruns users. Separate evidence from hypotheses and give the smallest safe next step.")
-        .model(Model::simulated_with_config(LlmSimConfig::scripted(vec![
-            SimTurn::ToolCalls(vec![SimToolCall {
-                name: "search_docs".into(),
-                arguments: json!({"topic": "provider configuration"}),
-                id: Some("search_docs_1".into()),
-            }]),
-            SimTurn::Assistant("Check the provider credential, selected model, and the returned error before changing the agent configuration.".into()),
-        ])))
+        .instructions("You support Everruns Framework users. Use search_docs before answering. Separate evidence from hypotheses and give the smallest safe next step with relevant documentation links.")
+        .provider(everruns_anthropic::provider("anthropic", api_key))
+        .model(MODEL)
         .tool(search_docs())
-        .build()?;
-    Ok(Engine::new()
-        .create(agent)
-        .send_and_wait("My Framework session fails after I add a provider. What should I check?")
-        .await?)
+        .build()
+}
+
+async fn run(question: &str) -> Result<Turn, Box<dyn std::error::Error>> {
+    let api_key = std::env::var("ANTHROPIC_API_KEY")?;
+    let agent = build_agent(&api_key)?;
+    let engine = Engine::new();
+    let session = engine.create(agent);
+    Ok(session.send_and_wait(question).await?)
+}
+
+fn question_from_args() -> String {
+    let question = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
+    if question.is_empty() {
+        DEFAULT_QUESTION.into()
+    } else {
+        question
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("model profile: {PRODUCTION_MODEL}");
-    let turn = run().await?;
-    println!("tool calls: {}", turn.tool_calls);
-    println!("{}", turn.response);
+    let question = question_from_args();
+    let turn = run(&question).await?;
+    println!("model: {MODEL}");
+    println!("response: {}", turn.response);
+    println!(
+        "iterations: {}, tool calls: {}",
+        turn.iterations, turn.tool_calls
+    );
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::run;
+    use super::build_agent;
 
-    #[tokio::test]
-    async fn runs_without_credentials() {
-        let turn = run().await.unwrap();
-        assert_eq!(turn.tool_calls, 1);
-        assert!(turn.response.contains("provider credential"));
+    #[test]
+    fn builds_without_contacting_anthropic() {
+        assert!(build_agent("test-key").is_ok());
     }
 }

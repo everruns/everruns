@@ -2330,8 +2330,7 @@ name = "everruns-coding-review-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
- "everruns-llmsim",
- "serde_json",
+ "everruns-anthropic",
  "tokio",
 ]
 
@@ -2436,8 +2435,7 @@ name = "everruns-framework-support-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
- "everruns-llmsim",
- "serde_json",
+ "everruns-anthropic",
  "tokio",
 ]
 
@@ -2503,8 +2501,7 @@ name = "everruns-incident-commander-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
- "everruns-llmsim",
- "serde_json",
+ "everruns-meta",
  "tokio",
 ]
 
@@ -3072,7 +3069,9 @@ name = "everruns-research-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
- "everruns-llmsim",
+ "everruns-openrouter",
+ "reqwest 0.13.4",
+ "serde",
  "serde_json",
  "tokio",
 ]
@@ -3204,8 +3203,6 @@ name = "everruns-support-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
- "everruns-llmsim",
- "serde_json",
  "tokio",
 ]
 

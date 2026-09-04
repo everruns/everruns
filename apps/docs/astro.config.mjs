@@ -196,7 +196,17 @@ export default defineConfig({
                     { label: "Custom Providers", slug: "framework/custom-providers" },
                     { label: "Custom Backends", slug: "framework/custom-backends" },
                     { label: "Testing and Simulation", slug: "framework/testing-and-simulation" },
-                    { label: "Runnable Examples", slug: "framework/examples" },
+                  ],
+                },
+                {
+                  label: "Examples",
+                  items: [
+                    { label: "Overview", slug: "framework/examples" },
+                    { label: "Support Agent", slug: "framework/examples/support-agent" },
+                    { label: "Everruns Support Agent", slug: "framework/examples/everruns-support-agent" },
+                    { label: "Coding Review Agent", slug: "framework/examples/coding-review-agent" },
+                    { label: "Research Agent", slug: "framework/examples/research-agent" },
+                    { label: "Incident Commander Agent", slug: "framework/examples/incident-commander-agent" },
                   ],
                 },
               ],
