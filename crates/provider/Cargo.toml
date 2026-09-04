@@ -5,6 +5,11 @@
 # everruns-core so provider crates can depend on this instead of core. Core
 # consumes a narrow subset privately; callers use this crate's canonical API
 # instead of compatibility exports from core.
+#
+# Model profile types (`ModelProfile`, `ServiceKind`, etc.) and the built-in
+# profile registry now live in `everruns-model-profiles`, a dependency-light
+# leaf crate this one depends on; `model.rs`/`driver_registry.rs`/
+# `model_profiles.rs` re-export from it for source compatibility.
 
 [package]
 name = "everruns-provider"
@@ -22,6 +27,8 @@ keywords = ["everruns", "llm", "provider", "ai", "agents"]
 categories = ["api-bindings", "asynchronous"]
 
 [dependencies]
+everruns-model-profiles.workspace = true
+
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
@@ -67,7 +74,7 @@ http = ["dep:reqwest", "dep:eventsource-stream", "dep:http", "dep:bytes", "tokio
 tls-aws-lc-rs = ["dep:rustls"]
 
 # OpenAPI schema derives (utoipa::ToSchema).
-openapi = ["dep:utoipa"]
+openapi = ["dep:utoipa", "everruns-model-profiles/openapi"]
 # sqlx Postgres encode/decode for TypedId.
 sqlx = ["dep:sqlx"]
 

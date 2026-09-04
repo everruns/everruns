@@ -1,0 +1,36 @@
+# Model profile data and types (knowledge/foundations/providers.md).
+#
+# A dependency-light leaf crate: model identity (`ModelVendor`), capability
+# metadata (`ModelProfile` and its cost/limits/modality/reasoning/speed/
+# verbosity components), the model-service taxonomy (`ServiceKind`), and the
+# hardcoded profile registry (knowledge/foundations/models.md) sourced from
+# models.dev. `everruns-provider` depends on this crate and re-exports these
+# types from `model.rs`/`driver_registry.rs`/`model_profiles.rs` for source
+# compatibility; it does not depend back, so this crate takes provider/driver
+# identity as plain strings rather than `everruns_provider::DriverId`.
+
+[package]
+name = "everruns-model-profiles"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-model-profiles"
+description = "Model profile data and types for the Everruns agentic framework"
+readme = "README.md"
+keywords = ["everruns", "llm", "models", "ai", "agents"]
+categories = ["api-bindings"]
+
+[features]
+# OpenAPI schema derives (utoipa::ToSchema), mirroring everruns-provider.
+openapi = ["dep:utoipa"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+utoipa = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -2026,33 +2026,10 @@ impl ChatDriver for RequestOptionsDriver {
 /// Declared in code by each driver, never stored in the database. Only `Chat`
 /// has a driver trait today; the set is additive and new kinds gain factories
 /// on [`DriverDescriptor`] when their first consumer lands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ServiceKind {
-    /// Chat completion ([`ChatDriver`]).
-    Chat,
-    /// Text embeddings (planned: knowledge-base hybrid retrieval).
-    Embeddings,
-    /// Realtime voice sessions (server-side adapter using provider credentials).
-    Realtime,
-    /// Image generation.
-    Images,
-    /// Search-result reranking.
-    Rerank,
-}
-
-impl std::fmt::Display for ServiceKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            ServiceKind::Chat => "chat",
-            ServiceKind::Embeddings => "embeddings",
-            ServiceKind::Realtime => "realtime",
-            ServiceKind::Images => "images",
-            ServiceKind::Rerank => "rerank",
-        };
-        f.write_str(s)
-    }
-}
+///
+/// Defined in `everruns-model-profiles` (profile data is keyed by service
+/// kind) and re-exported here for source compatibility.
+pub use everruns_model_profiles::ServiceKind;
 
 /// Wire flavor of a driver's interactive OAuth connect flow.
 ///

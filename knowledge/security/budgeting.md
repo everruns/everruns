@@ -307,7 +307,7 @@ File: `crates/builtins/src/self_budget.rs`.
 | Multiple budgets per subject | Allowed, most restrictive wins | User may want both cost and token limits |
 | Period handling | JSONB with type discriminator + `period_started_at` snapshot | `Duration { seconds }`, `Rolling { window }` (e.g. `5h`, `30d`), and `Calendar { unit }` (`hour | day | week | month | year`) cover sliding and calendar resets without bespoke columns. The service rolls the budget on every check by comparing `period_started_at` against the current clock. |
 | Headless enforcement | Hard stop at balance ≤ 0 | No human to interact with pause; hard stop is safer |
-| Cost lookup | `ModelProfile` from `model_profiles.rs` | Already has per-model pricing from models.dev |
+| Cost lookup | `ModelProfile` from `everruns-model-profiles` | Already has per-model pricing from models.dev |
 
 ## App / Channel Budgets
 
