@@ -1,0 +1,19 @@
+version: 0.22.0
+date: 2026-08-25
+headline:
+  - Reasoning,
+  - in order.
+summary:
+  - Model reasoning now replays as
+  - it happened—clearer to inspect,
+  - easier to trust.
+highlights:
+  - title: Ordered reasoning artifacts
+    description: Reasoning replays in production order with its classification visible.
+    source: "#3276"
+  - title: Bounded batch file reads
+    description: Read several guarded files in one policy-aware call.
+    source: "#3275"
+  - title: Cleaner replay events
+    description: Required summaries in; redundant recovery noise out.
+    source: "#3280"

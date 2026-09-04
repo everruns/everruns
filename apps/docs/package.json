@@ -13,6 +13,8 @@
     "postbuild": "node scripts/verify-notebooks.mjs",
     "preview": "astro preview",
     "check": "astro check",
+    "release-card": "node scripts/generate-release-card.mjs",
+    "release-card:test": "node --test scripts/generate-release-card.test.mjs",
     "notebooks:exec": "python3 scripts/execute-notebooks.py"
   },
   "dependencies": {

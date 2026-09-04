@@ -222,6 +222,7 @@ jobs:
             docs:
               - 'apps/docs/**'
               - 'docs/**'
+              - 'release-card.yml'
               - '.github/workflows/ci.yml'
             docs_notebooks:
               - 'apps/docs/scripts/execute-notebooks.py'
@@ -1982,6 +1983,19 @@ jobs:
 
       - name: Build docs
         run: pnpm run build
+
+      - name: Validate release card
+        run: pnpm run release-card:test && pnpm run release-card --check
+
+      - name: Render release card preview
+        run: pnpm run release-card --output /tmp/release-card.png
+
+      - name: Upload release card preview
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-card-preview
+          path: /tmp/release-card.png
+          retention-days: 14
 
   # Docker image validation for PRs. Instead of recompiling the whole workspace
   # inside Docker (~28 min), this packages the binaries already built by

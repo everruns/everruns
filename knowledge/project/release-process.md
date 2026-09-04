@@ -23,6 +23,11 @@ This specification defines the release process for Everruns. The process is desi
 5. **User merges PR**: Squash merge to main
 6. **Auto-tagging**: GitHub Action detects release commit, creates tag + GitHub Release using CHANGELOG.md content
 
+The release PR also carries `release-card.yml`, a concise presentation of facts already recorded in the
+changelog. CI renders the card through the docs image toolchain for review. At tag time the Release workflow
+regenerates the PNG from the trusted commit and attaches it to the GitHub Release. The card is presentation
+metadata, not a second release-notes source: it cannot introduce claims absent from `CHANGELOG.md`.
+
 Release readiness also includes the integration backstops that are intentionally kept off the `pull_request` hot path. Before cutting a release PR or merging it, review the latest push-only live integration workflow runs on `main` and the latest `.github/workflows/integration-live-sweep.yml` result. Do not release through unresolved failures there unless the failure is understood, documented, and explicitly accepted.
 
 Release preparation also **audits the independently versioned library crates** (see [Library Crate Releases](#library-crate-releases)). This audit is a mandatory step of every product release, not an occasional side task: a product bump never carries a library crate's changes to crates.io, so any published crate whose public contract changed since its last release must get its own `/prepare-crate-release` — or the release PR must explicitly record that no published crate contracts changed. The decision must be visible in the PR, never silently skipped.
@@ -166,9 +171,10 @@ The workflow will extract release notes from CHANGELOG.md and create the GitHub 
 1. Tag format: `vX.Y.Z` (e.g., `v0.4.0`)
 2. Release title: `vX.Y.Z`
 3. Release body: Extracted from CHANGELOG.md section for that version
-4. Docker images tagged with version (triggered via `workflow_dispatch` from Release workflow)
-5. Pre-built CLI binaries attached as release assets (triggered via `workflow_dispatch` from Release workflow)
-6. crates.io packages are not published by the product release; each uses its
+4. Release card: `release-card-vX.Y.Z.png`, rendered from the reviewed `release-card.yml`
+5. Docker images tagged with version (triggered via `workflow_dispatch` from Release workflow)
+6. Pre-built CLI binaries attached as release assets (triggered via `workflow_dispatch` from Release workflow)
+7. crates.io packages are not published by the product release; each uses its
    own trusted package tag and **Publish Crate** workflow
 
 > **Note:** Tags created by `GITHUB_TOKEN` don't trigger other workflows (GitHub anti-recursion).
