@@ -294,10 +294,19 @@ macro_rules! skip_if_quota {
 }
 
 /// Substrings that mark a *transient* live-transport failure (network blip,
-/// streaming-decode hiccup, timeout) rather than a real, reproducible error.
-/// These tests hit real provider endpoints, so a single transport hiccup should
-/// be retried, not reported as a regression — e.g. the observed flake
-/// `LLM error: Stream error: Transport error: error decoding response body`.
+/// streaming-decode hiccup, timeout, provider-side overload) rather than a real,
+/// reproducible error. These tests hit real provider endpoints, so a single
+/// hiccup should be retried, not reported as a regression — e.g. the observed
+/// flake `LLM error: Stream error: Transport error: error decoding response body`.
+///
+/// `overloaded` and `service unavailable` are matched explicitly: a provider
+/// capacity rejection (Anthropic `overloaded_error` / HTTP 529, or a 503) is
+/// transient in exactly the same way, and is the condition that turned main CI
+/// red on `abda5cc`. It previously matched only by accident, because Anthropic
+/// wraps the payload in the string `Anthropic stream error: …` — a driver that
+/// reported the same rejection without the words "stream error" would have been
+/// treated as a hard regression. Bare status codes are deliberately *not*
+/// matched: `503`/`529` as substrings collide with token counts and request ids.
 pub fn is_transient_transport_error(err: &str) -> bool {
     let e = err.to_ascii_lowercase();
     [
@@ -314,6 +323,8 @@ pub fn is_transient_transport_error(err: &str) -> bool {
         "incomplete message",
         "unexpected eof",
         "tls",
+        "overloaded",
+        "service unavailable",
     ]
     .iter()
     .any(|s| e.contains(s))
@@ -415,10 +426,19 @@ pub fn assert_live_tool_call_contract(result: &TurnResult, expected_tool: &str, 
 /// assertions still produce a precise failure message. Retries fire when a turn
 /// hit a transient transport error or `$ok` was not yet met.
 ///
+/// A transient failure backs off before the next attempt (5s, then 10s);
+/// a sampling miss retries immediately. Without this the three attempts were
+/// issued back to back over a couple of seconds, so a provider overload lasting
+/// tens of seconds — the common shape — exhausted every attempt while still
+/// overloaded and failed the matrix. Only the transient path pays the delay,
+/// because re-sampling a model that cleanly declined a tool has nothing to wait
+/// for.
+///
 /// Exported via `#[macro_export]` so every test binary that includes this
 /// shared module can use it. `is_quota_exhausted`, `is_transient_transport_error`,
-/// and `TurnResult` are referenced unqualified and resolve at each call site
-/// (the test files already glob-import this module and `TurnResult`).
+/// `live_retry_backoff`, and `TurnResult` are referenced unqualified and resolve
+/// at each call site (the test files already glob-import this module and
+/// `TurnResult`).
 #[macro_export]
 macro_rules! run_live_turn {
     ($config:expr, $max:expr, $ok:expr, $run:block) => {{
@@ -463,9 +483,33 @@ macro_rules! run_live_turn {
                 },
             );
             outcome = Some(result);
+            if transient && attempt < $max {
+                let backoff = live_retry_backoff(attempt);
+                eprintln!(
+                    "{}: backing off {:?} before attempt {}/{}",
+                    $config.label(),
+                    backoff,
+                    attempt + 1,
+                    $max,
+                );
+                ::tokio::time::sleep(backoff).await;
+            }
         }
         outcome
     }};
+}
+
+/// Delay before retrying a live turn that failed transiently, after `attempt`
+/// (1-based) attempts. Exponential from a 5s base and capped, so a provider
+/// overload gets tens of seconds to clear without unbounding the job.
+///
+/// Free function rather than inline arithmetic so the schedule is unit-testable
+/// without issuing live provider traffic.
+pub fn live_retry_backoff(attempt: u32) -> std::time::Duration {
+    const BASE_SECS: u64 = 5;
+    const MAX_SECS: u64 = 30;
+    let exponent = attempt.saturating_sub(1).min(8);
+    std::time::Duration::from_secs((BASE_SECS << exponent).min(MAX_SECS))
 }
 
 // ============================================================================
@@ -489,11 +533,25 @@ pub fn all_providers_registry() -> DriverRegistry {
 mod quota_detector_tests {
     use super::{
         LiveToolCallOutcome, assert_live_tool_call_contract, classify_live_tool_call,
-        is_quota_exhausted,
+        is_quota_exhausted, is_transient_transport_error, live_retry_backoff,
     };
     use everruns_core::turn::TurnStopReason;
     use everruns_provider::typed_id::TurnId;
     use everruns_test_support::in_memory_loop::{LlmGenerationSummary, TurnResult};
+
+    /// A turn that failed with `error`, for driving the retry macro.
+    fn failed_result(error: &str) -> TurnResult {
+        TurnResult {
+            response: String::new(),
+            iterations: 1,
+            tool_calls_count: 0,
+            success: false,
+            error: Some(error.into()),
+            stop_reason: TurnStopReason::EndTurn,
+            turn_id: TurnId::new(),
+            llm_generations: vec![],
+        }
+    }
 
     fn tool_result(
         available_tools: &[&str],
@@ -644,5 +702,129 @@ mod quota_detector_tests {
             "insufficient_quota but actually invalid api key"
         ));
         assert!(!is_quota_exhausted("permission denied for this model"));
+    }
+
+    #[test]
+    fn matches_provider_overload_as_transient() {
+        // The exact Anthropic payload that failed the Live Provider Matrix on
+        // abda5cc — a capacity rejection, not a regression in our code.
+        assert!(is_transient_transport_error(
+            "LLM error: Anthropic stream error: {\"type\":\"error\",\"error\":{\"details\":null,\"type\":\"overloaded_error\",\"message\":\"Overloaded\"},\"request_id\":\"req_011CeggG6uTebixJra5EYWEx\"}"
+        ));
+        // Matched on the overload itself, not on the "stream error" wrapper, so
+        // a driver reporting the same rejection differently still retries.
+        assert!(is_transient_transport_error("overloaded_error"));
+        assert!(is_transient_transport_error(
+            "Anthropic API error (529): Overloaded"
+        ));
+        assert!(is_transient_transport_error("HTTP 503 Service Unavailable"));
+        // Pre-existing transport signatures still match.
+        assert!(is_transient_transport_error(
+            "LLM error: Stream error: Transport error: error decoding response body"
+        ));
+    }
+
+    #[test]
+    fn does_not_treat_real_failures_as_transient() {
+        // A capacity rejection is transient; a functional break is not.
+        assert!(!is_transient_transport_error(
+            "Model not available: gpt-99-nonexistent"
+        ));
+        assert!(!is_transient_transport_error(
+            "Bad request: invalid schema for tool"
+        ));
+        assert!(!is_transient_transport_error("401 Unauthorized"));
+        assert!(!is_transient_transport_error(""));
+        // Bare status-code digits must not match: they collide with token
+        // counts and request ids, which is why 503/529 are not substrings.
+        assert!(!is_transient_transport_error(
+            "Bad request: max_tokens 65529 exceeds the model limit"
+        ));
+        assert!(!is_transient_transport_error(
+            "Invalid request id req_503_abc: unknown tool"
+        ));
+    }
+
+    #[test]
+    fn backoff_grows_exponentially_and_caps() {
+        use std::time::Duration;
+        assert_eq!(live_retry_backoff(1), Duration::from_secs(5));
+        assert_eq!(live_retry_backoff(2), Duration::from_secs(10));
+        assert_eq!(live_retry_backoff(3), Duration::from_secs(20));
+        // Capped so a long retry budget cannot unbound the job.
+        assert_eq!(live_retry_backoff(4), Duration::from_secs(30));
+        assert_eq!(live_retry_backoff(50), Duration::from_secs(30));
+    }
+
+    /// Drive the macro itself with a synthetic turn so the retry/backoff path is
+    /// covered without live provider traffic. `start_paused` auto-advances
+    /// tokio's clock while the runtime is idle, so the real 15s of backoff costs
+    /// no wall-clock time but is still observable via `Instant::now()`.
+    #[tokio::test(start_paused = true)]
+    async fn transient_failure_retries_with_backoff() {
+        use std::cell::Cell;
+        use std::time::Duration;
+        use tokio::time::Instant;
+
+        let config = super::ANTHROPIC_OPUS5;
+        let attempts = Cell::new(0usize);
+        let started = Instant::now();
+
+        let outcome = run_live_turn!(config, 3, |r: &TurnResult| r.success, {
+            attempts.set(attempts.get() + 1);
+            failed_result("LLM error: Anthropic stream error: overloaded_error")
+        });
+
+        assert_eq!(attempts.get(), 3, "every attempt should be spent");
+        assert!(
+            outcome.is_some_and(|r| !r.success),
+            "the last failure is returned so the caller's assertion reports it"
+        );
+        // 5s after attempt 1 + 10s after attempt 2; none after the last.
+        assert_eq!(started.elapsed(), Duration::from_secs(15));
+    }
+
+    /// A model that cleanly declines the tool is not a transport problem, so the
+    /// retries must fire back to back with no delay.
+    #[tokio::test(start_paused = true)]
+    async fn sampling_miss_retries_without_backoff() {
+        use std::cell::Cell;
+        use std::time::Duration;
+        use tokio::time::Instant;
+
+        let config = super::ANTHROPIC_OPUS5;
+        let attempts = Cell::new(0usize);
+        let started = Instant::now();
+
+        let outcome = run_live_turn!(config, 3, |r: &TurnResult| r.tool_calls_count > 0, {
+            attempts.set(attempts.get() + 1);
+            tool_result(&["get_current_time"], 0, &["stop"], 0)
+        });
+
+        assert_eq!(attempts.get(), 3);
+        assert!(outcome.is_some());
+        assert_eq!(started.elapsed(), Duration::ZERO);
+    }
+
+    /// Quota exhaustion still short-circuits to a skip on the first attempt,
+    /// without spending retries or backoff on an account that cannot recover.
+    #[tokio::test(start_paused = true)]
+    async fn quota_exhaustion_skips_immediately() {
+        use std::cell::Cell;
+        use std::time::Duration;
+        use tokio::time::Instant;
+
+        let config = super::ANTHROPIC_OPUS5;
+        let attempts = Cell::new(0usize);
+        let started = Instant::now();
+
+        let outcome = run_live_turn!(config, 3, |r: &TurnResult| r.success, {
+            attempts.set(attempts.get() + 1);
+            failed_result("LLM error: insufficient_quota: You exceeded your current quota")
+        });
+
+        assert_eq!(attempts.get(), 1, "quota is terminal, not worth retrying");
+        assert!(outcome.is_none(), "caller skips on None");
+        assert_eq!(started.elapsed(), Duration::ZERO);
     }
 }
