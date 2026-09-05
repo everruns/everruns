@@ -56,15 +56,7 @@ pub fn print_table_header(columns: &[(&str, usize)]) {
 
 /// Print a table row
 pub fn print_table_row(values: &[(&str, usize)]) {
-    let row: String = values
-        .iter()
-        .map(|(val, width)| {
-            let s = truncate_table_cell(val, *width);
-            format!("{:<width$}", s, width = width)
-        })
-        .collect::<Vec<_>>()
-        .join("  ");
-    println!("{}", row);
+    println!("{}", format_table_row(values));
 }
 
 fn truncate_table_cell(val: &str, width: usize) -> String {
@@ -81,7 +73,6 @@ fn truncate_table_cell(val: &str, width: usize) -> String {
 }
 
 /// Format a table row (returns string instead of printing)
-#[cfg(test)]
 fn format_table_row(values: &[(&str, usize)]) -> String {
     values
         .iter()

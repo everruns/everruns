@@ -54,7 +54,11 @@ mod tests {
     #[test]
     fn rejects_non_http_urls() {
         for url in ["file:///etc/passwd", "javascript:alert(1)", "-nope"] {
-            assert!(open(url).is_err(), "should have rejected {url}");
+            assert_eq!(
+                open(url).unwrap_err().kind(),
+                io::ErrorKind::InvalidInput,
+                "{url}"
+            );
         }
     }
 }

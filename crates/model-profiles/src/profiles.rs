@@ -3422,98 +3422,110 @@ fn llmsim_profile_data(model_id: &str) -> Option<ModelProfile> {
 mod tests {
     use super::*;
 
-    // The per-vendor `normalize_*` functions were folded into the flat registry
-    // (longest-prefix matching in `resolve_descriptor`). These shims preserve
-    // the original normalization assertions as regression coverage: each maps a
-    // wire id to its canonical registry id under the relevant provider surface.
-    fn normalize_model_id(id: &str) -> &'static str {
-        resolve_descriptor("openai", id)
-            .map(|d| d.ids[0])
-            .unwrap_or("")
-    }
-    fn normalize_anthropic_model_id(id: &str) -> &'static str {
-        resolve_descriptor("anthropic", id)
-            .map(|d| d.ids[0])
-            .unwrap_or("")
-    }
-    fn normalize_gemini_model_id(id: &str) -> &'static str {
-        resolve_descriptor("gemini", id)
-            .map(|d| d.ids[0])
-            .unwrap_or("")
+    #[test]
+    fn versioned_and_canonical_aliases_resolve_to_the_same_profile() {
+        for (provider, wire_id, canonical) in [
+            ("anthropic", "claude-haiku-4-5-20251001", "claude-haiku-4-5"),
+            ("anthropic", "claude-opus-4-5-20251101", "claude-opus-4-5"),
+            ("anthropic", "claude-opus-4-6", "claude-opus-4-6"),
+            ("anthropic", "claude-opus-4-6-20260205", "claude-opus-4-6"),
+            ("anthropic", "claude-opus-4-7", "claude-opus-4-7"),
+            ("anthropic", "claude-opus-4-7-20260416", "claude-opus-4-7"),
+            (
+                "anthropic",
+                "claude-sonnet-4-5-20250929",
+                "claude-sonnet-4-5",
+            ),
+            ("anthropic", "claude-sonnet-4-6", "claude-sonnet-4-6"),
+            (
+                "anthropic",
+                "claude-sonnet-4-6-20260217",
+                "claude-sonnet-4-6",
+            ),
+            ("anthropic", "claude-sonnet-5", "claude-sonnet-5"),
+            ("anthropic", "claude-sonnet-5-latest", "claude-sonnet-5"),
+            ("gemini", "gemini-2.0-flash", "gemini-2.0-flash"),
+            (
+                "gemini",
+                "gemini-2.5-flash-preview-04-17",
+                "gemini-2.5-flash",
+            ),
+            ("gemini", "gemini-2.5-pro", "gemini-2.5-pro"),
+            ("gemini", "gemini-2.5-pro-preview-05-06", "gemini-2.5-pro"),
+            (
+                "gemini",
+                "gemini-3.1-pro-preview-02-19",
+                "gemini-3.1-pro-preview",
+            ),
+            ("openai", "gpt-4.1", "gpt-4.1"),
+            ("openai", "gpt-4.1-2025-04-14", "gpt-4.1"),
+            ("openai", "gpt-4.1-mini", "gpt-4.1-mini"),
+            ("openai", "gpt-4.1-nano", "gpt-4.1-nano"),
+            ("openai", "gpt-5", "gpt-5"),
+            ("openai", "gpt-5-2025-08-07", "gpt-5"),
+            ("openai", "gpt-5-codex", "gpt-5-codex"),
+            ("openai", "gpt-5-mini", "gpt-5-mini"),
+            ("openai", "gpt-5-nano", "gpt-5-nano"),
+            ("openai", "gpt-5-pro", "gpt-5-pro"),
+            ("openai", "gpt-5.1", "gpt-5.1"),
+            ("openai", "gpt-5.1-codex", "gpt-5.1-codex"),
+            ("openai", "gpt-5.1-codex-max", "gpt-5.1-codex-max"),
+            ("openai", "gpt-5.1-codex-mini", "gpt-5.1-codex-mini"),
+            ("openai", "gpt-5.2", "gpt-5.2"),
+            ("openai", "gpt-5.2-2025-12-11", "gpt-5.2"),
+            ("openai", "gpt-5.2-codex", "gpt-5.2-codex"),
+            ("openai", "gpt-5.2-pro", "gpt-5.2-pro"),
+            ("openai", "gpt-5.3-codex", "gpt-5.3-codex"),
+            ("openai", "gpt-5.4", "gpt-5.4"),
+            ("openai", "gpt-5.4-2026-03-05", "gpt-5.4"),
+            ("openai", "gpt-5.4-mini", "gpt-5.4-mini"),
+            ("openai", "gpt-5.4-mini-2026-03-17", "gpt-5.4-mini"),
+            ("openai", "gpt-5.4-nano", "gpt-5.4-nano"),
+            ("openai", "gpt-5.4-nano-2026-03-17", "gpt-5.4-nano"),
+            ("openai", "gpt-5.4-pro", "gpt-5.4-pro"),
+            ("openai", "gpt-5.5", "gpt-5.5"),
+            ("openai", "gpt-5.5-2026-04-23", "gpt-5.5"),
+            ("openai", "gpt-5.5-pro", "gpt-5.5-pro"),
+            ("openai", "gpt-5.5-pro-2026-04-23", "gpt-5.5-pro"),
+            ("openai", "gpt-5.6-luna", "gpt-5.6-luna"),
+            ("openai", "gpt-5.6-sol-2026-07-09", "gpt-5.6-sol"),
+            ("openai", "gpt-6-astra", "gpt-6-astra"),
+            ("openai", "gpt-6-astra-2026-09-04", "gpt-6-astra"),
+            ("openai", "o3", "o3"),
+            ("openai", "o3-2025-04-16", "o3"),
+            ("openai", "o3-pro", "o3-pro"),
+            ("openai", "o4-mini", "o4-mini"),
+        ] {
+            let vendor = if provider == "gemini" {
+                "google"
+            } else {
+                provider
+            };
+            assert_eq!(
+                get_model_profile_key(provider, wire_id).as_deref(),
+                Some(format!("{vendor}/{canonical}").as_str()),
+                "{provider}/{wire_id}"
+            );
+            let alias = get_model_profile(provider, wire_id).unwrap();
+            let base = get_model_profile(provider, canonical).unwrap();
+            assert_eq!(
+                serde_json::to_value(alias).unwrap(),
+                serde_json::to_value(base).unwrap(),
+                "{provider}/{wire_id}"
+            );
+        }
     }
 
-    /// Every registered model profile, by the provider surface it is served on.
-    /// The list is the single place a new model must be added — the structural
-    /// invariant below then exercises it, replacing the per-model constant-mirror
-    /// tests that only restated one model's name/family/cost/limits literals.
-    const REGISTERED_MODELS: &[(&str, &str)] = &[
-        // OpenAI
-        ("openai", "gpt-realtime-2"),
-        ("openai", "o3"),
-        ("openai", "o3-pro"),
-        ("openai", "o4-mini"),
-        ("openai", "o3-deep-research"),
-        ("openai", "o4-mini-deep-research"),
-        ("openai", "gpt-4.1"),
-        ("openai", "gpt-4.1-mini"),
-        ("openai", "gpt-4.1-nano"),
-        ("openai", "gpt-5"),
-        ("openai", "gpt-5-mini"),
-        ("openai", "gpt-5-nano"),
-        ("openai", "gpt-5-pro"),
-        ("openai", "gpt-5-codex"),
-        ("openai", "gpt-5-chat-latest"),
-        ("openai", "gpt-5.1"),
-        ("openai", "gpt-5.1-codex"),
-        ("openai", "gpt-5.1-codex-mini"),
-        ("openai", "gpt-5.1-codex-max"),
-        ("openai", "gpt-5.1-chat-latest"),
-        ("openai", "gpt-5.2"),
-        ("openai", "gpt-5.2-pro"),
-        ("openai", "gpt-5.2-codex"),
-        ("openai", "gpt-5.2-chat-latest"),
-        ("openai", "gpt-5.3-codex"),
-        ("openai", "gpt-5.4"),
-        ("openai", "gpt-5.4-mini"),
-        ("openai", "gpt-5.4-nano"),
-        ("openai", "gpt-5.4-pro"),
-        ("openai", "gpt-5.5"),
-        ("openai", "gpt-5.5-pro"),
-        ("openai", "gpt-5.6-sol"),
-        ("openai", "gpt-5.6-terra"),
-        ("openai", "gpt-5.6-luna"),
-        ("openai", "gpt-6-astra"),
-        // Anthropic
-        ("anthropic", "claude-fable-5-1"),
-        ("anthropic", "claude-fable-5"),
-        ("anthropic", "claude-opus-5"),
-        ("anthropic", "claude-opus-4-8"),
-        ("anthropic", "claude-opus-4-7"),
-        ("anthropic", "claude-opus-4-6"),
-        ("anthropic", "claude-sonnet-5"),
-        ("anthropic", "claude-sonnet-4-6"),
-        ("anthropic", "claude-opus-4-5"),
-        ("anthropic", "claude-sonnet-4-5"),
-        ("anthropic", "claude-haiku-4-5"),
-        ("anthropic", "claude-opus-4"),
-        // Gemini
-        ("gemini", "gemini-3.1-pro-preview"),
-        ("gemini", "gemini-3.5-flash"),
-        ("gemini", "gemini-3.1-flash-lite"),
-        ("gemini", "gemini-2.5-pro"),
-        ("gemini", "gemini-2.5-flash"),
-        ("gemini", "gemini-2.0-flash"),
-    ];
-
-    /// Structural invariants that must hold for every registered profile. This
-    /// replaces the ~40 per-model tests that each re-asserted one model's
-    /// hardcoded name/family/cost/limits: instead of pinning literals, it
-    /// enforces the properties that would catch a real config defect (a blank
-    /// name, negative price, output exceeding context, or a reasoning-effort set
-    /// whose default is not among its own values).
+    // Inspect actual registry members so new models cannot silently escape the
+    // invariant checks through a second, manually maintained model list.
     #[test]
     fn registered_model_profiles_are_structurally_consistent() {
-        for (provider, id) in REGISTERED_MODELS {
+        assert!(!REGISTRY.is_empty());
+        for descriptor in REGISTRY {
+            assert!(!descriptor.ids.is_empty());
+            assert!(!descriptor.surfaces.is_empty());
+            let id = descriptor.ids[0];
+            let provider = descriptor.surfaces[0];
             let p = get_model_profile(provider, id)
                 .unwrap_or_else(|| panic!("{id} should resolve under {provider:?}"));
 
@@ -3542,7 +3554,14 @@ mod tests {
 
             if let Some(limits) = &p.limits {
                 assert!(limits.context > 0, "{id}: non-positive context");
-                assert!(limits.output > 0, "{id}: non-positive output");
+                if descriptor.service == ServiceKind::Embeddings {
+                    assert_eq!(
+                        limits.output, 0,
+                        "{id}: embeddings do not generate output tokens"
+                    );
+                } else {
+                    assert!(limits.output > 0, "{id}: non-positive output");
+                }
                 assert!(
                     limits.output <= limits.context,
                     "{id}: output {} exceeds context {}",
@@ -3612,10 +3631,15 @@ mod tests {
             Some("anthropic/claude-sonnet-4-5")
         );
         // Gateway alias and bare id share one key (same model identity).
-        assert_eq!(
-            get_model_profile_key("openrouter", "nvidia/nemotron-3-super-120b-a12b"),
-            get_model_profile_key("openai", "nemotron-3-super-120b-a12b"),
-        );
+        for (provider, id) in [
+            ("openrouter", "nvidia/nemotron-3-super-120b-a12b"),
+            ("openai", "nemotron-3-super-120b-a12b"),
+        ] {
+            assert_eq!(
+                get_model_profile_key(provider, id).as_deref(),
+                Some("nvidia/nemotron-3-super-120b-a12b")
+            );
+        }
         // Unknown models have no key.
         assert_eq!(get_model_profile_key("openai", "not-a-model"), None);
 
@@ -3643,16 +3667,6 @@ mod tests {
         );
     }
 
-    // Per-model name/family/cost/limits constants covered by registered_model_profiles_are_structurally_consistent.
-
-    #[test]
-    fn test_get_profile_openai_versioned() {
-        let profile = get_model_profile("openai", "gpt-5.2-2025-12-11");
-        assert!(profile.is_some());
-        let profile = profile.unwrap();
-        assert_eq!(profile.name, "GPT-5.2");
-    }
-
     #[test]
     fn test_get_profile_unknown_model() {
         let profile = get_model_profile("openai", "unknown-model");
@@ -3670,29 +3684,6 @@ mod tests {
         // Try to get an OpenAI model with Anthropic provider
         let profile = get_model_profile("anthropic", "gpt-5.2");
         assert!(profile.is_none());
-    }
-
-    // Per-model name/family/cost/limits constants covered by registered_model_profiles_are_structurally_consistent.
-
-    #[test]
-    fn test_normalize_openai_model_id() {
-        assert_eq!(normalize_model_id("gpt-5.2"), "gpt-5.2");
-        assert_eq!(normalize_model_id("gpt-5.2-2025-12-11"), "gpt-5.2");
-        assert_eq!(normalize_model_id("gpt-5.4-mini"), "gpt-5.4-mini");
-        assert_eq!(normalize_model_id("o3-2025-04-16"), "o3");
-        assert_eq!(normalize_model_id("o4-mini"), "o4-mini");
-    }
-
-    #[test]
-    fn test_normalize_anthropic_model_id() {
-        assert_eq!(
-            normalize_anthropic_model_id("claude-sonnet-5"),
-            "claude-sonnet-5"
-        );
-        assert_eq!(
-            normalize_anthropic_model_id("claude-sonnet-5-latest"),
-            "claude-sonnet-5"
-        );
     }
 
     #[test]
@@ -3790,90 +3781,36 @@ mod tests {
         }
     }
 
-    // GPT-5 model tests
-
     #[test]
-    fn test_gpt5_profile() {
-        let profile = get_model_profile("openai", "gpt-5").unwrap();
-        assert_eq!(profile.name, "GPT-5");
-        assert_eq!(profile.family, "gpt-5");
-        assert!(profile.reasoning);
-        assert!(profile.tool_call);
-
-        // Pre-5.1 reasoning effort: default medium, supports low/medium/high
-        let effort = profile.reasoning_effort.unwrap();
-        assert_eq!(effort.default, ReasoningEffort::Medium);
-        assert_eq!(effort.values.len(), 3);
-        assert!(
-            !effort
-                .values
-                .iter()
-                .any(|v| v.value == ReasoningEffort::None)
-        );
-    }
-
-    #[test]
-    fn test_gpt5_mini_profile() {
-        let profile = get_model_profile("openai", "gpt-5-mini").unwrap();
-        assert_eq!(profile.name, "GPT-5 mini");
-        assert!(profile.reasoning);
-
-        let effort = profile.reasoning_effort.unwrap();
-        assert_eq!(effort.default, ReasoningEffort::Medium);
-    }
-
-    #[test]
-    fn test_gpt5_pro_profile() {
-        let profile = get_model_profile("openai", "gpt-5-pro").unwrap();
-        assert_eq!(profile.name, "GPT-5 Pro");
-        assert!(profile.reasoning);
-
-        // gpt-5-pro: only supports high
-        let effort = profile.reasoning_effort.unwrap();
-        assert_eq!(effort.default, ReasoningEffort::High);
-        assert_eq!(effort.values.len(), 1);
-        assert_eq!(effort.values[0].value, ReasoningEffort::High);
-    }
-
-    #[test]
-    fn test_gpt51_profile() {
-        let profile = get_model_profile("openai", "gpt-5.1").unwrap();
-        assert_eq!(profile.name, "GPT-5.1");
-        assert!(profile.reasoning);
-        assert!(profile.tool_call);
-
-        // gpt-5.1: default none, supports none/low/medium/high
-        let effort = profile.reasoning_effort.unwrap();
-        assert_eq!(effort.default, ReasoningEffort::None);
-        assert_eq!(effort.values.len(), 4);
-        assert!(
-            effort
-                .values
-                .iter()
-                .any(|v| v.value == ReasoningEffort::None)
-        );
-        assert!(
-            !effort
-                .values
-                .iter()
-                .any(|v| v.value == ReasoningEffort::Xhigh)
-        );
-    }
-
-    #[test]
-    fn test_gpt51_codex_max_profile() {
-        let profile = get_model_profile("openai", "gpt-5.1-codex-max").unwrap();
-        assert_eq!(profile.name, "GPT-5.1 Codex max");
-        assert!(profile.reasoning);
-
-        // After gpt-5.1-codex-max: supports xhigh
-        let effort = profile.reasoning_effort.unwrap();
-        assert!(
-            effort
-                .values
-                .iter()
-                .any(|v| v.value == ReasoningEffort::Xhigh)
-        );
+    fn reasoning_effort_sets_match_model_contracts() {
+        use ReasoningEffort::{High, Low, Medium, None as NoReasoning, Xhigh};
+        let cases: &[(&str, ReasoningEffort, &[ReasoningEffort])] = &[
+            ("gpt-5", Medium, &[Low, Medium, High]),
+            ("gpt-5-mini", Medium, &[Low, Medium, High]),
+            ("gpt-5-pro", High, &[High]),
+            ("gpt-5.1", NoReasoning, &[NoReasoning, Low, Medium, High]),
+            (
+                "gpt-5.1-codex-max",
+                NoReasoning,
+                &[NoReasoning, Low, Medium, High, Xhigh],
+            ),
+            ("o3", Medium, &[Low, Medium, High]),
+            ("o3-pro", High, &[High]),
+            ("o4-mini", Medium, &[Low, Medium, High]),
+        ];
+        for (id, default, values) in cases {
+            let profile = get_model_profile("openai", id).unwrap();
+            assert!(profile.reasoning, "{id}");
+            assert!(profile.tool_call, "{id}");
+            assert_eq!(profile.family, *id, "{id}");
+            let effort = profile.reasoning_effort.unwrap();
+            assert_eq!(effort.default, *default, "{id}");
+            assert_eq!(
+                effort.values.iter().map(|v| v.value).collect::<Vec<_>>(),
+                *values,
+                "{id}"
+            );
+        }
     }
 
     #[test]
@@ -3996,23 +3933,6 @@ mod tests {
     }
 
     #[test]
-    fn test_gpt55_versioned() {
-        let profile = get_model_profile("openai", "gpt-5.5-2026-04-23").unwrap();
-        assert_eq!(profile.name, "GPT-5.5");
-
-        let pro = get_model_profile("openai", "gpt-5.5-pro-2026-04-23").unwrap();
-        assert_eq!(pro.name, "GPT-5.5 Pro");
-    }
-
-    #[test]
-    fn test_normalize_gpt55_model_ids() {
-        assert_eq!(normalize_model_id("gpt-5.5"), "gpt-5.5");
-        assert_eq!(normalize_model_id("gpt-5.5-2026-04-23"), "gpt-5.5");
-        assert_eq!(normalize_model_id("gpt-5.5-pro"), "gpt-5.5-pro");
-        assert_eq!(normalize_model_id("gpt-5.5-pro-2026-04-23"), "gpt-5.5-pro");
-    }
-
-    #[test]
     fn test_gpt56_profiles() {
         // Sol, Terra, Luna share the same shape: 1.05M context, 128K output,
         // 2026-02-16 knowledge cutoff, tool_search + native phases, and a
@@ -4086,15 +4006,6 @@ mod tests {
     }
 
     #[test]
-    fn test_gpt56_versioned() {
-        // Dated wire ids resolve to the canonical profile via the "<id>-" prefix.
-        let sol = get_model_profile("openai", "gpt-5.6-sol-2026-07-09").unwrap();
-        assert_eq!(sol.name, "GPT-5.6 Sol");
-        assert_eq!(normalize_model_id("gpt-5.6-sol-2026-07-09"), "gpt-5.6-sol");
-        assert_eq!(normalize_model_id("gpt-5.6-luna"), "gpt-5.6-luna");
-    }
-
-    #[test]
     fn test_gpt6_astra_profile() {
         let profile = get_model_profile("openai", "gpt-6-astra").unwrap();
         assert_eq!(profile.name, "GPT-6 Astra");
@@ -4138,14 +4049,6 @@ mod tests {
 
         assert!(profile.verbosity.is_some());
         assert!(profile.speed.is_some());
-    }
-
-    #[test]
-    fn test_normalize_gpt6_astra_model_id() {
-        let profile = get_model_profile("openai", "gpt-6-astra-2026-09-04").unwrap();
-        assert_eq!(profile.name, "GPT-6 Astra");
-        assert_eq!(normalize_model_id("gpt-6-astra-2026-09-04"), "gpt-6-astra");
-        assert_eq!(normalize_model_id("gpt-6-astra"), "gpt-6-astra");
     }
 
     #[test]
@@ -4263,82 +4166,6 @@ mod tests {
         assert_eq!(effort.values.len(), 3);
     }
 
-    #[test]
-    fn test_gpt54_versioned() {
-        let profile = get_model_profile("openai", "gpt-5.4-2026-03-05").unwrap();
-        assert_eq!(profile.name, "GPT-5.4");
-    }
-
-    #[test]
-    fn test_gpt54_mini_versioned() {
-        let profile = get_model_profile("openai", "gpt-5.4-mini-2026-03-17").unwrap();
-        assert_eq!(profile.name, "GPT-5.4 mini");
-    }
-
-    #[test]
-    fn test_normalize_gpt5_model_ids() {
-        assert_eq!(normalize_model_id("gpt-5"), "gpt-5");
-        assert_eq!(normalize_model_id("gpt-5-2025-08-07"), "gpt-5");
-        assert_eq!(normalize_model_id("gpt-5-mini"), "gpt-5-mini");
-        assert_eq!(normalize_model_id("gpt-5-nano"), "gpt-5-nano");
-        assert_eq!(normalize_model_id("gpt-5-pro"), "gpt-5-pro");
-        assert_eq!(normalize_model_id("gpt-5-codex"), "gpt-5-codex");
-        assert_eq!(normalize_model_id("gpt-5.1"), "gpt-5.1");
-        assert_eq!(normalize_model_id("gpt-5.1-codex"), "gpt-5.1-codex");
-        assert_eq!(
-            normalize_model_id("gpt-5.1-codex-mini"),
-            "gpt-5.1-codex-mini"
-        );
-        assert_eq!(normalize_model_id("gpt-5.1-codex-max"), "gpt-5.1-codex-max");
-        assert_eq!(normalize_model_id("gpt-5.2"), "gpt-5.2");
-        assert_eq!(normalize_model_id("gpt-5.2-pro"), "gpt-5.2-pro");
-        assert_eq!(normalize_model_id("gpt-5.2-codex"), "gpt-5.2-codex");
-        assert_eq!(normalize_model_id("gpt-5.3-codex"), "gpt-5.3-codex");
-        assert_eq!(normalize_model_id("gpt-5.4"), "gpt-5.4");
-        assert_eq!(normalize_model_id("gpt-5.4-2026-03-05"), "gpt-5.4");
-        assert_eq!(normalize_model_id("gpt-5.4-pro"), "gpt-5.4-pro");
-        assert_eq!(normalize_model_id("gpt-5.4-mini"), "gpt-5.4-mini");
-        assert_eq!(
-            normalize_model_id("gpt-5.4-mini-2026-03-17"),
-            "gpt-5.4-mini"
-        );
-        assert_eq!(normalize_model_id("gpt-5.4-nano"), "gpt-5.4-nano");
-        assert_eq!(
-            normalize_model_id("gpt-5.4-nano-2026-03-17"),
-            "gpt-5.4-nano"
-        );
-    }
-
-    // o3/o4 reasoning model tests
-
-    #[test]
-    fn test_o3_profile() {
-        let profile = get_model_profile("openai", "o3").unwrap();
-        assert_eq!(profile.name, "o3");
-        assert!(profile.reasoning);
-        assert!(profile.tool_call);
-        let effort = profile.reasoning_effort.unwrap();
-        assert_eq!(effort.default, ReasoningEffort::Medium);
-    }
-
-    #[test]
-    fn test_o3_pro_profile() {
-        let profile = get_model_profile("openai", "o3-pro").unwrap();
-        assert_eq!(profile.name, "o3 Pro");
-        assert!(profile.reasoning);
-        let effort = profile.reasoning_effort.unwrap();
-        assert_eq!(effort.default, ReasoningEffort::High);
-    }
-
-    #[test]
-    fn test_o4_mini_profile() {
-        let profile = get_model_profile("openai", "o4-mini").unwrap();
-        assert_eq!(profile.name, "o4 mini");
-        assert!(profile.reasoning);
-        let effort = profile.reasoning_effort.unwrap();
-        assert_eq!(effort.default, ReasoningEffort::Medium);
-    }
-
     // Claude 4.7 / 4.6 model tests
 
     #[test]
@@ -4437,103 +4264,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_claude_opus_47_versioned() {
-        let profile = get_model_profile("anthropic", "claude-opus-4-7-20260416").unwrap();
-        assert_eq!(profile.name, "Claude Opus 4.7");
-    }
-
-    #[test]
-    fn test_claude_sonnet_46_versioned() {
-        let profile = get_model_profile("anthropic", "claude-sonnet-4-6-20260217").unwrap();
-        assert_eq!(profile.name, "Claude Sonnet 4.6");
-    }
-
-    // Per-model name/family/cost/limits constants covered by registered_model_profiles_are_structurally_consistent.
-
     // Normalize tests for new models
 
-    #[test]
-    fn test_normalize_gpt41_model_ids() {
-        assert_eq!(normalize_model_id("gpt-4.1"), "gpt-4.1");
-        assert_eq!(normalize_model_id("gpt-4.1-2025-04-14"), "gpt-4.1");
-        assert_eq!(normalize_model_id("gpt-4.1-mini"), "gpt-4.1-mini");
-        assert_eq!(normalize_model_id("gpt-4.1-nano"), "gpt-4.1-nano");
-    }
-
-    #[test]
-    fn test_normalize_o_series_model_ids() {
-        assert_eq!(normalize_model_id("o3"), "o3");
-        assert_eq!(normalize_model_id("o3-2025-04-16"), "o3");
-        assert_eq!(normalize_model_id("o3-pro"), "o3-pro");
-        assert_eq!(normalize_model_id("o4-mini"), "o4-mini");
-    }
-
-    #[test]
-    fn test_normalize_claude_47_and_46_model_ids() {
-        assert_eq!(
-            normalize_anthropic_model_id("claude-opus-4-7"),
-            "claude-opus-4-7"
-        );
-        assert_eq!(
-            normalize_anthropic_model_id("claude-opus-4-7-20260416"),
-            "claude-opus-4-7"
-        );
-        assert_eq!(
-            normalize_anthropic_model_id("claude-opus-4-6"),
-            "claude-opus-4-6"
-        );
-        assert_eq!(
-            normalize_anthropic_model_id("claude-opus-4-6-20260205"),
-            "claude-opus-4-6"
-        );
-        assert_eq!(
-            normalize_anthropic_model_id("claude-sonnet-4-6"),
-            "claude-sonnet-4-6"
-        );
-        assert_eq!(
-            normalize_anthropic_model_id("claude-sonnet-4-6-20260217"),
-            "claude-sonnet-4-6"
-        );
-    }
-
-    #[test]
-    fn test_normalize_claude_45_model_ids() {
-        assert_eq!(
-            normalize_anthropic_model_id("claude-opus-4-5-20251101"),
-            "claude-opus-4-5"
-        );
-        assert_eq!(
-            normalize_anthropic_model_id("claude-sonnet-4-5-20250929"),
-            "claude-sonnet-4-5"
-        );
-        assert_eq!(
-            normalize_anthropic_model_id("claude-haiku-4-5-20251001"),
-            "claude-haiku-4-5"
-        );
-    }
-
     // Gemini model tests
-
-    #[test]
-    fn test_normalize_gemini_model_ids() {
-        assert_eq!(
-            normalize_gemini_model_id("gemini-2.5-pro"),
-            "gemini-2.5-pro"
-        );
-        assert_eq!(
-            normalize_gemini_model_id("gemini-2.5-pro-preview-05-06"),
-            "gemini-2.5-pro"
-        );
-        assert_eq!(
-            normalize_gemini_model_id("gemini-2.5-flash-preview-04-17"),
-            "gemini-2.5-flash"
-        );
-        assert_eq!(
-            normalize_gemini_model_id("gemini-2.0-flash"),
-            "gemini-2.0-flash"
-        );
-    }
 
     #[test]
     fn test_gemini_unknown_model() {
@@ -4659,12 +4392,6 @@ mod tests {
     }
 
     #[test]
-    fn test_gemini_3_1_pro_preview_normalizes_dated_suffix() {
-        let profile = get_model_profile("gemini", "gemini-3.1-pro-preview-02-19").unwrap();
-        assert_eq!(profile.family, "gemini-3.1-pro-preview");
-    }
-
-    #[test]
     fn test_third_party_profiles_via_openai_completions() {
         // Bare ids and common vendor-prefixed aliases both resolve.
         let cases = [
@@ -4779,9 +4506,11 @@ mod tests {
         assert!(responses.supports_phases);
         assert!(responses.tool_search);
         // ...but not when reached via Chat Completions or Azure.
-        let completions = get_model_profile("openai_completions", "gpt-5.4").unwrap();
-        assert!(!completions.supports_phases);
-        assert!(!completions.tool_search);
+        for provider in ["openai_completions", "azure_openai", "openrouter"] {
+            let profile = get_model_profile(provider, "gpt-5.4").unwrap();
+            assert!(!profile.supports_phases, "{provider}");
+            assert!(!profile.tool_search, "{provider}");
+        }
     }
 
     #[test]
@@ -4812,13 +4541,9 @@ mod tests {
         );
         // Retired pre-4 Claude models are no longer in the registry at all.
         assert!(get_model_profile("anthropic", "claude-3-5-haiku").is_none());
-        // Reached via a non-first-party transport (Bedrock ConverseStream lacks
-        // server-side tool search; OpenRouter's stateless shim doesn't implement
-        // it), the same model must not advertise hosted tool_search — it falls
-        // back to client-side search via auto_tool_search.
-        if let Some(bedrock) = get_model_profile("bedrock", "claude-opus-4-8") {
-            assert!(!bedrock.tool_search);
-        }
+        // This registry does not expose Claude through Bedrock. An optional
+        // assertion on a nonexistent profile would never exercise masking.
+        assert!(get_model_profile("bedrock", "claude-opus-4-8").is_none());
     }
 
     #[test]
@@ -4914,25 +4639,6 @@ mod tests {
     }
 
     #[test]
-    fn test_registry_canonical_ids_have_profiles() {
-        // Every canonical id in the registry must have a profile payload, and
-        // every profile must be reachable through the registry under at least
-        // one of its surfaces (no orphans on either side).
-        for descriptor in REGISTRY {
-            let canonical = descriptor.ids[0];
-            assert!(
-                profile_data(canonical).is_some(),
-                "registry id {canonical} has no profile payload"
-            );
-            let surface = &descriptor.surfaces[0];
-            assert!(
-                get_model_profile(surface, canonical).is_some(),
-                "registry id {canonical} does not resolve under its own surface"
-            );
-        }
-    }
-
-    #[test]
     fn test_third_party_alias_matching_is_case_insensitive() {
         // Lowercased and vendor-prefixed variants all resolve to the same model.
         let cases = [
@@ -4999,16 +4705,18 @@ mod tests {
             .expect("known model");
         // 42K*5 + 285K*0.5 + 2K*30 (per M) ≈ $0.42 — far below the ~$1.70 that
         // billing the whole 327K prompt at the full input rate would produce.
-        assert!(est < 0.45 && est > 0.39, "est {est}");
+        assert!((est - 0.417251).abs() < 1e-9, "est {est}");
     }
 
     #[test]
     fn test_estimate_cost_usd_applies_tier_to_whole_request() {
-        let est = estimate_cost_usd("openai", "gpt-5.6-sol", 300_000, 100_000, 0, 0)
-            .expect("known tiered model should yield an estimate");
         // GPT-5.6 Sol charges prompts above 272K input tokens at the tiered
-        // rates for the whole request: 300K*$10/M + 100K*$45/M = $7.50.
-        assert!((est - 7.50).abs() < 1e-9, "got {est}");
+        // rates for the whole request; the exact threshold stays at base rates.
+        for (input, expected) in [(272_000, 4.36), (272_001, 7.22001), (300_000, 7.50)] {
+            let est = estimate_cost_usd("openai", "gpt-5.6-sol", input, 100_000, 0, 0)
+                .expect("known tiered model should yield an estimate");
+            assert!((est - expected).abs() < 1e-9, "input {input}: got {est}");
+        }
     }
 
     #[test]
@@ -5030,11 +4738,12 @@ mod tests {
             estimate_cost_usd("anthropic", model, 1_000, 0, 0, 0).expect("known anthropic model");
         let with_cache = estimate_cost_usd("anthropic", model, 1_000, 0, 5_000, 0)
             .expect("known anthropic model");
-        // Adding 5K cache-read tokens on top of 1K input must raise the cost,
-        // never lower it (which a subtraction would do).
+        // $1/M noncached input plus $0.10/M cache reads: the discounted bucket
+        // is additive, but must not be charged at the full input rate.
+        assert!((base - 0.001).abs() < 1e-9, "base={base}");
         assert!(
-            with_cache > base,
-            "cache-read should be additive for Anthropic: base={base} with_cache={with_cache}"
+            (with_cache - 0.0015).abs() < 1e-9,
+            "with_cache={with_cache}"
         );
     }
 }

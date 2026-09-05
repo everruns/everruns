@@ -264,9 +264,10 @@ mod tests {
         let req = CreateApiKeyRequest {
             api_key: "test_key_123".to_string(),
         };
-        let json = serde_json::to_string(&req).unwrap();
-        assert!(json.contains("test_key_123"));
-        assert!(json.contains("api_key"));
+        assert_eq!(
+            serde_json::to_value(&req).unwrap(),
+            serde_json::json!({"api_key": "test_key_123"})
+        );
     }
 
     #[test]
@@ -281,6 +282,7 @@ mod tests {
         assert_eq!(conn.provider, "daytona");
         assert_eq!(conn.connection_type, "api_key");
         assert_eq!(conn.provider_username.as_deref(), Some("user@example.com"));
+        assert_eq!(conn.connected_at, "2024-01-01T00:00:00Z");
     }
 
     #[test]
