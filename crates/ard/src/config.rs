@@ -130,12 +130,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_are_sane() {
-        let cfg = ArdConfig::default();
-        assert_eq!(cfg.max_attachments, DEFAULT_MAX_ATTACHMENTS);
-        assert!(!cfg.allow_local_urls);
-        assert!(cfg.allows_type(MEDIA_TYPE_MCP_SERVER));
-        assert!(cfg.allows_type(MEDIA_TYPE_A2A_AGENT_CARD));
+    fn absent_config_keeps_safe_defaults() {
+        for value in [serde_json::Value::Null, serde_json::json!({})] {
+            let cfg = ArdConfig::from_value(&value).unwrap();
+            cfg.validate().unwrap();
+            assert_eq!(cfg.max_attachments, 5);
+            assert!(!cfg.allow_local_urls);
+            assert!(cfg.registries.is_empty());
+            assert!(cfg.allows_type(MEDIA_TYPE_MCP_SERVER));
+            assert!(cfg.allows_type(MEDIA_TYPE_A2A_AGENT_CARD));
+            assert!(!cfg.allows_type("application/x"));
+        }
     }
 
     #[test]
@@ -153,7 +158,13 @@ mod tests {
         .unwrap();
         cfg.validate().unwrap();
         assert_eq!(cfg.registries.len(), 2);
+        let enterprise = cfg.registry("enterprise").unwrap();
+        assert_eq!(enterprise.url, "https://registry.acme.com/api/v1");
+        assert_eq!(enterprise.federation, Federation::Referrals);
         assert_eq!(cfg.registry("public").unwrap().federation, Federation::None);
+        assert!(cfg.registry("missing").is_none());
+        assert_eq!(cfg.require_trust, ["soc2"]);
+        assert_eq!(cfg.max_attachments, 3);
         assert!(cfg.allows_type(MEDIA_TYPE_MCP_SERVER));
         assert!(!cfg.allows_type(MEDIA_TYPE_A2A_AGENT_CARD));
     }
