@@ -348,121 +348,137 @@ mod tests {
     #[test]
     fn test_thread_context_track_participant() {
         let mut ctx = ThreadContext::new("1234.5678", "slack");
-        let actor = ExternalActor {
+        let mut actor = ExternalActor {
             actor_id: "U001".into(),
             actor_name: Some("Alice".into()),
             source: "slack".into(),
-            metadata: None,
+            metadata: Some(HashMap::from([("team".into(), "T1".into())])),
         };
-
         assert!(ctx.track_participant(&actor));
-        assert!(!ctx.track_participant(&actor)); // second time is not new
+        let participant = &ctx.participants["U001"];
+        assert_eq!(participant.actor, actor);
+        assert!(participant.first_seen_at.is_some());
+        assert!(!ctx.track_participant(&actor));
         assert_eq!(ctx.participant_count(), 1);
-    }
 
-    #[test]
-    fn test_thread_context_updates_display_name() {
-        let mut ctx = ThreadContext::new("thread_1", "slack");
-        let actor_v1 = ExternalActor {
-            actor_id: "U001".into(),
-            actor_name: Some("Alice".into()),
-            source: "slack".into(),
-            metadata: None,
-        };
-        let actor_v2 = ExternalActor {
-            actor_id: "U001".into(),
-            actor_name: Some("Alice B.".into()),
-            source: "slack".into(),
-            metadata: None,
-        };
-
-        ctx.track_participant(&actor_v1);
-        ctx.track_participant(&actor_v2);
-
-        let p = ctx.participants.get("U001").unwrap();
-        assert_eq!(p.actor.actor_name.as_deref(), Some("Alice B."));
+        // A fixed earlier instant detects timestamp replacement without sleeps.
+        let first_seen = chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+        let participant = ctx.participants.get_mut("U001").unwrap();
+        participant.first_seen_at = Some(first_seen);
+        participant.role = Some("owner".into());
+        actor.actor_name = Some("Alice B.".into());
+        assert!(!ctx.track_participant(&actor));
+        assert_eq!(ctx.participant_count(), 1);
+        assert_eq!(
+            ctx.participants["U001"],
+            Participant {
+                actor,
+                first_seen_at: Some(first_seen),
+                role: Some("owner".into()),
+            }
+        );
     }
 
     #[test]
     fn test_thread_context_participants_summary() {
         let mut ctx = ThreadContext::new("thread_1", "discord");
         assert_eq!(ctx.participants_summary(), "");
-
-        ctx.track_participant(&ExternalActor {
-            actor_id: "U001".into(),
-            actor_name: Some("Alice".into()),
-            source: "discord".into(),
-            metadata: None,
-        });
-        ctx.track_participant(&ExternalActor {
-            actor_id: "U002".into(),
-            actor_name: None,
-            source: "discord".into(),
-            metadata: None,
-        });
-
-        let summary = ctx.participants_summary();
-        assert!(summary.contains("Alice"));
-        assert!(summary.contains("U002")); // fallback to actor_id
-    }
-
-    #[test]
-    fn test_build_session_routing_tag_per_thread() {
-        let mut meta = HashMap::new();
-        meta.insert("thread_ref".into(), "1234.5678".into());
-        let tag = build_session_routing_tag("slack", &SessionRoutingStrategy::PerThread, &meta);
-        assert_eq!(tag, Some("slack:thread:1234.5678".into()));
-    }
-
-    #[test]
-    fn test_build_session_routing_tag_per_channel() {
-        let mut meta = HashMap::new();
-        meta.insert("channel_id".into(), "C0123".into());
-        let tag = build_session_routing_tag("discord", &SessionRoutingStrategy::PerChannel, &meta);
-        assert_eq!(tag, Some("discord:channel:C0123".into()));
-    }
-
-    #[test]
-    fn test_build_session_routing_tag_per_user() {
-        let mut meta = HashMap::new();
-        meta.insert("user_id".into(), "U999".into());
-        let tag = build_session_routing_tag("teams", &SessionRoutingStrategy::PerUser, &meta);
-        assert_eq!(tag, Some("teams:user:U999".into()));
-    }
-
-    #[test]
-    fn test_build_session_routing_tag_missing_metadata() {
-        let meta = HashMap::new();
-        let tag = build_session_routing_tag("slack", &SessionRoutingStrategy::PerThread, &meta);
-        assert_eq!(tag, None);
-    }
-
-    #[test]
-    fn test_channel_reply_mode_default() {
-        assert_eq!(ChannelReplyMode::default(), ChannelReplyMode::AllMessages);
-    }
-
-    #[test]
-    fn test_channel_reply_mode_serde_roundtrip() {
-        let json = serde_json::to_string(&ChannelReplyMode::ReportProgressOnly).unwrap();
-        assert_eq!(json, r#""report_progress_only""#);
-        let parsed: ChannelReplyMode = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, ChannelReplyMode::ReportProgressOnly);
-    }
-
-    #[test]
-    fn test_session_routing_strategy_default() {
+        for (actor_id, name) in [
+            ("U003", Some("Zoe")),
+            ("U002", None),
+            ("U001", Some("Alice")),
+        ] {
+            ctx.track_participant(&ExternalActor {
+                actor_id: actor_id.into(),
+                actor_name: name.map(str::to_string),
+                source: "discord".into(),
+                metadata: None,
+            });
+        }
         assert_eq!(
-            SessionRoutingStrategy::default(),
-            SessionRoutingStrategy::PerThread
+            ctx.participants_summary(),
+            "Thread participants: Alice, U002, Zoe"
         );
     }
 
     #[test]
-    fn test_session_routing_strategy_serde() {
-        let json = serde_json::to_string(&SessionRoutingStrategy::PerChannel).unwrap();
-        assert_eq!(json, r#""per_channel""#);
-        let parsed: SessionRoutingStrategy = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, SessionRoutingStrategy::PerChannel);
+    fn test_build_session_routing_tags() {
+        let metadata = HashMap::from([
+            ("thread_ref".into(), "1234.5678".into()),
+            ("channel_id".into(), "C0123".into()),
+            ("user_id".into(), "U999".into()),
+        ]);
+        for (strategy, platform, key, expected) in [
+            (
+                SessionRoutingStrategy::PerThread,
+                "slack",
+                "thread_ref",
+                "slack:thread:1234.5678",
+            ),
+            (
+                SessionRoutingStrategy::PerChannel,
+                "discord",
+                "channel_id",
+                "discord:channel:C0123",
+            ),
+            (
+                SessionRoutingStrategy::PerUser,
+                "teams",
+                "user_id",
+                "teams:user:U999",
+            ),
+        ] {
+            assert_eq!(
+                build_session_routing_tag(platform, &strategy, &metadata).as_deref(),
+                Some(expected)
+            );
+            let mut missing = metadata.clone();
+            missing.remove(key);
+            assert_eq!(
+                build_session_routing_tag(platform, &strategy, &missing),
+                None
+            );
+            assert_eq!(
+                build_session_routing_tag(platform, &strategy, &HashMap::new()),
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn test_channel_reply_mode_wire_contract() {
+        assert_eq!(ChannelReplyMode::default(), ChannelReplyMode::AllMessages);
+        for (mode, wire) in [
+            (ChannelReplyMode::AllMessages, "\"all_messages\""),
+            (
+                ChannelReplyMode::ReportProgressOnly,
+                "\"report_progress_only\"",
+            ),
+        ] {
+            assert_eq!(serde_json::to_string(&mode).unwrap(), wire);
+            assert_eq!(
+                serde_json::from_str::<ChannelReplyMode>(wire).unwrap(),
+                mode
+            );
+        }
+    }
+
+    #[test]
+    fn test_session_routing_strategy_wire_contract() {
+        assert_eq!(
+            SessionRoutingStrategy::default(),
+            SessionRoutingStrategy::PerThread
+        );
+        for (strategy, wire) in [
+            (SessionRoutingStrategy::PerThread, "\"per_thread\""),
+            (SessionRoutingStrategy::PerChannel, "\"per_channel\""),
+            (SessionRoutingStrategy::PerUser, "\"per_user\""),
+        ] {
+            assert_eq!(serde_json::to_string(&strategy).unwrap(), wire);
+            assert_eq!(
+                serde_json::from_str::<SessionRoutingStrategy>(wire).unwrap(),
+                strategy
+            );
+        }
     }
 }

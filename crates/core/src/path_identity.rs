@@ -189,35 +189,62 @@ mod tests {
 
     #[test]
     fn looks_like_absolute_path_rejects_prose() {
-        assert!(!looks_like_absolute_path(
-            "A leading '/' or '/workspace/' prefix is also accepted."
-        ));
-        assert!(looks_like_absolute_path("/workspace/crates/server"));
-        assert!(looks_like_absolute_path("/tmp/repo/src/lib.rs"));
+        for text in [
+            "A leading '/' or '/workspace/' prefix is also accepted.",
+            "/workspace is the root",
+            "/",
+            "relative/path",
+            "",
+            "/<root>/file",
+            "/root>/file",
+            "/`root`/file",
+        ] {
+            assert!(!looks_like_absolute_path(text), "{text:?}");
+        }
+        for path in ["/workspace/crates/server", "/tmp/repo/src/lib.rs"] {
+            assert!(looks_like_absolute_path(path), "{path}");
+        }
     }
 
     #[test]
     fn collect_absolute_paths_walks_nested_values() {
         let value = json!({
             "path": "/repo/crates/server",
-            "entries": [{"path": "/repo/crates/server/main.rs"}],
-            "note": "not a path"
+            "entries": [{"path": "/repo/crates/server/main.rs"}, "/repo/README.md"],
+            "note": "not a path",
+            "ignored": [null, false, 42]
         });
         let mut paths = Vec::new();
         collect_absolute_paths(&value, "", &mut paths);
-        assert_eq!(paths.len(), 2);
-        let collected: Vec<_> = paths.into_iter().map(|(_, path)| path).collect();
-        assert!(collected.contains(&"/repo/crates/server".to_string()));
-        assert!(collected.contains(&"/repo/crates/server/main.rs".to_string()));
+        paths.sort();
+        assert_eq!(
+            paths,
+            vec![
+                (
+                    "entries[0].path".to_string(),
+                    "/repo/crates/server/main.rs".to_string()
+                ),
+                ("entries[1]".to_string(), "/repo/README.md".to_string()),
+                ("path".to_string(), "/repo/crates/server".to_string()),
+            ]
+        );
+        let mut root_path = Vec::new();
+        collect_absolute_paths(&json!("/repo"), "root", &mut root_path);
+        assert_eq!(root_path, vec![("root".to_string(), "/repo".to_string())]);
     }
 
     #[test]
     fn assert_no_forbidden_prefixes_allows_secondary_mounts() {
         let expectations = PathIdentityExpectations::host_backed("/repo");
-        let value = json!({
-            "path": "/workspace/roots/backend/Cargo.toml"
-        });
+        let value = json!({ "path": "/workspace/roots/backend/Cargo.toml" });
         assert_no_forbidden_prefixes(&value, &expectations, "secondary mount");
+        assert_paths_under_expected_root(&value, &expectations, "secondary mount");
+        // Prefix boundaries must not classify a distinct directory as an alias.
+        assert_no_forbidden_prefixes(
+            &json!("/workspace-other/file"),
+            &expectations,
+            "distinct prefix",
+        );
     }
 
     #[test]
@@ -226,5 +253,54 @@ mod tests {
         let expectations = PathIdentityExpectations::host_backed("/repo");
         let value = json!({ "path": "/workspace/crates/server" });
         assert_no_forbidden_prefixes(&value, &expectations, "read_file");
+    }
+
+    #[test]
+    fn expected_root_assertion_checks_segment_boundaries() {
+        let expectations = PathIdentityExpectations::host_backed("/repo");
+        for path in [
+            "/repo",
+            "/repo/src/lib.rs",
+            "/workspace/roots/backend/Cargo.toml",
+        ] {
+            assert_paths_under_expected_root(&json!(path), &expectations, "valid path");
+        }
+        for path in [
+            "/repository/lib.rs",
+            "/other/lib.rs",
+            "/workspace",
+            "/workspace/roots-other/file",
+        ] {
+            assert!(
+                std::panic::catch_unwind(|| {
+                    assert_paths_under_expected_root(&json!(path), &expectations, "invalid path");
+                })
+                .is_err(),
+                "accepted {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn system_prompt_assertion_requires_root_without_host_alias() {
+        let expectations = PathIdentityExpectations::host_backed("/repo");
+        for prompt in ["Workspace root: `/repo`", "Workspace root: `/repo/`"] {
+            assert_system_prompt(prompt, &expectations);
+        }
+        assert_system_prompt(
+            "Workspace root: `/workspace`",
+            &PathIdentityExpectations::vfs(),
+        );
+        for prompt in [
+            "",
+            "Workspace root: `/repository`",
+            "Workspace root: `/workspace`",
+            "Workspace root: `/repo`. `/workspace` is also accepted",
+        ] {
+            assert!(
+                std::panic::catch_unwind(|| assert_system_prompt(prompt, &expectations)).is_err(),
+                "accepted {prompt:?}"
+            );
+        }
     }
 }
