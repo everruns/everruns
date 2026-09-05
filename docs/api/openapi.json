@@ -30343,6 +30343,17 @@
               }
             ]
           },
+          "reasoning_state": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReasoningState",
+                "description": "Prepared Astra effort state, persisted before the provider call so an\ninterrupted worker can resume without changing the request baseline."
+              }
+            ]
+          },
           "turn_id": {
             "type": "string",
             "description": "Turn ID this output belongs to",
@@ -32753,6 +32764,39 @@
           "value": {
             "$ref": "#/components/schemas/ReasoningEffort",
             "description": "The API value (e.g., \"low\", \"medium\")"
+          }
+        }
+      },
+      "ReasoningState": {
+        "type": "object",
+        "description": "Persisted with assistant messages and native compaction checkpoints.",
+        "required": [
+          "epoch"
+        ],
+        "properties": {
+          "baseline": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReasoningEffort"
+              }
+            ]
+          },
+          "effective": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReasoningEffort"
+              }
+            ]
+          },
+          "epoch": {
+            "type": "string",
+            "description": "A new epoch starts when switching model/provider or entering this mode."
           }
         }
       },

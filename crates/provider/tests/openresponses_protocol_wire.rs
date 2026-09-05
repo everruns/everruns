@@ -610,7 +610,7 @@ async fn astra_explicit_compaction_preserves_output_and_reasserts_effort() {
     );
     assert_eq!(compact["reasoning"]["effort"], "low");
     assert_eq!(compact["store"], false);
-    assert!(compact.get("max_output_tokens").is_none());
+    assert_eq!(compact["max_output_tokens"], 20_000);
     assert!(compact.get("context_management").is_none());
     let next: serde_json::Value = requests[1].body_json().unwrap();
     assert_eq!(next["input"][0]["encrypted_content"], "opaque");

@@ -647,6 +647,7 @@ impl OpenResponsesProtocolChatDriver {
             input.push(serde_json::json!({"type": "compaction_trigger"}));
             body["stream"] = serde_json::json!(false);
             body["store"] = serde_json::json!(false);
+            body["max_output_tokens"] = serde_json::json!(20_000);
             body["include"] = serde_json::json!(["reasoning.encrypted_content"]);
             if let Some(effort) = state.baseline {
                 body["reasoning"] = serde_json::json!({"effort": effort});
