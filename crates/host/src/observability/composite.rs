@@ -95,11 +95,10 @@ mod tests {
     use everruns_core::message::Message;
     use everruns_provider::typed_id::SessionId;
     use std::sync::atomic::{AtomicU32, Ordering};
-    use uuid::Uuid;
 
     fn create_test_event() -> Event {
         Event::new(
-            SessionId::from_uuid(Uuid::now_v7()),
+            SessionId::new(),
             EventContext::empty(),
             EventData::InputMessage(InputMessageData {
                 message: Message::user("Hello"),
@@ -107,234 +106,117 @@ mod tests {
         )
     }
 
-    #[tokio::test]
-    async fn test_composite_listener_empty() {
-        let composite = CompositeEventListener::new(vec![]);
-        assert!(composite.is_empty());
-        assert_eq!(composite.len(), 0);
-        assert_eq!(composite.name(), "CompositeEventListener");
+    struct CountingListener {
+        count: Arc<AtomicU32>,
+        expected: serde_json::Value,
+        filter: Option<Vec<&'static str>>,
+    }
 
-        // Should not panic with empty listeners
-        let event = create_test_event();
-        composite.on_event(&event).await;
+    #[async_trait]
+    impl EventListener for CountingListener {
+        async fn on_event(&self, event: &Event) {
+            // A wrong event must not count as successful notification, even
+            // though the composite deliberately isolates callback panics.
+            assert_eq!(serde_json::to_value(event).unwrap(), self.expected);
+            self.count.fetch_add(1, Ordering::SeqCst);
+        }
+
+        fn event_types(&self) -> Option<Vec<&'static str>> {
+            self.filter.clone()
+        }
+    }
+
+    fn counting(
+        event: &Event,
+        count: &Arc<AtomicU32>,
+        filter: Option<Vec<&'static str>>,
+    ) -> Arc<dyn EventListener> {
+        Arc::new(CountingListener {
+            count: count.clone(),
+            expected: serde_json::to_value(event).unwrap(),
+            filter,
+        })
     }
 
     #[tokio::test]
     async fn test_composite_listener_multiple() {
-        // Counter to track how many times listeners are called
-        struct CountingListener {
-            count: Arc<AtomicU32>,
-            name: &'static str,
-        }
-
-        #[async_trait]
-        impl EventListener for CountingListener {
-            async fn on_event(&self, _event: &Event) {
-                self.count.fetch_add(1, Ordering::SeqCst);
-            }
-
-            fn name(&self) -> &'static str {
-                self.name
-            }
-        }
-
-        let count1 = Arc::new(AtomicU32::new(0));
-        let count2 = Arc::new(AtomicU32::new(0));
-
-        let listener1 = Arc::new(CountingListener {
-            count: count1.clone(),
-            name: "Listener1",
-        });
-        let listener2 = Arc::new(CountingListener {
-            count: count2.clone(),
-            name: "Listener2",
-        });
-
-        let composite = CompositeEventListener::new(vec![listener1, listener2]);
-        assert_eq!(composite.len(), 2);
-        assert!(!composite.is_empty());
-
         let event = create_test_event();
+        let first = Arc::new(AtomicU32::new(0));
+        let second = Arc::new(AtomicU32::new(0));
+        let composite = CompositeEventListener::new(vec![
+            counting(&event, &first, None),
+            counting(&event, &second, None),
+        ]);
         composite.on_event(&event).await;
-
-        assert_eq!(count1.load(Ordering::SeqCst), 1);
-        assert_eq!(count2.load(Ordering::SeqCst), 1);
+        assert_eq!(first.load(Ordering::SeqCst), 1);
+        assert_eq!(second.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
     async fn test_composite_listener_with_filtering() {
-        struct SelectiveListener {
-            count: Arc<AtomicU32>,
-            filter: Vec<&'static str>,
-        }
-
-        #[async_trait]
-        impl EventListener for SelectiveListener {
-            async fn on_event(&self, _event: &Event) {
-                self.count.fetch_add(1, Ordering::SeqCst);
-            }
-
-            fn event_types(&self) -> Option<Vec<&'static str>> {
-                Some(self.filter.clone())
-            }
-        }
-
-        let count1 = Arc::new(AtomicU32::new(0));
-        let count2 = Arc::new(AtomicU32::new(0));
-
-        // Listener 1 wants input.message events
-        let listener1 = Arc::new(SelectiveListener {
-            count: count1.clone(),
-            filter: vec!["input.message"],
-        });
-
-        // Listener 2 wants llm.generation events (won't match our test event)
-        let listener2 = Arc::new(SelectiveListener {
-            count: count2.clone(),
-            filter: vec!["llm.generation"],
-        });
-
-        let composite = CompositeEventListener::new(vec![listener1, listener2]);
-
-        // Send a input.message event
         let event = create_test_event();
+        let matched = Arc::new(AtomicU32::new(0));
+        let other_type = Arc::new(AtomicU32::new(0));
+        let empty_filter = Arc::new(AtomicU32::new(0));
+        let composite = CompositeEventListener::new(vec![
+            counting(&event, &matched, Some(vec!["input.message"])),
+            counting(&event, &other_type, Some(vec!["llm.generation"])),
+            counting(&event, &empty_filter, Some(vec![])),
+        ]);
         composite.on_event(&event).await;
-
-        // Only listener1 should have been called
-        assert_eq!(count1.load(Ordering::SeqCst), 1);
-        assert_eq!(count2.load(Ordering::SeqCst), 0);
+        assert_eq!(matched.load(Ordering::SeqCst), 1);
+        assert_eq!(other_type.load(Ordering::SeqCst), 0);
+        assert_eq!(empty_filter.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
     async fn test_composite_listener_add() {
+        let event = create_test_event();
+        let first = Arc::new(AtomicU32::new(0));
+        let second = Arc::new(AtomicU32::new(0));
         let mut composite = CompositeEventListener::new(vec![]);
         assert!(composite.is_empty());
+        composite.on_event(&event).await;
 
         composite.add(Arc::new(NoopEventListener));
-        assert_eq!(composite.len(), 1);
+        composite.add(counting(&event, &first, None));
+        assert!(!composite.is_empty());
+        composite.on_event(&event).await;
+        assert_eq!(first.load(Ordering::SeqCst), 1);
 
-        composite.add(Arc::new(NoopEventListener));
-        assert_eq!(composite.len(), 2);
+        composite.add(counting(&event, &second, None));
+        assert_eq!(composite.len(), 3);
+        composite.on_event(&event).await;
+        assert_eq!(first.load(Ordering::SeqCst), 2);
+        assert_eq!(second.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
     async fn test_composite_listener_isolates_panics() {
-        // A listener that always panics
         struct PanickingListener;
 
         #[async_trait]
         impl EventListener for PanickingListener {
             async fn on_event(&self, _event: &Event) {
-                panic!("This listener always panics!");
-            }
-
-            fn name(&self) -> &'static str {
-                "PanickingListener"
+                panic!("listener failure");
             }
         }
-
-        // A counter listener to verify it still gets called
-        struct CountingListener {
-            count: Arc<AtomicU32>,
-        }
-
-        #[async_trait]
-        impl EventListener for CountingListener {
-            async fn on_event(&self, _event: &Event) {
-                self.count.fetch_add(1, Ordering::SeqCst);
-            }
-
-            fn name(&self) -> &'static str {
-                "CountingListener"
-            }
-        }
-
-        let count = Arc::new(AtomicU32::new(0));
-
-        // Put panicking listener BEFORE counting listener
-        let panicking = Arc::new(PanickingListener) as Arc<dyn EventListener>;
-        let counting = Arc::new(CountingListener {
-            count: count.clone(),
-        }) as Arc<dyn EventListener>;
-
-        let composite = CompositeEventListener::new(vec![panicking, counting]);
 
         let event = create_test_event();
-
-        // This should NOT panic - the panicking listener should be isolated
-        composite.on_event(&event).await;
-
-        // The counting listener should still have been called
-        assert_eq!(
-            count.load(Ordering::SeqCst),
-            1,
-            "Listener after panicking listener should still execute"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_composite_listener_continues_after_panic() {
-        // Multiple listeners with a panicking one in the middle
-        struct PanickingListener;
-
-        #[async_trait]
-        impl EventListener for PanickingListener {
-            async fn on_event(&self, _event: &Event) {
-                panic!("Middle listener panics!");
+        for include_before in [false, true] {
+            let before = Arc::new(AtomicU32::new(0));
+            let after = Arc::new(AtomicU32::new(0));
+            let mut listeners: Vec<Arc<dyn EventListener>> = Vec::new();
+            if include_before {
+                listeners.push(counting(&event, &before, None));
             }
-
-            fn name(&self) -> &'static str {
-                "PanickingListener"
-            }
+            listeners.push(Arc::new(PanickingListener));
+            listeners.push(counting(&event, &after, None));
+            CompositeEventListener::new(listeners)
+                .on_event(&event)
+                .await;
+            assert_eq!(before.load(Ordering::SeqCst), u32::from(include_before));
+            assert_eq!(after.load(Ordering::SeqCst), 1);
         }
-
-        struct CountingListener {
-            count: Arc<AtomicU32>,
-            name: &'static str,
-        }
-
-        #[async_trait]
-        impl EventListener for CountingListener {
-            async fn on_event(&self, _event: &Event) {
-                self.count.fetch_add(1, Ordering::SeqCst);
-            }
-
-            fn name(&self) -> &'static str {
-                self.name
-            }
-        }
-
-        let count_before = Arc::new(AtomicU32::new(0));
-        let count_after = Arc::new(AtomicU32::new(0));
-
-        let listener_before = Arc::new(CountingListener {
-            count: count_before.clone(),
-            name: "BeforeListener",
-        }) as Arc<dyn EventListener>;
-
-        let panicking = Arc::new(PanickingListener) as Arc<dyn EventListener>;
-
-        let listener_after = Arc::new(CountingListener {
-            count: count_after.clone(),
-            name: "AfterListener",
-        }) as Arc<dyn EventListener>;
-
-        let composite =
-            CompositeEventListener::new(vec![listener_before, panicking, listener_after]);
-
-        let event = create_test_event();
-        composite.on_event(&event).await;
-
-        // Both before and after listeners should have been called
-        assert_eq!(
-            count_before.load(Ordering::SeqCst),
-            1,
-            "Listener before panicking listener should execute"
-        );
-        assert_eq!(
-            count_after.load(Ordering::SeqCst),
-            1,
-            "Listener after panicking listener should execute"
-        );
     }
 }

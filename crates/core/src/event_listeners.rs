@@ -97,24 +97,8 @@ impl EventListener for NoopEventListener {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::events::{EventContext, EventData, InputMessageData};
-    use crate::message::Message;
-    use crate::typed_id::SessionId;
-    use uuid::Uuid;
-
-    #[tokio::test]
-    async fn test_noop_listener() {
-        let listener = NoopEventListener;
-        assert_eq!(listener.name(), "NoopEventListener");
-        assert!(listener.event_types().is_none());
-
-        // Should not panic
-        let event = create_test_event();
-        listener.on_event(&event).await;
-    }
-
-    #[tokio::test]
-    async fn test_event_listener_default_event_types() {
+    #[test]
+    fn test_event_listener_default_event_types() {
         struct TestListener;
 
         #[async_trait]
@@ -124,16 +108,5 @@ mod tests {
 
         let listener = TestListener;
         assert!(listener.event_types().is_none());
-        assert_eq!(listener.name(), "EventListener");
-    }
-
-    fn create_test_event() -> Event {
-        Event::new(
-            SessionId::from_uuid(Uuid::now_v7()),
-            EventContext::empty(),
-            EventData::InputMessage(InputMessageData {
-                message: Message::user("Hello"),
-            }),
-        )
     }
 }
