@@ -1836,12 +1836,21 @@ mod tests {
         assert_eq!(mapped.unwrap_err(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
-    #[test]
-    fn test_api_result_ext_log_internal_error_json() {
-        let result: Result<i32, &str> = Err("db connection failed");
-        let (status, json) = result.log_internal_error_json("get agent").unwrap_err();
-        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(json.0.detail.as_deref(), Some("Internal server error"));
+    #[tokio::test]
+    async fn internal_error_response_redacts_source_details() {
+        let result: Result<i32, &str> = Err("postgres query failed: secret-database-marker");
+        let (status, json) = result.log_internal_error_json("get model").unwrap_err();
+        let response = (status, json).into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["detail"], "Internal server error");
+        assert_eq!(value["status"], 500);
+        assert!(
+            !String::from_utf8(bytes.to_vec())
+                .unwrap()
+                .contains("secret-database-marker")
+        );
     }
 
     #[test]

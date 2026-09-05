@@ -1215,14 +1215,19 @@ mod tests {
     /// Verify the CDP URL construction uses the /chromium path.
     #[test]
     fn test_cdp_url_uses_chromium_path() {
-        let ws_base = "wss://production-sfo.browserless.io";
-        let cdp_path = "/chromium";
-        let token = "test_token_123";
-        let url = format!("{ws_base}{cdp_path}?token={token}");
-        assert_eq!(
-            url,
-            "wss://production-sfo.browserless.io/chromium?token=test_token_123"
-        );
-        assert!(url.contains("/chromium"), "URL must include /chromium path");
+        for (base, token, expected) in [
+            (
+                "wss://production-sfo.browserless.io",
+                "test_token_123",
+                "wss://production-sfo.browserless.io/chromium?token=test_token_123",
+            ),
+            (
+                "ws://127.0.0.1:3000",
+                "local_token",
+                "ws://127.0.0.1:3000/chromium?token=local_token",
+            ),
+        ] {
+            assert_eq!(crate::browser_session_url(base, token), expected);
+        }
     }
 }

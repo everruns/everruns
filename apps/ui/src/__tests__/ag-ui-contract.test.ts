@@ -1,6 +1,6 @@
 import { EventSchemas, RunAgentInputSchema } from "@ag-ui/core";
 
-describe("AG-UI contract fixtures", () => {
+describe("upstream AG-UI schema compatibility fixtures", () => {
   const threadId = "00000000-0000-0000-0000-000000000001";
   const runId = "00000000-0000-0000-0000-000000000002";
   const messageId = "00000000-0000-0000-0000-000000000003";
@@ -25,7 +25,7 @@ describe("AG-UI contract fixtures", () => {
     expect(() => RunAgentInputSchema.parse(payload)).not.toThrow();
   });
 
-  it("validates representative AG-UI events we emit", () => {
+  it("accepts the supported event vocabulary in compatibility fixtures", () => {
     const events = [
       { type: "RUN_STARTED", threadId, runId },
       {

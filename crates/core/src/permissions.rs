@@ -948,7 +948,14 @@ mod tests {
         let caller = owner_caller();
         let result = evaluate_policies(&caller, &[&TEST_MANAGE, &TEST_DANGEROUS, &TEST_ROLE_ADMIN]);
 
-        assert!(result.values().all(|&v| v));
+        assert_eq!(
+            result,
+            HashMap::from([
+                (TEST_MANAGE.id.to_string(), true),
+                (TEST_DANGEROUS.id.to_string(), true),
+                (TEST_ROLE_ADMIN.id.to_string(), true),
+            ])
+        );
     }
 
     #[test]
@@ -956,7 +963,14 @@ mod tests {
         let caller = member_caller();
         let result = evaluate_policies(&caller, &[&TEST_MANAGE, &TEST_DANGEROUS, &TEST_ROLE_ADMIN]);
 
-        assert!(result.values().all(|&v| !v));
+        assert_eq!(
+            result,
+            HashMap::from([
+                (TEST_MANAGE.id.to_string(), false),
+                (TEST_DANGEROUS.id.to_string(), false),
+                (TEST_ROLE_ADMIN.id.to_string(), false),
+            ])
+        );
     }
 
     #[test]

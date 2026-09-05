@@ -210,8 +210,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sample_config_yaml_is_valid() {
-        // Just check it's not empty and looks like YAML
+    fn sample_config_contains_application_and_database_sections() {
         assert!(SampleDataCapability::CONFIG_YAML.contains("application:"));
         assert!(SampleDataCapability::CONFIG_YAML.contains("database:"));
     }

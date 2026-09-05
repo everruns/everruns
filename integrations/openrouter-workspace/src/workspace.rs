@@ -672,7 +672,7 @@ mod tests {
         assert_eq!(drifts.len(), 1);
         assert!(matches!(
             &drifts[0],
-            WorkspacePolicyDrift::BudgetExhausted { .. }
+            WorkspacePolicyDrift::BudgetExhausted { message, .. } if !message.is_empty()
         ));
     }
 
@@ -684,11 +684,12 @@ mod tests {
         if let WorkspacePolicyDrift::BudgetBelowThreshold {
             remaining_usd,
             threshold_usd,
-            ..
+            message,
         } = &drifts[0]
         {
             assert!((remaining_usd - 0.05).abs() < 1e-9);
             assert!((threshold_usd - 0.10).abs() < 1e-9);
+            assert!(!message.is_empty());
         } else {
             panic!("wrong drift kind");
         }
@@ -708,7 +709,7 @@ mod tests {
         assert_eq!(drifts.len(), 1);
         assert!(matches!(
             &drifts[0],
-            WorkspacePolicyDrift::FreeTierRestriction { .. }
+            WorkspacePolicyDrift::FreeTierRestriction { message, .. } if !message.is_empty()
         ));
     }
 
@@ -751,23 +752,5 @@ mod tests {
         let json = serde_json::to_value(&report).unwrap();
         assert_eq!(json["compatible"], false);
         assert_eq!(json["drifts"][0]["kind"], "budget_exhausted");
-    }
-
-    #[test]
-    fn workspace_policy_drift_messages_are_non_empty() {
-        // Verify the `message` field produced by detect_policy_drift is
-        // non-empty for every drift kind.
-        let key = capped_key(1.0, 1.0);
-        let drifts = detect_policy_drift(&key, Some(0.10), true);
-        // BudgetExhausted + FreeTierRestriction (key is not free_tier here, so
-        // just check exhausted)
-        for d in &drifts {
-            let msg = match d {
-                WorkspacePolicyDrift::BudgetExhausted { message, .. } => message.as_str(),
-                WorkspacePolicyDrift::BudgetBelowThreshold { message, .. } => message.as_str(),
-                WorkspacePolicyDrift::FreeTierRestriction { message, .. } => message.as_str(),
-            };
-            assert!(!msg.is_empty(), "drift message should not be empty");
-        }
     }
 }

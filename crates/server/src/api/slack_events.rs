@@ -2007,19 +2007,49 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_resolve_slack_user_name_api_failure_not_cached() {
-        // Network failures should not be cached (allow retry)
-        let cache: SlackUserCache = new_slack_user_cache();
+    async fn transport_failure_does_not_cache_user_lookup() {
+        use tokio::io::AsyncReadExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0; 4096];
+            assert!(socket.read(&mut request).await.unwrap() > 0);
+            // Close after receiving the request, without a response.
+        });
+        let cache = new_slack_user_cache();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            resolve_slack_user_name_base(
+                &format!("http://{address}"),
+                &cache,
+                "test-token",
+                "U999",
+            ),
+        )
+        .await
+        .expect("lookup must terminate");
+        server.await.unwrap();
+        assert_eq!(result, None);
+        assert!(cache.get("U999").is_none());
 
-        // Use an invalid URL-ish token that will fail network-level
-        // (the function uses hardcoded slack.com URL, so with a bad token
-        // it will get a response but not a network error — test cache emptiness)
-        let _result = resolve_slack_user_name(&cache, "xoxb-invalid", "U999").await;
-
-        // If it got a Slack API error response (not_authed/invalid_auth), it should cache None.
-        // If it was a network error, cache should be empty.
-        // Either way the function gracefully returns None — that's the key behavior.
-        // We just verify it doesn't panic.
+        let retry_server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/users.info"))
+            .and(wiremock::matchers::query_param("user", "U999"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": true,
+                    "user": {"profile": {"display_name": "Recovered User"}}
+                })),
+            )
+            .expect(1)
+            .mount(&retry_server)
+            .await;
+        let recovered =
+            resolve_slack_user_name_base(&retry_server.uri(), &cache, "test-token", "U999").await;
+        assert_eq!(recovered.as_deref(), Some("Recovered User"));
+        assert_eq!(cache.get("U999"), Some(recovered));
     }
 
     #[test]
@@ -3541,34 +3571,6 @@ mod tests {
         // ------------------------------------------
         // post_to_slack via slack_delivery module
         // ------------------------------------------
-
-        #[tokio::test]
-        async fn test_post_to_slack_success() {
-            let mock_server = MockServer::start().await;
-
-            Mock::given(method("POST"))
-                .and(path("/chat.postMessage"))
-                .and(header("Authorization", "Bearer xoxb-test-token"))
-                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                    "ok": true,
-                    "channel": "C123",
-                    "ts": "1234567890.123456"
-                })))
-                .expect(1)
-                .mount(&mock_server)
-                .await;
-
-            let result = crate::slack_delivery::post_to_slack_base(
-                &mock_server.uri(),
-                "xoxb-test-token",
-                "C123",
-                "1234567890.000000",
-                "Hello from agent!",
-            )
-            .await;
-
-            assert!(result.is_ok());
-        }
 
         #[tokio::test]
         async fn test_post_to_slack_error() {

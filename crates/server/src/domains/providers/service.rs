@@ -521,17 +521,21 @@ fn validate_provider_type(provider_type: &DriverId) -> Result<()> {
 
 fn validate_provider_base_url(provider_type: DriverId, base_url: Option<&str>) -> Result<()> {
     let parsed = match base_url {
-        Some(url) => Some(validate_safe_url(url).map_err(|e| anyhow!("Invalid base URL: {e}"))?),
+        Some(url) => Some(
+            validate_safe_url(url)
+                .map_err(|e| BadRequestError::new(format!("Invalid base URL: {e}")))?,
+        ),
         None => None,
     };
 
     if provider_type == DriverId::AzureOpenAI {
         let parsed = parsed.ok_or_else(|| {
-            anyhow!(
+            BadRequestError::new(
                 "Invalid base URL: Azure OpenAI providers require a base URL ending in /openai/v1 on an Azure host"
             )
         })?;
-        validate_azure_openai_base_url(&parsed).map_err(|e| anyhow!("Invalid base URL: {e}"))?;
+        validate_azure_openai_base_url(&parsed)
+            .map_err(|e| BadRequestError::new(format!("Invalid base URL: {e}")))?;
     }
 
     Ok(())

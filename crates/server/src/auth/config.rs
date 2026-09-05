@@ -865,40 +865,6 @@ mod tests {
     }
 
     #[test]
-    fn test_admin_config_credentials() {
-        // Test that AdminConfig stores credentials correctly
-        let admin = AdminConfig {
-            email: "admin@example.com".to_string(),
-            password: "YExample0".to_string(),
-        };
-
-        assert_eq!(admin.email, "admin@example.com");
-        assert_eq!(admin.password, "YExample0");
-
-        // Simulate credential check (same logic as login handler)
-        let test_email = "admin@example.com";
-        let test_password = "YExample0";
-        assert!(
-            test_email == admin.email && test_password == admin.password,
-            "Matching credentials should pass"
-        );
-
-        // Wrong password
-        let wrong_password = "wrongpass";
-        assert!(
-            !(test_email == admin.email && wrong_password == admin.password),
-            "Wrong password should fail"
-        );
-
-        // Wrong email
-        let wrong_email = "user@example.com";
-        assert!(
-            !(wrong_email == admin.email && test_password == admin.password),
-            "Wrong email should fail"
-        );
-    }
-
-    #[test]
     fn test_admin_mode_requires_admin_config() {
         let config_no_admin = AuthConfig {
             mode: AuthMode::Admin,

@@ -2796,41 +2796,53 @@ mod tests {
 
     #[tokio::test]
     async fn test_standalone_task_queue_limit() {
-        // Use a small standalone limit for testing
         let store = InMemoryWorkflowEventStore::new();
-
-        // Enqueue standalone tasks up to the limit - won't actually hit 10k in test,
-        // just verify the code path works for a few tasks
-        for i in 0..5 {
-            store
-                .enqueue_task(TaskDefinition {
-                    workflow_id: None,
-                    activity_id: format!("standalone-{i}"),
-                    activity_type: "test".to_string(),
-                    input: serde_json::json!({}),
-                    options: ActivityOptions::default(),
-                })
-                .await
-                .unwrap();
+        let definition = TaskDefinition {
+            workflow_id: None,
+            activity_id: "standalone".into(),
+            activity_type: "test".into(),
+            input: serde_json::json!({}),
+            options: ActivityOptions::default(),
+        };
+        // Seed just below the cap directly to avoid quadratic enqueue setup.
+        {
+            let mut tasks = store.tasks.write();
+            for _ in 0..DEFAULT_MAX_PENDING_STANDALONE_TASKS - 1 {
+                tasks.insert(
+                    Uuid::now_v7(),
+                    TaskState {
+                        definition: definition.clone(),
+                        status: TaskStatus::Pending,
+                        attempt: 0,
+                        claimed_by: None,
+                        last_error: None,
+                        error_history: Vec::new(),
+                        created_at: chrono::Utc::now(),
+                        claimed_at: None,
+                        progress_token: None,
+                        no_progress_count: 0,
+                    },
+                );
+            }
         }
-
-        // Verify all 5 enqueued successfully
-        let tasks = store
-            .list_tasks(
-                TaskFilter {
-                    status: None,
-                    activity_type: None,
-                    workflow_id: None,
-                    standalone_only: true,
-                },
-                Pagination {
-                    offset: 0,
-                    limit: 100,
-                },
-            )
+        store
+            .enqueue_task(definition.clone())
+            .await
+            .expect("last available slot");
+        let error = store.enqueue_task(definition.clone()).await.unwrap_err();
+        assert!(
+            matches!(error, StoreError::StandaloneTaskQueueLimitExceeded { current, limit }
+            if current == DEFAULT_MAX_PENDING_STANDALONE_TASKS && limit == DEFAULT_MAX_PENDING_STANDALONE_TASKS)
+        );
+        let claimed = store
+            .claim_task("worker", &["test".into()], 1)
             .await
             .unwrap();
-        assert_eq!(tasks.len(), 5);
+        assert_eq!(claimed.len(), 1);
+        store
+            .enqueue_task(definition)
+            .await
+            .expect("claim frees a pending slot");
     }
 
     // =========================================================================

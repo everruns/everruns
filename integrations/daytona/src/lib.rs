@@ -485,7 +485,7 @@ mod tests {
     }
 
     #[test]
-    fn test_openapi_spec_is_valid_yaml() {
+    fn embedded_openapi_contains_sandbox_and_toolbox_documentation() {
         let spec = openapi_spec::DAYTONA_OPENAPI_SPEC;
         assert!(spec.contains("openapi: 3.0.3"));
         assert!(spec.contains("/sandbox"));

@@ -653,11 +653,6 @@ mod tests {
     }
 
     #[test]
-    fn test_default_model_sentinel_is_nil() {
-        assert!(DEFAULT_MODEL_SENTINEL.is_nil());
-    }
-
-    #[test]
     fn test_cache_key_different_org_ids() {
         let key_a: CacheKey = (1, Uuid::new_v4());
         let key_b: CacheKey = (2, key_a.1);

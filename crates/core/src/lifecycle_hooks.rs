@@ -396,17 +396,19 @@ mod tests {
     struct CannedDispatcher {
         stdout: String,
         exit_code: i32,
+        payloads: std::sync::Mutex<Vec<HookPayload>>,
     }
 
     #[async_trait]
     impl BashHookDispatcher for CannedDispatcher {
         async fn dispatch(
             &self,
-            _payload: &HookPayload,
+            payload: &HookPayload,
             _command: &str,
             _extra_env: &BTreeMap<String, String>,
             _opts: &ExecutorOpts,
         ) -> Result<BashExecOutput, String> {
+            self.payloads.lock().unwrap().push(payload.clone());
             Ok(BashExecOutput {
                 exit_code: self.exit_code,
                 stdout: self.stdout.clone(),
@@ -431,10 +433,11 @@ mod tests {
         }
     }
 
-    fn dispatcher(stdout: &str, exit: i32) -> Arc<dyn BashHookDispatcher> {
+    fn dispatcher(stdout: &str, exit: i32) -> Arc<CannedDispatcher> {
         Arc::new(CannedDispatcher {
             stdout: stdout.into(),
             exit_code: exit,
+            payloads: Default::default(),
         })
     }
 
@@ -560,43 +563,55 @@ mod tests {
                 s
             },
         ];
-        // Both hooks share one dispatcher returning a block; the first hook's
-        // mutate vs block is decided by stdout, so to test threading we build
-        // them individually with different dispatchers.
+        // Separate dispatchers let the second hook observe the first hook's mutation.
         let rewriter = build_turn_lifecycle_hooks(
             &specs[..1],
             HookEvent::UserPromptSubmit,
             dispatcher(r#"{"decision":"mutate","patch":{"message":"step1"}}"#, 0),
         );
+        let block_dispatcher = dispatcher(r#"{"decision":"block","reason":"stop"}"#, 0);
         let blocker = build_turn_lifecycle_hooks(
             &specs[1..],
             HookEvent::UserPromptSubmit,
-            dispatcher(r#"{"decision":"block","reason":"stop"}"#, 0),
+            block_dispatcher.clone(),
         );
         let mut chain = rewriter;
         chain.extend(blocker);
         let decision = run_user_prompt_submit_hooks(&chain, &turn_ctx(), "orig".into()).await;
         assert!(matches!(decision, UserPromptDecision::Block { .. }));
+        let payloads = block_dispatcher.payloads.lock().unwrap();
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(payloads[0].data["message"], "step1");
     }
 
     #[tokio::test]
     async fn turn_end_runs_advisory_and_ignores_block() {
+        let dispatch = dispatcher(r#"{"decision":"block","reason":"ignored"}"#, 0);
         let hooks = build_turn_lifecycle_hooks(
-            &[spec(HookEvent::TurnEnd, OnError::Warn)],
+            &[
+                spec(HookEvent::TurnEnd, OnError::Warn),
+                spec(HookEvent::TurnEnd, OnError::Warn),
+            ],
             HookEvent::TurnEnd,
             // Even a "block" decision must not abort anything here.
-            dispatcher(r#"{"decision":"block","reason":"ignored"}"#, 0),
+            dispatch.clone(),
         );
-        // Just assert it runs without panicking; advisory has no return value.
         run_turn_end_hooks(&hooks, &turn_ctx(), json!({"success": true})).await;
+        let payloads = dispatch.payloads.lock().unwrap();
+        assert_eq!(payloads.len(), 2);
+        for payload in payloads.iter() {
+            assert_eq!(payload.event, HookEvent::TurnEnd);
+            assert_eq!(payload.data, json!({"success": true}));
+        }
     }
 
     #[tokio::test]
     async fn session_lifecycle_runs_advisory() {
+        let dispatch = dispatcher("", 0);
         let hooks = build_session_lifecycle_hooks(
             &[spec(HookEvent::SessionStart, OnError::Warn)],
             HookEvent::SessionStart,
-            dispatcher("", 0),
+            dispatch.clone(),
         );
         let ctx = SessionHookContext {
             session_id: SessionId::new(),
@@ -604,6 +619,11 @@ mod tests {
             agent_id: Some("agt_x".into()),
         };
         run_session_lifecycle_hooks(&hooks, &ctx, json!({"agent_id": "agt_x"})).await;
+        let payloads = dispatch.payloads.lock().unwrap();
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(payloads[0].session_id, ctx.session_id);
+        assert_eq!(payloads[0].event, HookEvent::SessionStart);
+        assert_eq!(payloads[0].data, json!({"agent_id": "agt_x"}));
     }
 
     #[tokio::test]

@@ -2068,12 +2068,6 @@ mod tests {
         assert_eq!(s1.len(), 32); // 16 bytes hex-encoded
     }
 
-    #[test]
-    fn test_oauth_state_cookie_name() {
-        // Verify the constant is set correctly for TM-AUTH-007
-        assert_eq!(OAUTH_STATE_COOKIE, "oauth_state");
-    }
-
     // EVE-632 / TM-AUTH-014: password registration must not disclose that an
     // account exists. OAuth-link conflicts are different: that caller has
     // already proved mailbox ownership, so the callback may safely return its
@@ -2786,6 +2780,45 @@ mod oauth_state_tests {
         .await
         .expect_err("admin mode must not allow self-registration");
         assert_eq!(err.status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn admin_login_checks_both_credentials() {
+        for (email, password, allowed) in [
+            ("admin@example.com", "password12345", true),
+            ("admin@example.com", "wrong-password", false),
+            ("other@example.com", "password12345", false),
+        ] {
+            let state = BuiltinAuthBackend::new(
+                AuthConfig {
+                    mode: AuthMode::Admin,
+                    admin: Some(super::super::config::AdminConfig {
+                        email: "admin@example.com".into(),
+                        password: "password12345".into(),
+                    }),
+                    ..Default::default()
+                },
+                Arc::new(StorageBackend::in_memory()),
+                Arc::new(crate::platform::oss_host_composition()),
+            );
+            let result = login(
+                State(state),
+                None,
+                HeaderMap::new(),
+                CookieJar::new(),
+                Json(LoginRequest {
+                    email: email.into(),
+                    password: password.into(),
+                }),
+            )
+            .await;
+            if allowed {
+                let (_, Json(tokens)) = result.expect("configured credentials should authenticate");
+                assert!(!tokens.access_token.is_empty());
+            } else {
+                assert_eq!(result.unwrap_err().status, StatusCode::UNAUTHORIZED);
+            }
+        }
     }
 
     #[tokio::test]

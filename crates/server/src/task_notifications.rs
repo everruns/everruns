@@ -289,19 +289,3 @@ impl TaskBroadcaster {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_notification_payload_debug() {
-        let payload = TaskNotificationPayload {
-            activity_type: "reason".to_string(),
-            pending_count: 5,
-        };
-        let debug_str = format!("{:?}", payload);
-        assert!(debug_str.contains("reason"));
-        assert!(debug_str.contains("5"));
-    }
-}

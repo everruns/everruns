@@ -693,6 +693,7 @@ mod tests {
         let hook = hook(15);
         let tools = many_tools(5);
         let out = hook.transform(tools);
+        assert_eq!(out.len(), 5);
         // Schemas untouched below threshold.
         for t in &out {
             assert!(t.parameters().get("properties").is_some());
@@ -703,6 +704,7 @@ mod tests {
     fn test_hook_strips_above_threshold() {
         let hook = hook(15);
         let out = hook.transform(many_tools(20));
+        assert_eq!(out.len(), 20);
         for t in &out {
             // The shared capability prompt carries the progressive-disclosure
             // instruction once; each stub is only the provider-valid open object.
@@ -1051,7 +1053,8 @@ mod tests {
             builtin("read_file", "Read a file", DeferrablePolicy::Automatic),
         ];
         let results = ToolSearchTool::search(&defs, "tool_search read");
-        assert!(results.iter().all(|r| r["name"] != TOOL_SEARCH_TOOL_NAME));
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0]["name"], "read_file");
     }
 
     #[tokio::test]

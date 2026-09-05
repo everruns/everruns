@@ -1022,34 +1022,6 @@ mod tests {
     }
 
     #[test]
-    fn test_filter_exclude_ids() {
-        let id1 = EventId::new();
-        let id2 = EventId::new();
-
-        let filter = MessageFilter::ExcludeIds(vec![id1, id2]);
-        let debug_str = format!("{:?}", filter);
-        assert!(debug_str.contains("ExcludeIds"));
-    }
-
-    #[test]
-    fn test_filter_include_ids() {
-        let id1 = EventId::new();
-        let id2 = EventId::new();
-
-        let filter = MessageFilter::IncludeIds(vec![id1, id2]);
-        let debug_str = format!("{:?}", filter);
-        assert!(debug_str.contains("IncludeIds"));
-    }
-
-    #[test]
-    fn test_filter_tool_name() {
-        let filter = MessageFilter::ToolName("get_weather".to_string());
-        let debug_str = format!("{:?}", filter);
-        assert!(debug_str.contains("ToolName"));
-        assert!(debug_str.contains("get_weather"));
-    }
-
-    #[test]
     fn test_query_default() {
         let query = MessageQuery::default();
         assert_eq!(query.session_id, Uuid::nil());
@@ -1060,51 +1032,8 @@ mod tests {
     }
 
     // ========================================================================
-    // MessageFilterProvider tests
+    // Anchored window tests
     // ========================================================================
-
-    struct TestFilterProvider {
-        priority: i32,
-    }
-
-    impl MessageFilterProvider for TestFilterProvider {
-        fn apply_filters(&self, query: &mut MessageQuery, config: &serde_json::Value) {
-            // Add a filter based on config
-            if let Some(search) = config.get("search").and_then(|v| v.as_str()) {
-                query
-                    .filters
-                    .push(MessageFilter::Search(search.to_string()));
-            }
-        }
-
-        fn priority(&self) -> i32 {
-            self.priority
-        }
-    }
-
-    #[test]
-    fn test_filter_provider_apply() {
-        let provider = TestFilterProvider { priority: 0 };
-        let session_id: SessionId = Uuid::now_v7().into();
-        let mut query = MessageQuery::new(session_id);
-
-        let config = serde_json::json!({ "search": "hello" });
-        provider.apply_filters(&mut query, &config);
-
-        assert_eq!(query.filters.len(), 1);
-        assert!(matches!(&query.filters[0], MessageFilter::Search(s) if s == "hello"));
-    }
-
-    #[test]
-    fn test_filter_provider_priority() {
-        let low_priority = TestFilterProvider { priority: -10 };
-        let high_priority = TestFilterProvider { priority: 10 };
-        let default_priority = TestFilterProvider { priority: 0 };
-
-        assert_eq!(low_priority.priority(), -10);
-        assert_eq!(high_priority.priority(), 10);
-        assert_eq!(default_priority.priority(), 0);
-    }
 
     #[test]
     fn test_anchored_window_keeps_head_and_tail_drops_middle() {
@@ -1159,27 +1088,5 @@ mod tests {
         assert_eq!(win.head_len, 0);
         assert_eq!(win.recent_start, 0);
         assert_eq!(win.hidden(), 0);
-    }
-
-    #[test]
-    fn test_injection_position_debug() {
-        // Test debug representation of InjectionPosition variants
-        let start = InjectionPosition::Start;
-        let debug = format!("{:?}", start);
-        assert!(debug.contains("Start"));
-
-        let end = InjectionPosition::End;
-        let debug = format!("{:?}", end);
-        assert!(debug.contains("End"));
-
-        let before = InjectionPosition::BeforeIndex(5);
-        let debug = format!("{:?}", before);
-        assert!(debug.contains("BeforeIndex"));
-        assert!(debug.contains("5"));
-
-        let after = InjectionPosition::AfterIndex(3);
-        let debug = format!("{:?}", after);
-        assert!(debug.contains("AfterIndex"));
-        assert!(debug.contains("3"));
     }
 }

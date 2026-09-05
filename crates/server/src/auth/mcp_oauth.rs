@@ -1549,9 +1549,19 @@ mod tests {
     }
 
     #[test]
-    fn test_hash_value_consistency() {
-        let value = "test-value";
-        assert_eq!(hash_value(value), hash_value(value));
+    fn token_hash_matches_sha256_known_vectors() {
+        for (input, expected) in [
+            (
+                "",
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            ),
+            (
+                "abc",
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            ),
+        ] {
+            assert_eq!(hash_value(input), expected);
+        }
     }
 
     #[test]

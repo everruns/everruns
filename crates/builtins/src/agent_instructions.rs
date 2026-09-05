@@ -617,13 +617,6 @@ mod tests {
         assert!(cap.describe_schema(None).is_some());
     }
 
-    #[test]
-    fn test_constants() {
-        assert_eq!(MAX_AGENTS_MD_SIZE, 32_768);
-        assert_eq!(AGENTS_MD_PATH, "/AGENTS.md");
-        assert_eq!(AGENT_INSTRUCTIONS_CAPABILITY_ID, "agent_instructions");
-    }
-
     // ========================================================================
     // Dynamic system_prompt_contribution tests
     // ========================================================================

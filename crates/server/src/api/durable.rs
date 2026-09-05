@@ -1841,15 +1841,10 @@ pub async fn stream_durable_sse(
                     reason = stream_state.disconnect_reason.as_str(),
                     "Durable SSE: sending disconnecting event"
                 );
-                let disconnect_data = format!(
-                    r#"{{"reason":"{}","retry_ms":{}}}"#,
-                    stream_state.disconnect_reason.as_str(),
-                    stream_state.config.disconnect_retry_ms
-                );
-                let disconnecting_event = Ok(SseEvent::default()
-                    .event("disconnecting")
-                    .data(disconnect_data)
-                    .retry(stream_state.config.disconnect_retry()));
+                let disconnecting_event = Ok(disconnecting_event(
+                    stream_state.disconnect_reason,
+                    &stream_state.config,
+                ));
 
                 let new_state = StreamState {
                     phase: StreamPhase::Closed,
@@ -2348,6 +2343,18 @@ pub async fn stream_workflow_sse(
     Ok(Sse::new(stream).keep_alive(keep_alive))
 }
 
+fn disconnecting_event(reason: DisconnectReason, config: &SseStreamConfig) -> SseEvent {
+    let data = format!(
+        r#"{{"reason":"{}","retry_ms":{}}}"#,
+        reason.as_str(),
+        config.disconnect_retry_ms
+    );
+    SseEvent::default()
+        .event("disconnecting")
+        .data(data)
+        .retry(config.disconnect_retry())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2475,58 +2482,34 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_disconnect_event_format_connection_cycle() {
-        // Test that connection cycle disconnect event has correct format
-        let config = SseStreamConfig::monitoring();
-        let disconnect_data = format!(
-            r#"{{"reason":"{}","retry_ms":{}}}"#,
-            DisconnectReason::ConnectionCycle.as_str(),
-            config.disconnect_retry_ms
-        );
+    #[tokio::test]
+    async fn disconnecting_event_encodes_client_frame() {
+        use axum::{body::to_bytes, response::IntoResponse};
 
-        let parsed: serde_json::Value = serde_json::from_str(&disconnect_data).unwrap();
-        assert_eq!(parsed["reason"], "connection_cycle");
-        assert_eq!(parsed["retry_ms"], 1000);
-    }
-
-    #[test]
-    fn test_disconnect_event_format_error() {
-        // Test that error disconnect event has correct format
-        // This verifies the graceful disconnect on error feature
-        let config = SseStreamConfig::monitoring();
-        let disconnect_data = format!(
-            r#"{{"reason":"{}","retry_ms":{}}}"#,
-            DisconnectReason::Error.as_str(),
-            config.disconnect_retry_ms
-        );
-
-        let parsed: serde_json::Value = serde_json::from_str(&disconnect_data).unwrap();
-        assert_eq!(parsed["reason"], "error");
-        assert_eq!(parsed["retry_ms"], 1000);
-    }
-
-    #[test]
-    fn test_disconnect_event_parseable_by_client() {
-        // Simulate what the client receives and parses
-        // This matches the JS code: const data = JSON.parse(event.data)
-        let config = SseStreamConfig::monitoring();
-        let disconnect_data = format!(
-            r#"{{"reason":"{}","retry_ms":{}}}"#,
-            DisconnectReason::Error.as_str(),
-            config.disconnect_retry_ms
-        );
-
-        // Parse like the client does
-        let parsed: serde_json::Value = serde_json::from_str(&disconnect_data).unwrap();
-
-        // Extract retry_ms like client: const retryMs = data.retry_ms ?? 1000;
-        let retry_ms = parsed["retry_ms"].as_i64().unwrap_or(1000);
-        assert_eq!(retry_ms, 1000);
-
-        // Client uses reason to log
-        let reason = parsed["reason"].as_str().unwrap_or("unknown");
-        assert_eq!(reason, "error");
+        for (reason, expected_reason) in [
+            (DisconnectReason::ConnectionCycle, "connection_cycle"),
+            (DisconnectReason::Error, "error"),
+            (DisconnectReason::Shutdown, "shutdown"),
+        ] {
+            let mut config = SseStreamConfig::monitoring();
+            config.disconnect_retry_ms = 2345;
+            let event = disconnecting_event(reason, &config);
+            let response =
+                Sse::new(stream::iter([Ok::<_, std::convert::Infallible>(event)])).into_response();
+            let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            let frame = std::str::from_utf8(&body).unwrap();
+            assert!(frame.lines().any(|line| line == "event: disconnecting"));
+            assert!(frame.lines().any(|line| line == "retry: 2345"));
+            let data = frame
+                .lines()
+                .find_map(|line| line.strip_prefix("data: "))
+                .unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(data).unwrap();
+            assert_eq!(
+                parsed,
+                serde_json::json!({"reason": expected_reason, "retry_ms": 2345})
+            );
+        }
     }
 
     // ============================================
