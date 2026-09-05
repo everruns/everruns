@@ -6,22 +6,35 @@
 //! # Example
 //!
 //! ```
-//! use everruns_integrations_brave_search::BraveSearchCapability;
+//! use everruns::{Agent, Model};
+//! use everruns_integrations_brave_search::BraveSearch;
 //!
-//! let capability = BraveSearchCapability;
-//! # let _ = capability;
+//! let agent = Agent::builder()
+//!     .instructions("Search the web and cite sources.")
+//!     .model(Model::simulated("Ready."))
+//!     .capability(BraveSearch::new("your-api-key"))
+//!     .build()?;
+//! # Ok::<(), everruns::BuildError>(())
 //! ```
 
 pub mod client;
+#[cfg(feature = "hosted")]
 pub mod connection;
+mod framework;
+mod search;
 mod tools;
 
-use everruns_core::capabilities::{
-    Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin,
-};
+pub use framework::BraveSearch;
+pub use search::SearchInput;
+
+#[cfg(feature = "hosted")]
+use everruns_core::capabilities::IntegrationPlugin;
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 use everruns_core::tools::Tool;
+#[cfg(feature = "hosted")]
 use everruns_platform::connector::ConnectorPlugin;
 
+#[cfg(feature = "hosted")]
 use connection::BraveSearchConnector;
 use tools::BraveWebSearchTool;
 
@@ -29,6 +42,7 @@ use tools::BraveWebSearchTool;
 // Plugin Registration
 // ============================================================================
 
+#[cfg(feature = "hosted")]
 inventory::submit! {
     IntegrationPlugin {
         experimental_only: true,
@@ -37,6 +51,7 @@ inventory::submit! {
     }
 }
 
+#[cfg(feature = "hosted")]
 inventory::submit! {
     ConnectorPlugin {
         experimental_only: true,

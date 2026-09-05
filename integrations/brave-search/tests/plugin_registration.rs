@@ -1,5 +1,7 @@
 //! Integration test: verify Brave Search plugin registers via inventory.
 
+#![cfg(feature = "hosted")]
+
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_core::deployment::DeploymentGrade;
 use everruns_platform::connector::ConnectorPlugin;

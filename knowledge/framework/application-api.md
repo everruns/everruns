@@ -77,6 +77,23 @@ selection, plugin compiler, MCP client, and engine execution that an advanced
 host composes directly. The implementation and downstream acceptance fixtures
 are linked from the [source index](#source-index).
 
+## Integration execution across hosts
+
+An external-service integration should expose an application capability through
+the existing `IntoCapability` contract when its dependencies can be supplied by
+the application. Its Framework and hosted adapters share protocol schemas and
+the vendor operation, while each binds credentials from its owning context.
+Application clients retain secrets outside serialized capability configuration;
+hosted adapters retain lazy, session-scoped connection resolution. Connector UI
+and inventory discovery must be separable from the application's dependency
+graph. Registration alone does not supply platform persistence or orchestration.
+
+[Brave Search](../../integrations/brave-search/src/framework.rs) is the reference
+implementation. Its [acceptance test](../../integrations/brave-search/tests/framework.rs)
+checks schema parity, execution through the public Engine, and credential
+separation. Other integrations adopt this boundary as they gain Framework
+support; this does not imply the entire hosted catalog is executable by default.
+
 ## Supported dependency paths
 
 An ordinary application targets `everruns` alone for agent configuration and
