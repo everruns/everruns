@@ -11,21 +11,18 @@ tags:
 Controls which hosts/URLs an agent session can reach via network-capable tools
 (web_fetch, future bashkit HTTP).
 
-## Data Model
+## Policy Contract
 
-```typescript
-interface NetworkAccessList {
-  allowed?: string[];   // if non-empty, only matching URLs permitted
-  blocked?: string[];   // always denied (takes precedence over allowed)
-}
-```
-
-**Pattern format:**
-- `example.com`, exact domain match
-- `*.example.com`, domain and all subdomains
-- `https://example.com/api/`, URL prefix match (scheme + host + path)
+The [network access implementation](../../crates/core/src/network_access.rs)
+owns the serialized fields and supported domain, subdomain, and URL-prefix
+patterns. Allow rules restrict access; block rules override grants.
 
 Matching is case-insensitive for domains. Blocked takes precedence over allowed.
+URL prefixes are parsed and normalized before both matching and narrowing, so
+path dot segments cannot escape a parent's prefix. A URL prefix under a domain
+allowlist must match by its parsed host; domain-looking paths or query strings
+confer no authority. Invalid HTTP URL prefixes match nothing, including when
+used in a blocklist; they must not be used as scheme-wide wildcard patterns.
 
 ## Layer Model
 
@@ -84,38 +81,12 @@ curl/wget follow redirects manually, so redirect targets are re-checked too.
 With the config flag off (the default) or no egress service in context, the
 interpreter has no network path at all (TM-BASH-003).
 
-## API
+## Configuration
 
-All three resources accept `network_access` in create/update requests:
-
-```json
-// POST /v1/agents
-{
-  "name": "My Agent",
-  "network_access": {
-    "allowed": ["api.example.com", "*.github.com"],
-    "blocked": ["evil.com"]
-  }
-}
-```
-
-```json
-// POST /v1/sessions
-{
-  "agent_id": "agent_...",
-  "network_access": {
-    "blocked": ["internal.corp"]
-  }
-}
-```
-
-Setting `network_access` to `{}` (empty object) clears restrictions from that layer.
-Omitting the field in update requests leaves it unchanged.
-
-## Database
-
-JSONB column `network_access` on `harnesses`, `agents`, `sessions` tables.
-Migration: `010_v0.8.9.sql`.
+Harness, agent, and session create/update APIs accept the policy. An empty
+policy clears restrictions from that layer; omitting it in an update preserves
+the existing policy. See the [API source](../../crates/server/src/api/) for
+request shapes and [migrations](../../crates/server/migrations/) for storage.
 
 ## Threat Model
 
