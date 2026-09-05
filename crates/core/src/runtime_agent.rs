@@ -604,183 +604,454 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_runtime_agent_new() {
-        let runtime_agent = RuntimeAgent::new("You are helpful.", "gpt-5.2");
+    fn client_tool(name: &str, description: &str) -> ToolDefinition {
+        ToolDefinition::ClientSide(crate::tool_types::ClientSideTool {
+            name: name.into(),
+            display_name: Some("Client action".into()),
+            description: description.into(),
+            parameters: serde_json::json!({"type":"object","properties":{"selector":{"type":"string"}},"required":["selector"]}),
+            category: Some("Browser".into()),
+            deferrable: Default::default(),
+            hints: Default::default(),
+            full_parameters: None,
+        })
+    }
 
-        assert_eq!(runtime_agent.system_prompt, "You are helpful.");
-        assert_eq!(runtime_agent.model, "gpt-5.2");
-        assert!(runtime_agent.tools.is_empty());
-        assert_eq!(runtime_agent.max_iterations, 500);
-        assert!(runtime_agent.temperature.is_none());
-        assert!(runtime_agent.max_tokens.is_none());
+    fn echo_definition() -> ToolDefinition {
+        crate::Tool::to_definition(&crate::tools::EchoTool)
+            .with_capability_attribution("tool_fixture", Some("Tool Fixture"))
+    }
+
+    fn progress_definition() -> ToolDefinition {
+        crate::Tool::to_definition(&crate::progress_reporting::ReportProgressTool)
+            .with_capability_attribution("prompt_tool_fixture", Some("Prompt Tool Fixture"))
+    }
+
+    fn tools_json(tools: &[ToolDefinition]) -> serde_json::Value {
+        serde_json::to_value(tools).unwrap()
     }
 
     #[test]
-    fn test_runtime_agent_default() {
-        let runtime_agent = RuntimeAgent::default();
-
-        assert_eq!(runtime_agent.system_prompt, "You are a helpful assistant.");
-        assert_eq!(runtime_agent.model, "gpt-5.2");
-        assert!(runtime_agent.tools.is_empty());
-        assert_eq!(runtime_agent.max_iterations, 500);
+    fn minimal_construction_and_legacy_wire_input_preserve_iteration_limit() {
+        let expected = serde_json::json!({
+            "system_prompt":"Custom prompt", "model":"custom-model", "tools":[],
+            "max_iterations":500, "temperature":null, "max_tokens":null
+        });
+        for agent in [
+            RuntimeAgent::new("Custom prompt", "custom-model"),
+            RuntimeAgentBuilder::new()
+                .system_prompt("Custom prompt")
+                .model("custom-model")
+                .build(),
+            serde_json::from_value::<RuntimeAgent>(
+                serde_json::json!({"system_prompt":"Custom prompt","model":"custom-model"}),
+            )
+            .unwrap(),
+        ] {
+            assert_eq!(serde_json::to_value(agent).unwrap(), expected);
+        }
     }
 
     #[test]
-    fn test_builder_basic() {
-        let runtime_agent = RuntimeAgentBuilder::new()
-            .system_prompt("Custom prompt")
-            .model("claude-opus-5")
-            .build();
-
-        assert_eq!(runtime_agent.system_prompt, "Custom prompt");
-        assert_eq!(runtime_agent.model, "claude-opus-5");
-    }
-
-    #[test]
-    fn test_builder_with_all_options() {
-        let runtime_agent = RuntimeAgentBuilder::new()
+    fn builder_preserves_all_explicit_request_options() {
+        let tool = client_tool("click", "Click a selector");
+        let policy = crate::network_access::NetworkAccessList::block(["private.example.com"]);
+        let agent = RuntimeAgentBuilder::default()
             .system_prompt("You are a coder.")
-            .model("gpt-5.2")
-            .max_iterations(20)
-            .temperature(0.7)
-            .max_tokens(4096)
+            .model("gpt-5.4")
+            .max_iterations(23)
+            .temperature(0.75)
+            .max_tokens(2048)
+            .parallel_tool_calls(Some(false))
+            .network_access(Some(policy.clone()))
+            .tool(tool.clone())
             .build();
-
-        assert_eq!(runtime_agent.system_prompt, "You are a coder.");
-        assert_eq!(runtime_agent.model, "gpt-5.2");
-        assert_eq!(runtime_agent.max_iterations, 20);
-        assert_eq!(runtime_agent.temperature, Some(0.7));
-        assert_eq!(runtime_agent.max_tokens, Some(4096));
+        assert_eq!(
+            serde_json::to_value(agent).unwrap(),
+            serde_json::json!({
+                "system_prompt":"You are a coder.", "model":"gpt-5.4", "tools":[tool],
+                "max_iterations":23, "temperature":0.75, "max_tokens":2048,
+                "network_access":policy, "parallel_tool_calls":false
+            })
+        );
     }
 
     #[test]
-    fn test_builder_prepend_system_prompt() {
-        let runtime_agent = RuntimeAgentBuilder::new()
-            .system_prompt("Base prompt.")
-            .prepend_system_prompt("Prefix text.")
-            .build();
-
-        assert_eq!(runtime_agent.system_prompt, "Prefix text.\n\nBase prompt.");
+    fn prompt_operations_preserve_order_and_ignore_empty_additions() {
+        for (prefix, suffix, expected) in [
+            ("", "", "Base prompt."),
+            ("Prefix.", "", "Prefix.\n\nBase prompt."),
+            ("", "Suffix.", "Base prompt.\n\nSuffix."),
+            ("Prefix.", "Suffix.", "Prefix.\n\nBase prompt.\n\nSuffix."),
+        ] {
+            let agent = RuntimeAgentBuilder::new()
+                .system_prompt("Base prompt.")
+                .prepend_system_prompt(prefix)
+                .append_system_prompt(suffix)
+                .build();
+            assert_eq!(agent.system_prompt, expected);
+        }
+        assert_eq!(
+            RuntimeAgentBuilder::new()
+                .system_prompt("")
+                .append_system_prompt("Only suffix.")
+                .build()
+                .system_prompt,
+            "Only suffix."
+        );
     }
 
     #[test]
-    fn test_builder_prepend_empty_string_does_nothing() {
-        let runtime_agent = RuntimeAgentBuilder::new()
-            .system_prompt("Base prompt.")
-            .prepend_system_prompt("")
-            .build();
-
-        assert_eq!(runtime_agent.system_prompt, "Base prompt.");
-    }
-
-    #[test]
-    fn test_builder_with_locale_appends_locale_instructions() {
-        let runtime_agent = RuntimeAgentBuilder::new()
-            .system_prompt("Base prompt.")
-            .with_locale(Some("uk-UA"))
-            .build();
-
-        assert!(runtime_agent.system_prompt.starts_with("Base prompt."));
-        assert!(runtime_agent.system_prompt.contains("<locale"));
-        assert!(runtime_agent.system_prompt.contains("uk-UA"));
-        assert!(runtime_agent.system_prompt.ends_with("</locale>"));
-    }
-
-    #[tokio::test]
-    async fn test_builder_with_capabilities_empty() {
-        let registry = fixture_registry();
-        let runtime_agent = RuntimeAgentBuilder::new()
-            .system_prompt("Base prompt.")
-            .with_capabilities(&[], &registry, &test_ctx())
-            .await
-            .build();
-
-        assert_eq!(runtime_agent.system_prompt, "Base prompt.");
-        assert!(runtime_agent.tools.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_builder_with_capabilities_adds_tools() {
-        use crate::tool_types::ToolDefinition;
-
-        let registry = fixture_registry();
-        let runtime_agent = RuntimeAgentBuilder::new()
-            .system_prompt("Base prompt.")
-            .with_capabilities(&["tool_fixture".to_string()], &registry, &test_ctx())
-            .await
-            .build();
-
-        assert_eq!(runtime_agent.tools.len(), 1);
-        match &runtime_agent.tools[0] {
-            ToolDefinition::Builtin(tool) => {
-                assert_eq!(tool.name, "echo");
-            }
-            _ => panic!("expected Builtin variant"),
+    fn locale_instructions_trim_input_preserve_base_and_omit_empty_preferences() {
+        for locale in [None, Some(""), Some(" \t")] {
+            let agent = RuntimeAgentBuilder::new()
+                .system_prompt("Base prompt.")
+                .with_locale(locale)
+                .build();
+            assert_eq!(agent.system_prompt, "Base prompt.");
+        }
+        for locale in ["uk-UA", " uk-UA \n"] {
+            let prompt = RuntimeAgentBuilder::new()
+                .system_prompt("Base prompt.")
+                .with_locale(Some(locale))
+                .build()
+                .system_prompt;
+            assert!(prompt.starts_with("Base prompt.\n\n<locale preference=\"uk-UA\">\n"));
+            assert!(prompt.contains("Default locale for this session: uk-UA.\n"));
+            assert!(prompt.ends_with("\n</locale>"));
+            assert_eq!(prompt.matches("Base prompt.").count(), 1);
+            assert_eq!(prompt.matches("<locale ").count(), 1);
         }
     }
 
     #[tokio::test]
-    async fn test_builder_with_capabilities_keeps_base_prompt_first() {
-        let mut registry = CapabilityRegistry::new();
-        registry.register(FileSystemFixture);
-        let runtime_agent = RuntimeAgentBuilder::new()
+    async fn empty_capability_application_preserves_existing_configuration() {
+        let tool = client_tool("click", "existing tool");
+        let agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
-            .with_capabilities(&["session_file_system".to_string()], &registry, &test_ctx())
+            .model("custom-model")
+            .max_iterations(19)
+            .tool(tool.clone())
+            .parallel_tool_calls(Some(false))
+            .with_capabilities(&[], &fixture_registry(), &test_ctx())
             .await
             .build();
-
-        assert!(runtime_agent.system_prompt.contains("/workspace"));
-        // Base prompt wrapped in <system-prompt> tags
-        assert!(runtime_agent.system_prompt.contains("<system-prompt>"));
-        assert!(
-            runtime_agent
-                .system_prompt
-                .starts_with("<system-prompt>\nBase prompt.\n</system-prompt>")
+        assert_eq!(
+            serde_json::to_value(agent).unwrap(),
+            serde_json::json!({
+                "system_prompt":"Base prompt.","model":"custom-model","tools":[tool],
+                "max_iterations":19,"temperature":null,"max_tokens":null,"parallel_tool_calls":false
+            })
         );
     }
 
     #[tokio::test]
-    async fn test_builder_with_agent() {
-        use crate::tool_types::ToolDefinition;
-        use uuid::{NoContext, Timestamp, Uuid};
-
-        let registry = fixture_registry();
-        let ts = Timestamp::now(NoContext);
-        let uuid = Uuid::new_v7(ts);
-        let agent = AgentDefinition {
-            display_name: Some("Test Agent".to_string()),
-            capabilities: vec![AgentCapabilityConfig::new("tool_fixture")],
-            ..AgentDefinition::new(
-                AgentId::from_uuid(uuid),
-                "test-agent".to_string(),
-                "Agent prompt.".to_string(),
-            )
-        };
-
-        let runtime_agent = RuntimeAgentBuilder::new()
-            .with_agent(&agent, &registry, &test_ctx())
+    async fn direct_capabilities_preserve_complete_tool_definitions() {
+        let agent = RuntimeAgentBuilder::new()
+            .system_prompt("Base prompt.")
+            .with_capabilities(&["tool_fixture".into()], &fixture_registry(), &test_ctx())
             .await
-            .model("gpt-5.2")
             .build();
+        assert_eq!(tools_json(&agent.tools), tools_json(&[echo_definition()]));
+        assert_eq!(agent.system_prompt, "Base prompt.");
+    }
 
-        assert!(runtime_agent.system_prompt.contains("Agent prompt."));
-        assert_eq!(runtime_agent.tools.len(), 1);
-        match &runtime_agent.tools[0] {
-            ToolDefinition::Builtin(tool) => {
-                assert_eq!(tool.name, "echo");
+    #[tokio::test]
+    async fn agent_application_preserves_client_and_capability_tool_payloads() {
+        for (with_capability, with_client) in [(true, false), (false, true), (true, true)] {
+            let mut source = AgentDefinition::new(AgentId::new(), "test-agent", "Agent prompt.");
+            let client = client_tool("click", "Click the requested selector");
+            let mut expected = Vec::new();
+            if with_capability {
+                source
+                    .capabilities
+                    .push(AgentCapabilityConfig::new("tool_fixture"));
+                expected.push(echo_definition());
             }
-            _ => panic!("expected Builtin variant"),
+            if with_client {
+                source.tools.push(client.clone());
+                expected.push(client);
+            }
+            let agent = RuntimeAgentBuilder::new()
+                .with_agent(&source, &fixture_registry(), &test_ctx())
+                .await
+                .build();
+            assert_eq!(agent.system_prompt, "Agent prompt.");
+            assert_eq!(tools_json(&agent.tools), tools_json(&expected));
+        }
+    }
+
+    #[tokio::test]
+    async fn capability_prompt_follows_stable_base_once() {
+        let mut registry = CapabilityRegistry::new();
+        registry.register(FileSystemFixture);
+        let agent = RuntimeAgentBuilder::new()
+            .system_prompt("Base prompt.")
+            .with_capabilities(&["session_file_system".into()], &registry, &test_ctx())
+            .await
+            .build();
+        assert_eq!(
+            agent.system_prompt,
+            "<system-prompt>\nBase prompt.\n</system-prompt>\n\n<capability id=\"session_file_system\">\nThe workspace root is `/workspace`.\n</capability>"
+        );
+    }
+
+    #[tokio::test]
+    async fn additive_capabilities_preserve_prior_tools_and_prompt() {
+        let mut source = AgentDefinition::new(AgentId::new(), "test-agent", "Agent prompt.");
+        source
+            .capabilities
+            .push(AgentCapabilityConfig::new("tool_fixture"));
+        let registry = fixture_registry();
+        let agent = RuntimeAgentBuilder::new()
+            .with_agent(&source, &registry, &test_ctx())
+            .await
+            .with_capabilities(&["prompt_tool_fixture".into()], &registry, &test_ctx())
+            .await
+            .build();
+        assert_eq!(
+            tools_json(&agent.tools),
+            tools_json(&[echo_definition(), progress_definition()])
+        );
+        assert_eq!(
+            agent.system_prompt,
+            "<system-prompt>\nAgent prompt.\n</system-prompt>\n\n<capability id=\"prompt_tool_fixture\">\nTask Management fixture guidance.\n</capability>"
+        );
+    }
+
+    #[test]
+    fn hosted_tool_search_requires_support_and_preserves_explicit_config() {
+        for (model, supported) in [
+            ("gpt-5.2", false),
+            ("claude-3-5-haiku", false),
+            ("unknown-model", false),
+            ("gpt-5.4", true),
+            ("claude-opus-4-8", true),
+        ] {
+            assert!(
+                RuntimeAgentBuilder::new()
+                    .model(model)
+                    .build()
+                    .tool_search
+                    .is_none(),
+                "must not auto-enable for {model}"
+            );
+            for (enabled, threshold) in [(true, 5), (false, 0)] {
+                let agent = RuntimeAgentBuilder::new()
+                    .model(model)
+                    .tool_search(ToolSearchConfig { enabled, threshold })
+                    .build();
+                let expected =
+                    supported.then(|| serde_json::json!({"enabled":enabled,"threshold":threshold}));
+                assert_eq!(
+                    agent.tool_search.map(|v| serde_json::to_value(v).unwrap()),
+                    expected,
+                    "{model}"
+                );
+            }
         }
     }
 
     #[test]
-    fn test_builder_default() {
-        let builder = RuntimeAgentBuilder::default();
-        let runtime_agent = builder.build();
+    fn hooks_run_in_order_and_respect_native_configuration_before_model_filtering() {
+        struct AppendHook {
+            suffix: &'static str,
+            native: bool,
+        }
+        impl ToolDefinitionHook for AppendHook {
+            fn transform(&self, mut tools: Vec<ToolDefinition>) -> Vec<ToolDefinition> {
+                for tool in &mut tools {
+                    match tool {
+                        ToolDefinition::Builtin(t) => t.description.push_str(self.suffix),
+                        ToolDefinition::ClientSide(t) => t.description.push_str(self.suffix),
+                    }
+                }
+                tools
+            }
+            fn applies_with_native_tool_search(&self) -> bool {
+                self.native
+            }
+        }
+        for (model, configured, expected_description, kept_native) in [
+            ("gpt-5.4", false, "original|first|conditional|last", false),
+            ("gpt-5.4", true, "original|first|last", true),
+            ("gpt-5.2", true, "original|first|last", false),
+        ] {
+            let mut builder = RuntimeAgentBuilder::new()
+                .model(model)
+                .tool(client_tool("click", "original"));
+            if configured {
+                builder = builder.tool_search(ToolSearchConfig {
+                    enabled: true,
+                    threshold: 9,
+                });
+            }
+            for (suffix, native) in [("|first", true), ("|conditional", false), ("|last", true)] {
+                builder
+                    .tool_definition_hooks
+                    .push(std::sync::Arc::new(AppendHook { suffix, native }));
+            }
+            let agent = builder.build();
+            assert_eq!(
+                tools_json(&agent.tools),
+                tools_json(&[client_tool("click", expected_description)])
+            );
+            assert_eq!(agent.tool_search.is_some(), kept_native);
+        }
+    }
 
-        assert_eq!(runtime_agent.system_prompt, "You are a helpful assistant.");
-        assert_eq!(runtime_agent.model, "gpt-5.2");
+    #[test]
+    fn prompt_cache_config_is_preserved_for_driver_resolution() {
+        for model in ["gpt-5.4", "gemini-3-pro", "custom-model"] {
+            for enabled in [false, true] {
+                let config = PromptCacheConfig {
+                    enabled,
+                    strategy: crate::driver_registry::PromptCacheStrategy::Auto,
+                    gemini_cached_content: Some("cachedContents/review-fixture".into()),
+                };
+                let agent = RuntimeAgentBuilder::new()
+                    .model(model)
+                    .prompt_cache(config.clone())
+                    .build();
+                assert_eq!(agent.prompt_cache, Some(config));
+            }
+        }
+    }
+
+    #[test]
+    fn deduplication_keeps_complete_last_definition_and_survivor_order() {
+        let mut first = echo_definition();
+        if let ToolDefinition::Builtin(t) = &mut first {
+            t.name = "click".into();
+        }
+        let retained = client_tool("search", "retained");
+        let last = client_tool("click", "last wins across tool variants");
+        let agent = RuntimeAgentBuilder::new()
+            .tool(first)
+            .tools([retained.clone(), last.clone()])
+            .build();
+        assert_eq!(tools_json(&agent.tools), tools_json(&[retained, last]));
+    }
+
+    struct ConfiguredFixture;
+    impl Capability for ConfiguredFixture {
+        fn id(&self) -> &str {
+            "configured_fixture"
+        }
+        fn name(&self) -> &str {
+            "Configured Fixture"
+        }
+        fn description(&self) -> &str {
+            "Config-driven preferences for assembly tests."
+        }
+        fn tool_search_config(&self, config: &serde_json::Value) -> Option<ToolSearchConfig> {
+            Some(ToolSearchConfig {
+                enabled: true,
+                threshold: config["threshold"].as_u64().unwrap() as usize,
+            })
+        }
+        fn prompt_cache_config(&self, config: &serde_json::Value) -> Option<PromptCacheConfig> {
+            Some(PromptCacheConfig {
+                enabled: config["cache_enabled"].as_bool().unwrap(),
+                strategy: crate::driver_registry::PromptCacheStrategy::Auto,
+                gemini_cached_content: config["cache"].as_str().map(str::to_owned),
+            })
+        }
+        fn parallel_tool_calls_preference(&self, config: &serde_json::Value) -> Option<bool> {
+            config["parallel"].as_bool()
+        }
+        fn openrouter_routing_config(
+            &self,
+            config: &serde_json::Value,
+        ) -> Option<crate::driver_registry::OpenRouterRoutingConfig> {
+            Some(serde_json::from_value(config["routing"].clone()).unwrap())
+        }
+    }
+
+    #[tokio::test]
+    async fn canonical_overlay_preserves_configured_contributions_and_explicit_precedence() {
+        let mut registry = fixture_registry();
+        registry.register(ConfiguredFixture);
+        for (capability_parallel, explicit_parallel, expected_parallel) in [
+            (true, None, true),
+            (false, None, false),
+            (true, Some(false), false),
+            (false, Some(true), true),
+        ] {
+            let client = client_tool("click", "overlay client");
+            let policy = crate::network_access::NetworkAccessList::block(["private.example.com"]);
+            let routing =
+                serde_json::json!({"models":["openai/a","anthropic/b"],"route":"fallback"});
+            let layer = AgentConfigOverlay {
+                system_prompt: Some("Overlay prompt.".into()),
+                capabilities: vec![
+                    AgentCapabilityConfig::new("tool_fixture"),
+                    AgentCapabilityConfig::with_config(
+                        "configured_fixture",
+                        serde_json::json!({
+                            "threshold":37,"cache_enabled":false,"cache":"cachedContents/configured", "parallel":capability_parallel,"routing":routing
+                        }),
+                    ),
+                ],
+                tools: vec![client.clone()],
+                max_iterations: Some(0),
+                network_access: Some(policy.clone()),
+                parallel_tool_calls: explicit_parallel,
+                ..Default::default()
+            };
+            let agent = RuntimeAgentBuilder::from_overlay(layer, &registry, &test_ctx())
+                .await
+                .model("gpt-5.4")
+                .build();
+            assert_eq!(agent.system_prompt, "Overlay prompt.");
+            assert_eq!(
+                tools_json(&agent.tools),
+                tools_json(&[echo_definition(), client])
+            );
+            assert_eq!(agent.max_iterations, 0);
+            assert_eq!(agent.network_access, Some(policy));
+            assert_eq!(agent.parallel_tool_calls, Some(expected_parallel));
+            assert_eq!(
+                serde_json::to_value(agent.tool_search.unwrap()).unwrap(),
+                serde_json::json!({"enabled":true,"threshold":37})
+            );
+            assert_eq!(
+                agent.prompt_cache,
+                Some(PromptCacheConfig {
+                    enabled: false,
+                    strategy: crate::driver_registry::PromptCacheStrategy::Auto,
+                    gemini_cached_content: Some("cachedContents/configured".into())
+                })
+            );
+            assert_eq!(
+                serde_json::to_value(agent.openrouter_routing.unwrap()).unwrap(),
+                routing
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_overlay_clears_default_prompt_without_enabling_preferences() {
+        for prompt in [None, Some(String::new())] {
+            let agent = RuntimeAgentBuilder::from_overlay(
+                AgentConfigOverlay {
+                    system_prompt: prompt,
+                    ..Default::default()
+                },
+                &fixture_registry(),
+                &test_ctx(),
+            )
+            .await
+            .build();
+            assert_eq!(agent.system_prompt, "");
+            assert!(agent.tools.is_empty());
+            assert_eq!(agent.max_iterations, 500);
+            assert!(agent.tool_search.is_none());
+            assert!(agent.prompt_cache.is_none());
+            assert!(agent.openrouter_routing.is_none());
+            assert!(agent.network_access.is_none());
+            assert_eq!(agent.parallel_tool_calls, None);
+        }
     }
 
     #[tokio::test]
@@ -819,430 +1090,14 @@ mod tests {
             .await
             .build();
 
-        // System prompt should include File System's contribution (the dependency) in XML tags
-        assert!(
-            runtime_agent
-                .system_prompt
-                .contains("<capability id=\"session_file_system\">"),
-            "Should include File System capability in XML tags"
-        );
-        assert!(
-            runtime_agent.system_prompt.contains("/workspace"),
-            "Should include File System system prompt (mentions workspace root)"
-        );
-        // Should also include Sample Data's contribution in XML tags
-        assert!(
-            runtime_agent
-                .system_prompt
-                .contains("<capability id=\"sample_data\">"),
-            "Should include Sample Data capability in XML tags"
-        );
-        assert!(
-            runtime_agent.system_prompt.contains("/samples"),
-            "Should include Sample Data system prompt (mentions /samples path)"
-        );
-        // Base prompt should still be there, wrapped
-        assert!(
-            runtime_agent.system_prompt.contains("Base prompt."),
-            "Should preserve base prompt"
-        );
-        assert!(
-            runtime_agent.system_prompt.contains("<system-prompt>"),
-            "Base prompt should be wrapped in system-prompt tags"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_builder_additive_capabilities() {
-        use crate::tool_types::ToolDefinition;
-
-        let registry = fixture_registry();
-
-        // Apply capabilities additively (simulating session-level capabilities)
-        let runtime_agent = RuntimeAgentBuilder::new()
-            .system_prompt("Agent prompt.")
-            .with_capabilities(&["tool_fixture".to_string()], &registry, &test_ctx())
-            .await
-            .build();
-
-        // Should have the tool from capability
-        assert_eq!(runtime_agent.tools.len(), 1);
-        match &runtime_agent.tools[0] {
-            ToolDefinition::Builtin(tool) => {
-                assert_eq!(tool.name, "echo");
-            }
-            _ => panic!("expected Builtin variant"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_builder_with_agent_client_side_tools() {
-        use crate::tool_types::{ClientSideTool, DeferrablePolicy, ToolDefinition};
-        use uuid::{NoContext, Timestamp, Uuid};
-
-        let registry = fixture_registry();
-        let ts = Timestamp::now(NoContext);
-        let uuid = Uuid::new_v7(ts);
-
-        let client_tool = ToolDefinition::ClientSide(ClientSideTool {
-            name: "browser_click".to_string(),
-            display_name: None,
-            description: "Click an element in the browser".to_string(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "selector": {"type": "string"}
-                }
-            }),
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: crate::tool_types::ToolHints::default(),
-            full_parameters: None,
-        });
-
-        let agent = AgentDefinition {
-            display_name: Some("Client Tool Agent".to_string()),
-            tools: vec![client_tool],
-            ..AgentDefinition::new(
-                AgentId::from_uuid(uuid),
-                "client-tool-agent".to_string(),
-                "Agent with client tools.".to_string(),
+        assert_eq!(
+            runtime_agent.system_prompt,
+            concat!(
+                "<system-prompt>\nBase prompt.\n</system-prompt>\n\n",
+                "<capability id=\"session_file_system\">\nThe workspace root is `/workspace`.\n</capability>\n\n",
+                "<capability id=\"sample_data\">\nRead-only sample files are mounted at `/samples`.\n</capability>"
             )
-        };
-
-        let runtime_agent = RuntimeAgentBuilder::new()
-            .with_agent(&agent, &registry, &test_ctx())
-            .await
-            .model("gpt-5.2")
-            .build();
-
-        assert_eq!(runtime_agent.tools.len(), 1);
-        assert_eq!(runtime_agent.tools[0].name(), "browser_click");
-        assert_eq!(
-            runtime_agent.tools[0].policy(),
-            &crate::tool_types::ToolPolicy::ClientSide
         );
-    }
-
-    #[tokio::test]
-    async fn test_builder_with_agent_client_side_and_capabilities() {
-        use crate::tool_types::{ClientSideTool, DeferrablePolicy, ToolDefinition};
-        use uuid::{NoContext, Timestamp, Uuid};
-
-        let registry = fixture_registry();
-        let ts = Timestamp::now(NoContext);
-        let uuid = Uuid::new_v7(ts);
-
-        let client_tool = ToolDefinition::ClientSide(ClientSideTool {
-            name: "deploy_staging".to_string(),
-            display_name: None,
-            description: "Deploy to staging".to_string(),
-            parameters: serde_json::json!({"type": "object"}),
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: crate::tool_types::ToolHints::default(),
-            full_parameters: None,
-        });
-
-        let agent = AgentDefinition {
-            display_name: Some("Mixed Tool Agent".to_string()),
-            capabilities: vec![AgentCapabilityConfig::new("tool_fixture")],
-            tools: vec![client_tool],
-            ..AgentDefinition::new(
-                AgentId::from_uuid(uuid),
-                "mixed-tool-agent".to_string(),
-                "Agent with mixed tools.".to_string(),
-            )
-        };
-
-        let runtime_agent = RuntimeAgentBuilder::new()
-            .with_agent(&agent, &registry, &test_ctx())
-            .await
-            .model("gpt-5.2")
-            .build();
-
-        // Should have capability tool + client-side tool
-        assert_eq!(runtime_agent.tools.len(), 2);
-        let tool_names: Vec<&str> = runtime_agent.tools.iter().map(|t| t.name()).collect();
-        assert!(tool_names.contains(&"echo"));
-        assert!(tool_names.contains(&"deploy_staging"));
-
-        // Verify the client tool is ClientSide variant
-        let deploy_tool = runtime_agent
-            .tools
-            .iter()
-            .find(|t| t.name() == "deploy_staging")
-            .unwrap();
-        assert!(matches!(deploy_tool, ToolDefinition::ClientSide(_)));
-    }
-
-    #[tokio::test]
-    async fn test_builder_with_agent_and_additive_capabilities() {
-        use uuid::{NoContext, Timestamp, Uuid};
-
-        let registry = fixture_registry();
-        let ts = Timestamp::now(NoContext);
-
-        // Agent has a tool-only capability (no system prompt addition).
-        let uuid = Uuid::new_v7(ts);
-        let agent = AgentDefinition {
-            display_name: Some("Test Agent".to_string()),
-            capabilities: vec![AgentCapabilityConfig::new("tool_fixture")],
-            ..AgentDefinition::new(
-                AgentId::from_uuid(uuid),
-                "test-agent".to_string(),
-                "Agent prompt.".to_string(),
-            )
-        };
-
-        // Session adds a prompt-bearing capability additively.
-        let session_capability_ids = vec!["prompt_tool_fixture".to_string()];
-
-        let runtime_agent = RuntimeAgentBuilder::new()
-            .with_agent(&agent, &registry, &test_ctx())
-            .await
-            .with_capabilities(&session_capability_ids, &registry, &test_ctx())
-            .await
-            .model("gpt-5.2")
-            .build();
-
-        // Should have tools from both agent and session capabilities
-        assert!(runtime_agent.tools.len() >= 2);
-        let tool_names: Vec<&str> = runtime_agent.tools.iter().map(|t| t.name()).collect();
-        assert!(tool_names.contains(&"echo"));
-        assert!(tool_names.contains(&"report_progress"));
-
-        // System prompt should contain both capability additions and agent prompt
-        assert!(runtime_agent.system_prompt.contains("Agent prompt."));
-        assert!(runtime_agent.system_prompt.contains("Task Management"));
-        assert!(
-            runtime_agent
-                .system_prompt
-                .contains("<capability id=\"prompt_tool_fixture\">")
-        );
-        // Base prompt should be wrapped in <system-prompt> tags (no double wrapping)
-        let system_prompt_count = runtime_agent
-            .system_prompt
-            .matches("<system-prompt>")
-            .count();
-        assert_eq!(
-            system_prompt_count, 1,
-            "Should have exactly one <system-prompt> tag, not double-wrapped"
-        );
-    }
-
-    #[test]
-    fn test_build_clears_tool_search_for_unsupported_model() {
-        let agent = RuntimeAgentBuilder::new()
-            .model("gpt-5.2")
-            .tool_search(ToolSearchConfig {
-                enabled: true,
-                threshold: 15,
-            })
-            .build();
-
-        assert!(
-            agent.tool_search.is_none(),
-            "tool_search should be cleared for gpt-5.2 (unsupported)"
-        );
-    }
-
-    #[test]
-    fn test_build_keeps_tool_search_for_supported_model() {
-        let agent = RuntimeAgentBuilder::new()
-            .model("gpt-5.4")
-            .tool_search(ToolSearchConfig {
-                enabled: true,
-                threshold: 15,
-            })
-            .build();
-
-        assert!(
-            agent.tool_search.is_some(),
-            "tool_search should be kept for gpt-5.4 (supported)"
-        );
-    }
-
-    #[test]
-    fn test_build_skips_client_side_hook_when_native_tool_search_configured() {
-        use crate::tool_types::{BuiltinTool, ToolPolicy};
-        use std::sync::Arc;
-
-        // A hook that would clear all tools if it ran, but opts out of coexisting
-        // with native tool_search (like the generic tool_search DeferSchemaHook).
-        struct ClearAllHook;
-        impl ToolDefinitionHook for ClearAllHook {
-            fn transform(&self, _tools: Vec<ToolDefinition>) -> Vec<ToolDefinition> {
-                vec![]
-            }
-            fn applies_with_native_tool_search(&self) -> bool {
-                false
-            }
-        }
-
-        let tool = ToolDefinition::Builtin(BuiltinTool {
-            name: "read_file".to_string(),
-            display_name: None,
-            description: "read".to_string(),
-            parameters: serde_json::json!({}),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: Default::default(),
-            hints: Default::default(),
-            full_parameters: None,
-        });
-
-        // Native tool_search configured → opt-out hook is skipped (tools kept).
-        let mut builder = RuntimeAgentBuilder::new()
-            .model("gpt-5.4")
-            .tools(vec![tool.clone()])
-            .tool_search(ToolSearchConfig {
-                enabled: true,
-                threshold: 15,
-            });
-        builder.tool_definition_hooks.push(Arc::new(ClearAllHook));
-        assert_eq!(
-            builder.build().tools.len(),
-            1,
-            "opt-out hook must be skipped when native tool_search is configured"
-        );
-
-        // No native tool_search → the same hook runs and clears the tools.
-        let mut builder = RuntimeAgentBuilder::new()
-            .model("claude-sonnet-4-5-20250514")
-            .tools(vec![tool]);
-        builder.tool_definition_hooks.push(Arc::new(ClearAllHook));
-        assert!(
-            builder.build().tools.is_empty(),
-            "opt-out hook runs when native tool_search is not configured"
-        );
-    }
-
-    #[test]
-    fn test_build_clears_tool_search_for_non_native_model() {
-        // A retired pre-4 Claude model has no profile (and no hosted
-        // tool_search support on either provider), so a hosted config is
-        // cleared (full schemas sent).
-        let agent = RuntimeAgentBuilder::new()
-            .model("claude-3-5-haiku")
-            .tool_search(ToolSearchConfig {
-                enabled: true,
-                threshold: 15,
-            })
-            .build();
-
-        assert!(
-            agent.tool_search.is_none(),
-            "tool_search should be cleared for models with no hosted support"
-        );
-    }
-
-    #[test]
-    fn test_build_keeps_tool_search_for_native_anthropic_model() {
-        // Claude 4-family models support Anthropic's hosted tool_search, so the
-        // hosted config survives build() (the Anthropic driver renders it).
-        let agent = RuntimeAgentBuilder::new()
-            .model("claude-opus-4-8")
-            .tool_search(ToolSearchConfig {
-                enabled: true,
-                threshold: 15,
-            })
-            .build();
-
-        assert!(
-            agent.tool_search.is_some(),
-            "tool_search should be kept for native Anthropic models"
-        );
-    }
-
-    #[test]
-    fn test_build_no_auto_enable_tool_search_without_capability() {
-        // tool_search requires explicit openai_tool_search capability.
-        // Even GPT-5.4 (which supports it) should not get it automatically.
-        let agent = RuntimeAgentBuilder::new().model("gpt-5.4").build();
-
-        assert!(
-            agent.tool_search.is_none(),
-            "tool_search must not be auto-enabled; it is capability-driven"
-        );
-    }
-
-    #[test]
-    fn test_build_preserves_explicit_tool_search_config_for_supported_model() {
-        // Simulates Generic harness setting openai_tool_search capability
-        // with custom threshold — build() must preserve it.
-        let agent = RuntimeAgentBuilder::new()
-            .model("gpt-5.4")
-            .tool_search(ToolSearchConfig {
-                enabled: true,
-                threshold: 5,
-            })
-            .build();
-
-        let ts = agent
-            .tool_search
-            .expect("explicit tool_search should be preserved");
-        assert!(ts.enabled);
-        assert_eq!(
-            ts.threshold, 5,
-            "custom threshold from capability must be preserved"
-        );
-    }
-
-    // Note: `auto_tool_search`'s hosted-vs-client-side selection now happens at
-    // capability-collection time (see `Capability::resolve_for_model` and the
-    // collection tests in `capabilities::mod`), not in `build()`. `build()` only
-    // reconciles a hosted config with the model, covered by the tests above.
-
-    #[test]
-    fn test_build_preserves_prompt_cache_for_supported_provider() {
-        let agent = RuntimeAgentBuilder::new()
-            .model("gpt-5.4")
-            .prompt_cache(PromptCacheConfig {
-                enabled: true,
-                strategy: crate::driver_registry::PromptCacheStrategy::Auto,
-                gemini_cached_content: None,
-            })
-            .build();
-
-        let prompt_cache = agent
-            .prompt_cache
-            .expect("explicit prompt_cache should be preserved");
-        assert!(prompt_cache.enabled);
-        assert_eq!(
-            prompt_cache.strategy,
-            crate::driver_registry::PromptCacheStrategy::Auto
-        );
-    }
-
-    #[test]
-    fn test_build_deduplicates_tools_by_name() {
-        use crate::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
-
-        let make_tool = |name: &str, desc: &str| {
-            ToolDefinition::Builtin(BuiltinTool {
-                name: name.to_string(),
-                display_name: None,
-                description: desc.to_string(),
-                parameters: serde_json::json!({}),
-                policy: ToolPolicy::Auto,
-                category: None,
-                deferrable: Default::default(),
-                hints: crate::tool_types::ToolHints::default(),
-                full_parameters: None,
-            })
-        };
-
-        let agent = RuntimeAgentBuilder::new()
-            .tool(make_tool("kv_store", "first"))
-            .tool(make_tool("browser", "only one"))
-            .tool(make_tool("kv_store", "second (should win)"))
-            .build();
-
-        assert_eq!(agent.tools.len(), 2);
-        // Last-added kv_store wins
-        assert_eq!(agent.tools[0].name(), "browser");
-        assert_eq!(agent.tools[1].name(), "kv_store");
-        assert_eq!(agent.tools[1].description(), "second (should win)");
+        assert!(runtime_agent.tools.is_empty());
     }
 }
