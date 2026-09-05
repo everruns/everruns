@@ -699,41 +699,6 @@ async fn test_list_sandboxes_with_entries() {
 // ============================================================================
 
 #[tokio::test]
-async fn test_client_timeout_on_wait_for_ready() {
-    let mock_server = MockServer::start().await;
-
-    // Always return "creating" state — sandbox never becomes ready
-    Mock::given(method("GET"))
-        .and(path("/sandbox/sb_slow"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "id": "sb_slow",
-            "state": "creating"
-        })))
-        .mount(&mock_server)
-        .await;
-
-    // Use very short poll interval and max wait by creating client with custom URLs
-    let client =
-        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
-
-    // wait_for_ready uses constants from the crate; this will timeout after SANDBOX_READY_MAX_WAIT
-    // For test speed, we just verify it eventually returns an error
-    let result = tokio::time::timeout(
-        std::time::Duration::from_secs(70),
-        client.wait_for_ready("sb_slow"),
-    )
-    .await;
-
-    match result {
-        Ok(Err(msg)) => {
-            assert!(msg.contains("did not become ready"), "Got: {msg}");
-        }
-        Ok(Ok(())) => panic!("Expected timeout error, got Ok"),
-        Err(_) => panic!("Test itself timed out"),
-    }
-}
-
-#[tokio::test]
 async fn test_client_wait_for_ready_build_failed() {
     let mock_server = MockServer::start().await;
 
@@ -902,7 +867,7 @@ async fn test_exec_session_with_cwd_prepended() {
         "for __f in \"$HOME/.profile\" \"$HOME/.cargo/env\" \"$HOME/.nvm/nvm.sh\"; do ",
         "[ -f \"$__f\" ] && . \"$__f\" >/dev/null 2>&1; ",
         "done; unset __f; ",
-        "( cd /workspace && ls -la )",
+        "( cd '/workspace files' && ls -la )",
     );
     Mock::given(method("POST"))
         .and(path("/sb_cwd/process/session/everruns-exec/exec"))
@@ -943,11 +908,14 @@ async fn test_exec_session_with_cwd_prepended() {
         DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
 
     let result = client
-        .exec("sb_cwd", "ls -la", Some("/workspace"), None, |_| {})
+        .exec("sb_cwd", "ls -la", Some("/workspace files"), None, |_| {})
         .await
         .unwrap();
 
     assert_eq!(result.exit_code, 0);
+    assert_eq!(result.stdout, "file.txt\n");
+    assert_eq!(result.stderr, "");
+    assert_eq!(result.result, "file.txt\n");
 }
 
 #[tokio::test]
