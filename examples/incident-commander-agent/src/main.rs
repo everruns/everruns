@@ -75,15 +75,14 @@ mod tests {
 
     #[test]
     fn incident_log_retains_multiple_updates() {
-        let path =
-            std::env::temp_dir().join(format!("everruns-incident-{}.log", std::process::id()));
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("incident.log");
         super::append_update(&path, "Investigating\nerrors").unwrap();
-        super::append_update(&path, "Rollback proposed").unwrap();
+        super::append_update(&path, "Rollback\rproposed").unwrap();
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
             "Investigating errors\nRollback proposed\n"
         );
-        std::fs::remove_file(path).unwrap();
     }
 
     #[test]
