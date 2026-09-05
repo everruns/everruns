@@ -106,206 +106,191 @@ pub fn env_opt_string_any(vars: &[&str]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
 
-    // Use a prefix to avoid collisions with real env vars in test runners
-    const PREFIX: &str = "EVERRUNS_CONFIG_TEST_";
-
-    fn set(suffix: &str, val: &str) -> String {
-        let key = format!("{PREFIX}{suffix}");
-        // SAFETY: Tests run single-threaded (cargo test -- --test-threads=1) or
-        // use unique key prefixes so concurrent mutation is safe.
-        unsafe { env::set_var(&key, val) };
-        key
-    }
-
-    fn unset(suffix: &str) -> String {
-        let key = format!("{PREFIX}{suffix}");
-        // SAFETY: see `set` above.
-        unsafe { env::remove_var(&key) };
-        key
-    }
+    const CHILD: &str = "EVERRUNS_CONFIG_REVIEW_CHILD";
+    const MISSING: &str = "EVERRUNS_CONFIG_REVIEW_MISSING";
+    const EMPTY: &str = "EVERRUNS_CONFIG_REVIEW_EMPTY";
+    const NUMBER: &str = "EVERRUNS_CONFIG_REVIEW_NUMBER";
+    const BAD: &str = "EVERRUNS_CONFIG_REVIEW_BAD";
+    const OVERFLOW: &str = "EVERRUNS_CONFIG_REVIEW_OVERFLOW";
+    const NEGATIVE: &str = "EVERRUNS_CONFIG_REVIEW_NEGATIVE";
+    const U64_OVERFLOW: &str = "EVERRUNS_CONFIG_REVIEW_U64_OVERFLOW";
+    const ZERO: &str = "EVERRUNS_CONFIG_REVIEW_ZERO";
+    const FIRST: &str = "EVERRUNS_CONFIG_REVIEW_FIRST";
+    const SECOND: &str = "EVERRUNS_CONFIG_REVIEW_SECOND";
+    const SPACE: &str = "EVERRUNS_CONFIG_REVIEW_SPACE";
 
     #[test]
-    fn env_or_present() {
-        let key = set("OR_PRESENT", "42");
-        assert_eq!(env_or::<u32>(&key, 0), 42);
-    }
+    fn loaders_read_an_isolated_process_environment() {
+        if std::env::var(CHILD).as_deref() == Ok("run") {
+            assert_numeric_loading();
+            assert_string_loading();
+            assert_first_nonempty_precedence();
+            assert_boolean_loading();
+            assert_duration_units_and_fallbacks();
+            assert_required_error_context();
+            assert_list_order_and_invalid_items();
+            println!("environment-loader assertions completed");
+            return;
+        }
 
-    #[test]
-    fn env_or_missing() {
-        let key = unset("OR_MISSING");
-        assert_eq!(env_or::<u32>(&key, 7), 7);
-    }
-
-    #[test]
-    fn env_or_unparseable() {
-        let key = set("OR_BAD", "not_a_number");
-        assert_eq!(env_or::<u32>(&key, 99), 99);
-    }
-
-    #[test]
-    fn env_string_present() {
-        let key = set("STR_P", "hello");
-        assert_eq!(env_string(&key, "default"), "hello");
-    }
-
-    #[test]
-    fn env_string_missing() {
-        let key = unset("STR_M");
-        assert_eq!(env_string(&key, "fallback"), "fallback");
-    }
-
-    #[test]
-    fn env_string_any_uses_first_non_empty_value() {
-        let first = unset("STR_ANY_FIRST");
-        let second = set("STR_ANY_SECOND", "");
-        let third = set("STR_ANY_THIRD", "value");
-
-        assert_eq!(
-            env_string_any(&[&first, &second, &third], "fallback"),
-            "value"
+        // Process-wide set_var/remove_var are unsafe alongside unrelated test
+        // threads. Configure the child's environment before it starts instead.
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                concat!(
+                    module_path!(),
+                    "::loaders_read_an_isolated_process_environment"
+                )
+                .strip_prefix("everruns_core::")
+                .unwrap(),
+                "--nocapture",
+            ])
+            .env(CHILD, "run")
+            .env_remove(MISSING)
+            .envs([
+                (EMPTY, ""),
+                (NUMBER, "42"),
+                (BAD, "xyz"),
+                (OVERFLOW, "4294967296"),
+                (ZERO, "0"),
+                (NEGATIVE, "-1"),
+                (U64_OVERFLOW, "18446744073709551616"),
+                (FIRST, "first"),
+                (SECOND, "second"),
+                (SPACE, "  "),
+                ("EVERRUNS_CONFIG_REVIEW_TRUE", "true"),
+                ("EVERRUNS_CONFIG_REVIEW_ONE", "1"),
+                ("EVERRUNS_CONFIG_REVIEW_FALSE", "false"),
+                ("EVERRUNS_CONFIG_REVIEW_UPPER", "TRUE"),
+                (
+                    "EVERRUNS_CONFIG_REVIEW_LIST",
+                    "3, 1, bad, , -1, 4294967296, 3, 2",
+                ),
+            ])
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success(),
+            "child failed:\n{stdout}\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        // A misspelled --exact filter exits successfully with zero tests.
+        assert!(
+            stdout.contains("environment-loader assertions completed"),
+            "child assertions did not run:\n{stdout}"
         );
     }
 
-    #[test]
-    fn env_string_any_falls_back_to_default() {
-        let first = unset("STR_ANY_MISSING_FIRST");
-        let second = set("STR_ANY_MISSING_SECOND", "");
-
-        assert_eq!(env_string_any(&[&first, &second], "fallback"), "fallback");
+    fn assert_numeric_loading() {
+        for (key, optional, with_default) in [
+            (NUMBER, Some(42), 42),
+            (ZERO, Some(0), 0),
+            (MISSING, None, 17),
+            (EMPTY, None, 17),
+            (BAD, None, 17),
+            (OVERFLOW, None, 17),
+            (NEGATIVE, None, 17),
+            (SPACE, None, 17),
+        ] {
+            assert_eq!(env_opt::<u32>(key), optional, "optional {key}");
+            assert_eq!(env_or::<u32>(key, 17), with_default, "fallback {key}");
+        }
     }
 
-    #[test]
-    fn env_bool_true_variants() {
-        let key = set("BOOL_T", "true");
-        assert!(env_bool(&key, false));
-        let key = set("BOOL_1", "1");
-        assert!(env_bool(&key, false));
+    fn assert_string_loading() {
+        for (key, plain, optional) in [
+            (FIRST, "first", Some("first")),
+            (SPACE, "  ", Some("  ")),
+            (EMPTY, "", None),
+            (MISSING, "fallback", None),
+        ] {
+            assert_eq!(env_string(key, "fallback"), plain, "plain {key}");
+            assert_eq!(env_opt_string(key).as_deref(), optional, "optional {key}");
+        }
     }
 
-    #[test]
-    fn env_bool_false() {
-        let key = set("BOOL_F", "false");
-        assert!(!env_bool(&key, true));
+    fn assert_first_nonempty_precedence() {
+        for (keys, expected) in [
+            (vec![MISSING, EMPTY, FIRST, SECOND], Some("first")),
+            (vec![SECOND, FIRST], Some("second")),
+            (vec![SPACE, FIRST], Some("  ")),
+            (vec![MISSING, EMPTY], None),
+            (vec![], None),
+        ] {
+            assert_eq!(env_opt_string_any(&keys).as_deref(), expected, "{keys:?}");
+            assert_eq!(
+                env_string_any(&keys, "fallback"),
+                expected.unwrap_or("fallback"),
+                "{keys:?}"
+            );
+        }
     }
 
-    #[test]
-    fn env_bool_missing() {
-        let key = unset("BOOL_M");
-        assert!(env_bool(&key, true));
+    fn assert_boolean_loading() {
+        for (key, expected) in [
+            ("EVERRUNS_CONFIG_REVIEW_TRUE", true),
+            ("EVERRUNS_CONFIG_REVIEW_ONE", true),
+            ("EVERRUNS_CONFIG_REVIEW_FALSE", false),
+            ("EVERRUNS_CONFIG_REVIEW_UPPER", false),
+            (ZERO, false),
+            (EMPTY, false),
+            (BAD, false),
+            (SPACE, false),
+        ] {
+            for default in [false, true] {
+                assert_eq!(env_bool(key, default), expected, "{key}, default {default}");
+            }
+        }
+        assert!(env_bool(MISSING, true));
+        assert!(!env_bool(MISSING, false));
     }
 
-    #[test]
-    fn env_duration_secs_present() {
-        let key = set("DUR_S", "10");
+    fn assert_duration_units_and_fallbacks() {
+        let fallback = Duration::from_nanos(123_456_789);
+        for (key, seconds, millis) in [
+            (NUMBER, Duration::from_secs(42), Duration::from_millis(42)),
+            (ZERO, Duration::ZERO, Duration::ZERO),
+            (MISSING, fallback, fallback),
+            (EMPTY, fallback, fallback),
+            (BAD, fallback, fallback),
+            (SPACE, fallback, fallback),
+            (NEGATIVE, fallback, fallback),
+            (U64_OVERFLOW, fallback, fallback),
+        ] {
+            assert_eq!(env_duration_secs(key, fallback), seconds, "seconds {key}");
+            assert_eq!(env_duration_ms(key, fallback), millis, "millis {key}");
+        }
+    }
+
+    fn assert_required_error_context() {
+        assert_eq!(env_required::<u32>(NUMBER).unwrap(), 42);
+        assert_eq!(env_required::<u32>(ZERO).unwrap(), 0);
+        match env_required::<u32>(MISSING).unwrap_err() {
+            ConfigError::Missing { var } => assert_eq!(var, MISSING),
+            other => panic!("wrong missing error: {other:?}"),
+        }
+        for (key, original) in [(BAD, "xyz"), (EMPTY, ""), (OVERFLOW, "4294967296")] {
+            match env_required::<u32>(key).unwrap_err() {
+                ConfigError::Invalid { var, value, reason } => {
+                    assert_eq!(var, key);
+                    assert_eq!(value, original);
+                    assert!(!reason.is_empty(), "invalid input needs a diagnostic");
+                }
+                other => panic!("wrong invalid error: {other:?}"),
+            }
+        }
+    }
+
+    fn assert_list_order_and_invalid_items() {
         assert_eq!(
-            env_duration_secs(&key, Duration::from_secs(1)),
-            Duration::from_secs(10)
+            env_list::<u32>("EVERRUNS_CONFIG_REVIEW_LIST"),
+            vec![3, 1, 3, 2]
         );
-    }
-
-    #[test]
-    fn env_duration_secs_missing() {
-        let key = unset("DUR_S_M");
-        assert_eq!(
-            env_duration_secs(&key, Duration::from_secs(5)),
-            Duration::from_secs(5)
-        );
-    }
-
-    #[test]
-    fn env_duration_ms_present() {
-        let key = set("DUR_MS", "250");
-        assert_eq!(
-            env_duration_ms(&key, Duration::from_millis(100)),
-            Duration::from_millis(250)
-        );
-    }
-
-    #[test]
-    fn env_opt_present() {
-        let key = set("OPT_P", "42");
-        assert_eq!(env_opt::<u32>(&key), Some(42));
-    }
-
-    #[test]
-    fn env_opt_missing() {
-        let key = unset("OPT_M");
-        assert_eq!(env_opt::<u32>(&key), None::<u32>);
-    }
-
-    #[test]
-    fn env_opt_empty() {
-        let key = set("OPT_E", "");
-        assert_eq!(env_opt::<u32>(&key), None::<u32>);
-    }
-
-    #[test]
-    fn env_required_ok() {
-        let key = set("REQ_OK", "100");
-        assert_eq!(env_required::<u32>(&key).unwrap(), 100);
-    }
-
-    #[test]
-    fn env_required_missing() {
-        let key = unset("REQ_M");
-        let err = env_required::<u32>(&key).unwrap_err();
-        assert!(matches!(err, ConfigError::Missing { .. }));
-    }
-
-    #[test]
-    fn env_required_invalid() {
-        let key = set("REQ_BAD", "xyz");
-        let err = env_required::<u32>(&key).unwrap_err();
-        assert!(matches!(err, ConfigError::Invalid { .. }));
-    }
-
-    #[test]
-    fn env_list_present() {
-        let key = set("LIST_P", "1, 2, 3");
-        assert_eq!(env_list::<u32>(&key), vec![1, 2, 3]);
-    }
-
-    #[test]
-    fn env_list_missing() {
-        let key = unset("LIST_M");
-        assert_eq!(env_list::<u32>(&key), Vec::<u32>::new());
-    }
-
-    #[test]
-    fn env_list_with_bad_items() {
-        let key = set("LIST_B", "1,bad,3");
-        assert_eq!(env_list::<u32>(&key), vec![1, 3]);
-    }
-
-    #[test]
-    fn env_opt_string_present() {
-        let key = set("OSTR_P", "value");
-        assert_eq!(env_opt_string(&key), Some("value".to_string()));
-    }
-
-    #[test]
-    fn env_opt_string_empty() {
-        let key = set("OSTR_E", "");
-        assert_eq!(env_opt_string(&key), None);
-    }
-
-    #[test]
-    fn env_opt_string_missing() {
-        let key = unset("OSTR_M");
-        assert_eq!(env_opt_string(&key), None);
-    }
-
-    #[test]
-    fn env_opt_string_any_uses_first_non_empty_value() {
-        let first = unset("OSTR_ANY_FIRST");
-        let second = set("OSTR_ANY_SECOND", "");
-        let third = set("OSTR_ANY_THIRD", "value");
-
-        assert_eq!(
-            env_opt_string_any(&[&first, &second, &third]),
-            Some("value".to_string())
-        );
+        for key in [MISSING, EMPTY, BAD, SPACE] {
+            assert!(env_list::<u32>(key).is_empty(), "{key}");
+        }
     }
 }
