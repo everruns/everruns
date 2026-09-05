@@ -5,7 +5,7 @@ import {
   consumeReturnTo,
   getLoginRedirectPath,
   getPostAuthTarget,
-  isFullPageLoginRedirect,
+  isBackendNavigationPath,
   navigateToLogin,
   persistReturnTo,
   persistSignupEmail,
@@ -54,85 +54,60 @@ describe("getLoginRedirectPath", () => {
   });
 
   it("rejects a configured destination that is not an origin", () => {
-    expect(() =>
-      getLoginRedirectPath("/settings", null, "https://id.example.com/login?next=evil"),
-    ).toThrow("Login origin must be an HTTP(S) origin");
+    for (const origin of [
+      "https://id.example.com/login?next=evil",
+      "https://user:password@id.example.com",
+      "https://id.example.com/#fragment",
+      "ftp://id.example.com",
+      "/login",
+    ]) {
+      expect(() => getLoginRedirectPath("/settings", null, origin)).toThrow();
+    }
   });
 });
 
 describe("isFullPageLoginRedirect", () => {
-  it("uses client routing only for same-origin relative login paths", () => {
-    expect(isFullPageLoginRedirect("/login?return_to=%2Fsettings")).toBe(false);
-    expect(isFullPageLoginRedirect("https://id.example.com/login?return_to=%2Fsettings")).toBe(
-      true,
-    );
-  });
-
-  it("never sends an absolute login URL through the client router", () => {
-    const replace = jest.fn();
-    const assign = jest.fn();
-    const target = "https://id.example.com/login?return_to=%2Fsettings";
-
-    navigateToLogin(target, replace, assign);
-
-    expect(assign).toHaveBeenCalledWith(target);
-    expect(replace).not.toHaveBeenCalled();
+  it("dispatches each login destination through exactly one navigation mechanism", () => {
+    for (const [target, fullPage] of [
+      ["https://id.example.com/login?return_to=%2Fsettings", true],
+      ["HTTP://id.example.com/login", true],
+      ["/login?return_to=%2Fsettings", false],
+    ] as const) {
+      const replace = jest.fn();
+      const assign = jest.fn();
+      navigateToLogin(target, replace, assign);
+      expect(fullPage ? assign : replace).toHaveBeenCalledTimes(1);
+      expect(fullPage ? assign : replace).toHaveBeenCalledWith(target);
+      expect(fullPage ? replace : assign).not.toHaveBeenCalled();
+    }
   });
 });
 
 describe("sanitizeReturnTo", () => {
-  it("accepts frontend-relative paths", () => {
-    expect(sanitizeReturnTo("/dashboard")).toBe("/dashboard");
-    expect(sanitizeReturnTo("/settings/providers?tab=models")).toBe(
+  it("preserves safe relative paths and rejects absolute or ambiguous targets", () => {
+    for (const path of [
+      "/dashboard",
       "/settings/providers?tab=models",
-    );
-  });
-
-  it("accepts backend-facing paths used for full-page navigation", () => {
-    expect(sanitizeReturnTo("/oauth/authorize?client_id=x")).toBe("/oauth/authorize?client_id=x");
-    expect(sanitizeReturnTo("/api/v1/auth/cli/callback?state=abc")).toBe(
+      "/oauth/authorize?client_id=x",
       "/api/v1/auth/cli/callback?state=abc",
-    );
-  });
-
-  it("rejects absolute URLs", () => {
-    expect(sanitizeReturnTo("https://evil.com/takeover")).toBeNull();
-    expect(sanitizeReturnTo("http://evil.com/takeover")).toBeNull();
-  });
-
-  it("rejects protocol-relative URLs", () => {
-    expect(sanitizeReturnTo("//evil.com/takeover")).toBeNull();
-  });
-
-  it("rejects backslash-prefixed paths (browser may normalize to //)", () => {
-    expect(sanitizeReturnTo("/\\evil.com")).toBeNull();
-  });
-
-  it("rejects values that don't start with a slash", () => {
-    expect(sanitizeReturnTo("dashboard")).toBeNull();
-    expect(sanitizeReturnTo("evil.com")).toBeNull();
-  });
-
-  it("rejects empty / nullish values", () => {
-    expect(sanitizeReturnTo(null)).toBeNull();
-    expect(sanitizeReturnTo(undefined)).toBeNull();
-    expect(sanitizeReturnTo("")).toBeNull();
-  });
-});
-
-describe("buildSignupHref", () => {
-  it("includes sanitized return_to when provided", () => {
-    expect(buildSignupHref("/invite/abc123")).toBe("/signup?return_to=%2Finvite%2Fabc123");
-  });
-
-  it("omits unsafe return_to values", () => {
-    expect(buildSignupHref("https://evil.com")).toBe("/signup");
-  });
-});
-
-describe("buildLoginHref", () => {
-  it("includes sanitized return_to when provided", () => {
-    expect(buildLoginHref("/invite/abc123")).toBe("/login?return_to=%2Finvite%2Fabc123");
+      "/settings/%2Fvalue#section",
+    ]) {
+      expect(sanitizeReturnTo(path)).toBe(path);
+      expect(new URL(path, "https://app.example.test").origin).toBe("https://app.example.test");
+    }
+    for (const path of [
+      null,
+      undefined,
+      "",
+      "https://evil.com/takeover",
+      "http://evil.com/takeover",
+      "//evil.com/takeover",
+      "/\\evil.com",
+      "dashboard",
+      "evil.com",
+    ]) {
+      expect(sanitizeReturnTo(path)).toBeNull();
+    }
   });
 });
 
@@ -145,6 +120,7 @@ describe("return_to session storage", () => {
     persistReturnTo("/invite/token123");
     expect(sessionStorage.getItem(RETURN_TO_STORAGE_KEY)).toBe("/invite/token123");
     expect(consumeReturnTo()).toBe("/invite/token123");
+    expect(consumeReturnTo()).toBeNull();
     expect(sessionStorage.getItem(RETURN_TO_STORAGE_KEY)).toBeNull();
   });
 
@@ -161,9 +137,10 @@ describe("getPostAuthTarget", () => {
   });
 
   it("uses the URL return_to and clears any stored one-shot redirect", () => {
-    persistReturnTo("/invite/token123");
+    persistReturnTo("/settings/providers");
 
     expect(getPostAuthTarget("/invite/token123")).toBe("/invite/token123");
+    expect(getPostAuthTarget(null)).toBe("/chats");
     expect(sessionStorage.getItem(RETURN_TO_STORAGE_KEY)).toBeNull();
   });
 
@@ -188,11 +165,90 @@ describe("signup email session storage", () => {
     persistSignupEmail(" new@example.com ");
     expect(sessionStorage.getItem(SIGNUP_EMAIL_STORAGE_KEY)).toBe("new@example.com");
     expect(consumeSignupEmail()).toBe("new@example.com");
+    expect(consumeSignupEmail()).toBe("");
     expect(sessionStorage.getItem(SIGNUP_EMAIL_STORAGE_KEY)).toBeNull();
   });
 
   it("ignores blank signup email values", () => {
     persistSignupEmail("   ");
     expect(sessionStorage.getItem(SIGNUP_EMAIL_STORAGE_KEY)).toBeNull();
+  });
+});
+
+describe("browser URL normalization", () => {
+  it("rejects paths that become external after browser control-character removal", () => {
+    for (const path of ["/\n/evil.test", "/\t\\evil.test", "/\r/evil.test"]) {
+      expect(new URL(path, "https://app.example.test").origin).toBe("https://evil.test");
+      expect(sanitizeReturnTo(path)).toBeNull();
+      expect(buildLoginHref(path)).toBe("/login");
+    }
+  });
+});
+
+describe("redirect boundary contracts", () => {
+  beforeEach(() => sessionStorage.clear());
+
+  it("preserves string search inputs and canonicalizes configured origins", () => {
+    for (const search of ["?tab=models", "tab=models", new URLSearchParams("tab=models")]) {
+      expect(getLoginRedirectPath("/chats", search, "HTTPS://ID.EXAMPLE.COM:443/")).toBe(
+        "https://id.example.com/login?return_to=%2Fchats%3Ftab%3Dmodels",
+      );
+    }
+    for (const search of [null, undefined, "", "?"]) {
+      expect(getLoginRedirectPath("/chats", search)).toBe("/login");
+    }
+  });
+
+  it("both auth links encode safe targets and omit unsafe targets", () => {
+    for (const [build, base] of [
+      [buildLoginHref, "/login"],
+      [buildSignupHref, "/signup"],
+    ] as const) {
+      expect(build("/settings?tab=a&next=b#section")).toBe(
+        `${base}?return_to=%2Fsettings%3Ftab%3Da%26next%3Db%23section`,
+      );
+      for (const bad of [
+        null,
+        undefined,
+        "",
+        "https://evil.test",
+        "//evil.test",
+        "/\n/evil.test",
+      ]) {
+        expect(build(bad)).toBe(base);
+      }
+    }
+  });
+
+  it("revalidates poisoned storage and consumes only the owned key", () => {
+    sessionStorage.setItem("unrelated", "keep");
+    for (const bad of ["https://evil.test", "/\n/evil.test", "//evil.test"]) {
+      sessionStorage.setItem(RETURN_TO_STORAGE_KEY, bad);
+      expect(consumeReturnTo()).toBeNull();
+      expect(sessionStorage.getItem(RETURN_TO_STORAGE_KEY)).toBeNull();
+    }
+    expect(sessionStorage.getItem("unrelated")).toBe("keep");
+    persistReturnTo("/settings");
+    expect(getPostAuthTarget("https://evil.test")).toBe("/settings");
+    expect(getPostAuthTarget(null)).toBe("/chats");
+  });
+
+  it("routes backend continuations without matching similar frontend paths", () => {
+    for (const path of [
+      "/oauth/authorize?client_id=x",
+      "/api/v1/auth/cli/callback",
+      "/v1/auth/cli/callback",
+    ]) {
+      expect(isBackendNavigationPath(path)).toBe(true);
+    }
+    for (const path of [
+      "/oauth-settings",
+      "/apiary",
+      "/v10/chats",
+      "/settings",
+      "https://evil.test/api/",
+    ]) {
+      expect(isBackendNavigationPath(path)).toBe(false);
+    }
   });
 });
