@@ -1,0 +1,56 @@
+Model: z-ai/glm-5.2
+
+QUESTION
+Research durable agent sessions. Use web search, then give a brief of at most 150 words
+with three findings, source URLs, and one clearly labeled inference.
+
+[Calling model]
+
+TOOL: brave_web_search
+{"query":"durable agent sessions AI"}
+
+TOOL: brave_web_search
+{"query":"durable agent sessions architecture LLM"}
+
+brave_web_search: OK
+{"count":20,"query":"durable agent sessions AI","results":[{"age":"May 5,
+2026","description":"AI agents in production face several challenges that durable
+execution addresses: <strong>Long-running, stateful sessions</strong> — Human-in-the …
+[preview]
+
+brave_web_search: OK
+{"count":20,"query":"durable agent sessions architecture LLM","results":[{"age":"December
+4, 2025","description":"Working context – the immediate ... Session – <strong>the durable
+log of the interaction: every user message, agent reply, too … [preview]
+
+[Calling model]
+
+ANSWER
+## Durable Agent Sessions — Brief
+
+**Finding 1: Emerging infrastructure layer.** Durable Sessions are described as a
+persistent, addressable connection between agents and users that outlives any single
+connection, device, or process crash — covering stream resumption, crash detection, and
+cross-device continuity.
+Source: https://ably.com/blog/durable-sessions-infrastructure-layer-ai-agents
+
+**Finding 2: Three-stack formation.** The ecosystem is forming around three layers:
+Durable Streams (replayable protocol primitive, open-sourced by ElectricSQL), Durable
+Sessions (the user-agent session layer), and Durable Execution (backend workflow engines
+like Temporal that persist state at each step for automatic retry/resumption).
+Sources:
+https://ably.com/blog/durable-ai-infrastructure-sessions-streams-transports-ecosystem ·
+https://learn.microsoft.com/en-us/azure/durable-task/sdks/durable-task-for-ai-agents
+
+**Finding 3: Session persistence ≠ durable execution.** Persisting conversation history
+(e.g., OpenAI Agents SDK with SQLite/Redis backends) provides continuity but does not
+guarantee crash-safe workflow replay; full durability also requires checkpointing
+execution state, idempotency keys, and deterministic replay.
+Source: https://zylos.ai/research/2026-04-24-durable-execution-agent-runtimes/
+
+**Inference:** As production agents span hours or days with human-in-the-loop steps,
+durable sessions will likely become a standard middleware category — analogous to message
+queues — sitting between agent frameworks and transport layers, commoditizing what teams
+currently build ad hoc.
+
+Completed: 2 iterations, 2 tool calls

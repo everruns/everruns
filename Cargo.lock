@@ -2436,6 +2436,7 @@ version = "0.1.0"
 dependencies = [
  "everruns",
  "everruns-anthropic",
+ "reqwest 0.13.4",
  "tokio",
 ]
 

@@ -10,6 +10,10 @@ inferences, and a caveat when the available research is incomplete.
 
 ![Research Agent terminal demo](https://raw.githubusercontent.com/everruns/everruns/main/examples/research-agent/demo.gif)
 
+This screencast replays a real run in readable pages, with waiting time removed.
+[Read the complete displayed transcript](https://github.com/everruns/everruns/blob/main/examples/research-agent/demo.txt).
+Tool-result previews are shortened; the agent receives the full tool response.
+
 ```bash
 OPENROUTER_API_KEY=... BRAVE_SEARCH_API_KEY=... cargo run -p everruns-research-agent
 ```

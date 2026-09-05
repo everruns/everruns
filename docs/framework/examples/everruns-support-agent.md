@@ -10,9 +10,16 @@ safe next step.
 
 ![Everruns Support Agent terminal demo](https://raw.githubusercontent.com/everruns/everruns/main/examples/everruns-support-agent/demo.gif)
 
+This screencast replays a real run in readable pages, with waiting time removed.
+[Read the complete displayed transcript](https://github.com/everruns/everruns/blob/main/examples/everruns-support-agent/demo.txt).
+Tool-result previews are shortened; the agent receives the full tool response.
+
 ```bash
 ANTHROPIC_API_KEY=... cargo run -p everruns-framework-support-agent
 ```
 
 It uses `claude-opus-5`. Pass a different question after `--` to use the same
 agent for another Framework support issue.
+
+The documentation tool reads Markdown content from the official repository and
+returns source links alongside that evidence.
