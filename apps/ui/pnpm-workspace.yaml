@@ -4,7 +4,7 @@ overrides:
   brace-expansion@1: 1.1.18
   brace-expansion@2: 2.1.4
   dompurify: 3.4.13
-  fast-uri: 3.1.5
+  fast-uri: 3.1.6
   js-yaml: 4.3.1
   mermaid: 11.16.1
   nanoid: 3.3.18
@@ -24,9 +24,17 @@ minimumReleaseAgeStrict: true
 # overrides above: postcss 8.5.23 (GHSA-r28c-9q8g-f849), sharp 0.35.3, js-yaml
 # 4.3.1 (CVE-2026-59870 — quadratic CPU in !!omap resolution, transitive dev-dep
 # via jest) — all matured past the 7-day window.
-# fast-uri 3.1.5 (GHSA-v2hh-gcrm-f6hx — host confusion via literal IPv6) is the
-# only patched release for that advisory and is still inside the 7-day window,
-# so it needs an exemption. brace-expansion 1.1.18 / 2.1.4 (GHSA-mh99-v99m-4gvg
+# fast-uri 3.1.6 supersedes the earlier 3.1.5 pin (GHSA-v2hh-gcrm-f6hx — host
+# confusion via literal IPv6). Four further advisories landed against every 3.x
+# up to and including 3.1.5, all reached transitively through @rjsf/utils:
+# GHSA-5jgf-p345-68v8 and GHSA-jqff-g426-hqxp (host confusion via skipped IDN
+# processing and via percent-encoded scheme normalization), GHSA-f65p-4m7j-42xc
+# and GHSA-fph4-wmhf-6fwf (SSRF via repeated hostname percent-decoding). 3.1.6
+# is the only patched release for all four and is still inside the 7-day window,
+# so it needs an exemption. Staying on the 3.x line keeps the override inside
+# the range its dependents declare; 4.x is outside every advisory but is a major
+# bump this pin does not need to take.
+# brace-expansion 1.1.18 / 2.1.4 (GHSA-mh99-v99m-4gvg
 # — DoS via unbounded expansion, transitive dev-dep via jest/openapi-typescript)
 # are the patched releases and are likewise still inside the maturity window.
 # Same for the current advisory batch, all reached transitively and all still
