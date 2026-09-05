@@ -29641,7 +29641,7 @@
       },
       "ModelProfile": {
         "type": "object",
-        "description": "LLM Model Profile describing model capabilities\nBased on models.dev structure (<https://models.dev/api.json>)\n\nThe registry of profiles lives in `model_profiles.rs`; retired models are\ndropped from it as vendors sunset them.",
+        "description": "LLM Model Profile describing model capabilities\nBased on models.dev structure (<https://models.dev/api.json>)\n\nThe registry of profiles lives in `crate::profiles`; retired models are\ndropped from it as vendors sunset them.",
         "required": [
           "name",
           "family",
