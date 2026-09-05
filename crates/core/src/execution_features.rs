@@ -140,156 +140,270 @@ pub fn standard_flag(env_var: &str, default: bool) -> bool {
 mod tests {
     use super::*;
 
-    // Env-var-mutating tests must not run in parallel.
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
-        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
-    // SAFETY: env var tests must run single-threaded (--test-threads=1).
-    // set_var/remove_var are unsafe in edition 2024 due to thread-safety.
-
     #[test]
-    fn test_internal_default_flags() {
-        let flags = InternalFeatureFlags::default();
-        assert!(!flags.docker_capability);
-        assert!(!flags.container_sandbox);
-        assert!(!flags.session_sandbox);
-    }
-
-    #[test]
-    fn test_docker_capability_flag_disabled_by_default_in_dev() {
-        let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
-        let flags = InternalFeatureFlags::from_env();
-        assert!(
-            !flags.docker_capability,
-            "docker_capability should be disabled by default even in dev"
-        );
-    }
-
-    #[test]
-    fn test_docker_capability_flag_enabled_by_env_override() {
-        let _lock = lock_env();
-        unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "true") };
-        let flags = InternalFeatureFlags::from_env();
-        assert!(flags.docker_capability);
-        unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
+    fn internal_lookup_reads_each_flag_independently() {
+        for values in [
+            [false, false, false, false],
+            [true, false, false, false],
+            [false, true, false, false],
+            [false, false, true, false],
+            [false, false, false, true],
+        ] {
+            let flags = InternalFeatureFlags {
+                docker_capability: values[0],
+                container_sandbox: values[1],
+                session_sandbox: values[2],
+                lua: values[3],
+            };
+            for (name, expected) in [
+                "docker_capability",
+                "container_sandbox",
+                "session_sandbox",
+                "lua",
+            ]
+            .into_iter()
+            .zip(values)
+            {
+                assert_eq!(flags.is_enabled(name), expected, "{name}, {values:?}");
+            }
+            for unknown in ["nonexistent", "Docker_capability", ""] {
+                assert!(!flags.is_enabled(unknown));
+            }
+        }
     }
 
     #[test]
-    fn test_container_sandbox_flag_enabled_by_env_override() {
-        let _lock = lock_env();
-        unsafe { std::env::set_var("FEATURE_CONTAINER_SANDBOX", "true") };
-        unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
-        let flags = InternalFeatureFlags::from_env();
-        assert!(flags.container_sandbox);
-        unsafe { std::env::remove_var("FEATURE_CONTAINER_SANDBOX") };
-    }
-
-    #[test]
-    fn test_container_sandbox_flag_falls_back_to_legacy_docker_flag() {
-        let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_CONTAINER_SANDBOX") };
-        unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "true") };
-        let flags = InternalFeatureFlags::from_env();
-        assert!(flags.container_sandbox);
-        unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
-    }
-
-    #[test]
-    fn test_internal_is_enabled_dynamic() {
-        let flags = InternalFeatureFlags {
-            docker_capability: true,
-            container_sandbox: true,
-            session_sandbox: true,
-            lua: true,
-        };
-        assert!(flags.is_enabled("docker_capability"));
-        assert!(flags.is_enabled("container_sandbox"));
-        assert!(flags.is_enabled("session_sandbox"));
-        assert!(flags.is_enabled("lua"));
-        assert!(!flags.is_enabled("nonexistent"));
-    }
-
-    #[test]
-    fn test_session_sandbox_flag_enabled_by_env_override() {
-        let _lock = lock_env();
-        unsafe { std::env::set_var("FEATURE_SESSION_SANDBOX", "true") };
-        let flags = InternalFeatureFlags::from_env();
-        assert!(flags.session_sandbox);
-        unsafe { std::env::remove_var("FEATURE_SESSION_SANDBOX") };
-    }
-
-    #[test]
-    fn test_standard_flag() {
-        let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_TEST_STD") };
-        assert!(!standard_flag("FEATURE_TEST_STD", false));
-        assert!(standard_flag("FEATURE_TEST_STD", true));
-
-        unsafe { std::env::set_var("FEATURE_TEST_STD", "1") };
-        assert!(standard_flag("FEATURE_TEST_STD", false));
-        unsafe { std::env::remove_var("FEATURE_TEST_STD") };
-    }
-
-    #[test]
-    fn test_agent_delegation_enabled_in_dev() {
-        let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
-        let decisions = ExecutionFeatureDecisions::from_env(DeploymentGrade::Dev);
-        assert!(decisions.agent_delegation);
-        assert!(decisions.is_enabled("agent_delegation"));
-    }
-
-    #[test]
-    fn test_agent_delegation_disabled_in_prod() {
-        let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
-        let decisions = ExecutionFeatureDecisions::from_env(DeploymentGrade::Prod);
-        assert!(!decisions.agent_delegation);
-        assert!(!decisions.is_enabled("agent_delegation"));
-    }
-
-    #[test]
-    fn test_agent_delegation_env_override_in_prod() {
-        let _lock = lock_env();
-        unsafe { std::env::set_var("FEATURE_AGENT_DELEGATION", "true") };
-        let decisions = ExecutionFeatureDecisions::from_env(DeploymentGrade::Prod);
-        assert!(decisions.agent_delegation);
-        unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
-    }
-
-    #[test]
-    fn test_decisions_route_internal_flags_to_internal_set() {
-        let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_CONTAINER_SANDBOX") };
-        unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
-        // Internal flags never inherit the experimental dev default: even in
-        // dev grade, `container_sandbox` stays off without an explicit env var.
-        let decisions = ExecutionFeatureDecisions::from_env(DeploymentGrade::Dev);
-        assert!(!decisions.is_enabled("container_sandbox"));
-        assert!(!decisions.is_enabled("docker_capability"));
-        assert!(!decisions.is_enabled("lua"));
-    }
-
-    #[test]
-    fn test_decisions_resolve_unknown_gates_via_standard_env_rule() {
-        let _lock = lock_env();
-        // Registration gates fail closed without an explicit env var, in every
-        // grade — a payments-style gate must not auto-enable in dev.
-        unsafe { std::env::remove_var("FEATURE_MACHINE_PAYMENTS") };
-        let dev = ExecutionFeatureDecisions::from_env(DeploymentGrade::Dev);
-        assert!(!dev.is_enabled("machine_payments"));
-        let prod = ExecutionFeatureDecisions::from_env(DeploymentGrade::Prod);
-        assert!(!prod.is_enabled("machine_payments"));
-
-        unsafe { std::env::set_var("FEATURE_MACHINE_PAYMENTS", "true") };
-        let dev = ExecutionFeatureDecisions::from_env(DeploymentGrade::Dev);
-        assert!(dev.is_enabled("machine_payments"));
-        let prod = ExecutionFeatureDecisions::from_env(DeploymentGrade::Prod);
-        assert!(prod.is_enabled("machine_payments"));
-        unsafe { std::env::remove_var("FEATURE_MACHINE_PAYMENTS") };
+    fn environment_overrides_and_grade_defaults_are_isolated() {
+        const CHILD: &str = "EVERRUNS_EXECUTION_FEATURE_REVIEW_CASE";
+        const KEYS: &[&str] = &[
+            "FEATURE_DOCKER_CAPABILITY",
+            "FEATURE_CONTAINER_SANDBOX",
+            "FEATURE_SESSION_SANDBOX",
+            "FEATURE_LUA",
+            "FEATURE_AGENT_DELEGATION",
+            "FEATURE_MACHINE_PAYMENTS",
+            "DEPLOYMENT_GRADE",
+            "DEV_MODE",
+            "FEATURE_REVIEW_MISSING",
+        ];
+        struct Case {
+            name: &'static str,
+            env: &'static [(&'static str, &'static str)],
+            internal: [bool; 4],
+            delegation: [bool; 4],
+            grade: DeploymentGrade,
+            payments: bool,
+        }
+        let cases = [
+            Case {
+                name: "unset",
+                env: &[],
+                internal: [false, false, false, false],
+                delegation: [true, false, false, false],
+                grade: DeploymentGrade::Prod,
+                payments: false,
+            },
+            Case {
+                name: "legacy docker and dev mode one",
+                env: &[("FEATURE_DOCKER_CAPABILITY", "true"), ("DEV_MODE", "1")],
+                internal: [true, true, false, false],
+                delegation: [true, false, false, false],
+                grade: DeploymentGrade::Dev,
+                payments: false,
+            },
+            Case {
+                name: "explicit container and preview grade",
+                env: &[
+                    ("FEATURE_CONTAINER_SANDBOX", "1"),
+                    ("DEPLOYMENT_GRADE", "staging"),
+                    ("DEV_MODE", "true"),
+                ],
+                internal: [false, true, false, false],
+                delegation: [true, false, false, false],
+                grade: DeploymentGrade::Preview,
+                payments: false,
+            },
+            Case {
+                name: "explicit container false overrides legacy",
+                env: &[
+                    ("FEATURE_DOCKER_CAPABILITY", "true"),
+                    ("FEATURE_CONTAINER_SANDBOX", "false"),
+                    ("DEPLOYMENT_GRADE", "PoC"),
+                ],
+                internal: [true, false, false, false],
+                delegation: [true, false, false, false],
+                grade: DeploymentGrade::Poc,
+                payments: false,
+            },
+            Case {
+                name: "all enabled with explicit production",
+                env: &[
+                    ("FEATURE_DOCKER_CAPABILITY", "1"),
+                    ("FEATURE_CONTAINER_SANDBOX", "true"),
+                    ("FEATURE_SESSION_SANDBOX", "true"),
+                    ("FEATURE_LUA", "1"),
+                    ("FEATURE_AGENT_DELEGATION", "true"),
+                    ("FEATURE_MACHINE_PAYMENTS", "1"),
+                    ("DEPLOYMENT_GRADE", "production"),
+                    ("DEV_MODE", "true"),
+                ],
+                internal: [true, true, true, true],
+                delegation: [true, true, true, true],
+                grade: DeploymentGrade::Prod,
+                payments: true,
+            },
+            Case {
+                name: "explicit false overrides dev defaults",
+                env: &[
+                    ("FEATURE_DOCKER_CAPABILITY", "false"),
+                    ("FEATURE_CONTAINER_SANDBOX", "0"),
+                    ("FEATURE_SESSION_SANDBOX", "false"),
+                    ("FEATURE_LUA", "0"),
+                    ("FEATURE_AGENT_DELEGATION", "false"),
+                    ("FEATURE_MACHINE_PAYMENTS", "false"),
+                    ("DEV_MODE", "true"),
+                ],
+                internal: [false, false, false, false],
+                delegation: [false, false, false, false],
+                grade: DeploymentGrade::Dev,
+                payments: false,
+            },
+            Case {
+                name: "invalid explicit values fail closed",
+                env: &[
+                    ("FEATURE_DOCKER_CAPABILITY", "true"),
+                    ("FEATURE_CONTAINER_SANDBOX", "TRUE"),
+                    ("FEATURE_SESSION_SANDBOX", "typo"),
+                    ("FEATURE_LUA", "TRUE"),
+                    ("FEATURE_AGENT_DELEGATION", "TRUE"),
+                    ("FEATURE_MACHINE_PAYMENTS", "yes"),
+                    ("DEPLOYMENT_GRADE", "invalid"),
+                    ("DEV_MODE", "true"),
+                ],
+                internal: [true, false, false, false],
+                delegation: [false, false, false, false],
+                grade: DeploymentGrade::Prod,
+                payments: false,
+            },
+            Case {
+                name: "empty explicit grade suppresses legacy dev",
+                env: &[("DEPLOYMENT_GRADE", ""), ("DEV_MODE", "true")],
+                internal: [false, false, false, false],
+                delegation: [true, false, false, false],
+                grade: DeploymentGrade::Prod,
+                payments: false,
+            },
+        ];
+        if let Ok(index) = std::env::var(CHILD) {
+            let index: usize = index.parse().unwrap();
+            let case = &cases[index];
+            let expected_internal = InternalFeatureFlags {
+                docker_capability: case.internal[0],
+                container_sandbox: case.internal[1],
+                session_sandbox: case.internal[2],
+                lua: case.internal[3],
+            };
+            assert_eq!(
+                InternalFeatureFlags::from_env(),
+                expected_internal,
+                "{}",
+                case.name
+            );
+            assert_eq!(DeploymentGrade::from_env(), case.grade, "{}", case.name);
+            for (grade, expected_delegation) in [
+                DeploymentGrade::Dev,
+                DeploymentGrade::Poc,
+                DeploymentGrade::Preview,
+                DeploymentGrade::Prod,
+            ]
+            .into_iter()
+            .zip(case.delegation)
+            {
+                let decisions = ExecutionFeatureDecisions::from_env(grade);
+                assert_eq!(
+                    decisions.internal, expected_internal,
+                    "{}, {grade}",
+                    case.name
+                );
+                assert_eq!(
+                    decisions.agent_delegation, expected_delegation,
+                    "{}, {grade}",
+                    case.name
+                );
+                assert_eq!(
+                    decisions.is_enabled("agent_delegation"),
+                    expected_delegation
+                );
+                for (name, expected) in [
+                    "docker_capability",
+                    "container_sandbox",
+                    "session_sandbox",
+                    "lua",
+                ]
+                .into_iter()
+                .zip(case.internal)
+                {
+                    assert_eq!(decisions.is_enabled(name), expected, "{name}");
+                }
+                assert_eq!(decisions.is_enabled("machine_payments"), case.payments);
+                assert_eq!(decisions.is_enabled("MACHINE_PAYMENTS"), case.payments);
+                assert!(!decisions.is_enabled("review_missing"));
+            }
+            // Known flags come from the resolved snapshot, even if the current
+            // environment says true. Unknown registration gates use the env rule.
+            let captured = ExecutionFeatureDecisions {
+                agent_delegation: false,
+                internal: InternalFeatureFlags::default(),
+            };
+            for name in [
+                "docker_capability",
+                "container_sandbox",
+                "session_sandbox",
+                "lua",
+                "agent_delegation",
+            ] {
+                assert!(!captured.is_enabled(name), "captured {name}");
+            }
+            assert_eq!(captured.is_enabled("machine_payments"), case.payments);
+            assert!(!standard_flag("FEATURE_REVIEW_MISSING", false));
+            assert!(standard_flag("FEATURE_REVIEW_MISSING", true));
+            println!("feature fixture {index} completed");
+            return;
+        }
+        for (index, case) in cases.iter().enumerate() {
+            // A module-local mutex cannot protect process-wide environment reads
+            // by other tests. Set variables before each child starts instead.
+            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            command.args([
+                "--exact",
+                concat!(
+                    module_path!(),
+                    "::environment_overrides_and_grade_defaults_are_isolated"
+                )
+                .strip_prefix("everruns_core::")
+                .unwrap(),
+                "--nocapture",
+            ]);
+            for key in KEYS {
+                command.env_remove(key);
+            }
+            let output = command
+                .envs(case.env.iter().copied())
+                .env(CHILD, index.to_string())
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(
+                output.status.success(),
+                "{} failed:\n{stdout}\n{}",
+                case.name,
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                stdout.contains(&format!("feature fixture {index} completed")),
+                "{} did not run assertions:\n{stdout}",
+                case.name
+            );
+        }
     }
 }
