@@ -212,7 +212,7 @@ let use_tool_search = profile.tool_search && config.tools.len() >= TOOL_SEARCH_T
 
 ## Model Profile Updates
 
-Set `tool_search: true` for models that support it. Default `false` for all others. See `crates/provider/src/model_profiles.rs` for current profile definitions. OpenAI sets the flag per model literal (the `gpt-5.4*` / `gpt-5.5*` families); Anthropic sets it centrally by family in `anthropic_family_supports_tool_search` (Sonnet 4.0+, Opus 4.0+, Haiku 4.5+, Fable 5.x, per docs.claude.com), since the support rule is a clean family cutoff.
+Set `tool_search: true` for models that support it. Default `false` for all others. See `crates/model-profiles/src/profiles.rs` for current profile definitions. OpenAI sets the flag per model literal (the `gpt-5.4*` / `gpt-5.5*` families); Anthropic sets it centrally by family in `anthropic_family_supports_tool_search` (Sonnet 4.0+, Opus 4.0+, Haiku 4.5+, Fable 5.x, per docs.claude.com), since the support rule is a clean family cutoff.
 
 A model's `tool_search: true` flag must be backed by a verified end-to-end round-trip
 (deferred-load → schema fetch → tool call) against the live provider, not just the

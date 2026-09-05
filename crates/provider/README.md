@@ -7,8 +7,11 @@
 [![License](https://img.shields.io/crates/l/everruns-provider.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
 `everruns-provider` owns credential-free model identity, the `ChatDriver`
-boundary, provider assembly, protocol drivers, stream/retry helpers, model
-profiles, typed IDs, credential schemas, and the LLM error taxonomy.
+boundary, provider assembly, protocol drivers, stream/retry helpers, typed
+IDs, credential schemas, and the LLM error taxonomy. Model profile types and
+data (`ModelProfile`, `ServiceKind`, and the built-in profile registry) live
+in [`everruns-model-profiles`](https://crates.io/crates/everruns-model-profiles)
+and are re-exported here for source compatibility.
 
 It is a focused implementation crate in the [Everruns](https://everruns.com)
 ecosystem. Framework application authors normally use the curated surface

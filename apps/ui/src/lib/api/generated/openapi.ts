@@ -11708,7 +11708,7 @@ export interface components {
      * @description LLM Model Profile describing model capabilities
      *     Based on models.dev structure (<https://models.dev/api.json>)
      *
-     *     The registry of profiles lives in `model_profiles.rs`; retired models are
+     *     The registry of profiles lives in `crate::profiles`; retired models are
      *     dropped from it as vendors sunset them.
      */
     ModelProfile: {

@@ -2,11 +2,15 @@
 //! [Everruns Framework](https://docs.everruns.com/framework/) and provider crates.
 //!
 //! This crate owns credential-free model identity, the [`ChatDriver`] boundary,
-//! provider assembly, shared protocol drivers, stream/retry helpers, model
-//! profiles, typed IDs, credential schemas, and the LLM error taxonomy. It is a
-//! focused implementation crate in the [Everruns](https://everruns.com)
-//! ecosystem. Low-level consumers import provider-owned contracts from this
-//! crate directly; Framework users normally use the `everruns` facade.
+//! provider assembly, shared protocol drivers, stream/retry helpers, typed
+//! IDs, credential schemas, and the LLM error taxonomy. It is a focused
+//! implementation crate in the [Everruns](https://everruns.com) ecosystem.
+//! Low-level consumers import provider-owned contracts from this crate
+//! directly; Framework users normally use the `everruns` facade.
+//!
+//! Model profile types and data (`ModelProfile`, `ServiceKind`, and the
+//! built-in profile registry) live in `everruns-model-profiles` and are
+//! re-exported here for source compatibility.
 //!
 //! # Example
 //!

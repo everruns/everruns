@@ -2963,6 +2963,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-model-profiles"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "utoipa",
+]
+
+[[package]]
 name = "everruns-openai"
 version = "0.18.2"
 dependencies = [
@@ -3044,6 +3053,7 @@ dependencies = [
  "bytes",
  "chrono",
  "eventsource-stream",
+ "everruns-model-profiles",
  "futures",
  "hex",
  "http 1.5.0",

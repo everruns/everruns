@@ -14,6 +14,7 @@ members = [
     "crates/test-support",
     "crates/platform",
     "crates/provider",
+    "crates/model-profiles",
     "crates/mcp",
     "crates/llm-tests",
     # LLM wire-protocol drivers. Package names stay independently versioned;
@@ -206,6 +207,7 @@ everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.18.4", default-
 everruns-test-support = { path = "crates/test-support", version = "0.18.2", default-features = false }
 everruns-platform = { path = "crates/platform", version = "0.19.1" }
 everruns-provider = { path = "crates/provider", version = "0.20.0", default-features = false }
+everruns-model-profiles = { path = "crates/model-profiles", version = "0.1.0" }
 everruns-mcp = { path = "crates/mcp", version = "0.19.2" }
 everruns-ard = { path = "crates/ard", version = "0.18.0" }
 everruns-openai = { path = "crates/drivers/openai", version = "0.18.2" }

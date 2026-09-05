@@ -400,7 +400,13 @@ The refactor has landed; current implementations live at:
 - `crates/provider/src/model_spec.rs`, credential-free execution model
   selection
 - `crates/provider/src/model.rs`, `Model` / `ModelWithProvider` entity types
-- `crates/provider/src/model_profiles.rs`, built-in profile data
+  (re-exports `ModelProfile`/`ModelVendor`/etc. from `everruns-model-profiles`)
+- `crates/model-profiles/src/`, own crate: `ModelProfile`/`ModelVendor`/`ServiceKind`
+  types (`types.rs`) and the built-in profile registry and lookup logic
+  (`profiles.rs`), keyed by a plain provider wire-id string rather than
+  `DriverId` so it does not depend on `everruns-provider`;
+  `crates/provider/src/model_profiles.rs` adapts the `DriverId`-typed API
+  existing callers use
 - `crates/provider/src/model_discovery.rs`, host-side catalog presentation: driver `list_models` plus the OpenAI-compatible `GET <base>/models` fallback for endpoints the drivers decline, profile enrichment, and picker ranking (ported from yolop, which had reimplemented all of it), plus `search_provider_models`, a substring search across several providers' catalogs at once, returning provider-qualified exact ids. Partial results are the contract: a provider with no catalog is skipped, one that errors is reported in `provider_errors`, and the rest still return matches
 - `crates/provider/src/driver_registry.rs`, wire-only `ChatDriver`; transitional
   `0.17.x` descriptor/catalog adapter and typed credential configuration
