@@ -94,6 +94,7 @@ name = "mcp_runtime_test"
 required-features = ["mcp"]
 
 [dev-dependencies]
+everruns-openai.workspace = true
 everruns-builtins.workspace = true
 # In-memory span exporter for the observability listener tests.
 opentelemetry_sdk = { workspace = true, features = ["testing"] }

@@ -29,6 +29,7 @@
 
 mod execution;
 mod machine;
+pub mod native_async;
 mod phase_effects;
 #[cfg(test)]
 mod test_fixtures;

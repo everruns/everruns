@@ -68,6 +68,9 @@
   Brave Search establishes the application adapter pattern and separates hosted
   connector registration from the Framework dependency graph. See
   [Framework application boundaries](framework/application-api.md).
+* Documented the opt-in native async custom-host coordinator, private local journal,
+  delivery uncertainty, and remaining distributed-worker integration in
+  [Native asynchronous tool calls](execution/native-async-tools.md).
 
 * **Mid-turn correction justifies revisiting socket ownership.** The isolated
   OpenAI steering prototype uses a durable inbox and explicit single-host owner.

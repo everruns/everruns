@@ -156,6 +156,8 @@ pub enum LlmStreamEvent {
     ReasoningItem(crate::reasoning::ReasoningContentPart),
     /// Tool calls from the LLM
     ToolCalls(Vec<ToolCall>),
+    /// Complete native async/custom call; requires a native-call coordinator.
+    NativeToolCall(crate::native_async::NativeToolCall),
     /// Provider-native execution phase for the current assistant message,
     /// surfaced mid-stream before completion (EVE-774).
     ///
@@ -321,6 +323,11 @@ pub trait ChatDriver: Send + Sync {
                 LlmStreamEvent::ReasoningDelta { .. } => {}
                 LlmStreamEvent::ReasoningItem(item) => reasoning.push(item),
                 LlmStreamEvent::ToolCalls(calls) => tool_calls = calls,
+                LlmStreamEvent::NativeToolCall(_) => {
+                    return Err(crate::error::AgentLoopError::config(
+                        "native async/custom calls require a streaming coordinator",
+                    ));
+                }
                 // Streamed phase hint is a mid-stream refinement only; the
                 // non-streaming collector relies on the terminal Done metadata.
                 LlmStreamEvent::MessagePhase(_) => {}

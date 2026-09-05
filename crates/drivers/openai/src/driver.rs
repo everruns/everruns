@@ -91,6 +91,17 @@ pub struct OpenAIChatDriver {
 }
 
 impl OpenAIChatDriver {
+    /// Opt in only when the host consumes native call events with a durable coordinator.
+    pub fn with_native_async_tools(
+        mut self,
+        options: crate::async_tools::NativeAsyncTools,
+    ) -> Self {
+        self.inner = self
+            .inner
+            .with_request_extension(std::sync::Arc::new(options));
+        self
+    }
+
     /// Create an Open Responses wire-protocol driver.
     pub fn new() -> Self {
         Self {

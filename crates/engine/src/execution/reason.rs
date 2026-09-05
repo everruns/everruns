@@ -1840,6 +1840,11 @@ impl ReasonAtom {
                         );
                         reasoning.push(item);
                     }
+                    LlmStreamEvent::NativeToolCall(_) => {
+                        return Err(AgentLoopError::config(
+                            "native async/custom tools require a configured native-call coordinator",
+                        ));
+                    }
                     LlmStreamEvent::ToolCalls(calls) => {
                         tool_calls = calls;
                     }

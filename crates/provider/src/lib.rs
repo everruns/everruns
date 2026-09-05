@@ -35,6 +35,7 @@ pub mod model;
 pub mod model_discovery;
 pub mod model_profiles;
 pub mod model_spec;
+pub mod native_async;
 #[cfg(feature = "http")]
 pub mod openai_protocol;
 #[cfg(feature = "http")]
