@@ -62,6 +62,12 @@
   connector registration from the Framework dependency graph. See
   [Framework application boundaries](framework/application-api.md).
 
+* **Mid-turn correction justifies revisiting socket ownership.** The isolated
+  OpenAI steering prototype uses a durable inbox and explicit single-host owner.
+  Acceptance remains queued until a successor is created; ambiguous disconnects
+  block replay until history proves commitment. Normal workers continue over
+  HTTP. See `knowledge/execution/openai-steering-prototype.md`.
+
 ## 2026-09-01
 
 * **A model switch is a conversation event, not a setting.** Changing the model

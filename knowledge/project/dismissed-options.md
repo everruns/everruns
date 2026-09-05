@@ -134,7 +134,7 @@ execution keys.
 
 ## OpenAI WebSocket Transport
 
-**Status**: Dismissed (Phase 1 plumbing retained)
+**Status**: Revisited for an isolated mid-turn steering prototype; HTTP remains production transport
 
 **What it was**: OpenAI's Responses API supports a WebSocket transport (`wss://api.openai.com/v1/responses`) that eliminates per-request HTTP overhead and enables incremental input across multi-turn tool-calling workflows by keeping a persistent connection.
 
@@ -144,7 +144,7 @@ execution keys.
 - **Horizontal scaling conflict**: Workers are stateless (`SKIP LOCKED`, no affinity). Activities within a turn can land on different workers. WebSocket connections are inherently stateful and pinned to a single process, contradicting the architecture.
 - **`store=true` already works cross-worker**: With `previous_response_id` over HTTP (Phase 1), OpenAI hydrates cached context from disk. This gives the same latency benefit (skip re-encoding) without requiring connection affinity.
 - **Operational complexity**: Connection lifecycle management (60-min limit, reconnection, error fallback), connection pooling, and worker-affinity routing add significant complexity for marginal latency gain.
-- **Single concurrent response per connection**: Each WebSocket connection supports only one in-flight response, limiting throughput per connection.
+- **Historical concurrency limit**: The original evaluation assumed one in-flight response per connection. The current API supports concurrent named lanes; the single-lane ordering constraint remains. Multiplexing does not solve cross-worker ownership.
 
 **What we use instead**: `previous_response_id` threading over standard HTTP (Responses API with `store=true`):
 - Response IDs flow through `ReasonResult` → turn loop → `ReasonInput` → `LlmCallConfig` → `ResponsesRequest`
@@ -152,10 +152,12 @@ execution keys.
 - OpenAI server-side context caching reduces re-encoding cost
 - No additional infrastructure or connection management needed
 
-**May revisit when**:
-- Worker affinity routing is implemented for other reasons
-- WebSocket transport supports multiple concurrent responses
-- Benchmarks show HTTP connection overhead is a meaningful bottleneck
+**What changed**: GPT-6 Astra supports user corrections while a response is running,
+a feature benefit beyond transport latency. The [steering prototype](../execution/openai-steering-prototype.md)
+uses an explicit same-host owner and durable inbox to test delivery, tool/approval
+continuation, accounting, and disconnect reconciliation. It does not change normal
+worker routing or global defaults. That concept owns the production adoption bar
+and the unresolved send/ack recovery limitation.
 
 ## Lowering `codegen-units` for smaller rlibs
 
