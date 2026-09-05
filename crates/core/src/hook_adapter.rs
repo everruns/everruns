@@ -596,7 +596,7 @@ mod pre_tool_use_tests {
                 };
                 let exec = programmed(outcome);
                 let mut spec = make_spec(Default::default());
-                spec.on_error = policy.clone();
+                spec.on_error = policy;
                 let adapter = PreToolUseHookAdapter::new(spec, exec.clone());
                 let call = make_tool_call();
                 match (
@@ -1019,7 +1019,7 @@ mod tests {
                 }
                 let exec = programmed(outcome);
                 let mut spec = make_spec(HookEvent::PostToolUse, "true");
-                spec.on_error = policy.clone();
+                spec.on_error = policy;
                 let adapter = PostToolUseHookAdapter::new(spec, exec.clone());
                 adapter
                     .after_exec(
