@@ -24,7 +24,8 @@ a separate process to submit a user update, acknowledges it, requests a tool
 result, and verifies the successor output and combined usage. Other tests cover
 normal and interrupted parents, FIFO updates, rejection, approvals, duplicate
 receipt, ownership exclusion, and recovery with verified history. No billable API
-requests are made by the test suite.
+requests are made by the test suite. The path-scoped OpenAI Steering Prototype CI
+workflow runs this suite on Python 3.11 and 3.14 for PRs and main.
 
 ## Run against OpenAI
 
