@@ -1165,479 +1165,385 @@ pub fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
 mod tests {
     use super::*;
     use crate::tool_types::ToolCall;
+    use serde_json::json;
 
-    #[test]
-    fn test_patch_dangling_tool_calls_no_tool_calls() {
-        let messages = vec![Message::user("Hello"), Message::assistant("Hi there!")];
-        let patched = patch_dangling_tool_calls(&messages);
-        assert_eq!(patched.len(), 2);
+    fn calls() -> Vec<ToolCall> {
+        vec![
+            ToolCall {
+                id: "call_search".into(),
+                name: "search".into(),
+                arguments: json!({"q": "rust"}),
+            },
+            ToolCall {
+                id: "call_fetch".into(),
+                name: "fetch".into(),
+                arguments: json!({"url": "https://example.com"}),
+            },
+        ]
+    }
+
+    fn assert_messages(actual: &[Message], expected: &[Message]) {
+        assert_eq!(
+            serde_json::to_value(actual).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
     }
 
     #[test]
-    fn test_patch_dangling_tool_calls_with_result() {
-        let tool_call = ToolCall {
-            id: "call_123".to_string(),
-            name: "get_weather".to_string(),
-            arguments: serde_json::json!({"city": "NYC"}),
-        };
-
-        let messages = vec![
-            Message::user("What's the weather?"),
-            Message::assistant_with_tools("Let me check", vec![tool_call]),
-            Message::tool_result("call_123", Some(serde_json::json!({"temp": 72})), None),
-        ];
-
-        let patched = patch_dangling_tool_calls(&messages);
-        assert_eq!(patched.len(), 3);
+    fn settled_transcripts_are_preserved_without_synthetic_results() {
+        for messages in [
+            vec![],
+            vec![Message::user("Hello"), Message::assistant("Hi")],
+            vec![
+                Message::assistant_with_tools("Searching", vec![calls()[0].clone()]),
+                Message::tool_result("call_search", Some(json!({"found": 2})), None),
+            ],
+        ] {
+            assert_messages(&patch_dangling_tool_calls(&messages), &messages);
+        }
     }
 
     #[test]
-    fn test_patch_dangling_tool_calls_missing_result() {
-        let tool_call = ToolCall {
-            id: "call_456".to_string(),
-            name: "search_web".to_string(),
-            arguments: serde_json::json!({"query": "rust"}),
-        };
-
+    fn dangling_calls_get_only_missing_cancellations_and_patching_is_idempotent() {
         let messages = vec![
-            Message::user("Search for rust"),
-            Message::assistant_with_tools("Searching...", vec![tool_call]),
-            Message::user("Actually, never mind"),
+            Message::user("Search then fetch"),
+            Message::assistant_with_tools("Working", calls()),
+            Message::user("Never mind"),
+            Message::tool_result("call_search", Some(json!({"found": 2})), None),
         ];
-
         let patched = patch_dangling_tool_calls(&messages);
-        // Should have added a cancelled result
-        assert_eq!(patched.len(), 4);
+        assert_eq!(patched.len(), 5);
+        assert_messages(&patched[..2], &messages[..2]);
+        assert_messages(&patched[3..], &messages[2..]);
         assert_eq!(patched[2].role, MessageRole::ToolResult);
-        assert_eq!(patched[2].tool_call_id(), Some("call_456"));
-    }
-
-    #[test]
-    fn test_user_message() {
-        let msg = Message::user("Hello");
-        assert_eq!(msg.role, MessageRole::User);
-        assert_eq!(msg.text(), Some("Hello"));
-    }
-
-    #[test]
-    fn test_assistant_message() {
-        let msg = Message::assistant("Hi there!");
-        assert_eq!(msg.role, MessageRole::Agent);
-        assert_eq!(msg.text(), Some("Hi there!"));
-    }
-
-    #[test]
-    fn test_tool_result_message() {
-        let msg = Message::tool_result(
-            "call_123",
-            Some(serde_json::json!({"result": "success"})),
-            None,
-        );
-        assert_eq!(msg.role, MessageRole::ToolResult);
-        assert_eq!(msg.tool_call_id(), Some("call_123"));
-    }
-
-    #[test]
-    fn test_assistant_with_tools_and_text() {
-        let tool_call = ToolCall {
-            id: "call_123".to_string(),
-            name: "get_weather".to_string(),
-            arguments: serde_json::json!({"location": "Tokyo"}),
-        };
-        let msg = Message::assistant_with_tools("Let me check the weather.", vec![tool_call]);
-
-        assert_eq!(msg.role, MessageRole::Agent);
-        assert_eq!(msg.text(), Some("Let me check the weather."));
-        assert_eq!(msg.tool_calls().len(), 1);
-        assert_eq!(msg.tool_calls()[0].name, "get_weather");
-    }
-
-    #[test]
-    fn test_assistant_with_tools_empty_text() {
-        // When LLM returns only tool calls without text, we shouldn't include an empty text block
-        // This is important for Anthropic API which rejects empty text content blocks
-        let tool_call = ToolCall {
-            id: "call_123".to_string(),
-            name: "search".to_string(),
-            arguments: serde_json::json!({"query": "rust"}),
-        };
-        let msg = Message::assistant_with_tools("", vec![tool_call]);
-
-        assert_eq!(msg.role, MessageRole::Agent);
-        // Empty text should result in None, not Some("")
-        assert_eq!(msg.text(), None);
-        // But tool calls should still be present
-        assert_eq!(msg.tool_calls().len(), 1);
-        assert_eq!(msg.tool_calls()[0].name, "search");
-        // Content should only have tool_call, no empty text part
-        assert_eq!(msg.content.len(), 1);
-        assert!(matches!(msg.content[0], ContentPart::ToolCall(_)));
-    }
-
-    #[test]
-    fn test_assistant_with_tools_whitespace_text() {
-        // Whitespace-only text is not empty (could be intentional)
-        let tool_call = ToolCall {
-            id: "call_456".to_string(),
-            name: "fetch".to_string(),
-            arguments: serde_json::json!({}),
-        };
-        let msg = Message::assistant_with_tools("   ", vec![tool_call]);
-
-        // Whitespace text is preserved (not treated as empty)
-        assert_eq!(msg.text(), Some("   "));
-        assert_eq!(msg.content.len(), 2); // Text + ToolCall
-    }
-
-    #[test]
-    fn test_assistant_with_multiple_tool_calls() {
-        let tool_calls = vec![
-            ToolCall {
-                id: "call_1".to_string(),
-                name: "search".to_string(),
-                arguments: serde_json::json!({"q": "a"}),
-            },
-            ToolCall {
-                id: "call_2".to_string(),
-                name: "fetch".to_string(),
-                arguments: serde_json::json!({"url": "http://example.com"}),
-            },
-        ];
-        let msg = Message::assistant_with_tools("", tool_calls);
-
-        assert_eq!(msg.tool_calls().len(), 2);
-        // Only tool calls, no empty text
-        assert_eq!(msg.content.len(), 2);
-    }
-
-    // =========================================================================
-    // OpenAI Format Conversion Tests
-    // =========================================================================
-
-    #[test]
-    fn test_to_openai_format_user_message() {
-        let msg = Message::user("Hello, world!");
-        let converted = msg.to_openai_format();
-
-        assert_eq!(converted["role"], "user");
-        assert_eq!(converted["content"], "Hello, world!");
-    }
-
-    #[test]
-    fn test_to_openai_format_system_message() {
-        let msg = Message::system("You are a helpful assistant.");
-        let converted = msg.to_openai_format();
-
-        assert_eq!(converted["role"], "system");
-        assert_eq!(converted["content"], "You are a helpful assistant.");
-    }
-
-    #[test]
-    fn test_to_openai_format_assistant_role_mapping() {
-        // Internal "agent" role → "assistant"
-        let msg = Message::assistant("Hi there!");
-        let converted = msg.to_openai_format();
-
-        assert_eq!(converted["role"], "assistant");
-        assert_eq!(converted["content"], "Hi there!");
-    }
-
-    #[test]
-    fn test_to_openai_format_assistant_with_tool_calls() {
-        let tool_call = ToolCall {
-            id: "call_123".to_string(),
-            name: "get_weather".to_string(),
-            arguments: serde_json::json!({"location": "Tokyo"}),
-        };
-        let msg = Message::assistant_with_tools("Let me check.", vec![tool_call]);
-        let converted = msg.to_openai_format();
-
-        assert_eq!(converted["role"], "assistant");
-        assert_eq!(converted["content"], "Let me check.");
-
-        let tool_calls = converted["tool_calls"].as_array().unwrap();
-        assert_eq!(tool_calls.len(), 1);
-        assert_eq!(tool_calls[0]["id"], "call_123");
-        assert_eq!(tool_calls[0]["type"], "function");
-        assert_eq!(tool_calls[0]["function"]["name"], "get_weather");
         assert_eq!(
-            tool_calls[0]["function"]["arguments"],
-            r#"{"location":"Tokyo"}"#
+            serde_json::to_value(&patched[2].content).unwrap(),
+            json!([{
+                "type": "tool_result", "tool_call_id": "call_fetch",
+                "error": "cancelled - another message came in before it could be completed"
+            }])
         );
+        assert_messages(&patch_dangling_tool_calls(&patched), &patched);
     }
 
     #[test]
-    fn test_to_openai_format_assistant_tool_calls_only() {
-        // Assistant message with only tool calls (no text)
-        let tool_call = ToolCall {
-            id: "call_abc".to_string(),
-            name: "search".to_string(),
-            arguments: serde_json::json!({"query": "rust"}),
-        };
-        let msg = Message::assistant_with_tools("", vec![tool_call]);
-        let converted = msg.to_openai_format();
-
-        assert_eq!(converted["role"], "assistant");
-        // No content field when text is empty
-        assert!(converted.get("content").is_none());
-        assert!(converted["tool_calls"].is_array());
-    }
-
-    #[test]
-    fn test_to_openai_format_tool_result_role_mapping() {
-        // Internal "tool_result" role → "tool"
-        let msg = Message::tool_result(
-            "call_123",
-            Some(serde_json::json!({"temperature": 72})),
-            None,
-        );
-        let converted = msg.to_openai_format();
-
-        assert_eq!(converted["role"], "tool");
-        assert_eq!(converted["tool_call_id"], "call_123");
-        assert_eq!(converted["content"], r#"{"temperature":72}"#);
-    }
-
-    #[test]
-    fn test_to_openai_format_tool_result_error() {
-        let msg = Message::tool_result("call_456", None, Some("API timeout".to_string()));
-        let converted = msg.to_openai_format();
-
-        assert_eq!(converted["role"], "tool");
-        assert_eq!(converted["tool_call_id"], "call_456");
-        assert_eq!(converted["content"], "Error: API timeout");
-    }
-
-    #[test]
-    fn test_to_openai_format_full_conversation() {
-        // Full conversation: user → assistant (tool call) → tool result → assistant
-        let tool_call = ToolCall {
-            id: "call_abc".to_string(),
-            name: "search".to_string(),
-            arguments: serde_json::json!({"query": "rust"}),
-        };
-
-        let messages = [
-            Message::user("Search for rust"),
-            Message::assistant_with_tools("", vec![tool_call]),
-            Message::tool_result(
-                "call_abc",
-                Some(serde_json::json!({"results": ["rust-lang.org"]})),
-                None,
+    fn plain_message_constructors_preserve_role_and_text() {
+        for (message, role, text) in [
+            (Message::user("question"), MessageRole::User, "question"),
+            (Message::assistant("answer"), MessageRole::Agent, "answer"),
+            (
+                Message::system("instruction"),
+                MessageRole::System,
+                "instruction",
             ),
-            Message::assistant("Here are the search results."),
+        ] {
+            assert_eq!(message.role, role);
+            assert_eq!(message.text(), Some(text));
+            assert_eq!(message.content, vec![ContentPart::text(text)]);
+            assert!(!message.has_tool_calls());
+        }
+    }
+
+    #[test]
+    fn tool_result_constructor_preserves_result_and_error_fields() {
+        for (result, error) in [
+            (Some(json!({"count": 2})), None),
+            (None, Some("timeout".to_owned())),
+            (Some(json!(false)), Some("partial".to_owned())),
+        ] {
+            let message = Message::tool_result("call_result", result.clone(), error.clone());
+            assert_eq!(message.role, MessageRole::ToolResult);
+            assert_eq!(message.tool_call_id(), Some("call_result"));
+            assert_eq!(
+                message.content,
+                vec![ContentPart::tool_result("call_result", result, error)]
+            );
+        }
+    }
+
+    #[test]
+    fn assistant_tool_messages_preserve_calls_and_distinguish_empty_from_whitespace_text() {
+        for text in ["", "   ", "Working"] {
+            let message = Message::assistant_with_tools(text, calls());
+            let tool_parts: Vec<_> = calls()
+                .into_iter()
+                .map(|c| ContentPart::tool_call(c.id, c.name, c.arguments))
+                .collect();
+            let mut expected = vec![];
+            if !text.is_empty() {
+                expected.push(ContentPart::text(text));
+            }
+            expected.extend(tool_parts);
+            assert_eq!(message.role, MessageRole::Agent);
+            assert_eq!(message.text(), (!text.is_empty()).then_some(text));
+            assert_eq!(message.content, expected);
+            assert!(message.has_tool_calls());
+            assert_eq!(
+                serde_json::to_value(message.tool_calls()).unwrap(),
+                serde_json::to_value(calls()).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn openai_plain_messages_map_internal_roles_and_preserve_text() {
+        for (message, expected) in [
+            (
+                Message::user("question"),
+                json!({"role": "user", "content": "question"}),
+            ),
+            (
+                Message::system("instruction"),
+                json!({"role": "system", "content": "instruction"}),
+            ),
+            (
+                Message::assistant("answer"),
+                json!({"role": "assistant", "content": "answer"}),
+            ),
+        ] {
+            assert_eq!(message.to_openai_format(), expected);
+        }
+    }
+
+    #[test]
+    fn openai_tool_calls_preserve_ids_arguments_and_optional_text() {
+        for text in ["", "Working"] {
+            let message = Message::assistant_with_tools(text, calls());
+            let mut expected = json!({"role": "assistant", "tool_calls": [
+                {"id": "call_search", "type": "function", "function": {"name": "search", "arguments": "{\"q\":\"rust\"}"}},
+                {"id": "call_fetch", "type": "function", "function": {"name": "fetch", "arguments": "{\"url\":\"https://example.com\"}"}}
+            ]});
+            if !text.is_empty() {
+                expected["content"] = text.into();
+            }
+            assert_eq!(message.to_openai_format(), expected);
+        }
+    }
+
+    #[test]
+    fn openai_tool_results_prefer_errors_and_preserve_call_identity() {
+        for (result, error, content) in [
+            (
+                Some(json!({"temperature":72})),
+                None,
+                "{\"temperature\":72}",
+            ),
+            (None, Some("timeout"), "Error: timeout"),
+            (
+                Some(json!({"partial":true})),
+                Some("partial failure"),
+                "Error: partial failure",
+            ),
+            (None, None, "{}"),
+        ] {
+            let message = Message::tool_result("call_result", result, error.map(str::to_owned));
+            assert_eq!(
+                message.to_openai_format(),
+                json!({"role":"tool", "tool_call_id":"call_result", "content":content})
+            );
+        }
+    }
+
+    #[test]
+    fn openai_content_parts_preserve_text_and_image_sources() {
+        for (part, expected) in [
+            (
+                ContentPart::text("Hello"),
+                json!({"type":"text", "text":"Hello"}),
+            ),
+            (
+                ContentPart::image_url("https://example.com/img.png"),
+                json!({"type":"image_url", "image_url":{"url":"https://example.com/img.png"}}),
+            ),
+            (
+                ContentPart::Image(ImageContentPart::from_base64("YWJj", "image/jpeg")),
+                json!({"type":"image_url", "image_url":{"url":"data:image/jpeg;base64,YWJj"}}),
+            ),
+            (
+                ContentPart::Image(ImageContentPart {
+                    url: None,
+                    base64: Some("YWJj".into()),
+                    media_type: None,
+                }),
+                json!({"type":"image_url", "image_url":{"url":"data:image/png;base64,YWJj"}}),
+            ),
+            (
+                ContentPart::Image(ImageContentPart {
+                    url: Some("https://example.com/preferred".into()),
+                    base64: Some("YWJj".into()),
+                    media_type: Some("image/jpeg".into()),
+                }),
+                json!({"type":"image_url", "image_url":{"url":"https://example.com/preferred"}}),
+            ),
+        ] {
+            assert_eq!(part.to_openai_format(), Some(expected));
+        }
+        assert!(
+            ContentPart::Image(ImageContentPart {
+                url: None,
+                base64: None,
+                media_type: None
+            })
+            .to_openai_format()
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn openai_content_parts_exclude_tool_file_and_reasoning_artifacts() {
+        for part in [
+            ContentPart::tool_call("call_1", "lookup", json!({})),
+            ContentPart::tool_result("call_1", Some(json!(42)), None),
+            ContentPart::image_file(ImageId::new()),
+            ContentPart::reasoning(
+                ReasoningContentPart::opaque("test").with_signature("private-signature"),
+            ),
+        ] {
+            assert!(part.to_openai_format().is_none());
+        }
+    }
+
+    #[test]
+    fn openai_message_content_preserves_multimodal_order_and_filters_unsupported_parts() {
+        let mut message = Message::user("before");
+        message
+            .content
+            .push(ContentPart::image_url("https://example.com/image"));
+        message.content.push(ContentPart::text("after"));
+        assert_eq!(
+            message.to_openai_format(),
+            json!({"role":"user", "content":[
+                {"type":"text", "text":"before"}, {"type":"image_url", "image_url":{"url":"https://example.com/image"}},
+                {"type":"text", "text":"after"}
+            ]})
+        );
+        message.content = vec![
+            ContentPart::tool_call("ignored", "tool", json!({})),
+            ContentPart::text("kept"),
         ];
-        let converted: Vec<_> = messages.iter().map(|m| m.to_openai_format()).collect();
-
-        assert_eq!(converted.len(), 4);
-        assert_eq!(converted[0]["role"], "user");
-        assert_eq!(converted[1]["role"], "assistant");
-        assert!(converted[1]["tool_calls"].is_array());
-        assert_eq!(converted[2]["role"], "tool");
-        assert_eq!(converted[2]["tool_call_id"], "call_abc");
-        assert_eq!(converted[3]["role"], "assistant");
-    }
-
-    // =========================================================================
-    // ContentPart::to_openai_format Tests
-    // =========================================================================
-
-    #[test]
-    fn test_content_part_to_openai_format_text() {
-        let part = ContentPart::text("Hello");
-        let converted = part.to_openai_format().unwrap();
-
-        assert_eq!(converted["type"], "text");
-        assert_eq!(converted["text"], "Hello");
-    }
-
-    #[test]
-    fn test_content_part_to_openai_format_image_url() {
-        let part = ContentPart::image_url("https://example.com/img.png");
-        let converted = part.to_openai_format().unwrap();
-
-        assert_eq!(converted["type"], "image_url");
-        assert_eq!(converted["image_url"]["url"], "https://example.com/img.png");
-    }
-
-    #[test]
-    fn test_content_part_to_openai_format_image_base64() {
-        let part = ContentPart::Image(ImageContentPart::from_base64("abc123", "image/jpeg"));
-        let converted = part.to_openai_format().unwrap();
-
-        assert_eq!(converted["type"], "image_url");
         assert_eq!(
-            converted["image_url"]["url"],
-            "data:image/jpeg;base64,abc123"
+            message.to_openai_format(),
+            json!({"role":"user", "content":"kept"})
+        );
+        message.content.remove(1);
+        assert_eq!(
+            message.to_openai_format(),
+            json!({"role":"user", "content":""})
+        );
+        let mut assistant = Message::assistant("first");
+        assistant.content.push(ContentPart::text("second"));
+        assert_eq!(
+            assistant.to_openai_format(),
+            json!({"role":"assistant", "content":"first\nsecond"})
         );
     }
 
     #[test]
-    fn test_content_part_to_openai_format_tool_call_returns_none() {
-        // ToolCall parts are handled at message level, not content part level
-        let part = ContentPart::tool_call("call_1", "search", serde_json::json!({}));
-        assert!(part.to_openai_format().is_none());
+    fn message_phase_wire_contract_preserves_optional_source() {
+        for (phase, wire) in [
+            (None, None),
+            (Some(ExecutionPhase::Commentary), Some("commentary")),
+            (Some(ExecutionPhase::FinalAnswer), Some("final_answer")),
+        ] {
+            for source in [
+                None,
+                Some(PhaseSource::Provider),
+                Some(PhaseSource::Derived),
+            ] {
+                if phase.is_none() && source.is_some() {
+                    continue;
+                }
+                let message = match (phase, source) {
+                    (Some(phase), Some(source)) => {
+                        Message::assistant("answer").with_phase_from(phase, source)
+                    }
+                    (Some(phase), None) => Message::assistant("answer").with_phase(phase),
+                    _ => Message::assistant("answer"),
+                };
+                let json = serde_json::to_value(&message).unwrap();
+                assert_eq!(
+                    json.get("phase"),
+                    wire.map(serde_json::Value::from).as_ref()
+                );
+                let source_wire = match source {
+                    Some(PhaseSource::Provider) => Some("provider"),
+                    Some(PhaseSource::Derived) => Some("derived"),
+                    None => None,
+                };
+                assert_eq!(
+                    json.get("phase_source"),
+                    source_wire.map(serde_json::Value::from).as_ref()
+                );
+                let decoded: Message = serde_json::from_value(json.clone()).unwrap();
+                assert_eq!(decoded.phase, phase);
+                assert_eq!(decoded.phase_source, source);
+                assert_eq!(decoded.text(), Some("answer"));
+                assert_eq!(serde_json::to_value(decoded).unwrap(), json);
+            }
+        }
     }
 
     #[test]
-    fn test_content_part_to_openai_format_tool_result_returns_none() {
-        // ToolResult parts are handled at message level
-        let part = ContentPart::tool_result("call_1", Some(serde_json::json!({})), None);
-        assert!(part.to_openai_format().is_none());
+    fn hints_merge_shallowly_with_message_precedence() {
+        let session = std::collections::HashMap::from([
+            ("shared".into(), json!({"old":1})),
+            ("session_only".into(), json!(42)),
+        ]);
+        let message = std::collections::HashMap::from([
+            ("shared".into(), json!({"new":2})),
+            ("message_only".into(), json!(null)),
+        ]);
+        for (left, right, expected) in [
+            (None, None, json!({})),
+            (
+                Some(&session),
+                None,
+                json!({"shared":{"old":1},"session_only":42}),
+            ),
+            (
+                None,
+                Some(&message),
+                json!({"shared":{"new":2},"message_only":null}),
+            ),
+            (
+                Some(&session),
+                Some(&message),
+                json!({"shared":{"new":2},"session_only":42,"message_only":null}),
+            ),
+        ] {
+            assert_eq!(
+                serde_json::to_value(Controls::resolve_hints(left, right)).unwrap(),
+                expected
+            );
+        }
     }
 
     #[test]
-    fn test_execution_phase_from_has_tool_calls() {
-        assert_eq!(
-            ExecutionPhase::from_has_tool_calls(true),
-            ExecutionPhase::Commentary
-        );
-        assert_eq!(
-            ExecutionPhase::from_has_tool_calls(false),
-            ExecutionPhase::FinalAnswer
-        );
-    }
-
-    #[test]
-    fn test_execution_phase_refine_streamed_hint_monotonic() {
-        use ExecutionPhase::{Commentary, FinalAnswer};
-        // None advances to the first observed value.
-        assert_eq!(
-            ExecutionPhase::refine_streamed_hint(None, Commentary),
-            Some(Commentary)
-        );
-        assert_eq!(
-            ExecutionPhase::refine_streamed_hint(None, FinalAnswer),
-            Some(FinalAnswer)
-        );
-        // First classification wins: a later hint never flips it...
-        assert_eq!(
-            ExecutionPhase::refine_streamed_hint(Some(Commentary), FinalAnswer),
-            Some(Commentary)
-        );
-        assert_eq!(
-            ExecutionPhase::refine_streamed_hint(Some(FinalAnswer), Commentary),
-            Some(FinalAnswer)
-        );
-        // ...and never reverts to None (the input is never None-valued, but a
-        // repeated identical hint is a no-op).
-        assert_eq!(
-            ExecutionPhase::refine_streamed_hint(Some(Commentary), Commentary),
-            Some(Commentary)
-        );
-    }
-
-    #[test]
-    fn test_execution_phase_serde_roundtrip() {
-        let commentary = ExecutionPhase::Commentary;
-        let json = serde_json::to_string(&commentary).unwrap();
-        assert_eq!(json, "\"commentary\"");
-        let deserialized: ExecutionPhase = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized, ExecutionPhase::Commentary);
-
-        let final_answer = ExecutionPhase::FinalAnswer;
-        let json = serde_json::to_string(&final_answer).unwrap();
-        assert_eq!(json, "\"final_answer\"");
-        let deserialized: ExecutionPhase = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized, ExecutionPhase::FinalAnswer);
-    }
-
-    #[test]
-    fn test_execution_phase_deserialize_legacy() {
-        let legacy_in_progress: ExecutionPhase = serde_json::from_str("\"in_progress\"").unwrap();
-        assert_eq!(legacy_in_progress, ExecutionPhase::Commentary);
-
-        let legacy_completed: ExecutionPhase = serde_json::from_str("\"completed\"").unwrap();
-        assert_eq!(legacy_completed, ExecutionPhase::FinalAnswer);
-    }
-
-    #[test]
-    fn test_execution_phase_deserialize_unknown_fails() {
-        let result = serde_json::from_str::<ExecutionPhase>("\"bogus\"");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_message_with_phase() {
-        let msg = Message::assistant("Hello").with_phase(ExecutionPhase::Commentary);
-        assert_eq!(msg.phase, Some(ExecutionPhase::Commentary));
-    }
-
-    #[test]
-    fn test_message_phase_skipped_when_none() {
-        let msg = Message::assistant("Hello");
-        let json = serde_json::to_value(&msg).unwrap();
-        assert!(json.get("phase").is_none());
-    }
-
-    #[test]
-    fn test_message_phase_included_when_set() {
-        let msg = Message::assistant("Hello").with_phase(ExecutionPhase::FinalAnswer);
-        let json = serde_json::to_value(&msg).unwrap();
-        assert_eq!(json.get("phase").unwrap(), "final_answer");
-    }
-
-    #[test]
-    fn test_resolve_hints_both_none() {
-        let result = Controls::resolve_hints(None, None);
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn test_resolve_hints_session_only() {
-        let mut session = std::collections::HashMap::new();
-        session.insert("key1".into(), serde_json::json!("val1"));
-        session.insert("key2".into(), serde_json::json!(42));
-
-        let result = Controls::resolve_hints(Some(&session), None);
-        assert_eq!(result.len(), 2);
-        assert_eq!(result["key1"], serde_json::json!("val1"));
-        assert_eq!(result["key2"], serde_json::json!(42));
-    }
-
-    #[test]
-    fn test_resolve_hints_message_only() {
-        let mut message = std::collections::HashMap::new();
-        message.insert("key1".into(), serde_json::json!(true));
-
-        let result = Controls::resolve_hints(None, Some(&message));
-        assert_eq!(result.len(), 1);
-        assert_eq!(result["key1"], serde_json::json!(true));
-    }
-
-    #[test]
-    fn test_resolve_hints_message_overrides_session() {
-        let mut session = std::collections::HashMap::new();
-        session.insert("shared".into(), serde_json::json!("session_val"));
-        session.insert("session_only".into(), serde_json::json!(1));
-
-        let mut message = std::collections::HashMap::new();
-        message.insert("shared".into(), serde_json::json!("message_val"));
-        message.insert("message_only".into(), serde_json::json!(2));
-
-        let result = Controls::resolve_hints(Some(&session), Some(&message));
-        assert_eq!(result.len(), 3);
-        assert_eq!(result["shared"], serde_json::json!("message_val"));
-        assert_eq!(result["session_only"], serde_json::json!(1));
-        assert_eq!(result["message_only"], serde_json::json!(2));
-    }
-
-    #[test]
-    fn test_controls_hints_serde_roundtrip() {
-        let mut hints = std::collections::HashMap::new();
-        hints.insert("setup_connection".into(), serde_json::json!(true));
-        hints.insert("theme".into(), serde_json::json!("dark"));
-
+    fn controls_wire_contract_preserves_all_overrides_and_legacy_defaults() {
+        let expected = json!({"model_id":"model_00000000000000000000000000000006", "locale":"uk-UA",
+            "reasoning":{"effort":"high"}, "speed":"priority", "verbosity":"low", "error_disclosure":"generic",
+            "hints":{"setup_connection":true,"theme":"dark"}});
         let controls = Controls {
-            hints: Some(hints),
-            ..Default::default()
+            model_id: Some(ModelId::from_uuid(uuid::Uuid::from_u128(6))),
+            locale: Some("uk-UA".into()),
+            reasoning: Some(ReasoningConfig {
+                effort: Some(everruns_provider::model::ReasoningEffort::High),
+            }),
+            speed: Some("priority".into()),
+            verbosity: Some("low".into()),
+            error_disclosure: Some("generic".into()),
+            hints: Some(std::collections::HashMap::from([
+                ("setup_connection".into(), json!(true)),
+                ("theme".into(), json!("dark")),
+            ])),
         };
-
-        let json = serde_json::to_value(&controls).unwrap();
-        let deserialized: Controls = serde_json::from_value(json).unwrap();
-        let h = deserialized.hints.unwrap();
-        assert_eq!(h["setup_connection"], serde_json::json!(true));
-        assert_eq!(h["theme"], serde_json::json!("dark"));
+        assert_eq!(serde_json::to_value(&controls).unwrap(), expected);
+        assert_eq!(
+            serde_json::from_value::<Controls>(expected).unwrap(),
+            controls
+        );
+        let legacy: Controls = serde_json::from_value(json!({})).unwrap();
+        assert_eq!(serde_json::to_value(legacy).unwrap(), json!({}));
     }
 
     #[test]
@@ -1651,10 +1557,15 @@ mod tests {
 
     #[test]
     fn tool_result_text_serializes_structured_values() {
-        let value = serde_json::json!({"count": 1});
-        assert_eq!(
-            ContentPart::tool_result_text(&value).as_text(),
-            Some("{\"count\":1}")
-        );
+        for (value, expected) in [
+            (json!({"count":1}), "{\"count\":1}"),
+            (json!([true, 2]), "[true,2]"),
+            (json!(null), "null"),
+        ] {
+            assert_eq!(
+                ContentPart::tool_result_text(&value).as_text(),
+                Some(expected)
+            );
+        }
     }
 }
