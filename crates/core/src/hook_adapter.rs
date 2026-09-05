@@ -657,35 +657,82 @@ mod pre_tool_use_tests {
         assert!(matches!(decision, PreToolUseDecision::Continue(_)));
     }
 
-    #[test]
-    fn factory_filters_to_pre_tool_use_event() {
+    #[tokio::test]
+    async fn factory_validates_globs_and_dispatches_only_matching_pre_tool_hooks() {
+        let valid = make_spec(crate::user_hook_types::HookMatcher {
+            tool_name_glob: Some(" bash* | edit_file ".into()),
+            ..Default::default()
+        });
+        let mut invalid = valid.clone();
+        invalid.matcher.tool_name_glob = Some("bash**".into());
         let specs = vec![
-            make_spec(Default::default()),
+            valid.clone(),
             UserHookSpec {
                 event: HookEvent::PostToolUse,
-                ..make_spec(Default::default())
+                ..valid
             },
+            invalid,
         ];
-        struct NoopDispatcher;
+        struct RecordingDispatcher(Mutex<Vec<HookPayload>>);
         #[async_trait]
-        impl BashHookDispatcher for NoopDispatcher {
+        impl BashHookDispatcher for RecordingDispatcher {
             async fn dispatch(
                 &self,
-                _payload: &HookPayload,
-                _command: &str,
-                _extra_env: &std::collections::BTreeMap<String, String>,
-                _opts: &ExecutorOpts,
+                payload: &HookPayload,
+                command: &str,
+                extra_env: &std::collections::BTreeMap<String, String>,
+                opts: &ExecutorOpts,
             ) -> Result<crate::hook_executor::BashExecOutput, String> {
+                assert_eq!(command, "true");
+                assert!(extra_env.is_empty());
+                assert_eq!(opts.timeout_ms, 5000);
+                self.0.lock().unwrap().push(payload.clone());
                 Ok(crate::hook_executor::BashExecOutput {
                     exit_code: 0,
-                    stdout: String::new(),
+                    stdout: r#"{"decision":"block","reason":"policy","user_message":"denied"}"#
+                        .into(),
                     stderr: String::new(),
                 })
             }
         }
-        let dispatcher: Arc<dyn BashHookDispatcher> = Arc::new(NoopDispatcher);
-        let hooks = build_pre_tool_use_hooks(&specs, dispatcher);
+        let dispatcher = Arc::new(RecordingDispatcher(Mutex::new(Vec::new())));
+        let hooks = build_pre_tool_use_hooks(&specs, dispatcher.clone());
         assert_eq!(hooks.len(), 1);
+        let ctx = ToolContext::new(crate::typed_id::SessionId::from_seed(42));
+        let call = make_tool_call();
+        match hooks[0]
+            .before_exec(call.clone(), &make_tool_def(), &ctx)
+            .await
+        {
+            PreToolUseDecision::Block {
+                tool_call,
+                reason,
+                user_message,
+            } => {
+                assert_eq!(tool_call.id, call.id);
+                assert_eq!(tool_call.arguments, call.arguments);
+                assert_eq!(reason, "policy");
+                assert_eq!(user_message.as_deref(), Some("denied"));
+            }
+            other => panic!("expected executed hook block, got {other:?}"),
+        }
+        let mut unrelated = call.clone();
+        unrelated.name = "read_file".into();
+        assert!(matches!(
+            hooks[0]
+                .before_exec(unrelated, &make_tool_def(), &ctx)
+                .await,
+            PreToolUseDecision::Continue(_)
+        ));
+        let payloads = dispatcher.0.lock().unwrap();
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(payloads[0].event, HookEvent::PreToolUse);
+        assert_eq!(payloads[0].session_id, ctx.session_id);
+        assert_eq!(payloads[0].hook_id.as_str(), "user:pre");
+        assert_eq!(
+            payloads[0].data,
+            json!({"tool_name":"bash","tool_call_id":"call_x","arguments":{"command":"rm -rf /"}})
+        );
     }
 }
 

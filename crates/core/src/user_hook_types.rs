@@ -409,7 +409,9 @@ fn validate_glob(glob: &str) -> Result<(), HookSpecError> {
     // Allowed syntax: `a|b|c` alternation, trailing `*` per alternative.
     // Reject any other glob metachar.
     for alt in glob.split('|') {
-        let alt = alt.trim_end_matches('*');
+        // Match the execution parser: trim alternatives and permit one suffix star.
+        let alt = alt.trim();
+        let alt = alt.strip_suffix('*').unwrap_or(alt);
         if alt
             .chars()
             .any(|c| matches!(c, '*' | '?' | '[' | ']' | '{' | '}'))
@@ -450,350 +452,356 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn bash_exec() -> ExecutorSpec {
-        ExecutorSpec::Bash {
-            command: "echo hi".to_string(),
-            env: Default::default(),
+    fn spec() -> UserHookSpec {
+        serde_json::from_value(
+            json!({"event":"pre_tool_use","executor":{"type":"bash","command":"true"}}),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn validated_globs_match_alternatives_and_prefixes_through_public_matcher() {
+        for (pattern, accepted, rejected) in [
+            (
+                "bash|edit_file",
+                vec!["bash", "edit_file"],
+                vec!["read_file", "bash_exec"],
+            ),
+            (
+                "daytona_*",
+                vec!["daytona_exec", "daytona_read_file", "daytona_"],
+                vec!["bashkit_shell", "daytona"],
+            ),
+            (
+                " | bash | edit* | ",
+                vec!["bash", "edit_file"],
+                vec!["read_file"],
+            ),
+        ] {
+            let mut hook = spec();
+            hook.matcher.tool_name_glob = Some(pattern.into());
+            hook.validate().unwrap();
+            for name in accepted {
+                assert!(hook.matcher.matches(name, &json!({})), "{pattern}/{name}");
+            }
+            for name in rejected {
+                assert!(!hook.matcher.matches(name, &json!({})), "{pattern}/{name}");
+            }
         }
     }
 
     #[test]
-    fn glob_alternation_matches() {
-        assert!(glob_matches("bash|edit_file", "bash"));
-        assert!(glob_matches("bash|edit_file", "edit_file"));
-        assert!(!glob_matches("bash|edit_file", "read_file"));
+    fn matcher_combines_name_predicates_and_empty_matcher_is_unrestricted() {
+        let mut matcher = HookMatcher::default();
+        assert!(matcher.matches("anything", &json!({})));
+        matcher.tool_name = Some("edit_file".into());
+        assert!(matcher.matches("edit_file", &json!({})));
+        assert!(!matcher.matches("read_file", &json!({})));
+        matcher.tool_name_glob = Some("read*".into());
+        assert!(!matcher.matches("edit_file", &json!({})));
+        assert!(!matcher.matches("read_file", &json!({})));
+        matcher.tool_name_glob = Some("edit*".into());
+        assert!(matcher.matches("edit_file", &json!({})));
     }
 
     #[test]
-    fn glob_trailing_star_matches_prefix() {
-        assert!(glob_matches("daytona_*", "daytona_exec"));
-        assert!(glob_matches("daytona_*", "daytona_read_file"));
-        assert!(!glob_matches("daytona_*", "bashkit_shell"));
-    }
-
-    #[test]
-    fn empty_matcher_matches_anything() {
-        let m = HookMatcher::default();
-        assert!(m.matches("anything", &json!({})));
-    }
-
-    #[test]
-    fn matcher_exact_tool_name() {
-        let m = HookMatcher {
-            tool_name: Some("edit_file".into()),
+    fn matcher_extracts_nested_values_and_distinguishes_missing_or_empty() {
+        let matcher = HookMatcher {
+            args_jsonpath: Some("$.request.command".into()),
             ..Default::default()
         };
-        assert!(m.matches("edit_file", &json!({})));
-        assert!(!m.matches("read_file", &json!({})));
+        for value in [
+            json!("ls"),
+            json!(0),
+            json!(false),
+            json!(["ls"]),
+            json!({"run":"ls"}),
+        ] {
+            assert!(
+                matcher.matches("bash", &json!({"request":{"command":value}})),
+                "{value}"
+            );
+        }
+        for args in [
+            json!({}),
+            json!({"request":{}}),
+            json!({"request":{"command":null}}),
+            json!({"request":{"command":""}}),
+        ] {
+            assert!(!matcher.matches("bash", &args), "{args}");
+        }
     }
 
     #[test]
-    fn matcher_args_jsonpath_extract() {
-        let m = HookMatcher {
-            args_jsonpath: Some("$.command".into()),
-            ..Default::default()
-        };
-        // Path resolves to non-empty -> match.
-        assert!(m.matches("bash", &json!({"command": "ls"})));
-        // Path missing -> no match.
-        assert!(!m.matches("bash", &json!({"other": "ls"})));
-    }
-
-    #[test]
-    fn matcher_deny_regex_blocks() {
-        let m = HookMatcher {
-            args_jsonpath: Some("$.command".into()),
-            deny_regex: Some(r"^rm -rf".into()),
-            ..Default::default()
-        };
-        assert!(m.matches("bash", &json!({"command": "rm -rf /"})));
-        assert!(!m.matches("bash", &json!({"command": "ls"})));
-    }
-
-    #[test]
-    fn matcher_both_regex_kinds_rejected_at_match_time() {
-        let m = HookMatcher {
+    fn either_regex_kind_selects_matching_calls_and_malformed_matchers_do_not_fire() {
+        for deny in [false, true] {
+            let mut matcher = HookMatcher {
+                args_jsonpath: Some("$.command".into()),
+                ..Default::default()
+            };
+            if deny {
+                matcher.deny_regex = Some("^rm -rf".into());
+            } else {
+                matcher.match_regex = Some("^rm -rf".into());
+            }
+            assert!(matcher.matches("bash", &json!({"command":"rm -rf /"})));
+            assert!(!matcher.matches("bash", &json!({"command":"ls"})));
+            assert!(!matcher.matches("bash", &json!({})));
+            matcher.args_jsonpath = None;
+            assert!(!matcher.matches("bash", &json!({"command":"rm -rf /"})));
+            matcher.args_jsonpath = Some("$.command".into());
+            if deny {
+                matcher.deny_regex = Some("(".into());
+            } else {
+                matcher.match_regex = Some("(".into());
+            }
+            assert!(!matcher.matches("bash", &json!({"command":"rm -rf /"})));
+        }
+        let matcher = HookMatcher {
             args_jsonpath: Some("$.command".into()),
             match_regex: Some("a".into()),
             deny_regex: Some("b".into()),
             ..Default::default()
         };
-        // Defensive: matches() returns false; validate() rejects.
-        assert!(!m.matches("bash", &json!({"command": "ab"})));
+        assert!(!matcher.matches("bash", &json!({"command":"ab"})));
     }
 
     #[test]
-    fn validate_timeout_bounds() {
-        let mut spec = UserHookSpec {
-            id: None,
-            event: HookEvent::PreToolUse,
-            matcher: HookMatcher::default(),
-            executor: bash_exec(),
-            timeout_ms: 50,
-            on_error: OnError::Warn,
-            description: None,
-            source: HookSource::UserConfig,
-        };
-        assert!(matches!(
-            spec.validate(),
-            Err(HookSpecError::TimeoutOutOfRange(50))
-        ));
-        spec.timeout_ms = 60_000;
-        assert!(matches!(
-            spec.validate(),
-            Err(HookSpecError::TimeoutOutOfRange(60_000))
-        ));
-        spec.timeout_ms = 5_000;
-        assert!(spec.validate().is_ok());
+    fn timeout_validation_enforces_literal_inclusive_bounds() {
+        let mut hook = spec();
+        for timeout in [100, 5000, 30_000] {
+            hook.timeout_ms = timeout;
+            hook.validate().unwrap();
+        }
+        for timeout in [0, 50, 99, 30_001, 60_000, u32::MAX] {
+            hook.timeout_ms = timeout;
+            assert!(
+                matches!(hook.validate(),Err(HookSpecError::TimeoutOutOfRange(value)) if value==timeout)
+            );
+        }
     }
 
     #[test]
-    fn validate_matcher_on_non_tool_event_rejected() {
-        let spec = UserHookSpec {
-            id: None,
-            event: HookEvent::SessionStart,
-            matcher: HookMatcher {
-                tool_name: Some("edit_file".into()),
-                ..Default::default()
-            },
-            executor: bash_exec(),
-            timeout_ms: 5000,
-            on_error: OnError::Warn,
-            description: None,
-            source: HookSource::UserConfig,
-        };
-        assert!(matches!(
-            spec.validate(),
-            Err(HookSpecError::MatcherOnNonToolEvent("session_start"))
-        ));
+    fn lifecycle_wire_values_and_matcher_eligibility_are_explicit() {
+        for (event, wire, tool_event, can_block) in [
+            (HookEvent::SessionStart, "session_start", false, false),
+            (
+                HookEvent::UserPromptSubmit,
+                "user_prompt_submit",
+                false,
+                true,
+            ),
+            (HookEvent::PreToolUse, "pre_tool_use", true, true),
+            (HookEvent::PostToolUse, "post_tool_use", true, false),
+            (HookEvent::TurnEnd, "turn_end", false, false),
+            (HookEvent::SessionEnd, "session_end", false, false),
+        ] {
+            assert_eq!(event.as_str(), wire);
+            assert_eq!(serde_json::to_value(event).unwrap(), json!(wire));
+            assert_eq!(
+                serde_json::from_value::<HookEvent>(json!(wire)).unwrap(),
+                event
+            );
+            assert_eq!(event.can_block(), can_block);
+            let mut hook = spec();
+            hook.event = event;
+            hook.validate().unwrap();
+            hook.matcher.tool_name = Some("edit_file".into());
+            if tool_event {
+                hook.validate().unwrap();
+            } else {
+                assert!(
+                    matches!(hook.validate(),Err(HookSpecError::MatcherOnNonToolEvent(value)) if value==wire)
+                );
+            }
+        }
     }
 
     #[test]
-    fn validate_ambiguous_regex_rejected() {
-        let spec = UserHookSpec {
-            id: None,
-            event: HookEvent::PreToolUse,
-            matcher: HookMatcher {
-                args_jsonpath: Some("$.x".into()),
-                match_regex: Some("a".into()),
-                deny_regex: Some("b".into()),
-                ..Default::default()
-            },
-            executor: bash_exec(),
-            timeout_ms: 5000,
-            on_error: OnError::Warn,
-            description: None,
-            source: HookSource::UserConfig,
-        };
-        assert!(matches!(
-            spec.validate(),
-            Err(HookSpecError::AmbiguousRegex)
-        ));
-    }
-
-    #[test]
-    fn validate_invalid_regex_rejected() {
-        let spec = UserHookSpec {
-            id: None,
-            event: HookEvent::PreToolUse,
-            matcher: HookMatcher {
-                args_jsonpath: Some("$.x".into()),
-                match_regex: Some("(".into()),
-                ..Default::default()
-            },
-            executor: bash_exec(),
-            timeout_ms: 5000,
-            on_error: OnError::Warn,
-            description: None,
-            source: HookSource::UserConfig,
-        };
-        assert!(matches!(
-            spec.validate(),
-            Err(HookSpecError::InvalidRegex(_, _))
-        ));
-    }
-
-    #[test]
-    fn validate_empty_command_rejected() {
-        let spec = UserHookSpec {
-            id: None,
-            event: HookEvent::PreToolUse,
-            matcher: HookMatcher::default(),
-            executor: ExecutorSpec::Bash {
-                command: "   ".to_string(),
+    fn executor_validation_enforces_command_bytes_and_environment_count() {
+        let mut hook = spec();
+        for command in ["".into(), " \t\n".into()] {
+            hook.executor = ExecutorSpec::Bash {
+                command,
                 env: Default::default(),
-            },
-            timeout_ms: 5000,
-            on_error: OnError::Warn,
-            description: None,
-            source: HookSource::UserConfig,
-        };
-        assert!(matches!(spec.validate(), Err(HookSpecError::EmptyCommand)));
-    }
-
-    #[test]
-    fn validate_oversized_command_rejected() {
-        let spec = UserHookSpec {
-            id: None,
-            event: HookEvent::PreToolUse,
-            matcher: HookMatcher::default(),
-            executor: ExecutorSpec::Bash {
-                command: "x".repeat(MAX_HOOK_COMMAND_BYTES + 1),
+            };
+            assert!(matches!(hook.validate(), Err(HookSpecError::EmptyCommand)));
+        }
+        for (command, valid) in [
+            ("x".repeat(16_384), true),
+            ("x".repeat(16_385), false),
+            ("é".repeat(8192), true),
+            ("é".repeat(8193), false),
+        ] {
+            hook.executor = ExecutorSpec::Bash {
+                command,
                 env: Default::default(),
-            },
-            timeout_ms: 5000,
-            on_error: OnError::Warn,
-            description: None,
-            source: HookSource::UserConfig,
-        };
-        assert!(matches!(
-            spec.validate(),
-            Err(HookSpecError::CommandTooLong)
-        ));
+            };
+            if valid {
+                hook.validate().unwrap();
+            } else {
+                assert!(matches!(
+                    hook.validate(),
+                    Err(HookSpecError::CommandTooLong)
+                ));
+            }
+        }
+        for count in [16, 17] {
+            let env = (0..count)
+                .map(|i| (format!("VAR_{i}"), "x".into()))
+                .collect();
+            hook.executor = ExecutorSpec::Bash {
+                command: "true".into(),
+                env,
+            };
+            if count == 16 {
+                hook.validate().unwrap();
+            } else {
+                assert!(matches!(
+                    hook.validate(),
+                    Err(HookSpecError::TooManyEnvVars)
+                ));
+            }
+        }
     }
 
     #[test]
-    fn validate_oversized_matcher_regex_rejected_before_compile() {
-        let spec = UserHookSpec {
-            id: None,
-            event: HookEvent::PreToolUse,
-            matcher: HookMatcher {
-                match_regex: Some("[".repeat(MAX_HOOK_MATCHER_STRING_BYTES + 1)),
-                ..Default::default()
-            },
-            executor: bash_exec(),
-            timeout_ms: 5000,
-            on_error: OnError::Warn,
-            description: None,
-            source: HookSource::UserConfig,
-        };
+    fn every_matcher_field_enforces_byte_limit_before_regex_compilation() {
+        type Setter = fn(&mut HookMatcher, String);
+        for (field, set) in [
+            (
+                "tool_name",
+                (|m: &mut HookMatcher, v| m.tool_name = Some(v)) as Setter,
+            ),
+            (
+                "tool_name_glob",
+                (|m: &mut HookMatcher, v| m.tool_name_glob = Some(v)) as Setter,
+            ),
+            (
+                "args_jsonpath",
+                (|m: &mut HookMatcher, v| m.args_jsonpath = Some(v)) as Setter,
+            ),
+            (
+                "match_regex",
+                (|m: &mut HookMatcher, v| m.match_regex = Some(v)) as Setter,
+            ),
+            (
+                "deny_regex",
+                (|m: &mut HookMatcher, v| m.deny_regex = Some(v)) as Setter,
+            ),
+        ] {
+            let mut hook = spec();
+            set(&mut hook.matcher, "a".repeat(2048));
+            hook.validate().unwrap();
+            set(&mut hook.matcher, "a".repeat(2049));
+            assert!(
+                matches!(hook.validate(),Err(HookSpecError::MatcherFieldTooLong(value)) if value==field)
+            );
+        }
+        let mut hook = spec();
+        hook.matcher.match_regex = Some("[".repeat(2049));
         assert!(matches!(
-            spec.validate(),
+            hook.validate(),
             Err(HookSpecError::MatcherFieldTooLong("match_regex"))
         ));
     }
 
     #[test]
-    fn validate_too_many_env_vars_rejected() {
-        let mut env = std::collections::BTreeMap::new();
-        for i in 0..(MAX_HOOK_ENV_VARS + 1) {
-            env.insert(format!("VAR_{i}"), "x".into());
+    fn regex_validation_rejects_ambiguity_and_invalid_syntax_for_both_kinds() {
+        for deny in [false, true] {
+            let mut hook = spec();
+            hook.matcher.args_jsonpath = Some("$.x".into());
+            if deny {
+                hook.matcher.deny_regex = Some("(".into());
+            } else {
+                hook.matcher.match_regex = Some("(".into());
+            }
+            assert!(
+                matches!(hook.validate(),Err(HookSpecError::InvalidRegex(pattern,_)) if pattern=="(")
+            );
         }
-        let spec = UserHookSpec {
-            id: None,
-            event: HookEvent::PreToolUse,
-            matcher: HookMatcher::default(),
-            executor: ExecutorSpec::Bash {
-                command: "true".into(),
-                env,
-            },
-            timeout_ms: 5000,
-            on_error: OnError::Warn,
-            description: None,
-            source: HookSource::UserConfig,
-        };
+        let mut hook = spec();
+        hook.matcher.match_regex = Some("a".into());
+        hook.matcher.deny_regex = Some("b".into());
         assert!(matches!(
-            spec.validate(),
-            Err(HookSpecError::TooManyEnvVars)
+            hook.validate(),
+            Err(HookSpecError::AmbiguousRegex)
         ));
     }
 
     #[test]
-    fn validate_glob_rejects_unsupported_syntax() {
-        let spec = UserHookSpec {
-            id: None,
-            event: HookEvent::PreToolUse,
-            matcher: HookMatcher {
-                tool_name_glob: Some("[abc]*".into()),
-                ..Default::default()
-            },
-            executor: bash_exec(),
-            timeout_ms: 5000,
-            on_error: OnError::Warn,
-            description: None,
-            source: HookSource::UserConfig,
+    fn glob_validation_and_matching_agree_on_alternation_whitespace() {
+        let mut hook = spec();
+        hook.matcher.tool_name_glob = Some(" bash* | edit_file ".into());
+        hook.validate().unwrap();
+        assert!(hook.matcher.matches("bash_exec", &json!({})));
+        assert!(hook.matcher.matches("edit_file", &json!({})));
+        assert!(!hook.matcher.matches("read_file", &json!({})));
+    }
+
+    #[test]
+    fn glob_validation_rejects_unsupported_and_repeated_wildcards() {
+        for pattern in [
+            "[abc]*",
+            "a?",
+            "{a,b}",
+            "ba*sh",
+            "bash**",
+            "***",
+            "edit_file|read**",
+        ] {
+            let mut hook = spec();
+            hook.matcher.tool_name_glob = Some(pattern.into());
+            assert!(
+                matches!(hook.validate(),Err(HookSpecError::UnsupportedGlob(value)) if value==pattern),
+                "{pattern}"
+            );
+        }
+    }
+
+    #[test]
+    fn minimal_wire_spec_applies_defaults_and_resolves_namespaced_ids() {
+        let mut hook = spec();
+        hook.validate().unwrap();
+        assert_eq!(hook.timeout_ms, 5000);
+        assert_eq!(hook.on_error, OnError::Warn);
+        assert!(hook.matcher.matches("anything", &json!({})));
+        assert!(hook.id.is_none());
+        assert!(hook.description.is_none());
+        let ExecutorSpec::Bash { command, env } = &hook.executor;
+        assert_eq!(command, "true");
+        assert!(env.is_empty());
+        assert_eq!(hook.resolve_id(2).as_str(), "user:pre_tool_use_2");
+        hook.source = HookSource::Capability {
+            capability_id: "rust_quality_pack".into(),
         };
-        assert!(matches!(
-            spec.validate(),
-            Err(HookSpecError::UnsupportedGlob(_))
-        ));
+        assert_eq!(
+            hook.resolve_id(2).as_str(),
+            "rust_quality_pack:pre_tool_use_2"
+        );
+        hook.id = Some("fmt".into());
+        assert_eq!(hook.resolve_id(9).as_str(), "rust_quality_pack:fmt");
+        hook.source = HookSource::UserConfig;
+        assert_eq!(hook.resolve_id(9).as_str(), "user:fmt");
     }
 
     #[test]
-    fn resolve_id_defaults_to_event_index_for_user() {
-        let spec = UserHookSpec {
-            id: None,
-            event: HookEvent::PreToolUse,
-            matcher: HookMatcher::default(),
-            executor: bash_exec(),
-            timeout_ms: 5000,
-            on_error: OnError::Warn,
-            description: None,
-            source: HookSource::UserConfig,
-        };
-        assert_eq!(spec.resolve_id(2).as_str(), "user:pre_tool_use_2");
-    }
-
-    #[test]
-    fn resolve_id_namespaces_capability_contributions() {
-        let spec = UserHookSpec {
-            id: Some("fmt".into()),
-            event: HookEvent::PostToolUse,
-            matcher: HookMatcher::default(),
-            executor: bash_exec(),
-            timeout_ms: 5000,
-            on_error: OnError::Warn,
-            description: None,
-            source: HookSource::Capability {
-                capability_id: "rust_quality_pack".into(),
-            },
-        };
-        assert_eq!(spec.resolve_id(0).as_str(), "rust_quality_pack:fmt");
-    }
-
-    #[test]
-    fn event_block_capability() {
-        assert!(HookEvent::PreToolUse.can_block());
-        assert!(HookEvent::UserPromptSubmit.can_block());
-        assert!(!HookEvent::PostToolUse.can_block());
-        assert!(!HookEvent::SessionStart.can_block());
-    }
-
-    #[test]
-    fn event_matcher_support() {
-        assert!(HookEvent::PreToolUse.supports_matcher());
-        assert!(HookEvent::PostToolUse.supports_matcher());
-        assert!(!HookEvent::SessionStart.supports_matcher());
-        assert!(!HookEvent::UserPromptSubmit.supports_matcher());
-    }
-
-    #[test]
-    fn deserialize_full_spec_from_user_config_json() {
-        let raw = serde_json::json!({
-            "id": "fmt",
-            "event": "post_tool_use",
-            "matcher": { "tool_name": "edit_file" },
-            "executor": { "type": "bash", "command": "scripts/fmt.sh" },
-            "timeout_ms": 5000,
-            "on_error": "warn",
-            "description": "format after edit"
-        });
-        let spec: UserHookSpec = serde_json::from_value(raw).unwrap();
-        assert_eq!(spec.event, HookEvent::PostToolUse);
-        assert_eq!(spec.matcher.tool_name.as_deref(), Some("edit_file"));
-        assert!(matches!(spec.executor, ExecutorSpec::Bash { .. }));
-        assert!(matches!(spec.source, HookSource::UserConfig));
-    }
-
-    #[test]
-    fn deserialize_minimal_spec_applies_defaults() {
-        let raw = serde_json::json!({
-            "event": "pre_tool_use",
-            "executor": { "type": "bash", "command": "true" }
-        });
-        let spec: UserHookSpec = serde_json::from_value(raw).unwrap();
-        assert_eq!(spec.timeout_ms, 5000);
-        assert!(matches!(spec.on_error, OnError::Warn));
-        assert!(spec.matcher_is_empty());
+    fn explicit_wire_spec_preserves_nondefault_executor_and_policy() {
+        let raw = json!({"id":"fmt","event":"post_tool_use","matcher":{"tool_name":"edit_file"},"executor":{"type":"bash","command":"scripts/fmt.sh","env":{"MODE":"strict"}},"timeout_ms":1234,"on_error":"block","description":"format after edit","source":{"kind":"capability","capability_id":"quality"}});
+        let hook: UserHookSpec = serde_json::from_value(raw).unwrap();
+        hook.validate().unwrap();
+        assert_eq!(hook.event, HookEvent::PostToolUse);
+        assert_eq!(hook.timeout_ms, 1234);
+        assert_eq!(hook.on_error, OnError::Block);
+        assert_eq!(hook.description.as_deref(), Some("format after edit"));
+        assert_eq!(hook.resolve_id(0).as_str(), "quality:fmt");
+        let ExecutorSpec::Bash { command, env } = &hook.executor;
+        assert_eq!(command, "scripts/fmt.sh");
+        assert_eq!(
+            env,
+            &std::collections::BTreeMap::from([("MODE".into(), "strict".into())])
+        );
+        assert!(hook.matcher.matches("edit_file", &json!({})));
+        assert!(!hook.matcher.matches("read_file", &json!({})));
     }
 }
