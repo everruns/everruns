@@ -575,6 +575,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-model-profiles"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "everruns-provider"
 version = "0.20.0"
 dependencies = [
@@ -584,6 +591,7 @@ dependencies = [
  "bytes",
  "chrono",
  "eventsource-stream",
+ "everruns-model-profiles",
  "futures",
  "hex",
  "http",
