@@ -810,12 +810,6 @@ mod tests {
     }
 
     #[test]
-    fn test_worker_pool_status() {
-        assert_ne!(WorkerPoolStatus::Running, WorkerPoolStatus::Stopped);
-        assert_ne!(WorkerPoolStatus::Draining, WorkerPoolStatus::Running);
-    }
-
-    #[test]
     fn test_fair_share_single_worker() {
         // Single worker gets full allocation
         assert_eq!(fair_share_claim_limit(10, 10, 1), 10);

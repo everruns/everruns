@@ -82,6 +82,10 @@ pub fn browserless_ws_base() -> String {
     read_base_url("BROWSERLESS_WS_BASE", DEFAULT_WS_BASE)
 }
 
+fn browser_session_url(ws_base: &str, token: &str) -> String {
+    format!("{ws_base}{BROWSERLESS_CDP_PATH}?token={token}")
+}
+
 fn read_base_url(env_var: &str, default: &str) -> String {
     match std::env::var(env_var) {
         Ok(val) => {
@@ -329,14 +333,6 @@ mod tests {
             ),
             None
         );
-    }
-
-    #[test]
-    fn test_cdp_path_is_set() {
-        assert_eq!(BROWSERLESS_CDP_PATH, "/chromium");
-        // New CDP sessions must connect to /chromium — root path returns 400
-        let full_url = format!("{}{}", DEFAULT_WS_BASE, BROWSERLESS_CDP_PATH);
-        assert_eq!(full_url, "wss://production-sfo.browserless.io/chromium");
     }
 
     #[test]

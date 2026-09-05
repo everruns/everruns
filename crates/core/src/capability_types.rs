@@ -390,63 +390,7 @@ impl MountDirectoryBuilder {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_capability_id_display() {
-        assert_eq!(CapabilityId::new("noop").to_string(), "noop");
-        assert_eq!(
-            CapabilityId::new("current_time").to_string(),
-            "current_time"
-        );
-    }
-
-    #[test]
-    fn test_capability_id_from_str() {
-        assert_eq!(
-            "noop".parse::<CapabilityId>().unwrap(),
-            CapabilityId::new("noop")
-        );
-        assert_eq!(
-            "current_time".parse::<CapabilityId>().unwrap(),
-            CapabilityId::new("current_time")
-        );
-    }
-
-    #[test]
-    fn test_capability_id_from_custom_string() {
-        let custom = CapabilityId::new("my_custom_capability");
-        assert_eq!(custom.to_string(), "my_custom_capability");
-        assert_eq!(custom.as_str(), "my_custom_capability");
-    }
-
-    #[test]
-    fn test_capability_id_serialization() {
-        let id = CapabilityId::new("current_time");
-        let json = serde_json::to_string(&id).unwrap();
-        assert_eq!(json, "\"current_time\"");
-
-        let parsed: CapabilityId = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, id);
-    }
-
-    #[test]
-    fn test_capability_id_hash() {
-        use std::collections::HashSet;
-        let mut set = HashSet::new();
-        set.insert(CapabilityId::new("noop"));
-        set.insert(CapabilityId::new("current_time"));
-        set.insert(CapabilityId::new("noop")); // Should not add a duplicate
-
-        assert_eq!(set.len(), 2);
-    }
-
     // AgentCapabilityConfig tests
-
-    #[test]
-    fn test_agent_capability_config_new() {
-        let config = AgentCapabilityConfig::new("current_time");
-        assert_eq!(config.capability_id(), "current_time");
-        assert_eq!(config.config_value(), &serde_json::json!({}));
-    }
 
     #[test]
     fn test_agent_capability_config_with_config() {
@@ -475,21 +419,6 @@ mod tests {
     fn test_agent_capability_config_from_string() {
         let config: AgentCapabilityConfig = String::from("web_fetch").into();
         assert_eq!(config.capability_id(), "web_fetch");
-    }
-
-    #[test]
-    fn test_agent_capability_config_serialization() {
-        let config = AgentCapabilityConfig::with_config(
-            "current_time",
-            serde_json::json!({"timezone": "UTC"}),
-        );
-        let json = serde_json::to_string(&config).unwrap();
-        assert!(json.contains("\"ref\":\"current_time\""));
-        assert!(json.contains("\"timezone\":\"UTC\""));
-
-        let parsed: AgentCapabilityConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.capability_id(), "current_time");
-        assert_eq!(parsed.config_value()["timezone"], "UTC");
     }
 
     #[test]

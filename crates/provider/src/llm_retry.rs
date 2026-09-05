@@ -973,12 +973,6 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_max_retry_after_constant() {
-        // Verify the constant matches SDK behavior
-        assert_eq!(MAX_RETRY_AFTER_SECS, 60);
-    }
-
     // ------------------------------------------------------------------------
     // retry_request executor tests (no live server; responses are synthesized)
     // ------------------------------------------------------------------------

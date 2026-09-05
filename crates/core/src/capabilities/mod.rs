@@ -3291,26 +3291,6 @@ mod tests {
     }
 
     #[test]
-    fn test_capability_status() {
-        struct ComingSoonFixture;
-        impl Capability for ComingSoonFixture {
-            fn id(&self) -> &str {
-                "coming_soon_fixture"
-            }
-            fn name(&self) -> &str {
-                "Coming Soon Fixture"
-            }
-            fn description(&self) -> &str {
-                "Test-only capability."
-            }
-            fn status(&self) -> CapabilityStatus {
-                CapabilityStatus::ComingSoon
-            }
-        }
-        assert_eq!(ComingSoonFixture.status(), CapabilityStatus::ComingSoon);
-    }
-
-    #[test]
     fn test_capability_icons_and_categories_default_none() {
         assert!(NoopFixture.icon().is_none());
         assert!(NoopFixture.category().is_none());

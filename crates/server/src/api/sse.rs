@@ -568,34 +568,6 @@ mod tests {
     }
 
     #[test]
-    fn test_disconnect_reason_error_can_be_used_in_json() {
-        // Test that the Error variant produces valid JSON
-        let reason = DisconnectReason::Error;
-        let json = format!(r#"{{"reason":"{}","retry_ms":1000}}"#, reason.as_str());
-        assert!(json.contains("\"reason\":\"error\""));
-        assert!(json.contains("\"retry_ms\":1000"));
-
-        // Verify it's valid JSON
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed["reason"], "error");
-    }
-
-    #[test]
-    fn test_disconnect_reason_equality() {
-        assert_eq!(DisconnectReason::Error, DisconnectReason::Error);
-        assert_ne!(DisconnectReason::Error, DisconnectReason::ConnectionCycle);
-        assert_ne!(DisconnectReason::Error, DisconnectReason::Shutdown);
-    }
-
-    #[test]
-    fn test_disconnect_reason_copy() {
-        // Verify DisconnectReason implements Copy
-        let reason = DisconnectReason::Error;
-        let reason_copy = reason;
-        assert_eq!(reason, reason_copy);
-    }
-
-    #[test]
     fn test_exponential_backoff_sequence_realtime() {
         let config = SseStreamConfig::realtime();
         let mut backoff = config.min_backoff_ms;

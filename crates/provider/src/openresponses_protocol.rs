@@ -2102,12 +2102,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_driver_is_wire_only() {
-        let driver = OpenResponsesProtocolChatDriver::new();
-        assert!(format!("{:?}", driver).contains("OpenResponsesProtocolChatDriver"));
-    }
-
-    #[test]
     fn test_request_serialization() {
         let request = ResponsesRequest {
             include: None,

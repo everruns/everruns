@@ -3070,15 +3070,6 @@ mod tests {
     }
 
     #[test]
-    fn test_bashkit_tool_builder_configuration() {
-        // Verify the static BASHKIT_TOOL was built with our custom settings
-        // by checking that description/system_prompt are accessible (non-panicking)
-        let _desc = BASHKIT_TOOL.description();
-        let _prompt = BASHKIT_TOOL.system_prompt();
-        // If we got here without panic, the builder configuration is valid
-    }
-
-    #[test]
     fn test_bash_tool_display_name() {
         let tool = BashTool::default();
         assert_eq!(tool.display_name(), Some("Bash"));
@@ -3106,14 +3097,6 @@ mod tests {
         // Verify "commands" is required
         let required = schema["required"].as_array().unwrap();
         assert!(required.contains(&json!("commands")));
-    }
-
-    #[test]
-    fn test_execution_limits_configuration() {
-        let limits = execution_limits();
-        // Just verify it doesn't panic and returns a valid object
-        // The limits are used by both BASHKIT_TOOL and per-execution Bash instances
-        let _ = limits;
     }
 
     // ========================================================================

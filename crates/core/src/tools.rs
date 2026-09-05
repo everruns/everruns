@@ -1175,15 +1175,6 @@ mod tests {
     }
 
     #[test]
-    fn test_echo_tool_display_name() {
-        let tool = EchoTool;
-        assert_eq!(tool.display_name(), Some("Echo"));
-
-        let def = tool.to_definition();
-        assert_eq!(def.display_name(), Some("Echo"));
-    }
-
-    #[test]
     fn test_all_default_tools_have_display_names() {
         let registry = ToolRegistry::with_defaults();
         let definitions = registry.tool_definitions();

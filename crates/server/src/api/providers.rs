@@ -1070,28 +1070,79 @@ mod tests {
             "Encryption not configured. Cannot store API key."
         );
     }
+}
 
-    #[test]
-    fn test_invalid_base_url_error_is_client_facing() {
-        // URL validation errors should be returned as-is (not masked as internal error)
-        let error_msg =
-            "Invalid base URL: URL host resolves to a blocked address: loopback (127.0.0.0/8)";
-        assert!(error_msg.contains("Invalid base URL"));
-    }
+#[cfg(test)]
+mod creation_tests {
+    use super::*;
 
-    #[test]
-    fn test_internal_error_does_not_leak_details() {
-        // Simulate what happens when a database error occurs
-        // The error message should be generic, not contain DB details
-        let generic_message = "Internal server error".to_string();
-
-        // This is what we return to clients - verify it doesn't contain
-        // typical database error patterns
-        assert!(!generic_message.contains("SQLX"));
-        assert!(!generic_message.contains("connection"));
-        assert!(!generic_message.contains("database"));
-        assert!(!generic_message.contains("query"));
-        assert!(!generic_message.contains("postgres"));
-        assert!(!generic_message.contains("encryption key"));
+    #[tokio::test]
+    async fn create_rejects_invalid_base_urls_as_client_errors() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let state = AppState::new(
+            db.clone(),
+            None,
+            Arc::new(DriverRegistry::new()),
+            AuthState::builtin(crate::auth::AuthConfig::default(), db),
+            None,
+        );
+        let org = ResolvedOrg {
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            public_id: "org_test".into(),
+            name: "Test".into(),
+            user_id: None,
+            role: everruns_core::OrgRole::Owner,
+            is_platform_user: false,
+            feature_flags: Default::default(),
+        };
+        for (provider_type, base_url) in [
+            (DriverId::OpenAI, Some("https://127.0.0.1/v1")),
+            (DriverId::OpenAI, Some("https://10.0.0.1/v1")),
+            (
+                DriverId::OpenAI,
+                Some("https://169.254.169.254/latest/meta-data/"),
+            ),
+            (DriverId::AzureOpenAI, None),
+            (
+                DriverId::AzureOpenAI,
+                Some("https://api.example.com/openai/v1"),
+            ),
+            (
+                DriverId::AzureOpenAI,
+                Some("https://resource.openai.azure.com/wrong-path"),
+            ),
+        ] {
+            let (status, Json(error)) = create_provider(
+                org.clone(),
+                State(state.clone()),
+                Json(CreateProviderRequest {
+                    name: "Unsafe provider".into(),
+                    provider_type,
+                    base_url: base_url.map(str::to_string),
+                    api_key: None,
+                    credentials: None,
+                    trace: None,
+                    request_options: None,
+                }),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert!(
+                error
+                    .detail
+                    .as_deref()
+                    .is_some_and(|detail| detail.contains("Invalid base URL")),
+                "{error:?}"
+            );
+        }
+        assert!(
+            state
+                .service
+                .list(&Caller::from(&org))
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 }

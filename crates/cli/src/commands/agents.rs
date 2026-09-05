@@ -1313,7 +1313,9 @@ mod tests {
 
         let files = glob_initial_files(dir.path().to_str().unwrap(), true, &[]).unwrap();
         assert_eq!(files.len(), 1);
-        assert!(files.iter().all(|f| !f.is_readonly));
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "/workspace/hello.txt");
+        assert!(!files[0].is_readonly);
     }
 
     #[test]

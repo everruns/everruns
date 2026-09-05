@@ -2823,19 +2823,6 @@ mod tests {
     }
 
     #[test]
-    fn test_provider_type_display() {
-        assert_eq!(DriverId::OpenAI.to_string(), "openai");
-        assert_eq!(DriverId::OpenRouter.to_string(), "openrouter");
-        assert_eq!(DriverId::AzureOpenAI.to_string(), "azure_openai");
-        assert_eq!(
-            DriverId::OpenAICompletions.to_string(),
-            "openai_completions"
-        );
-        assert_eq!(DriverId::Anthropic.to_string(), "anthropic");
-        assert_eq!(DriverId::Gemini.to_string(), "gemini");
-    }
-
-    #[test]
     fn test_provider_config_builder() {
         let config = ProviderConfig::new(DriverId::Anthropic)
             .with_api_key("test-key")

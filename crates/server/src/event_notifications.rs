@@ -121,17 +121,3 @@ impl Drop for EventNotificationBroadcaster {
         let _ = self.shutdown_tx.try_send(());
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_notification_payload_debug() {
-        let payload = EventNotificationPayload {
-            session_id: Uuid::nil(),
-        };
-        let debug_str = format!("{:?}", payload);
-        assert!(debug_str.contains("session_id"));
-    }
-}

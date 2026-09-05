@@ -2022,13 +2022,17 @@ mod tests {
         };
 
         let mut ctx = ToolContext::new(parent_id);
-        ctx.subagent_delegate = Some(delegate(store));
+        ctx.subagent_delegate = Some(delegate(store.clone()));
         ctx.session_task_registry = Some(registry);
 
         AgentHandoffTaskExecutor
             .deliver(&task, &message, &ctx)
             .await
             .expect("follow-up delivered");
+        assert_eq!(
+            *store.sent_messages.lock().unwrap(),
+            vec![(child_id, "List RDS databases".to_string())]
+        );
     }
 
     #[tokio::test]

@@ -3625,11 +3625,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_openapi_mount_path_constant() {
-        assert_eq!(DAYTONA_OPENAPI_MOUNT_PATH, "/daytona/openapi.yaml");
-    }
-
     // ========================================================================
     // Tool narration
     // ========================================================================

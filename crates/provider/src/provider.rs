@@ -132,8 +132,12 @@ mod tests {
 
     #[test]
     fn wire_ids_reject_empty_and_padded_values() {
-        assert!(serde_json::from_str::<DriverId>(r#"""#).is_err());
-        assert!(serde_json::from_str::<DriverId>(r#"" openai ""#).is_err());
+        for value in ["", " ", "\t\n"] {
+            let error = serde_json::from_value::<DriverId>(serde_json::json!(value)).unwrap_err();
+            assert!(error.to_string().contains("provider type cannot be empty"));
+        }
+        let error = serde_json::from_value::<DriverId>(serde_json::json!(" openai ")).unwrap_err();
+        assert!(error.to_string().contains("leading or trailing whitespace"));
     }
 
     #[test]

@@ -1,3 +1,4 @@
+import { MarkdownLink } from "@/components/markdown/markdown-link";
 import { render, screen } from "@testing-library/react";
 
 let capturedStreamdownProps: Record<string, unknown> = {};
@@ -467,7 +468,7 @@ describe("MarkdownPreview", () => {
     render(<MarkdownPreview content="[PR](https://github.com/everruns/everruns/pull/44)" />);
 
     const components = capturedStreamdownProps.components as Record<string, unknown>;
-    expect(components.a).toBeDefined();
+    expect(components.a).toBe(MarkdownLink);
   });
 
   it("strips frontmatter and renders body", () => {

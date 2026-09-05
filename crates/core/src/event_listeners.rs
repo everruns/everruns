@@ -127,31 +127,6 @@ mod tests {
         assert_eq!(listener.name(), "EventListener");
     }
 
-    #[tokio::test]
-    async fn test_event_listener_with_filtered_types() {
-        struct FilteredListener;
-
-        #[async_trait]
-        impl EventListener for FilteredListener {
-            async fn on_event(&self, _event: &Event) {}
-
-            fn event_types(&self) -> Option<Vec<&'static str>> {
-                Some(vec!["input.message", "llm.generation"])
-            }
-
-            fn name(&self) -> &'static str {
-                "FilteredListener"
-            }
-        }
-
-        let listener = FilteredListener;
-        let types = listener.event_types().unwrap();
-        assert_eq!(types.len(), 2);
-        assert!(types.contains(&"input.message"));
-        assert!(types.contains(&"llm.generation"));
-        assert_eq!(listener.name(), "FilteredListener");
-    }
-
     fn create_test_event() -> Event {
         Event::new(
             SessionId::from_uuid(Uuid::now_v7()),

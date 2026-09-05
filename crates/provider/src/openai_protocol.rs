@@ -1108,12 +1108,6 @@ mod tests {
     }
 
     #[test]
-    fn test_driver_is_wire_only() {
-        let driver = OpenAIProtocolChatDriver::new();
-        assert!(format!("{:?}", driver).contains("OpenAIProtocolChatDriver"));
-    }
-
-    #[test]
     fn test_is_azure_openai_api_url() {
         assert!(is_azure_openai_api_url(
             "https://example.openai.azure.com/openai/v1/chat/completions"

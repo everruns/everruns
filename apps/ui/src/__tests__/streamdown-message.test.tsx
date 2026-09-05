@@ -38,14 +38,6 @@ describe("StreamdownMessage", () => {
     capturedStreamdownProps = {};
   });
 
-  it("passes components with ExternalLink override for anchor tags", () => {
-    render(<StreamdownMessage>Hello **world**</StreamdownMessage>);
-
-    expect(capturedStreamdownProps.components).toBeDefined();
-    const components = capturedStreamdownProps.components as Record<string, unknown>;
-    expect(components.a).toBeDefined();
-  });
-
   it("MarkdownLink component renders links with target=_blank", () => {
     render(<StreamdownMessage>test</StreamdownMessage>);
 
@@ -211,7 +203,7 @@ describe("InlineStreamdownMessage", () => {
     render(<InlineStreamdownMessage>Content</InlineStreamdownMessage>);
 
     const components = capturedStreamdownProps.components as Record<string, unknown>;
-    expect(components.a).toBeDefined();
+    expect(components.a).toBe(MarkdownLink);
   });
 });
 
