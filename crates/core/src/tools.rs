@@ -104,10 +104,14 @@ impl ToolExecutionResult {
         // Non-object values are wrapped in a scalar carrier so raw_output still
         // flows through; the carrier is unwrapped on extraction.
         match value.as_object_mut() {
-            Some(obj) => {
+            Some(obj)
+                if !obj.contains_key("_raw_output") && !obj.contains_key("_raw_output_scalar") =>
+            {
                 obj.insert("_raw_output".to_string(), Value::String(raw_output));
             }
-            None => {
+            _ => {
+                // Wrap colliding object keys too: caller data must not be
+                // overwritten or mistaken for our scalar carrier on extraction.
                 value = serde_json::json!({
                     "_raw_output_scalar": value,
                     "_raw_output": raw_output,
@@ -954,6 +958,133 @@ impl Tool for FailingTool {
 mod tests {
     use super::*;
 
+    struct CountingTool {
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+        label: &'static str,
+    }
+
+    #[async_trait]
+    impl Tool for CountingTool {
+        fn name(&self) -> &str {
+            "counting"
+        }
+        fn display_name(&self) -> Option<&str> {
+            Some(self.label)
+        }
+        fn description(&self) -> &str {
+            "Count validated dispatches"
+        }
+        fn parameters_schema(&self) -> Value {
+            serde_json::json!({"type":"object","properties":{"message":{"type":"string"}},"required":["message"],"additionalProperties":false})
+        }
+        fn policy(&self) -> ToolPolicy {
+            ToolPolicy::RequiresApproval
+        }
+        fn deferrable_policy(&self) -> DeferrablePolicy {
+            DeferrablePolicy::Never
+        }
+        fn hints(&self) -> ToolHints {
+            ToolHints::default()
+                .with_readonly(true)
+                .with_idempotent(true)
+        }
+        async fn execute(&self, arguments: Value) -> ToolExecutionResult {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            ToolExecutionResult::success(
+                serde_json::json!({"label":self.label,"arguments":arguments}),
+            )
+        }
+    }
+
+    #[tokio::test]
+    async fn registry_registration_paths_replace_and_dispatch_complete_definitions() {
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let tool = |label| CountingTool {
+            calls: calls.clone(),
+            label,
+        };
+        let mut registry = ToolRegistry::builder()
+            .tool(tool("first"))
+            .tool_boxed(Box::new(tool("boxed")))
+            .tool_arc(Arc::new(tool("last")))
+            .build();
+        assert_eq!(registry.tool_names(), ["counting"]);
+        let definitions = registry.tool_definitions();
+        assert_eq!(definitions.len(), 1);
+        let ToolDefinition::Builtin(definition) = &definitions[0] else {
+            panic!("builtin expected")
+        };
+        assert_eq!(definition.name, "counting");
+        assert_eq!(definition.display_name.as_deref(), Some("last"));
+        assert_eq!(definition.description, "Count validated dispatches");
+        assert_eq!(
+            definition.parameters,
+            serde_json::json!({"type":"object","properties":{"message":{"type":"string"}},"required":["message"],"additionalProperties":false})
+        );
+        assert_eq!(definition.policy, ToolPolicy::RequiresApproval);
+        assert_eq!(definition.deferrable, DeferrablePolicy::Never);
+        assert_eq!(
+            definition.hints,
+            ToolHints::default()
+                .with_readonly(true)
+                .with_idempotent(true)
+        );
+        assert!(definition.category.is_none());
+        assert!(definition.full_parameters.is_none());
+        let call = ToolCall {
+            id: "dispatch-id".into(),
+            name: "counting".into(),
+            arguments: serde_json::json!({"message":"payload"}),
+        };
+        let result = registry.execute(&call, &definitions[0]).await.unwrap();
+        assert_eq!(result.tool_call_id, "dispatch-id");
+        assert_eq!(
+            result.result,
+            Some(serde_json::json!({"label":"last","arguments":{"message":"payload"}}))
+        );
+        assert!(result.error.is_none());
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(
+            registry.unregister("counting").unwrap().display_name(),
+            Some("last")
+        );
+        assert!(registry.is_empty());
+        assert!(registry.unregister("counting").is_none());
+        registry.register(tool("again"));
+        registry.clear();
+        assert!(registry.tool_definitions().is_empty());
+    }
+
+    #[tokio::test]
+    async fn registry_errors_preserve_public_failures_and_hide_internal_details() {
+        for (tool, expected) in [
+            (FailingTool::with_tool_error("Invalid city"), "Invalid city"),
+            (
+                FailingTool::with_internal_error("PRIVATE-DATABASE-TOKEN"),
+                "An internal error occurred while executing the tool",
+            ),
+        ] {
+            let registry = ToolRegistry::builder().tool(tool).build();
+            let call = ToolCall {
+                id: "failure-id".into(),
+                name: "failing_tool".into(),
+                arguments: serde_json::json!({}),
+            };
+            let result = registry
+                .execute(&call, &registry.tool_definitions()[0])
+                .await
+                .unwrap();
+            assert_eq!(result.tool_call_id, "failure-id");
+            assert_eq!(result.error.as_deref(), Some(expected));
+            assert_eq!(result.result, Some(serde_json::json!({"error":expected})));
+            assert!(
+                !serde_json::to_string(&result)
+                    .unwrap()
+                    .contains("PRIVATE-DATABASE-TOKEN")
+            );
+        }
+    }
+
     struct RequiresOrgId;
 
     #[async_trait]
@@ -1009,58 +1140,17 @@ mod tests {
             .expect("advertised required service should validate");
     }
 
-    #[tokio::test]
-    async fn test_echo_tool() {
-        let tool = EchoTool;
-
-        let result = tool
-            .execute(serde_json::json!({"message": "Hello, world!"}))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(
-                value.get("echoed").unwrap().as_str().unwrap(),
-                "Hello, world!"
-            );
-            assert_eq!(value.get("length").unwrap().as_u64().unwrap(), 13);
-        } else {
-            panic!("Expected success");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_failing_tool_with_tool_error() {
-        let tool = FailingTool::with_tool_error("Something went wrong");
-
-        let result = tool.execute(serde_json::json!({})).await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert_eq!(msg, "Something went wrong");
-        } else {
-            panic!("Expected tool error");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_failing_tool_with_internal_error() {
-        let tool = FailingTool::with_internal_error("Database connection failed");
-
-        let result = tool.execute(serde_json::json!({})).await;
-
-        if let ToolExecutionResult::InternalError(err) = result {
-            assert_eq!(err.message, "Database connection failed");
-        } else {
-            panic!("Expected internal error");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_tool_result_conversion() {
+    #[test]
+    fn test_tool_result_conversion() {
         // Success
         let result = ToolExecutionResult::success(serde_json::json!({"value": 42}));
         let tool_result = result.into_tool_result("call_1", "test_tool");
+        assert_eq!(tool_result.tool_call_id, "call_1");
         assert!(tool_result.error.is_none());
-        assert_eq!(tool_result.result.unwrap()["value"], 42);
+        assert!(tool_result.images.is_none());
+        assert!(tool_result.connection_required.is_none());
+        assert!(tool_result.raw_output.is_none());
+        assert_eq!(tool_result.result, Some(serde_json::json!({"value": 42})));
 
         // Tool error (packaged as {"error": "..."} in result field, also sets error)
         let result = ToolExecutionResult::tool_error("Invalid input");
@@ -1082,35 +1172,6 @@ mod tests {
             tool_result.result.unwrap(),
             serde_json::json!({"error": "An internal error occurred while executing the tool"})
         );
-    }
-
-    #[tokio::test]
-    async fn test_tool_registry() {
-        let mut registry = ToolRegistry::new();
-        registry.register(EchoTool);
-
-        assert_eq!(registry.len(), 1);
-        assert!(registry.has("echo"));
-        assert!(!registry.has("nonexistent"));
-
-        let definitions = registry.tool_definitions();
-        assert_eq!(definitions.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_tool_registry_builder() {
-        let registry = ToolRegistry::builder().tool(EchoTool).build();
-
-        assert_eq!(registry.len(), 1);
-    }
-
-    #[test]
-    fn test_tool_display_name_in_definition() {
-        let tool = EchoTool;
-        assert_eq!(tool.display_name(), Some("Echo"));
-
-        let def = tool.to_definition();
-        assert_eq!(def.display_name(), Some("Echo"));
     }
 
     #[test]
@@ -1135,17 +1196,25 @@ mod tests {
     }
 
     #[test]
-    fn test_success_with_raw_output_scalar_unwraps_to_string() {
-        let res = ToolExecutionResult::success_with_raw_output(
-            "compact summary".to_string(),
-            "full output bytes".to_string(),
-        );
-        let tr = res.into_tool_result("call_1", "demo");
-        assert_eq!(
-            tr.result,
-            Some(serde_json::Value::String("compact summary".into()))
-        );
-        assert_eq!(tr.raw_output.as_deref(), Some("full output bytes"));
+    fn raw_output_round_trips_all_nonobject_shapes_without_serializing_sidecar() {
+        for value in [
+            serde_json::json!("compact summary"),
+            Value::Null,
+            serde_json::json!(false),
+            serde_json::json!(42),
+            serde_json::json!(["a", 2]),
+        ] {
+            let result =
+                ToolExecutionResult::success_with_raw_output(value.clone(), "PRIVATE-RAW".into())
+                    .into_tool_result("raw-id", "demo");
+            assert_eq!(result.result, Some(value));
+            assert_eq!(result.raw_output.as_deref(), Some("PRIVATE-RAW"));
+            assert!(
+                !serde_json::to_string(&result)
+                    .unwrap()
+                    .contains("PRIVATE-RAW")
+            );
+        }
     }
 
     #[test]
@@ -1174,112 +1243,118 @@ mod tests {
         assert_eq!(tr.raw_output, None);
     }
 
-    #[test]
-    fn test_all_default_tools_have_display_names() {
-        let registry = ToolRegistry::with_defaults();
-        let definitions = registry.tool_definitions();
-
-        for def in &definitions {
-            assert!(
-                def.display_name().is_some(),
-                "Tool '{}' should have a display_name",
-                def.name()
-            );
+    #[tokio::test]
+    async fn invalid_arguments_never_dispatch_through_either_executor_path() {
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let registry = ToolRegistry::builder()
+            .tool(CountingTool {
+                calls: calls.clone(),
+                label: "validated",
+            })
+            .build();
+        let definition = registry.tool_definitions().remove(0);
+        let context = ToolContext::new(crate::typed_id::SessionId::new());
+        for (arguments, instance, keyword) in [
+            (serde_json::json!({}), "", "required"),
+            (serde_json::json!({"message":42}), "/message", "type"),
+            (
+                serde_json::json!({"message":"ok","unexpected":true}),
+                "",
+                "additionalProperties",
+            ),
+        ] {
+            let call = ToolCall {
+                id: "invalid-id".into(),
+                name: "counting".into(),
+                arguments,
+            };
+            for with_context in [false, true] {
+                let result = if with_context {
+                    registry
+                        .execute_with_context(&call, &definition, &context)
+                        .await
+                        .unwrap()
+                } else {
+                    registry.execute(&call, &definition).await.unwrap()
+                };
+                assert_eq!(result.tool_call_id, "invalid-id");
+                let message = result.error.unwrap();
+                assert_eq!(result.result, Some(serde_json::json!({"error":message})));
+                let error: Value = serde_json::from_str(&message).unwrap();
+                assert_eq!(error["code"], "invalid_tool_arguments");
+                assert_eq!(error["tool"], "counting");
+                let issues = error["issues"].as_array().unwrap();
+                assert_eq!(issues.len(), 1);
+                assert_eq!(issues[0]["instance_path"], instance);
+                assert!(issues[0]["schema_path"].as_str().unwrap().contains(keyword));
+                assert!(!issues[0]["message"].as_str().unwrap().is_empty());
+            }
         }
-    }
-
-    fn invalid_arguments_error(result: ToolResult) -> serde_json::Value {
-        let message = result.error.expect("expected tool error");
-        serde_json::from_str(&message).expect("tool error should be valid JSON")
-    }
-
-    #[tokio::test]
-    async fn test_tool_registry_rejects_missing_required_argument() {
-        let mut registry = ToolRegistry::new();
-        registry.register(EchoTool);
-        let tool_call = ToolCall {
-            id: "call_1".to_string(),
-            name: "echo".to_string(),
-            arguments: serde_json::json!({}),
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        let valid = ToolCall {
+            id: "valid-id".into(),
+            name: "counting".into(),
+            arguments: serde_json::json!({"message":"accepted"}),
         };
-        let tool_def = registry.get("echo").unwrap().to_definition();
-
-        let error = invalid_arguments_error(registry.execute(&tool_call, &tool_def).await.unwrap());
-
-        assert_eq!(error["code"], "invalid_tool_arguments");
-        assert_eq!(error["tool"], "echo");
-        assert_eq!(error["issues"][0]["instance_path"], "");
-        assert!(
-            error["issues"][0]["message"]
-                .as_str()
-                .unwrap()
-                .contains("required")
+        let result = registry
+            .execute_with_context(&valid, &definition, &context)
+            .await
+            .unwrap();
+        assert_eq!(
+            result.result,
+            Some(serde_json::json!({"label":"validated","arguments":{"message":"accepted"}}))
         );
-        assert!(
-            error["issues"][0]["schema_path"]
-                .as_str()
-                .unwrap()
-                .contains("required")
-        );
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
-    #[tokio::test]
-    async fn test_tool_registry_rejects_wrong_argument_type() {
-        let mut registry = ToolRegistry::new();
-        registry.register(EchoTool);
-        let tool_call = ToolCall {
-            id: "call_1".to_string(),
-            name: "echo".to_string(),
-            arguments: serde_json::json!({"message": 42}),
-        };
-        let tool_def = registry.get("echo").unwrap().to_definition();
-
-        let error = invalid_arguments_error(registry.execute(&tool_call, &tool_def).await.unwrap());
-
-        assert_eq!(error["code"], "invalid_tool_arguments");
-        assert_eq!(error["tool"], "echo");
-        assert_eq!(error["issues"][0]["instance_path"], "/message");
-        assert!(
-            error["issues"][0]["message"]
-                .as_str()
-                .unwrap()
-                .contains("string")
-        );
-        assert!(
-            error["issues"][0]["schema_path"]
-                .as_str()
-                .unwrap()
-                .contains("type")
-        );
-    }
-
-    #[tokio::test]
-    async fn test_tool_registry_rejects_unknown_argument() {
-        let mut registry = ToolRegistry::new();
-        registry.register(EchoTool);
-        let tool_call = ToolCall {
-            id: "call_1".to_string(),
-            name: "echo".to_string(),
-            arguments: serde_json::json!({"message": "test", "unexpected": true}),
-        };
-        let tool_def = registry.get("echo").unwrap().to_definition();
-
-        let error = invalid_arguments_error(registry.execute(&tool_call, &tool_def).await.unwrap());
-
-        assert_eq!(error["code"], "invalid_tool_arguments");
-        assert_eq!(error["tool"], "echo");
-        assert!(
-            error["issues"][0]["message"]
-                .as_str()
-                .unwrap()
-                .contains("unexpected")
-        );
-        assert!(
-            error["issues"][0]["schema_path"]
-                .as_str()
-                .unwrap()
-                .contains("additionalProperties")
-        );
+    #[test]
+    fn result_variants_keep_images_connections_and_classification_distinct() {
+        use serde_json::json;
+        for (result, classification, expected) in [
+            (
+                ToolExecutionResult::success_with_images(
+                    json!({"page":2}),
+                    vec![ToolResultImage {
+                        base64: "aW1hZ2U=".into(),
+                        media_type: "image/jpeg".into(),
+                    }],
+                ),
+                (true, false, false),
+                json!({"tool_call_id":"variant-id","result":{"page":2},"error":null,"images":[{"base64":"aW1hZ2U=","media_type":"image/jpeg"}]}),
+            ),
+            (
+                ToolExecutionResult::success_with_images(Value::Null, vec![]),
+                (true, false, false),
+                json!({"tool_call_id":"variant-id","result":null,"error":null}),
+            ),
+            (
+                ToolExecutionResult::connection_required("daytona"),
+                (false, false, true),
+                json!({"tool_call_id":"variant-id","result":{"connection_required":"daytona"},"error":null,"connection_required":"daytona"}),
+            ),
+            (
+                ToolExecutionResult::tool_error("visible"),
+                (false, true, false),
+                json!({"tool_call_id":"variant-id","result":{"error":"visible"},"error":"visible"}),
+            ),
+            (
+                ToolExecutionResult::internal_error(std::io::Error::other("PRIVATE-SOURCE")),
+                (false, true, false),
+                json!({"tool_call_id":"variant-id","result":{"error":"An internal error occurred while executing the tool"},"error":"An internal error occurred while executing the tool"}),
+            ),
+        ] {
+            assert_eq!(
+                (
+                    result.is_success(),
+                    result.is_error(),
+                    result.is_connection_required()
+                ),
+                classification
+            );
+            let result = result.into_tool_result("variant-id", "tool");
+            assert!(result.raw_output.is_none());
+            assert_eq!(serde_json::to_value(result).unwrap(), expected);
+        }
     }
 
     #[tokio::test]
@@ -1301,48 +1376,12 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_to_definition() {
-        let tool = EchoTool;
-        let def = tool.to_definition();
-
-        let ToolDefinition::Builtin(builtin) = def else {
-            panic!("expected Builtin variant");
-        };
-        assert_eq!(builtin.name, "echo");
-        assert_eq!(builtin.policy, ToolPolicy::Auto);
-    }
-
-    #[test]
     fn test_with_defaults_has_expected_tools() {
         let registry = ToolRegistry::with_defaults();
-
-        // Core execution-contract tools only.
-        // spawn_background is contributed by the background_execution
-        // capability (auto-activated) — it must NOT be in defaults.
-        assert!(
-            !registry.has("spawn_background"),
-            "spawn_background must NOT be in defaults — it comes from the \
-             background_execution capability"
-        );
-        assert!(
-            registry.has("report_progress"),
-            "should have report_progress"
-        );
-
-        // Test fixture tools moved to everruns-test-support (EVE-875) and
-        // must NOT be in defaults.
-        assert!(!registry.has("add"), "add must NOT be in defaults");
-        assert!(
-            !registry.has("get_weather"),
-            "get_weather must NOT be in defaults"
-        );
-
-        // Environment-backed tools are composed by the host, not core defaults.
-        for tool in ["read_file", "write_file", "bash", "web_fetch"] {
-            assert!(!registry.has(tool), "`{tool}` must not be a core default");
-        }
-
-        assert_eq!(registry.len(), 1, "should have one core default tool");
+        // Exact inventory excludes test doubles and capability-owned tools:
+        // exposing those here would bypass host composition or capability policy.
+        assert_eq!(registry.tool_names(), ["report_progress"]);
+        assert!(registry.tool_definitions()[0].display_name().is_some());
     }
 
     #[tokio::test]
@@ -1369,39 +1408,85 @@ mod tests {
     /// Regression: with_defaults() must NOT include capability-provided tools like
     /// 'bash'. These tools come from capabilities and must be registered separately.
     /// If bash were in defaults, the harness capability fallback would be masked.
+
     #[test]
-    fn test_with_defaults_excludes_capability_only_tools() {
-        let registry = ToolRegistry::with_defaults();
-
-        // bash comes from bashkit_shell capability, not defaults
-        assert!(
-            !registry.has("bash"),
-            "bash must not be in defaults — it comes from bashkit_shell capability"
-        );
-        // kv_store/secret_store come from session_storage capability
-        assert!(
-            !registry.has("kv_store"),
-            "kv_store must not be in defaults — it comes from session_storage capability"
-        );
-        // spawn_background comes from background_execution capability and is
-        // auto-activated by `collect_capabilities_with_configs` when a
-        // background-capable tool is present (see EVE-501).
-        assert!(
-            !registry.has("spawn_background"),
-            "spawn_background must not be in defaults — it comes from the \
-             background_execution capability (auto-activated by tool hints)"
-        );
+    fn raw_output_preserves_object_keys_that_resemble_carriers() {
+        for value in [
+            serde_json::json!({"_raw_output_scalar": "user-value"}),
+            serde_json::json!({"_raw_output": "user-value", "kept": true}),
+        ] {
+            let result = ToolExecutionResult::success_with_raw_output(
+                value.clone(),
+                "actual raw output".into(),
+            )
+            .into_tool_result("call", "tool");
+            assert_eq!(result.result, Some(value));
+            assert_eq!(result.raw_output.as_deref(), Some("actual raw output"));
+        }
     }
-
-    // =========================================================================
-    // Cooperative cancellation tests
-    // =========================================================================
-
-    // Minimal in-memory SessionTaskRegistry for cancel tests.
-    // (Mirrors the double in capabilities/session_tasks.rs — kept local because
-    //  that module is private.)
-
-    // -------------------------------------------------------------------------
-    // reattach_background_run early-guard tests
-    // -------------------------------------------------------------------------
+    #[tokio::test]
+    async fn monitor_probe_registry_rejects_unregistered_tools() {
+        let registry = ToolRegistry::with_monitor_probe_defaults();
+        let call = ToolCall {
+            id: "missing-id".into(),
+            name: "echo".into(),
+            arguments: serde_json::json!({"message":"x"}),
+        };
+        let definition = EchoTool.to_definition();
+        let context = ToolContext::new(crate::typed_id::SessionId::new());
+        for with_context in [false, true] {
+            let error = if with_context {
+                registry
+                    .execute_with_context(&call, &definition, &context)
+                    .await
+                    .unwrap_err()
+            } else {
+                registry.execute(&call, &definition).await.unwrap_err()
+            };
+            assert!(
+                matches!(error, AgentLoopError::ToolExecution(message) if message.contains("echo"))
+            );
+        }
+    }
+    #[tokio::test]
+    async fn invalid_registered_schema_fails_configuration_before_dispatch() {
+        struct InvalidSchema;
+        #[async_trait]
+        impl Tool for InvalidSchema {
+            fn name(&self) -> &str {
+                "invalid_schema"
+            }
+            fn description(&self) -> &str {
+                "Invalid schema fixture"
+            }
+            fn parameters_schema(&self) -> Value {
+                serde_json::json!({"type":42})
+            }
+            async fn execute(&self, _: Value) -> ToolExecutionResult {
+                panic!("invalid schema must never dispatch")
+            }
+        }
+        let registry = ToolRegistry::builder().tool(InvalidSchema).build();
+        let call = ToolCall {
+            id: "schema-id".into(),
+            name: "invalid_schema".into(),
+            arguments: serde_json::json!({}),
+        };
+        let context = ToolContext::new(crate::typed_id::SessionId::new());
+        // The caller-supplied definition cannot replace the registered schema.
+        let supplied = EchoTool.to_definition();
+        for with_context in [false, true] {
+            let error = if with_context {
+                registry
+                    .execute_with_context(&call, &supplied, &context)
+                    .await
+                    .unwrap_err()
+            } else {
+                registry.execute(&call, &supplied).await.unwrap_err()
+            };
+            assert!(
+                matches!(error,AgentLoopError::Configuration(message) if message.contains("invalid_schema") && message.contains("invalid parameters schema"))
+            );
+        }
+    }
 }
