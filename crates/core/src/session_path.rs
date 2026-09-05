@@ -211,6 +211,15 @@ mod tests {
             ("*.txt", "/nested/notes.txt", true),
             ("/workspace/src/**/*.rs", "/src/lib.rs", true),
             ("docs", "/my-docs/readme.md", true),
+            ("docs", "/src/lib.rs", false),
+            ("", "/anything/file", true),
+            ("/workspace", "/anything/file", true),
+            ("file?.rs", "/src/file1.rs", true),
+            ("file?.rs", "/src/file12.rs", false),
+            ("[ab].rs", "/src/a.rs", true),
+            ("[ab].rs", "/src/c.rs", false),
+            ("*.{rs,ts}", "/src/main.ts", true),
+            ("*.{rs,ts}", "/src/main.py", false),
         ];
         for (pattern, path, expected) in cases {
             let matcher = GrepPathPattern::new(pattern).unwrap();
@@ -220,5 +229,25 @@ mod tests {
                 "pattern={pattern} path={path}"
             );
         }
+        for (pattern, expected_glob) in [
+            ("", false),
+            ("docs", false),
+            ("*.rs", true),
+            ("file?.rs", true),
+            ("[ab].rs", true),
+            ("*.{rs,ts}", true),
+        ] {
+            assert_eq!(
+                GrepPathPattern::new(pattern).unwrap().is_glob(),
+                expected_glob,
+                "{pattern}"
+            );
+        }
+        assert!(
+            GrepPathPattern::new("[unterminated")
+                .unwrap_err()
+                .to_string()
+                .contains("invalid grep path_pattern")
+        );
     }
 }
