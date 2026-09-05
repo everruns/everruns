@@ -194,12 +194,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn display_and_as_str() {
-        assert_eq!(CapabilityId::new("noop").to_string(), "noop");
-        assert_eq!(CapabilityId::new("current_time").as_str(), "current_time");
-    }
-
-    #[test]
     fn from_str_validates() {
         assert_eq!(
             "noop".parse::<CapabilityId>().unwrap(),
@@ -220,6 +214,8 @@ mod tests {
             "declarative:research_pack",
             "_private",
             "a",
+            "__everruns", // Similar prefix is not the reserved namespace.
+            &"a".repeat(128),
         ] {
             validate_capability_id(id).unwrap_or_else(|e| panic!("{id}: {e}"));
         }
@@ -232,6 +228,8 @@ mod tests {
             ("2fast", "start with a letter"),
             ("has space", "may only contain"),
             ("vendor/custom", "may only contain"),
+            ("éclair", "start with a letter"),
+            ("vendor.éclair", "may only contain"),
             ("__everruns_private", "reserved"),
             (&"x".repeat(129), "at most 128 bytes"),
         ] {
@@ -247,20 +245,14 @@ mod tests {
 
     #[test]
     fn serde_is_transparent() {
-        let id = CapabilityId::new("current_time");
-        assert_eq!(serde_json::to_string(&id).unwrap(), "\"current_time\"");
-        let parsed: CapabilityId = serde_json::from_str("\"current_time\"").unwrap();
-        assert_eq!(parsed, id);
-    }
-
-    #[test]
-    fn hash_dedupes() {
-        use std::collections::HashSet;
-        let mut set = HashSet::new();
-        set.insert(CapabilityId::new("noop"));
-        set.insert(CapabilityId::new("current_time"));
-        set.insert(CapabilityId::new("noop"));
-        assert_eq!(set.len(), 2);
+        for text in ["current_time", "my_custom_capability"] {
+            let id = CapabilityId::new(text);
+            assert_eq!(id.to_string(), text);
+            assert_eq!(id.as_str(), text);
+            assert_eq!(serde_json::to_value(&id).unwrap(), serde_json::json!(text));
+            let parsed: CapabilityId = serde_json::from_value(serde_json::json!(text)).unwrap();
+            assert_eq!(parsed, id);
+        }
     }
 
     #[test]
@@ -271,5 +263,7 @@ mod tests {
         assert_eq!(parse_plugin_capability_id(&id), Some("plg_01"));
         assert!(!is_plugin_capability("noop"));
         assert_eq!(parse_plugin_capability_id("noop"), None);
+        assert!(!is_plugin_capability("pluginish:plg_01"));
+        assert_eq!(parse_plugin_capability_id("pluginish:plg_01"), None);
     }
 }

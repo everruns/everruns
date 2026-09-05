@@ -765,8 +765,20 @@ mod tests {
 
         assert_eq!(spec.name(), "lookup_weather");
         assert_eq!(spec.input_schema()["type"], "object");
+        assert_eq!(spec.input_schema()["required"], json!(["city"]));
+        assert_eq!(spec.input_schema()["properties"]["city"]["type"], "string");
         assert_eq!(spec.output_schema()["type"], "object");
+        assert_eq!(spec.output_schema()["properties"]["city"]["type"], "string");
+        assert_eq!(
+            spec.output_schema()["properties"]["temperatures"]["type"],
+            "array"
+        );
+        assert_eq!(
+            spec.output_schema()["properties"]["temperatures"]["items"]["type"],
+            "integer"
+        );
         assert_eq!(spec.hints().readonly, Some(true));
+        assert_eq!(spec.hints().idempotent, Some(true));
         assert_eq!(
             capability.metadata_value(),
             Some(&json!({ "owner": "example" }))
@@ -792,46 +804,73 @@ mod tests {
             .validate()
             .unwrap_err();
         assert!(err.reason().contains("name must not be blank"));
+        for (definition, expected) in [
+            (
+                Definition::new("weather", "Weather", " ").tool(Lookup),
+                "description must not be blank",
+            ),
+            (
+                lookup_capability().instructions(" "),
+                "instructions must not be blank",
+            ),
+        ] {
+            assert!(
+                definition
+                    .validate()
+                    .unwrap_err()
+                    .reason()
+                    .contains(expected)
+            );
+        }
+        let mut malformed = lookup_capability();
+        malformed.tools[0].spec.description = " ".into();
+        assert!(
+            malformed
+                .validate()
+                .unwrap_err()
+                .reason()
+                .contains("tool \"lookup_weather\" description must not be blank")
+        );
     }
 
-    // A minimal single-threaded executor so contract tests need no runtime.
-    fn block_on<F: Future>(mut future: F) -> F::Output {
-        use std::task::{Context as TaskContext, Poll, RawWaker, RawWakerVTable, Waker};
-        fn raw_waker() -> RawWaker {
-            fn no_op(_: *const ()) {}
-            fn clone(_: *const ()) -> RawWaker {
-                raw_waker()
-            }
-            RawWaker::new(
-                std::ptr::null(),
-                &RawWakerVTable::new(clone, no_op, no_op, no_op),
-            )
+    // These local futures must finish in one poll; unexpected I/O fails promptly.
+    fn ready<F: Future>(future: F) -> F::Output {
+        let mut future = std::pin::pin!(future);
+        let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+        match future.as_mut().poll(&mut context) {
+            std::task::Poll::Ready(value) => value,
+            std::task::Poll::Pending => panic!("test future unexpectedly pending"),
         }
-        let waker = unsafe { Waker::from_raw(raw_waker()) };
-        let mut context = TaskContext::from_waker(&waker);
-        // Safety: the future is shadowed and never moved after pinning.
-        let mut future = unsafe { Pin::new_unchecked(&mut future) };
-        loop {
-            match future.as_mut().poll(&mut context) {
-                Poll::Ready(output) => return output,
-                Poll::Pending => std::thread::yield_now(),
-            }
+    }
+
+    #[derive(Default)]
+    struct RecordingProgress(std::sync::Mutex<Vec<(String, String)>>);
+    #[async_trait]
+    impl ProgressSink for RecordingProgress {
+        async fn emit(&self, tool: &str, message: &str) {
+            self.0.lock().unwrap().push((tool.into(), message.into()));
         }
     }
 
     #[test]
     fn invoke_serializes_typed_output() {
         let tool = lookup_capability().tools()[0].clone();
-        let context = Context::new("lookup_weather", "session", "workspace");
-        let value = block_on(tool.invoke(json!({ "city": "Kyiv" }), context)).unwrap();
+        let progress = Arc::new(RecordingProgress::default());
+        let context = Context::new("lookup_weather", "session", "workspace")
+            .with_progress_sink(progress.clone());
+        let value = ready(tool.invoke(json!({ "city": "Kyiv" }), context)).unwrap();
         assert_eq!(value, json!({ "city": "Kyiv", "temperatures": [18, 21] }));
+        assert_eq!(
+            *progress.0.lock().unwrap(),
+            [("lookup_weather".into(), "forecast ready".into())]
+        );
     }
 
     #[test]
     fn invoke_rejects_invalid_arguments_as_user_error() {
         let tool = lookup_capability().tools()[0].clone();
         let context = Context::new("lookup_weather", "session", "workspace");
-        let error = block_on(tool.invoke(json!({ "city": 42 }), context)).unwrap_err();
+        let error = ready(tool.invoke(json!({ "city": 42 }), context)).unwrap_err();
         assert_eq!(error.code(), "invalid_arguments");
         assert_eq!(error.visibility(), ErrorVisibility::User);
     }
@@ -840,8 +879,9 @@ mod tests {
     fn context_defaults_are_inert() {
         let context = Context::new("t", "s", "w");
         assert!(!context.cancellation().is_cancelled());
-        block_on(context.progress("no-op"));
-        let debug = format!("{context:?}");
-        assert!(debug.contains("cancelled: false"));
+        ready(context.progress("no-op"));
+        let mut cancelled = std::pin::pin!(context.cancellation().cancelled());
+        let mut task = std::task::Context::from_waker(std::task::Waker::noop());
+        assert!(cancelled.as_mut().poll(&mut task).is_pending());
     }
 }

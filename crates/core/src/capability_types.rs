@@ -21,9 +21,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[cfg(test)]
-use everruns_capability::CapabilityId;
-
 /// Per-agent capability configuration — the persisted attachment row shape.
 ///
 /// This is the neutral [`CapabilityRef`](everruns_capability::CapabilityRef)
@@ -390,153 +387,78 @@ impl MountDirectoryBuilder {
 mod tests {
     use super::*;
 
-    // AgentCapabilityConfig tests
-
     #[test]
-    fn test_agent_capability_config_with_config() {
-        let config = AgentCapabilityConfig::with_config(
-            "web_fetch",
-            serde_json::json!({"timeout_ms": 30000}),
-        );
-        assert_eq!(config.capability_id(), "web_fetch");
-        assert_eq!(config.config_value()["timeout_ms"], 30000);
-    }
-
-    #[test]
-    fn test_agent_capability_config_from_capability_id() {
-        let config: AgentCapabilityConfig = CapabilityId::new("current_time").into();
-        assert_eq!(config.capability_id(), "current_time");
-        assert_eq!(config.config_value(), &serde_json::json!({}));
-    }
-
-    #[test]
-    fn test_agent_capability_config_from_str() {
-        let config: AgentCapabilityConfig = "test_math".into();
-        assert_eq!(config.capability_id(), "test_math");
-    }
-
-    #[test]
-    fn test_agent_capability_config_from_string() {
-        let config: AgentCapabilityConfig = String::from("web_fetch").into();
-        assert_eq!(config.capability_id(), "web_fetch");
-    }
-
-    #[test]
-    fn test_agent_capability_config_serialization_empty_config() {
-        let config = AgentCapabilityConfig::new("noop");
-        let json = serde_json::to_string(&config).unwrap();
-        assert!(json.contains("\"ref\":\"noop\""));
-
-        let parsed: AgentCapabilityConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.capability_id(), "noop");
-        assert_eq!(parsed.config_value(), &serde_json::json!({}));
-    }
-
-    #[test]
-    fn test_agent_capability_config_equality() {
-        let config1 = AgentCapabilityConfig::new("current_time");
-        let config2 = AgentCapabilityConfig::new("current_time");
-        let config3 =
-            AgentCapabilityConfig::with_config("current_time", serde_json::json!({"key": "value"}));
-
-        assert_eq!(config1, config2);
-        assert_ne!(config1, config3); // Different config makes them unequal
-    }
-
-    // MountAccess tests
-
-    #[test]
-    fn test_mount_access_display() {
-        assert_eq!(MountAccess::ReadOnly.to_string(), "readonly");
-        assert_eq!(MountAccess::ReadWrite.to_string(), "readwrite");
-    }
-
-    #[test]
-    fn test_mount_access_default() {
+    fn mount_access_preserves_readonly_default_and_wire_values() {
         assert_eq!(MountAccess::default(), MountAccess::ReadOnly);
-    }
-
-    // MountSource tests
-
-    #[test]
-    fn test_mount_source_text_file() {
-        let source = MountSource::text_file("Hello, World!");
-        assert!(!source.is_directory());
-        match source {
-            MountSource::InlineFile { content, encoding } => {
-                assert_eq!(content, "Hello, World!");
-                assert_eq!(encoding, "text");
-            }
-            _ => panic!("Expected InlineFile"),
+        for (access, text) in [
+            (MountAccess::ReadOnly, "readonly"),
+            (MountAccess::ReadWrite, "readwrite"),
+        ] {
+            assert_eq!(access.to_string(), text);
+            assert_eq!(
+                serde_json::to_value(access).unwrap(),
+                serde_json::json!(text)
+            );
+            assert_eq!(
+                serde_json::from_value::<MountAccess>(serde_json::json!(text)).unwrap(),
+                access
+            );
         }
     }
 
     #[test]
-    fn test_mount_source_binary_file() {
-        let source = MountSource::binary_file("SGVsbG8=");
-        match source {
-            MountSource::InlineFile { content, encoding } => {
-                assert_eq!(content, "SGVsbG8=");
-                assert_eq!(encoding, "base64");
-            }
-            _ => panic!("Expected InlineFile"),
+    fn file_sources_preserve_content_and_encoding() {
+        for (source, expected_content, expected_encoding) in [
+            (
+                MountSource::text_file("Hello, World!"),
+                "Hello, World!",
+                "text",
+            ),
+            (MountSource::binary_file("SGVsbG8="), "SGVsbG8=", "base64"),
+        ] {
+            assert!(!source.is_directory());
+            assert_eq!(
+                source,
+                MountSource::InlineFile {
+                    content: expected_content.into(),
+                    encoding: expected_encoding.into(),
+                }
+            );
         }
     }
 
     #[test]
-    fn test_mount_source_directory() {
-        let mut entries = HashMap::new();
-        entries.insert("test.txt".to_string(), MountEntry::text_file("content"));
-        let source = MountSource::directory(entries);
-        assert!(source.is_directory());
-    }
-
-    // MountEntry tests
-
-    #[test]
-    fn test_mount_entry_text_file() {
-        let entry = MountEntry::text_file("content");
-        match entry.source {
-            MountSource::InlineFile { content, encoding } => {
-                assert_eq!(content, "content");
-                assert_eq!(encoding, "text");
-            }
-            _ => panic!("Expected InlineFile"),
+    fn mount_point_constructors_preserve_source_and_access() {
+        let source = MountSource::text_file("mounted content");
+        for (mount, access) in [
+            (
+                MountPoint::new(
+                    "/samples",
+                    MountAccess::ReadWrite,
+                    source.clone(),
+                    "sample_data",
+                ),
+                MountAccess::ReadWrite,
+            ),
+            (
+                MountPoint::readonly("/samples", source.clone(), "sample_data"),
+                MountAccess::ReadOnly,
+            ),
+            (
+                MountPoint::readwrite("/samples", source.clone(), "sample_data"),
+                MountAccess::ReadWrite,
+            ),
+        ] {
+            assert_eq!(mount.path, "/samples");
+            assert_eq!(mount.capability_id, "sample_data");
+            assert_eq!(mount.source, source);
+            assert_eq!(mount.access, access);
+            assert_eq!(mount.is_readonly(), access == MountAccess::ReadOnly);
         }
     }
 
-    // MountPoint tests
-
     #[test]
-    fn test_mount_point_new() {
-        let source = MountSource::text_file("content");
-        let mount = MountPoint::new("/test", MountAccess::ReadOnly, source, "test_cap");
-        assert_eq!(mount.path, "/test");
-        assert_eq!(mount.access, MountAccess::ReadOnly);
-        assert_eq!(mount.capability_id, "test_cap");
-        assert!(mount.is_readonly());
-    }
-
-    #[test]
-    fn test_mount_point_readonly() {
-        let source = MountSource::text_file("content");
-        let mount = MountPoint::readonly("/test", source, "test_cap");
-        assert!(mount.is_readonly());
-        assert_eq!(mount.access, MountAccess::ReadOnly);
-    }
-
-    #[test]
-    fn test_mount_point_readwrite() {
-        let source = MountSource::text_file("content");
-        let mount = MountPoint::readwrite("/test", source, "test_cap");
-        assert!(!mount.is_readonly());
-        assert_eq!(mount.access, MountAccess::ReadWrite);
-    }
-
-    // MountDirectoryBuilder tests
-
-    #[test]
-    fn test_mount_directory_builder() {
+    fn mount_directory_builder_preserves_nested_content() {
         let source = MountDirectoryBuilder::new()
             .file("readme.txt", "Hello")
             .file("config.json", "{}")
@@ -545,25 +467,63 @@ mod tests {
                 MountDirectoryBuilder::new().file("inner.txt", "Nested content"),
             )
             .build();
-
-        match source {
-            MountSource::InlineDirectory { entries } => {
-                assert_eq!(entries.len(), 3);
-                assert!(entries.contains_key("readme.txt"));
-                assert!(entries.contains_key("config.json"));
-                assert!(entries.contains_key("nested"));
-
-                // Check nested directory
-                if let MountSource::InlineDirectory { entries: nested } =
-                    &entries.get("nested").unwrap().source
-                {
-                    assert_eq!(nested.len(), 1);
-                    assert!(nested.contains_key("inner.txt"));
-                } else {
-                    panic!("Expected nested InlineDirectory");
-                }
+        let text = |content: &str| MountEntry {
+            source: MountSource::InlineFile {
+                content: content.into(),
+                encoding: "text".into(),
+            },
+        };
+        let entries = HashMap::from([
+            ("readme.txt".into(), text("Hello")),
+            ("config.json".into(), text("{}")),
+            (
+                "nested".into(),
+                MountEntry {
+                    source: MountSource::InlineDirectory {
+                        entries: HashMap::from([("inner.txt".into(), text("Nested content"))]),
+                    },
+                },
+            ),
+        ]);
+        assert!(source.is_directory());
+        assert_eq!(
+            source,
+            MountSource::InlineDirectory {
+                entries: entries.clone()
             }
-            _ => panic!("Expected InlineDirectory"),
-        }
+        );
+        assert_eq!(MountSource::directory(entries), source);
+    }
+
+    #[test]
+    fn virtual_tree_lists_direct_children_and_preserves_file_content() {
+        let mut tree = VirtualFileTree::new();
+        assert!(tree.is_empty());
+        tree.insert_text("/docs/nested/readme.md", "First");
+        tree.insert_text("/docs/nested/readme.md", "Updated");
+        tree.insert_text("/docs/index.md", "Index");
+        tree.insert_directory("/empty");
+        assert_eq!(
+            tree.get("/docs/nested/readme.md"),
+            Some(&VirtualFile {
+                content: b"Updated".to_vec(),
+                is_directory: false
+            })
+        );
+        assert!(tree.get("/docs").unwrap().is_directory);
+        assert!(tree.get("/missing").is_none());
+        let mut direct: Vec<_> = tree
+            .list_directory("/docs")
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect();
+        direct.sort();
+        assert_eq!(direct, ["/docs/index.md", "/docs/nested"]);
+        let mut files: Vec<_> = tree.all_files().map(|(path, _)| path).collect();
+        files.sort();
+        assert_eq!(files, ["/docs/index.md", "/docs/nested/readme.md"]);
+        assert_eq!(tree.len(), 5);
+        assert!(!tree.is_empty());
+        assert!(MountSource::virtual_tree(Arc::new(tree)).is_directory());
     }
 }

@@ -291,63 +291,55 @@ mod tests {
     use super::*;
 
     #[test]
-    fn execution_state_round_trips_through_its_wire_string() {
-        for state in [
-            SessionExecutionState::Started,
-            SessionExecutionState::Active,
-            SessionExecutionState::Idle,
-            SessionExecutionState::WaitingForToolResults,
-            SessionExecutionState::Paused,
+    fn execution_state_preserves_wire_values_and_legacy_inputs() {
+        for (state, wire) in [
+            (SessionExecutionState::Started, "started"),
+            (SessionExecutionState::Active, "active"),
+            (SessionExecutionState::Idle, "idle"),
+            (
+                SessionExecutionState::WaitingForToolResults,
+                "waiting_for_tool_results",
+            ),
+            (SessionExecutionState::Paused, "paused"),
         ] {
-            assert_eq!(SessionExecutionState::from(state.as_str()), state);
+            assert_eq!(state.as_str(), wire);
+            assert_eq!(state.to_string(), wire);
+            assert_eq!(SessionExecutionState::from(wire), state);
+            assert_eq!(
+                serde_json::to_value(state).unwrap(),
+                serde_json::json!(wire)
+            );
+            assert_eq!(
+                serde_json::from_value::<SessionExecutionState>(serde_json::json!(wire)).unwrap(),
+                state
+            );
         }
-        // Legacy values degrade the same way the stored status column does.
-        assert_eq!(
-            SessionExecutionState::from("running"),
-            SessionExecutionState::Active
-        );
-        assert_eq!(
-            SessionExecutionState::from("completed"),
-            SessionExecutionState::Idle
-        );
-        assert_eq!(
-            SessionExecutionState::from("garbage"),
-            SessionExecutionState::Started
-        );
+        for (legacy, expected) in [
+            ("running", SessionExecutionState::Active),
+            ("pending", SessionExecutionState::Idle),
+            ("completed", SessionExecutionState::Idle),
+            ("failed", SessionExecutionState::Idle),
+            ("garbage", SessionExecutionState::Started),
+        ] {
+            assert_eq!(SessionExecutionState::from(legacy), expected, "{legacy}");
+        }
     }
 
     #[test]
-    fn execution_session_carries_no_persistence_metadata() {
-        let session = ExecutionSession::with_own_workspace(SessionId::new(), HarnessId::new());
-        let json = serde_json::to_value(&session).unwrap();
-        for persistence_field in [
-            "source",
-            "activity",
-            "owner_principal_id",
-            "resolved_owner_user_id",
-            "owner",
-            "effective_owner",
-            "agent_version_id",
-            "agent_identity_id",
-            "preview",
-            "output_preview",
-            "created_at",
-            "updated_at",
-            "started_at",
-            "finished_at",
-            "is_pinned",
-            "archived_at",
-            "active_schedule_count",
-            "event_count",
-            "task_count",
-            "file_count",
-            "features",
-            "forked_from_sequence",
-        ] {
-            assert!(
-                json.get(persistence_field).is_none(),
-                "portable execution session must not expose {persistence_field}"
-            );
-        }
+    fn execution_session_preserves_minimal_portable_shape() {
+        let session = ExecutionSession::with_own_workspace(
+            "session_01933b5a000070008000000000000001".parse().unwrap(),
+            "harness_01933b5a000070008000000000000002".parse().unwrap(),
+        );
+        assert_eq!(
+            serde_json::to_value(&session).unwrap(),
+            serde_json::json!({
+                "id": "session_01933b5a000070008000000000000001",
+                "organization_id": "org_00000000000000000000000000000001",
+                "workspace_id": "wsp_01933b5a000070008000000000000001",
+                "harness_id": "harness_01933b5a000070008000000000000002",
+                "status": "started",
+            })
+        );
     }
 }

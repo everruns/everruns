@@ -97,40 +97,48 @@ mod tests {
     use super::*;
 
     #[test]
-    fn definition_serde_round_trips() {
-        let definition = AgentDefinition::new(
+    fn definition_preserves_portable_wire_contract() {
+        let mut definition = AgentDefinition::new(
             "agent_01933b5a000070008000000000000001".parse().unwrap(),
             "test",
             "You are helpful.",
         );
-        let json = serde_json::to_value(&definition).unwrap();
-        assert_eq!(json["id"], "agent_01933b5a000070008000000000000001");
-        let round_tripped: AgentDefinition = serde_json::from_value(json.clone()).unwrap();
-        assert_eq!(serde_json::to_value(&round_tripped).unwrap(), json);
-    }
-
-    #[test]
-    fn definition_carries_no_persistence_metadata() {
-        let definition = AgentDefinition::new(
-            "agent_01933b5a000070008000000000000001".parse().unwrap(),
-            "test",
-            "prompt",
+        let mut expected = serde_json::json!({
+            "id": "agent_01933b5a000070008000000000000001", "name": "test",
+            "system_prompt": "You are helpful.", "capabilities": []
+        });
+        // Exact shape also excludes product persistence metadata.
+        assert_eq!(serde_json::to_value(&definition).unwrap(), expected);
+        definition.capabilities = vec![AgentCapabilityConfig::with_config(
+            "web_fetch",
+            serde_json::json!({"timeout_ms": 30000}),
+        )];
+        definition.max_iterations = Some(7);
+        definition.parallel_tool_calls = Some(false);
+        definition.mcp_servers.insert(
+            "docs".into(),
+            crate::mcp_server::ScopedMcpServer {
+                url: "https://docs.example.test/mcp".into(),
+                ..Default::default()
+            },
         );
-        let json = serde_json::to_value(&definition).unwrap();
-        for persistence_field in [
-            "status",
-            "created_at",
-            "updated_at",
-            "archived_at",
-            "deleted_at",
-            "default_version_id",
-            "forked_from_agent_id",
-            "usage",
-        ] {
-            assert!(
-                json.get(persistence_field).is_none(),
-                "portable definition must not expose {persistence_field}"
-            );
+        expected["capabilities"] =
+            serde_json::json!([{"ref": "web_fetch", "config": {"timeout_ms": 30000}}]);
+        expected["max_iterations"] = serde_json::json!(7);
+        expected["parallel_tool_calls"] = serde_json::json!(false);
+        expected["mcpServers"] =
+            serde_json::json!({"docs": {"type": "http", "url": "https://docs.example.test/mcp"}});
+        assert_eq!(serde_json::to_value(&definition).unwrap(), expected);
+        let mut legacy = expected.clone();
+        let servers = legacy
+            .as_object_mut()
+            .unwrap()
+            .remove("mcpServers")
+            .unwrap();
+        legacy["mcp_servers"] = servers;
+        for input in [expected.clone(), legacy] {
+            let parsed: AgentDefinition = serde_json::from_value(input).unwrap();
+            assert_eq!(serde_json::to_value(parsed).unwrap(), expected);
         }
     }
 }

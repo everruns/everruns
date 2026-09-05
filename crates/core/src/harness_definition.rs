@@ -84,45 +84,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn definition_serde_round_trips() {
-        let definition = HarnessDefinition::new("generic", "You are helpful.");
-        let json = serde_json::to_value(&definition).unwrap();
-        assert_eq!(json["name"], "generic");
-        let round_tripped: HarnessDefinition = serde_json::from_value(json.clone()).unwrap();
-        assert_eq!(serde_json::to_value(&round_tripped).unwrap(), json);
+    fn definition_preserves_portable_wire_contract() {
+        let mut definition = HarnessDefinition::new("generic", "You are helpful.");
+        let mut expected = serde_json::json!({"name": "generic", "system_prompt": "You are helpful.", "capabilities": []});
+        // Exact shape also excludes product persistence metadata.
+        assert_eq!(serde_json::to_value(&definition).unwrap(), expected);
+        definition.capabilities = vec![AgentCapabilityConfig::with_config(
+            "web_fetch",
+            serde_json::json!({"timeout_ms": 30000}),
+        )];
+        definition
+            .embedder_metadata
+            .insert("deployment".into(), "local".into());
+        definition.parallel_tool_calls = Some(false);
+        definition.mcp_servers.insert(
+            "docs".into(),
+            crate::mcp_server::ScopedMcpServer {
+                url: "https://docs.example.test/mcp".into(),
+                ..Default::default()
+            },
+        );
+        expected["capabilities"] =
+            serde_json::json!([{"ref": "web_fetch", "config": {"timeout_ms": 30000}}]);
+        expected["embedder_metadata"] = serde_json::json!({"deployment": "local"});
+        expected["parallel_tool_calls"] = serde_json::json!(false);
+        expected["mcpServers"] =
+            serde_json::json!({"docs": {"type": "http", "url": "https://docs.example.test/mcp"}});
+        assert_eq!(serde_json::to_value(&definition).unwrap(), expected);
+        let parsed: HarnessDefinition = serde_json::from_value(expected.clone()).unwrap();
+        assert_eq!(serde_json::to_value(parsed).unwrap(), expected);
     }
 
     #[test]
     fn new_normalizes_empty_prompt_to_none() {
-        assert_eq!(HarnessDefinition::new("h", "  ").system_prompt, None);
-        assert_eq!(
-            HarnessDefinition::new("h", "prompt")
-                .system_prompt
-                .as_deref(),
-            Some("prompt")
-        );
-    }
-
-    #[test]
-    fn definition_carries_no_persistence_metadata() {
-        let definition = HarnessDefinition::new("generic", "prompt");
-        let json = serde_json::to_value(&definition).unwrap();
-        for persistence_field in [
-            "id",
-            "parent_harness_id",
-            "is_built_in",
-            "status",
-            "created_at",
-            "updated_at",
-            "archived_at",
-            "deleted_at",
-            "display_name",
-            "description",
-            "tags",
-        ] {
-            assert!(
-                json.get(persistence_field).is_none(),
-                "portable definition must not expose {persistence_field}"
+        for prompt in ["", "  ", "\n\t"] {
+            assert_eq!(HarnessDefinition::new("h", prompt).system_prompt, None);
+        }
+        for prompt in ["prompt", "  prompt  "] {
+            assert_eq!(
+                HarnessDefinition::new("h", prompt).system_prompt.as_deref(),
+                Some(prompt)
             );
         }
     }

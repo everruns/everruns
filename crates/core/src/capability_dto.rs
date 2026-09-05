@@ -285,81 +285,13 @@ pub struct AgentCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
-    #[test]
-    fn test_capability_info_serialization() {
-        let cap = CapabilityInfo {
-            id: CapabilityId::new("research"),
-            name: "Research".to_string(),
-            description: "Deep research capability".to_string(),
-            status: CapabilityStatus::Available,
-            icon: Some("search".to_string()),
-            category: Some("AI".to_string()),
-            system_prompt: Some("You have research capabilities.".to_string()),
-            tool_definitions: vec![],
-            is_mcp: false,
-            is_skill: false,
-            is_guardrail: false,
-            dependencies: vec![],
-            features: vec![],
-            config_schema: None,
-            config_ui_schema: None,
-            risk_level: RiskLevel::Low,
-            agent_count: 0,
-            harness_count: 0,
-            docs_slug: None,
-            localizations: Default::default(),
-        };
-
-        let json = serde_json::to_string(&cap).unwrap();
-        assert!(json.contains("\"id\":\"research\""));
-        assert!(json.contains("\"status\":\"available\""));
-        assert!(json.contains("\"system_prompt\":\"You have research capabilities.\""));
-        // is_mcp: false should be skipped in serialization
-        assert!(!json.contains("\"is_mcp\""));
-        // is_skill: false should be skipped in serialization
-        assert!(!json.contains("\"is_skill\""));
-        // Empty dependencies should be skipped in serialization
-        assert!(!json.contains("\"dependencies\""));
-        // Empty features should be skipped in serialization
-        assert!(!json.contains("\"features\""));
-    }
-
-    #[test]
-    fn test_mcp_capability_info_serialization() {
-        let cap = CapabilityInfo {
-            id: CapabilityId::new("mcp:550e8400-e29b-41d4-a716-446655440000"),
-            name: "Microsoft Learn".to_string(),
-            description: "MCP Server for Microsoft documentation".to_string(),
-            status: CapabilityStatus::Available,
-            icon: Some("plug".to_string()),
-            category: Some("MCP Servers".to_string()),
-            system_prompt: None,
-            tool_definitions: vec![],
-            is_mcp: true,
-            is_skill: false,
-            is_guardrail: false,
-            dependencies: vec![],
-            features: vec![],
-            config_schema: None,
-            config_ui_schema: None,
-            risk_level: RiskLevel::Low,
-            agent_count: 0,
-            harness_count: 0,
-            docs_slug: None,
-            localizations: Default::default(),
-        };
-
-        let json = serde_json::to_string(&cap).unwrap();
-        assert!(json.contains("\"is_mcp\":true"));
-    }
-
-    #[test]
-    fn test_capability_with_dependencies_serialization() {
-        let cap = CapabilityInfo {
-            id: CapabilityId::new("sample_data"),
-            name: "Sample Data".to_string(),
-            description: "Sample data for testing".to_string(),
+    fn capability_info() -> CapabilityInfo {
+        CapabilityInfo {
+            id: CapabilityId::new("web_fetch"),
+            name: "Web Fetch".into(),
+            description: "Fetch content from URLs".into(),
             status: CapabilityStatus::Available,
             icon: None,
             category: None,
@@ -368,7 +300,7 @@ mod tests {
             is_mcp: false,
             is_skill: false,
             is_guardrail: false,
-            dependencies: vec!["session_file_system".to_string()],
+            dependencies: vec![],
             features: vec![],
             config_schema: None,
             config_ui_schema: None,
@@ -377,10 +309,43 @@ mod tests {
             harness_count: 0,
             docs_slug: None,
             localizations: Default::default(),
-        };
+        }
+    }
 
-        let json = serde_json::to_string(&cap).unwrap();
-        assert!(json.contains("\"dependencies\":[\"session_file_system\"]"));
+    #[test]
+    fn capability_info_omits_optional_defaults() {
+        let expected = json!({"id": "web_fetch", "name": "Web Fetch", "description": "Fetch content from URLs", "status": "available"});
+        assert_eq!(serde_json::to_value(capability_info()).unwrap(), expected);
+        let parsed: CapabilityInfo = serde_json::from_value(expected).unwrap();
+        assert_eq!(parsed.risk_level, RiskLevel::Low);
+        assert!(!parsed.is_mcp && !parsed.is_skill && !parsed.is_guardrail);
+        assert!(parsed.dependencies.is_empty() && parsed.features.is_empty());
+    }
+
+    #[test]
+    fn capability_info_serializes_nondefault_metadata() {
+        let mut cap = capability_info();
+        cap.icon = Some("search".into());
+        cap.category = Some("AI".into());
+        cap.system_prompt = Some("Research carefully.".into());
+        cap.is_mcp = true;
+        cap.is_skill = true;
+        cap.is_guardrail = true;
+        cap.dependencies = vec!["session_file_system".into()];
+        cap.features = vec!["secrets".into(), "key_value".into()];
+        cap.agent_count = 3;
+        cap.harness_count = 2;
+        for (risk, wire) in [(RiskLevel::Medium, "medium"), (RiskLevel::High, "high")] {
+            cap.risk_level = risk;
+            let expected = json!({
+                "id": "web_fetch", "name": "Web Fetch", "description": "Fetch content from URLs", "status": "available",
+                "icon": "search", "category": "AI", "system_prompt": "Research carefully.",
+                "is_mcp": true, "is_skill": true, "is_guardrail": true,
+                "dependencies": ["session_file_system"], "features": ["secrets", "key_value"],
+                "risk_level": wire, "agent_count": 3, "harness_count": 2,
+            });
+            assert_eq!(serde_json::to_value(&cap).unwrap(), expected);
+        }
     }
 
     #[test]
@@ -389,215 +354,90 @@ mod tests {
             capability_id: CapabilityId::new("test_math"),
             position: 1,
         };
-
-        let json = serde_json::to_string(&agent_cap).unwrap();
-        assert!(json.contains("\"capability_id\":\"test_math\""));
-        assert!(json.contains("\"position\":1"));
-    }
-
-    #[test]
-    fn test_test_capabilities() {
-        // Verify test math and weather capabilities are available
-        assert_eq!(CapabilityId::new("test_math").to_string(), "test_math");
         assert_eq!(
-            CapabilityId::new("test_weather").to_string(),
-            "test_weather"
+            serde_json::to_value(&agent_cap).unwrap(),
+            json!({"capability_id": "test_math", "position": 1})
         );
     }
 
-    #[test]
-    fn test_custom_capability_id() {
-        // Custom capability IDs should work
-        let custom = CapabilityId::new("my_custom_capability");
-        assert_eq!(custom.to_string(), "my_custom_capability");
-
-        let json = serde_json::to_string(&custom).unwrap();
-        assert_eq!(json, "\"my_custom_capability\"");
+    struct ProjectionFixture {
+        features: Vec<&'static str>,
+        risk: RiskLevel,
+    }
+    impl crate::capabilities::Capability for ProjectionFixture {
+        fn id(&self) -> &str {
+            "projection_fixture"
+        }
+        fn name(&self) -> &str {
+            "Projection Fixture"
+        }
+        fn description(&self) -> &str {
+            "Independent capability metadata."
+        }
+        fn features(&self) -> Vec<&'static str> {
+            self.features.clone()
+        }
+        fn risk_level(&self) -> RiskLevel {
+            self.risk
+        }
     }
 
-    #[test]
-    fn test_capability_with_features_serialization() {
-        let cap = CapabilityInfo {
-            id: CapabilityId::new("session_storage"),
-            name: "Storage".to_string(),
-            description: "Storage capability".to_string(),
-            status: CapabilityStatus::Available,
-            icon: None,
-            category: None,
-            system_prompt: None,
-            tool_definitions: vec![],
-            is_mcp: false,
-            is_skill: false,
-            is_guardrail: false,
-            dependencies: vec![],
-            features: vec!["secrets".to_string(), "key_value".to_string()],
-            config_schema: None,
-            config_ui_schema: None,
-            risk_level: RiskLevel::Low,
-            agent_count: 0,
-            harness_count: 0,
-            docs_slug: None,
-            localizations: Default::default(),
-        };
-
-        let json = serde_json::to_string(&cap).unwrap();
-        assert!(json.contains("\"features\":[\"secrets\",\"key_value\"]"));
+    struct DefaultCapability;
+    impl crate::capabilities::Capability for DefaultCapability {
+        fn id(&self) -> &str {
+            "default_fixture"
+        }
+        fn name(&self) -> &str {
+            "Default Fixture"
+        }
+        fn description(&self) -> &str {
+            "Uses trait metadata defaults."
+        }
     }
 
     #[test]
     fn test_from_core_populates_features() {
-        /// Declares features the way the product capabilities do. The ones that
-        /// used to stand in here (`session_storage`) moved out of the kernel
-        /// (EVE-886); what this test covers is the projection.
-        struct FeatureCapability;
-
-        impl crate::capabilities::Capability for FeatureCapability {
-            fn id(&self) -> &str {
-                "feature_fixture"
-            }
-            fn name(&self) -> &str {
-                "Feature Fixture"
-            }
-            fn description(&self) -> &str {
-                "Fixture capability declaring features."
-            }
-            fn features(&self) -> Vec<&'static str> {
-                vec!["secrets", "key_value"]
-            }
-        }
-
-        let info = CapabilityInfo::from_core(&FeatureCapability);
-        assert!(info.features.contains(&"secrets".to_string()));
-        assert!(info.features.contains(&"key_value".to_string()));
-
-        struct FeaturelessCapability;
-        impl crate::capabilities::Capability for FeaturelessCapability {
-            fn id(&self) -> &str {
-                "featureless_fixture"
-            }
-            fn name(&self) -> &str {
-                "Featureless Fixture"
-            }
-            fn description(&self) -> &str {
-                "Fixture with no declared features."
-            }
-        }
-        let info = CapabilityInfo::from_core(&FeaturelessCapability);
-        assert!(info.features.is_empty());
-    }
-
-    #[test]
-    fn test_risk_level_serialization() {
-        // Low risk should be skipped in serialization
-        let cap = CapabilityInfo {
-            id: CapabilityId::new("safe"),
-            name: "Safe".to_string(),
-            description: "Low risk".to_string(),
-            status: CapabilityStatus::Available,
-            icon: None,
-            category: None,
-            system_prompt: None,
-            tool_definitions: vec![],
-            is_mcp: false,
-            is_skill: false,
-            is_guardrail: false,
-            dependencies: vec![],
-            features: vec![],
-            config_schema: None,
-            config_ui_schema: None,
-            risk_level: RiskLevel::Low,
-            agent_count: 0,
-            harness_count: 0,
-            docs_slug: None,
-            localizations: Default::default(),
-        };
-        let json = serde_json::to_string(&cap).unwrap();
         assert!(
-            !json.contains("\"risk_level\""),
-            "Low risk should be omitted"
+            CapabilityInfo::from_core(&DefaultCapability)
+                .features
+                .is_empty()
         );
-
-        // High risk should be present
-        let cap_high = CapabilityInfo {
-            risk_level: RiskLevel::High,
-            ..cap
-        };
-        let json = serde_json::to_string(&cap_high).unwrap();
-        assert!(json.contains("\"risk_level\":\"high\""));
+        for features in [vec!["secrets", "key_value"], vec![]] {
+            let info = CapabilityInfo::from_core(&ProjectionFixture {
+                features: features.clone(),
+                risk: RiskLevel::Low,
+            });
+            assert_eq!(info.features, features);
+        }
     }
 
     #[test]
     fn test_from_core_populates_risk_level() {
-        struct HighRiskCapability;
-        impl crate::capabilities::Capability for HighRiskCapability {
-            fn id(&self) -> &str {
-                "high_risk_fixture"
-            }
-            fn name(&self) -> &str {
-                "High Risk Fixture"
-            }
-            fn description(&self) -> &str {
-                "Fixture for risk projection."
-            }
-            fn risk_level(&self) -> RiskLevel {
-                RiskLevel::High
-            }
+        assert_eq!(
+            CapabilityInfo::from_core(&DefaultCapability).risk_level,
+            RiskLevel::Low
+        );
+        for risk in [RiskLevel::Low, RiskLevel::Medium, RiskLevel::High] {
+            let info = CapabilityInfo::from_core(&ProjectionFixture {
+                features: vec![],
+                risk,
+            });
+            assert_eq!(info.risk_level, risk);
         }
-        struct LowRiskCapability;
-        impl crate::capabilities::Capability for LowRiskCapability {
-            fn id(&self) -> &str {
-                "low_risk_fixture"
-            }
-            fn name(&self) -> &str {
-                "Low Risk Fixture"
-            }
-            fn description(&self) -> &str {
-                "Fixture for default risk projection."
-            }
-        }
-
-        let info = CapabilityInfo::from_core(&HighRiskCapability);
-        assert_eq!(info.risk_level, RiskLevel::High);
-
-        let info = CapabilityInfo::from_core(&LowRiskCapability);
-        assert_eq!(info.risk_level, RiskLevel::Low);
     }
 
     #[test]
     fn test_matches_search() {
-        let cap = CapabilityInfo {
-            id: CapabilityId::new("web_fetch"),
-            name: "Web Fetch".to_string(),
-            description: "Fetch content from URLs".to_string(),
-            status: CapabilityStatus::Available,
-            icon: None,
-            category: Some("Network".to_string()),
-            system_prompt: None,
-            tool_definitions: vec![],
-            is_mcp: false,
-            is_skill: false,
-            is_guardrail: false,
-            dependencies: vec![],
-            features: vec![],
-            config_schema: None,
-            config_ui_schema: None,
-            risk_level: RiskLevel::Low,
-            agent_count: 0,
-            harness_count: 0,
-            docs_slug: None,
-            localizations: Default::default(),
-        };
-
-        // Matches by name (case-insensitive)
-        assert!(cap.matches_search("web"));
-        assert!(cap.matches_search("WEB FETCH"));
-        // Matches by description
-        assert!(cap.matches_search("urls"));
-        // Matches by ID
-        assert!(cap.matches_search("web_fetch"));
-        // Matches by category
-        assert!(cap.matches_search("network"));
-        // No match
+        let mut cap = capability_info();
+        cap.id = CapabilityId::new("unique_identifier");
+        cap.name = "Display Label".into();
+        cap.description = "Fetch content from URLs".into();
+        cap.category = Some("Network".into());
+        for query in ["dIsPlAy", "URLS", "UNIQUE_IDENTIFIER", "nEtWoRk"] {
+            assert!(cap.matches_search(query), "{query}");
+        }
         assert!(!cap.matches_search("zzz_nonexistent"));
+        cap.category = None;
+        assert!(!cap.matches_search("network"));
     }
 }

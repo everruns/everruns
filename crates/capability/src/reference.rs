@@ -178,9 +178,19 @@ mod tests {
 
     #[test]
     fn new_defaults_to_empty_object() {
-        let cap = CapabilityRef::new("current_time");
-        assert_eq!(cap.capability_id(), "current_time");
-        assert_eq!(cap.config_value(), &json!({}));
+        for cap in [
+            CapabilityRef::new("current_time"),
+            CapabilityId::new("current_time").into(),
+            "current_time".into(),
+            String::from("current_time").into(),
+        ] {
+            assert_eq!(cap.capability_id(), "current_time");
+            assert_eq!(cap.config_value(), &json!({}));
+            assert_eq!(
+                serde_json::to_value(&cap).unwrap(),
+                json!({"ref": "current_time", "config": {}})
+            );
+        }
     }
 
     #[test]
@@ -222,10 +232,22 @@ mod tests {
     fn validate_enforces_id_and_object_boundary() {
         CapabilityRef::new("current_time").validate().unwrap();
         assert!(CapabilityRef::new("2fast").validate().is_err());
-        let err = CapabilityRef::with_config("noop", json!("string"))
+        CapabilityRef::with_config("noop", json!({"enabled": true}))
             .validate()
-            .unwrap_err();
-        assert!(err.reason().contains("JSON object"));
+            .unwrap();
+        for config in [
+            json!("string"),
+            json!(null),
+            json!([]),
+            json!(42),
+            json!(true),
+        ] {
+            let err = CapabilityRef::with_config("noop", config)
+                .validate()
+                .unwrap_err();
+            assert_eq!(err.id(), "noop");
+            assert!(err.reason().contains("JSON object"));
+        }
     }
 
     #[test]
