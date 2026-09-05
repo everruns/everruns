@@ -556,6 +556,7 @@ impl everruns_provider::driver_registry::ChatDriver for NativeCompactRetryDriver
             .expect("retry must carry the standalone compact output");
         let everruns_provider::driver_registry::ProviderOpaqueContext::OpenResponsesCompact {
             output,
+            ..
         } = context;
         assert!(matches!(
             &output[0],
@@ -2873,6 +2874,7 @@ async fn test_driver_registry_integration() {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        reasoning_state: None,
     };
 
     let response = driver
@@ -4380,5 +4382,334 @@ async fn test_no_guardrails_passes_through_unchanged() {
             .iter()
             .any(|e| e.event_type == "output.message.replaced"),
         "no guardrails should mean no replaced event"
+    );
+}
+
+fn astra_history() -> Vec<Message> {
+    let mut first = Message::user("original task");
+    first.controls = Some(Controls {
+        reasoning: Some(everruns_core::message::ReasoningConfig {
+            effort: Some(everruns_provider::ReasoningEffort::Low),
+        }),
+        ..Default::default()
+    });
+    let mut assistant = Message::assistant("initial result");
+    assistant.metadata = Some(std::collections::HashMap::from([
+        ("model".into(), json!("gpt-6-astra")),
+        ("provider".into(), json!("openai")),
+        (
+            "openai_reasoning_state".into(),
+            json!({"epoch":"epoch", "baseline":"low", "effective":"low"}),
+        ),
+    ]));
+    let mut next = Message::user("hard follow-up ".repeat(30_000));
+    next.controls = Some(Controls {
+        reasoning: Some(everruns_core::message::ReasoningConfig {
+            effort: Some(everruns_provider::ReasoningEffort::High),
+        }),
+        ..Default::default()
+    });
+    vec![first, assistant, next]
+}
+
+#[tokio::test]
+async fn astra_proactive_and_reactive_compaction_restore_durable_effort_after_restart() {
+    for proactive in [true, false] {
+        let mut rig =
+            ProactiveTestRig::new(DriverId::OpenAI, 1_000, (100_000, 100), true, false).await;
+        rig.model = "gpt-6-astra".into();
+        set_default_test_model(&rig.provider_store, DriverId::OpenAI, &rig.model, None).await;
+        rig.message_retriever
+            .seed(rig.session_id.into(), astra_history())
+            .await;
+        if proactive {
+            rig.configure_cost_pressure(astra_history()).await;
+        }
+        if !proactive {
+            use everruns_core::execution_loading::SessionStore;
+            let mut session = rig
+                .session_store
+                .get_session(rig.session_id.into())
+                .await
+                .unwrap()
+                .unwrap();
+            session.capabilities = vec![everruns_capability::CapabilityRef::with_config(
+                "compaction",
+                json!({"strategy":"native","proactive":false}),
+            )];
+            rig.session_store.add_session(session).await;
+            *rig.request_too_large_attempt.lock().await = Some(0);
+        }
+        rig.execute(Some("previous")).await.unwrap();
+        let requests = rig.compact_requests.lock().await;
+        assert_eq!(requests.len(), 1, "proactive={proactive}");
+        let state = requests[0]
+            .reasoning_state
+            .as_ref()
+            .expect("explicit compaction selected");
+        assert_eq!(
+            state.baseline,
+            Some(everruns_provider::ReasoningEffort::Low)
+        );
+        assert_eq!(
+            state.effective,
+            Some(everruns_provider::ReasoningEffort::High)
+        );
+        let input = serde_json::to_value(&requests[0].input).unwrap();
+        let items = input.as_array().unwrap();
+        let update = items
+            .iter()
+            .position(|item| item["type"] == "configuration_update")
+            .unwrap();
+        assert_eq!(items[update]["reasoning"]["effort"], "high");
+        assert!(
+            items[update + 1]["content"]
+                .as_str()
+                .unwrap()
+                .starts_with("hard follow-up")
+        );
+        drop(requests);
+        let checkpoint = rig
+            .checkpoint_store
+            .get_latest(rig.session_id.into(), "openai", &rig.model)
+            .await
+            .unwrap()
+            .unwrap();
+        let everruns_core::CompactionCheckpointPayload::ProviderOpaque {
+            context:
+                everruns_provider::driver_registry::ProviderOpaqueContext::OpenResponsesCompact {
+                    reasoning_state,
+                    ..
+                },
+        } = checkpoint.payload
+        else {
+            panic!("native checkpoint required")
+        };
+        let persisted = serde_json::from_value::<
+            everruns_provider::reasoning_updates::ReasoningState,
+        >(serde_json::to_value(reasoning_state.unwrap()).unwrap())
+        .unwrap();
+        assert_eq!(
+            persisted.baseline,
+            Some(everruns_provider::ReasoningEffort::Low)
+        );
+        assert_eq!(
+            persisted.effective,
+            Some(everruns_provider::ReasoningEffort::High)
+        );
+        assert_eq!(persisted.pending, None);
+        // Each execute creates a new atom, simulating a process-local state reset.
+        rig.execute(None).await.unwrap();
+        let calls = rig.calls.lock().await;
+        let (_, config) = calls.last().unwrap();
+        assert_eq!(
+            config.reasoning_effort,
+            Some(everruns_provider::ReasoningEffort::Low)
+        );
+        assert_eq!(
+            config.reasoning_state.as_ref().unwrap().effective,
+            Some(everruns_provider::ReasoningEffort::High)
+        );
+        assert!(config.provider_opaque_context.is_some());
+        let events = rig.event_emitter.events().await;
+        let options = events.iter().rev().find_map(|event| match &event.data {
+            everruns_core::EventData::LlmGeneration(data) => data.metadata.request_options.as_ref(),
+            _ => None,
+        });
+        assert_eq!(options.unwrap().reasoning_effort.as_deref(), Some("high"));
+        let next_attempt = calls.len();
+        drop(calls);
+        // Recompact a checkpoint plus user-only suffix while changing effort.
+        // The fresh max update must come after the checkpoint, replacing its
+        // adjacent high reassertion rather than being overridden by it.
+        let mut history = astra_history();
+        let mut next = Message::user("another hard follow-up");
+        next.controls = Some(Controls {
+            reasoning: Some(everruns_core::message::ReasoningConfig {
+                effort: Some(everruns_provider::ReasoningEffort::Max),
+            }),
+            ..Default::default()
+        });
+        history.push(next);
+        rig.message_retriever
+            .seed(rig.session_id.into(), history)
+            .await;
+        *rig.request_too_large_attempt.lock().await = Some(next_attempt);
+        rig.execute(None).await.unwrap();
+        let requests = rig.compact_requests.lock().await;
+        let input = serde_json::to_value(&requests.last().unwrap().input).unwrap();
+        assert_eq!(input[0]["type"], "compaction");
+        assert_eq!(input[1]["type"], "configuration_update");
+        assert_eq!(input[1]["reasoning"]["effort"], "max");
+        assert_eq!(input[2]["content"], "another hard follow-up");
+        assert_eq!(input.as_array().unwrap().len(), 3);
+        drop(requests);
+        // Choosing a local strategy must restore semantic history from events,
+        // not feed an opaque checkpoint into a text summarizer.
+        use everruns_core::execution_loading::SessionStore;
+        let mut session = rig
+            .session_store
+            .get_session(rig.session_id.into())
+            .await
+            .unwrap()
+            .unwrap();
+        session.capabilities = vec![everruns_capability::CapabilityRef::with_config(
+            "compaction",
+            json!({"strategy":"summarization","proactive":false}),
+        )];
+        rig.session_store.add_session(session).await;
+        rig.execute(Some("prior-astra-response")).await.unwrap();
+        let calls = rig.calls.lock().await;
+        let (messages, config) = calls.last().unwrap();
+        assert!(config.reasoning_state.is_none());
+        assert!(config.previous_response_id.is_none());
+        assert!(config.provider_opaque_context.is_none());
+        assert!(
+            messages
+                .iter()
+                .any(|message| message.content_as_text() == "original task")
+        );
+    }
+}
+
+#[derive(Clone)]
+struct AstraPartialStore(everruns_core::durability::PartialStreamState);
+
+#[async_trait]
+impl everruns_core::durability::PartialStreamStore for AstraPartialStore {
+    async fn get_partial_stream(
+        &self,
+        _: SessionId,
+        _: &str,
+    ) -> everruns_provider::error::Result<Option<everruns_core::durability::PartialStreamState>>
+    {
+        Ok(Some(self.0.clone()))
+    }
+}
+
+#[tokio::test]
+async fn astra_interrupted_worker_restores_prepared_effort_with_or_without_text() {
+    use everruns_provider::ReasoningEffort::{Low, Max};
+    for text in ["", "partial answer"] {
+        let mut rig =
+            ProactiveTestRig::new(DriverId::OpenAI, 1_050_000, (1000, 100), true, false).await;
+        rig.model = "gpt-6-astra".into();
+        set_default_test_model(&rig.provider_store, DriverId::OpenAI, &rig.model, None).await;
+        let history = astra_history();
+        rig.message_retriever
+            .seed(rig.session_id.into(), history[..2].to_vec())
+            .await;
+        let state = everruns_provider::reasoning_updates::ReasoningState {
+            epoch: "epoch".into(),
+            baseline: Some(Low),
+            effective: Some(Max),
+            pending: None,
+        };
+        let partial = everruns_core::durability::PartialStreamState {
+            message_id: MessageId::new(),
+            accumulated: text.into(),
+            reasoning_state: Some(state),
+        };
+        let atom = reason_atom_with_stores(
+            rig.harness_store.clone(),
+            rig.agent_store.clone(),
+            rig.session_store.clone(),
+            rig.message_retriever.clone(),
+            rig.provider_store.clone(),
+            rig.capability_registry.clone(),
+            rig.driver_registry.clone(),
+            rig.event_emitter.clone(),
+        )
+        .with_partial_stream_store(Arc::new(AstraPartialStore(partial)));
+        atom.execute(ReasonInput {
+            context: create_context(rig.session_id),
+            harness_id: rig.harness_id,
+            agent_id: Some(rig.agent_id.into()),
+            org_id: 0,
+            mcp_tool_definitions: vec![],
+            previous_response_id: Some("prior".into()),
+            iteration: 2,
+        })
+        .await
+        .unwrap();
+        let events = rig.event_emitter.events().await;
+        let completed = events
+            .iter()
+            .rev()
+            .find_map(|event| match &event.data {
+                everruns_core::EventData::OutputMessageCompleted(data) => Some(&data.message),
+                _ => None,
+            })
+            .unwrap();
+        let metadata = completed.metadata.as_ref().unwrap();
+        assert_eq!(metadata["reasoning_effort"], "max");
+        assert_eq!(metadata["openai_reasoning_state"]["baseline"], "low");
+        if text.is_empty() {
+            let calls = rig.calls.lock().await;
+            let config = &calls.last().unwrap().1;
+            assert_eq!(config.reasoning_effort, Some(Low));
+            assert_eq!(config.reasoning_state.as_ref().unwrap().pending, Some(Max));
+            let started = events
+                .iter()
+                .find_map(|event| match &event.data {
+                    everruns_core::EventData::OutputMessageStarted(data) => {
+                        data.reasoning_state.as_ref()
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(started.effective, Some(Max));
+        } else {
+            assert!(rig.calls.lock().await.is_empty());
+        }
+    }
+}
+
+#[tokio::test]
+async fn astra_failed_explicit_compaction_keeps_history_and_checkpoint_unchanged() {
+    use everruns_core::execution_loading::SessionStore;
+    let mut rig = ProactiveTestRig::new(DriverId::OpenAI, 1000, (1000, 100), true, true).await;
+    rig.model = "gpt-6-astra".into();
+    set_default_test_model(&rig.provider_store, DriverId::OpenAI, &rig.model, None).await;
+    let history = astra_history();
+    rig.message_retriever
+        .seed(rig.session_id.into(), history.clone())
+        .await;
+    let mut session = rig
+        .session_store
+        .get_session(rig.session_id.into())
+        .await
+        .unwrap()
+        .unwrap();
+    session.capabilities = vec![everruns_capability::CapabilityRef::with_config(
+        "compaction",
+        json!({"strategy":"auto","proactive":false}),
+    )];
+    rig.session_store.add_session(session).await;
+    *rig.request_too_large_attempt.lock().await = Some(0);
+    let result = rig.execute(Some("prior")).await.unwrap();
+    assert!(!result.success);
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
+    assert!(
+        rig.checkpoint_store
+            .get_latest(rig.session_id.into(), "openai", &rig.model)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let loaded = rig
+        .message_retriever
+        .load(rig.session_id.into())
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(loaded).unwrap(),
+        serde_json::to_value(history).unwrap()
+    );
+    let events = rig.event_emitter.events().await;
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event.data, everruns_core::EventData::ContextCompacted(_)))
     );
 }

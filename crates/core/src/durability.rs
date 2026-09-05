@@ -122,6 +122,7 @@ pub trait StreamHeartbeater: Send + Sync {
 /// State of a partially-streamed assistant message detected in the event log.
 #[derive(Debug, Clone)]
 pub struct PartialStreamState {
+    pub reasoning_state: Option<everruns_provider::reasoning_updates::ReasoningState>,
     /// Stable public id from the latest `output.message.started` event.
     pub message_id: MessageId,
 

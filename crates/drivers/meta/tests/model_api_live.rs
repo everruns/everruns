@@ -57,6 +57,7 @@ fn config(tools: Vec<ToolDefinition>, parallel_tool_calls: Option<bool>) -> LlmC
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        reasoning_state: None,
     }
 }
 

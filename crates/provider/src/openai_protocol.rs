@@ -1892,6 +1892,7 @@ mod tests {
                 tool_call_id: Some("call_trimmed".to_string()),
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
         ];
         let filtered = drop_orphaned_tool_messages(&messages);
@@ -1916,6 +1917,7 @@ mod tests {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -1924,6 +1926,7 @@ mod tests {
                 tool_call_id: Some("call_1".to_string()),
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
         ];
         let filtered = drop_orphaned_tool_messages(&messages);

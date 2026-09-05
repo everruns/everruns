@@ -50,6 +50,13 @@ pub(super) fn build_request_options(
             json!({ "previous_response_id": true }),
         );
     }
+    if let Some(state) = &config.reasoning_state {
+        let options = provider_options
+            .entry("openai".to_string())
+            .or_insert_with(|| json!({}));
+        options["reasoning_baseline"] = json!(state.baseline);
+        options["effective_reasoning_effort"] = json!(state.effective);
+    }
     if provider == "gemini"
         && config
             .prompt_cache
@@ -65,7 +72,10 @@ pub(super) fn build_request_options(
         temperature: config.temperature,
         max_tokens: config.max_tokens,
         reasoning_effort: config
-            .reasoning_effort
+            .reasoning_state
+            .as_ref()
+            .and_then(|state| state.effective)
+            .or(config.reasoning_effort)
             .map(|effort| effort.as_str().to_string()),
         // The reason atom always drives the provider through its streaming
         // endpoint (`chat_completion_stream`).

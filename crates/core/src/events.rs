@@ -802,6 +802,10 @@ impl InputMessageData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct OutputMessageStartedData {
+    /// Prepared Astra effort state, persisted before the provider call so an
+    /// interrupted worker can resume without changing the request baseline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_state: Option<everruns_provider::reasoning_updates::ReasoningState>,
     /// Turn ID this output belongs to
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
     pub turn_id: TurnId,
@@ -3763,6 +3767,7 @@ mod tests {
     fn test_output_message_started_data() {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = OutputMessageStartedData {
+            reasoning_state: None,
             turn_id,
             message_id: MessageId::new(),
             model: Some("claude-4-opus".to_string()),
@@ -3783,6 +3788,7 @@ mod tests {
     fn test_output_message_started_data_without_model() {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = OutputMessageStartedData {
+            reasoning_state: None,
             turn_id,
             message_id: MessageId::new(),
             model: None,
@@ -3876,6 +3882,7 @@ mod tests {
         let next_message_id = MessageId::new();
 
         let started = OutputMessageStartedData {
+            reasoning_state: None,
             turn_id,
             message_id,
             model: None,
@@ -3883,6 +3890,7 @@ mod tests {
             phase: None,
         };
         let next_started = OutputMessageStartedData {
+            reasoning_state: None,
             turn_id,
             message_id: next_message_id,
             model: None,
@@ -3931,6 +3939,7 @@ mod tests {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
 
         let started_none = OutputMessageStartedData {
+            reasoning_state: None,
             turn_id,
             message_id: MessageId::new(),
             model: None,
@@ -4007,6 +4016,7 @@ mod tests {
     fn test_output_message_started_deserialization() {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = OutputMessageStartedData {
+            reasoning_state: None,
             turn_id,
             message_id: MessageId::new(),
             model: Some("claude-opus-5".to_string()),
@@ -4418,6 +4428,7 @@ mod contract_tests {
     #[test]
     fn snapshot_output_message_started() {
         let data = OutputMessageStartedData {
+            reasoning_state: None,
             turn_id: test_turn_id(),
             message_id: test_message_id(),
             model: Some("gpt-5.2".to_string()),
@@ -5011,6 +5022,7 @@ mod contract_tests {
             (
                 OUTPUT_MESSAGE_STARTED,
                 OutputMessageStartedData {
+                    reasoning_state: None,
                     turn_id: test_turn_id(),
                     message_id: test_message_id(),
                     model: None,

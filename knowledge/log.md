@@ -1,5 +1,12 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-05
+
+* Astra reasoning changes preserve the initial request effort, persist effective
+  effort through stream recovery and checkpoints, and use explicit Responses
+  compaction so configuration updates do not break long conversations. See
+  [Compaction](runtime-resources/compaction.md).
+
 ## 2026-09-01
 
 * **A model switch is a conversation event, not a setting.** Changing the model

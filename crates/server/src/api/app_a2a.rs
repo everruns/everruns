@@ -1635,6 +1635,7 @@ mod tests {
         use everruns_core::events::OutputMessageStartedData;
         use everruns_provider::typed_id::{MessageId, TurnId};
         let data = EventData::OutputMessageStarted(OutputMessageStartedData {
+            reasoning_state: None,
             turn_id: TurnId::new(),
             message_id: MessageId::new(),
             model: None,

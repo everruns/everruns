@@ -655,6 +655,7 @@ fn test_build_request_options_for_openai_prompt_cache() {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        reasoning_state: None,
     };
 
     let request_options = build_request_options(&config, "openai").unwrap();
@@ -694,6 +695,7 @@ fn test_build_request_options_for_gemini_explicit_cache() {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        reasoning_state: None,
     };
 
     let request_options = build_request_options(&config, "gemini").unwrap();
@@ -733,6 +735,7 @@ fn test_build_request_options_omits_gemini_cache_flag_when_disabled() {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        reasoning_state: None,
     };
 
     // Streaming intent is always recorded, so the options exist; the cache
@@ -810,6 +813,7 @@ async fn test_noop_partial_stream_store_returns_none() {
 async fn test_partial_stream_store_returns_accumulated_when_partial_exists() {
     let message_id = MessageId::new();
     let store = MockPartialStore(Some(PartialStreamState {
+        reasoning_state: None,
         message_id,
         accumulated: "partial text so far".to_string(),
     }));
@@ -825,6 +829,7 @@ async fn test_partial_stream_store_returns_accumulated_when_partial_exists() {
 #[tokio::test]
 async fn test_partial_stream_store_returns_empty_when_started_no_delta() {
     let store = MockPartialStore(Some(PartialStreamState {
+        reasoning_state: None,
         message_id: MessageId::new(),
         accumulated: String::new(),
     }));

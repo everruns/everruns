@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 /// Request body for the Open Responses `/v1/responses/compact` endpoint.
 #[derive(Debug, Clone, Serialize)]
 pub struct CompactRequest {
+    /// Explicit Responses compaction, required for configuration-update history.
+    /// This field is local routing state and never sent to the provider.
+    #[serde(skip)]
+    pub reasoning_state: Option<crate::reasoning_updates::ReasoningState>,
     /// Model used for compaction.
     pub model: String,
     /// Current conversation items to compact.
@@ -23,6 +27,8 @@ pub struct CompactRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum CompactInputItem {
+    #[serde(rename = "configuration_update")]
+    ConfigurationUpdate { reasoning: ConfigurationReasoning },
     /// User, assistant, or developer message.
     #[serde(rename = "message")]
     Message {
@@ -55,6 +61,14 @@ pub enum CompactInputItem {
         /// Provider-produced encrypted latent context.
         encrypted_content: String,
     },
+    /// Provider-native reasoning or other retained items, replayed verbatim.
+    #[serde(untagged)]
+    ProviderItem(serde_json::Value),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConfigurationReasoning {
+    pub effort: crate::model::ReasoningEffort,
 }
 
 impl From<&CompactOutputItem> for CompactInputItem {
@@ -67,6 +81,7 @@ impl From<&CompactOutputItem> for CompactInputItem {
             CompactOutputItem::Compaction { encrypted_content } => Self::Compaction {
                 encrypted_content: encrypted_content.clone(),
             },
+            CompactOutputItem::ProviderItem(item) => Self::ProviderItem(item.clone()),
         }
     }
 }
@@ -126,6 +141,10 @@ pub enum CompactOutputItem {
         /// Provider-produced encrypted latent context.
         encrypted_content: String,
     },
+    /// Preserve complete explicit-compaction output, including reasoning and
+    /// any retained native items, instead of dropping unknown semantic state.
+    #[serde(untagged)]
+    ProviderItem(serde_json::Value),
 }
 
 /// Provider-reported accounting for one compact request.
@@ -149,6 +168,28 @@ impl CompactInputItem {
     /// become function-call outputs.
     pub fn from_llm_message(msg: &LlmMessage) -> Vec<Self> {
         let mut items = Vec::new();
+        if let Some(effort) = msg.configuration_update {
+            items.push(Self::ConfigurationUpdate {
+                reasoning: ConfigurationReasoning { effort },
+            });
+        }
+        for part in &msg.reasoning {
+            if part.provider == "openai"
+                && let (Some(id), Some(encrypted)) = (&part.item_id, &part.encrypted)
+            {
+                let summary = match &part.text {
+                    Some(crate::reasoning::ReasoningText::Summary { parts }) => parts
+                        .iter()
+                        .map(|text| serde_json::json!({"type": "summary_text", "text": text}))
+                        .collect::<Vec<_>>(),
+                    _ => Vec::new(),
+                };
+                items.push(Self::ProviderItem(serde_json::json!({
+                    "type": "reasoning", "id": id, "encrypted_content": encrypted,
+                    "summary": summary,
+                })));
+            }
+        }
         let role = match msg.role {
             LlmMessageRole::System => "developer",
             LlmMessageRole::User => "user",
@@ -183,10 +224,19 @@ impl CompactInputItem {
             CompactContent::Parts(parts) => !parts.is_empty(),
         };
         if has_content || msg.tool_calls.is_none() {
-            items.push(Self::Message {
+            let message = Self::Message {
                 role: role.to_string(),
                 content,
-            });
+            };
+            if msg.role == LlmMessageRole::Assistant
+                && let Some(phase) = msg.phase
+            {
+                let mut value = serde_json::json!(message);
+                value["phase"] = serde_json::json!(phase.as_provider_str());
+                items.push(Self::ProviderItem(value));
+            } else {
+                items.push(message);
+            }
         }
 
         if msg.role == LlmMessageRole::Assistant
@@ -199,6 +249,19 @@ impl CompactInputItem {
             }));
         }
         items
+    }
+
+    pub fn is_assistant_item(&self) -> bool {
+        match self {
+            Self::FunctionCall { .. } => true,
+            Self::Message { role, .. } => role == "assistant",
+            Self::ProviderItem(value) => {
+                value["role"] == "assistant"
+                    || value["type"] == "reasoning"
+                    || value["type"] == "function_call"
+            }
+            _ => false,
+        }
     }
 
     fn content_from_llm_message(msg: &LlmMessage) -> CompactContent {

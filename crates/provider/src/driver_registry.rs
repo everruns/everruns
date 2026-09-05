@@ -42,13 +42,17 @@ pub type LlmResponseStream = Pin<Box<dyn Stream<Item = Result<LlmStreamEvent>> +
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProviderOpaqueContext {
     /// Standalone `output` returned by OpenAI `/responses/compact`.
-    OpenResponsesCompact { output: Vec<CompactOutputItem> },
+    OpenResponsesCompact {
+        output: Vec<CompactOutputItem>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reasoning_state: Option<crate::reasoning_updates::ReasoningState>,
+    },
 }
 
 impl std::fmt::Debug for ProviderOpaqueContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::OpenResponsesCompact { output } => f
+            Self::OpenResponsesCompact { output, .. } => f
                 .debug_struct("OpenResponsesCompact")
                 .field("item_count", &output.len())
                 .finish_non_exhaustive(),
@@ -509,6 +513,9 @@ pub struct LlmMessage {
     /// thinking and per-call thought signatures survive a round trip. Empty for
     /// messages without reasoning.
     pub reasoning: Vec<crate::reasoning::ReasoningContentPart>,
+    /// Astra effort transition immediately before this message. Other protocols
+    /// ignore it; it is never rendered as conversation text.
+    pub configuration_update: Option<crate::model::ReasoningEffort>,
 }
 
 impl LlmMessage {
@@ -521,6 +528,7 @@ impl LlmMessage {
             tool_call_id: None,
             phase: None,
             reasoning: Vec::new(),
+            configuration_update: None,
         }
     }
 
@@ -533,6 +541,7 @@ impl LlmMessage {
             tool_call_id: None,
             phase: None,
             reasoning: Vec::new(),
+            configuration_update: None,
         }
     }
 
@@ -1338,6 +1347,8 @@ pub const OPENROUTER_X_TITLE_METADATA_KEY: &str = "openrouter.x_title";
 /// Configuration for an LLM call
 #[derive(Debug, Clone)]
 pub struct LlmCallConfig {
+    /// Durable Astra baseline and effective effort; absent for other modes.
+    pub reasoning_state: Option<crate::reasoning_updates::ReasoningState>,
     pub model: String,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
@@ -2506,6 +2517,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            reasoning_state: None,
         }
     }
 
