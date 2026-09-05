@@ -396,140 +396,151 @@ mod tests {
     }
 
     #[test]
-    fn status_round_trip() {
-        assert_eq!(ModelRouterStatus::from("active").to_string(), "active");
-        assert_eq!(ModelRouterStatus::from("archived").to_string(), "archived");
-        assert_eq!(ModelRouterStatus::from("deleted").to_string(), "deleted");
-        assert_eq!(ModelRouterStatus::from("unknown").to_string(), "active");
+    fn status_wire_values_and_legacy_fallback_are_explicit() {
+        for (status, wire) in [
+            (ModelRouterStatus::Active, "active"),
+            (ModelRouterStatus::Archived, "archived"),
+            (ModelRouterStatus::Deleted, "deleted"),
+        ] {
+            assert_eq!(status.to_string(), wire);
+            assert_eq!(ModelRouterStatus::from(wire), status);
+            assert_eq!(
+                serde_json::to_value(status).unwrap(),
+                serde_json::json!(wire)
+            );
+            assert_eq!(
+                serde_json::from_value::<ModelRouterStatus>(serde_json::json!(wire)).unwrap(),
+                status
+            );
+        }
+        assert_eq!(
+            ModelRouterStatus::from("unknown"),
+            ModelRouterStatus::Active
+        );
+        assert!(serde_json::from_value::<ModelRouterStatus>(serde_json::json!("unknown")).is_err());
     }
 
     #[test]
-    fn strategy_parse_round_trip() {
-        for s in ["single", "ordered_fallback", "weighted", "rules", "custom"] {
-            assert_eq!(ModelRouterStrategy::parse(s).unwrap().to_string(), s);
+    fn strategy_parser_and_serialization_agree_with_literal_variants() {
+        for (strategy, wire) in [
+            (ModelRouterStrategy::Single, "single"),
+            (ModelRouterStrategy::OrderedFallback, "ordered_fallback"),
+            (ModelRouterStrategy::Weighted, "weighted"),
+            (ModelRouterStrategy::Rules, "rules"),
+            (ModelRouterStrategy::Custom, "custom"),
+        ] {
+            assert_eq!(ModelRouterStrategy::parse(wire).unwrap(), strategy);
+            assert_eq!(strategy.to_string(), wire);
+            assert_eq!(
+                serde_json::to_value(strategy).unwrap(),
+                serde_json::json!(wire)
+            );
+            assert_eq!(
+                serde_json::from_value::<ModelRouterStrategy>(serde_json::json!(wire)).unwrap(),
+                strategy
+            );
+        }
+        for bad in ["invalid", "", "Single", " single "] {
+            assert!(
+                ModelRouterStrategy::parse(bad)
+                    .unwrap_err()
+                    .contains("unknown model router strategy")
+            );
+            assert!(serde_json::from_value::<ModelRouterStrategy>(serde_json::json!(bad)).is_err());
         }
     }
 
     #[test]
-    fn strategy_parse_rejects_unknown() {
-        let err = ModelRouterStrategy::parse("invalid").unwrap_err();
-        assert!(err.contains("unknown model router strategy"));
-    }
-
-    #[test]
-    fn route_key_accepts_canonical_keys() {
-        for key in ["base", "utility", "analysis", "review", "fast-path", "v1"] {
-            assert!(validate_route_key(key).is_ok(), "should accept key '{key}'");
+    fn route_keys_enforce_literal_length_and_character_boundaries() {
+        for key in [
+            "base",
+            "utility",
+            "analysis",
+            "review",
+            "fast-path",
+            "v1",
+            "a",
+            "7",
+            "a--b",
+            &"a".repeat(64),
+        ] {
+            assert!(validate_route_key(key).is_ok(), "{key}");
+        }
+        for key in [
+            "",
+            "Analysis",
+            "fast_path",
+            "-fast",
+            "fast-",
+            "-",
+            "a/b",
+            "a b",
+            "é",
+            &"a".repeat(65),
+        ] {
+            assert!(validate_route_key(key).is_err(), "{key:?}");
         }
     }
 
     #[test]
-    fn route_key_rejects_empty() {
-        assert!(validate_route_key("").is_err());
+    fn candidate_validation_enforces_weight_for_every_strategy_and_rules_presence() {
+        for strategy in [
+            ModelRouterStrategy::Single,
+            ModelRouterStrategy::OrderedFallback,
+            ModelRouterStrategy::Weighted,
+            ModelRouterStrategy::Rules,
+            ModelRouterStrategy::Custom,
+        ] {
+            let rules = (strategy == ModelRouterStrategy::Rules)
+                .then(|| serde_json::json!({"if":{"tier":"fast"}}));
+            for weight in [0, 1, i32::MAX] {
+                assert!(
+                    validate_candidate_shape(&candidate(weight, rules.clone()), strategy).is_ok(),
+                    "{strategy:?}/{weight}"
+                );
+            }
+            for weight in [-1, i32::MIN] {
+                assert!(
+                    validate_candidate_shape(&candidate(weight, rules.clone()), strategy)
+                        .unwrap_err()
+                        .contains("weight")
+                );
+            }
+        }
+        assert!(
+            validate_candidate_shape(&candidate(1, None), ModelRouterStrategy::Rules)
+                .unwrap_err()
+                .contains("rules")
+        );
     }
 
     #[test]
-    fn route_key_rejects_uppercase() {
-        assert!(validate_route_key("Analysis").is_err());
-    }
-
-    #[test]
-    fn route_key_rejects_underscore() {
-        assert!(validate_route_key("fast_path").is_err());
-    }
-
-    #[test]
-    fn route_key_rejects_leading_hyphen() {
-        assert!(validate_route_key("-fast").is_err());
-    }
-
-    #[test]
-    fn route_key_rejects_trailing_hyphen() {
-        assert!(validate_route_key("fast-").is_err());
-    }
-
-    #[test]
-    fn route_key_rejects_too_long() {
-        let key = "a".repeat(MAX_ROUTE_KEY_LEN + 1);
-        assert!(validate_route_key(&key).is_err());
-    }
-
-    #[test]
-    fn candidate_shape_rejects_negative_weight() {
-        let cand = candidate(-1, None);
-        assert!(validate_candidate_shape(&cand, ModelRouterStrategy::Weighted).is_err());
-    }
-
-    #[test]
-    fn candidate_shape_rules_strategy_requires_rules_doc() {
-        let cand = candidate(1, None);
-        let err = validate_candidate_shape(&cand, ModelRouterStrategy::Rules).unwrap_err();
-        assert!(err.contains("rules"));
-    }
-
-    #[test]
-    fn candidate_shape_rules_strategy_accepts_rules_doc() {
-        let cand = candidate(1, Some(serde_json::json!({ "if": { "tier": "fast" } })));
-        assert!(validate_candidate_shape(&cand, ModelRouterStrategy::Rules).is_ok());
-    }
-
-    #[test]
-    fn route_shape_rejects_single_with_multiple_candidates() {
-        let route = ModelRouterRoute {
-            id: Uuid::nil(),
-            key: "base".into(),
-            purpose: "default route".into(),
-            when_to_use: "use this when no specific route fits".into(),
-            strategy: ModelRouterStrategy::Single,
-            position: 0,
-            candidates: vec![candidate(1, None), candidate(1, None)],
-            created_at: now(),
-            updated_at: now(),
-        };
-        let err = validate_route_shape(&route).unwrap_err();
-        assert!(err.contains("single"));
-    }
-
-    #[test]
-    fn route_shape_rejects_single_with_zero_candidates() {
-        let route = ModelRouterRoute {
-            id: Uuid::nil(),
-            key: "base".into(),
-            purpose: "default route".into(),
-            when_to_use: "use this when no specific route fits".into(),
-            strategy: ModelRouterStrategy::Single,
-            position: 0,
-            candidates: vec![],
-            created_at: now(),
-            updated_at: now(),
-        };
-        let err = validate_route_shape(&route).unwrap_err();
-        assert!(err.contains("single"));
-    }
-
-    #[test]
-    fn route_shape_accepts_single_with_exactly_one_candidate() {
-        let route = ModelRouterRoute {
-            id: Uuid::nil(),
-            key: "base".into(),
-            purpose: "default route".into(),
-            when_to_use: "use this when no specific route fits".into(),
-            strategy: ModelRouterStrategy::Single,
-            position: 0,
-            candidates: vec![candidate(1, None)],
-            created_at: now(),
-            updated_at: now(),
-        };
-        assert!(validate_route_shape(&route).is_ok());
-    }
-
-    #[test]
-    fn route_shape_accepts_ordered_fallback_with_multiple_candidates() {
-        let route = route(
+    fn route_validation_checks_cardinality_keys_and_every_candidate() {
+        for count in [0, 1, 2] {
+            let route = route(
+                ModelRouterStrategy::Single,
+                (0..count).map(|_| candidate(1, None)).collect(),
+            );
+            assert_eq!(
+                validate_route_shape(&route).is_ok(),
+                count == 1,
+                "count={count}"
+            );
+        }
+        let mut fallback = route(
             ModelRouterStrategy::OrderedFallback,
             vec![candidate(1, None), candidate(1, None)],
         );
-        assert!(validate_route_shape(&route).is_ok());
+        assert!(validate_route_shape(&fallback).is_ok());
+        fallback.candidates[1].weight = -1;
+        assert!(
+            validate_route_shape(&fallback)
+                .unwrap_err()
+                .contains("weight")
+        );
+        fallback.candidates[1].weight = 1;
+        fallback.key = "Bad-Key".into();
+        assert!(validate_route_shape(&fallback).is_err());
     }
 
     #[test]
@@ -570,6 +581,10 @@ mod tests {
         assert_eq!(plan.primary_model, "openai/gpt-5-mini");
         let routing = plan.routing.unwrap();
         assert_eq!(
+            serde_json::to_value(&routing).unwrap(),
+            serde_json::json!({"models":["openai/gpt-5-mini","anthropic/claude-sonnet-4.5"],"route":"fallback"})
+        );
+        assert_eq!(
             routing.models,
             vec![
                 "openai/gpt-5-mini".to_string(),
@@ -583,75 +598,105 @@ mod tests {
     }
 
     #[test]
-    fn openrouter_plan_rejects_uncompiled_strategies() {
-        let route = route(ModelRouterStrategy::Weighted, vec![candidate(1, None)]);
-
-        let err = compile_openrouter_route_plan(&route, |_| Some("openai/gpt-5-mini".to_string()))
+    fn openrouter_plan_rejects_uncompiled_strategies_without_resolving_models() {
+        for strategy in [
+            ModelRouterStrategy::Weighted,
+            ModelRouterStrategy::Rules,
+            ModelRouterStrategy::Custom,
+        ] {
+            let route = route(
+                strategy,
+                vec![candidate(
+                    1,
+                    Some(serde_json::json!({"if":{"tier":"fast"}})),
+                )],
+            );
+            let error = compile_openrouter_route_plan(&route, |_| {
+                panic!("unsupported strategy must not resolve models")
+            })
             .unwrap_err();
-
-        assert!(err.contains("cannot be compiled directly"));
+            assert!(
+                error.contains("cannot be compiled directly"),
+                "{strategy:?}: {error}"
+            );
+        }
     }
 
     #[test]
-    fn openrouter_plan_rejects_missing_model_slug() {
-        let route = route(ModelRouterStrategy::Single, vec![candidate(1, None)]);
-
-        let err = compile_openrouter_route_plan(&route, |_| None).unwrap_err();
-
-        assert!(err.contains("does not resolve to an OpenRouter model slug"));
-    }
-
-    #[test]
-    fn candidate_default_weight_is_one() {
-        let json = r#"{
-            "id": "00000000-0000-0000-0000-000000000000",
-            "model_id": "model_00000000000000000000000000000001",
-            "position": 0,
-            "created_at": "2024-01-01T00:00:00Z",
-            "updated_at": "2024-01-01T00:00:00Z"
-        }"#;
-        let cand: ModelRouterCandidate = serde_json::from_str(json).unwrap();
-        assert_eq!(cand.weight, 1);
-    }
-
-    #[test]
-    fn candidate_default_request_overrides_is_empty_object() {
-        // Wire and DB shapes must match: missing `request_overrides` defaults
-        // to `{}`, never JSON `null`, so downstream consumers can rely on an
-        // object-shaped value.
-        let json = r#"{
-            "id": "00000000-0000-0000-0000-000000000000",
-            "model_id": "model_00000000000000000000000000000001",
-            "position": 0,
-            "created_at": "2024-01-01T00:00:00Z",
-            "updated_at": "2024-01-01T00:00:00Z"
-        }"#;
-        let cand: ModelRouterCandidate = serde_json::from_str(json).unwrap();
-        assert!(
-            cand.request_overrides.is_object(),
-            "expected default request_overrides to be a JSON object, got {:?}",
-            cand.request_overrides
+    fn openrouter_plan_rejects_missing_primary_or_fallback_slug() {
+        for strategy in [
+            ModelRouterStrategy::Single,
+            ModelRouterStrategy::OrderedFallback,
+        ] {
+            let route = route(strategy, vec![candidate(1, None)]);
+            let error = compile_openrouter_route_plan(&route, |_| None).unwrap_err();
+            assert!(error.contains("does not resolve to an OpenRouter model slug"));
+            assert!(error.contains(&route.candidates[0].id.to_string()));
+        }
+        let route = route(
+            ModelRouterStrategy::OrderedFallback,
+            vec![candidate_with(1, None, 0, 1), candidate_with(1, None, 1, 2)],
         );
-        assert_eq!(cand.request_overrides.as_object().unwrap().len(), 0);
+        let calls = std::cell::RefCell::new(Vec::new());
+        let error = compile_openrouter_route_plan(&route, |candidate| {
+            calls.borrow_mut().push(candidate.id);
+            (candidate.model_id == ModelId::from_seed(1)).then(|| "first/model".into())
+        })
+        .unwrap_err();
+        assert_eq!(
+            *calls.borrow(),
+            vec![Uuid::from_u128(1), Uuid::from_u128(2)]
+        );
+        assert!(error.contains(&Uuid::from_u128(2).to_string()));
     }
 
     #[test]
-    fn router_default_param_schema_is_empty_object() {
-        // Wire and DB shapes must match: missing `param_schema` defaults to
-        // `{}`, never JSON `null`.
-        let json = r#"{
-            "id": "mrtr_00000000000000000000000000000001",
-            "name": "default",
-            "status": "active",
-            "created_at": "2024-01-01T00:00:00Z",
-            "updated_at": "2024-01-01T00:00:00Z"
-        }"#;
-        let router: ModelRouter = serde_json::from_str(json).unwrap();
-        assert!(
-            router.param_schema.is_object(),
-            "expected default param_schema to be a JSON object, got {:?}",
-            router.param_schema
-        );
-        assert_eq!(router.param_schema.as_object().unwrap().len(), 0);
+    fn invalid_or_empty_routes_fail_before_model_resolution() {
+        let mut invalid_key = route(ModelRouterStrategy::Single, vec![candidate(1, None)]);
+        invalid_key.key = "Bad".into();
+        for route in [
+            invalid_key,
+            route(ModelRouterStrategy::Single, vec![]),
+            route(ModelRouterStrategy::OrderedFallback, vec![]),
+        ] {
+            assert!(
+                compile_openrouter_route_plan(&route, |_| panic!(
+                    "invalid route must not resolve models"
+                ))
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn candidate_wire_defaults_and_explicit_overrides_survive_serialization() {
+        let minimal = serde_json::json!({"id":"00000000-0000-0000-0000-000000000000","model_id":"model_00000000000000000000000000000001","position":0,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"});
+        let parsed: ModelRouterCandidate = serde_json::from_value(minimal.clone()).unwrap();
+        let mut expected = minimal.clone();
+        expected["weight"] = serde_json::json!(1);
+        expected["request_overrides"] = serde_json::json!({});
+        assert_eq!(serde_json::to_value(parsed).unwrap(), expected);
+        expected["weight"] = serde_json::json!(0);
+        expected["request_overrides"] = serde_json::json!({"temperature":0.25});
+        expected["rules"] = serde_json::json!({"tier":"fast"});
+        let explicit: ModelRouterCandidate = serde_json::from_value(expected.clone()).unwrap();
+        assert_eq!(serde_json::to_value(explicit).unwrap(), expected);
+    }
+
+    #[test]
+    fn router_wire_defaults_omit_internal_identity_and_empty_routes() {
+        let minimal = serde_json::json!({"id":"mrtr_00000000000000000000000000000001","name":"default","status":"active","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"});
+        let mut router: ModelRouter = serde_json::from_value(minimal.clone()).unwrap();
+        assert_eq!(router.internal_id, Uuid::nil());
+        router.internal_id = Uuid::from_u128(99);
+        let mut expected = minimal;
+        expected["param_schema"] = serde_json::json!({});
+        assert_eq!(serde_json::to_value(&router).unwrap(), expected);
+        router.param_schema =
+            serde_json::json!({"type":"object","properties":{"tier":{"type":"string"}}});
+        router.description = Some("Choose by tier".into());
+        expected["param_schema"] = router.param_schema.clone();
+        expected["description"] = serde_json::json!("Choose by tier");
+        assert_eq!(serde_json::to_value(&router).unwrap(), expected);
     }
 }
