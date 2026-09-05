@@ -50,6 +50,9 @@ pub struct ModelCost {
     /// Cached read cost per million tokens (USD), if supported
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_read: Option<f64>,
+    /// Cache write cost per million tokens (USD); absent falls back to input.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write: Option<f64>,
     /// Tiered pricing that applies when prompt tokens exceed context thresholds.
     /// When present, the highest matching tier replaces the base rates for the
     /// whole request.
@@ -71,6 +74,9 @@ pub struct CostTier {
     /// Cached read cost per million tokens (USD) for this tier, if supported
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_read: Option<f64>,
+    /// Cache write cost per million tokens (USD); absent falls back to input.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write: Option<f64>,
 }
 
 /// Token limits for the model

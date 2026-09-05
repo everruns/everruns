@@ -31,7 +31,11 @@ pub(super) fn resolve_request_controls(
         })
         .filter(|effort| {
             if !effort.requests_reasoning() {
-                return false;
+                // Preserve an invalid explicit selection for provider validation.
+                // Dropping Astra's `none` here silently selects its default effort.
+                return crate::model_profiles::get_model_profile(provider_type, model)
+                    .and_then(|profile| profile.reasoning_effort)
+                    .is_some_and(|allowed| !allowed.values.iter().any(|v| v.value == *effort));
             }
             match crate::model_profiles::get_model_profile(provider_type, model) {
                 Some(profile) if !profile.reasoning => {
@@ -105,6 +109,22 @@ pub(super) fn resolve_request_controls(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn astra_none_reaches_provider_validation() {
+        let mut message = Message::user("hello");
+        message.controls = Some(crate::message::Controls {
+            reasoning: Some(crate::message::ReasoningConfig {
+                effort: Some(everruns_provider::ReasoningEffort::None),
+            }),
+            ..Default::default()
+        });
+        let controls = resolve_request_controls(&[message], None, &DriverId::OpenAI, "gpt-6-astra");
+        assert_eq!(
+            controls.reasoning_effort,
+            Some(everruns_provider::ReasoningEffort::None)
+        );
+    }
 
     #[test]
     fn none_reasoning_effort_is_not_sent() {

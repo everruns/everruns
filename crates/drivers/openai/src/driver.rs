@@ -107,7 +107,8 @@ impl OpenAIChatDriver {
         Self {
             inner: OpenResponsesProtocolChatDriver::new()
                 .with_stateful_responses(true)
-                .with_native_features(true, true),
+                .with_native_features(true, true)
+                .with_prompt_cache_options(true),
         }
     }
 

@@ -795,6 +795,9 @@ pub enum PromptCacheStrategy {
     /// Let each driver choose the safest provider-specific behavior.
     #[default]
     Auto,
+    /// Cache only the developer-instruction prefix on supporting models.
+    /// The changing conversation suffix is not written to cache.
+    Explicit,
 }
 
 /// Configuration for prompt caching.

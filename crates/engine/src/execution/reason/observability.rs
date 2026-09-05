@@ -20,7 +20,21 @@ pub(super) fn build_request_options(
             enabled: true,
             strategy: cfg.strategy,
             provider_mode: match provider {
-                "openai" => Some("prompt_cache_key".to_string()),
+                "openai" => Some(
+                    if everruns_provider::openai_compat::supports_cache_options(&config.model) {
+                        match cfg.strategy {
+                            everruns_provider::driver_registry::PromptCacheStrategy::Auto => {
+                                "implicit"
+                            }
+                            everruns_provider::driver_registry::PromptCacheStrategy::Explicit => {
+                                "explicit"
+                            }
+                        }
+                    } else {
+                        "prompt_cache_key"
+                    }
+                    .to_string(),
+                ),
                 "anthropic" => Some("cache_control".to_string()),
                 "gemini" => Some(
                     if cfg.gemini_cached_content.is_some() {
@@ -44,7 +58,14 @@ pub(super) fn build_request_options(
         });
 
     let mut provider_options = HashMap::new();
-    if provider == "openai" && config.previous_response_id.is_some() {
+    let explicit_openai_cache = provider == "openai"
+        && everruns_provider::openai_compat::supports_cache_options(&config.model)
+        && config.prompt_cache.as_ref().is_some_and(|cache| {
+            cache.enabled
+                && cache.strategy
+                    == everruns_provider::driver_registry::PromptCacheStrategy::Explicit
+        });
+    if provider == "openai" && config.previous_response_id.is_some() && !explicit_openai_cache {
         provider_options.insert(
             "openai".to_string(),
             json!({ "previous_response_id": true }),
