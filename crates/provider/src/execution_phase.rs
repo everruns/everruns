@@ -186,4 +186,61 @@ mod tests {
         );
         assert_eq!(ExecutionPhase::from_provider_str("unknown"), None);
     }
+
+    #[test]
+    fn tool_call_presence_derives_execution_phase() {
+        assert_eq!(
+            ExecutionPhase::from_has_tool_calls(true),
+            ExecutionPhase::Commentary
+        );
+        assert_eq!(
+            ExecutionPhase::from_has_tool_calls(false),
+            ExecutionPhase::FinalAnswer
+        );
+    }
+
+    #[test]
+    fn streamed_hint_keeps_first_classification() {
+        use ExecutionPhase::{Commentary, FinalAnswer};
+        for (current, incoming, expected) in [
+            (None, Commentary, Commentary),
+            (None, FinalAnswer, FinalAnswer),
+            (Some(Commentary), Commentary, Commentary),
+            (Some(Commentary), FinalAnswer, Commentary),
+            (Some(FinalAnswer), Commentary, FinalAnswer),
+            (Some(FinalAnswer), FinalAnswer, FinalAnswer),
+        ] {
+            assert_eq!(
+                ExecutionPhase::refine_streamed_hint(current, incoming),
+                Some(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn phase_wire_values_accept_legacy_spellings_and_reject_invalid_input() {
+        for (input, phase, canonical) in [
+            ("commentary", ExecutionPhase::Commentary, "commentary"),
+            ("in_progress", ExecutionPhase::Commentary, "commentary"),
+            ("final_answer", ExecutionPhase::FinalAnswer, "final_answer"),
+            ("completed", ExecutionPhase::FinalAnswer, "final_answer"),
+        ] {
+            let decoded: ExecutionPhase = serde_json::from_value(serde_json::json!(input)).unwrap();
+            assert_eq!(decoded, phase);
+            assert_eq!(
+                serde_json::to_value(decoded).unwrap(),
+                serde_json::json!(canonical)
+            );
+            assert_eq!(decoded.as_provider_str(), canonical);
+            assert_eq!(decoded.to_string(), canonical);
+        }
+        for input in [
+            serde_json::json!("bogus"),
+            serde_json::json!("Commentary"),
+            serde_json::Value::Null,
+            serde_json::json!(42),
+        ] {
+            assert!(serde_json::from_value::<ExecutionPhase>(input).is_err());
+        }
+    }
 }

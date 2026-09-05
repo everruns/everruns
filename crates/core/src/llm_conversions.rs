@@ -206,7 +206,7 @@ mod tests {
         LlmContentPart, LlmMessageContent, LlmMessageRole, OpenRouterRoutingConfig,
         OpenRouterServerTool, OpenRouterServerToolKind,
     };
-    use crate::message::{ImageFileContentPart, TextContentPart};
+    use crate::message::TextContentPart;
     use everruns_provider::model::ReasoningEffort;
 
     #[test]
@@ -240,6 +240,42 @@ mod tests {
         assert!(llm_config.metadata.is_empty());
         // No server tools configured on the agent → none on the call config.
         assert!(llm_config.openrouter_routing.is_none());
+        let mut populated = RuntimeAgent::new("prompt", "custom-model");
+        populated.temperature = Some(0.25);
+        populated.max_tokens = Some(321);
+        populated.parallel_tool_calls = Some(false);
+        populated.tools = vec![serde_json::from_value(serde_json::json!({
+            "type":"builtin", "name":"lookup", "description":"Look up", "parameters":{"type":"object"}
+        })).unwrap()];
+        populated.tool_search = Some(crate::driver_registry::ToolSearchConfig {
+            enabled: true,
+            threshold: 17,
+        });
+        populated.prompt_cache = Some(crate::driver_registry::PromptCacheConfig {
+            enabled: true,
+            strategy: crate::driver_registry::PromptCacheStrategy::Auto,
+            gemini_cached_content: Some("cachedContents/test".into()),
+        });
+        for actual in [
+            llm_call_config_from_agent(&populated),
+            llm_call_config_builder_from_agent(&populated).build(),
+        ] {
+            assert_eq!(actual.model, "custom-model");
+            assert_eq!(actual.temperature, Some(0.25));
+            assert_eq!(actual.max_tokens, Some(321));
+            assert_eq!(actual.parallel_tool_calls, Some(false));
+            assert_eq!(
+                serde_json::to_value(actual.tools).unwrap(),
+                serde_json::to_value(&populated.tools).unwrap()
+            );
+            assert_eq!(
+                serde_json::to_value(actual.tool_search).unwrap(),
+                serde_json::json!({"enabled":true,"threshold":17})
+            );
+            assert_eq!(actual.prompt_cache, populated.prompt_cache);
+            assert!(actual.reasoning_effort.is_none());
+            assert!(actual.metadata.is_empty());
+        }
     }
 
     #[test]
@@ -267,62 +303,35 @@ mod tests {
     }
 
     #[test]
-    fn test_llm_call_config_builder_with_metadata() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-5.2");
-        let llm_config = llm_call_config_builder_from_agent(&runtime_agent)
-            .with_metadata("session_id", "session_abc123")
-            .with_metadata("agent_id", "agent_xyz789")
-            .build();
-
-        assert_eq!(
-            llm_config.metadata.get("session_id"),
-            Some(&"session_abc123".to_string())
-        );
-        assert_eq!(
-            llm_config.metadata.get("agent_id"),
-            Some(&"agent_xyz789".to_string())
-        );
-    }
-
-    #[test]
-    fn test_llm_call_config_builder_with_metadata_hashmap() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-5.2");
-        let mut metadata = HashMap::new();
-        metadata.insert("key1".to_string(), "value1".to_string());
-        metadata.insert("key2".to_string(), "value2".to_string());
-
-        let llm_config = llm_call_config_builder_from_agent(&runtime_agent)
-            .metadata(metadata)
-            .build();
-
-        assert_eq!(llm_config.metadata.get("key1"), Some(&"value1".to_string()));
-        assert_eq!(llm_config.metadata.get("key2"), Some(&"value2".to_string()));
-    }
-
-    #[test]
-    fn test_llm_call_config_builder_with_reasoning_effort() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-5.2");
-        let llm_config = llm_call_config_builder_from_agent(&runtime_agent)
-            .reasoning_effort(ReasoningEffort::High)
-            .build();
-
-        assert_eq!(llm_config.reasoning_effort, Some(ReasoningEffort::High));
-    }
-
-    #[test]
     fn test_llm_call_config_builder_with_all_options() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-5.2");
-        let llm_config = llm_call_config_builder_from_agent(&runtime_agent)
-            .model("claude-opus-5")
+        let mut agent = RuntimeAgent::new("prompt", "original-model");
+        agent.parallel_tool_calls = Some(false);
+        agent.max_tokens = Some(12);
+        let config = llm_call_config_builder_from_agent(&agent)
+            .model("override-model")
             .reasoning_effort(ReasoningEffort::Medium)
-            .temperature(0.7)
+            .temperature(0.5)
             .max_tokens(1000)
+            .metadata(HashMap::from([
+                ("session_id".into(), "old".into()),
+                ("agent_id".into(), "agent_2".into()),
+            ]))
+            .with_metadata("session_id", "session_3")
+            .with_metadata("trace", "trace_4")
             .build();
-
-        assert_eq!(llm_config.model, "claude-opus-5");
-        assert_eq!(llm_config.reasoning_effort, Some(ReasoningEffort::Medium));
-        assert_eq!(llm_config.temperature, Some(0.7));
-        assert_eq!(llm_config.max_tokens, Some(1000));
+        assert_eq!(config.model, "override-model");
+        assert_eq!(config.reasoning_effort, Some(ReasoningEffort::Medium));
+        assert_eq!(config.temperature, Some(0.5));
+        assert_eq!(config.max_tokens, Some(1000));
+        assert_eq!(config.parallel_tool_calls, Some(false));
+        assert_eq!(
+            config.metadata,
+            HashMap::from([
+                ("session_id".into(), "session_3".into()),
+                ("agent_id".into(), "agent_2".into()),
+                ("trace".into(), "trace_4".into())
+            ])
+        );
     }
 
     #[test]
@@ -342,77 +351,34 @@ mod tests {
 
     #[test]
     fn test_message_has_image_files_with_image_file() {
-        let message = Message {
-            id: uuid::Uuid::new_v4().into(),
-            role: MessageRole::User,
-            content: vec![
-                ContentPart::Text(TextContentPart::new("Look at this image".to_string())),
-                ContentPart::ImageFile(ImageFileContentPart {
-                    image_id: uuid::Uuid::new_v4().into(),
-                    filename: Some("test.png".to_string()),
-                }),
-            ],
-            phase: None,
-            phase_source: None,
-            controls: None,
-            metadata: None,
-            external_actor: None,
-            created_at: chrono::Utc::now(),
-        };
-
+        let mut message = Message::user("Just text");
+        assert!(!message_has_image_files(&message));
+        message
+            .content
+            .push(ContentPart::image_url("https://example.com/image"));
+        assert!(!message_has_image_files(&message));
+        message
+            .content
+            .push(ContentPart::image_file(crate::typed_id::ImageId::new()));
         assert!(message_has_image_files(&message));
     }
 
     #[test]
-    fn test_message_has_image_files_without_image_file() {
-        let message = Message {
-            id: uuid::Uuid::new_v4().into(),
-            role: MessageRole::User,
-            content: vec![ContentPart::Text(TextContentPart::new(
-                "Just text".to_string(),
-            ))],
-            phase: None,
-            phase_source: None,
-            controls: None,
-            metadata: None,
-            external_actor: None,
-            created_at: chrono::Utc::now(),
-        };
-
-        assert!(!message_has_image_files(&message));
-    }
-
-    #[test]
     fn test_extract_image_file_ids() {
-        let id1 = uuid::Uuid::new_v4();
-        let id2 = uuid::Uuid::new_v4();
-
-        let message = Message {
-            id: uuid::Uuid::new_v4().into(),
-            role: MessageRole::User,
-            content: vec![
-                ContentPart::Text(TextContentPart::new("Look at these images".to_string())),
-                ContentPart::ImageFile(ImageFileContentPart {
-                    image_id: id1.into(),
-                    filename: Some("test1.png".to_string()),
-                }),
-                ContentPart::ImageFile(ImageFileContentPart {
-                    image_id: id2.into(),
-                    filename: Some("test2.png".to_string()),
-                }),
-            ],
-            phase: None,
-            phase_source: None,
-            controls: None,
-            metadata: None,
-            external_actor: None,
-            created_at: chrono::Utc::now(),
-        };
-
-        let ids = extract_image_file_ids(&message);
-        assert_eq!(ids.len(), 2);
-        assert!(ids.contains(&id1));
-        assert!(ids.contains(&id2));
+        let first = crate::typed_id::ImageId::new();
+        let second = crate::typed_id::ImageId::new();
+        let mut message = Message::user("images");
+        message.content.extend([
+            ContentPart::image_file(first),
+            ContentPart::image_url("https://example.com/inline"),
+            ContentPart::image_file(second),
+            ContentPart::image_file(first),
+        ]);
+        assert_eq!(
+            extract_image_file_ids(&message),
+            vec![first.uuid(), second.uuid(), first.uuid()]
+        );
+        assert!(extract_image_file_ids(&Message::user("text")).is_empty());
     }
 
     #[test]
@@ -441,85 +407,90 @@ mod tests {
 
     #[test]
     fn test_from_message_with_images_resolved_image() {
-        let image_id = uuid::Uuid::new_v4();
-        let message = Message {
-            id: uuid::Uuid::new_v4().into(),
-            role: MessageRole::User,
-            content: vec![
-                ContentPart::Text(TextContentPart::new("Look at this".to_string())),
-                ContentPart::ImageFile(ImageFileContentPart {
-                    image_id: image_id.into(),
-                    filename: Some("test.png".to_string()),
-                }),
-            ],
-            phase: None,
-            phase_source: None,
-            controls: None,
-            metadata: None,
-            external_actor: None,
-            created_at: chrono::Utc::now(),
-        };
-
-        let mut resolved = std::collections::HashMap::new();
-        resolved.insert(
-            image_id,
-            crate::image_services::ResolvedImage::new("base64data", "image/png"),
+        let first = crate::typed_id::ImageId::new();
+        let second = crate::typed_id::ImageId::new();
+        let mut message = Message::user("Look at this");
+        message.content.extend([
+            ContentPart::image_file(first),
+            ContentPart::text("and this"),
+            ContentPart::image_file(second),
+        ]);
+        let resolved = HashMap::from([
+            (
+                second.uuid(),
+                ResolvedImage::new("second-data", "image/jpeg"),
+            ),
+            (
+                Uuid::new_v4(),
+                ResolvedImage::new("unused-data", "image/png"),
+            ),
+            (first.uuid(), ResolvedImage::new("first-data", "image/png")),
+        ]);
+        let actual = llm_message_from_message_with_images(&message, &resolved);
+        assert_eq!(actual.role, LlmMessageRole::User);
+        assert!(
+            matches!(&actual.content, LlmMessageContent::Parts(parts) if matches!(&parts[..],
+            [LlmContentPart::Text { text: a }, LlmContentPart::Image { url: b },
+             LlmContentPart::Text { text: c }, LlmContentPart::Image { url: d }]
+            if a == "Look at this" && b == "data:image/png;base64,first-data" && c == "and this" && d == "data:image/jpeg;base64,second-data"))
         );
-
-        let llm_message = llm_message_from_message_with_images(&message, &resolved);
-
-        match &llm_message.content {
-            LlmMessageContent::Parts(parts) => {
-                assert_eq!(parts.len(), 2);
-                // First part should be text
-                assert!(matches!(&parts[0], LlmContentPart::Text { .. }));
-                // Second part should be resolved image
-                if let LlmContentPart::Image { url } = &parts[1] {
-                    assert!(url.starts_with("data:image/png;base64,"));
-                } else {
-                    panic!("Expected image content part");
-                }
-            }
-            _ => panic!("Expected parts content"),
-        }
     }
 
     #[test]
     fn test_from_message_with_images_unresolved_image() {
-        let image_id = uuid::Uuid::new_v4();
-        let message = Message {
-            id: uuid::Uuid::new_v4().into(),
-            role: MessageRole::User,
-            content: vec![ContentPart::ImageFile(ImageFileContentPart {
-                image_id: image_id.into(),
-                filename: Some("missing.png".to_string()),
-            })],
-            phase: None,
-            phase_source: None,
-            controls: None,
-            metadata: None,
-            external_actor: None,
-            created_at: chrono::Utc::now(),
+        let image_id = crate::typed_id::ImageId::from_uuid(Uuid::from_u128(7));
+        let mut message = Message::user("");
+        message.content = vec![ContentPart::image_file(image_id)];
+        let actual = llm_message_from_message_with_images(&message, &HashMap::new());
+        assert_eq!(actual.role, LlmMessageRole::User);
+        let LlmMessageContent::Text(text) = actual.content else {
+            panic!("single missing-image placeholder must remain text");
         };
+        assert_eq!(
+            text,
+            "[Image not found: img_00000000000000000000000000000007]"
+        );
+    }
 
-        // Empty resolved map - image not found
-        let resolved = std::collections::HashMap::new();
-        let llm_message = llm_message_from_message_with_images(&message, &resolved);
-
-        // Should have placeholder text for missing image
-        // When there's only one part, it may return Text directly instead of Parts
-        match &llm_message.content {
-            LlmMessageContent::Text(text) => {
-                assert!(text.contains("Image not found"));
-            }
-            LlmMessageContent::Parts(parts) => {
-                assert_eq!(parts.len(), 1);
-                if let LlmContentPart::Text { text } = &parts[0] {
-                    assert!(text.contains("Image not found"));
-                } else {
-                    panic!("Expected text placeholder for missing image");
-                }
-            }
+    #[test]
+    fn adapters_preserve_native_reasoning_without_flattening_replay_secrets() {
+        use everruns_provider::execution_phase::ExecutionPhase;
+        use everruns_provider::reasoning::ReasoningContentPart;
+        let calls = vec![ToolCall {
+            id: "call_1".into(),
+            name: "lookup".into(),
+            arguments: serde_json::json!({"q":"x"}),
+        }];
+        let reasoning = ReasoningContentPart::opaque("test")
+            .with_item_id("rs_1")
+            .with_signature("private-signature")
+            .with_encrypted("private-encrypted");
+        let mut message = Message::assistant_with_tools("answer", calls.clone())
+            .with_phase(ExecutionPhase::Commentary);
+        message
+            .content
+            .push(ContentPart::reasoning(reasoning.clone()));
+        for (actual, expected_text) in [
+            (
+                llm_message_from_message(&message),
+                "answer\nTool call: lookup with arguments: {\"q\":\"x\"}",
+            ),
+            (
+                llm_message_from_message_with_images(&message, &HashMap::new()),
+                "answer",
+            ),
+        ] {
+            assert_eq!(actual.role, LlmMessageRole::Assistant);
+            assert_eq!(actual.phase, Some(ExecutionPhase::Commentary));
+            assert_eq!(actual.content.to_text(), expected_text);
+            assert_eq!(
+                serde_json::to_value(actual.tool_calls).unwrap(),
+                serde_json::to_value(&calls).unwrap()
+            );
+            assert_eq!(
+                serde_json::to_value(actual.reasoning).unwrap(),
+                serde_json::to_value(vec![reasoning.clone()]).unwrap()
+            );
         }
     }
 }

@@ -442,7 +442,7 @@ impl MessageQuery {
             let insert_idx = if is_before {
                 idx.min(messages.len())
             } else {
-                (idx + 1).min(messages.len())
+                idx.saturating_add(1).min(messages.len())
             };
             messages.insert(insert_idx, msg);
         }
@@ -662,431 +662,279 @@ pub trait MessageFilterProvider: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::message::Message;
-    use uuid::Uuid;
+    use crate::message::MessageRole;
+
+    fn messages() -> Vec<Message> {
+        ["goal", "first", "second", "third", "latest"]
+            .into_iter()
+            .map(Message::user)
+            .collect()
+    }
+
+    fn assert_messages(actual: &[Message], expected: &[Message]) {
+        assert_eq!(
+            serde_json::to_value(actual).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+    }
 
     #[test]
-    fn test_message_query_builder() {
-        let session_id: SessionId = Uuid::now_v7().into();
-        let query = MessageQuery::new(session_id)
-            .with_filter(MessageFilter::EventTypes(vec!["input.message".to_string()]))
+    fn query_builder_preserves_filter_and_window_settings() {
+        let session = SessionId::new();
+        let query = MessageQuery::new(session)
+            .with_filter(MessageFilter::Search("needle".into()))
+            .with_filters([MessageFilter::EventTypes(vec!["input.message".into()])])
             .with_limit(50)
-            .with_offset(10);
-
-        assert_eq!(query.session_id, session_id);
-        assert_eq!(query.filters.len(), 1);
-        assert_eq!(query.limit, Some(50));
-        assert_eq!(query.offset, Some(10));
+            .with_offset(10)
+            .with_keep_head(2)
+            .after_sequence(7);
+        assert_eq!(query.session_id, session);
+        assert!(
+            matches!(&query.filters[..], [MessageFilter::Search(s), MessageFilter::EventTypes(k)]
+            if s == "needle" && k == &["input.message"])
+        );
+        assert_eq!(
+            (
+                query.limit,
+                query.offset,
+                query.keep_head,
+                query.after_sequence
+            ),
+            (Some(50), Some(10), Some(2), Some(7))
+        );
     }
 
     #[test]
-    fn test_message_query_has_filters() {
-        let session_id: SessionId = Uuid::now_v7().into();
-
-        let query_with_db_filter =
-            MessageQuery::new(session_id).with_filter(MessageFilter::Search("hello".to_string()));
-        assert!(query_with_db_filter.has_db_filters());
-        assert!(!query_with_db_filter.has_custom_filters());
-
-        let query_with_custom =
-            MessageQuery::new(session_id).with_filter(MessageFilter::Custom(Arc::new(|_| true)));
-        assert!(!query_with_custom.has_db_filters());
-        assert!(query_with_custom.has_custom_filters());
-    }
-
-    #[test]
-    fn test_injection_at_start() {
-        let session_id: SessionId = Uuid::now_v7().into();
-        let injected = Message::system("Injected at start");
-
-        let query = MessageQuery::new(session_id)
-            .with_injection(InjectedMessage::at_start(injected.clone()));
-
-        let mut messages = vec![Message::user("First"), Message::user("Second")];
-
-        query.apply_injections(&mut messages);
-
-        assert_eq!(messages.len(), 3);
-        assert_eq!(messages[0].text(), Some("Injected at start"));
-        assert_eq!(messages[1].text(), Some("First"));
-    }
-
-    #[test]
-    fn test_injection_at_end() {
-        let session_id: SessionId = Uuid::now_v7().into();
-        let injected = Message::system("Injected at end");
-
-        let query =
-            MessageQuery::new(session_id).with_injection(InjectedMessage::at_end(injected.clone()));
-
-        let mut messages = vec![Message::user("First"), Message::user("Second")];
-
-        query.apply_injections(&mut messages);
-
-        assert_eq!(messages.len(), 3);
-        assert_eq!(messages[2].text(), Some("Injected at end"));
-    }
-
-    #[test]
-    fn test_apply_windowing_keeps_latest_messages_chronological() {
-        let session_id: SessionId = Uuid::now_v7().into();
-        let query = MessageQuery::new(session_id).with_limit(2);
-        let mut messages = vec![
-            Message::user("oldest"),
-            Message::user("middle"),
-            Message::user("newest"),
-        ];
-
-        query.apply_windowing(&mut messages);
-
-        assert_eq!(messages.len(), 2);
-        assert_eq!(messages[0].text(), Some("middle"));
-        assert_eq!(messages[1].text(), Some("newest"));
-    }
-
-    #[test]
-    fn test_apply_window_bounds_keep_head_anchors_first_messages() {
-        let session_id: SessionId = Uuid::now_v7().into();
-        let query = MessageQuery::new(session_id)
-            .with_limit(2)
-            .with_keep_head(1);
-        let mut messages = vec![
-            Message::user("goal"),
-            Message::user("m1"),
-            Message::user("m2"),
-            Message::user("m3"),
-            Message::user("m4"),
-        ];
-
-        query.apply_window_bounds(&mut messages);
-
-        // First (anchor) + latest 2; the middle is dropped.
-        let texts: Vec<_> = messages.iter().filter_map(|m| m.text()).collect();
-        assert_eq!(texts, vec!["goal", "m3", "m4"]);
-    }
-
-    #[test]
-    fn test_apply_window_bounds_keep_head_no_duplicate_on_overlap() {
-        let session_id: SessionId = Uuid::now_v7().into();
-        // keep_head + limit >= len -> nothing dropped, no duplication.
-        let query = MessageQuery::new(session_id)
-            .with_limit(3)
-            .with_keep_head(2);
-        let mut messages = vec![Message::user("a"), Message::user("b"), Message::user("c")];
-
-        query.apply_window_bounds(&mut messages);
-
-        let texts: Vec<_> = messages.iter().filter_map(|m| m.text()).collect();
-        assert_eq!(texts, vec!["a", "b", "c"]);
-    }
-
-    #[test]
-    fn test_apply_window_bounds_keep_head_zero_matches_tail_only() {
-        let session_id: SessionId = Uuid::now_v7().into();
-        let query = MessageQuery::new(session_id)
-            .with_limit(2)
-            .with_keep_head(0);
-        let mut messages = vec![Message::user("a"), Message::user("b"), Message::user("c")];
-
-        query.apply_window_bounds(&mut messages);
-
-        let texts: Vec<_> = messages.iter().filter_map(|m| m.text()).collect();
-        assert_eq!(texts, vec!["b", "c"]);
-    }
-
-    #[test]
-    fn test_apply_window_bounds_keep_head_exceeds_total() {
-        let session_id: SessionId = Uuid::now_v7().into();
-        // keep_head larger than the list -> keep everything, no panic/duplication.
-        let query = MessageQuery::new(session_id)
-            .with_limit(1)
-            .with_keep_head(10);
-        let mut messages = vec![Message::user("a"), Message::user("b")];
-
-        query.apply_window_bounds(&mut messages);
-
-        let texts: Vec<_> = messages.iter().filter_map(|m| m.text()).collect();
-        assert_eq!(texts, vec!["a", "b"]);
-    }
-
-    #[test]
-    fn test_apply_windowing_prepends_excluded_notice() {
-        let session_id: SessionId = Uuid::now_v7().into();
-        let query = MessageQuery::new(session_id)
-            .with_limit(1)
-            .with_prepend_transform(Arc::new(ExcludedNoticeTransform::new("{} hidden")));
-        let mut messages = vec![Message::user("first"), Message::user("second")];
-
-        query.apply_windowing(&mut messages);
-
-        assert_eq!(messages.len(), 2);
-        assert_eq!(messages[0].text(), Some("1 hidden"));
-        assert_eq!(messages[1].text(), Some("second"));
-    }
-
-    #[test]
-    fn test_injection_before_index() {
-        let session_id: SessionId = Uuid::now_v7().into();
-        let injected = Message::system("Injected before index 1");
-
-        let query = MessageQuery::new(session_id)
-            .with_injection(InjectedMessage::before_index(1, injected.clone()));
-
-        let mut messages = vec![
-            Message::user("First"),
-            Message::user("Second"),
-            Message::user("Third"),
-        ];
-
-        query.apply_injections(&mut messages);
-
-        assert_eq!(messages.len(), 4);
-        assert_eq!(messages[0].text(), Some("First"));
-        assert_eq!(messages[1].text(), Some("Injected before index 1"));
-        assert_eq!(messages[2].text(), Some("Second"));
-    }
-
-    #[test]
-    fn test_multiple_injections() {
-        let session_id: SessionId = Uuid::now_v7().into();
-
-        let query = MessageQuery::new(session_id)
-            .with_injection(InjectedMessage::at_start(Message::system("Start")))
-            .with_injection(InjectedMessage::at_end(Message::system("End")));
-
-        let mut messages = vec![Message::user("Middle")];
-
-        query.apply_injections(&mut messages);
-
-        assert_eq!(messages.len(), 3);
-        assert_eq!(messages[0].text(), Some("Start"));
-        assert_eq!(messages[1].text(), Some("Middle"));
-        assert_eq!(messages[2].text(), Some("End"));
-    }
-
-    #[test]
-    fn test_filter_debug() {
-        let filter = MessageFilter::TimeRange {
-            from: None,
-            to: None,
-        };
-        let debug_str = format!("{:?}", filter);
-        assert!(debug_str.contains("TimeRange"));
-
-        let custom = MessageFilter::Custom(Arc::new(|_| true));
-        let debug_str = format!("{:?}", custom);
-        assert!(debug_str.contains("Custom"));
-        assert!(debug_str.contains("<fn>"));
-    }
-
-    // ========================================================================
-    // Additional edge case tests
-    // ========================================================================
-
-    #[test]
-    fn test_with_filters_multiple() {
-        let session_id: SessionId = Uuid::now_v7().into();
-        let query = MessageQuery::new(session_id).with_filters([
-            MessageFilter::EventTypes(vec!["input.message".to_string()]),
-            MessageFilter::Search("hello".to_string()),
-        ]);
-
-        assert_eq!(query.filters.len(), 2);
-        assert!(query.has_db_filters());
-        assert!(!query.has_custom_filters());
-    }
-
-    #[test]
-    fn test_with_injections_multiple() {
-        let session_id: SessionId = Uuid::now_v7().into();
-        let query = MessageQuery::new(session_id).with_injections([
-            InjectedMessage::at_start(Message::system("First")),
-            InjectedMessage::at_end(Message::system("Last")),
-        ]);
-
-        assert_eq!(query.injections.len(), 2);
-        assert!(query.has_injections());
-    }
-
-    #[test]
-    fn test_injection_after_index() {
-        let session_id: SessionId = Uuid::now_v7().into();
-        let injected = Message::system("Injected after index 0");
-
-        let query = MessageQuery::new(session_id)
-            .with_injection(InjectedMessage::after_index(0, injected.clone()));
-
-        let mut messages = vec![
-            Message::user("First"),
-            Message::user("Second"),
-            Message::user("Third"),
-        ];
-
-        query.apply_injections(&mut messages);
-
-        assert_eq!(messages.len(), 4);
-        assert_eq!(messages[0].text(), Some("First"));
-        assert_eq!(messages[1].text(), Some("Injected after index 0"));
-        assert_eq!(messages[2].text(), Some("Second"));
-        assert_eq!(messages[3].text(), Some("Third"));
-    }
-
-    #[test]
-    fn test_injection_into_empty_list() {
-        let session_id: SessionId = Uuid::now_v7().into();
-
-        let query = MessageQuery::new(session_id)
-            .with_injection(InjectedMessage::at_start(Message::system("Start")))
-            .with_injection(InjectedMessage::at_end(Message::system("End")));
-
-        let mut messages: Vec<Message> = vec![];
-
-        query.apply_injections(&mut messages);
-
-        assert_eq!(messages.len(), 2);
-        assert_eq!(messages[0].text(), Some("Start"));
-        assert_eq!(messages[1].text(), Some("End"));
-    }
-
-    #[test]
-    fn test_injection_before_index_out_of_bounds() {
-        let session_id: SessionId = Uuid::now_v7().into();
-        let injected = Message::system("Injected before index 10");
-
-        // Index 10 is out of bounds for a 2-element list
-        let query = MessageQuery::new(session_id)
-            .with_injection(InjectedMessage::before_index(10, injected.clone()));
-
-        let mut messages = vec![Message::user("First"), Message::user("Second")];
-
-        query.apply_injections(&mut messages);
-
-        // Should insert at the end (min(10, 2) = 2)
-        assert_eq!(messages.len(), 3);
-        assert_eq!(messages[2].text(), Some("Injected before index 10"));
-    }
-
-    #[test]
-    fn test_injection_after_index_out_of_bounds() {
-        let session_id: SessionId = Uuid::now_v7().into();
-        let injected = Message::system("Injected after index 10");
-
-        // Index 10 is out of bounds for a 2-element list
-        let query = MessageQuery::new(session_id)
-            .with_injection(InjectedMessage::after_index(10, injected.clone()));
-
-        let mut messages = vec![Message::user("First"), Message::user("Second")];
-
-        query.apply_injections(&mut messages);
-
-        // Should insert at the end (min(11, 2) = 2)
-        assert_eq!(messages.len(), 3);
-        assert_eq!(messages[2].text(), Some("Injected after index 10"));
-    }
-
-    #[test]
-    fn test_multiple_start_injections_preserve_order() {
-        let session_id: SessionId = Uuid::now_v7().into();
-
-        // Multiple start injections should maintain their order
-        let query = MessageQuery::new(session_id)
-            .with_injection(InjectedMessage::at_start(Message::system("First injected")))
-            .with_injection(InjectedMessage::at_start(Message::system(
-                "Second injected",
-            )));
-
-        let mut messages = vec![Message::user("Original")];
-
-        query.apply_injections(&mut messages);
-
-        assert_eq!(messages.len(), 3);
-        // Both should be at the start, first one should come first
-        assert_eq!(messages[0].text(), Some("First injected"));
-        assert_eq!(messages[1].text(), Some("Second injected"));
-        assert_eq!(messages[2].text(), Some("Original"));
-    }
-
-    #[test]
-    fn test_combined_db_and_custom_filters() {
-        let session_id: SessionId = Uuid::now_v7().into();
-
-        let query = MessageQuery::new(session_id)
-            .with_filter(MessageFilter::Search("hello".to_string()))
-            .with_filter(MessageFilter::Custom(Arc::new(|msg| {
-                msg.role == crate::MessageRole::User
-            })));
-
-        assert!(query.has_db_filters());
+    fn filter_classification_handles_empty_db_custom_and_mixed_queries() {
+        let session = SessionId::new();
+        let empty = MessageQuery::new(session);
+        assert!(!empty.has_db_filters());
+        assert!(!empty.has_custom_filters());
+        let custom = MessageFilter::Custom(Arc::new(|m| m.role == MessageRole::User));
+        let query = empty.clone().with_filter(custom.clone());
+        assert!(!query.has_db_filters());
         assert!(query.has_custom_filters());
-        assert_eq!(query.filters.len(), 2);
+        for filter in [
+            MessageFilter::Search("hello".into()),
+            MessageFilter::EventTypes(vec!["input.message".into()]),
+            MessageFilter::ToolName("lookup".into()),
+            MessageFilter::ExcludeIds(vec![EventId::new()]),
+            MessageFilter::IncludeIds(vec![EventId::new()]),
+            MessageFilter::TimeRange {
+                from: Some(Utc::now()),
+                to: None,
+            },
+        ] {
+            let db = empty.clone().with_filter(filter);
+            assert!(db.has_db_filters());
+            assert!(!db.has_custom_filters());
+            let mixed = db.with_filter(custom.clone());
+            assert!(mixed.has_db_filters());
+            assert!(mixed.has_custom_filters());
+        }
     }
 
     #[test]
-    fn test_query_default() {
-        let query = MessageQuery::default();
-        assert_eq!(query.session_id, Uuid::nil());
-        assert!(query.filters.is_empty());
-        assert!(query.injections.is_empty());
-        assert_eq!(query.limit, None);
-        assert_eq!(query.offset, None);
-    }
-
-    // ========================================================================
-    // Anchored window tests
-    // ========================================================================
-
-    #[test]
-    fn test_anchored_window_keeps_head_and_tail_drops_middle() {
-        // 5 messages, anchor 1, min tail 2, tiny budget: only head + tail survive.
-        let costs = [10, 10, 10, 10, 10];
-        let win = anchored_window(&costs, 1, 2, None, 1);
-        assert_eq!(win.head_len, 1);
-        assert_eq!(win.recent_start, 3);
-        assert_eq!(win.hidden(), 2); // messages 1 and 2 dropped
-    }
-
-    #[test]
-    fn test_anchored_window_grows_recent_block_within_budget() {
-        // Generous budget pulls older messages back into the contiguous tail.
-        let costs = [10, 10, 10, 10, 10];
-        let win = anchored_window(&costs, 1, 1, None, 1_000);
-        assert_eq!(win.head_len, 1);
-        assert_eq!(win.recent_start, 1); // everything kept
-        assert_eq!(win.hidden(), 0);
+    fn injections_preserve_messages_at_each_position_and_clamp_large_indices() {
+        for original in [vec![], messages()] {
+            let len = original.len();
+            for (position, index) in [
+                (InjectionPosition::Start, 0),
+                (InjectionPosition::End, len),
+                (InjectionPosition::BeforeIndex(1), 1.min(len)),
+                (InjectionPosition::AfterIndex(1), 2.min(len)),
+                (InjectionPosition::BeforeIndex(10), len),
+                (InjectionPosition::AfterIndex(10), len),
+                (InjectionPosition::BeforeIndex(usize::MAX), len),
+                (InjectionPosition::AfterIndex(usize::MAX), len),
+            ] {
+                let inserted = Message::system("injected");
+                let query = MessageQuery::new(SessionId::new()).with_injection(InjectedMessage {
+                    position,
+                    message: inserted.clone(),
+                });
+                assert!(query.has_injections());
+                let mut actual = original.clone();
+                query.apply_injections(&mut actual);
+                let mut expected = original.clone();
+                expected.insert(index, inserted);
+                assert_messages(&actual, &expected);
+            }
+        }
     }
 
     #[test]
-    fn test_anchored_window_respects_max_tail_cap() {
-        // max_tail caps the recent block; the head anchor is additional to it.
-        let costs = [10; 10];
-        let win = anchored_window(&costs, 1, 5, Some(2), 1_000);
-        assert_eq!(win.head_len, 1);
-        assert_eq!(win.recent_start, 8); // keep msg 0 + msgs 8,9
-        assert_eq!(win.hidden(), 7);
+    fn start_and_end_injections_preserve_declared_order() {
+        let injected: Vec<_> = ["start one", "start two", "end one", "end two"]
+            .into_iter()
+            .map(Message::system)
+            .collect();
+        let query = MessageQuery::new(SessionId::new())
+            .with_injection(InjectedMessage::at_start(injected[0].clone()))
+            .with_injections([
+                InjectedMessage::at_start(injected[1].clone()),
+                InjectedMessage::at_end(injected[2].clone()),
+                InjectedMessage::at_end(injected[3].clone()),
+            ]);
+        for original in [vec![], messages()] {
+            let expected = [
+                injected[..2].to_vec(),
+                original.clone(),
+                injected[2..].to_vec(),
+            ]
+            .concat();
+            let mut actual = original;
+            query.apply_injections(&mut actual);
+            assert_messages(&actual, &expected);
+        }
     }
 
     #[test]
-    fn test_anchored_window_keeps_anchor_and_tail_even_when_over_budget() {
-        let costs = [100, 100, 100, 100];
-        // Budget 0 still preserves head (1) and min tail (1): never drops anchors.
-        let win = anchored_window(&costs, 1, 1, None, 0);
-        assert_eq!(win.head_len, 1);
-        assert_eq!(win.recent_start, 3);
-        assert_eq!(win.hidden(), 2);
+    fn indexed_injections_do_not_shift_other_original_targets() {
+        let original = messages();
+        let before = Message::system("before first");
+        let after = Message::system("after third");
+        for injections in [
+            vec![
+                InjectedMessage::before_index(1, before.clone()),
+                InjectedMessage::after_index(3, after.clone()),
+            ],
+            vec![
+                InjectedMessage::after_index(3, after.clone()),
+                InjectedMessage::before_index(1, before.clone()),
+            ],
+        ] {
+            let query = MessageQuery::new(SessionId::new()).with_injections(injections);
+            let mut actual = original.clone();
+            query.apply_injections(&mut actual);
+            assert_messages(
+                &actual,
+                &[
+                    original[0].clone(),
+                    before.clone(),
+                    original[1].clone(),
+                    original[2].clone(),
+                    original[3].clone(),
+                    after.clone(),
+                    original[4].clone(),
+                ],
+            );
+        }
     }
 
     #[test]
-    fn test_anchored_window_no_middle_when_head_and_tail_overlap() {
-        let costs = [10, 10, 10];
-        let win = anchored_window(&costs, 1, 10, None, 1);
-        assert_eq!(win.hidden(), 0);
+    fn window_bounds_preserve_exact_head_and_tail_after_offset() {
+        let original = messages();
+        type WindowCase = (Option<i64>, Option<i64>, Option<usize>, &'static [usize]);
+        let cases: &[WindowCase] = &[
+            (None, None, None, &[0, 1, 2, 3, 4]),
+            (None, Some(2), None, &[3, 4]),
+            (None, Some(2), Some(0), &[3, 4]),
+            (None, Some(2), Some(1), &[0, 3, 4]),
+            (None, Some(3), Some(3), &[0, 1, 2, 3, 4]),
+            (None, Some(1), Some(10), &[0, 1, 2, 3, 4]),
+            (Some(1), Some(1), Some(1), &[1, 4]),
+            (Some(-1), Some(2), None, &[3, 4]),
+            (Some(5), Some(2), Some(1), &[]),
+            (Some(9), None, None, &[]),
+            (None, Some(0), None, &[]),
+            (None, Some(-1), None, &[]),
+            (None, Some(0), Some(1), &[0]),
+            (None, None, Some(1), &[0, 1, 2, 3, 4]),
+        ];
+        for &(offset, limit, keep_head, indices) in cases {
+            let query = MessageQuery {
+                offset,
+                limit,
+                keep_head,
+                ..MessageQuery::new(SessionId::new())
+            };
+            let mut actual = original.clone();
+            query.apply_window_bounds(&mut actual);
+            let expected: Vec<_> = indices.iter().map(|&i| original[i].clone()).collect();
+            assert_messages(&actual, &expected);
+        }
+        let mut unchanged = original.clone();
+        let default = MessageQuery::default();
+        assert!(!default.has_injections());
+        default.apply_windowing(&mut unchanged);
+        default.apply_injections(&mut unchanged);
+        assert_messages(&unchanged, &original);
     }
 
     #[test]
-    fn test_anchored_window_empty() {
-        let win = anchored_window(&[], 1, 2, None, 100);
-        assert_eq!(win.head_len, 0);
-        assert_eq!(win.recent_start, 0);
-        assert_eq!(win.hidden(), 0);
+    fn windowing_notice_counts_offset_and_limit_without_losing_retained_messages() {
+        let original = messages();
+        let query = MessageQuery::new(SessionId::new())
+            .with_offset(1)
+            .with_limit(2)
+            .with_prepend_transform(Arc::new(ExcludedNoticeTransform::new("{} hidden")));
+        let mut actual = original.clone();
+        query.apply_windowing(&mut actual);
+        assert_eq!(actual[0].role, MessageRole::System);
+        assert_eq!(actual[0].text(), Some("3 hidden"));
+        assert_messages(&actual[1..], &original[3..]);
+        let no_exclusion = MessageQuery::new(SessionId::new())
+            .with_prepend_transform(Arc::new(ExcludedNoticeTransform::new("{} hidden")));
+        let mut unchanged = original.clone();
+        no_exclusion.apply_windowing(&mut unchanged);
+        assert_messages(&unchanged, &original);
+    }
+
+    #[test]
+    fn anchored_window_respects_exact_budget_and_contiguous_recent_block() {
+        let costs = [5, 11, 7, 3, 2];
+        for (budget, recent_start) in [(0, 4), (9, 4), (10, 3), (16, 3), (17, 2), (28, 1), (100, 1)]
+        {
+            let window = anchored_window(&costs, 1, 1, None, budget);
+            assert_eq!(
+                window,
+                AnchoredWindow {
+                    head_len: 1,
+                    recent_start
+                }
+            );
+            assert_eq!(window.hidden(), recent_start - 1);
+        }
+    }
+
+    #[test]
+    fn anchored_window_caps_recent_tail_and_preserves_over_budget_anchors() {
+        let costs = [100, 11, 7, 3, 100];
+        for (minimum, maximum, budget, recent_start) in [
+            (1, None, 0, 4),
+            (2, None, 1, 3),
+            (5, Some(2), 1000, 3),
+            (1, Some(2), 1000, 3),
+            (0, Some(0), 0, 5),
+        ] {
+            assert_eq!(
+                anchored_window(&costs, 1, minimum, maximum, budget),
+                AnchoredWindow {
+                    head_len: 1,
+                    recent_start
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn anchored_window_handles_empty_and_overlapping_anchors() {
+        for (costs, head, tail, expected_head) in [
+            (&[][..], 1, 2, 0),
+            (&[10, 10, 10][..], 1, 10, 1),
+            (&[10, 10, 10][..], 9, 1, 3),
+            (&[10, 10, 10][..], 1, 2, 1),
+        ] {
+            let window = anchored_window(costs, head, tail, None, 1);
+            assert_eq!(
+                window,
+                AnchoredWindow {
+                    head_len: expected_head,
+                    recent_start: expected_head
+                }
+            );
+            assert_eq!(window.hidden(), 0);
+        }
     }
 }
