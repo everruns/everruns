@@ -98,7 +98,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 
         let result = runner.run_turn(input).await.unwrap();
 
-        skip_if_quota!(result, config.label());
+        skip_if_quota!(result, cell = config);
 
         // Adaptive-thinking models occasionally answer correctly without emitting
         // a thinking block; for providers that keep reasoning on the private
