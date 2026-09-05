@@ -1,76 +1,56 @@
 Model: z-ai/glm-5.2
 
 QUESTION
-Research durable agent sessions. Use web search before answering, cite the returned source
-URLs, and distinguish facts from inferences.
+Research durable agent sessions. Use web search, then give a brief of at most 150 words
+with three findings, source URLs, and one clearly labeled inference.
 
 [Calling model]
 
-TOOL: search_web
+TOOL: brave_web_search
 {"query":"durable agent sessions AI"}
 
-TOOL: search_web
-{"query":"durable execution AI agents framework"}
+TOOL: brave_web_search
+{"query":"durable agent sessions architecture LLM"}
 
-search_web: OK
-Durable Task for AI Agents - Azure | Microsoft Learn
-https://learn.microsoft.com/en-us/azure/durable-task/sdks/durable-task-for-ai-agents
-AI agents in production face several challenges that durable execution addresses:
-<strong>Long-running … [preview]
-
-search_web: OK
-Durable Execution for AI Agents: State, Retries, Pauses | Quellix Labs
-https://quellixlabs.com/insights/durable-execution-long-running-ai-agent-workflows
-Without persistence, agents often repeat questions they have already asked or, worse, …
+brave_web_search: OK
+{"count":20,"query":"durable agent sessions AI","results":[{"age":"May 5,
+2026","description":"AI agents in production face several challenges that durable
+execution addresses: <strong>Long-running, stateful sessions</strong> — Human-in-the …
 [preview]
 
-[Calling model]
-
-TOOL: search_web
-{"query":"durable sessions AI agents definition challenges 2024"}
-
-search_web: OK
-Durable Task for AI Agents - Azure | Microsoft Learn
-https://learn.microsoft.com/en-us/azure/durable-task/sdks/durable-task-for-ai-agents
-AI agents in production face several challenges that durable execution addresses:
-<strong>Long-running … [preview]
+brave_web_search: OK
+{"count":20,"query":"durable agent sessions architecture LLM","results":[{"age":"December
+4, 2025","description":"Working context – the immediate ... Session – <strong>the durable
+log of the interaction: every user message, agent reply, too … [preview]
 
 [Calling model]
 
 ANSWER
-## Durable Agent Sessions: Research Summary
+## Durable Agent Sessions — Brief
 
-**Definition:** Durable agent sessions are an emerging infrastructure pattern for AI
-agents where session state, execution progress, and conversation context are **persisted
-so that an agent can survive crashes, disconnects, process restarts, and device switches**
-— then resume seamlessly where it left off.
+**Finding 1: Emerging infrastructure layer.** Durable Sessions are described as a
+persistent, addressable connection between agents and users that outlives any single
+connection, device, or process crash — covering stream resumption, crash detection, and
+cross-device continuity.
+Source: https://ably.com/blog/durable-sessions-infrastructure-layer-ai-agents
 
-### Core Facts (from cited sources)
+**Finding 2: Three-stack formation.** The ecosystem is forming around three layers:
+Durable Streams (replayable protocol primitive, open-sourced by ElectricSQL), Durable
+Sessions (the user-agent session layer), and Durable Execution (backend workflow engines
+like Temporal that persist state at each step for automatic retry/resumption).
+Sources:
+https://ably.com/blog/durable-ai-infrastructure-sessions-streams-transports-ecosystem ·
+https://learn.microsoft.com/en-us/azure/durable-task/sdks/durable-task-for-ai-agents
 
-- **Problem solved:** AI agents in production face failures from long-running, stateful
-workflows (hours to days), human-in-the-loop pauses, and multi-step reasoning that breaks
-if a process crashes mid-execution ([Microsoft
-Learn](https://learn.microsoft.com/en-us/azure/durable-task/sdks/durable-task-for-ai-agents),
-[Ably](https://ably.com/blog/durable-sessions-infrastructure-layer-ai-agents)).
-- **Key capabilities:** Automatic state persistence, checkpointing, replay-based recovery,
-retries, and stream resumption across devices
-([Inngest](https://www.inngest.com/blog/durable-execution-key-to-harnessing-ai-agents),
-[DBOS](https://www.dbos.dev/blog/durable-execution-crashproof-ai-agents)).
-- **Framework support:** Microsoft's Durable Extension works with Microsoft Agent
-Framework, LangChain, and direct LLM calls ([Microsoft
-Learn](https://learn.microsoft.com/en-us/agent-framework/integrations/durable-extension)).
-Temporal and Ably have partnered on combined backend durability + session continuity
-([Temporal](https://temporal.io/blog/durable-execution-meets-ai-why-temporal-is-the-perfect-foundation-for-ai),
-[YouTube](https://www.youtube.com/watch?v=D_MRh0lJIR4)).
-- **Memory vs. state distinction:** A durable agent needs both *execution state* (to
-resume the task) and *memory* (to stay the same agent across tasks)
-([Mastra](https://mastra.ai/blog/what-are-durable-ai-agents)).
+**Finding 3: Session persistence ≠ durable execution.** Persisting conversation history
+(e.g., OpenAI Agents SDK with SQLite/Redis backends) provides continuity but does not
+guarantee crash-safe workflow replay; full durability also requires checkpointing
+execution state, idempotency keys, and deterministic replay.
+Source: https://zylos.ai/research/2026-04-24-durable-execution-agent-runtimes/
 
-### Inference
+**Inference:** As production agents span hours or days with human-in-the-loop steps,
+durable sessions will likely become a standard middleware category — analogous to message
+queues — sitting between agent frameworks and transport layers, commoditizing what teams
+currently build ad hoc.
 
-Durable sessions represent a maturing infrastructure layer — bridging durable execution
-(backend reliability) with real-time session continuity (user-facing resilience) — as AI
-agents move from demos to production. The evidence is still emerging; standards and
-terminology remain in flux across vendors.
-
-Completed: 3 iterations, 3 tool calls
+Completed: 2 iterations, 2 tool calls

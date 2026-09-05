@@ -10,7 +10,7 @@ use everruns::{Agent, Engine, Turn};
 use everruns_integrations_brave_search::BraveSearch;
 
 const MODEL: &str = "z-ai/glm-5.2";
-const DEFAULT_QUESTION: &str = "Research durable agent sessions. Use web search before answering, cite the returned source URLs, and distinguish facts from inferences.";
+const DEFAULT_QUESTION: &str = "Research durable agent sessions. Use web search, then give a brief of at most 150 words with three findings, source URLs, and one clearly labeled inference.";
 
 fn build_agent(api_key: &str, search: BraveSearch) -> Result<Agent, everruns::BuildError> {
     Agent::builder()
