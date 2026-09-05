@@ -99,6 +99,12 @@ mod tests {
     #[test]
     fn form_schema_present() {
         let schema = ArdConnector.form_schema().unwrap();
+        assert_eq!(schema.fields.len(), 1);
         assert_eq!(schema.fields[0].name, "api_key");
+        assert!(schema.fields[0].required);
+        assert_eq!(
+            serde_json::to_value(schema.fields[0].field_type).unwrap(),
+            "password"
+        );
     }
 }

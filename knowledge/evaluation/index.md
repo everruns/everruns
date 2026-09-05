@@ -11,3 +11,5 @@
 * [ATIF (Agent Trajectory Interchange Format) Adoption](atif-adoption.md) - ATIF (Agent Trajectory Interchange Format) export/import adoption.
 * [Reporting Backends Evaluation](reporting-backends.md) - Phase 3 reference evaluation.
 * [fail-rs Testing Specification](fail-rs-testing.md) - Failure injection testing with fail-rs.
+
+* [Unit-test quality review](unit-test-quality.md) - Individual test review evidence and completion criteria.
