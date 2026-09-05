@@ -102,7 +102,12 @@ pub(crate) fn validate_body(
     let eu = endpoint
         .base_url()
         .and_then(|u| url::Url::parse(u).ok())
-        .is_some_and(|u| u.host_str() == Some("eu.api.openai.com"));
+        .is_some_and(|u| {
+            u.host_str().is_some_and(|host| {
+                host.trim_end_matches('.')
+                    .eq_ignore_ascii_case("eu.api.openai.com")
+            })
+        });
     if eu
         && matches!(
             body.get("service_tier").and_then(Value::as_str),
@@ -126,6 +131,8 @@ mod tests {
     fn astra_compatibility_checks_endpoint_and_wire_shape() {
         let eu = Provider::new("openai", OpenAIProtocolChatDriver::new())
             .base_url("https://eu.api.openai.com/v1");
+        let eu_absolute = Provider::new("openai", OpenAIProtocolChatDriver::new())
+            .base_url("https://eu.api.openai.com./v1");
         let global = Provider::new("openai", OpenAIProtocolChatDriver::new())
             .base_url("https://api.openai.com/v1");
         let unrelated = Provider::new("custom", OpenAIProtocolChatDriver::new())
@@ -133,6 +140,7 @@ mod tests {
         for tier in ["fast", "priority"] {
             let body = json!({"model":"gpt-6-astra", "service_tier":tier});
             assert!(validate_body(&body, eu.endpoint(), true).is_err());
+            assert!(validate_body(&body, eu_absolute.endpoint(), true).is_err());
             assert!(validate_body(&body, global.endpoint(), true).is_ok());
             assert!(validate_body(&body, unrelated.endpoint(), true).is_ok());
         }
