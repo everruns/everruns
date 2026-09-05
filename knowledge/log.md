@@ -51,6 +51,15 @@
 
 ## 2026-09-05
 
+* **The MCP client is shared; everything around it is not.** `everruns-mcp` owns
+  transports, negotiation, auth, and execution for every host, but the catalog
+  layer (where servers are stored, how they are edited, enabled, and reloaded) is
+  reimplemented per host, `crates/host/src/mcp.rs` is private so downstream
+  embedders copy its connection mapping and discovery, and "MCP capability" names
+  two unrelated things. Records the decision to unify behind one extensible MCP
+  capability over a pluggable catalog trait. See
+  [MCP Capability Unification](integrations/mcp-capability-unification.md).
+
 * Astra reasoning changes preserve the initial request effort, persist effective
   effort through stream recovery and checkpoints, and use explicit Responses
   compaction so configuration updates do not break long conversations. See

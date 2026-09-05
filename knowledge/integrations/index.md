@@ -3,6 +3,7 @@
 * [MCP (Model Context Protocol) Specification](mcp.md) - MCP server endpoint, OAuth 2.1 authentication, protocol, security.
 * [MCP Server Specification](mcp-servers.md) - MCP client remote server registration, CRUD API, tool naming, execution.
 * [Runtime MCP Client Specification](runtime-mcp.md) - MCP client in the in-process runtime: shared `everruns-mcp` crate, transport abstraction (HTTP + optional stdio), pluggable auth.
+* [MCP Capability Unification](mcp-capability-unification.md) - One extensible MCP capability shared by the hosted product and embedding hosts such as yolop: server provider seam, management tools, discovery reuse.
 * [Integrations](integrations.md) - Integration specs index.
 * [Apps](apps.md) - Apps system.
 * [Public Chat (Hosted Chat App)](public-chat.md) - Public Chat (hosted, isolated chat app), product spec/proposal.
