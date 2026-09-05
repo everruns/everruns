@@ -255,6 +255,26 @@ async fn attach_a2a_agent_produces_external_agent() {
         }
         other => panic!("expected external agent, got {other:?}"),
     }
+
+    // Turn-context assembly must let the persisted attachment replace a stale
+    // session entry with the same logical ID, without duplicating the agent.
+    let mut session = everruns_core::ExecutionSession::with_own_workspace(
+        session_id,
+        everruns_provider::typed_id::HarnessId::new(),
+    );
+    session.capabilities.push(serde_json::from_value(json!({
+        "ref": "a2a_agent_delegation",
+        "config": { "agents": [{ "id": "concierge", "base_url": "https://stale.example.test" }] }
+    })).unwrap());
+    everruns_core::apply_session_attachments(store.as_ref(), &mut session).await;
+    everruns_core::apply_session_attachments(store.as_ref(), &mut session).await;
+    assert_eq!(session.capabilities.len(), 1);
+    let agents = session.capabilities[0].config_value()["agents"]
+        .as_array()
+        .unwrap();
+    assert_eq!(agents.len(), 1);
+    assert_eq!(agents[0]["id"], "concierge");
+    assert_eq!(agents[0]["base_url"], format!("{base}/a2a"));
 }
 
 #[tokio::test]
