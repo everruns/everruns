@@ -715,21 +715,22 @@ mod token_usage_tests {
     use super::TokenUsage;
 
     #[test]
-    fn aggregate_effective_cost_preserves_mixed_actual_and_estimated_total() {
-        let aggregate = TokenUsage::with_cache(30, 15, None, None)
-            .with_cost(Some(1.0), Some(2.0))
-            .with_effective_cost(Some(3.0));
-
-        assert_eq!(aggregate.actual_cost_usd, Some(1.0));
-        assert_eq!(aggregate.estimated_cost_usd, Some(2.0));
-        assert_eq!(aggregate.effective_cost_usd(), Some(3.0));
-    }
-
-    #[test]
-    fn generation_effective_cost_still_prefers_actual_over_estimated() {
-        let generation = TokenUsage::new(10, 5).with_cost(Some(1.0), Some(2.0));
-
-        assert_eq!(generation.effective_cost_usd(), Some(1.0));
+    fn effective_cost_precedence_preserves_zero_and_missing_values() {
+        for (actual, estimated, explicit, expected) in [
+            (None, None, None, None),
+            (None, Some(2.0), None, Some(2.0)),
+            (Some(1.0), Some(2.0), None, Some(1.0)),
+            (Some(0.0), Some(2.0), None, Some(0.0)),
+            (Some(1.0), Some(2.0), Some(3.0), Some(3.0)),
+            (Some(1.0), Some(2.0), Some(0.0), Some(0.0)),
+        ] {
+            let usage = TokenUsage::new(10, 5)
+                .with_cost(actual, estimated)
+                .with_effective_cost(explicit);
+            assert_eq!(usage.actual_cost_usd, actual);
+            assert_eq!(usage.estimated_cost_usd, estimated);
+            assert_eq!(usage.effective_cost_usd(), expected);
+        }
     }
 
     #[test]
@@ -761,6 +762,13 @@ mod token_usage_tests {
 
     #[test]
     fn aggregate_token_counters_saturate_at_their_bound() {
+        let mut ordinary = TokenUsage::with_cache(7, 3, None, Some(2));
+        ordinary.add(&TokenUsage::with_cache(11, 5, Some(4), None));
+        assert_eq!((ordinary.input_tokens, ordinary.output_tokens), (18, 8));
+        assert_eq!(ordinary.total_tokens(), 26);
+        assert_eq!(ordinary.cache_read_tokens, Some(4));
+        assert_eq!(ordinary.cache_creation_tokens, Some(2));
+
         let mut aggregate = TokenUsage::with_cache(
             u32::MAX - 1,
             u32::MAX - 1,
@@ -3321,6 +3329,11 @@ mod tests {
             panic!("variant must be preserved");
         };
         assert_eq!(reasoning_part(&input.message).signature, None);
+        assert_eq!(reasoning_part(&input.message).encrypted, None);
+        assert_eq!(
+            reasoning_part(&input.message).display_text().as_deref(),
+            Some("visible reasoning")
+        );
 
         // The prompt replayed to the provider carries the same artifacts.
         let generation = LlmGenerationData {
@@ -3338,6 +3351,13 @@ mod tests {
         };
         assert_eq!(reasoning_part(&public.messages[0]).signature, None);
         assert_eq!(reasoning_part(&public.messages[0]).encrypted, None);
+        assert_eq!(
+            reasoning_part(&public.messages[0])
+                .display_text()
+                .as_deref(),
+            Some("visible reasoning")
+        );
+        assert_eq!(public.output.text.as_deref(), Some("the answer"));
     }
 
     /// `needs_public_projection` gates the SSE clone, so a variant it misses is
@@ -3409,24 +3429,6 @@ mod tests {
     }
 
     #[test]
-    fn test_event_serialization() {
-        let session_id = SessionId::new();
-        let context = EventContext::empty();
-        let event = Event::new(
-            session_id,
-            context,
-            InputMessageData::new(Message::user("test")),
-        );
-
-        let json = serde_json::to_string(&event).unwrap();
-
-        assert!(json.contains("\"type\":\"input.message\""));
-        assert!(json.contains("\"session_id\""));
-        assert!(json.contains("\"context\""));
-        assert!(json.contains("\"data\""));
-    }
-
-    #[test]
     fn transcript_repaired_is_valid_filter_event_type() {
         assert!(VALID_EVENT_TYPES.contains(&TRANSCRIPT_REPAIRED));
     }
@@ -3462,6 +3464,7 @@ mod tests {
         assert_eq!(event.event_type, "reason.started");
         assert_eq!(event.session_id, session_id);
         assert_eq!(event.context.turn_id, Some(turn_id));
+        assert_eq!(event.context.input_message_id, Some(input_message_id));
         assert_eq!(event.context.exec_id, Some(exec_id));
     }
 
@@ -3482,45 +3485,6 @@ mod tests {
     }
 
     #[test]
-    fn test_input_output_event_types() {
-        assert_eq!(INPUT_MESSAGE, "input.message");
-        assert_eq!(OUTPUT_MESSAGE_STARTED, "output.message.started");
-        assert_eq!(OUTPUT_MESSAGE_DELTA, "output.message.delta");
-        assert_eq!(OUTPUT_MESSAGE_COMPLETED, "output.message.completed");
-    }
-
-    #[test]
-    fn test_turn_event_types() {
-        assert_eq!(TURN_STARTED, "turn.started");
-        assert_eq!(TURN_COMPLETED, "turn.completed");
-        assert_eq!(TURN_FAILED, "turn.failed");
-        assert_eq!(TURN_CANCELLED, "turn.cancelled");
-    }
-
-    #[test]
-    fn test_turn_cancelled_data() {
-        let data = TurnCancelledData {
-            turn_id: TurnId::from_uuid(Uuid::now_v7()),
-            reason: Some("User requested cancellation".to_string()),
-            usage: Some(TokenUsage::new(100, 50)),
-        };
-
-        let event_data: EventData = data.into();
-        assert_eq!(event_data.event_type(), TURN_CANCELLED);
-    }
-
-    #[test]
-    fn test_tool_event_types() {
-        assert_eq!(TOOL_STARTED, "tool.started");
-        assert_eq!(TOOL_COMPLETED, "tool.completed");
-    }
-
-    #[test]
-    fn test_llm_generation_event_type() {
-        assert_eq!(LLM_GENERATION, "llm.generation");
-    }
-
-    #[test]
     fn test_llm_generation_data_success() {
         let messages = vec![Message::user("Hello"), Message::assistant("Hi there!")];
         let tools = vec![ToolDefinitionSummary {
@@ -3531,12 +3495,16 @@ mod tests {
             capability_name: None,
             description: "Get weather for a city".to_string(),
         }];
-        let tool_calls = vec![];
+        let tool_calls = vec![ToolCall {
+            id: "call_weather".into(),
+            name: "get_weather".into(),
+            arguments: json!({"city": "Kyiv"}),
+        }];
         let data = LlmGenerationData::success(
             messages.clone(),
-            tools,
+            tools.clone(),
             Some("Hi there!".to_string()),
-            tool_calls,
+            tool_calls.clone(),
             "gpt-5.2".to_string(),
             Some("openai".to_string()),
             Some(TokenUsage {
@@ -3552,25 +3520,34 @@ mod tests {
             Some(25), // time_to_first_token_ms
         );
 
-        assert_eq!(data.messages.len(), 2);
-        assert_eq!(data.tools.len(), 1);
-        assert_eq!(data.tools[0].name, "get_weather");
-        assert_eq!(data.output.text, Some("Hi there!".to_string()));
-        assert!(data.output.tool_calls.is_empty());
-        assert!(data.metadata.success);
-        assert_eq!(data.metadata.model, "gpt-5.2");
-        assert_eq!(data.metadata.provider, Some("openai".to_string()));
-        assert!(data.metadata.error.is_none());
-        // New fields for gen-ai semantic conventions
-        assert_eq!(data.metadata.finish_reasons, Some(vec!["stop".to_string()]));
-        assert!(data.metadata.response_id.is_none());
+        assert_eq!(
+            serde_json::to_value(&data.messages).unwrap(),
+            serde_json::to_value(messages).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&data.tools).unwrap(),
+            serde_json::to_value(tools).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&data.output.tool_calls).unwrap(),
+            serde_json::to_value(tool_calls).unwrap()
+        );
+        assert_eq!(data.output.text.as_deref(), Some("Hi there!"));
+        assert_eq!(
+            serde_json::to_value(&data.metadata).unwrap(),
+            json!({
+                "model": "gpt-5.2", "provider": "openai", "success": true,
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+                "duration_ms": 100, "time_to_first_token_ms": 25, "finish_reasons": ["tool_calls"]
+            })
+        );
     }
 
     #[test]
     fn test_llm_generation_data_with_full_metadata() {
         let messages = vec![Message::user("Hello")];
         let data = LlmGenerationData::success_with_metadata(
-            messages,
+            messages.clone(),
             vec![],
             Some("Hi!".to_string()),
             vec![],
@@ -3591,22 +3568,31 @@ mod tests {
             Some("msg_12345".to_string()),
         );
 
-        assert!(data.metadata.success);
-        assert_eq!(data.metadata.model, "claude-opus-5");
-        assert_eq!(data.metadata.provider, Some("anthropic".to_string()));
-        assert_eq!(data.metadata.time_to_first_token_ms, Some(25));
         assert_eq!(
-            data.metadata.finish_reasons,
-            Some(vec!["end_turn".to_string()])
+            serde_json::to_value(&data.messages).unwrap(),
+            serde_json::to_value(&messages).unwrap()
         );
-        assert_eq!(data.metadata.response_id, Some("msg_12345".to_string()));
+        assert_eq!(
+            serde_json::to_value(&data.metadata).unwrap(),
+            json!({
+                "model": "claude-opus-5", "provider": "anthropic",
+                "usage": {"input_tokens": 5, "output_tokens": 3},
+                "duration_ms": 50, "time_to_first_token_ms": 25,
+                "success": true, "finish_reasons": ["end_turn"], "response_id": "msg_12345"
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(&data.output).unwrap(),
+            json!({"text": "Hi!"})
+        );
+        assert!(data.tools.is_empty());
     }
 
     #[test]
     fn test_llm_generation_data_failure() {
         let messages = vec![Message::user("Hello")];
         let data = LlmGenerationData::failure(
-            messages,
+            messages.clone(),
             vec![],
             "gpt-5.2".to_string(),
             Some("openai".to_string()),
@@ -3615,47 +3601,19 @@ mod tests {
             None, // time_to_first_token_ms
         );
 
-        assert!(!data.metadata.success);
-        assert_eq!(data.metadata.error, Some("Rate limit exceeded".to_string()));
-        assert!(data.output.text.is_none());
-        assert!(data.output.tool_calls.is_empty());
-    }
-
-    #[test]
-    fn test_llm_generation_event_data() {
-        let data = LlmGenerationData::success(
-            vec![Message::user("test")],
-            vec![],
-            Some("response".to_string()),
-            vec![],
-            "model".to_string(),
-            None,
-            None,
-            None,
-            None, // time_to_first_token_ms
+        assert_eq!(
+            serde_json::to_value(&data.messages).unwrap(),
+            serde_json::to_value(messages).unwrap()
         );
-
-        let event_data: EventData = data.into();
-        assert_eq!(event_data.event_type(), LLM_GENERATION);
-    }
-
-    #[test]
-    fn test_llm_generation_is_durable_not_ephemeral() {
-        let session_id = SessionId::new();
-        let data = LlmGenerationData::success(
-            vec![Message::user("test")],
-            vec![],
-            Some("response".to_string()),
-            vec![],
-            "model".to_string(),
-            None,
-            None,
-            None,
-            None,
+        assert_eq!(
+            serde_json::to_value(&data.metadata).unwrap(),
+            json!({
+                "model": "gpt-5.2", "provider": "openai", "success": false,
+                "error": "Rate limit exceeded", "duration_ms": 50, "finish_reasons": ["error"]
+            })
         );
-
-        let request = EventRequest::new(session_id, EventContext::empty(), data);
-        assert!(!request.is_ephemeral());
+        assert_eq!(serde_json::to_value(&data.output).unwrap(), json!({}));
+        assert!(data.tools.is_empty());
     }
 
     #[test]
@@ -3663,41 +3621,83 @@ mod tests {
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
 
-        let output_delta = EventRequest::new(
-            session_id,
-            EventContext::empty(),
-            OutputMessageDeltaData {
-                turn_id,
-                message_id: MessageId::new(),
-                delta: "hel".to_string(),
-                accumulated: "hel".to_string(),
-                phase: None,
-            },
-        );
-        assert!(output_delta.is_ephemeral());
-
-        let thinking_delta = EventRequest::new(
-            session_id,
-            EventContext::empty(),
-            ReasonThinkingDeltaData {
-                turn_id,
-                delta: "step".to_string(),
-                accumulated: "step".to_string(),
-            },
-        );
-        assert!(thinking_delta.is_ephemeral());
-
-        let tool_delta = EventRequest::new(
-            session_id,
-            EventContext::empty(),
-            ToolOutputDeltaData {
-                tool_call_id: "call_123".to_string(),
-                tool_name: "bash".to_string(),
-                delta: "line".to_string(),
-                stream: "stdout".to_string(),
-            },
-        );
-        assert!(tool_delta.is_ephemeral());
+        let voice = VoiceTranscriptData {
+            voice_connection_id: "voice_1".into(),
+            item_id: Some("item_2".into()),
+            response_id: None,
+            phase: None,
+            delta: "world".into(),
+            accumulated: "Hello world".into(),
+        };
+        let cases: Vec<(EventData, bool)> = vec![
+            (
+                OutputMessageDeltaData {
+                    turn_id,
+                    message_id: MessageId::new(),
+                    delta: "world".into(),
+                    accumulated: "Hello world".into(),
+                    phase: None,
+                }
+                .into(),
+                true,
+            ),
+            (
+                ReasonThinkingDeltaData {
+                    turn_id,
+                    delta: "next".into(),
+                    accumulated: "first next".into(),
+                }
+                .into(),
+                true,
+            ),
+            (
+                ToolOutputDeltaData {
+                    tool_call_id: "call_123".into(),
+                    tool_name: "bash".into(),
+                    delta: "line".into(),
+                    stream: "stdout".into(),
+                }
+                .into(),
+                true,
+            ),
+            (EventData::VoiceInputTranscriptDelta(voice.clone()), true),
+            (EventData::VoiceOutputTranscriptDelta(voice.clone()), true),
+            (
+                EventData::VoiceInputTranscriptCompleted(voice.clone()),
+                false,
+            ),
+            (EventData::VoiceOutputTranscriptCompleted(voice), false),
+            (
+                OutputMessageCompletedData::new(Message::assistant("done")).into(),
+                false,
+            ),
+            (
+                LlmGenerationData::success(
+                    vec![],
+                    vec![],
+                    Some("done".into()),
+                    vec![],
+                    "model".into(),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+                .into(),
+                false,
+            ),
+        ];
+        for (data, expected) in cases {
+            let request = EventRequest::new(session_id, EventContext::empty(), data);
+            assert_eq!(
+                request.is_ephemeral(),
+                expected,
+                "{} request",
+                request.event_type
+            );
+            let event = request.into_event(EventId::new(), 7);
+            assert_eq!(event.is_ephemeral(), expected, "{} event", event.event_type);
+        }
     }
 
     #[test]
@@ -3720,10 +3720,10 @@ mod tests {
             Some(12),
         )
         .with_request_options(LlmRequestOptions {
-            temperature: None,
-            max_tokens: None,
-            reasoning_effort: None,
-            stream: None,
+            temperature: Some(0.5),
+            max_tokens: Some(256),
+            reasoning_effort: Some("high".into()),
+            stream: Some(false),
             prompt_cache: Some(LlmPromptCacheInfo {
                 enabled: true,
                 strategy: PromptCacheStrategy::Auto,
@@ -3734,49 +3734,36 @@ mod tests {
                 threshold: 8,
             }),
             provider_options,
-            metadata: Default::default(),
+            metadata: HashMap::from([("project".into(), "test".into())]),
         });
 
         let json = serde_json::to_value(&data).unwrap();
         assert_eq!(
-            json["metadata"]["request_options"]["prompt_cache"]["provider_mode"],
-            "prompt_cache_key"
+            json["metadata"]["request_options"],
+            json!({
+                "temperature": 0.5, "max_tokens": 256, "reasoning_effort": "high", "stream": false,
+                "prompt_cache": {"enabled": true, "strategy": "auto", "provider_mode": "prompt_cache_key"},
+                "tool_search": {"enabled": true, "threshold": 8},
+                "provider_options": {"openai": {"previous_response_id": true}}, "metadata": {"project": "test"}
+            })
         );
-        assert_eq!(
-            json["metadata"]["request_options"]["tool_search"]["threshold"],
-            8
+        let empty = LlmGenerationData::success(
+            vec![],
+            vec![],
+            None,
+            vec![],
+            "model".into(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .with_request_options(LlmRequestOptions::default());
+        assert!(
+            serde_json::to_value(empty).unwrap()["metadata"]
+                .get("request_options")
+                .is_none()
         );
-        assert_eq!(
-            json["metadata"]["request_options"]["provider_options"]["openai"]["previous_response_id"],
-            true
-        );
-    }
-
-    #[test]
-    fn test_extended_thinking_event_types() {
-        assert_eq!(REASON_THINKING_STARTED, "reason.thinking.started");
-        assert_eq!(REASON_THINKING_DELTA, "reason.thinking.delta");
-        assert_eq!(REASON_THINKING_COMPLETED, "reason.thinking.completed");
-    }
-
-    #[test]
-    fn test_output_message_started_data() {
-        let turn_id = TurnId::from_uuid(Uuid::now_v7());
-        let data = OutputMessageStartedData {
-            turn_id,
-            message_id: MessageId::new(),
-            model: Some("claude-4-opus".to_string()),
-            iteration: None,
-            phase: None,
-        };
-
-        let event_data: EventData = data.into();
-        assert_eq!(event_data.event_type(), OUTPUT_MESSAGE_STARTED);
-
-        // Test serialization
-        let json = serde_json::to_string(&event_data).unwrap();
-        assert!(json.contains("turn_id"));
-        assert!(json.contains("claude-4-opus"));
     }
 
     #[test]
@@ -3791,89 +3778,15 @@ mod tests {
         };
 
         // Model should be skipped when None
-        let json = serde_json::to_string(&data).unwrap();
-        assert!(!json.contains("model"));
-    }
-
-    #[test]
-    fn test_reason_thinking_started_data() {
-        let turn_id = TurnId::from_uuid(Uuid::now_v7());
-        let data = ReasonThinkingStartedData {
-            turn_id,
-            model: Some("claude-4-opus".to_string()),
-        };
-
-        let event_data: EventData = data.into();
-        assert_eq!(event_data.event_type(), REASON_THINKING_STARTED);
-
-        // Test serialization
-        let json = serde_json::to_string(&event_data).unwrap();
-        assert!(json.contains("turn_id"));
-        assert!(json.contains("claude-4-opus"));
-    }
-
-    #[test]
-    fn test_reason_thinking_delta_data() {
-        let turn_id = TurnId::from_uuid(Uuid::now_v7());
-        let data = ReasonThinkingDeltaData {
-            turn_id,
-            delta: "thinking step 1".to_string(),
-            accumulated: "thinking step 1".to_string(),
-        };
-
-        let event_data: EventData = data.into();
-        assert_eq!(event_data.event_type(), REASON_THINKING_DELTA);
-
-        // Test serialization
-        let json = serde_json::to_string(&event_data).unwrap();
-        assert!(json.contains("turn_id"));
-        assert!(json.contains("delta"));
-        assert!(json.contains("accumulated"));
-    }
-
-    #[test]
-    fn test_reason_thinking_completed_data() {
-        let turn_id = TurnId::from_uuid(Uuid::now_v7());
-        let data = ReasonThinkingCompletedData {
-            turn_id,
-            thinking: "Full thinking content here".to_string(),
-        };
-
-        let event_data: EventData = data.into();
-        assert_eq!(event_data.event_type(), REASON_THINKING_COMPLETED);
-
-        // Test serialization
-        let json = serde_json::to_string(&event_data).unwrap();
-        assert!(json.contains("turn_id"));
-        assert!(json.contains("thinking"));
-    }
-
-    #[test]
-    fn test_output_message_delta_data() {
-        let turn_id = TurnId::from_uuid(Uuid::now_v7());
-        let data = OutputMessageDeltaData {
-            turn_id,
-            message_id: MessageId::new(),
-            delta: "Hello".to_string(),
-            accumulated: "Hello".to_string(),
-            phase: None,
-        };
-
-        let event_data: EventData = data.into();
-        assert_eq!(event_data.event_type(), OUTPUT_MESSAGE_DELTA);
-
-        // Test serialization
-        let json = serde_json::to_string(&event_data).unwrap();
-        assert!(json.contains("turn_id"));
-        assert!(json.contains("delta"));
-        assert!(json.contains("accumulated"));
+        let json = serde_json::to_value(&data).unwrap();
+        assert!(json.get("model").is_none());
     }
 
     #[test]
     fn test_output_message_lifecycle_shares_message_id() {
         let turn_id = TurnId::new();
-        let message_id = MessageId::new();
-        let next_message_id = MessageId::new();
+        let message_id = MessageId::from_uuid(Uuid::from_u128(3));
+        let next_message_id = MessageId::from_uuid(Uuid::from_u128(4));
 
         let started = OutputMessageStartedData {
             turn_id,
@@ -3908,12 +3821,6 @@ mod tests {
             Message::assistant("Safe response").with_id(message_id),
         );
 
-        assert_eq!(started.message_id, message_id);
-        assert_eq!(delta.message_id, message_id);
-        assert_eq!(replaced.message_id, message_id);
-        assert_eq!(completed.message.id, message_id);
-        assert_ne!(started.message_id, next_started.message_id);
-
         for value in [
             serde_json::to_value(started).unwrap(),
             serde_json::to_value(delta).unwrap(),
@@ -3921,86 +3828,73 @@ mod tests {
         ] {
             assert_eq!(value["message_id"], message_id.to_string());
         }
+        let completed = serde_json::to_value(completed).unwrap();
+        assert_eq!(completed["message"]["id"], message_id.to_string());
+        assert_eq!(
+            completed["message"]["content"],
+            json!([{"type": "text", "text": "Safe response"}])
+        );
+        let next = serde_json::to_value(next_started).unwrap();
+        assert_eq!(next["message_id"], next_message_id.to_string());
+        assert_eq!(next["iteration"], 2);
     }
 
     #[test]
     fn test_output_message_phase_hint_serde() {
-        // EVE-774: the streamed phase hint is skipped when None (so existing
-        // consumers see no new field) and serialized as the provider wire value
-        // when present, on both started and delta events.
-        let turn_id = TurnId::from_uuid(Uuid::now_v7());
-
-        let started_none = OutputMessageStartedData {
-            turn_id,
-            message_id: MessageId::new(),
-            model: None,
-            iteration: None,
-            phase: None,
-        };
-        assert!(
-            !serde_json::to_string(&started_none)
-                .unwrap()
-                .contains("phase")
-        );
-
-        let delta_commentary = OutputMessageDeltaData {
-            turn_id,
-            message_id: MessageId::new(),
-            delta: "one moment".to_string(),
-            accumulated: "one moment".to_string(),
-            phase: Some(everruns_provider::ExecutionPhase::Commentary),
-        };
-        let json = serde_json::to_value(&delta_commentary).unwrap();
-        assert_eq!(json["phase"], "commentary");
-
-        // Round-trips back to the same phase.
-        let back: OutputMessageDeltaData = serde_json::from_value(json).unwrap();
-        assert_eq!(
-            back.phase,
-            Some(everruns_provider::ExecutionPhase::Commentary)
-        );
-
-        let delta_final = OutputMessageDeltaData {
-            turn_id,
-            message_id: MessageId::new(),
-            delta: "done".to_string(),
-            accumulated: "done".to_string(),
-            phase: Some(everruns_provider::ExecutionPhase::FinalAnswer),
-        };
-        assert_eq!(
-            serde_json::to_value(&delta_final).unwrap()["phase"],
-            "final_answer"
-        );
+        let turn_id = TurnId::new();
+        let message_id = MessageId::new();
+        for (phase, wire) in [
+            (None, None),
+            (Some(ExecutionPhase::Commentary), Some("commentary")),
+            (Some(ExecutionPhase::FinalAnswer), Some("final_answer")),
+        ] {
+            let cases: Vec<(&str, EventData)> = vec![
+                (
+                    "output.message.started",
+                    OutputMessageStartedData {
+                        turn_id,
+                        message_id,
+                        model: None,
+                        iteration: None,
+                        phase,
+                    }
+                    .into(),
+                ),
+                (
+                    "output.message.delta",
+                    OutputMessageDeltaData {
+                        turn_id,
+                        message_id,
+                        delta: "done".into(),
+                        accumulated: "nearly done".into(),
+                        phase,
+                    }
+                    .into(),
+                ),
+            ];
+            for (kind, data) in cases {
+                let json = serde_json::to_value(&data).unwrap();
+                assert_eq!(
+                    json.get("phase"),
+                    wire.map(serde_json::Value::from).as_ref(),
+                    "{kind}"
+                );
+                let decoded = deserialize_event_data(kind, json.clone());
+                assert!(!decoded.is_unsupported(), "{kind}");
+                assert_eq!(serde_json::to_value(decoded).unwrap(), json);
+            }
+        }
     }
 
     #[test]
     fn test_output_message_delta_deserialization_preserves_fields() {
-        // Verify OutputMessageDelta decodes with all fields preserved through the
-        // type-driven dispatcher (regression guard for field-dropping decode bugs).
-        let turn_id = TurnId::from_uuid(Uuid::now_v7());
-        let data = OutputMessageDeltaData {
-            turn_id,
-            message_id: MessageId::new(),
-            delta: "Hello world".to_string(),
-            accumulated: "Hello world".to_string(),
-            phase: None,
-        };
-
-        // Serialize to JSON
-        let json = serde_json::to_value(EventData::OutputMessageDelta(data.clone())).unwrap();
-
-        // Deserialize back through the real (type-driven) decode path
-        let deserialized = deserialize_event_data(OUTPUT_MESSAGE_DELTA, json);
-
-        // Verify it's OutputMessageDelta and fields are preserved
-        match deserialized {
-            EventData::OutputMessageDelta(td) => {
-                assert_eq!(td.turn_id, turn_id);
-                assert_eq!(td.delta, "Hello world");
-                assert_eq!(td.accumulated, "Hello world");
-            }
-            _ => panic!("Expected OutputMessageDelta, got different variant"),
-        }
+        let json = serde_json::json!({
+            "turn_id": TurnId::new(), "message_id": MessageId::new(),
+            "delta": "world", "accumulated": "Hello world", "phase": "final_answer"
+        });
+        let deserialized = deserialize_event_data("output.message.delta", json.clone());
+        assert!(matches!(&deserialized, EventData::OutputMessageDelta(_)));
+        assert_eq!(serde_json::to_value(deserialized).unwrap(), json);
     }
 
     #[test]
@@ -4010,131 +3904,18 @@ mod tests {
             turn_id,
             message_id: MessageId::new(),
             model: Some("claude-opus-5".to_string()),
-            iteration: None,
-            phase: None,
+            iteration: Some(3),
+            phase: Some(ExecutionPhase::FinalAnswer),
         };
 
         // Serialize to JSON
         let json = serde_json::to_value(EventData::OutputMessageStarted(data.clone())).unwrap();
 
         // Deserialize back through the real (type-driven) decode path
-        let deserialized = deserialize_event_data(OUTPUT_MESSAGE_STARTED, json);
+        let deserialized = deserialize_event_data("output.message.started", json.clone());
 
-        // Verify it's OutputMessageStarted and fields are preserved
-        match deserialized {
-            EventData::OutputMessageStarted(at) => {
-                assert_eq!(at.turn_id, turn_id);
-                assert_eq!(at.model, Some("claude-opus-5".to_string()));
-            }
-            _ => panic!("Expected OutputMessageStarted, got different variant"),
-        }
-    }
-
-    #[test]
-    fn test_reason_thinking_started_deserialization() {
-        // NOTE: ReasonThinkingStartedData and OutputMessageStartedData have identical
-        // structures (turn_id + model), so a payload alone can't distinguish them.
-        // Decoding therefore goes through deserialize_event_data(), which selects the
-        // correct variant from the event_type.
-        let turn_id = TurnId::from_uuid(Uuid::now_v7());
-        let data = ReasonThinkingStartedData {
-            turn_id,
-            model: Some("claude-opus-5".to_string()),
-        };
-
-        // Serialize to JSON
-        let json = serde_json::to_value(&data).unwrap();
-
-        // Deserialize using typed function (not raw serde)
-        let deserialized = deserialize_event_data(REASON_THINKING_STARTED, json);
-
-        // Verify it's ReasonThinkingStarted and fields are preserved
-        match deserialized {
-            EventData::ReasonThinkingStarted(at) => {
-                assert_eq!(at.turn_id, turn_id);
-                assert_eq!(at.model, Some("claude-opus-5".to_string()));
-            }
-            other => panic!("Expected ReasonThinkingStarted, got {}", other.event_type()),
-        }
-    }
-
-    #[test]
-    fn test_llm_generation_with_ttft() {
-        let messages = vec![Message::user("Hello")];
-        let data = LlmGenerationData::success_with_metadata(
-            messages,
-            vec![],
-            Some("Hi!".to_string()),
-            vec![],
-            "gpt-5.2".to_string(),
-            Some("openai".to_string()),
-            Some(TokenUsage {
-                input_tokens: 10,
-                output_tokens: 5,
-                cache_read_tokens: None,
-                cache_creation_tokens: None,
-                actual_cost_usd: None,
-                estimated_cost_usd: None,
-                effective_cost_usd: None,
-            }),
-            Some(500), // duration_ms
-            Some(120), // time_to_first_token_ms
-            Some(vec!["stop".to_string()]),
-            None,
-        );
-
-        assert!(data.metadata.success);
-        assert_eq!(data.metadata.duration_ms, Some(500));
-        assert_eq!(data.metadata.time_to_first_token_ms, Some(120));
-    }
-
-    #[test]
-    fn test_llm_generation_ttft_serialization() {
-        let messages = vec![Message::user("test")];
-        let data = LlmGenerationData::success_with_metadata(
-            messages,
-            vec![],
-            Some("response".to_string()),
-            vec![],
-            "model".to_string(),
-            None,
-            None,
-            Some(1000),
-            Some(150), // TTFT
-            None,
-            None,
-        );
-
-        let json = serde_json::to_string(&data).unwrap();
-        assert!(json.contains("time_to_first_token_ms"));
-        assert!(json.contains("150"));
-    }
-
-    #[test]
-    fn test_reason_item_data_event_type_and_serialization() {
-        let turn_id = TurnId::from_uuid(Uuid::now_v7());
-        let data = ReasonItemData {
-            turn_id,
-            provider: "openai".to_string(),
-            model: Some("gpt-5.5".to_string()),
-            item_id: "rs_abc".to_string(),
-            summary: vec!["safe summary".to_string()],
-            token_count: Some(123),
-        };
-
-        let event_data: EventData = data.into();
-        assert_eq!(event_data.event_type(), REASON_ITEM);
-
-        let json = serde_json::to_string(&event_data).unwrap();
-        assert!(json.contains("turn_id"));
-        assert!(json.contains("openai"));
-        assert!(json.contains("rs_abc"));
-        assert!(json.contains("safe summary"));
-        // Opaque replay state is not event data. The event publishes identity
-        // and curated summary only; signatures and encrypted context stay on
-        // the message's reasoning parts, for the driver to hand back.
-        assert!(!json.contains("encrypted_content"));
-        assert!(!json.contains("signature"));
+        assert!(matches!(&deserialized, EventData::OutputMessageStarted(_)));
+        assert_eq!(serde_json::to_value(deserialized).unwrap(), json);
     }
 
     #[test]
@@ -4156,7 +3937,8 @@ mod tests {
             }
         });
 
-        let event: Event = serde_json::from_value(payload).expect("event deserializes");
+        let event: Event = serde_json::from_value(payload.clone()).expect("event deserializes");
+        assert_eq!(serde_json::to_value(&event.data).unwrap(), payload["data"]);
         match event.data {
             EventData::ReasonItem(data) => {
                 assert_eq!(data.turn_id, turn_id);
@@ -4184,7 +3966,9 @@ mod tests {
             }
         });
 
-        let req: EventRequest = serde_json::from_value(payload).expect("request deserializes");
+        let req: EventRequest =
+            serde_json::from_value(payload.clone()).expect("request deserializes");
+        assert_eq!(serde_json::to_value(&req.data).unwrap(), payload["data"]);
         match req.data {
             EventData::ReasonItem(data) => {
                 assert_eq!(data.turn_id, turn_id);
@@ -4192,34 +3976,6 @@ mod tests {
                 assert_eq!(data.item_id, "rs_request");
             }
             other => panic!("expected reason.item data, got {}", other.event_type()),
-        }
-    }
-
-    #[test]
-    fn test_reason_item_data_round_trip_uses_typed_dispatch() {
-        // ReasonItemData carries (turn_id, item_id, provider...) which is
-        // structurally close to other turn-scoped events. Verify the typed
-        // dispatcher selects the correct variant.
-        let turn_id = TurnId::from_uuid(Uuid::now_v7());
-        let data = ReasonItemData {
-            turn_id,
-            provider: "openai".to_string(),
-            model: Some("gpt-5".to_string()),
-            item_id: "rs_xyz".to_string(),
-            summary: vec![],
-            token_count: None,
-        };
-
-        let json = serde_json::to_value(&data).unwrap();
-        let deserialized = deserialize_event_data(REASON_ITEM, json);
-
-        match deserialized {
-            EventData::ReasonItem(out) => {
-                assert_eq!(out.turn_id, turn_id);
-                assert_eq!(out.provider, "openai");
-                assert_eq!(out.item_id, "rs_xyz");
-            }
-            other => panic!("Expected ReasonItem, got {}", other.event_type()),
         }
     }
 
@@ -4340,8 +4096,8 @@ mod tests {
         assert!(data.metadata.time_to_first_token_ms.is_none());
 
         // Should not appear in JSON when None
-        let json = serde_json::to_string(&data).unwrap();
-        assert!(!json.contains("time_to_first_token_ms"));
+        let json = serde_json::to_value(&data).unwrap();
+        assert!(json["metadata"].get("time_to_first_token_ms").is_none());
     }
 }
 
@@ -4357,6 +4113,7 @@ mod tests {
 mod contract_tests {
     use super::*;
     use insta::{assert_json_snapshot, with_settings};
+    use serde_json::json;
 
     /// Helper to create deterministic test IDs for snapshot stability
     fn test_session_id() -> SessionId {
@@ -4437,7 +4194,7 @@ mod contract_tests {
             turn_id: test_turn_id(),
             message_id: test_message_id(),
             delta: "Hello".to_string(),
-            accumulated: "Hello".to_string(),
+            accumulated: "Well, Hello".to_string(),
             phase: None,
         };
         with_settings!({
@@ -4682,7 +4439,7 @@ mod contract_tests {
         let data = ReasonThinkingDeltaData {
             turn_id: test_turn_id(),
             delta: "Let me think...".to_string(),
-            accumulated: "Let me think...".to_string(),
+            accumulated: "First thought. Let me think...".to_string(),
         };
         with_settings!({
             sort_maps => true,
@@ -4788,38 +4545,24 @@ mod contract_tests {
     // Verify display_name propagation through event data types.
 
     #[test]
-    fn tool_call_summary_with_display_name() {
-        let summary = ToolCallSummary {
-            id: "tc_1".to_string(),
-            name: "get_weather".to_string(),
-            display_name: Some("Get Weather".to_string()),
-            narration: None,
-            completed_narration: None,
-        };
-        let json = serde_json::to_value(&summary).unwrap();
-        assert_eq!(json["display_name"], "Get Weather");
-
-        // Round-trip
-        let deserialized: ToolCallSummary = serde_json::from_value(json).unwrap();
-        assert_eq!(deserialized.display_name.as_deref(), Some("Get Weather"));
-    }
-
-    #[test]
-    fn tool_call_summary_without_display_name_omits_field() {
-        let summary = ToolCallSummary {
-            id: "tc_1".to_string(),
-            name: "get_weather".to_string(),
-            display_name: None,
-            narration: None,
-            completed_narration: None,
-        };
-        let json = serde_json::to_string(&summary).unwrap();
-        assert!(!json.contains("display_name"));
-
-        // Deserialize without display_name field present
-        let json_without = r#"{"id":"tc_1","name":"get_weather"}"#;
-        let deserialized: ToolCallSummary = serde_json::from_str(json_without).unwrap();
-        assert_eq!(deserialized.display_name, None);
+    fn tool_call_summary_display_name_wire_contract() {
+        for display_name in [None, Some("Get Weather")] {
+            let summary = ToolCallSummary {
+                id: "tc_1".into(),
+                name: "get_weather".into(),
+                display_name: display_name.map(str::to_owned),
+                narration: None,
+                completed_narration: None,
+            };
+            let mut expected = serde_json::json!({"id": "tc_1", "name": "get_weather"});
+            if let Some(name) = display_name {
+                expected["display_name"] = name.into();
+            }
+            assert_eq!(serde_json::to_value(summary).unwrap(), expected);
+            let decoded: ToolCallSummary = serde_json::from_value(expected.clone()).unwrap();
+            assert_eq!(decoded.display_name.as_deref(), display_name);
+            assert_eq!(serde_json::to_value(decoded).unwrap(), expected);
+        }
     }
 
     #[test]
@@ -4947,30 +4690,37 @@ mod contract_tests {
         let data: TurnCompletedData = serde_json::from_str(json).unwrap();
         assert_eq!(data.iterations, 3);
         assert_eq!(data.duration_ms, Some(1500));
-    }
-
-    #[test]
-    fn forward_compat_unknown_event_type_becomes_unsupported() {
-        // Unknown event types should deserialize to Unsupported
-        let json = serde_json::json!({"some_field": "value"});
-        let data = deserialize_event_data("future.event.type", json);
-
-        assert!(data.is_unsupported());
-        assert_eq!(data.event_type(), "unsupported");
+        assert_eq!(data.turn_id, test_turn_id());
+        assert_eq!(
+            serde_json::to_value(data.usage).unwrap(),
+            json!({"input_tokens": 100, "output_tokens": 50})
+        );
     }
 
     #[test]
     fn forward_compat_unsupported_preserves_data() {
         // Unsupported events should preserve the original data for debugging
-        let original = serde_json::json!({"key": "value", "nested": {"a": 1}});
-        let data = deserialize_event_data("unknown.event", original.clone());
-
-        match data {
-            EventData::Unsupported { event_type, data } => {
-                assert_eq!(event_type, "unknown.event");
-                assert_eq!(data, original);
+        // Unknown types and malformed known payloads preserve diagnostic data.
+        for (kind, original) in [
+            (
+                "unknown.event",
+                serde_json::json!({"key": "value", "nested": {"a": 1}}),
+            ),
+            (
+                "turn.completed",
+                serde_json::json!({"iterations": "invalid"}),
+            ),
+        ] {
+            let data = deserialize_event_data(kind, original.clone());
+            assert!(data.is_unsupported());
+            assert_eq!(data.event_type(), "unsupported");
+            match data {
+                EventData::Unsupported { event_type, data } => {
+                    assert_eq!(event_type, kind);
+                    assert_eq!(data, original);
+                }
+                _ => panic!("Expected Unsupported variant"),
             }
-            _ => panic!("Expected Unsupported variant"),
         }
     }
 
@@ -5001,15 +4751,15 @@ mod contract_tests {
     // These tests verify that events survive serialization/deserialization.
 
     #[test]
-    fn round_trip_all_event_data_types() {
-        // Test that all event data types can be serialized and deserialized
+    fn representative_event_payloads_preserve_wire_identity() {
+        // Independent wire literals catch identity changes; payload equality catches field loss.
         let test_cases: Vec<(&str, EventData)> = vec![
             (
-                INPUT_MESSAGE,
+                "input.message",
                 InputMessageData::new(Message::user("test")).into(),
             ),
             (
-                OUTPUT_MESSAGE_STARTED,
+                "output.message.started",
                 OutputMessageStartedData {
                     turn_id: test_turn_id(),
                     message_id: test_message_id(),
@@ -5020,7 +4770,7 @@ mod contract_tests {
                 .into(),
             ),
             (
-                OUTPUT_MESSAGE_DELTA,
+                "output.message.delta",
                 OutputMessageDeltaData {
                     turn_id: test_turn_id(),
                     message_id: test_message_id(),
@@ -5031,11 +4781,11 @@ mod contract_tests {
                 .into(),
             ),
             (
-                OUTPUT_MESSAGE_COMPLETED,
+                "output.message.completed",
                 OutputMessageCompletedData::new(Message::assistant("hi")).into(),
             ),
             (
-                TURN_STARTED,
+                "turn.started",
                 TurnStartedData {
                     turn_id: test_turn_id(),
                     input_message_id: test_message_id(),
@@ -5047,7 +4797,7 @@ mod contract_tests {
                 .into(),
             ),
             (
-                TURN_COMPLETED,
+                "turn.completed",
                 TurnCompletedData {
                     turn_id: test_turn_id(),
                     iterations: 1,
@@ -5064,7 +4814,7 @@ mod contract_tests {
                 .into(),
             ),
             (
-                TURN_FAILED,
+                "turn.failed",
                 TurnFailedData {
                     turn_id: test_turn_id(),
                     error: "err".to_string(),
@@ -5075,7 +4825,7 @@ mod contract_tests {
                 .into(),
             ),
             (
-                TURN_CANCELLED,
+                "turn.cancelled",
                 TurnCancelledData {
                     turn_id: test_turn_id(),
                     reason: None,
@@ -5084,7 +4834,7 @@ mod contract_tests {
                 .into(),
             ),
             (
-                TURN_SEALED,
+                "turn.sealed",
                 TurnSealedData {
                     turn_id: test_turn_id(),
                     reason: "no_progress".to_string(),
@@ -5095,7 +4845,7 @@ mod contract_tests {
                 .into(),
             ),
             (
-                REASON_STARTED,
+                "reason.started",
                 ReasonStartedData {
                     harness_id: test_harness_id(),
                     agent_id: Some(test_agent_id()),
@@ -5104,11 +4854,11 @@ mod contract_tests {
                 .into(),
             ),
             (
-                REASON_COMPLETED,
+                "reason.completed",
                 ReasonCompletedData::success("", false, 0, None, None).into(),
             ),
             (
-                ACT_STARTED,
+                "act.started",
                 ActStartedData {
                     tool_calls: vec![],
                     headline: None,
@@ -5116,7 +4866,7 @@ mod contract_tests {
                 .into(),
             ),
             (
-                ACT_COMPLETED,
+                "act.completed",
                 ActCompletedData {
                     completed: true,
                     success_count: 0,
@@ -5127,7 +4877,7 @@ mod contract_tests {
                 .into(),
             ),
             (
-                SESSION_STARTED,
+                "session.started",
                 SessionStartedData {
                     harness_id: test_harness_id(),
                     agent_id: Some(test_agent_id()),
@@ -5136,7 +4886,7 @@ mod contract_tests {
                 .into(),
             ),
             (
-                SESSION_ACTIVATED,
+                "session.activated",
                 SessionActivatedData {
                     turn_id: test_turn_id(),
                     input_message_id: test_message_id(),
@@ -5144,7 +4894,7 @@ mod contract_tests {
                 .into(),
             ),
             (
-                SESSION_IDLED,
+                "session.idled",
                 SessionIdledData {
                     turn_id: test_turn_id(),
                     iterations: None,
@@ -5153,7 +4903,7 @@ mod contract_tests {
                 .into(),
             ),
             (
-                SESSION_TITLE_UPDATED,
+                "session.title.updated",
                 SessionTitleUpdatedData {
                     previous_title: Some("Old title".to_string()),
                     title: "New title".to_string(),
@@ -5161,7 +4911,7 @@ mod contract_tests {
                 .into(),
             ),
             (
-                SESSION_MODEL_CHANGED,
+                "session.model.changed",
                 SessionModelChangedData {
                     previous_model_id: Some(test_model_id()),
                     previous_model_name: Some("GPT-5.6 Sol".to_string()),
@@ -5170,20 +4920,105 @@ mod contract_tests {
                 }
                 .into(),
             ),
+            (
+                "tool.started",
+                ToolStartedData {
+                    tool_call: ToolCall {
+                        id: "call_1".into(),
+                        name: "lookup".into(),
+                        arguments: json!({"q": "test"}),
+                    },
+                    tool_call_fingerprint: None,
+                    display_name: Some("Lookup".into()),
+                    narration: None,
+                }
+                .into(),
+            ),
+            (
+                "tool.completed",
+                ToolCompletedData::success(
+                    "call_1".into(),
+                    "lookup".into(),
+                    vec![ContentPart::text("result")],
+                    Some(7),
+                )
+                .into(),
+            ),
+            (
+                "llm.generation",
+                LlmGenerationData::success(
+                    vec![Message::user("prompt")],
+                    vec![],
+                    Some("answer".into()),
+                    vec![],
+                    "model".into(),
+                    None,
+                    None,
+                    Some(9),
+                    Some(2),
+                )
+                .into(),
+            ),
+            (
+                "reason.thinking.started",
+                ReasonThinkingStartedData {
+                    turn_id: test_turn_id(),
+                    model: Some("reasoner".into()),
+                }
+                .into(),
+            ),
+            (
+                "reason.thinking.delta",
+                ReasonThinkingDeltaData {
+                    turn_id: test_turn_id(),
+                    delta: "next".into(),
+                    accumulated: "first next".into(),
+                }
+                .into(),
+            ),
+            (
+                "reason.thinking.completed",
+                ReasonThinkingCompletedData {
+                    turn_id: test_turn_id(),
+                    thinking: "complete thought".into(),
+                }
+                .into(),
+            ),
+            (
+                "reason.item",
+                ReasonItemData {
+                    turn_id: test_turn_id(),
+                    provider: "openai".into(),
+                    model: Some("reasoner".into()),
+                    item_id: "rs_1".into(),
+                    summary: vec!["safe".into()],
+                    token_count: Some(42),
+                }
+                .into(),
+            ),
         ];
 
         for (event_type, original) in test_cases {
-            // Serialize
-            let json = serde_json::to_value(&original).unwrap();
-            // Deserialize using type-directed function
-            let deserialized = deserialize_event_data(event_type, json);
-            // Verify same event type
-            assert_eq!(
-                original.event_type(),
-                deserialized.event_type(),
-                "Event type mismatch for {}",
-                event_type
+            assert_eq!(original.event_type(), event_type);
+            assert!(
+                VALID_EVENT_TYPES.contains(&event_type),
+                "filter must accept {event_type}"
             );
+            assert!(!original.is_unsupported());
+            let json = serde_json::to_value(&original).unwrap();
+            let deserialized = deserialize_event_data(event_type, json.clone());
+            assert_eq!(
+                std::mem::discriminant(&original),
+                std::mem::discriminant(&deserialized),
+                "{event_type}"
+            );
+            assert_eq!(
+                serde_json::to_value(deserialized).unwrap(),
+                json,
+                "{event_type}"
+            );
+            let request = EventRequest::new(test_session_id(), EventContext::empty(), original);
+            assert_eq!(serde_json::to_value(request).unwrap()["type"], event_type);
         }
     }
 
@@ -5194,22 +5029,44 @@ mod contract_tests {
 
     #[test]
     fn event_structure_has_required_fields() {
-        let session_id = test_session_id();
+        let ts = "2026-01-02T03:04:05Z".parse::<DateTime<Utc>>().unwrap();
+        let message = Message::user("test").with_id(test_message_id());
+        let message_json = serde_json::to_value(&message).unwrap();
+        let event_id = EventId::from_uuid(Uuid::from_u128(7));
         let context = EventContext::turn(test_turn_id(), test_message_id());
-        let event = Event::new(
-            session_id,
+        let mut event = Event::with_id(
+            event_id,
+            test_session_id(),
             context,
-            InputMessageData::new(Message::user("test")),
-        );
+            InputMessageData::new(message),
+        )
+        .with_metadata(json!({"source": "replay"}))
+        .with_tags(vec!["audit".into()])
+        .with_sequence(12);
+        event.ts = ts;
+        let expected = json!({
+            "id": "event_00000000000000000000000000000007",
+            "type": "input.message", "ts": "2026-01-02T03:04:05Z",
+            "session_id": "session_00000000000000000000000000000001",
+            "context": {"turn_id": "turn_00000000000000000000000000000002",
+                "input_message_id": "message_00000000000000000000000000000003"},
+            "data": {"message": message_json}, "metadata": {"source": "replay"},
+            "tags": ["audit"], "sequence": 12
+        });
+        assert_eq!(serde_json::to_value(&event).unwrap(), expected);
+        let decoded: Event = serde_json::from_value(expected.clone()).unwrap();
+        assert!(matches!(&decoded.data, EventData::InputMessage(_)));
+        assert_eq!(serde_json::to_value(decoded).unwrap(), expected);
 
-        // Verify all required fields are present
-        let json = serde_json::to_value(&event).unwrap();
-        assert!(json.get("id").is_some(), "Missing id field");
-        assert!(json.get("type").is_some(), "Missing type field");
-        assert!(json.get("ts").is_some(), "Missing ts field");
-        assert!(json.get("session_id").is_some(), "Missing session_id field");
-        assert!(json.get("context").is_some(), "Missing context field");
-        assert!(json.get("data").is_some(), "Missing data field");
+        let mut request_json = expected.clone();
+        request_json.as_object_mut().unwrap().remove("id");
+        request_json.as_object_mut().unwrap().remove("sequence");
+        let request: EventRequest = serde_json::from_value(request_json.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&request).unwrap(), request_json);
+        assert_eq!(
+            serde_json::to_value(request.into_event(event_id, 12)).unwrap(),
+            expected
+        );
     }
 
     #[test]
@@ -5233,18 +5090,5 @@ mod contract_tests {
             json.get("parent_span_id").and_then(|v| v.as_str()),
             Some("parent789")
         );
-    }
-
-    #[test]
-    fn is_unsupported_returns_false_for_known_types() {
-        let data = InputMessageData::new(Message::user("test"));
-        let event_data: EventData = data.into();
-        assert!(!event_data.is_unsupported());
-    }
-
-    #[test]
-    fn is_unsupported_returns_true_for_unsupported() {
-        let data = deserialize_event_data("unknown.type", serde_json::json!({}));
-        assert!(data.is_unsupported());
     }
 }
