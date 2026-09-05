@@ -378,34 +378,8 @@ impl DaytonaClient {
 
     /// Wait for sandbox to reach "started" state after creation.
     pub async fn wait_for_ready(&self, sandbox_id: &str) -> Result<(), String> {
-        let start = std::time::Instant::now();
-        let mut interval = SANDBOX_READY_POLL_INTERVAL;
-
-        while start.elapsed() < SANDBOX_READY_MAX_WAIT {
-            match self.get_sandbox(sandbox_id).await {
-                Ok(info) => {
-                    if info.state == "started" {
-                        debug!("Sandbox ready (state: started) after {:?}", start.elapsed());
-                        return Ok(());
-                    }
-                    if info.state == "error" || info.state == "build_failed" {
-                        return Err(format!("Sandbox entered error state: {}", info.state));
-                    }
-                    debug!("Sandbox not ready yet (state: {}), retrying...", info.state);
-                }
-                Err(e) => {
-                    debug!("Failed to poll sandbox state: {e}, retrying...");
-                }
-            }
-
-            tokio::time::sleep(interval).await;
-            interval = std::cmp::min(interval * 2, Duration::from_secs(4));
-        }
-
-        Err(format!(
-            "Sandbox did not become ready within {}s",
-            SANDBOX_READY_MAX_WAIT.as_secs()
-        ))
+        poll_sandbox_ready(|| async { self.get_sandbox(sandbox_id).await.map(|info| info.state) })
+            .await
     }
 
     // --- Toolbox API: Process (Session-based) ---
@@ -547,16 +521,7 @@ impl DaytonaClient {
     {
         self.ensure_session(sandbox_id).await?;
 
-        // Wrap the user command in a subshell `( ... )` so that `exit`,
-        // SIGPIPE, SIGHUP, and other signals only terminate the subshell,
-        // not the persistent session shell. Without this, commands like
-        // `bash -lc '...; exit'`, pipes to `head`/`sed` (SIGPIPE), and
-        // long `&&` chains that call `exit` would kill the entire session
-        // and force expensive re-establishment. See EVE-251.
-        let cmd = match cwd {
-            Some(c) => format!("{SHELL_PROFILE_PREAMBLE}( cd {c} && {command} )"),
-            None => format!("{SHELL_PROFILE_PREAMBLE}( {command} )"),
-        };
+        let cmd = format_exec_command(command, cwd);
 
         let timeout = timeout_ms.unwrap_or(crate::EXEC_TIMEOUT_MS);
 
@@ -789,6 +754,53 @@ impl DaytonaClient {
     }
 }
 
+fn format_exec_command(command: &str, cwd: Option<&str>) -> String {
+    // Wrap the user command in a subshell `( ... )` so that `exit`,
+    // SIGPIPE, SIGHUP, and other signals only terminate the subshell,
+    // not the persistent session shell. Without this, commands like
+    // `bash -lc '...; exit'`, pipes to `head`/`sed` (SIGPIPE), and
+    // long `&&` chains that call `exit` would kill the entire session
+    // and force expensive re-establishment. See EVE-251.
+    match cwd {
+        Some(c) => {
+            // Cwd is a literal path, even when it contains shell metacharacters.
+            let quoted = c.replace('\'', "'\"'\"'");
+            format!("{SHELL_PROFILE_PREAMBLE}( cd '{quoted}' && {command} )")
+        }
+        None => format!("{SHELL_PROFILE_PREAMBLE}( {command} )"),
+    }
+}
+
+// Keep readiness policy independent of HTTP so time is controlled without
+// racing network I/O against an auto-advancing test clock.
+async fn poll_sandbox_ready<F, Fut>(mut fetch_state: F) -> Result<(), String>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<String, String>>,
+{
+    let start = tokio::time::Instant::now();
+    let mut interval = SANDBOX_READY_POLL_INTERVAL;
+    while start.elapsed() < SANDBOX_READY_MAX_WAIT {
+        match fetch_state().await {
+            Ok(state) if state == "started" => {
+                debug!("Sandbox ready (state: started) after {:?}", start.elapsed());
+                return Ok(());
+            }
+            Ok(state) if state == "error" || state == "build_failed" => {
+                return Err(format!("Sandbox entered error state: {state}"));
+            }
+            Ok(state) => debug!("Sandbox not ready yet (state: {state}), retrying..."),
+            Err(error) => debug!("Failed to poll sandbox state: {error}, retrying..."),
+        }
+        tokio::time::sleep(interval).await;
+        interval = std::cmp::min(interval * 2, Duration::from_secs(4));
+    }
+    Err(format!(
+        "Sandbox did not become ready within {}s",
+        SANDBOX_READY_MAX_WAIT.as_secs()
+    ))
+}
+
 const STDOUT_MARKER: [u8; 3] = [0x01, 0x01, 0x01];
 const STDERR_MARKER: [u8; 3] = [0x02, 0x02, 0x02];
 
@@ -806,6 +818,7 @@ struct ParsedExecDelta {
 struct ExecDeltaParserState {
     current_stream: ExecStream,
     pending_marker_prefix: Vec<u8>,
+    pending_text: Vec<u8>,
 }
 
 impl ExecDeltaParserState {
@@ -813,6 +826,7 @@ impl ExecDeltaParserState {
         Self {
             current_stream: starting_stream,
             pending_marker_prefix: Vec::new(),
+            pending_text: Vec::new(),
         }
     }
 }
@@ -889,7 +903,7 @@ fn is_partial_stream_marker_prefix(bytes: &[u8]) -> bool {
 
 fn parse_exec_output_delta(raw: &[u8], state: &mut ExecDeltaParserState) -> ParsedExecDelta {
     let mut chunks: Vec<ExecOutputChunk> = Vec::new();
-    let mut buffer = Vec::new();
+    let mut buffer = std::mem::take(&mut state.pending_text);
     let mut bytes = Vec::with_capacity(state.pending_marker_prefix.len() + raw.len());
     bytes.extend_from_slice(&state.pending_marker_prefix);
     bytes.extend_from_slice(raw);
@@ -918,6 +932,18 @@ fn parse_exec_output_delta(raw: &[u8], state: &mut ExecDeltaParserState) -> Pars
         i += 1;
     }
 
+    // A poll can end inside a UTF-8 code point. Keep only that incomplete
+    // suffix; malformed complete sequences still use lossy decoding.
+    let mut offset = 0;
+    while let Err(error) = std::str::from_utf8(&buffer[offset..]) {
+        offset += error.valid_up_to();
+        if let Some(length) = error.error_len() {
+            offset += length;
+        } else {
+            state.pending_text = buffer.split_off(offset);
+            break;
+        }
+    }
     flush_exec_output_buffer(&mut chunks, state.current_stream, &mut buffer);
 
     ParsedExecDelta { chunks }
@@ -925,7 +951,8 @@ fn parse_exec_output_delta(raw: &[u8], state: &mut ExecDeltaParserState) -> Pars
 
 fn finish_exec_output_delta(state: &mut ExecDeltaParserState) -> ParsedExecDelta {
     let mut chunks = Vec::new();
-    let mut buffer = std::mem::take(&mut state.pending_marker_prefix);
+    let mut buffer = std::mem::take(&mut state.pending_text);
+    buffer.append(&mut state.pending_marker_prefix);
     flush_exec_output_buffer(&mut chunks, state.current_stream, &mut buffer);
     ParsedExecDelta { chunks }
 }
@@ -965,11 +992,17 @@ mod tests {
         let mock_server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/sandbox"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer test_key",
+            ))
+            .and(wiremock::matchers::body_json(json!({"name":"Test"})))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "id": "sb_test123",
                 "name": "Test Sandbox",
                 "state": "started"
             })))
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -982,6 +1015,7 @@ mod tests {
         assert!(result.is_ok());
         let info = result.unwrap();
         assert_eq!(info.id, "sb_test123");
+        assert_eq!(info.state, "started");
         assert_eq!(info.name, Some("Test Sandbox".to_string()));
     }
 
@@ -990,11 +1024,16 @@ mod tests {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/sandbox/sb_test"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer test_key",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "id": "sb_test",
                 "name": "Test",
                 "state": "started"
             })))
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -1007,6 +1046,8 @@ mod tests {
         assert!(result.is_ok());
         let info = result.unwrap();
         assert_eq!(info.state, "started");
+        assert_eq!(info.id, "sb_test");
+        assert_eq!(info.name.as_deref(), Some("Test"));
     }
 
     #[tokio::test]
@@ -1014,11 +1055,19 @@ mod tests {
         let mock_server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/volumes"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer test_key",
+            ))
+            .and(wiremock::matchers::body_json(
+                json!({"name":"everruns-recovery"}),
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "id": "vol_recovery",
                 "name": "everruns-recovery",
                 "state": "pending_create"
             })))
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -1030,6 +1079,7 @@ mod tests {
         let volume = client.create_volume("everruns-recovery").await.unwrap();
 
         assert_eq!(volume.id, "vol_recovery");
+        assert_eq!(volume.name, "everruns-recovery");
         assert_eq!(volume.state, "pending_create");
     }
 
@@ -1038,11 +1088,16 @@ mod tests {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/volumes/by-name/everruns%20recovery"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer test_key",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "id": "vol_recovery",
                 "name": "everruns recovery",
                 "state": "ready"
             })))
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -1062,20 +1117,27 @@ mod tests {
 
     #[tokio::test]
     async fn test_client_stop_sandbox() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/sandbox/sb_test/stop"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
-            .mount(&mock_server)
-            .await;
+        for response in ["", "{}"] {
+            let mock_server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/sandbox/sb_test/stop"))
+                .and(wiremock::matchers::header(
+                    "authorization",
+                    "Bearer test_key",
+                ))
+                .respond_with(ResponseTemplate::new(200).set_body_string(response))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
 
-        let client = DaytonaClient::with_base_urls(
-            "test_key".to_string(),
-            mock_server.uri(),
-            mock_server.uri(),
-        );
-        let result = client.stop_sandbox("sb_test").await;
-        assert!(result.is_ok());
+            let client = DaytonaClient::with_base_urls(
+                "test_key".to_string(),
+                mock_server.uri(),
+                mock_server.uri(),
+            );
+            let result = client.stop_sandbox("sb_test").await;
+            assert!(result.is_ok());
+        }
     }
 
     #[tokio::test]
@@ -1083,7 +1145,12 @@ mod tests {
         let mock_server = MockServer::start().await;
         Mock::given(method("DELETE"))
             .and(path("/sandbox/sb_test"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer test_key",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -1105,13 +1172,25 @@ mod tests {
     ) {
         // 1. Create session → 201 (or 409 if exists)
         Mock::given(method("POST"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer test_key",
+            ))
             .and(path(format!("/{sandbox_id}/process/session")))
+            .and(wiremock::matchers::body_json(
+                json!({"sessionId":"everruns-exec"}),
+            ))
             .respond_with(ResponseTemplate::new(201))
+            .expect(1)
             .mount(mock_server)
             .await;
 
         // 2. Async exec → 202 with cmdId
         Mock::given(method("POST"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer test_key",
+            ))
             .and(path(format!(
                 "/{sandbox_id}/process/session/everruns-exec/exec"
             )))
@@ -1147,34 +1226,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_client_exec() {
-        let mock_server = MockServer::start().await;
-        setup_session_mocks(&mock_server, "sb_test", 0, "hello world\n").await;
-
-        let client = DaytonaClient::with_base_urls(
-            "test_key".to_string(),
-            mock_server.uri(),
-            mock_server.uri(),
-        );
-        let result = client
-            .exec("sb_test", "echo hello world", None, None, |_| {})
-            .await;
-        assert!(result.is_ok());
-        let exec_result = result.unwrap();
-        assert_eq!(exec_result.exit_code, 0);
-        assert_eq!(exec_result.stdout, "hello world\n");
-        assert_eq!(exec_result.stderr, "");
-        assert_eq!(exec_result.result, "hello world\n");
-    }
-
-    /// Simulates Daytona's real behavior when `exit` kills the session shell:
-    /// - Session metadata stays alive (GET /session → 200)
-    /// - Command status returns 200 with no exitCode (forever)
-    /// - Logs return 200 with empty body
-    /// - Heartbeat exec accepts (202) but never completes
-    /// After enough stale polls + failed heartbeat, the client detects
-    /// the dead session, resets it (DELETE + POST), and returns an error.
-    #[tokio::test]
     async fn test_client_exec_detects_dead_session() {
         use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -1184,7 +1235,21 @@ mod tests {
         // 1. Create session → 201
         Mock::given(method("POST"))
             .and(path("/sb_dead/process/session"))
+            .and(wiremock::matchers::body_json(
+                json!({"sessionId":"everruns-exec"}),
+            ))
             .respond_with(ResponseTemplate::new(201))
+            .expect(2)
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/sb_dead/process/session"))
+            .and(wiremock::matchers::body_json(
+                json!({"sessionId":"everruns-heartbeat"}),
+            ))
+            .respond_with(ResponseTemplate::new(201))
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -1262,6 +1327,7 @@ mod tests {
         Mock::given(method("DELETE"))
             .and(path("/sb_dead/process/session/everruns-exec"))
             .respond_with(ResponseTemplate::new(204))
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -1306,10 +1372,16 @@ mod tests {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/sb_test/files/"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer test_key",
+            ))
+            .and(wiremock::matchers::query_param("path", "/sandbox"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!([
                 {"name": "main.py", "isDir": false, "size": 42},
                 {"name": "src", "isDir": true, "size": 0}
             ])))
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -1321,7 +1393,13 @@ mod tests {
         let result = client.file_list("sb_test", "/sandbox").await;
         assert!(result.is_ok());
         let entries = result.unwrap();
-        assert_eq!(entries.len(), 2);
+        assert_eq!(
+            entries,
+            vec![
+                json!({"name":"main.py","isDir":false,"size":42}),
+                json!({"name":"src","isDir":true,"size":0})
+            ]
+        );
     }
 
     #[tokio::test]
@@ -1342,7 +1420,10 @@ mod tests {
         );
         let result = client.get_sandbox("nonexistent").await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("404"));
+        assert_eq!(
+            result.unwrap_err(),
+            "Daytona API error (404 Not Found): {\"error\":\"Sandbox not found\"}"
+        );
     }
 
     #[tokio::test]
@@ -1363,7 +1444,10 @@ mod tests {
         );
         let result = client.create_sandbox(json!({"name": "Test"})).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("401"));
+        assert_eq!(
+            result.unwrap_err(),
+            "Daytona API error (401 Unauthorized): {\"error\":\"Unauthorized\"}"
+        );
     }
 
     #[tokio::test]
@@ -1382,7 +1466,10 @@ mod tests {
         );
         let result = client.start_sandbox("sb_test").await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("500"));
+        assert_eq!(
+            result.unwrap_err(),
+            "Daytona API error (500 Internal Server Error): Internal Server Error"
+        );
     }
 
     #[tokio::test]
@@ -1401,42 +1488,30 @@ mod tests {
         );
         let result = client.create_sandbox(json!({"name": "Test"})).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Invalid JSON"));
-    }
-
-    #[test]
-    fn test_encode_simple() {
-        assert_eq!(urlencoding::encode("hello"), "hello");
-    }
-
-    #[test]
-    fn test_encode_path_with_slashes() {
-        assert_eq!(
-            urlencoding::encode("/sandbox/main.py"),
-            "%2Fsandbox%2Fmain.py"
+        assert!(
+            result
+                .unwrap_err()
+                .starts_with("Invalid JSON from Daytona:")
         );
     }
 
     #[test]
-    fn test_encode_path_with_spaces() {
-        let encoded = urlencoding::encode("/my project/file name.txt");
-        assert!(encoded.contains("%20"));
-    }
-
-    #[test]
-    fn test_encode_empty_string() {
-        assert_eq!(urlencoding::encode(""), "");
-    }
-
-    #[test]
-    fn test_encode_preserves_unreserved() {
-        assert_eq!(urlencoding::encode("abc-_.~123"), "abc-_.~123");
-    }
-
-    #[test]
-    fn test_encode_special_chars() {
-        let encoded = urlencoding::encode("hello@world#test");
-        assert_eq!(encoded, "hello%40world%23test");
+    fn query_encoding_preserves_unreserved_and_escapes_path_bytes() {
+        for (input, expected) in [
+            ("", ""),
+            ("hello", "hello"),
+            ("abc-_.~123", "abc-_.~123"),
+            ("/sandbox/main.py", "%2Fsandbox%2Fmain.py"),
+            (
+                "/my project/file name.txt",
+                "%2Fmy%20project%2Ffile%20name.txt",
+            ),
+            ("hello@world#test", "hello%40world%23test"),
+            ("&?%=+", "%26%3F%25%3D%2B"),
+            ("é/🙂", "%C3%A9%2F%F0%9F%99%82"),
+        ] {
+            assert_eq!(urlencoding::encode(input), expected, "{input:?}");
+        }
     }
 
     #[tokio::test]
@@ -1444,7 +1519,12 @@ mod tests {
         let mock_server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/sandbox/sb_test/start"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer test_key",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -1462,7 +1542,12 @@ mod tests {
         let mock_server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/sandbox/sb_test/autostop/5"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer test_key",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -1480,7 +1565,16 @@ mod tests {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/sb_test/files/download"))
-            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"file content here".to_vec()))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer test_key",
+            ))
+            .and(wiremock::matchers::query_param(
+                "path",
+                "/my project/file &?#.bin",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![0, 255, 128, 10, 65]))
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -1489,10 +1583,12 @@ mod tests {
             mock_server.uri(),
             mock_server.uri(),
         );
-        let result = client.file_download("sb_test", "/main.py").await;
+        let result = client
+            .file_download("sb_test", "/my project/file &?#.bin")
+            .await;
         assert!(result.is_ok());
         let bytes = result.unwrap();
-        assert_eq!(String::from_utf8_lossy(&bytes), "file content here");
+        assert_eq!(bytes, vec![0, 255, 128, 10, 65]);
     }
 
     #[tokio::test]
@@ -1500,7 +1596,13 @@ mod tests {
         let mock_server = MockServer::start().await;
         Mock::given(method("DELETE"))
             .and(path("/sb_test/files"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer test_key",
+            ))
+            .and(wiremock::matchers::query_param("path", "/old &?#.txt"))
             .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -1509,7 +1611,7 @@ mod tests {
             mock_server.uri(),
             mock_server.uri(),
         );
-        let result = client.file_delete("sb_test", "/old.txt").await;
+        let result = client.file_delete("sb_test", "/old &?#.txt").await;
         assert!(result.is_ok());
     }
 
@@ -1518,7 +1620,14 @@ mod tests {
         let mock_server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/sb_test/files/folder"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer test_key",
+            ))
+            .and(wiremock::matchers::query_param("path", "/src &dir"))
+            .and(wiremock::matchers::query_param("mode", "0750"))
             .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -1527,7 +1636,7 @@ mod tests {
             mock_server.uri(),
             mock_server.uri(),
         );
-        let result = client.create_folder("sb_test", "/src", "755").await;
+        let result = client.create_folder("sb_test", "/src &dir", "0750").await;
         assert!(result.is_ok());
     }
 
@@ -1536,7 +1645,16 @@ mod tests {
         let mock_server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/sb_test/files/upload"))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer test_key",
+            ))
+            .and(wiremock::matchers::query_param(
+                "path",
+                "/sandbox/test &data.bin",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -1546,47 +1664,89 @@ mod tests {
             mock_server.uri(),
         );
         let result = client
-            .file_upload("sb_test", "/sandbox/test.py", b"print('hello')")
+            .file_upload("sb_test", "/sandbox/test &data.bin", &[0, 255, 128, 10, 65])
             .await;
-        assert!(result.is_ok());
+        result.unwrap();
+        let requests = mock_server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        let request = &requests[0];
+        assert!(
+            request
+                .body
+                .windows(5)
+                .any(|bytes| bytes == [0, 255, 128, 10, 65])
+        );
+        let envelope = String::from_utf8_lossy(&request.body);
+        assert!(envelope.contains("name=\"file\"; filename=\"test &data.bin\""));
+        assert!(envelope.contains("application/octet-stream"));
     }
 
-    #[tokio::test]
-    async fn test_client_exec_with_cwd_and_timeout() {
-        let mock_server = MockServer::start().await;
-        setup_session_mocks(&mock_server, "sb_test", 1, "output").await;
-
-        let client = DaytonaClient::with_base_urls(
-            "test_key".to_string(),
-            mock_server.uri(),
-            mock_server.uri(),
+    #[tokio::test(start_paused = true)]
+    async fn readiness_timeout_preserves_backoff_without_wall_clock_waiting() {
+        let start = tokio::time::Instant::now();
+        let mut polls = Vec::new();
+        let result = tokio::time::timeout(
+            Duration::from_secs(63),
+            poll_sandbox_ready(|| {
+                polls.push(start.elapsed().as_secs());
+                std::future::ready(Ok("creating".to_owned()))
+            }),
+        )
+        .await
+        .expect("readiness loop must enforce its own timeout");
+        assert_eq!(
+            result,
+            Err("Sandbox did not become ready within 60s".into())
         );
-        let result = client
-            .exec("sb_test", "ls", Some("/tmp"), Some(5000), |_| {})
-            .await;
-        assert!(result.is_ok());
-        let exec_result = result.unwrap();
-        assert_eq!(exec_result.exit_code, 1);
-        assert_eq!(exec_result.stdout, "output");
-        assert_eq!(exec_result.stderr, "");
-        assert_eq!(exec_result.result, "output");
+        assert_eq!(
+            polls,
+            vec![0, 2, 6, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 50, 54, 58]
+        );
+        assert_eq!(start.elapsed(), Duration::from_secs(62));
     }
 
-    #[tokio::test]
-    async fn test_client_exec_nonzero_exit() {
-        let mock_server = MockServer::start().await;
-        setup_session_mocks(&mock_server, "sb_test", 127, "command not found").await;
+    #[tokio::test(start_paused = true)]
+    async fn readiness_retries_transient_errors_and_stops_when_started() {
+        let start = tokio::time::Instant::now();
+        let mut polls = Vec::new();
+        let mut states = std::collections::VecDeque::from([
+            Ok("creating".to_owned()),
+            Err("temporary transport failure".to_owned()),
+            Ok("started".to_owned()),
+        ]);
+        let result = poll_sandbox_ready(|| {
+            polls.push(start.elapsed().as_secs());
+            std::future::ready(states.pop_front().expect("must stop polling after started"))
+        })
+        .await;
+        assert_eq!(result, Ok(()));
+        assert_eq!(polls, vec![0, 2, 6]);
+    }
 
-        let client = DaytonaClient::with_base_urls(
-            "test_key".to_string(),
-            mock_server.uri(),
-            mock_server.uri(),
-        );
-        let result = client
-            .exec("sb_test", "nonexistent", None, None, |_| {})
+    #[tokio::test(start_paused = true)]
+    async fn readiness_terminal_states_do_not_sleep_or_retry() {
+        for (state, expected) in [
+            ("started", Ok(())),
+            (
+                "error",
+                Err("Sandbox entered error state: error".to_owned()),
+            ),
+            (
+                "build_failed",
+                Err("Sandbox entered error state: build_failed".to_owned()),
+            ),
+        ] {
+            let start = tokio::time::Instant::now();
+            let mut count = 0;
+            let result = poll_sandbox_ready(|| {
+                count += 1;
+                assert_eq!(count, 1, "terminal state must stop polling");
+                std::future::ready(Ok(state.to_owned()))
+            })
             .await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().exit_code, 127);
+            assert_eq!(result, expected);
+            assert_eq!(start.elapsed(), Duration::ZERO);
+        }
     }
 
     #[tokio::test]
@@ -1648,7 +1808,10 @@ mod tests {
         );
         let result = client.file_download("sb_test", "/missing.txt").await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("404"));
+        assert_eq!(
+            result.unwrap_err(),
+            "Sandbox API error (404 Not Found): Not Found"
+        );
     }
 
     #[tokio::test]
@@ -1667,26 +1830,10 @@ mod tests {
         );
         let result = client.file_upload("sb_test", "/test.txt", b"content").await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("500"));
-    }
-
-    #[tokio::test]
-    async fn test_client_empty_response_body() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/sandbox/sb_test/stop"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(""))
-            .mount(&mock_server)
-            .await;
-
-        let client = DaytonaClient::with_base_urls(
-            "test_key".to_string(),
-            mock_server.uri(),
-            mock_server.uri(),
+        assert_eq!(
+            result.unwrap_err(),
+            "File upload error (500 Internal Server Error): Disk full"
         );
-        // Empty body should be treated as success for void operations
-        let result = client.stop_sandbox("sb_test").await;
-        assert!(result.is_ok());
     }
 
     #[tokio::test]
@@ -1715,9 +1862,16 @@ mod tests {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/sb_test/files/"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-                {"name": "only.txt", "isDir": false}
-            ])))
+            .and(wiremock::matchers::header(
+                "authorization",
+                "Bearer test_key",
+            ))
+            .and(wiremock::matchers::query_param("path", "/home"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"name": "only.txt", "isDir": false})),
+            )
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -1727,8 +1881,7 @@ mod tests {
             mock_server.uri(),
         );
         let entries = client.file_list("sb_test", "/home").await.unwrap();
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0]["name"], "only.txt");
+        assert_eq!(entries, vec![json!({"name":"only.txt","isDir":false})]);
     }
 
     #[tokio::test]
@@ -1814,10 +1967,13 @@ mod tests {
         assert_eq!(exec_result.stderr, "");
         assert_eq!(exec_result.result, "hello streaming\n");
 
-        let collected = chunks.lock().unwrap();
-        assert!(!collected.is_empty(), "should have received output chunks");
-        assert_eq!(collected[0].stream, ExecStream::Stdout);
-        assert_eq!(collected[0].text, "hello streaming\n");
+        assert_eq!(
+            *chunks.lock().unwrap(),
+            vec![ExecOutputChunk {
+                stream: ExecStream::Stdout,
+                text: "hello streaming\n".into()
+            }]
+        );
     }
 
     #[tokio::test]
@@ -1827,7 +1983,11 @@ mod tests {
         // Return 409 Conflict (session already exists)
         Mock::given(method("POST"))
             .and(path("/sb_test/process/session"))
+            .and(wiremock::matchers::body_json(
+                json!({"sessionId":"everruns-exec"}),
+            ))
             .respond_with(ResponseTemplate::new(409))
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -1849,7 +2009,11 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path("/sb_timeout/process/session"))
+            .and(wiremock::matchers::body_json(
+                json!({"sessionId":"everruns-exec"}),
+            ))
             .respond_with(ResponseTemplate::new(201))
+            .expect(3)
             .mount(&mock_server)
             .await;
 
@@ -1906,6 +2070,7 @@ mod tests {
         Mock::given(method("DELETE"))
             .and(path("/sb_timeout/process/session/everruns-exec"))
             .respond_with(ResponseTemplate::new(204))
+            .expect(1)
             .mount(&mock_server)
             .await;
 
@@ -1931,117 +2096,6 @@ mod tests {
         assert_eq!(result.stderr, "");
         assert_eq!(result.result, "still works\n");
         assert_eq!(exec_call_count.load(Ordering::SeqCst), 2);
-    }
-
-    #[tokio::test]
-    async fn test_exec_prepends_shell_profile_preamble() {
-        use wiremock::matchers::body_json;
-
-        let mock_server = MockServer::start().await;
-
-        // Session create
-        Mock::given(method("POST"))
-            .and(path("/sb_preamble/process/session"))
-            .respond_with(ResponseTemplate::new(201))
-            .mount(&mock_server)
-            .await;
-
-        // Exec — match the exact command body to verify preamble is prepended
-        // and command is wrapped in a subshell.
-        let expected_cmd = format!("{SHELL_PROFILE_PREAMBLE}( echo hello )");
-        Mock::given(method("POST"))
-            .and(path("/sb_preamble/process/session/everruns-exec/exec"))
-            .and(body_json(json!({
-                "command": expected_cmd,
-                "runAsync": true
-            })))
-            .respond_with(ResponseTemplate::new(202).set_body_json(json!({"cmdId": "cmd_p1"})))
-            .expect(1)
-            .mount(&mock_server)
-            .await;
-
-        // Logs + status
-        Mock::given(method("GET"))
-            .and(path(
-                "/sb_preamble/process/session/everruns-exec/command/cmd_p1/logs",
-            ))
-            .respond_with(ResponseTemplate::new(200).set_body_bytes({
-                let mut b = vec![0x01, 0x01, 0x01];
-                b.extend_from_slice(b"hello\n");
-                b
-            }))
-            .mount(&mock_server)
-            .await;
-        Mock::given(method("GET"))
-            .and(path(
-                "/sb_preamble/process/session/everruns-exec/command/cmd_p1",
-            ))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"exitCode": 0})))
-            .mount(&mock_server)
-            .await;
-
-        let client = DaytonaClient::with_base_urls(
-            "test_key".to_string(),
-            mock_server.uri(),
-            mock_server.uri(),
-        );
-        let result = client
-            .exec("sb_preamble", "echo hello", None, None, |_| {})
-            .await;
-        assert!(result.is_ok(), "exec failed: {:?}", result.err());
-    }
-
-    #[tokio::test]
-    async fn test_exec_preamble_with_cwd() {
-        use wiremock::matchers::body_json;
-
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("POST"))
-            .and(path("/sb_cwd/process/session"))
-            .respond_with(ResponseTemplate::new(201))
-            .mount(&mock_server)
-            .await;
-
-        // With cwd, command should be: PREAMBLE + ( cd /tmp && ls )
-        let expected_cmd = format!("{SHELL_PROFILE_PREAMBLE}( cd /tmp && ls )");
-        Mock::given(method("POST"))
-            .and(path("/sb_cwd/process/session/everruns-exec/exec"))
-            .and(body_json(json!({
-                "command": expected_cmd,
-                "runAsync": true
-            })))
-            .respond_with(ResponseTemplate::new(202).set_body_json(json!({"cmdId": "cmd_c1"})))
-            .expect(1)
-            .mount(&mock_server)
-            .await;
-
-        Mock::given(method("GET"))
-            .and(path(
-                "/sb_cwd/process/session/everruns-exec/command/cmd_c1/logs",
-            ))
-            .respond_with(ResponseTemplate::new(200).set_body_bytes({
-                let mut b = vec![0x01, 0x01, 0x01];
-                b.extend_from_slice(b"output\n");
-                b
-            }))
-            .mount(&mock_server)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/sb_cwd/process/session/everruns-exec/command/cmd_c1"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"exitCode": 0})))
-            .mount(&mock_server)
-            .await;
-
-        let client = DaytonaClient::with_base_urls(
-            "test_key".to_string(),
-            mock_server.uri(),
-            mock_server.uri(),
-        );
-        let result = client
-            .exec("sb_cwd", "ls", Some("/tmp"), None, |_| {})
-            .await;
-        assert!(result.is_ok(), "exec with cwd failed: {:?}", result.err());
     }
 
     #[test]
@@ -2146,5 +2200,177 @@ mod tests {
         );
         assert_eq!(parser.current_stream, ExecStream::Stderr);
         assert!(parser.pending_marker_prefix.is_empty());
+    }
+    #[test]
+    fn streaming_output_preserves_utf8_at_every_poll_boundary() {
+        let raw = "\x01\x01\x01hé🙂\x02\x02\x02érror界\x01\x01\x01fin".as_bytes();
+        for cut in 0..=raw.len() {
+            let mut state = ExecDeltaParserState::new(ExecStream::Stdout);
+            let mut chunks = parse_exec_output_delta(&raw[..cut], &mut state).chunks;
+            chunks.extend(parse_exec_output_delta(&raw[cut..], &mut state).chunks);
+            chunks.extend(finish_exec_output_delta(&mut state).chunks);
+            let stdout: String = chunks
+                .iter()
+                .filter(|c| c.stream == ExecStream::Stdout)
+                .map(|c| c.text.as_str())
+                .collect();
+            let stderr: String = chunks
+                .iter()
+                .filter(|c| c.stream == ExecStream::Stderr)
+                .map(|c| c.text.as_str())
+                .collect();
+            assert_eq!(stdout, "hé🙂fin", "poll split {cut}");
+            assert_eq!(stderr, "érror界", "poll split {cut}");
+        }
+    }
+
+    #[test]
+    fn streaming_output_flushes_incomplete_text_once_on_finish_or_stream_change() {
+        for suffix in [b"".as_slice(), b"\x01", b"\x02\x02"] {
+            let mut state = ExecDeltaParserState::new(ExecStream::Stdout);
+            let mut raw = b"ok\xff\xe2\x82".to_vec();
+            raw.extend_from_slice(suffix);
+            let first = parse_exec_output_delta(&raw, &mut state);
+            assert_eq!(
+                first.chunks,
+                vec![ExecOutputChunk {
+                    stream: ExecStream::Stdout,
+                    text: "ok�".into()
+                }]
+            );
+            let last = finish_exec_output_delta(&mut state);
+            assert_eq!(
+                last.chunks,
+                vec![ExecOutputChunk {
+                    stream: ExecStream::Stdout,
+                    text: format!("�{}", String::from_utf8_lossy(suffix))
+                }]
+            );
+            assert!(finish_exec_output_delta(&mut state).chunks.is_empty());
+        }
+        let mut state = ExecDeltaParserState::new(ExecStream::Stdout);
+        assert!(
+            parse_exec_output_delta(b"\xe2", &mut state)
+                .chunks
+                .is_empty()
+        );
+        let next = parse_exec_output_delta(b"\x02\x02\x02err", &mut state);
+        assert_eq!(
+            next.chunks,
+            vec![
+                ExecOutputChunk {
+                    stream: ExecStream::Stdout,
+                    text: "�".into()
+                },
+                ExecOutputChunk {
+                    stream: ExecStream::Stderr,
+                    text: "err".into()
+                },
+            ]
+        );
+    }
+    #[test]
+    fn exec_shell_loads_profiles_silently_and_keeps_cwd_literal_and_exit_local() {
+        let home = tempfile::tempdir().unwrap();
+        for (path, variable, value) in [
+            (".profile", "DAYTONA_TEST_PROFILE", "profile"),
+            (".cargo/env", "DAYTONA_TEST_CARGO", "cargo"),
+            (".nvm/nvm.sh", "DAYTONA_TEST_NVM", "nvm"),
+        ] {
+            let path = home.path().join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(
+                path,
+                format!("export {variable}={value}; echo noise; echo error >&2\n"),
+            )
+            .unwrap();
+        }
+        std::fs::write(home.path().join(".bashrc"), "echo must-not-source-bashrc\n").unwrap();
+        let cwd = home.path().join("project's $(printf substituted) files");
+        std::fs::create_dir(&cwd).unwrap();
+        let command = "printf '%s|%s|%s\\n' \"$DAYTONA_TEST_PROFILE\" \"$DAYTONA_TEST_CARGO\" \"$DAYTONA_TEST_NVM\"; pwd -P; exit 7";
+        for requested_cwd in [None, Some(cwd.to_str().unwrap())] {
+            let generated = format_exec_command(command, requested_cwd);
+            let output = std::process::Command::new("/bin/sh")
+                .arg("-c")
+                .arg(format!("{generated}; printf 'session-alive\\n'"))
+                .env("HOME", home.path())
+                .env_remove("DAYTONA_TEST_PROFILE")
+                .env_remove("DAYTONA_TEST_CARGO")
+                .env_remove("DAYTONA_TEST_NVM")
+                .current_dir(home.path())
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "cwd={requested_cwd:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                output.stderr.is_empty(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let expected_cwd = if requested_cwd.is_some() {
+                &cwd
+            } else {
+                &home.path().to_path_buf()
+            };
+            assert_eq!(
+                String::from_utf8(output.stdout).unwrap(),
+                format!(
+                    "profile|cargo|nvm\n{}\nsession-alive\n",
+                    expected_cwd.canonicalize().unwrap().display()
+                )
+            );
+        }
+    }
+    #[tokio::test]
+    async fn exec_preserves_status_output_and_command_options() {
+        for (command, cwd, timeout, exit_code, output, suffix) in [
+            ("echo hello", None, None, 0, "hello\n", "( echo hello )"),
+            (
+                "ls",
+                Some("/my project's files"),
+                Some(5000),
+                1,
+                "failed\n",
+                "( cd '/my project'\"'\"'s files' && ls )",
+            ),
+            (
+                "nonexistent",
+                None,
+                Some(5000),
+                127,
+                "command not found",
+                "( nonexistent )",
+            ),
+        ] {
+            let server = MockServer::start().await;
+            setup_session_mocks(&server, "sb_test", exit_code, output).await;
+            let client =
+                DaytonaClient::with_base_urls("test_key".into(), server.uri(), server.uri());
+            let result = client
+                .exec("sb_test", command, cwd, timeout, |_| {})
+                .await
+                .unwrap();
+            assert_eq!(i64::from(result.exit_code), exit_code);
+            assert_eq!(result.stdout, output);
+            assert_eq!(result.stderr, "");
+            assert_eq!(result.result, output);
+            let requests = server.received_requests().await.unwrap();
+            let exec: Vec<_> = requests
+                .iter()
+                .filter(|r| r.url.path().ends_with("/exec"))
+                .collect();
+            assert_eq!(exec.len(), 1);
+            // Profile behavior has an independent real-shell oracle below.
+            assert_eq!(
+                exec[0].body_json::<Value>().unwrap(),
+                json!({
+                    "command": format!("{SHELL_PROFILE_PREAMBLE}{suffix}"), "runAsync": true
+                })
+            );
+        }
     }
 }
