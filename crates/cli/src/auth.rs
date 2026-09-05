@@ -191,14 +191,17 @@ mod tests {
             },
         );
         assert_eq!(store.current_profile, "default");
-        assert!(store.current_profile().is_some());
+        assert_eq!(store.current_profile().unwrap().api_key, "evr_test123");
 
         let json = serde_json::to_string(&store).unwrap();
         let parsed: CredentialStore = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.current_profile, "default");
         let profile = parsed.profiles.get("default").unwrap();
+        assert_eq!(profile.api_url, "http://localhost:9300/api");
         assert_eq!(profile.api_key, "evr_test123");
         assert_eq!(profile.org_id, Some("org_abc".to_string()));
+        assert_eq!(profile.user_email.as_deref(), Some("test@example.com"));
+        assert_eq!(profile.user_name.as_deref(), Some("Test User"));
     }
 
     #[test]
@@ -215,12 +218,14 @@ mod tests {
             },
         );
         assert!(store.remove_profile("test"));
+        assert!(store.current_profile().is_none());
         assert!(!store.remove_profile("test"));
     }
 
     #[test]
     fn test_credential_store_set_org() {
         let mut store = CredentialStore::default();
+        assert!(store.set_org("org_new").is_err());
         store.set_profile(
             "default",
             Profile {
@@ -231,47 +236,43 @@ mod tests {
                 user_name: None,
             },
         );
+        store.set_profile("work", store.profiles["default"].clone());
+        store.current_profile = "work".into();
         store.set_org("org_new").unwrap();
         assert_eq!(
-            store.profiles.get("default").unwrap().org_id,
+            store.profiles.get("work").unwrap().org_id,
             Some("org_new".to_string())
         );
+        assert!(store.profiles["default"].org_id.is_none());
+        store.current_profile.clear();
+        store.set_org("org_fallback").unwrap();
+        assert_eq!(
+            store.profiles["default"].org_id.as_deref(),
+            Some("org_fallback")
+        );
+        assert_eq!(store.profiles["work"].org_id.as_deref(), Some("org_new"));
     }
 
     #[test]
-    fn test_resolve_credentials_env_var() {
-        // This test relies on env vars not being set in CI
-        // Just test the fallback path
-        let result = resolve_credentials(Some("evr_explicit"), None, None);
-        assert!(result.is_ok());
-        let creds = result.unwrap();
+    fn test_resolve_credentials_explicit_flags() {
+        let creds = resolve_credentials(
+            Some("evr_explicit"),
+            Some("https://explicit.example/api"),
+            None,
+        )
+        .unwrap();
         assert_eq!(creds.api_key, "evr_explicit");
+        assert_eq!(creds.api_url, "https://explicit.example/api");
     }
 
     #[test]
     fn test_credentials_path() {
-        let path = credentials_path().unwrap();
-        assert!(path.to_str().unwrap().contains("everruns"));
-        assert!(path.to_str().unwrap().ends_with("credentials.json"));
-    }
-
-    #[test]
-    #[cfg(target_os = "macos")]
-    fn test_credentials_path_macos_uses_application_support() {
-        let path = credentials_path().unwrap();
-        let expected_prefix = crate::user_dirs::config_dir()
-            .expect("user_dirs::config_dir() should succeed on macOS");
-        assert!(
-            path.starts_with(&expected_prefix),
-            "macOS credentials path should start with {}, got: {}",
-            expected_prefix.display(),
-            path.display()
-        );
-        assert!(
-            path.to_string_lossy()
-                .contains("Library/Application Support"),
-            "macOS credentials path should use ~/Library/Application Support, got: {}",
-            path.display()
-        );
+        match crate::user_dirs::config_dir() {
+            Some(base) => assert_eq!(
+                credentials_path().unwrap(),
+                base.join("everruns").join("credentials.json")
+            ),
+            None => assert!(credentials_path().is_err()),
+        }
     }
 }
