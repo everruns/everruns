@@ -1,5 +1,16 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-05
+
+* **The MCP client is shared; everything around it is not.** `everruns-mcp` owns
+  transports, negotiation, auth, and execution for every host, but the catalog
+  layer (where servers are stored, how they are edited, enabled, and reloaded) is
+  reimplemented per host, `crates/host/src/mcp.rs` is private so downstream
+  embedders copy its connection mapping and discovery, and "MCP capability" names
+  two unrelated things. Records the decision to unify behind one extensible MCP
+  capability over a pluggable catalog seam. See
+  `knowledge/integrations/mcp-capability-unification.md`.
+
 ## 2026-09-01
 
 * **A model switch is a conversation event, not a setting.** Changing the model
