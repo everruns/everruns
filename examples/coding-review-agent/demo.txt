@@ -1,0 +1,53 @@
+Model: claude-sonnet-5
+
+CODE TO REVIEW
+pub fn refund(order_total_cents: u64, requested_cents: u64) -> u64 {
+    requested_cents.min(order_total_cents)
+}
+
+pub fn issue_refund(order_total_cents: u64, requested_cents: u64) -> String {
+    let amount = refund(order_total_cents, requested_cents);
+    format!("refund issued for {amount} cents")
+}
+
+
+QUESTION
+Review the included sample_payment.rs. Report only material, reproducible findings.
+
+[Calling model]
+
+TOOL: inspect_change
+{"path":"sample_payment.rs"}
+
+inspect_change: OK
+pub fn refund(order_total_cents: u64, requested_cents: u64) -> u64 {
+requested_cents.min(order_total_cents)
+}
+
+pub fn issue_refund(order_total_cents: u64, requested_cents: u64) -> String {
+let amount = refund(order_total_cents, requ … [preview]
+
+[Calling model]
+
+ANSWER
+**Finding: No tracking of cumulative refunds allows double/over-refunding**
+
+- **Impact:** `refund` and `issue_refund` are stateless — each call independently clamps
+`requested_cents` to `order_total_cents`. Nothing prevents calling `issue_refund` multiple
+times for the same order, each time issuing up to the full order total again. In a real
+payment flow this means a customer/order could be refunded far more than what was actually
+paid.
+- **Code:**
+```rust
+pub fn refund(order_total_cents: u64, requested_cents: u64) -> u64 {
+requested_cents.min(order_total_cents)
+}
+```
+There is no parameter or persisted state representing "already refunded" amount, so the
+remaining refundable balance is never enforced.
+- **Validation:** Add a test that calls `issue_refund`/`refund` twice with the same
+`order_total_cents` and full `requested_cents` each time, and assert the second call is
+rejected or capped at the remaining balance (e.g., pass `already_refunded_cents` and
+assert `refund(1000, 1000)` followed by `refund(1000, 1000)` does not both return `1000`).
+
+Completed: 2 iterations, 1 tool calls

@@ -4,6 +4,8 @@
 //! OPENROUTER_API_KEY=... cargo run -p everruns-research-agent
 //! ```
 
+mod demo;
+
 use everruns::{Agent, Engine, Turn};
 use everruns_integrations_brave_search::BraveSearch;
 
@@ -13,7 +15,7 @@ const DEFAULT_QUESTION: &str = "Research durable agent sessions. Use web search 
 fn build_agent(api_key: &str, search: BraveSearch) -> Result<Agent, everruns::BuildError> {
     Agent::builder()
         .name("research-agent")
-        .instructions("You are a research agent. Use brave_web_search before answering factual questions. Cite the returned source URLs, distinguish facts from inferences, and say when the evidence is incomplete.")
+        .instructions("Keep the final answer within 150 words. You are a research agent. Use brave_web_search before answering factual questions. Cite the returned source URLs, distinguish facts from inferences, and say when the evidence is incomplete.")
         .provider(everruns_openrouter::provider("openrouter", api_key))
         .model(MODEL)
         .capability(search)
@@ -25,7 +27,7 @@ async fn run(question: &str) -> Result<Turn, Box<dyn std::error::Error>> {
     let agent = build_agent(&api_key, BraveSearch::from_env()?)?;
     let engine = Engine::new();
     let session = engine.create(agent);
-    Ok(session.send_and_wait(question).await?)
+    demo::run(&session, question).await
 }
 
 fn question_from_args() -> String {
@@ -40,13 +42,8 @@ fn question_from_args() -> String {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let question = question_from_args();
-    let turn = run(&question).await?;
-    println!("model: {MODEL}");
-    println!("response: {}", turn.response);
-    println!(
-        "iterations: {}, tool calls: {}",
-        turn.iterations, turn.tool_calls
-    );
+    println!("Model: {MODEL}");
+    run(&question).await?;
     Ok(())
 }
 

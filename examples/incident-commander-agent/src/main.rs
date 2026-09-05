@@ -4,6 +4,8 @@
 //! MODEL_API_KEY=... cargo run -p everruns-incident-commander-agent
 //! ```
 
+mod demo;
+
 use everruns::{Agent, Engine, Turn};
 
 const MODEL: &str = "muse-spark-1.3";
@@ -15,13 +17,27 @@ async fn record_incident_update(update: String) -> Result<String, String> {
     if update.len() > 500 {
         return Err("Keep incident updates under 500 characters.".into());
     }
-    Ok(format!("Incident update recorded: {update}"))
+    append_update(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("incident.log"),
+        &update,
+    )
+}
+
+fn append_update(path: &std::path::Path, update: &str) -> Result<String, String> {
+    use std::io::Write;
+    let mut log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| e.to_string())?;
+    writeln!(log, "{}", update.replace(['\n', '\r'], " ")).map_err(|e| e.to_string())?;
+    Ok(format!("Appended to incident.log: {update}"))
 }
 
 fn build_agent(api_key: &str) -> Result<Agent, everruns::BuildError> {
     Agent::builder()
         .name("incident-commander-agent")
-        .instructions("You are an incident commander. Record a concise incident update before answering. State known impact, unknowns, owners, and safe next actions. Never claim that a production change occurred unless the tool result says so.")
+        .instructions("Keep the final answer within 150 words. You are an incident commander. Record a concise incident update before answering. State known impact, unknowns, owners, and safe next actions. Never claim that a production change occurred unless the tool result says so.")
         .provider(everruns_meta::provider("meta", api_key))
         .model(MODEL)
         .tool(record_incident_update())
@@ -33,7 +49,7 @@ async fn run(question: &str) -> Result<Turn, Box<dyn std::error::Error>> {
     let agent = build_agent(&api_key)?;
     let engine = Engine::new();
     let session = engine.create(agent);
-    Ok(session.send_and_wait(question).await?)
+    demo::run(&session, question).await
 }
 
 fn question_from_args() -> String {
@@ -48,19 +64,27 @@ fn question_from_args() -> String {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let question = question_from_args();
-    let turn = run(&question).await?;
-    println!("model: {MODEL}");
-    println!("response: {}", turn.response);
-    println!(
-        "iterations: {}, tool calls: {}",
-        turn.iterations, turn.tool_calls
-    );
+    println!("Model: {MODEL}");
+    run(&question).await?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::build_agent;
+
+    #[test]
+    fn incident_log_retains_multiple_updates() {
+        let path =
+            std::env::temp_dir().join(format!("everruns-incident-{}.log", std::process::id()));
+        super::append_update(&path, "Investigating\nerrors").unwrap();
+        super::append_update(&path, "Rollback proposed").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "Investigating errors\nRollback proposed\n"
+        );
+        std::fs::remove_file(path).unwrap();
+    }
 
     #[test]
     fn builds_without_contacting_meta() {

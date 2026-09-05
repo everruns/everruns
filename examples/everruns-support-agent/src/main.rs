@@ -4,6 +4,8 @@
 //! ANTHROPIC_API_KEY=... cargo run -p everruns-framework-support-agent
 //! ```
 
+mod demo;
+
 use everruns::{Agent, Engine, Turn};
 
 const MODEL: &str = "claude-opus-5";
@@ -11,20 +13,46 @@ const DEFAULT_QUESTION: &str =
     "My Framework session fails after I add an Anthropic provider. What should I check first?";
 
 #[everruns::tool]
-/// Return authoritative Everruns documentation links for a support topic.
+/// Read authoritative Framework documentation for a support topic.
 async fn search_docs(topic: String) -> Result<String, String> {
     let topic = topic.to_lowercase();
-    if topic.contains("provider") || topic.contains("model") {
-        Ok("Models and providers: https://docs.everruns.com/framework/models-and-providers/\nCustom providers: https://docs.everruns.com/framework/custom-providers/".into())
+    let page = if topic.contains("custom") {
+        "custom-providers"
+    } else if topic.contains("provider") || topic.contains("model") {
+        "models-and-providers"
     } else {
-        Ok("Framework overview: https://docs.everruns.com/framework/\nFramework examples: https://docs.everruns.com/framework/examples/".into())
-    }
+        "examples"
+    };
+    let url = format!(
+        "https://raw.githubusercontent.com/everruns/everruns/main/docs/framework/{page}.md"
+    );
+    let body = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())?
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?
+        .text()
+        .await
+        .map_err(|e| e.to_string())?;
+    let content = body
+        .strip_prefix("---\n")
+        .and_then(|text| text.split_once("\n---\n"))
+        .map_or(body.as_str(), |(_, content)| content.trim());
+    Ok(format!(
+        "Source: https://docs.everruns.com/framework/{page}/\n{}",
+        content.chars().take(16000).collect::<String>()
+    ))
 }
 
 fn build_agent(api_key: &str) -> Result<Agent, everruns::BuildError> {
     Agent::builder()
         .name("everruns-support-agent")
-        .instructions("You support Everruns Framework users. Use search_docs before answering. Separate evidence from hypotheses and give the smallest safe next step with relevant documentation links.")
+        .instructions("Keep the final answer within 150 words. You support Everruns Framework users. Use search_docs before answering. Separate evidence from hypotheses and give the smallest safe next step with relevant documentation links.")
         .provider(everruns_anthropic::provider("anthropic", api_key))
         .model(MODEL)
         .tool(search_docs())
@@ -36,7 +64,7 @@ async fn run(question: &str) -> Result<Turn, Box<dyn std::error::Error>> {
     let agent = build_agent(&api_key)?;
     let engine = Engine::new();
     let session = engine.create(agent);
-    Ok(session.send_and_wait(question).await?)
+    demo::run(&session, question).await
 }
 
 fn question_from_args() -> String {
@@ -51,13 +79,8 @@ fn question_from_args() -> String {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let question = question_from_args();
-    let turn = run(&question).await?;
-    println!("model: {MODEL}");
-    println!("response: {}", turn.response);
-    println!(
-        "iterations: {}, tool calls: {}",
-        turn.iterations, turn.tool_calls
-    );
+    println!("Model: {MODEL}");
+    run(&question).await?;
     Ok(())
 }
 

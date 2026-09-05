@@ -4,6 +4,8 @@
 //! ANTHROPIC_API_KEY=... cargo run -p everruns-coding-review-agent
 //! ```
 
+mod demo;
+
 use everruns::{Agent, Engine, Turn};
 
 const MODEL: &str = "claude-sonnet-5";
@@ -22,7 +24,7 @@ async fn inspect_change(path: String) -> Result<String, String> {
 fn build_agent(api_key: &str) -> Result<Agent, everruns::BuildError> {
     Agent::builder()
         .name("coding-review-agent")
-        .instructions("You are a code reviewer. Use inspect_change before reviewing the sample. Report only material, reproducible findings. For each finding, explain impact, point to the relevant code, and name a focused validation.")
+        .instructions("Keep the final answer within 150 words. You are a code reviewer. Use inspect_change before reviewing the sample. Report only material, reproducible findings. For each finding, explain impact, point to the relevant code, and name a focused validation.")
         .provider(everruns_anthropic::provider("anthropic", api_key))
         .model(MODEL)
         .tool(inspect_change())
@@ -34,7 +36,7 @@ async fn run(question: &str) -> Result<Turn, Box<dyn std::error::Error>> {
     let agent = build_agent(&api_key)?;
     let engine = Engine::new();
     let session = engine.create(agent);
-    Ok(session.send_and_wait(question).await?)
+    demo::run(&session, question).await
 }
 
 fn question_from_args() -> String {
@@ -49,13 +51,9 @@ fn question_from_args() -> String {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let question = question_from_args();
-    let turn = run(&question).await?;
-    println!("model: {MODEL}");
-    println!("response: {}", turn.response);
-    println!(
-        "iterations: {}, tool calls: {}",
-        turn.iterations, turn.tool_calls
-    );
+    println!("Model: {MODEL}");
+    println!("\nCODE TO REVIEW\n{}", include_str!("../sample_payment.rs"));
+    run(&question).await?;
     Ok(())
 }
 

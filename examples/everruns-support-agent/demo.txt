@@ -1,0 +1,50 @@
+Model: claude-opus-5
+
+QUESTION
+My Framework session fails after I add an Anthropic provider. What should I check first?
+
+[Calling model]
+
+TOOL: search_docs
+{"topic":"Anthropic provider configuration"}
+
+TOOL: search_docs
+{"topic":"session failures troubleshooting"}
+
+search_docs: OK
+Source: https://docs.everruns.com/framework/examples/
+The [`crates/everruns/examples`
+catalog](https://github.com/everruns/everruns/tree/main/crates/everruns/examples)
+contains the maintained public examples. Each imports the `everruns` fac … [preview]
+
+search_docs: OK
+Source: https://docs.everruns.com/framework/models-and-providers/
+The Framework separates **what model to use** from **how to reach it**:
+
+- `.model("id")` selects the provider-visible model with a credential-free string.
+- `Provider` suppl … [preview]
+
+[Calling model]
+
+ANSWER
+**Evidence (from docs)**
+- An agent accepts **one** provider via `.provider(...)`; model id stays credential‑free
+([Models and providers](https://docs.everruns.com/framework/models-and-providers/)).
+- Live providers are feature‑gated (e.g. `--features openai`) and read credentials from
+env, not from the model string.
+- Anthropic examples exist and use ids like `claude-opus-5` / `claude-sonnet-5`
+([Examples](https://docs.everruns.com/framework/examples/), [Everruns Support
+Agent](https://docs.everruns.com/framework/examples/everruns-support-agent/)).
+
+**Hypotheses (unconfirmed)**
+- You added a second `.provider(...)` call, so the Anthropic one replaced/conflicted with
+the existing setup.
+- Missing feature flag or unset Anthropic API key at build time.
+- Model id still an OpenAI id while the provider is Anthropic.
+
+**Smallest safe next step**
+Swap in `Model::simulated("fixed response")` and rebuild the agent offline. If it builds,
+the fault is provider/credential wiring, not the session; then re‑add Anthropic with a
+matching `claude-*` id and confirm the feature flag and env var.
+
+Completed: 2 iterations, 2 tool calls
