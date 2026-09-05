@@ -34,8 +34,7 @@ pub(super) fn resolve_request_controls(
                 // Preserve an invalid explicit selection for provider validation.
                 // Dropping Astra's `none` here silently selects its default effort.
                 return crate::model_profiles::get_model_profile(provider_type, model)
-                    .and_then(|profile| profile.reasoning_effort)
-                    .is_some_and(|allowed| !allowed.values.iter().any(|v| v.value == *effort));
+                    .is_some_and(|profile| profile.family == "gpt-6-astra");
             }
             match crate::model_profiles::get_model_profile(provider_type, model) {
                 Some(profile) if !profile.reasoning => {
