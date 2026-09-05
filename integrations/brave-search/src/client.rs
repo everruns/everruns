@@ -96,7 +96,8 @@ impl BraveSearchClient {
             .map_err(|e| format!("Failed to read response: {e}"))?;
 
         if !status.is_success() {
-            return Err(format!("Brave Search API error ({status}): {body_text}"));
+            // Upstream error bodies can echo credentials or request headers.
+            return Err(format!("Brave Search API error ({status})"));
         }
 
         serde_json::from_str(&body_text).map_err(|e| format!("Invalid JSON from Brave Search: {e}"))

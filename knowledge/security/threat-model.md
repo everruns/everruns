@@ -1280,6 +1280,14 @@ Client-side tools pause server execution and wait for client to submit results v
 
 Search results from Brave Search are returned as tool results. Adversarial content in search results could influence LLM behavior.
 
+The Framework adapter captures its application-owned credential in the HTTP
+client; hosted execution resolves session connections or secrets. Neither path
+places credentials in capability config or metadata. Upstream error bodies are
+omitted because they may echo request credentials. The public Engine acceptance
+test in `integrations/brave-search/tests/framework.rs` checks credential absence
+from agent diagnostics and recorded tool results. Framework calls carry the
+application's network authority, without hosted tenant policy.
+
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
 | TM-LLM-008 | Search result prompt injection | Medium | Results returned as `tool_result` role; inherent LLM limitation (same as TM-TOOL-005) | **ACCEPTED** |

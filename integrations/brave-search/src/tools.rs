@@ -5,7 +5,7 @@ use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_provider::tool_types::ToolHints;
 
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
 use tracing::debug;
 
 use crate::BRAVE_SEARCH_API_KEY_SECRET;
@@ -77,42 +77,15 @@ impl Tool for BraveWebSearchTool {
     }
 
     fn name(&self) -> &str {
-        "brave_web_search"
+        crate::search::TOOL_NAME
     }
 
     fn description(&self) -> &str {
-        "Search the web using Brave Search. Returns relevant web results \
-         including titles, URLs, and descriptions."
+        crate::search::TOOL_DESCRIPTION
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Search query string"
-                },
-                "count": {
-                    "type": "integer",
-                    "description": "Number of results to return (1-20, default: 10)",
-                    "minimum": 1,
-                    "maximum": 20
-                },
-                "offset": {
-                    "type": "integer",
-                    "description": "Pagination offset (default: 0)",
-                    "minimum": 0
-                },
-                "freshness": {
-                    "type": "string",
-                    "enum": ["pd", "pw", "pm", "py"],
-                    "description": "Time filter: pd (past day), pw (past week), pm (past month), py (past year)"
-                }
-            },
-            "required": ["query"],
-            "additionalProperties": false
-        })
+        crate::search::schema()
     }
 
     fn hints(&self) -> ToolHints {
@@ -134,56 +107,28 @@ impl Tool for BraveWebSearchTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let query = match arguments.get("query").and_then(|v| v.as_str()) {
-            Some(q) if !q.is_empty() => q,
-            _ => {
-                return ToolExecutionResult::tool_error("Missing required parameter: query");
+        if arguments
+            .get("query")
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+        {
+            return ToolExecutionResult::tool_error("Missing required parameter: query");
+        }
+        let input = match serde_json::from_value::<crate::SearchInput>(arguments) {
+            Ok(input) => input,
+            Err(error) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Invalid search arguments: {error}"
+                ));
             }
         };
-
-        let count = arguments
-            .get("count")
-            .and_then(|v| v.as_u64())
-            .map(|c| c.min(20) as u32);
-        let offset = arguments
-            .get("offset")
-            .and_then(|v| v.as_u64())
-            .map(|o| o as u32);
-        let freshness = arguments.get("freshness").and_then(|v| v.as_str());
-
         let api_key = match get_api_key(context).await {
-            Ok(k) => k,
-            Err(e) => return e,
+            Ok(key) => key,
+            Err(error) => return error,
         };
-
-        let client = BraveSearchClient::new(api_key);
-
-        match client.web_search(query, count, offset, freshness).await {
-            Ok(response) => {
-                let results = response.web.map(|w| w.results).unwrap_or_default();
-
-                let result_items: Vec<Value> = results
-                    .iter()
-                    .map(|r| {
-                        let mut item = json!({
-                            "title": r.title,
-                            "url": r.url,
-                            "description": r.description,
-                        });
-                        if let Some(ref age) = r.age {
-                            item["age"] = json!(age);
-                        }
-                        item
-                    })
-                    .collect();
-
-                ToolExecutionResult::success(json!({
-                    "query": query,
-                    "results": result_items,
-                    "count": result_items.len()
-                }))
-            }
-            Err(e) => ToolExecutionResult::tool_error(e),
+        match crate::search::search(&BraveSearchClient::new(api_key), input).await {
+            Ok(result) => ToolExecutionResult::success(result),
+            Err(error) => ToolExecutionResult::tool_error(error),
         }
     }
 
