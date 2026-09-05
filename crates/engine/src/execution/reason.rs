@@ -195,9 +195,18 @@ fn default_iteration() -> u32 {
     1
 }
 
+/// Internal continuations accounted as part of one scheduled Reason activity.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NativeExecutionCounts {
+    pub llm_calls: u32,
+    pub tool_calls: u32,
+}
+
 /// Result of the ReasonAtom
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ReasonResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_counts: Option<NativeExecutionCounts>,
     /// Whether the LLM call succeeded
     pub success: bool,
     /// Text response from the model
@@ -275,6 +284,7 @@ fn default_max_iterations() -> usize {
 /// 10. Emits reason.completed event
 /// 11. Returns the result with tool calls (if any)
 pub struct ReasonAtom {
+    native_async: Option<Arc<tokio::sync::Mutex<crate::native_async::NativeAsyncCoordinator>>>,
     context_resolver: Arc<dyn TurnContextResolver>,
     message_retriever: Arc<dyn MessageRetriever>,
     capability_registry: CapabilityRegistry,
@@ -311,6 +321,14 @@ pub struct ReasonAtom {
 }
 
 impl ReasonAtom {
+    pub fn with_native_async(
+        mut self,
+        coordinator: Arc<tokio::sync::Mutex<crate::native_async::NativeAsyncCoordinator>>,
+    ) -> Self {
+        self.native_async = Some(coordinator);
+        self
+    }
+
     /// Create a new ReasonAtom
     pub fn new(
         context_resolver: impl TurnContextResolver + 'static,
@@ -319,6 +337,7 @@ impl ReasonAtom {
         event_emitter: impl PhaseEffectSink + 'static,
     ) -> Self {
         Self {
+            native_async: None,
             context_resolver: Arc::new(context_resolver),
             message_retriever: Arc::new(message_retriever),
             capability_registry,
@@ -827,6 +846,7 @@ impl ReasonAtom {
                 }
 
                 ReasonResult {
+                    native_counts: None,
                     success: false,
                     text: user_error_text,
                     tool_calls: vec![],
@@ -870,7 +890,7 @@ impl ReasonAtom {
         assembled: AssembledTurnContext,
     ) -> Result<ReasonResult> {
         let prior_usage = assembled.cumulative_usage();
-        let mut messages = assembled.messages;
+        let mut messages = transcript::order_native_results(assembled.messages);
         let mut message_source_sequence = assembled.message_source_sequence;
         let model_with_provider = assembled.model;
         let resolved_model_id = assembled.resolved_model_id;
@@ -1058,15 +1078,19 @@ impl ReasonAtom {
         // has a matching ToolResult before the LLM call. Consults durable_tool_results
         // when available to replay settled results or synthesize interrupted placeholders.
         let repair_event_context = EventContext::from_execution_context(context);
-        let patched_messages = repair_dangling_tool_calls(
-            &messages,
-            self.durable_tool_result_store.as_deref(),
-            self.event_emitter.as_ref(),
-            session_id,
-            &repair_event_context,
-            &context.turn_id.to_string(),
-        )
-        .await;
+        let patched_messages = if self.native_async.is_some() {
+            messages.clone()
+        } else {
+            repair_dangling_tool_calls(
+                &messages,
+                self.durable_tool_result_store.as_deref(),
+                self.event_emitter.as_ref(),
+                session_id,
+                &repair_event_context,
+                &context.turn_id.to_string(),
+            )
+            .await
+        };
         let raw_tool_result_bytes = compaction_policy
             .as_ref()
             .map(|policy| policy.total_tool_result_bytes(&patched_messages))
@@ -1139,6 +1163,7 @@ impl ReasonAtom {
         let has_system_prompt = !runtime_agent.system_prompt.is_empty();
         if has_system_prompt {
             llm_messages.push(LlmMessage {
+                native_tool_calls: Vec::new(),
                 role: LlmMessageRole::System,
                 content: LlmMessageContent::Text(runtime_agent.system_prompt.clone()),
                 tool_calls: None,
@@ -1440,6 +1465,7 @@ impl ReasonAtom {
         // once a provider reveals a native phase mid-stream. Declared outside the
         // retry loop so it is available to the post-loop guarded delta emission.
         let mut streamed_phase: Option<everruns_provider::ExecutionPhase> = None;
+        let mut native_calls = std::collections::BTreeMap::new();
         let (
             text,
             thinking,
@@ -1568,6 +1594,27 @@ impl ReasonAtom {
                 Err(e) => return Err(e),
             };
 
+            if let Some(coordinator) = &self.native_async {
+                coordinator
+                    .lock()
+                    .await
+                    .begin_transcript_response(output_message_id.to_string())
+                    .await?;
+                let coordinator = coordinator.clone();
+                stream = Box::pin(futures::stream::unfold(
+                    Some((coordinator, stream)),
+                    |state| async move {
+                        let (coordinator, mut source) = state?;
+                        let event = coordinator
+                            .lock()
+                            .await
+                            .next_response_event(&mut source)
+                            .await;
+                        let finished = matches!(&event, Ok(LlmStreamEvent::Done(_)) | Err(_));
+                        Some((event, (!finished).then_some((coordinator, source))))
+                    },
+                ));
+            }
             let mut text = String::new();
             // Reasoning artifacts in emission order. One entry per provider
             // block, each keeping its own signature/id, so interleaved thinking
@@ -1840,13 +1887,41 @@ impl ReasonAtom {
                         );
                         reasoning.push(item);
                     }
-                    LlmStreamEvent::NativeToolCall(_) => {
-                        return Err(AgentLoopError::config(
-                            "native async/custom tools require a configured native-call coordinator",
-                        ));
+                    LlmStreamEvent::NativeToolCall(call) => {
+                        if self.native_async.is_none() {
+                            return Err(AgentLoopError::config(
+                                "native async/custom tools require a configured native-call coordinator",
+                            ));
+                        }
+                        let part = crate::message::ToolCallContentPart::from_native(call.clone())?;
+                        if native_calls.insert(call.id().to_owned(), call).is_none() {
+                            tool_calls.push(ToolCall {
+                                id: part.id,
+                                name: part.name,
+                                arguments: part.arguments,
+                            });
+                        }
                     }
                     LlmStreamEvent::ToolCalls(calls) => {
-                        tool_calls = calls;
+                        if self.native_async.is_some() {
+                            for call in &calls {
+                                native_calls.entry(call.id.clone()).or_insert_with(|| {
+                                    everruns_provider::native_async::NativeToolCall::Function {
+                                        call_id: call.id.clone(),
+                                        name: call.name.clone(),
+                                        arguments: call.arguments.to_string(),
+                                        asynchronous: false,
+                                    }
+                                });
+                            }
+                            for call in calls {
+                                if !tool_calls.iter().any(|existing| existing.id == call.id) {
+                                    tool_calls.push(call);
+                                }
+                            }
+                        } else {
+                            tool_calls = calls;
+                        }
                     }
                     LlmStreamEvent::MessagePhase(phase) => {
                         // Provider revealed a native phase for the current
@@ -2450,6 +2525,11 @@ impl ReasonAtom {
             Message::assistant(&text)
         }
         .with_id(output_message_id);
+        for part in &mut assistant_message.content {
+            if let crate::message::ContentPart::ToolCall(call) = part {
+                call.native = native_calls.get(&call.id).cloned();
+            }
+        }
         // Attach citation annotations produced by the annotation seam above to
         // the message's text part (see knowledge/runtime-resources/citations.md).
         if !citation_annotations.is_empty() {
@@ -2515,23 +2595,8 @@ impl ReasonAtom {
         if let Some(ref u) = usage {
             output_message_data = output_message_data.with_usage(u.clone());
         }
-        self.event_emitter
-            .emit(EventRequest::new(
-                session_id,
-                message_event_context,
-                output_message_data,
-            ))
-            .await?;
-
-        tracing::info!(
-            session_id = %session_id,
-            turn_id = %context.turn_id,
-            has_tool_calls = %has_tool_calls,
-            tool_count = %tool_calls.len(),
-            "ReasonAtom: LLM call completed"
-        );
-
-        Ok(ReasonResult {
+        let result = ReasonResult {
+            native_counts: None,
             success: true,
             text,
             tool_calls,
@@ -2549,7 +2614,41 @@ impl ReasonAtom {
             locale: resolved_locale,
             network_access: runtime_agent.network_access.clone(),
             parallel_tool_calls: runtime_agent.parallel_tool_calls,
-        })
+        };
+        if let Some(coordinator) = &self.native_async {
+            coordinator
+                .lock()
+                .await
+                .stage_transcript_result(
+                    serde_json::to_value(&result)
+                        .map_err(|error| AgentLoopError::store(error.to_string()))?,
+                )
+                .await?;
+        }
+        self.event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                message_event_context,
+                output_message_data,
+            ))
+            .await?;
+
+        if let Some(coordinator) = &self.native_async {
+            coordinator
+                .lock()
+                .await
+                .transcript_committed(&output_message_id.to_string())
+                .await?;
+        }
+        tracing::info!(
+            session_id = %session_id,
+            turn_id = %context.turn_id,
+            has_tool_calls = %result.has_tool_calls,
+            tool_count = %result.tool_calls.len(),
+            "ReasonAtom: LLM call completed"
+        );
+
+        Ok(result)
     }
 
     /// Finalize a partial assistant stream without making a new provider call (EVE-532).
@@ -2642,6 +2741,7 @@ impl ReasonAtom {
         );
 
         Ok(ReasonResult {
+            native_counts: None,
             success: true,
             text: accumulated,
             tool_calls: vec![],

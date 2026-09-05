@@ -280,6 +280,14 @@ pub fn resolve_localized_field<T>(
 
 #[async_trait]
 pub trait Capability: Send + Sync {
+    /// Explicit native asynchronous tool selection. Providers without support
+    /// retain the ordinary synchronous definitions and scheduler.
+    fn native_async_tools(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Option<std::collections::BTreeMap<String, Option<serde_json::Value>>> {
+        None
+    }
     /// Returns the unique capability identifier as a string
     fn id(&self) -> &str;
 

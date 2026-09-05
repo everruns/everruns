@@ -44,6 +44,11 @@ pub fn llm_message_from_message(msg: &Message) -> LlmMessage {
 
     LlmMessage {
         configuration_update: None,
+        native_tool_calls: msg
+            .tool_calls()
+            .iter()
+            .filter_map(|call| call.native.clone())
+            .collect(),
         role,
         content: LlmMessageContent::Text(msg.content_to_llm_string()),
         tool_calls: if tool_calls.is_empty() {
@@ -168,6 +173,11 @@ pub fn llm_message_from_message_with_attachments(
 
     LlmMessage {
         configuration_update: None,
+        native_tool_calls: msg
+            .tool_calls()
+            .iter()
+            .filter_map(|call| call.native.clone())
+            .collect(),
         role,
         content,
         tool_calls: if tool_calls.is_empty() {

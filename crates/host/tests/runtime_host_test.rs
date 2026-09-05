@@ -1781,6 +1781,7 @@ async fn execution_schedules_act_after_reason_tool_calls() {
 
     let input = turn_state(session_id, harness_id);
     let output = serde_json::to_value(ReasonResult {
+        native_counts: None,
         success: true,
         text: "Calling a tool".into(),
         tool_calls: vec![ToolCall {
@@ -1840,6 +1841,7 @@ async fn execution_surfaces_max_turn_requests_before_another_act() {
 
     let input = turn_state(session_id, harness_id);
     let output = serde_json::to_value(ReasonResult {
+        native_counts: None,
         success: true,
         text: "Calling another tool".into(),
         tool_calls: vec![ToolCall {
@@ -1896,6 +1898,7 @@ async fn execution_threads_parallel_tool_calls_into_act() {
 
         let input = turn_state(session_id, harness_id);
         let output = serde_json::to_value(ReasonResult {
+            native_counts: None,
             success: true,
             text: "Calling a tool".into(),
             tool_calls: vec![ToolCall {
@@ -1955,6 +1958,7 @@ async fn execution_schedules_act_with_session_blueprint_id() {
 
     let input = turn_state(session_id, harness_id);
     let output = serde_json::to_value(ReasonResult {
+        native_counts: None,
         success: true,
         text: "Calling a tool".into(),
         tool_calls: vec![ToolCall {
@@ -2010,6 +2014,7 @@ async fn execution_continues_reason_when_steering_messages_are_pending() {
 
     let input = turn_state(session_id, harness_id);
     let output = serde_json::to_value(ReasonResult {
+        native_counts: None,
         success: true,
         text: "Continuing".into(),
         tool_calls: vec![],
@@ -2067,6 +2072,7 @@ async fn execution_emits_turn_completed_summary_fields() {
     input.time_to_first_token_ms = Some(35);
 
     let output = serde_json::to_value(ReasonResult {
+        native_counts: None,
         success: true,
         text: "Final answer for export".into(),
         tool_calls: vec![],
@@ -2138,6 +2144,7 @@ async fn execution_preserves_reason_failure_message() {
 
     let input = turn_state(session_id, harness_id);
     let output = serde_json::to_value(ReasonResult {
+        native_counts: None,
         success: false,
         text: "Budget exhausted. 100.00 tokens spent reached the 100.00 tokens limit. Increase the budget to continue."
             .into(),
@@ -2204,6 +2211,7 @@ async fn execution_classifies_missing_api_key_as_provider_misconfigured() {
 
     let input = turn_state(session_id, harness_id);
     let output = serde_json::to_value(ReasonResult {
+        native_counts: None,
         success: false,
         text: "I encountered an error while processing your request. Please try again later."
             .into(),
@@ -2268,6 +2276,7 @@ async fn execution_prefers_disclosed_user_facing_error_from_reason() {
 
     let input = turn_state(session_id, harness_id);
     let output = serde_json::to_value(ReasonResult {
+        native_counts: None,
         success: false,
         text: "I encountered an error while processing your request. Please try again later."
             .into(),

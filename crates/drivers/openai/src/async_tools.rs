@@ -36,6 +36,11 @@ impl NativeAsyncTools {
 }
 
 impl OpenResponsesRequestExtension for NativeAsyncTools {
+    fn allow_stateless_recovery(&self) -> bool {
+        // Pending calls belong to the provider conversation; replaying a repaired
+        // transcript would discard outstanding calls or repeat accepted outputs.
+        false
+    }
     fn decorate(&self, body: &mut Value, config: &LlmCallConfig) -> Result<()> {
         let supported = config.model == "gpt-6-astra" || config.model.starts_with("gpt-6-astra-");
         if !supported {

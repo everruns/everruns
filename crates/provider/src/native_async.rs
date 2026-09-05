@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 use crate::error::{AgentLoopError, Result};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "type")]
 pub enum NativeToolCall {
     #[serde(rename = "function_call")]
@@ -94,6 +95,17 @@ pub struct Delivery {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct NativeAsyncCheckpoint {
     pub latest_response_id: Option<String>,
+    /// Expected canonical assistant message while the response transcript commits.
+    #[serde(default)]
+    pub transcript_message_id: Option<String>,
+    /// Host outcome retained until its durable activity acknowledges completion.
+    #[serde(default)]
+    pub host_outcome: Option<Value>,
+    #[serde(default)]
+    pub completed_responses: u32,
+    /// Host response summaries, saved before committing each canonical message.
+    #[serde(default)]
+    pub host_responses: Vec<Value>,
     #[serde(default)]
     pub response_in_flight: bool,
     pub calls: BTreeMap<String, PendingCall>,
@@ -163,12 +175,20 @@ impl NativeAsyncCheckpoint {
                 "response ID missing or delivery requires acknowledgement",
             ));
         }
+        if self.latest_response_id.as_ref() != Some(&response_id) {
+            self.completed_responses = self.completed_responses.saturating_add(1);
+        }
         self.latest_response_id = Some(response_id);
         Ok(())
     }
 
     /// Recovery runs only after the previous execution owner has been fenced.
     pub fn recover(&mut self) -> Result<()> {
+        if self.transcript_message_id.is_some() {
+            return Err(AgentLoopError::store(
+                "native response transcript requires reconciliation",
+            ));
+        }
         let ordered: std::collections::BTreeSet<_> = self.order.iter().collect();
         if ordered.len() != self.calls.len()
             || self.order.len() != self.calls.len()
@@ -282,12 +302,16 @@ impl NativeAsyncCheckpoint {
                 .expect("delivery references registered calls")
                 .state = PendingCallState::Delivered;
         }
+        if self.latest_response_id.as_ref() != Some(&response_id) {
+            self.completed_responses = self.completed_responses.saturating_add(1);
+        }
         self.latest_response_id = Some(response_id);
         Ok(())
     }
 
     pub fn can_complete(&self) -> bool {
-        !self.response_in_flight
+        self.transcript_message_id.is_none()
+            && !self.response_in_flight
             && self.delivery.is_none()
             && self
                 .calls

@@ -85,6 +85,42 @@ fn sse(items: Vec<serde_json::Value>, id: &str) -> String {
 }
 
 #[tokio::test]
+async fn native_continuation_rejection_does_not_retry_statelessly() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST")).and(path("/v1/responses"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(json!({"error":{
+            "type":"invalid_request_error", "message":"No tool output found for function call original"}})))
+        .expect(1).mount(&server).await;
+    let delivery = everruns_provider::native_async::Delivery {
+        previous_response_id: "latest".into(),
+        call_ids: vec!["original".into()],
+        input: vec![json!({"type":"function_call_output","call_id":"original","output":"42"})],
+    };
+    let provider = Provider::new(
+        "fixture",
+        OpenAIChatDriver::new().with_native_async_tools(
+            NativeAsyncTools::default()
+                .function("lookup")
+                .continuation(delivery),
+        ),
+    )
+    .base_url(format!("{}/v1", server.uri()))
+    .auth(BearerAuth::new("fixture"));
+    let mut config = config();
+    config.previous_response_id = Some("latest".into());
+    assert!(
+        provider
+            .chat_completion_stream(
+                vec![LlmMessage::text(LlmMessageRole::User, "start")],
+                &config
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
 async fn native_async_http_delivers_out_of_order_to_latest_response() {
     let server = MockServer::start().await;
     let initial = sse(
@@ -189,4 +225,249 @@ async fn native_async_http_delivers_out_of_order_to_latest_response() {
         .await
         .unwrap();
     assert!(restored.can_complete());
+}
+
+type JournalKey = (
+    i64,
+    everruns_provider::typed_id::SessionId,
+    everruns_provider::typed_id::TurnId,
+);
+type JournalEntry = (
+    Option<uuid::Uuid>,
+    everruns_provider::native_async::NativeAsyncCheckpoint,
+);
+#[derive(Default)]
+struct RuntimeJournal(tokio::sync::Mutex<std::collections::HashMap<JournalKey, JournalEntry>>);
+
+#[async_trait]
+impl everruns_core::native_async_store::NativeAsyncStore for RuntimeJournal {
+    async fn acquire(
+        &self,
+        lease: everruns_core::native_async_store::NativeAsyncLease,
+    ) -> Result<everruns_provider::native_async::NativeAsyncCheckpoint> {
+        let mut entries = self.0.lock().await;
+        let entry = entries
+            .entry((lease.org_id, lease.session_id, lease.turn_id))
+            .or_default();
+        if entry.0.is_some_and(|owner| owner != lease.owner) {
+            return Err(everruns_provider::AgentLoopError::store("fenced"));
+        }
+        entry.0 = Some(lease.owner);
+        Ok(entry.1.clone())
+    }
+    async fn load(
+        &self,
+        lease: everruns_core::native_async_store::NativeAsyncLease,
+    ) -> Result<everruns_provider::native_async::NativeAsyncCheckpoint> {
+        let entries = self.0.lock().await;
+        let entry = entries
+            .get(&(lease.org_id, lease.session_id, lease.turn_id))
+            .filter(|entry| entry.0 == Some(lease.owner))
+            .ok_or_else(|| everruns_provider::AgentLoopError::store("fenced"))?;
+        Ok(entry.1.clone())
+    }
+    async fn renew(
+        &self,
+        lease: everruns_core::native_async_store::NativeAsyncLease,
+    ) -> Result<()> {
+        self.load(lease).await.map(|_| ())
+    }
+    async fn save(
+        &self,
+        lease: everruns_core::native_async_store::NativeAsyncLease,
+        checkpoint: &everruns_provider::native_async::NativeAsyncCheckpoint,
+    ) -> Result<()> {
+        let mut entries = self.0.lock().await;
+        let entry = entries
+            .get_mut(&(lease.org_id, lease.session_id, lease.turn_id))
+            .filter(|entry| entry.0 == Some(lease.owner))
+            .ok_or_else(|| everruns_provider::AgentLoopError::store("fenced"))?;
+        entry.1 = checkpoint.clone();
+        Ok(())
+    }
+    async fn release(
+        &self,
+        lease: everruns_core::native_async_store::NativeAsyncLease,
+    ) -> Result<()> {
+        let mut entries = self.0.lock().await;
+        let entry = entries
+            .get_mut(&(lease.org_id, lease.session_id, lease.turn_id))
+            .filter(|entry| entry.0 == Some(lease.owner))
+            .ok_or_else(|| everruns_provider::AgentLoopError::store("fenced"))?;
+        entry.0 = None;
+        Ok(())
+    }
+}
+
+async fn run_native_runtime_case(custom: bool) {
+    use everruns_capability::CapabilityRef;
+    use everruns_core::CapabilityRegistry;
+    use everruns_host::{
+        HarnessBuilder, HostBackends, HostComposition, InProcessRuntimeBuilder, SessionBuilder,
+    };
+    use everruns_provider::{
+        driver_registry::DriverRegistry,
+        model_spec::ModelSpec,
+        typed_id::{HarnessId, SessionId},
+    };
+    let server = MockServer::start().await;
+    let tool_name = if custom { "raw_lookup" } else { "add" };
+    let tool_type = if custom { "custom" } else { "function" };
+    let output_type = if custom {
+        "custom_tool_call_output"
+    } else {
+        "function_call_output"
+    };
+    let format = if custom {
+        json!({"type":"text"})
+    } else {
+        serde_json::Value::Null
+    };
+    let call_item = if custom {
+        json!({"type":"custom_tool_call","id":"item_add","call_id":"original_add","name":tool_name,"input":"raw\nquery: 42","async":true})
+    } else {
+        json!({"type":"function_call","id":"item_add","call_id":"original_add","name":tool_name,"arguments":"{\"a\":20,\"b\":22}","async":true})
+    };
+    Mock::given(method("POST")).and(path("/v1/responses"))
+        .and(body_partial_json(json!({"model":"gpt-6-astra"})))
+        .respond_with(ResponseTemplate::new(200).insert_header("content-type","text/event-stream").set_body_string(sse(vec![
+            json!({"type":"response.output_item.done","item":call_item}),
+            json!({"type":"response.output_text.delta","delta":"I can continue reasoning."}),
+        ],"response_launch"))).up_to_n_times(1).with_priority(10).mount(&server).await;
+    Mock::given(method("POST")).and(path("/v1/responses"))
+        .and(body_partial_json(json!({"previous_response_id":"response_launch","input":[{"type":output_type,"call_id":"original_add"}]})))
+        .respond_with(ResponseTemplate::new(200).insert_header("content-type","text/event-stream").set_body_string(sse(vec![json!({"type":"response.output_text.delta","delta":"The answer is 42."})],"response_final")))
+        .expect(1).with_priority(1).mount(&server).await;
+    let mut registry = CapabilityRegistry::new();
+    registry.register(everruns_test_support::TestMathCapability);
+    registry.register(RawLookupCapability);
+    registry.register(everruns_builtins::NativeAsyncToolsCapability);
+    let journal = Arc::new(RuntimeJournal::default());
+    let harness_id = HarnessId::new();
+    let session_id = SessionId::new();
+    let runtime = InProcessRuntimeBuilder::new()
+        .host_composition(HostComposition::new(registry, DriverRegistry::new()))
+        .backends(HostBackends::in_memory().with_native_async_store(journal.clone()))
+        .provider(
+            Provider::new("native", OpenAIChatDriver::new())
+                .base_url(format!("{}/v1", server.uri()))
+                .auth(BearerAuth::new("fixture")),
+        )
+        .default_model(ModelSpec::on("native", "gpt-6-astra"))
+        .harness(
+            HarnessBuilder::new("native", "Use the lookup and finish after its result.")
+                .id(harness_id)
+                .capability("test_math")
+                .capability("fixture_custom")
+                .capability(CapabilityRef::with_config(
+                    "native_async_tools",
+                    json!({"tools":{(tool_name):format}}),
+                ))
+                .build(),
+        )
+        .session(SessionBuilder::new(harness_id).id(session_id).build())
+        .build()
+        .await
+        .unwrap();
+    let result = runtime
+        .run_text_turn(session_id, "What is 20 plus 22?")
+        .await
+        .unwrap();
+    assert!(result.success, "{result:?}");
+    assert_eq!(result.response, "The answer is 42.");
+    let messages = runtime.messages(session_id).await.unwrap();
+    let call = messages
+        .iter()
+        .flat_map(|message| message.tool_calls())
+        .find(|call| call.id == "original_add")
+        .unwrap();
+    assert!(call.native.as_ref().unwrap().is_async());
+    assert_eq!(
+        messages
+            .iter()
+            .filter(|message| message.tool_call_id() == Some("original_add"))
+            .count(),
+        1
+    );
+    let entries = journal.0.lock().await;
+    let (_, state) = entries.values().next().unwrap();
+    assert!(state.can_complete());
+    assert_eq!(state.latest_response_id.as_deref(), Some("response_final"));
+    assert!(state.host_outcome.is_some());
+    assert_eq!(state.host_responses.len(), 2);
+    assert_eq!(
+        state.host_outcome.as_ref().unwrap()["native_counts"],
+        json!({"llm_calls":2,"tool_calls":1})
+    );
+    let requests = server.received_requests().await.unwrap();
+    let initial: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    assert!(
+        initial["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tool| tool["type"] == tool_type
+                && tool["name"] == tool_name
+                && tool["async"] == true)
+    );
+    let continuation: serde_json::Value = serde_json::from_slice(&requests[1].body).unwrap();
+    let output: serde_json::Value =
+        serde_json::from_str(continuation["input"][0]["output"].as_str().unwrap()).unwrap();
+    assert!(output["error"].is_null(), "{output}");
+    if custom {
+        assert_eq!(output["result"]["echo"], "raw\nquery: 42");
+        assert!(
+            matches!(call.native.as_ref().unwrap(), NativeToolCall::Custom { input, .. } if input == "raw\nquery: 42")
+        );
+    }
+    let events = runtime.events().await.unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.event_type == "turn.completed")
+            .count(),
+        1
+    );
+}
+
+struct RawLookupCapability;
+impl everruns_core::Capability for RawLookupCapability {
+    fn id(&self) -> &str {
+        "fixture_custom"
+    }
+    fn name(&self) -> &str {
+        "Raw lookup fixture"
+    }
+    fn description(&self) -> &str {
+        "Echo raw lookup input"
+    }
+    fn tools(&self) -> Vec<Box<dyn everruns_core::Tool>> {
+        vec![Box::new(RawLookup)]
+    }
+}
+struct RawLookup;
+#[async_trait]
+impl everruns_core::Tool for RawLookup {
+    fn name(&self) -> &str {
+        "raw_lookup"
+    }
+    fn description(&self) -> &str {
+        "Echo raw lookup input"
+    }
+    fn parameters_schema(&self) -> serde_json::Value {
+        json!({"type":"string"})
+    }
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+    async fn execute(&self, arguments: serde_json::Value) -> everruns_core::ToolExecutionResult {
+        everruns_core::ToolExecutionResult::success(json!({"echo":arguments}))
+    }
+}
+#[tokio::test]
+async fn native_async_normal_runtime_persists_calls_and_waits_for_receipts() {
+    run_native_runtime_case(false).await;
+    run_native_runtime_case(true).await;
 }

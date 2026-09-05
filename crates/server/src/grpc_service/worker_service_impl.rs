@@ -698,6 +698,71 @@ impl WorkerService for WorkerServiceImpl {
         }))
     }
 
+    async fn native_async_journal(
+        &self,
+        request: Request<proto::NativeAsyncJournalRequest>,
+    ) -> Result<Response<proto::NativeAsyncJournalResponse>, Status> {
+        use everruns_core::native_async_store::{
+            MAX_NATIVE_ASYNC_CHECKPOINT_BYTES, NativeAsyncLease, NativeAsyncStore,
+        };
+        use proto::native_async_journal_request::Operation;
+        let req = request.into_inner();
+        let operation = Operation::try_from(req.operation)
+            .map_err(|_| Status::invalid_argument("invalid journal operation"))?;
+        if req.checkpoint_json.len() > MAX_NATIVE_ASYNC_CHECKPOINT_BYTES {
+            return Err(Status::resource_exhausted(
+                "native async checkpoint exceeds 8 MiB",
+            ));
+        }
+        let lease = NativeAsyncLease {
+            org_id: req.org_id,
+            session_id: parse_uuid(req.session_id.as_ref())?.into(),
+            turn_id: parse_uuid(req.turn_id.as_ref())?.into(),
+            owner: parse_uuid(req.owner.as_ref())?,
+        };
+        let pool = self.db.pool().ok_or_else(|| {
+            Status::failed_precondition("native async requires shared durable storage")
+        })?;
+        let encryption = self.encryption.clone().ok_or_else(|| {
+            Status::failed_precondition("checkpoint encryption is not configured")
+        })?;
+        let store = crate::storage::PgNativeAsyncStore::new(pool.clone(), encryption);
+        let checkpoint = match operation {
+            Operation::Acquire => Some(store.acquire(lease).await),
+            Operation::Load => Some(store.load(lease).await),
+            Operation::Renew => {
+                store.renew(lease).await.map_err(|_| {
+                    Status::failed_precondition("native async ownership fence lost")
+                })?;
+                None
+            }
+            Operation::Save => {
+                let checkpoint = serde_json::from_slice(&req.checkpoint_json)
+                    .map_err(|_| Status::invalid_argument("invalid native async checkpoint"))?;
+                store.save(lease, &checkpoint).await.map_err(|_| {
+                    Status::failed_precondition("native async checkpoint write failed")
+                })?;
+                None
+            }
+            Operation::Release => {
+                store.release(lease).await.map_err(|_| {
+                    Status::failed_precondition("native async ownership fence lost")
+                })?;
+                None
+            }
+        }
+        .transpose()
+        .map_err(|_| Status::failed_precondition("native async journal unavailable or fenced"))?;
+        let checkpoint_json = checkpoint
+            .map(|checkpoint| serde_json::to_vec(&checkpoint))
+            .transpose()
+            .map_err(|_| Status::internal("cannot encode native async checkpoint"))?
+            .unwrap_or_default();
+        Ok(Response::new(proto::NativeAsyncJournalResponse {
+            checkpoint_json,
+        }))
+    }
+
     async fn get_compaction_checkpoint(
         &self,
         request: Request<proto::GetCompactionCheckpointRequest>,

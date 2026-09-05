@@ -921,6 +921,11 @@ everruns_core::mount_fs::MountFs::with_backend_display	function
 everruns_core::mount_fs::MountFs::wrap_if_needed	function
 everruns_core::mount_fs::WORKSPACE_MOUNT	constant
 everruns_core::mount_fs::scoped_prompt_file_store	function
+everruns_core::native_async_store	module
+everruns_core::native_async_store::MAX_NATIVE_ASYNC_CHECKPOINT_BYTES	constant
+everruns_core::native_async_store::NATIVE_ASYNC_LEASE_SECONDS	constant
+everruns_core::native_async_store::NativeAsyncLease	struct
+everruns_core::native_async_store::NativeAsyncStore	trait
 everruns_core::network_access	module
 everruns_core::network_access::NetworkAccessList	struct
 everruns_core::network_access::merge_network_access	function

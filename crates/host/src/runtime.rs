@@ -824,6 +824,7 @@ impl InProcessRuntimeBuilder {
             seeded_session_ids,
             event_log,
             event_history,
+            native_async_store: backends.native_async_store,
             compaction_checkpoint_store: backends.compaction_checkpoint_store,
             provider_store: backends.provider_store,
             event_emitter,
@@ -882,6 +883,7 @@ pub struct InProcessRuntime {
     seeded_session_ids: Vec<SessionId>,
     event_log: Arc<dyn EventLog>,
     event_history: Arc<EventHistory>,
+    native_async_store: Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>>,
     compaction_checkpoint_store: Arc<dyn everruns_core::CompactionCheckpointStore>,
     provider_store: Arc<dyn RuntimeProviderStore>,
     event_emitter: Arc<HostEventEmitter>,
@@ -1902,6 +1904,12 @@ impl RuntimeHostAdapter for InProcessRuntime {
 
     fn message_store(&self) -> Arc<dyn MessageRetriever> {
         self.event_history.clone()
+    }
+
+    fn native_async_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>> {
+        self.native_async_store.clone()
     }
 
     fn compaction_checkpoint_store(

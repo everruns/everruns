@@ -144,6 +144,22 @@ impl OpenAIChatDriver {
 
 #[async_trait]
 impl ChatDriver for OpenAIChatDriver {
+    fn native_async_driver(
+        &self,
+        model: &str,
+        tools: std::collections::BTreeMap<String, Option<serde_json::Value>>,
+        continuation: Option<everruns_provider::native_async::Delivery>,
+    ) -> Option<std::sync::Arc<dyn ChatDriver>> {
+        if model != "gpt-6-astra" && !model.starts_with("gpt-6-astra-") {
+            return None;
+        }
+        Some(std::sync::Arc::new(self.clone().with_native_async_tools(
+            crate::async_tools::NativeAsyncTools {
+                tools,
+                continuation,
+            },
+        )))
+    }
     async fn chat_completion_stream(
         &self,
         endpoint: &ProviderEndpoint,

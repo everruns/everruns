@@ -7,7 +7,7 @@ use everruns_provider::{
     error::{AgentLoopError, Result},
     native_async::{Delivery, NativeAsyncCheckpoint, NativeToolCall, PendingCallState},
 };
-use futures::{StreamExt, future::BoxFuture, stream::FuturesUnordered};
+use futures::{StreamExt, stream::FuturesUnordered};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, Semaphore};
 
@@ -18,6 +18,13 @@ pub trait NativeAsyncJournal: Send + Sync {
     async fn load(&self) -> Result<NativeAsyncCheckpoint>;
     /// Atomically persist and flush before returning success.
     async fn save(&self, checkpoint: &NativeAsyncCheckpoint) -> Result<()>;
+    /// Renew shared ownership while streams/jobs are quiet. Failure stops jobs.
+    async fn heartbeat(&self) -> Result<()> {
+        Ok(())
+    }
+    async fn release(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -36,17 +43,43 @@ pub trait NativeAsyncExecutor: Send + Sync + 'static {
     async fn execute(&self, call: NativeToolCall) -> Result<String>;
 }
 
-type Job = BoxFuture<'static, (String, Result<String>)>;
+// Tool RPCs must progress while journal writes await the same transport lock.
+// Ownership remains local: dropping the coordinator aborts every running task.
+struct OwnedJob {
+    id: String,
+    handle: tokio::task::JoinHandle<(String, Result<String>)>,
+}
+impl Drop for OwnedJob {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
+}
+impl std::future::Future for OwnedJob {
+    type Output = (String, Result<String>);
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        context: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        match std::pin::Pin::new(&mut self.handle).poll(context) {
+            std::task::Poll::Ready(Ok(result)) => std::task::Poll::Ready(result),
+            std::task::Poll::Ready(Err(_)) => {
+                std::task::Poll::Ready((self.id.clone(), Err(AgentLoopError::Cancelled)))
+            }
+            std::task::Poll::Pending => std::task::Poll::Pending,
+        }
+    }
+}
 
 pub struct NativeAsyncCoordinator {
     journal: Box<dyn NativeAsyncJournal>,
     executor: Arc<dyn NativeAsyncExecutor>,
     checkpoint: NativeAsyncCheckpoint,
-    jobs: FuturesUnordered<Job>,
+    jobs: FuturesUnordered<OwnedJob>,
     permits: Arc<Semaphore>,
     classes: HashMap<String, Arc<Mutex<()>>>,
     serialize_all: bool,
     poisoned: bool,
+    last_heartbeat: tokio::time::Instant,
 }
 
 impl NativeAsyncCoordinator {
@@ -71,6 +104,7 @@ impl NativeAsyncCoordinator {
             classes: HashMap::new(),
             serialize_all: !parallel_tool_calls,
             poisoned: false,
+            last_heartbeat: tokio::time::Instant::now(),
         };
         let queued: Vec<_> = this
             .checkpoint
@@ -103,13 +137,47 @@ impl NativeAsyncCoordinator {
 
     async fn save(&mut self) -> Result<()> {
         match self.journal.save(&self.checkpoint).await {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                self.last_heartbeat = tokio::time::Instant::now();
+                Ok(())
+            }
             Err(error) => {
                 self.poisoned = true;
                 self.jobs.clear();
                 Err(error)
             }
         }
+    }
+
+    async fn heartbeat(&mut self) -> Result<()> {
+        if let Err(error) = self.journal.heartbeat().await {
+            self.poisoned = true;
+            self.jobs.clear();
+            return Err(error);
+        }
+        self.last_heartbeat = tokio::time::Instant::now();
+        Ok(())
+    }
+
+    pub async fn persist_host_outcome(&mut self, outcome: serde_json::Value) -> Result<()> {
+        self.healthy()?;
+        if !self.checkpoint.can_complete() {
+            return Err(AgentLoopError::store("native outputs remain pending"));
+        }
+        self.checkpoint.host_outcome = Some(outcome);
+        self.save().await
+    }
+
+    pub async fn release(&mut self) -> Result<()> {
+        self.healthy()?;
+        if !self.checkpoint.can_complete() {
+            return Err(AgentLoopError::store(
+                "cannot release native conversation with pending outputs",
+            ));
+        }
+        self.journal.release().await?;
+        self.poisoned = true;
+        Ok(())
     }
 
     async fn launch(&mut self, call: NativeToolCall, policy: NativeCallPolicy) -> Result<()> {
@@ -143,7 +211,8 @@ impl NativeAsyncCoordinator {
         });
         let permits = self.permits.clone();
         let executor = self.executor.clone();
-        self.jobs.push(Box::pin(async move {
+        let call_id = call.id().to_owned();
+        let handle = tokio::spawn(async move {
             let _class_guard = match lock {
                 Some(lock) => Some(lock.lock_owned().await),
                 None => None,
@@ -154,7 +223,11 @@ impl NativeAsyncCoordinator {
                 .expect("coordinator never closes permits");
             let id = call.id().to_owned();
             (id, executor.execute(call).await)
-        }));
+        });
+        self.jobs.push(OwnedJob {
+            id: call_id,
+            handle,
+        });
         Ok(())
     }
 
@@ -179,6 +252,109 @@ impl NativeAsyncCoordinator {
             .unwrap_or_else(|error| serde_json::json!({"error":error.to_string()}).to_string());
         self.checkpoint.settle(&id, output)?;
         self.save().await
+    }
+
+    pub async fn begin_transcript_response(&mut self, message_id: String) -> Result<()> {
+        self.healthy()?;
+        if self.checkpoint.transcript_message_id.is_some() {
+            return Err(AgentLoopError::store("native transcript is not committed"));
+        }
+        self.checkpoint.transcript_message_id = Some(message_id);
+        self.begin_response().await
+    }
+
+    pub async fn stage_transcript_result(&mut self, result: serde_json::Value) -> Result<()> {
+        self.healthy()?;
+        if self.checkpoint.response_in_flight || self.checkpoint.transcript_message_id.is_none() {
+            return Err(AgentLoopError::store(
+                "native response is not ready for transcript commit",
+            ));
+        }
+        if self.checkpoint.host_responses.len() + 1 != self.checkpoint.completed_responses as usize
+        {
+            return Err(AgentLoopError::store(
+                "native response summary count mismatch",
+            ));
+        }
+        self.checkpoint.host_responses.push(result);
+        self.save().await
+    }
+
+    pub async fn transcript_committed(&mut self, message_id: &str) -> Result<()> {
+        self.healthy()?;
+        if self.checkpoint.response_in_flight
+            || self.checkpoint.transcript_message_id.as_deref() != Some(message_id)
+        {
+            return Err(AgentLoopError::store("native transcript boundary mismatch"));
+        }
+        self.checkpoint.transcript_message_id = None;
+        self.save().await
+    }
+
+    /// Record request intent before a host opens its provider HTTP stream.
+    pub async fn begin_response(&mut self) -> Result<()> {
+        self.healthy()?;
+        if self.checkpoint.response_in_flight {
+            return Err(AgentLoopError::store(
+                "prior native response requires reconciliation",
+            ));
+        }
+        self.checkpoint.response_in_flight = true;
+        self.save().await
+    }
+
+    /// Drive jobs alongside one stream event, retaining call events for the
+    /// host's normal transcript pipeline. A completed response is not a turn end.
+    pub async fn next_response_event(
+        &mut self,
+        stream: &mut LlmResponseStream,
+    ) -> Result<LlmStreamEvent> {
+        self.healthy()?;
+        let result = self.next_response_event_inner(stream).await;
+        if result.is_err() {
+            self.poisoned = true;
+            self.jobs.clear();
+        }
+        result
+    }
+
+    async fn next_response_event_inner(
+        &mut self,
+        stream: &mut LlmResponseStream,
+    ) -> Result<LlmStreamEvent> {
+        if !self.checkpoint.response_in_flight {
+            return Err(AgentLoopError::store(
+                "native response has no persisted request intent",
+            ));
+        }
+        loop {
+            tokio::select! {
+                _ = tokio::time::sleep_until(self.last_heartbeat + std::time::Duration::from_secs(10)) => self.heartbeat().await?,
+                completed = self.jobs.next(), if !self.jobs.is_empty() => {
+                    let (id, result) = completed.expect("nonempty jobs");
+                    self.settle(id, result).await?;
+                }
+                event = stream.next() => {
+                    let event = event.ok_or_else(|| AgentLoopError::llm("native response stream ended before completion"))??;
+                    match &event {
+                        LlmStreamEvent::NativeToolCall(call) => self.register(call.clone()).await?,
+                        LlmStreamEvent::ToolCalls(calls) => for call in calls {
+                            self.register(NativeToolCall::Function { call_id: call.id.clone(), name: call.name.clone(), arguments: serde_json::to_string(&call.arguments).map_err(|error| AgentLoopError::config(error.to_string()))?, asynchronous: false }).await?;
+                        },
+                        LlmStreamEvent::Done(metadata) => {
+                            let id = metadata.response_id.clone().ok_or_else(|| AgentLoopError::llm("native response omitted response ID"))?;
+                            if self.checkpoint.delivery.is_some() { self.checkpoint.acknowledge_delivery(id)?; } else { self.checkpoint.response_completed(id)?; }
+                            self.checkpoint.response_in_flight = false;
+                            self.save().await?;
+                            if metadata.finish_reason.as_deref().is_some_and(|reason| !matches!(reason, "stop" | "tool_calls" | "end_turn")) { return Err(AgentLoopError::llm("native response did not finish successfully")); }
+                        }
+                        LlmStreamEvent::Error(error) => return Err(AgentLoopError::llm(error.to_string())),
+                        _ => {}
+                    }
+                    return Ok(event);
+                }
+            }
+        }
     }
 
     /// Consume a response while jobs execute. Returns once the provider response
@@ -209,40 +385,16 @@ impl NativeAsyncCoordinator {
         mut stream: LlmResponseStream,
         mut observe: impl FnMut(LlmStreamEvent),
     ) -> Result<()> {
-        self.healthy()?;
-        self.checkpoint.response_in_flight = true;
-        self.save().await?;
+        self.begin_response().await?;
         loop {
-            tokio::select! {
-                finished = self.jobs.next(), if !self.jobs.is_empty() => {
-                    let (id, result) = finished.expect("nonempty job set");
-                    self.settle(id, result).await?;
+            let event = self.next_response_event(&mut stream).await?;
+            match event {
+                LlmStreamEvent::NativeToolCall(_) | LlmStreamEvent::ToolCalls(_) => {}
+                LlmStreamEvent::Done(_) => {
+                    observe(event);
+                    return Ok(());
                 }
-                event = stream.next() => {
-                    let event = event.ok_or_else(|| AgentLoopError::llm("native response stream ended without a completion receipt"))??;
-                    match event {
-                        LlmStreamEvent::NativeToolCall(call) => self.register(call).await?,
-                        LlmStreamEvent::ToolCalls(calls) => {
-                            for call in calls {
-                                self.register(NativeToolCall::Function { call_id: call.id, name: call.name, arguments: serde_json::to_string(&call.arguments).map_err(|e| AgentLoopError::config(e.to_string()))?, asynchronous: false }).await?;
-                            }
-                        }
-                        LlmStreamEvent::Done(metadata) => {
-                            let response_id = metadata.response_id.clone().ok_or_else(|| AgentLoopError::llm("native response omitted response ID"))?;
-                            if self.checkpoint.delivery.is_some() { self.checkpoint.acknowledge_delivery(response_id)?; }
-                            else { self.checkpoint.response_completed(response_id)?; }
-                            self.checkpoint.response_in_flight = false;
-                            self.save().await?;
-                            if metadata.finish_reason.as_deref().is_some_and(|reason| !matches!(reason, "stop" | "tool_calls" | "end_turn")) {
-                                return Err(AgentLoopError::llm("native response did not finish successfully"));
-                            }
-                            observe(LlmStreamEvent::Done(metadata));
-                            return Ok(());
-                        }
-                        LlmStreamEvent::Error(error) => return Err(AgentLoopError::llm(error.to_string())),
-                        other => observe(other),
-                    }
-                }
+                other => observe(other),
             }
         }
     }
@@ -250,11 +402,18 @@ impl NativeAsyncCoordinator {
     /// Wait for one completion; outputs may be delivered out of launch order.
     pub async fn wait_next(&mut self) -> Result<bool> {
         self.healthy()?;
-        if let Some((id, result)) = self.jobs.next().await {
-            self.settle(id, result).await?;
-            Ok(true)
-        } else {
-            Ok(false)
+        let mut lease_tick = tokio::time::interval(std::time::Duration::from_secs(10));
+        loop {
+            tokio::select! {
+                _ = lease_tick.tick() => self.heartbeat().await?,
+                completed = self.jobs.next() => {
+                    if let Some((id, result)) = completed {
+                        self.settle(id, result).await?;
+                        return Ok(true);
+                    }
+                    return Ok(false);
+                }
+            }
         }
     }
 
@@ -282,7 +441,17 @@ impl NativeAsyncCoordinator {
     /// outputs; the conversation remains incomplete until they are delivered.
     pub async fn cancel(&mut self) -> Result<()> {
         self.healthy()?;
-        self.jobs.clear();
+        for job in self.jobs.iter() {
+            job.handle.abort();
+        }
+        while let Some((id, result)) = self.jobs.next().await {
+            if !matches!(result, Err(AgentLoopError::Cancelled)) {
+                let output = result.unwrap_or_else(|error| {
+                    serde_json::json!({"error":error.to_string()}).to_string()
+                });
+                self.checkpoint.settle(&id, output)?;
+            }
+        }
         self.checkpoint.cancel();
         self.save().await
     }
@@ -314,7 +483,15 @@ impl NativeAsyncCoordinator {
                 self.wait_next().await?;
                 delivery = self.prepare_delivery().await?;
             }
-            let stream = request(delivery, self.checkpoint.latest_response_id.clone()).await?;
+            let response = request(delivery, self.checkpoint.latest_response_id.clone());
+            tokio::pin!(response);
+            let mut lease_tick = tokio::time::interval(std::time::Duration::from_secs(10));
+            let stream = loop {
+                tokio::select! {
+                    result = &mut response => break result?,
+                    _ = lease_tick.tick() => self.heartbeat().await?,
+                }
+            };
             self.pump(stream, &mut observe).await?;
             if self.checkpoint.can_complete() {
                 return Ok(());
@@ -597,6 +774,83 @@ mod tests {
             NativeAsyncCoordinator::open(Box::new(journal), executor, 1, true)
                 .await
                 .is_err()
+        );
+    }
+    #[tokio::test]
+    async fn native_journal_and_jobs_share_transport_without_deadlocking() {
+        struct Journal {
+            memory: MemoryJournal,
+            transport: Arc<Mutex<()>>,
+        }
+        #[async_trait]
+        impl NativeAsyncJournal for Journal {
+            async fn load(&self) -> Result<NativeAsyncCheckpoint> {
+                self.memory.load().await
+            }
+            async fn save(&self, state: &NativeAsyncCheckpoint) -> Result<()> {
+                let _transport = self.transport.lock().await;
+                self.memory.save(state).await
+            }
+        }
+        struct Tool {
+            transport: Arc<Mutex<()>>,
+            started: Arc<tokio::sync::Notify>,
+        }
+        #[async_trait]
+        impl NativeAsyncExecutor for Tool {
+            async fn authorize(&self, _: &NativeToolCall) -> Result<NativeCallPolicy> {
+                Ok(NativeCallPolicy {
+                    allow_async: true,
+                    replay_safe: true,
+                    concurrency_class: None,
+                })
+            }
+            async fn execute(&self, call: NativeToolCall) -> Result<String> {
+                let _transport = self.transport.lock().await;
+                self.started.notify_one();
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                Ok(call.id().into())
+            }
+        }
+        let transport = Arc::new(Mutex::new(()));
+        let started = Arc::new(tokio::sync::Notify::new());
+        let journal = Journal {
+            memory: MemoryJournal::default(),
+            transport: transport.clone(),
+        };
+        let tool = Arc::new(Tool {
+            transport,
+            started: started.clone(),
+        });
+        let mut coordinator = NativeAsyncCoordinator::open(Box::new(journal), tool, 2, true)
+            .await
+            .unwrap();
+        let (sender, receiver) = futures::channel::mpsc::unbounded();
+        sender
+            .unbounded_send(Ok(LlmStreamEvent::NativeToolCall(call("first", true))))
+            .unwrap();
+        let sender_task = tokio::spawn(async move {
+            started.notified().await;
+            sender
+                .unbounded_send(Ok(LlmStreamEvent::NativeToolCall(call("second", true))))
+                .unwrap();
+            sender.unbounded_send(Ok(done("response"))).unwrap();
+        });
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            coordinator.pump(Box::pin(receiver), |_| {}),
+        )
+        .await
+        .expect("journal writes must not stop the job that owns their transport")
+        .unwrap();
+        sender_task.await.unwrap();
+        while coordinator.wait_next().await.unwrap() {}
+        assert!(
+            coordinator
+                .checkpoint()
+                .calls
+                .values()
+                .all(|pending| matches!(pending.state, PendingCallState::Ready { .. }))
         );
     }
 }

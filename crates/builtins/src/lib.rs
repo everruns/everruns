@@ -44,10 +44,12 @@ pub mod human_intent;
 pub mod infinity_context;
 pub mod loop_detection;
 pub mod message_metadata;
+pub mod native_async_tools;
 pub mod openai_tool_search;
 #[cfg(feature = "ui-capabilities")]
 pub mod openui;
 pub mod parallel_tool_calls;
+pub use native_async_tools::NativeAsyncToolsCapability;
 pub mod progress_guard;
 pub mod prompt_caching;
 pub mod prompt_canary_guardrail;
@@ -293,6 +295,7 @@ fn runtime_capabilities() -> Vec<Arc<dyn Capability>> {
         Arc::new(AutoToolSearchCapability::new()),
         Arc::new(PromptCachingCapability::new()),
         Arc::new(ParallelToolCallsCapability),
+        Arc::new(NativeAsyncToolsCapability),
         Arc::new(SystemCommandsCapability),
         Arc::new(ToolOutputPersistenceCapability),
         Arc::new(ToolOutputDistillationCapability),
@@ -308,7 +311,7 @@ fn runtime_capabilities() -> Vec<Arc<dyn Capability>> {
 mod bundle_tests {
     use super::*;
 
-    const RUNTIME_IDS: [&str; 26] = [
+    const RUNTIME_IDS: [&str; 27] = [
         "human_intent",
         "infinity_context",
         "skills",
@@ -327,6 +330,7 @@ mod bundle_tests {
         "auto_tool_search",
         "prompt_caching",
         "parallel_tool_calls",
+        "native_async_tools",
         "system_commands",
         "tool_output_persistence",
         "tool_output_distillation",

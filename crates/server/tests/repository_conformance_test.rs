@@ -658,3 +658,92 @@ async fn postgres_run_summary_fence() {
     let backend = create_postgres_backend().await;
     run_run_summary_fence_conformance(&backend, "postgres").await;
 }
+
+#[tokio::test]
+async fn postgres_native_async_lease_recovery_and_tenant_fencing() {
+    use everruns_core::native_async_store::{NativeAsyncLease, NativeAsyncStore};
+    use everruns_provider::{
+        native_async::{NativeAsyncCheckpoint, NativeToolCall, PendingCallState},
+        typed_id::TurnId,
+    };
+    use everruns_server::storage::{EncryptionService, PgNativeAsyncStore};
+    use std::sync::Arc;
+    let pool = PgPool::connect(&get_database_url())
+        .await
+        .expect("connect PostgreSQL");
+    let backend = StorageBackend::Postgres(Database::new(pool.clone()));
+    let principal = create_test_principal(&backend, "native-async").await;
+    let session = backend
+        .create_session(session_input(principal, "native-async"))
+        .await
+        .unwrap();
+    let encryption = Arc::new(
+        EncryptionService::new("test:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[]).unwrap(),
+    );
+    let store = PgNativeAsyncStore::new(pool.clone(), encryption);
+    let lease = NativeAsyncLease {
+        org_id: DEFAULT_ORG_ID,
+        session_id: session.id,
+        turn_id: TurnId::new(),
+        owner: Uuid::new_v4(),
+    };
+    let other = NativeAsyncLease {
+        owner: Uuid::new_v4(),
+        ..lease
+    };
+    let wrong_org = NativeAsyncLease {
+        org_id: DEFAULT_ORG_ID + 999_999,
+        ..other
+    };
+    assert!(store.acquire(wrong_org).await.is_err());
+    assert_eq!(
+        store.acquire(lease).await.unwrap(),
+        NativeAsyncCheckpoint::default()
+    );
+    assert!(store.acquire(other).await.is_err());
+    let mut state = NativeAsyncCheckpoint::default();
+    state
+        .register(
+            NativeToolCall::Function {
+                call_id: "lookup-original-id".into(),
+                name: "lookup".into(),
+                arguments: r#"{"query":"private-query"}"#.into(),
+                asynchronous: true,
+            },
+            true,
+        )
+        .unwrap();
+    state.start("lookup-original-id").unwrap();
+    state.response_completed("latest-response".into()).unwrap();
+    store.save(lease, &state).await.unwrap();
+    assert!(store.save(wrong_org, &state).await.is_err());
+    assert!(store.load(other).await.is_err());
+    let bytes: Vec<u8> = sqlx::query_scalar(
+        "SELECT payload_encrypted FROM native_async_checkpoints WHERE session_id=$1",
+    )
+    .bind(session.id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(!String::from_utf8_lossy(&bytes).contains("private-query"));
+    // Expire using the database clock; no time-based test sleeps.
+    sqlx::query("UPDATE native_async_checkpoints SET lease_until=clock_timestamp()-interval '1 second' WHERE session_id=$1").bind(session.id).execute(&pool).await.unwrap();
+    assert!(store.renew(lease).await.is_err());
+    assert!(store.save(lease, &state).await.is_err());
+    let mut recovered = store.acquire(other).await.unwrap();
+    assert_eq!(recovered, state);
+    recovered.recover().unwrap();
+    assert_eq!(
+        recovered.calls["lookup-original-id"].state,
+        PendingCallState::Queued
+    );
+    assert!(store.release(lease).await.is_err());
+    assert!(store.save(lease, &state).await.is_err());
+    store.save(other, &recovered).await.unwrap();
+    store.release(other).await.unwrap();
+    let next = NativeAsyncLease {
+        owner: Uuid::new_v4(),
+        ..lease
+    };
+    assert_eq!(store.acquire(next).await.unwrap(), recovered);
+}

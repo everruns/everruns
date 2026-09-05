@@ -28,6 +28,7 @@
 //! ```
 
 mod execution;
+pub use execution::configured_max_tool_concurrency;
 mod machine;
 pub mod native_async;
 mod phase_effects;
@@ -64,8 +65,8 @@ pub(crate) mod tool_call_integrity {
 
 pub use execution::{
     ActAtom, ActInput, ActResult, ClientSideToolHook, ConnectionSetupHook, ExecutionContext,
-    InputAtom, InputAtomInput, InputAtomResult, OutputHardLimitHook, PostActAction, PostActHook,
-    ReasonAtom, ReasonInput, ReasonResult, ToolCallResult,
+    InputAtom, InputAtomInput, InputAtomResult, NativeExecutionCounts, OutputHardLimitHook,
+    PostActAction, PostActHook, ReasonAtom, ReasonInput, ReasonResult, ToolCallResult,
 };
 pub use machine::{Execution, ExecutionTransition, TurnExecution};
 pub use phase_effects::{PhaseEffect, PhaseEffectSink};

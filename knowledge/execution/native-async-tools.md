@@ -15,13 +15,19 @@ an accepted call. Results belong to the original provider call and continue the
 latest response. They do not produce the handles or synthetic user messages used
 by [background execution](background-execution.md).
 
-The current implementation is an explicit **custom-host API**. It comprises the
-[OpenAI request opt-in](../../crates/drivers/openai/src/async_tools.rs),
-[portable coordinator](../../crates/engine/src/native_async.rs), and
-[local durable journal and Act executor adapter](../../crates/host/src/native_async.rs).
-The normal distributed worker's Reason/Act workflow does not install this
-coordinator, and rejects unexpected native calls rather than dropping them.
-No model defaults or existing background behavior change.
+The `native_async_tools` capability explicitly selects tools for supported
+providers. The [normal host Reason activity](../../crates/host/src/native_async.rs)
+uses the [streaming coordinator](../../crates/engine/src/native_async.rs) for
+internal HTTP continuations. The distributed scheduler receives a final outcome
+only after all accepted outputs have provider receipts, including aggregate
+usage and internal call counts. No model defaults or existing background
+behavior change. Unsupported providers retain ordinary synchronous execution.
+
+Distributed workers use an authenticated
+[worker RPC](../../crates/internal-protocol/proto/worker.proto) backed by an
+[encrypted PostgreSQL journal](../../crates/server/src/storage/native_async_store.rs).
+Custom hosts can install the same store contract or use the private local file
+journal with the lower-level coordinator API.
 
 ## Execution contract
 
@@ -46,6 +52,11 @@ No model defaults or existing background behavior change.
 - No wait tool is required: the runner delivers available outputs. A host adding a
   wait tool must make it synchronous and place newly available original-call
   outputs before that tool's status.
+- Early dispatch cannot run under hooks that require finalized output or finalized
+  tool calls. Those combinations fail configuration before any call executes.
+- Native call metadata and raw custom input persist in the assistant transcript.
+  Tool results may be recorded while the assistant still streams; model replay
+  orders early results after their original calls without inventing failures.
 - Direct tools only: no programmatic tool calling, deferred tool-search path, or
   provider multi-agent mode. An earlier model keeps ordinary function definitions
   as the synchronous fallback. Pending native outputs cannot switch models or
@@ -53,42 +64,58 @@ No model defaults or existing background behavior change.
 
 ## Persistence and recovery
 
-The local journal is private host state, outside the session filesystem and tool
-storage. Its OS file lock fences duplicate owners and releases on process death.
-Checkpoints are atomically replaced and flushed before execution or HTTP result
-delivery. Keep the journal directory for the entire conversation: delivered call
-IDs remain tombstones, so a repeated call/result cannot execute or deliver twice.
+The shared journal is private runtime state, outside session tools and file
+storage. Database-clock leases fence every checkpoint read, write, renewal, and
+release by tenant, session, turn, and owner. Lease renewal and owned tool tasks
+progress concurrently so a shared RPC transport cannot deadlock persistence.
+Losing ownership stops local jobs. Checkpoints are encrypted and bounded below
+the internal transport's message-size limit; session deletion owns retention.
+Forks do not copy live provider calls or ownership.
+
+The local journal uses an OS file lock for exclusive ownership and atomically
+replaces and flushes checkpoints. Both journals retain delivered call IDs as
+tombstones. Results and delivery intent persist before continuation requests.
 
 On recovery after a completed response, safe running calls are reauthorized and
 restarted. Calls without a trusted replay-safety grant become explicit interrupted
-outputs. A policy change prevents automatic replay. Cancellation drops owned local
-execution futures and preserves cancelled outputs; a late completion cannot
+outputs. A policy change prevents automatic replay. Cancellation aborts and joins owned local
+execution tasks and preserves cancelled outputs. Recovery/cancellation errors are
+recorded as canonical tool results before delivery; a late completion cannot
 replace the first terminal result. Dropping a future cannot revoke an external
 side effect already accepted by a tool service.
 
 There is an unavoidable uncertainty window after HTTP submission but before a
 completed response receipt is persisted. The journal retains the delivery intent
-and refuses automatic replay in this case. An interrupted response stream likewise
+and refuses automatic replay in this case. Native continuations also disable the
+ordinary missing-output fallback to a repaired stateless transcript. An interrupted response stream likewise
 requires reconciliation: the older response ID cannot be assumed current. A host
 must recover a provider receipt or resolve the conversation explicitly before
 resuming. This is an attention-required state, not successful completion and not
 a claim of exactly-once provider delivery. Corrupt or unavailable journal storage
 fails closed.
 
-## Integration boundary and remaining work
+## Integration and validation
 
-The [HTTP integration test](../../crates/host/tests/native_async_http.rs) is an
-executable custom-host composition using a file journal, OpenAI streaming driver,
-and coordinator. It exercises both function and custom calls through subsequent
-HTTP requests and checks the persisted completion state after reopening.
+The [HTTP integration tests](../../crates/host/tests/native_async_http.rs) exercise
+both custom-host composition and the normal Reason/Act runtime, including raw
+custom input, original-call outputs, transcript metadata, and completion gating.
+The [PostgreSQL conformance test](../../crates/server/tests/repository_conformance_test.rs)
+checks tenant isolation, competing owners, expiry, stale writes, encryption, and
+recovery. A regression test exercises journal writes and tool jobs sharing one
+transport lock. An isolated PostgreSQL/gRPC/API/worker run also verified early
+`web_fetch` execution before the assistant message completed, a single canonical
+result, original-call continuation, and final turn counts.
 
-Distributed worker adoption still requires a database-backed fenced journal,
-workflow scheduling/checkpoint integration, durable cancellation routing, and
-session transcript/event integration for the coordinator's internal continuations.
-Do not advertise a session capability until those paths are wired and tested.
-The local journal is not a substitute for shared durable storage across workers.
-Live GPT-6 Astra acceptance and recovery through provider response retrieval have
-not been verified by the local fixture tests.
+The expected assistant message boundary is persisted while its transcript is
+being committed. On worker recovery, a matching canonical message reconciles
+that boundary only when its saved response summary also matches; a missing message
+or summary fails closed. Usage, first-token latency, and response budgets survive
+worker recovery. A final host outcome is retained
+for activity replay, preventing another provider request after the turn's work
+has already finished.
+
+Live GPT-6 Astra acceptance and recovery through provider response retrieval
+remain unverified. Fixture tests do not establish live-provider compatibility.
 
 ## Sources
 

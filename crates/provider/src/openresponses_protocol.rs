@@ -1414,6 +1414,25 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                             return Ok(LlmStreamEvent::TextDelta(String::new()));
                         }
 
+                        // A custom tool call is not represented by the typed
+                        // Responses event enum. Decode completed calls before
+                        // that enum so its native metadata reaches the runtime.
+                        if let Ok(json) = serde_json::from_str::<Value>(event_data)
+                            && json.get("type").and_then(Value::as_str)
+                                == Some("response.output_item.done")
+                            && let Some(item) = json.get("item")
+                            && matches!(
+                                item.get("type").and_then(Value::as_str),
+                                Some("function_call" | "custom_tool_call")
+                            )
+                        {
+                            return completed_tool_call_event(
+                                item,
+                                &accumulated_tool_calls,
+                                &finish_reason,
+                            );
+                        }
+
                         // Try to parse as typed StreamingEvent first for type safety
                         if let Ok(streaming_event) =
                             serde_json::from_str::<StreamingEvent>(event_data)
@@ -1942,6 +1961,64 @@ impl ToolCallStream {
             })
             .collect()
     }
+}
+
+/// Decode a completed native call only after its terminal item is available.
+/// This keeps custom-call metadata intact while preserving the stream's normal
+/// full-snapshot behavior for synchronous function calls.
+fn completed_tool_call_event(
+    item: &Value,
+    accumulated: &Mutex<ToolCallStream>,
+    finish_reason: &Mutex<Option<String>>,
+) -> Result<LlmStreamEvent> {
+    let mut complete = item.clone();
+    if item.get("type").and_then(Value::as_str) == Some("function_call") {
+        let acc = accumulated.lock().unwrap();
+        if let Some(tc) = acc
+            .calls
+            .iter()
+            .find(|tc| item.get("id").and_then(Value::as_str) == Some(tc.id.as_str()))
+        {
+            for (field, value) in [
+                ("arguments", &tc.arguments),
+                ("name", &tc.name),
+                ("call_id", &tc.call_id),
+            ] {
+                if complete.get(field).is_none() {
+                    complete[field] = Value::String(value.clone());
+                }
+            }
+        }
+    }
+
+    let call: crate::native_async::NativeToolCall = serde_json::from_value(complete)
+        .map_err(|_| AgentLoopError::llm("invalid completed tool call"))?;
+    call.validate()?;
+    *finish_reason.lock().unwrap() = Some("tool_calls".to_string());
+    if call.is_async() || matches!(call, crate::native_async::NativeToolCall::Custom { .. }) {
+        return Ok(LlmStreamEvent::NativeToolCall(call));
+    }
+
+    let crate::native_async::NativeToolCall::Function {
+        call_id,
+        name,
+        arguments,
+        ..
+    } = call
+    else {
+        unreachable!()
+    };
+    let id = item
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or(&call_id)
+        .to_string();
+    let mut acc = accumulated.lock().unwrap();
+    acc.observe_item(&id, &call_id, &name, &arguments);
+    Ok(acc
+        .take_unemitted()
+        .map(LlmStreamEvent::ToolCalls)
+        .unwrap_or_else(|| LlmStreamEvent::TextDelta(String::new())))
 }
 
 /// Handle typed streaming events from the OpenResponses API

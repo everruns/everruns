@@ -12280,6 +12280,23 @@ export interface components {
        */
       src_path: string;
     };
+    NativeToolCall:
+      | {
+          arguments: string;
+          async?: boolean;
+          call_id: string;
+          name: string;
+          /** @enum {string} */
+          type: "function_call";
+        }
+      | {
+          async?: boolean;
+          call_id: string;
+          input: string;
+          name: string;
+          /** @enum {string} */
+          type: "custom_tool_call";
+        };
     /**
      * @description Network access list controlling which hosts/URLs an agent session can reach.
      *
@@ -16144,6 +16161,7 @@ export interface components {
       arguments: unknown;
       id: string;
       name: string;
+      native?: null | components["schemas"]["NativeToolCall"];
     };
     /**
      * @description Data for the `tool.call_repaired` event (EVE-600).

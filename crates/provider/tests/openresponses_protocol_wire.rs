@@ -868,3 +868,36 @@ async fn attestation_gate_403_is_classified_at_the_driver_boundary() {
         })
     );
 }
+
+#[tokio::test]
+async fn completed_call_does_not_dispatch_partial_sibling() {
+    let server = MockServer::start().await;
+    let body = [
+        serde_json::json!({"type":"response.output_item.added","item":{"type":"function_call","id":"partial","call_id":"not_ready","name":"lookup"}}),
+        serde_json::json!({"type":"response.function_call_arguments.delta","item_id":"partial","delta":"{"}),
+        serde_json::json!({"type":"response.output_item.done","item":{"type":"function_call","id":"ready","call_id":"ready_call","name":"lookup","arguments":"{\"q\":\"complete\"}"}}),
+        // A replayed late delta cannot corrupt a call already marked complete.
+        serde_json::json!({"type":"response.function_call_arguments.delta","item_id":"ready","delta":"garbage"}),
+        serde_json::json!({"type":"response.output_item.done","item":{"type":"function_call","id":"second","call_id":"second_call","name":"lookup","arguments":"{}"}}),
+        serde_json::json!({"type":"response.completed","response":{"id":"response_latest","status":"completed","output":[]}}),
+    ].iter().map(|event| format!("data: {event}\n\n")).collect::<String>();
+    mount_sse(&server, body).await;
+    let mut stream = driver(&server)
+        .chat_completion_stream(vec![], &config("gpt-5-mini"))
+        .await
+        .unwrap();
+    let mut calls = Vec::new();
+    let mut response_id = None;
+    while let Some(event) = stream.next().await {
+        match event.unwrap() {
+            LlmStreamEvent::ToolCalls(snapshot) => calls = snapshot,
+            LlmStreamEvent::Done(metadata) => response_id = metadata.response_id,
+            _ => {}
+        }
+    }
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].id, "ready_call");
+    assert_eq!(calls[1].id, "second_call");
+    assert_eq!(calls[0].arguments, serde_json::json!({"q":"complete"}));
+    assert_eq!(response_id.as_deref(), Some("response_latest"));
+}

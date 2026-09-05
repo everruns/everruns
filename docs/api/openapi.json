@@ -30793,6 +30793,68 @@
           }
         }
       },
+      "NativeToolCall": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "call_id",
+              "name",
+              "arguments",
+              "type"
+            ],
+            "properties": {
+              "arguments": {
+                "type": "string"
+              },
+              "async": {
+                "type": "boolean"
+              },
+              "call_id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "function_call"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "call_id",
+              "name",
+              "input",
+              "type"
+            ],
+            "properties": {
+              "async": {
+                "type": "boolean"
+              },
+              "call_id": {
+                "type": "string"
+              },
+              "input": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "custom_tool_call"
+                ]
+              }
+            }
+          }
+        ]
+      },
       "NetworkAccessList": {
         "type": "object",
         "description": "Network access list controlling which hosts/URLs an agent session can reach.\n\n- `allowed`: if non-empty, only URLs matching these patterns are permitted.\n- `blocked`: URLs matching these patterns are always denied (takes precedence over allowed).\n\nPattern format:\n- `example.com` — exact domain match (any port, any path)\n- `*.example.com` — domain and all subdomains\n- `https://example.com/api/` — exact URL prefix (scheme + host + path)",
@@ -37280,6 +37342,17 @@
           },
           "name": {
             "type": "string"
+          },
+          "native": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NativeToolCall",
+                "description": "Original native call, including raw custom input and async metadata."
+              }
+            ]
           }
         }
       },
