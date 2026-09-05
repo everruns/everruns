@@ -60,12 +60,17 @@ impl ProviderModelConfig {
         if let Ok(skip) = std::env::var("SKIP_LLM_INTEGRATION_TESTS_PROVIDERS") {
             let provider = self.provider_type.to_string().to_lowercase();
             if skip.split(',').any(|s| s.trim().to_lowercase() == provider) {
+                self.record_outcome(CELL_SKIP_LIST);
                 return None;
             }
         }
-        let api_key = std::env::var(self.env_var).ok().filter(|k| !k.is_empty())?;
+        let Some(api_key) = std::env::var(self.env_var).ok().filter(|k| !k.is_empty()) else {
+            self.record_outcome(CELL_NO_KEY);
+            return None;
+        };
         let model = ModelSpec::on(self.provider_type.as_str(), self.model_name);
         let provider = ProviderConfig::new(self.provider_type.clone()).with_api_key(api_key);
+        self.record_outcome(CELL_CONFIGURED);
         Some((model, provider).into())
     }
 
@@ -73,7 +78,135 @@ impl ProviderModelConfig {
     pub fn label(&self) -> String {
         format!("{}:{}", self.env_var, self.model_name)
     }
+
+    /// Record this cell as reached-but-unverified (out of quota/credits).
+    ///
+    /// A method rather than `record_outcome(CELL_QUOTA)` at the call site
+    /// because both callers are `#[macro_export]` macros: a constant would have
+    /// to resolve in each expansion's scope, which it does not in this module's
+    /// own `mod tests` or in test binaries that do not glob-import the constant.
+    /// Method resolution needs no import.
+    pub fn record_quota(&self) {
+        self.record_outcome(CELL_QUOTA);
+    }
+
+    /// Append one machine-readable coverage record for this matrix cell to the
+    /// file named by `LLM_MATRIX_COVERAGE_FILE`, when that variable is set
+    /// (EVE-951). A no-op otherwise, so local runs are unchanged.
+    ///
+    /// The human-readable `eprintln!` skip messages next to each call site stay
+    /// as they are — they explain a single test to whoever is reading the log.
+    /// These records answer the different question the job summary needs: which
+    /// cells actually reached a provider, and which quietly did not.
+    ///
+    /// A file rather than stdout for two reasons. Test stdout and stderr
+    /// interleave under `--nocapture` with tests running in parallel, which
+    /// splices records into the middle of other lines and makes them
+    /// unparseable. And this module's own `mod tests` drives the recording
+    /// macros with synthetic configs, so anything written unconditionally to
+    /// the log would report fake cells as real coverage; CI sets the variable
+    /// only for the live matrix run.
+    ///
+    /// Records are appended with a single `write_all` of one short line, which
+    /// `O_APPEND` keeps atomic across the parallel test threads and across the
+    /// separate test binaries the step runs into the same file.
+    ///
+    /// `model()` is called more than once per test (the `is_none()` guard, then
+    /// again inside the turn, once per `run_live_turn!` attempt), so a cell
+    /// records the same outcome repeatedly. Folding duplicates is the reader's
+    /// job — `scripts/report_live_matrix_coverage.py` reduces per cell — which
+    /// keeps this side free of any cross-test state.
+    ///
+    /// Recording is best-effort: a coverage report must never be able to fail
+    /// the live matrix it is only describing, so I/O errors are dropped.
+    pub fn record_outcome(&self, outcome: &str) {
+        use std::io::Write;
+
+        if coverage_suppressed() {
+            return;
+        }
+        let Ok(path) = std::env::var(COVERAGE_FILE_ENV) else {
+            return;
+        };
+        if path.is_empty() {
+            return;
+        }
+        let line = format!(
+            "{outcome}\t{}\t{}\t{}\n",
+            self.provider_type.to_string().to_lowercase(),
+            self.env_var,
+            self.model_name,
+        );
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(path)
+        {
+            let _ = f.write_all(line.as_bytes());
+        }
+    }
 }
+
+/// Names the file matrix cells append their coverage records to. Unset outside
+/// the `live-provider-matrix` job, which makes recording a no-op everywhere else.
+pub const COVERAGE_FILE_ENV: &str = "LLM_MATRIX_COVERAGE_FILE";
+
+thread_local! {
+    static COVERAGE_SUPPRESSED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn coverage_suppressed() -> bool {
+    COVERAGE_SUPPRESSED.with(std::cell::Cell::get)
+}
+
+/// Suppresses coverage recording on the current thread until dropped.
+///
+/// This module's own unit tests drive `run_live_turn!` and `skip_if_quota!`
+/// with synthetic `TurnResult`s to assert the retry and skip behaviour, and
+/// they carry a *real* config (`ANTHROPIC_OPUS5`) as the label. Without this
+/// guard those tests append genuine-looking records — a live matrix run would
+/// then report `claude-opus-5` as quota-skipped when nothing of the sort
+/// happened, which is precisely the false coverage picture EVE-951 exists to
+/// remove.
+///
+/// Thread-local rather than an env var: the harness runs tests in parallel, so
+/// mutating process environment here would race across tests. Every test that
+/// needs it uses a current-thread runtime, so the flag and the code it guards
+/// are on the same thread.
+pub struct CoverageSuppressed(());
+
+impl CoverageSuppressed {
+    pub fn new() -> Self {
+        COVERAGE_SUPPRESSED.with(|c| c.set(true));
+        Self(())
+    }
+}
+
+impl Default for CoverageSuppressed {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Drop for CoverageSuppressed {
+    fn drop(&mut self) {
+        COVERAGE_SUPPRESSED.with(|c| c.set(false));
+    }
+}
+
+/// The cell had a usable API key and reached the provider.
+pub const CELL_CONFIGURED: &str = "configured";
+
+/// The cell was skipped because its API key was absent or empty.
+pub const CELL_NO_KEY: &str = "no-key";
+
+/// The cell was skipped through `SKIP_LLM_INTEGRATION_TESTS_PROVIDERS`.
+pub const CELL_SKIP_LIST: &str = "skip-list";
+
+/// The cell reached the provider but the account was out of quota/credits, so
+/// its assertions never ran. A billing condition, not a code regression — but
+/// it leaves the cell unverified, which is what the report exists to surface.
+pub const CELL_QUOTA: &str = "quota";
 
 impl std::fmt::Display for ProviderModelConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -289,9 +422,28 @@ pub fn is_quota_exhausted(err: &str) -> bool {
 /// import the test files already rely on.
 #[macro_export]
 macro_rules! skip_if_quota {
-    ($result:expr, $label:expr) => {{
+    // `cell = <ProviderModelConfig>` — a real matrix cell. Records a `quota`
+    // coverage marker (EVE-951) so the job summary reports the cell as
+    // unverified instead of letting a green test result imply it was checked.
+    ($result:expr, cell = $config:expr) => {{
         // Bind once by reference so the expression isn't evaluated twice (no
         // duplicated side effects / moves if a caller passes a non-trivial expr).
+        let __result = &$result;
+        let __config = &$config;
+        if !__result.success {
+            if let Some(err) = __result.error.as_deref() {
+                if is_quota_exhausted(err) {
+                    eprintln!("SKIP: provider {} out of quota: {}", __config.label(), err);
+                    __config.record_quota();
+                    return;
+                }
+            }
+        }
+    }};
+    // `label = <&str>` — not a matrix cell. The nonexistent-model negative test
+    // builds its own `ModelSpec` rather than a `ProviderModelConfig`, so it has
+    // no cell to report coverage for.
+    ($result:expr, label = $label:expr) => {{
         let __result = &$result;
         if !__result.success {
             if let Some(err) = __result.error.as_deref() {
@@ -461,6 +613,9 @@ macro_rules! run_live_turn {
                 if let Some(err) = result.error.as_deref() {
                     if is_quota_exhausted(err) {
                         eprintln!("SKIP: {} out of quota: {}", $config.label(), err);
+                        // The cell reached the provider but never got to assert
+                        // anything (EVE-951): record it as unverified, not as run.
+                        $config.record_quota();
                         outcome = None;
                         break;
                     }
@@ -777,6 +932,8 @@ mod quota_detector_tests {
         use std::time::Duration;
         use tokio::time::Instant;
 
+        // Synthetic results against a real config: must not record coverage.
+        let _no_coverage = super::CoverageSuppressed::new();
         let config = super::ANTHROPIC_OPUS5;
         let attempts = Cell::new(0usize);
         let started = Instant::now();
@@ -803,6 +960,8 @@ mod quota_detector_tests {
         use std::time::Duration;
         use tokio::time::Instant;
 
+        // Synthetic results against a real config: must not record coverage.
+        let _no_coverage = super::CoverageSuppressed::new();
         let config = super::ANTHROPIC_OPUS5;
         let attempts = Cell::new(0usize);
         let started = Instant::now();
@@ -825,6 +984,8 @@ mod quota_detector_tests {
         use std::time::Duration;
         use tokio::time::Instant;
 
+        // Synthetic results against a real config: must not record coverage.
+        let _no_coverage = super::CoverageSuppressed::new();
         let config = super::ANTHROPIC_OPUS5;
         let attempts = Cell::new(0usize);
         let started = Instant::now();

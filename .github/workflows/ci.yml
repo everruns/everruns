@@ -174,6 +174,10 @@ jobs:
               - 'scripts/test-*.sh'
               - 'tests/fixtures/external-consumer/**'
               - 'scripts/check_okf.py'
+              # The report generators are covered by scripts/test-*.sh, so a
+              # change to one has to run those tests. Without this a rewrite of
+              # a report script reached main with its own test never running.
+              - 'scripts/report_*.py'
               - 'scripts/lib/**'
               - 'scripts/sync-publish-pin-versions.py'
               # scripts/test-publish-crates-order.sh reads the publish workflow
@@ -1165,11 +1169,27 @@ jobs:
         # breaks still fail the step.
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          # Each matrix cell appends what it did here (EVE-951), so the summary
+          # below can say which providers this run actually exercised. A skipped
+          # cell leaves the step green, so without this a fully dark run and a
+          # fully covered one are indistinguishable.
+          LLM_MATRIX_COVERAGE_FILE: ${{ github.workspace }}/llm-matrix-coverage.tsv
         # A sampling miss fails the step once the in-test retries are exhausted:
         # a turn that never called the advertised tool proves nothing about the
         # provider's wire serialization, which is what this matrix exists to
         # check. `--nocapture` exposes the generations behind the failure.
         run: doppler run -- cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --test subagent_live_test --all-features -- --nocapture
+
+      - name: Report provider coverage
+        # `always()`: the coverage picture is most valuable when the step above
+        # failed, and it must never itself change the job's outcome — the report
+        # only describes what ran. Thin coverage is deliberately not an error
+        # here; failing on it would turn an out-of-credits account into red main,
+        # which EVE-943 established is a false positive.
+        if: always()
+        run: |
+          scripts/report_live_matrix_coverage.py "$GITHUB_WORKSPACE/llm-matrix-coverage.tsv" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
 
   # S3 blob-backend integration tests.
   # The PostgreSQL `integration-test` job above only exercises the inline

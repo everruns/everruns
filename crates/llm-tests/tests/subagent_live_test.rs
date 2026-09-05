@@ -207,7 +207,7 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
         )
         .await
         .expect("parent turn runs");
-    skip_if_quota!(turn, config.label());
+    skip_if_quota!(turn, cell = config);
     assert!(turn.success, "parent turn failed: {:?}", turn.error);
 
     let parent_messages = runtime.messages(parent_id).await.expect("parent messages");
