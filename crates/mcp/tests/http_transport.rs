@@ -394,3 +394,55 @@ async fn unresolved_server_prefix_errors() {
     let error = executor.execute_mcp_tool(&tool_call).await.unwrap_err();
     assert!(error.to_string().contains("MCP server not found"));
 }
+
+#[tokio::test]
+async fn resolver_excludes_ambiguous_names_and_routes_exact_valid_server_and_tool() {
+    use everruns_mcp::McpConnectionResolver;
+    for name in ["docs_", "docs__private", "docs-", "_"] {
+        let resolver = StaticConnectionResolver::new().with(McpConnection::http(name, FAKE_URL));
+        assert!(resolver.is_empty());
+        assert!(
+            resolver
+                .resolve(&everruns_core::sanitize_mcp_server_name(name))
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+    for (server, tool, full_name) in [
+        ("Docs API", "read__file", "mcp_docs_api__read__file"),
+        ("_docs", "_search", "mcp__docs___search"),
+    ] {
+        let (egress, last_auth) = FakeEgress::new(serde_json::to_vec(&json!({"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"routed"}],"isError":false}})).unwrap());
+        let last_body = egress.last_body.clone();
+        let client = Arc::new(McpClient::new(
+            egress,
+            Arc::new(
+                StaticAuthProvider::new()
+                    .with_bearer("docs", "decoy")
+                    .with_bearer(server, "intended"),
+            ),
+        ));
+        let resolver = StaticConnectionResolver::new()
+            .with(McpConnection::http("docs", FAKE_URL))
+            .with(McpConnection::http(server, FAKE_URL));
+        let executor = McpExecutor::new(client, Arc::new(resolver));
+        let result = executor
+            .execute_mcp_tool(&ToolCall {
+                id: "exact-route".into(),
+                name: full_name.into(),
+                arguments: json!({"value":"original"}),
+            })
+            .await
+            .unwrap();
+        assert_eq!(result.tool_call_id, "exact-route");
+        assert!(result.error.is_none());
+        assert_eq!(
+            last_auth.lock().unwrap().as_deref(),
+            Some("Bearer intended")
+        );
+        let body: serde_json::Value = serde_json::from_slice(&last_body.lock().unwrap()).unwrap();
+        assert_eq!(body["params"]["name"], tool);
+        assert_eq!(body["params"]["arguments"], json!({"value":"original"}));
+    }
+}
