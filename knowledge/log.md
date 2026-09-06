@@ -70,8 +70,8 @@
   [Framework application boundaries](framework/application-api.md).
 * Connected opt-in native async tools to normal Reason/Act execution with shared
   encrypted journals, worker ownership fencing, transcript retention, cancellation,
-  and original-call continuation gating. Live-provider acceptance remains a
-  separate validation boundary. See
+  and original-call continuation gating. Live Astra function/custom acceptance
+  passed on 2026-09-06; ambiguous receipt recovery remains fail-closed. See
   [Native asynchronous tool calls](execution/native-async-tools.md).
 
 * **Mid-turn correction justifies revisiting socket ownership.** The isolated

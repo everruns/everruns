@@ -114,8 +114,16 @@ worker recovery. A final host outcome is retained
 for activity replay, preventing another provider request after the turn's work
 has already finished.
 
-Live GPT-6 Astra acceptance and recovery through provider response retrieval
-remain unverified. Fixture tests do not establish live-provider compatibility.
+Live GPT-6 Astra acceptance passed on 2026-09-06 through the Rust coordinator:
+two asynchronous function/custom calls, raw executor-input preservation, original-call
+output delivery across three responses, and final answers using both results. The
+ignored `native_async_astra_live_function_and_custom_calls` test in the HTTP suite
+reproduces this with synthetic data, bounded response/token budgets, and funded
+`OPENAI_API_KEY` credentials. The ordinary fixture run leaves this live test ignored.
+
+Recovery through provider response retrieval remains unverified. Ambiguous receipt
+windows still fail closed; the live acceptance run does not establish exactly-once
+submission or automatic reconciliation.
 
 ## Sources
 

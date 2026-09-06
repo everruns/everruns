@@ -1296,7 +1296,6 @@ mod tests {
         assert_eq!(llm.tool_calls.unwrap()[0].id, "original-call");
     }
 
-
     #[test]
     fn settled_transcripts_are_preserved_without_synthetic_results() {
         for messages in [
