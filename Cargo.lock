@@ -2445,6 +2445,7 @@ name = "everruns-gemini"
 version = "0.18.2"
 dependencies = [
  "async-trait",
+ "eventsource-stream",
  "everruns-provider",
  "futures",
  "reqwest 0.13.4",
