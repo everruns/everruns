@@ -171,6 +171,8 @@ mod tests {
 
     #[test]
     fn wire_ids_normalize_case_and_accept_extensions() {
+        assert_eq!("OpenAI".parse::<DriverId>().unwrap(), DriverId::OpenAI);
+        assert_eq!(DriverId::external("OpenAI-Codex").as_str(), "openai-codex");
         let driver = serde_json::from_str::<DriverId>(r#""Custom-Driver""#).unwrap();
         assert_eq!(driver.as_str(), "custom-driver");
         assert_eq!(
