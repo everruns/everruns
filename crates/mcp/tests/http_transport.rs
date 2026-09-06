@@ -319,23 +319,54 @@ async fn discovers_tools_over_http_plain_json() {
 }
 
 #[tokio::test]
-async fn calls_tool_over_sse_with_resolved_auth() {
-    let (egress, last_auth) = FakeEgress::new(
-        "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"hi\"}],\"isError\":false}}\n",
-    );
-
-    let auth = Arc::new(StaticAuthProvider::new().with_bearer("docs", "t0ken"));
-    let client = McpClient::new(egress, auth);
-    let mut connection = McpConnection::http("docs", FAKE_URL);
-    connection.auth_mode = McpServerAuthMode::ApiKey;
-
-    let result = client.call(&connection, "echo", json!({})).await.unwrap();
-    assert!(!result.is_error);
-    assert_eq!(
-        last_auth.lock().unwrap().as_deref(),
-        Some("Bearer t0ken"),
-        "resolved credential must reach the transport"
-    );
+async fn parsed_auth_modes_reach_provider_and_sse_transport() {
+    struct CheckingAuth {
+        expected: McpServerAuthMode,
+    }
+    #[async_trait]
+    impl everruns_mcp::McpAuthProvider for CheckingAuth {
+        async fn authorization(
+            &self,
+            request: &everruns_mcp::McpAuthRequest<'_>,
+        ) -> anyhow::Result<Option<everruns_mcp::McpCredential>> {
+            assert_eq!(request.server_name, "docs");
+            assert_eq!(request.auth_mode, self.expected);
+            assert_eq!(request.oauth_provider_id, Some("docs-provider"));
+            Ok(Some(everruns_mcp::McpCredential::bearer("t0ken")))
+        }
+    }
+    for (wire, expected) in [
+        ("api_key", McpServerAuthMode::ApiKey),
+        ("oauth", McpServerAuthMode::OAuth),
+        ("o_auth", McpServerAuthMode::OAuth),
+    ] {
+        let config: everruns_core::ScopedMcpServer = serde_json::from_value(
+            json!({"url":FAKE_URL,"auth_mode":wire,"oauth_provider_id":"docs-provider"}),
+        )
+        .unwrap();
+        let (egress, last_auth) = FakeEgress::new(
+            "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"hi\"}],\"isError\":false}}\n",
+        );
+        let last_body = egress.last_body.clone();
+        let client = McpClient::new(egress, Arc::new(CheckingAuth { expected }));
+        let mut connection = McpConnection::http("docs", config.url);
+        connection.auth_mode = config.auth_mode;
+        connection.oauth_provider_id = config.oauth_provider_id;
+        let result = client
+            .call(&connection, "echo", json!({"message":"hello"}))
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(result).unwrap(),
+            json!({"content":[{"type":"text","text":"hi"}],"isError":false})
+        );
+        assert_eq!(last_auth.lock().unwrap().as_deref(), Some("Bearer t0ken"));
+        let request: serde_json::Value =
+            serde_json::from_slice(&last_body.lock().unwrap()).unwrap();
+        assert_eq!(request["method"], "tools/call");
+        assert_eq!(request["params"]["name"], "echo");
+        assert_eq!(request["params"]["arguments"], json!({"message":"hello"}));
+    }
 }
 
 #[tokio::test]

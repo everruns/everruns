@@ -52,6 +52,7 @@ pub enum McpServerAuthMode {
     /// Organization-scoped API key stored on the MCP server config.
     ApiKey,
     /// User-scoped OAuth token resolved at runtime.
+    #[serde(rename = "oauth", alias = "o_auth")]
     OAuth,
 }
 
@@ -950,456 +951,560 @@ pub fn classify_mcp_execute_error(message: &str) -> McpExecuteError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
-    fn bound_parameter_is_removed_from_model_schema() {
-        let mut schema = serde_json::json!({
-            "type": "object",
-            "properties": {
-                "message": { "type": "string" },
-                "channel_key": { "type": "string" }
-            },
-            "required": ["message", "channel_key"]
-        });
-
-        remove_bound_parameter(&mut schema, "channel_key");
-
-        assert!(schema["properties"].get("channel_key").is_none());
-        assert_eq!(schema["required"], serde_json::json!(["message"]));
-        assert_eq!(schema["properties"]["message"]["type"], "string");
-    }
-
-    #[test]
-    fn protocol_mode_defaults_to_auto() {
-        assert_eq!(McpProtocolMode::default(), McpProtocolMode::Auto);
-        assert!(McpProtocolMode::default().is_auto());
-    }
-
-    #[test]
-    fn protocol_mode_serde_round_trips_version_dates() {
-        for (mode, json) in [
-            (McpProtocolMode::Auto, "\"auto\""),
-            (McpProtocolMode::V2025March, "\"2025-03-26\""),
-            (McpProtocolMode::V2025June, "\"2025-06-18\""),
-            (McpProtocolMode::V2026July, "\"2026-07-28\""),
-        ] {
-            assert_eq!(serde_json::to_string(&mode).unwrap(), json);
-            let back: McpProtocolMode = serde_json::from_str(json).unwrap();
-            assert_eq!(back, mode);
+    fn bound_parameters_are_removed_from_both_schemas_of_only_the_matching_tool() {
+        use crate::tool_types::{BuiltinTool, ToolDefinition};
+        let schema = json!({"type":"object","properties":{"message":{"type":"string"},"channel_key":{"type":"string"}},"required":["message","channel_key"],"additionalProperties":false});
+        let builtin = |name: &str| {
+            ToolDefinition::Builtin(BuiltinTool {
+                name: name.into(),
+                display_name: None,
+                description: "Send message".into(),
+                parameters: schema.clone(),
+                policy: Default::default(),
+                category: None,
+                deferrable: Default::default(),
+                hints: Default::default(),
+                full_parameters: Some(schema.clone()),
+            })
+        };
+        let mut definitions = vec![
+            builtin("mcp_notify__send"),
+            builtin("mcp_other__send"),
+            builtin("mcp_notify__read"),
+        ];
+        let unrelated = serde_json::to_value(&definitions[1..]).unwrap();
+        for configured in [true, false] {
+            definitions[0] = builtin("mcp_notify__send");
+            apply_mcp_secret_binding_schemas(
+                &mut definitions,
+                &[
+                    McpSecretBindingMetadata {
+                        server_name: "missing".into(),
+                        tool_name: "send".into(),
+                        parameter_name: "message".into(),
+                        configured: true,
+                        setup_url: "/missing".into(),
+                    },
+                    McpSecretBindingMetadata {
+                        server_name: "Notify".into(),
+                        tool_name: "send".into(),
+                        parameter_name: "channel_key".into(),
+                        configured,
+                        setup_url: "/agent/credentials".into(),
+                    },
+                ],
+            );
+            let ToolDefinition::Builtin(bound) = &definitions[0] else {
+                panic!("expected builtin")
+            };
+            let expected = json!({"type":"object","properties":{"message":{"type":"string"}},"required":["message"],"additionalProperties":false});
+            assert_eq!(bound.parameters, expected);
+            assert_eq!(bound.full_parameters.as_ref(), Some(&expected));
+            let status = if configured {
+                "configured"
+            } else {
+                "setup required"
+            };
+            assert_eq!(
+                bound.description,
+                format!(
+                    "Send message\n\nCredential 'channel_key' is securely bound ({status}); do not request or supply it. Setup: /agent/credentials"
+                )
+            );
+            assert_eq!(serde_json::to_value(&definitions[1..]).unwrap(), unrelated);
         }
     }
 
     #[test]
-    fn protocol_mode_accepts_pre_release_aliases() {
-        // Config stored before 2026-07-28 shipped still deserializes; the
-        // aliases are read-only and never emitted again.
-        for (json, expected) in [
-            ("\"legacy\"", McpProtocolMode::V2025March),
-            ("\"stable\"", McpProtocolMode::V2025June),
-            ("\"rc\"", McpProtocolMode::V2026July),
+    fn bound_parameter_removal_preserves_missing_or_nonobject_schema_parts() {
+        for mut schema in [
+            json!(null),
+            json!([]),
+            json!({}),
+            json!({"properties":[],"required":"message"}),
+            json!({"properties":{"message":{}},"required":["message",7]}),
         ] {
-            let parsed: McpProtocolMode = serde_json::from_str(json).unwrap();
-            assert_eq!(parsed, expected);
+            let original = schema.clone();
+            remove_bound_parameter(&mut schema, "channel_key");
+            assert_eq!(schema, original);
         }
-        assert_eq!(McpProtocolMode::from("rc"), McpProtocolMode::V2026July);
-        assert_eq!(
-            McpProtocolMode::from("2026-07-28"),
-            McpProtocolMode::V2026July
-        );
+    }
+
+    #[test]
+    fn protocol_modes_accept_aliases_but_emit_canonical_versions_and_policies() {
+        for (mode, canonical, alias, version, stateful) in [
+            (McpProtocolMode::Auto, "auto", "auto", None, None),
+            (
+                McpProtocolMode::V2025March,
+                "2025-03-26",
+                "legacy",
+                Some("2025-03-26"),
+                Some(true),
+            ),
+            (
+                McpProtocolMode::V2025June,
+                "2025-06-18",
+                "stable",
+                Some("2025-06-18"),
+                Some(true),
+            ),
+            (
+                McpProtocolMode::V2026July,
+                "2026-07-28",
+                "rc",
+                Some("2026-07-28"),
+                Some(false),
+            ),
+        ] {
+            assert_eq!(serde_json::to_value(mode).unwrap(), json!(canonical));
+            assert_eq!(mode.to_string(), canonical);
+            assert_eq!(mode.pinned_version(), version);
+            assert_eq!(mode.pinned_stateful(), stateful);
+            assert_eq!(mode.is_auto(), canonical == "auto");
+            for input in [canonical, alias] {
+                assert_eq!(McpProtocolMode::from(input), mode);
+                assert_eq!(
+                    serde_json::from_value::<McpProtocolMode>(json!(input)).unwrap(),
+                    mode
+                );
+            }
+        }
         assert_eq!(McpProtocolMode::from("nonsense"), McpProtocolMode::Auto);
+        assert!(serde_json::from_value::<McpProtocolMode>(json!("nonsense")).is_err());
     }
 
     #[test]
-    fn protocol_mode_pinned_version_and_statefulness() {
-        assert_eq!(McpProtocolMode::Auto.pinned_version(), None);
-        assert_eq!(McpProtocolMode::Auto.pinned_stateful(), None);
+    fn scoped_config_defaults_omit_optional_values_and_canonicalize_aliases() {
+        for (input, expected_mode, expected_wire) in [
+            (
+                json!({"url":"https://example.com/mcp"}),
+                McpProtocolMode::Auto,
+                json!({"type":"http","url":"https://example.com/mcp"}),
+            ),
+            (
+                json!({"type":"http","url":"https://example.com/mcp","protocol_mode":"rc"}),
+                McpProtocolMode::V2026July,
+                json!({"type":"http","url":"https://example.com/mcp","protocol_mode":"2026-07-28"}),
+            ),
+            (
+                json!({"transport_type":"http","url":"https://example.com/mcp","protocol_mode":"legacy"}),
+                McpProtocolMode::V2025March,
+                json!({"type":"http","url":"https://example.com/mcp","protocol_mode":"2025-03-26"}),
+            ),
+        ] {
+            let config: ScopedMcpServer = serde_json::from_value(input).unwrap();
+            assert_eq!(config.protocol_mode, expected_mode);
+            assert!(config.tool_discovery);
+            assert_eq!(serde_json::to_value(config).unwrap(), expected_wire);
+        }
+        let defaults = ScopedMcpServer::default();
+        assert_eq!(defaults.protocol_mode, McpProtocolMode::Auto);
         assert_eq!(
-            McpProtocolMode::V2025March.pinned_version(),
-            Some(MCP_PROTOCOL_VERSION_2025_03)
-        );
-        assert_eq!(McpProtocolMode::V2025March.pinned_stateful(), Some(true));
-        assert_eq!(
-            McpProtocolMode::V2025June.pinned_version(),
-            Some(MCP_PROTOCOL_VERSION_2025_06)
-        );
-        assert_eq!(McpProtocolMode::V2025June.pinned_stateful(), Some(true));
-        assert_eq!(
-            McpProtocolMode::V2026July.pinned_version(),
-            Some(MCP_PROTOCOL_VERSION_2026_07)
-        );
-        assert_eq!(McpProtocolMode::V2026July.pinned_stateful(), Some(false));
-    }
-
-    #[test]
-    fn scoped_mcp_server_omits_auto_protocol_mode_but_keeps_pinned() {
-        // Default (auto) is skipped on the wire so existing config is byte-identical.
-        let auto = ScopedMcpServer {
-            url: "https://example.com/mcp".to_string(),
-            ..Default::default()
-        };
-        let json = serde_json::to_value(&auto).unwrap();
-        assert!(
-            json.get("protocol_mode").is_none(),
-            "auto protocol_mode must not serialize: {json}"
-        );
-
-        // A pinned mode is preserved.
-        let pinned = ScopedMcpServer {
-            url: "https://example.com/mcp".to_string(),
-            protocol_mode: McpProtocolMode::V2025March,
-            ..Default::default()
-        };
-        let json = serde_json::to_value(&pinned).unwrap();
-        assert_eq!(
-            json.get("protocol_mode").and_then(|v| v.as_str()),
-            Some(MCP_PROTOCOL_VERSION_2025_03),
-            "pinned modes serialize as the version date, not the retired `legacy` alias"
+            serde_json::to_value(defaults).unwrap(),
+            json!({"type":"http"})
         );
     }
 
     #[test]
-    fn scoped_mcp_server_parses_protocol_mode_from_mcp_json_shape() {
-        // `.mcp.json`-style config can pin an era; absence means auto.
-        let with_mode: ScopedMcpServer = serde_json::from_value(serde_json::json!({
-            "type": "http",
-            "url": "https://example.com/mcp",
-            "protocol_mode": "rc"
-        }))
-        .unwrap();
-        assert_eq!(with_mode.protocol_mode, McpProtocolMode::V2026July);
-
-        let without_mode: ScopedMcpServer = serde_json::from_value(serde_json::json!({
-            "type": "http",
-            "url": "https://example.com/mcp"
-        }))
-        .unwrap();
-        assert_eq!(without_mode.protocol_mode, McpProtocolMode::Auto);
+    fn scoped_config_preserves_nondefault_transport_auth_and_discovery_fields() {
+        let wire = json!({"type":"stdio","command":"mcp-server","args":["--project","demo"],"env":{"MODE":"test"},"headers":{"X-Trace":"trace"},"auth_mode":"oauth","oauth_provider_id":"provider","protocol_mode":"2025-06-18","tool_discovery":false});
+        let config: ScopedMcpServer = serde_json::from_value(wire.clone()).unwrap();
+        assert!(config.transport_type.is_local());
+        assert!(!config.tool_discovery);
+        assert_eq!(config.auth_mode, McpServerAuthMode::OAuth);
+        assert_eq!(serde_json::to_value(config).unwrap(), wire);
     }
 
     #[test]
-    fn merge_scoped_mcp_servers_lets_later_layer_override_protocol_mode() {
-        // Session can pin an era over a harness/agent default — last-wins layering.
-        let mut base = ScopedMcpServers::default();
-        base.insert(
-            "docs".to_string(),
-            ScopedMcpServer {
-                url: "https://example.com/mcp".to_string(),
-                protocol_mode: McpProtocolMode::Auto,
-                ..Default::default()
-            },
-        );
-        let mut overlay = ScopedMcpServers::default();
-        overlay.insert(
-            "docs".to_string(),
-            ScopedMcpServer {
-                url: "https://example.com/mcp".to_string(),
-                protocol_mode: McpProtocolMode::V2025March,
-                ..Default::default()
-            },
-        );
+    fn scoped_merge_replaces_entire_matching_connection_without_mutating_inputs() {
+        let base: ScopedMcpServers = serde_json::from_value(json!({
+            "base_only":{"url":"https://base.test/mcp"},
+            "shared":{"url":"https://old.test/mcp","headers":{"old":"value"},"protocol_mode":"2025-03-26","tool_discovery":false}
+        })).unwrap();
+        let overlay: ScopedMcpServers = serde_json::from_value(json!({
+            "overlay_only":{"url":"https://overlay.test/mcp"},
+            "shared":{"url":"https://new.test/mcp","headers":{"new":"value"},"protocol_mode":"2026-07-28","auth_mode":"oauth","oauth_provider_id":"provider"}
+        })).unwrap();
+        let before_base = base.clone();
+        let before_overlay = overlay.clone();
         let merged = merge_scoped_mcp_servers(&base, &overlay);
+        let expected = BTreeMap::from([
+            ("base_only".into(), base["base_only"].clone()),
+            ("shared".into(), overlay["shared"].clone()),
+            ("overlay_only".into(), overlay["overlay_only"].clone()),
+        ]);
+        assert_eq!(merged, expected);
+        assert_eq!(base, before_base);
+        assert_eq!(overlay, before_overlay);
+        assert_eq!(merge_scoped_mcp_servers(&base, &BTreeMap::new()), base);
         assert_eq!(
-            merged.get("docs").unwrap().protocol_mode,
-            McpProtocolMode::V2025March
+            merge_scoped_mcp_servers(&BTreeMap::new(), &overlay),
+            overlay
         );
     }
 
     #[test]
     fn normalize_mcp_error_code_maps_legacy_to_rc() {
-        // 2026-07-28 renumbered -32002 onto the standard -32602; everything else passes through.
-        assert_eq!(normalize_mcp_error_code(-32002), -32602);
-        assert_eq!(normalize_mcp_error_code(-32602), -32602);
-        assert_eq!(normalize_mcp_error_code(-32601), -32601);
-        assert_eq!(normalize_mcp_error_code(0), 0);
+        for (input, expected) in [
+            (-32002, -32602),
+            (-32602, -32602),
+            (-32601, -32601),
+            (0, 0),
+            (i64::MIN, i64::MIN),
+            (i64::MAX, i64::MAX),
+        ] {
+            assert_eq!(normalize_mcp_error_code(input), expected);
+        }
     }
 
     #[test]
-    fn test_mcp_tool_name_simple() {
-        // Simple server name without special characters
-        assert_eq!(mcp_tool_name("github", "search"), "mcp_github__search");
+    fn tool_names_sanitize_server_names_and_preserve_tool_components() {
+        for (server, tool, full, prefix) in [
+            ("github", "search", "mcp_github__search", "github"),
+            (
+                "microsoft_learn",
+                "docs_search",
+                "mcp_microsoft_learn__docs_search",
+                "microsoft_learn",
+            ),
+            (
+                "microsoft-learn",
+                "search",
+                "mcp_microsoft_learn__search",
+                "microsoft_learn",
+            ),
+            ("GitHub", "search", "mcp_github__search", "github"),
+            (
+                "my.server.name",
+                "tool",
+                "mcp_my_server_name__tool",
+                "my_server_name",
+            ),
+            (
+                "my_long_server_name",
+                "my_complex_tool",
+                "mcp_my_long_server_name__my_complex_tool",
+                "my_long_server_name",
+            ),
+            ("github", "read__file", "mcp_github__read__file", "github"),
+        ] {
+            assert_eq!(mcp_tool_name(server, tool), full);
+            assert_eq!(
+                parse_mcp_tool_name(full),
+                Some((prefix.into(), tool.into()))
+            );
+            assert!(is_mcp_tool(full));
+        }
     }
 
     #[test]
-    fn test_mcp_tool_name_with_underscores() {
-        // Server name with underscores (e.g., microsoft_learn)
-        assert_eq!(
-            mcp_tool_name("microsoft_learn", "docs_search"),
-            "mcp_microsoft_learn__docs_search"
-        );
-    }
-
-    #[test]
-    fn test_mcp_tool_name_with_dashes() {
-        // Server name with dashes gets converted to underscores
-        assert_eq!(
-            mcp_tool_name("microsoft-learn", "search"),
-            "mcp_microsoft_learn__search"
-        );
-    }
-
-    #[test]
-    fn test_mcp_tool_name_uppercase() {
-        // Server name is lowercased
-        assert_eq!(mcp_tool_name("GitHub", "search"), "mcp_github__search");
-    }
-
-    #[test]
-    fn test_mcp_tool_name_special_chars() {
-        // Special characters are replaced with underscores
-        assert_eq!(
-            mcp_tool_name("my.server.name", "tool"),
-            "mcp_my_server_name__tool"
-        );
-    }
-
-    #[test]
-    fn test_is_mcp_tool() {
-        assert!(is_mcp_tool("mcp_github__search"));
-        assert!(is_mcp_tool("mcp_microsoft_learn__docs_search"));
+    fn tool_name_parser_rejects_missing_prefix_separator_or_components() {
+        for name in [
+            "get_weather",
+            "mcpsearch",
+            "mcp_github_search",
+            "mcp___search",
+            "mcp_github__",
+            "mcp_",
+            "",
+        ] {
+            assert_eq!(parse_mcp_tool_name(name), None, "{name}");
+        }
         assert!(!is_mcp_tool("get_weather"));
-        assert!(!is_mcp_tool("mcpsearch")); // Must have underscore after mcp
+        assert!(!is_mcp_tool("mcpsearch"));
+        // Routing classification intentionally accepts an invalid MCP-shaped name.
+        assert!(is_mcp_tool("mcp_"));
     }
 
     #[test]
-    fn test_parse_mcp_tool_name_simple() {
-        let result = parse_mcp_tool_name("mcp_github__search");
-        assert_eq!(result, Some(("github".to_string(), "search".to_string())));
-    }
-
-    #[test]
-    fn test_parse_mcp_tool_name_with_underscores() {
-        // Server name with underscores should be parsed correctly
-        let result = parse_mcp_tool_name("mcp_microsoft_learn__docs_search");
-        assert_eq!(
-            result,
-            Some(("microsoft_learn".to_string(), "docs_search".to_string()))
-        );
-    }
-
-    #[test]
-    fn test_parse_mcp_tool_name_complex() {
-        // Multiple underscores in both server name and tool name
-        let result = parse_mcp_tool_name("mcp_my_long_server_name__my_complex_tool");
-        assert_eq!(
-            result,
-            Some((
-                "my_long_server_name".to_string(),
-                "my_complex_tool".to_string()
-            ))
-        );
-    }
-
-    #[test]
-    fn test_parse_mcp_tool_name_invalid_prefix() {
-        // Not an MCP tool
-        assert_eq!(parse_mcp_tool_name("get_weather"), None);
-    }
-
-    #[test]
-    fn test_parse_mcp_tool_name_no_separator() {
-        // Missing double underscore separator
-        assert_eq!(parse_mcp_tool_name("mcp_github_search"), None);
-    }
-
-    #[test]
-    fn test_parse_mcp_tool_name_empty_parts() {
-        // Empty server name or tool name
-        assert_eq!(parse_mcp_tool_name("mcp___search"), None);
-        assert_eq!(parse_mcp_tool_name("mcp_github__"), None);
-    }
-
-    #[test]
-    fn test_roundtrip() {
-        // Generate and parse should roundtrip
-        let server = "microsoft_learn";
-        let tool = "docs_search";
-        let full_name = mcp_tool_name(server, tool);
-        let parsed = parse_mcp_tool_name(&full_name);
-        assert_eq!(
-            parsed,
-            Some(("microsoft_learn".to_string(), "docs_search".to_string()))
-        );
-    }
-
-    // ------------------------------------------------------------------
-    // McpExecuteError / McpErrorCode (EVE-492)
-    // ------------------------------------------------------------------
-
-    #[test]
-    fn mcp_error_code_serializes_to_snake_case_wire_string() {
-        assert_eq!(
-            serde_json::to_string(&McpErrorCode::ToolTimeout).unwrap(),
-            "\"tool_timeout\""
-        );
-        assert_eq!(
-            serde_json::to_string(&McpErrorCode::McpServerUnreachable).unwrap(),
-            "\"mcp_server_unreachable\""
-        );
-    }
-
-    #[test]
-    fn mcp_error_code_as_str_matches_serde_wire() {
-        for code in [
-            McpErrorCode::ToolNotFound,
-            McpErrorCode::ToolTimeout,
-            McpErrorCode::ToolPanicked,
-            McpErrorCode::InvalidArguments,
-            McpErrorCode::PermissionDenied,
-            McpErrorCode::QuotaExceeded,
-            McpErrorCode::NetworkBlocked,
-            McpErrorCode::McpServerUnreachable,
-            McpErrorCode::Internal,
-            McpErrorCode::Unknown,
-        ] {
-            let wire = serde_json::to_string(&code).unwrap();
-            assert_eq!(
-                wire,
-                format!("\"{}\"", code.as_str()),
-                "as_str() must match serde wire for {code:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn mcp_error_code_unknown_variant_is_forward_compat_sentinel() {
-        // SDKs that receive a code they don't recognise should land on
-        // `Unknown`, not fail to deserialise.
-        let code: McpErrorCode = serde_json::from_str("\"future_code_we_dont_know_yet\"").unwrap();
-        assert_eq!(code, McpErrorCode::Unknown);
-    }
-
-    #[test]
-    fn classify_recognises_timeout_substrings() {
-        let err = classify_mcp_execute_error("Tool timed out after 30000ms");
-        assert_eq!(err.code, McpErrorCode::ToolTimeout);
-        assert_eq!(err.category, McpErrorCategory::Transient);
-        assert!(err.retryable);
-
-        let err = classify_mcp_execute_error("Command timed out after 5000ms");
-        assert_eq!(err.code, McpErrorCode::ToolTimeout);
-    }
-
-    #[test]
-    fn classify_recognises_tool_not_found() {
-        let err = classify_mcp_execute_error("Unknown tool: github.foo");
-        assert_eq!(err.code, McpErrorCode::ToolNotFound);
-        assert_eq!(err.category, McpErrorCategory::Permanent);
-        assert!(!err.retryable);
-    }
-
-    #[test]
-    fn classify_recognises_invalid_arguments() {
-        let err = classify_mcp_execute_error("Missing required parameter: query");
-        assert_eq!(err.code, McpErrorCode::InvalidArguments);
-        assert_eq!(err.category, McpErrorCategory::Validation);
-        assert!(!err.retryable);
-    }
-
-    #[test]
-    fn classify_recognises_permission_denied() {
-        for msg in [
-            "permission denied for org",
-            "Forbidden: org scope not allowed",
-            "not authorized to call this tool",
-            "Unauthorized request",
-        ] {
-            let err = classify_mcp_execute_error(msg);
-            assert_eq!(
-                err.code,
+    fn error_codes_have_independent_wire_category_and_retry_contracts() {
+        for (code, wire, category, retryable) in [
+            (
+                McpErrorCode::ToolNotFound,
+                "tool_not_found",
+                McpErrorCategory::Permanent,
+                false,
+            ),
+            (
+                McpErrorCode::ToolTimeout,
+                "tool_timeout",
+                McpErrorCategory::Transient,
+                true,
+            ),
+            (
+                McpErrorCode::ToolPanicked,
+                "tool_panicked",
+                McpErrorCategory::Permanent,
+                false,
+            ),
+            (
+                McpErrorCode::InvalidArguments,
+                "invalid_arguments",
+                McpErrorCategory::Validation,
+                false,
+            ),
+            (
                 McpErrorCode::PermissionDenied,
-                "expected PermissionDenied for {msg:?}"
+                "permission_denied",
+                McpErrorCategory::Auth,
+                false,
+            ),
+            (
+                McpErrorCode::QuotaExceeded,
+                "quota_exceeded",
+                McpErrorCategory::Transient,
+                true,
+            ),
+            (
+                McpErrorCode::NetworkBlocked,
+                "network_blocked",
+                McpErrorCategory::Permanent,
+                false,
+            ),
+            (
+                McpErrorCode::McpServerUnreachable,
+                "mcp_server_unreachable",
+                McpErrorCategory::Transient,
+                true,
+            ),
+            (
+                McpErrorCode::Internal,
+                "internal",
+                McpErrorCategory::Permanent,
+                false,
+            ),
+            (
+                McpErrorCode::Unknown,
+                "unknown",
+                McpErrorCategory::Permanent,
+                false,
+            ),
+        ] {
+            assert_eq!(code.as_str(), wire);
+            assert_eq!(serde_json::to_value(code).unwrap(), json!(wire));
+            assert_eq!(
+                serde_json::from_value::<McpErrorCode>(json!(wire)).unwrap(),
+                code
             );
-            assert_eq!(err.category, McpErrorCategory::Auth);
+            let error = McpExecuteError::new(code, "original message");
+            assert_eq!(error.category, category);
+            assert_eq!(error.retryable, retryable);
+            assert_eq!(error.message, "original message");
         }
     }
 
     #[test]
-    fn classify_recognises_quota_and_rate_limit() {
-        let err = classify_mcp_execute_error("Quota exceeded for org");
-        assert_eq!(err.code, McpErrorCode::QuotaExceeded);
-        assert!(err.retryable);
-
-        let err = classify_mcp_execute_error("Rate limit hit");
-        assert_eq!(err.code, McpErrorCode::QuotaExceeded);
+    fn unknown_error_code_and_category_deserialize_to_forward_compatible_sentinels() {
+        assert_eq!(
+            serde_json::from_value::<McpErrorCode>(json!("future_code")).unwrap(),
+            McpErrorCode::Unknown
+        );
+        assert_eq!(
+            serde_json::from_value::<McpErrorCategory>(json!("future_category")).unwrap(),
+            McpErrorCategory::Unknown
+        );
     }
 
     #[test]
-    fn classify_recognises_catalog_dispatch_prefixes() {
-        // `crates/server/src/api/mcp_endpoint/catalog.rs::format_dispatch_error`
-        // emits `<kind>: <message>` for inventory-backed query/execute
-        // tools. These are the public MCP contract per knowledge/foundations/domains.md,
-        // so the classifier must route them to precise codes rather than
-        // the catch-all `Internal` bucket.
-        for (prefix, expected) in [
+    fn error_classifier_preserves_messages_and_routes_every_marker_and_prefix() {
+        for (message, code, category, retryable) in [
+            (
+                "Tool timed out after 30000ms",
+                McpErrorCode::ToolTimeout,
+                McpErrorCategory::Transient,
+                true,
+            ),
+            (
+                "Command timed out after 5000ms",
+                McpErrorCode::ToolTimeout,
+                McpErrorCategory::Transient,
+                true,
+            ),
+            (
+                "TIMEOUT",
+                McpErrorCode::ToolTimeout,
+                McpErrorCategory::Transient,
+                true,
+            ),
+            (
+                "Unknown tool: github.foo",
+                McpErrorCode::ToolNotFound,
+                McpErrorCategory::Permanent,
+                false,
+            ),
+            (
+                "Missing required parameter: query",
+                McpErrorCode::InvalidArguments,
+                McpErrorCategory::Validation,
+                false,
+            ),
+            (
+                "invalid argument: query",
+                McpErrorCode::InvalidArguments,
+                McpErrorCategory::Validation,
+                false,
+            ),
+            (
+                "permission denied for org",
+                McpErrorCode::PermissionDenied,
+                McpErrorCategory::Auth,
+                false,
+            ),
+            (
+                "Forbidden: org scope not allowed",
+                McpErrorCode::PermissionDenied,
+                McpErrorCategory::Auth,
+                false,
+            ),
+            (
+                "not authorized to call this tool",
+                McpErrorCode::PermissionDenied,
+                McpErrorCategory::Auth,
+                false,
+            ),
+            (
+                "Unauthorized request",
+                McpErrorCode::PermissionDenied,
+                McpErrorCategory::Auth,
+                false,
+            ),
+            (
+                "Quota exceeded for org",
+                McpErrorCode::QuotaExceeded,
+                McpErrorCategory::Transient,
+                true,
+            ),
+            (
+                "Rate limit hit",
+                McpErrorCode::QuotaExceeded,
+                McpErrorCategory::Transient,
+                true,
+            ),
+            (
+                "network blocked",
+                McpErrorCode::NetworkBlocked,
+                McpErrorCategory::Permanent,
+                false,
+            ),
+            (
+                "EGRESS denied",
+                McpErrorCode::NetworkBlocked,
+                McpErrorCategory::Permanent,
+                false,
+            ),
+            (
+                "MCP server unreachable",
+                McpErrorCode::McpServerUnreachable,
+                McpErrorCategory::Transient,
+                true,
+            ),
+            (
+                "tool panicked",
+                McpErrorCode::ToolPanicked,
+                McpErrorCategory::Permanent,
+                false,
+            ),
             (
                 "bad_request: name must be <=200 chars",
                 McpErrorCode::InvalidArguments,
+                McpErrorCategory::Validation,
+                false,
             ),
             (
                 "unprocessable: cycle detected in capability graph",
                 McpErrorCode::InvalidArguments,
+                McpErrorCategory::Validation,
+                false,
             ),
             (
                 "conflict: session is already paused",
                 McpErrorCode::InvalidArguments,
+                McpErrorCategory::Validation,
+                false,
             ),
             (
                 "not_found: agent agent_xyz not in this org",
                 McpErrorCode::ToolNotFound,
+                McpErrorCategory::Permanent,
+                false,
             ),
             (
                 "forbidden: principal lacks SESSION_WRITE",
                 McpErrorCode::PermissionDenied,
+                McpErrorCategory::Auth,
+                false,
             ),
             (
                 "internal: storage backend returned 503",
                 McpErrorCode::Internal,
+                McpErrorCategory::Permanent,
+                false,
+            ),
+            (
+                "INTERNAL: upstream timed out",
+                McpErrorCode::Internal,
+                McpErrorCategory::Permanent,
+                false,
+            ),
+            (
+                "bad_request: invalid timeout",
+                McpErrorCode::InvalidArguments,
+                McpErrorCategory::Validation,
+                false,
+            ),
+            (
+                "strange unanticipated message",
+                McpErrorCode::Internal,
+                McpErrorCategory::Permanent,
+                false,
+            ),
+            (
+                "unreachable",
+                McpErrorCode::Internal,
+                McpErrorCategory::Permanent,
+                false,
+            ),
+            (
+                "mcp server available",
+                McpErrorCode::Internal,
+                McpErrorCategory::Permanent,
+                false,
+            ),
+            (
+                "",
+                McpErrorCode::Internal,
+                McpErrorCategory::Permanent,
+                false,
             ),
         ] {
-            let err = classify_mcp_execute_error(prefix);
-            assert_eq!(err.code, expected, "expected {expected:?} for {prefix:?}");
+            let error = classify_mcp_execute_error(message);
+            assert_eq!(error.code, code, "{message}");
+            assert_eq!(error.category, category, "{message}");
+            assert_eq!(error.retryable, retryable, "{message}");
+            assert_eq!(error.message, message);
         }
     }
 
     #[test]
-    fn classify_falls_open_to_internal() {
-        // No known pattern → Internal, not a wrong guess. Retryable
-        // defaults to false so callers don't burn retries on unknown
-        // permanent failures.
-        let err = classify_mcp_execute_error("strange unanticipated message");
-        assert_eq!(err.code, McpErrorCode::Internal);
-        assert_eq!(err.category, McpErrorCategory::Permanent);
-        assert!(!err.retryable);
-    }
-
-    #[test]
-    fn mcp_execute_error_skips_empty_optional_fields() {
-        let err = McpExecuteError::new(McpErrorCode::ToolNotFound, "no such tool");
-        let value = serde_json::to_value(&err).unwrap();
-        // Required fields present.
-        assert_eq!(value["code"], "tool_not_found");
-        assert_eq!(value["message"], "no such tool");
-        assert_eq!(value["category"], "permanent");
-        assert_eq!(value["retryable"], false);
-        // Optional fields omitted entirely from the wire when empty.
-        assert!(value.get("retry_after_seconds").is_none());
-        assert!(value.get("hint").is_none());
-        assert!(value.get("cause_chain").is_none());
-    }
-
-    #[test]
-    fn mcp_execute_error_builders_chain() {
-        let err = McpExecuteError::new(McpErrorCode::ToolTimeout, "tool timed out after 30000ms")
+    fn error_envelopes_omit_empty_optionals_and_preserve_explicit_overrides() {
+        let minimal = McpExecuteError::new(McpErrorCode::ToolNotFound, "no such tool");
+        assert_eq!(
+            serde_json::to_value(minimal).unwrap(),
+            json!({"code":"tool_not_found","message":"no such tool","category":"permanent","retryable":false})
+        );
+        let full = McpExecuteError::new(McpErrorCode::ToolTimeout, "tool timed out after 30000ms")
+            .with_category(McpErrorCategory::Auth)
+            .with_retryable(false)
             .with_retry_after_seconds(10)
             .with_hint("Reduce input size before retrying.")
+            .with_cause("root cause")
             .with_cause("downstream: upstream gateway timeout");
-        let value = serde_json::to_value(&err).unwrap();
-        assert_eq!(value["code"], "tool_timeout");
-        assert_eq!(value["retry_after_seconds"], 10);
-        assert_eq!(value["hint"], "Reduce input size before retrying.");
         assert_eq!(
-            value["cause_chain"][0],
-            "downstream: upstream gateway timeout"
+            serde_json::to_value(full).unwrap(),
+            json!({"code":"tool_timeout","message":"tool timed out after 30000ms","category":"auth","retryable":false,"retry_after_seconds":10,"hint":"Reduce input size before retrying.","cause_chain":["root cause","downstream: upstream gateway timeout"]})
         );
     }
     #[test]
@@ -1465,5 +1570,24 @@ mod tests {
             definition.parameters,
             serde_json::json!({"type":"object","properties":{},"required":[]})
         );
+    }
+    #[test]
+    fn auth_modes_use_canonical_wire_values_and_accept_legacy_oauth_spelling() {
+        for (mode, wire) in [
+            (McpServerAuthMode::None, "none"),
+            (McpServerAuthMode::ApiKey, "api_key"),
+            (McpServerAuthMode::OAuth, "oauth"),
+        ] {
+            assert_eq!(serde_json::to_value(&mode).unwrap(), json!(wire));
+            assert_eq!(
+                serde_json::from_value::<McpServerAuthMode>(json!(wire)).unwrap(),
+                mode
+            );
+            assert_eq!(McpServerAuthMode::from(wire), mode);
+            assert_eq!(mode.to_string(), wire);
+        }
+        let legacy: McpServerAuthMode = serde_json::from_value(json!("o_auth")).unwrap();
+        assert_eq!(legacy, McpServerAuthMode::OAuth);
+        assert_eq!(serde_json::to_value(legacy).unwrap(), json!("oauth"));
     }
 }

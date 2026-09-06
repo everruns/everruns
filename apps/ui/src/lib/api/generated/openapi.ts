@@ -11282,7 +11282,7 @@ export interface components {
      * @example api_key
      * @enum {string}
      */
-    McpServerAuthMode: "none" | "api_key" | "o_auth";
+    McpServerAuthMode: "none" | "api_key" | "oauth";
     /**
      * @description MCP Server lifecycle status.
      *     - `active`: Server is available for use

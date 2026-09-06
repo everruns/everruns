@@ -1828,20 +1828,32 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_bash_echo_command() {
+    async fn bash_output_preserves_blank_lines_and_final_progress_in_raw_and_visible_results() {
         let (context, _) = create_context_with_mock_store();
         let tool = BashTool::default();
-
-        let result = tool
-            .execute_with_context(json!({"commands": "echo hello world"}), &context)
-            .await;
-
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["stdout"], "hello world\n");
-            assert_eq!(output["exit_code"], 0);
-            assert_eq!(output["success"], true);
-        } else {
-            panic!("Expected success result, got: {:?}", result);
+        for (command, stdout, stderr, total_lines, raw) in [
+            ("echo hello world", "hello world\n", "", 1, "hello world\n"),
+            (
+                r#"printf '\n\n10%%\r100%%\r\n'; printf '\nwarning\r\n' >&2"#,
+                "\n\n100%\n",
+                "\nwarning\n",
+                3,
+                "\n\n100%\n\n--- stderr ---\n\nwarning\n",
+            ),
+        ] {
+            let result = tool
+                .execute_with_context(json!({"commands":command}), &context)
+                .await
+                .into_tool_result("call-output", "bash");
+            assert_eq!(result.tool_call_id, "call-output");
+            assert!(result.error.is_none());
+            assert_eq!(
+                result.result,
+                Some(
+                    json!({"stdout":stdout,"stderr":stderr,"exit_code":0,"success":true,"truncated":false,"total_lines":total_lines})
+                )
+            );
+            assert_eq!(result.raw_output.as_deref(), Some(raw));
         }
     }
 
