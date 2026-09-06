@@ -2383,4 +2383,25 @@ mod tests {
         let cap = SkillsCapability;
         assert_ne!(cap.localized_name(Some("uk")), cap.name());
     }
+
+    #[tokio::test]
+    async fn activation_preserves_literal_and_empty_arguments_through_vfs_pipeline() {
+        let fs = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        fs.add_file(session_id,"/.agents/skills/args/SKILL.md","---\nname: args\ndescription: Literal arguments.\n---\n$ARGUMENTS[0]|$1|$2|${SKILL_DIR}|!`unused-command`");
+        let context = ToolContext::with_file_store(session_id, fs);
+        let result = ActivateSkillFromVfsTool
+            .execute_with_context(
+                serde_json::json!({"name":"args","arguments":"'$1' \"\" tail"}),
+                &context,
+            )
+            .await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success: {result:?}")
+        };
+        assert_eq!(
+            value,
+            serde_json::json!({"skill":"args","description":"Literal arguments.","instructions":"<skill name=\"args\">\n$1||tail|/.agents/skills/args|!`unused-command`\n</skill>"})
+        );
+    }
 }
