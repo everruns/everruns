@@ -196,6 +196,7 @@ mod tests {
     #[derive(Default)]
     struct TestLeasedResourceStore {
         resources: tokio::sync::Mutex<Vec<LeasedResource>>,
+        fail_reads: bool,
     }
 
     #[async_trait]
@@ -237,6 +238,9 @@ mod tests {
         }
 
         async fn list_resources(&self, session_id: SessionId) -> Result<Vec<LeasedResource>> {
+            if self.fail_reads {
+                return Err(crate::AgentLoopError::store("leased unavailable"));
+            }
             Ok(self
                 .resources
                 .lock()
@@ -251,6 +255,7 @@ mod tests {
     #[derive(Default)]
     struct TestSessionResourceRegistry {
         entries: tokio::sync::Mutex<Vec<SessionResourceEntry>>,
+        fail_reads: bool,
     }
 
     #[async_trait]
@@ -293,6 +298,9 @@ mod tests {
             session_id: SessionId,
             filter: Option<&SessionResourceFilter>,
         ) -> Result<Vec<SessionResourceEntry>> {
+            if self.fail_reads {
+                return Err(crate::AgentLoopError::store("registry unavailable"));
+            }
             let entries = self.entries.lock().await;
             Ok(entries
                 .iter()
@@ -316,80 +324,292 @@ mod tests {
         }
     }
 
+    async fn register(
+        registry: &TestSessionResourceRegistry,
+        session: SessionId,
+        id: &str,
+        metadata: serde_json::Value,
+    ) {
+        registry
+            .register(RegisterSessionResource {
+                session_id: session,
+                resource_id: id.into(),
+                kind: "sandbox".into(),
+                display_name: "sandbox".into(),
+                status: SessionResourceStatus::Active,
+                metadata,
+            })
+            .await
+            .unwrap();
+    }
+
+    fn metadata(provider: &str, kind: &str, external: &str) -> serde_json::Value {
+        json!({"leased_resource_provider":provider,"leased_resource_type":kind,"leased_resource_external_id":external})
+    }
+
     #[tokio::test]
-    async fn list_owned_ids_prefers_leased_resources() {
-        let session_id = SessionId::new();
+    async fn list_owned_ids_prefers_leased_resources_and_filters_exactly() {
+        let session = SessionId::from_seed(1);
         let store = Arc::new(TestLeasedResourceStore::default());
-        store
-            .upsert_resource(UpsertLeasedResource {
-                session_id,
-                provider: "daytona".to_string(),
-                resource_type: "sandbox".to_string(),
-                external_id: "sb_test".to_string(),
-                display_name: None,
-                owner_user_id: None,
-                lease_duration_seconds: 60,
-                metadata: json!({}),
-            })
-            .await
-            .unwrap();
-
-        let context = ToolContext::new(session_id).with_leased_resource_store(store);
-        let owned = list_owned_external_resource_ids(&context, "daytona", "sandbox")
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(owned.contains("sb_test"));
+        for (owner, provider, kind, id, status) in [
+            (
+                session,
+                "daytona",
+                "sandbox",
+                "owned",
+                LeasedResourceStatus::Active,
+            ),
+            (
+                session,
+                "daytona",
+                "sandbox",
+                "second",
+                LeasedResourceStatus::Active,
+            ),
+            (
+                session,
+                "daytona",
+                "sandbox",
+                "owned",
+                LeasedResourceStatus::Active,
+            ),
+            (
+                SessionId::from_seed(2),
+                "daytona",
+                "sandbox",
+                "foreign",
+                LeasedResourceStatus::Active,
+            ),
+            (
+                session,
+                "other",
+                "sandbox",
+                "provider",
+                LeasedResourceStatus::Active,
+            ),
+            (
+                session,
+                "daytona",
+                "other",
+                "kind",
+                LeasedResourceStatus::Active,
+            ),
+            (
+                session,
+                "daytona",
+                "sandbox",
+                "cleaning",
+                LeasedResourceStatus::Cleaning,
+            ),
+            (
+                session,
+                "daytona",
+                "sandbox",
+                "released",
+                LeasedResourceStatus::Released,
+            ),
+            (
+                session,
+                "daytona",
+                "sandbox",
+                "failed",
+                LeasedResourceStatus::CleanupFailed,
+            ),
+        ] {
+            store
+                .upsert_resource(UpsertLeasedResource {
+                    session_id: owner,
+                    provider: provider.into(),
+                    resource_type: kind.into(),
+                    external_id: id.into(),
+                    display_name: None,
+                    owner_user_id: None,
+                    lease_duration_seconds: 60,
+                    metadata: json!({}),
+                })
+                .await
+                .unwrap();
+            store.resources.lock().await.last_mut().unwrap().status = status;
+        }
+        let registry = Arc::new(TestSessionResourceRegistry {
+            fail_reads: true,
+            ..Default::default()
+        });
+        let context = ToolContext::new(session)
+            .with_leased_resource_store(store)
+            .with_session_resource_registry(registry);
+        assert_eq!(
+            list_owned_external_resource_ids(&context, "daytona", "sandbox")
+                .await
+                .unwrap(),
+            Some(HashSet::from(["owned".into(), "second".into()]))
+        );
+        assert!(
+            require_owned_external_resource(&context, "daytona", "sandbox", "owned")
+                .await
+                .is_ok()
+        );
+        assert!(
+            verify_owned_external_resource_if_available(&context, "daytona", "sandbox", "second")
+                .await
+                .is_ok()
+        );
+        assert!(
+            matches!(require_owned_external_resource(&context, "daytona", "sandbox", "foreign").await, Err(ToolExecutionResult::ToolError(message)) if message=="Resource foreign was not created by this session")
+        );
     }
 
     #[tokio::test]
-    async fn list_owned_ids_falls_back_to_session_resources() {
-        let session_id = SessionId::new();
+    async fn fallback_uses_literal_metadata_and_active_session_filter() {
+        let session = SessionId::from_seed(1);
         let registry = Arc::new(TestSessionResourceRegistry::default());
-        registry
-            .register(RegisterSessionResource {
-                session_id,
-                resource_id: "resource_1".to_string(),
-                kind: "sandbox".to_string(),
-                display_name: "sandbox".to_string(),
-                status: SessionResourceStatus::Active,
-                metadata: json!({
-                    LEASED_RESOURCE_PROVIDER_KEY: "daytona",
-                    LEASED_RESOURCE_TYPE_KEY: "sandbox",
-                    LEASED_RESOURCE_EXTERNAL_ID_KEY: "sb_test",
-                }),
-            })
-            .await
-            .unwrap();
-
-        let context = ToolContext::new(session_id).with_session_resource_registry(registry);
-        let owned = list_owned_external_resource_ids(&context, "daytona", "sandbox")
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(owned.contains("sb_test"));
+        for (owner, id, data) in [
+            (session, "a", metadata("daytona", "sandbox", "owned")),
+            (session, "b", metadata("daytona", "sandbox", "owned")),
+            (session, "c", metadata("other", "sandbox", "other-provider")),
+            (session, "d", metadata("daytona", "other", "other-kind")),
+            (
+                SessionId::from_seed(2),
+                "e",
+                metadata("daytona", "sandbox", "foreign"),
+            ),
+        ] {
+            register(&registry, owner, id, data).await;
+        }
+        register(&registry, session, "inactive", json!({})).await;
+        registry.entries.lock().await.last_mut().unwrap().status = SessionResourceStatus::Released;
+        register(&registry, session, "different-kind", json!({})).await;
+        registry.entries.lock().await.last_mut().unwrap().kind = "other".into();
+        let context = ToolContext::new(session).with_session_resource_registry(registry);
+        assert_eq!(
+            list_owned_external_resource_ids(&context, "daytona", "sandbox")
+                .await
+                .unwrap(),
+            Some(HashSet::from(["owned".into()]))
+        );
+        assert!(
+            require_owned_external_resource(&context, "daytona", "sandbox", "owned")
+                .await
+                .is_ok()
+        );
+        assert!(
+            matches!(verify_owned_external_resource_if_available(&context, "daytona", "sandbox", "missing").await, Err(ToolExecutionResult::ToolError(message)) if message=="Resource missing was not created by this session")
+        );
     }
 
     #[tokio::test]
-    async fn list_owned_ids_returns_none_for_legacy_session_resources() {
-        let session_id = SessionId::new();
-        let registry = Arc::new(TestSessionResourceRegistry::default());
-        registry
-            .register(RegisterSessionResource {
-                session_id,
-                resource_id: "resource_legacy".to_string(),
-                kind: "sandbox".to_string(),
-                display_name: "sandbox".to_string(),
-                status: SessionResourceStatus::Active,
-                metadata: json!({}),
-            })
-            .await
-            .unwrap();
+    async fn missing_or_legacy_tracking_distinguishes_optional_and_required_guards() {
+        let session = SessionId::from_seed(1);
+        let mut contexts = vec![ToolContext::new(session)];
+        for malformed in [
+            json!(null),
+            json!({}),
+            json!({"leased_resource_provider":42}),
+            json!({"leased_resource_provider":"daytona"}),
+            json!({"leased_resource_provider":"daytona","leased_resource_type":"sandbox","leased_resource_external_id":false}),
+        ] {
+            let registry = Arc::new(TestSessionResourceRegistry::default());
+            register(
+                &registry,
+                session,
+                "known",
+                metadata("daytona", "sandbox", "owned"),
+            )
+            .await;
+            register(&registry, session, "legacy", malformed).await;
+            contexts.push(ToolContext::new(session).with_session_resource_registry(registry));
+        }
+        for context in contexts {
+            assert_eq!(
+                list_owned_external_resource_ids(&context, "daytona", "sandbox")
+                    .await
+                    .unwrap(),
+                None
+            );
+            assert!(
+                verify_owned_external_resource_if_available(
+                    &context, "daytona", "sandbox", "unknown"
+                )
+                .await
+                .is_ok()
+            );
+            assert!(
+                matches!(require_owned_external_resource(&context, "daytona", "sandbox", "unknown").await, Err(ToolExecutionResult::ToolError(message)) if message=="Session resource tracking is unavailable; cannot verify ownership for daytona sandbox resources")
+            );
+        }
+    }
 
-        let context = ToolContext::new(session_id).with_session_resource_registry(registry);
-        let owned = list_owned_external_resource_ids(&context, "daytona", "sandbox")
-            .await
-            .unwrap();
-        assert!(owned.is_none());
+    #[tokio::test]
+    async fn empty_authoritative_store_does_not_fall_back_or_grant_ownership() {
+        let session = SessionId::from_seed(1);
+        let registry = Arc::new(TestSessionResourceRegistry::default());
+        register(
+            &registry,
+            session,
+            "fallback",
+            metadata("daytona", "sandbox", "fallback"),
+        )
+        .await;
+        let context = ToolContext::new(session)
+            .with_leased_resource_store(Arc::new(TestLeasedResourceStore::default()))
+            .with_session_resource_registry(registry);
+        assert_eq!(
+            list_owned_external_resource_ids(&context, "daytona", "sandbox")
+                .await
+                .unwrap(),
+            Some(HashSet::new())
+        );
+        for result in [
+            require_owned_external_resource(&context, "daytona", "sandbox", "fallback").await,
+            verify_owned_external_resource_if_available(&context, "daytona", "sandbox", "fallback")
+                .await,
+        ] {
+            assert!(
+                matches!(result, Err(ToolExecutionResult::ToolError(message)) if message=="Resource fallback was not created by this session")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn storage_failures_stay_internal_and_never_degrade_to_untracked() {
+        let session = SessionId::from_seed(1);
+        let store = Arc::new(TestLeasedResourceStore {
+            fail_reads: true,
+            ..Default::default()
+        });
+        let registry = Arc::new(TestSessionResourceRegistry {
+            fail_reads: true,
+            ..Default::default()
+        });
+        for (context, expected) in [
+            (
+                ToolContext::new(session)
+                    .with_leased_resource_store(store)
+                    .with_session_resource_registry(Arc::new(
+                        TestSessionResourceRegistry::default(),
+                    )),
+                "Failed to read leased resources: Message store error: leased unavailable",
+            ),
+            (
+                ToolContext::new(session).with_session_resource_registry(registry),
+                "Failed to read session resources: Message store error: registry unavailable",
+            ),
+        ] {
+            for result in [
+                list_owned_external_resource_ids(&context, "daytona", "sandbox")
+                    .await
+                    .map(|_| ()),
+                require_owned_external_resource(&context, "daytona", "sandbox", "id").await,
+                verify_owned_external_resource_if_available(&context, "daytona", "sandbox", "id")
+                    .await,
+            ] {
+                match result {
+                    Err(ToolExecutionResult::InternalError(error)) => {
+                        assert_eq!(error.message, expected)
+                    }
+                    other => panic!("expected internal storage error, got {other:?}"),
+                }
+            }
+        }
     }
 }
