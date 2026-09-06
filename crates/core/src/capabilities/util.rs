@@ -133,64 +133,74 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn get_str_filters_empty_but_not_whitespace() {
-        let args = json!({ "a": "", "b": "  ", "c": "x" });
-        assert_eq!(get_str(&args, "a"), None);
-        assert_eq!(get_str(&args, "b"), Some("  "));
-        assert_eq!(get_str(&args, "c"), Some("x"));
-        assert_eq!(get_str(&args, "missing"), None);
-    }
-
-    #[test]
-    fn require_str_rejects_truly_empty_keeps_raw() {
-        let args = json!({ "a": "", "b": "  x  ", "c": "x" });
-        assert!(require_str(&args, "a").is_err());
-        assert!(require_str(&args, "missing").is_err());
-        // No trimming: whitespace preserved.
-        assert_eq!(require_str(&args, "b").unwrap(), "  x  ");
-        assert_eq!(require_str(&args, "c").unwrap(), "x");
-    }
-
-    #[test]
-    fn require_str_trimmed_trims_and_rejects_blank() {
-        let args = json!({ "blank": "   ", "padded": "  x  ", "ok": "y" });
-        assert!(require_str_trimmed(&args, "blank").is_err());
-        assert!(require_str_trimmed(&args, "missing").is_err());
-        assert_eq!(require_str_trimmed(&args, "padded").unwrap(), "x");
-        assert_eq!(require_str_trimmed(&args, "ok").unwrap(), "y");
-    }
-
-    #[test]
-    fn require_str_nonblank_rejects_blank_keeps_raw() {
-        let args = json!({ "blank": "   ", "padded": "  x  ", "ok": "y" });
-        assert!(require_str_nonblank(&args, "blank").is_err());
-        assert!(require_str_nonblank(&args, "missing").is_err());
-        // Validates non-blank but returns the untrimmed value.
-        assert_eq!(require_str_nonblank(&args, "padded").unwrap(), "  x  ");
-        assert_eq!(require_str_nonblank(&args, "ok").unwrap(), "y");
-    }
-
-    #[test]
-    fn require_id_parse_failure_maps_to_invalid_key() {
-        let args = json!({ "session_id": "not-a-valid-id" });
-        let err = require_id::<SessionId>(&args, "session_id").unwrap_err();
-        match err {
-            ToolExecutionResult::ToolError(msg) => {
-                assert_eq!(msg, "Invalid session_id: not-a-valid-id");
+    fn string_extractors_preserve_their_distinct_whitespace_contracts() {
+        for (args, raw, trimmed, nonblank) in [
+            (json!({}), None, None, None),
+            (json!({"value":null}), None, None, None),
+            (json!({"value":42}), None, None, None),
+            (json!({"value":true}), None, None, None),
+            (json!({"value":[]}), None, None, None),
+            (json!({"value":{}}), None, None, None),
+            (json!({"value":""}), None, None, None),
+            (json!({"value":" \t\n"}), Some(" \t\n"), None, None),
+            (
+                json!({"value":"\u{2003}α\u{2003}"}),
+                Some("\u{2003}α\u{2003}"),
+                Some("α"),
+                Some("\u{2003}α\u{2003}"),
+            ),
+            (json!({"value":"x"}), Some("x"), Some("x"), Some("x")),
+        ] {
+            assert_eq!(get_str(&args, "value"), raw, "{args}");
+            for (actual, expected) in [
+                (require_str(&args, "value"), raw),
+                (require_str_trimmed(&args, "value"), trimmed),
+                (require_str_nonblank(&args, "value"), nonblank),
+            ] {
+                match (actual, expected) {
+                    (Ok(value), Some(expected)) => assert_eq!(value, expected, "{args}"),
+                    (Err(ToolExecutionResult::ToolError(message)), None) => {
+                        assert_eq!(message, "Missing required parameter: value")
+                    }
+                    (actual, expected) => panic!("{args}: expected {expected:?}, got {actual:?}"),
+                }
             }
-            other => panic!("expected ToolError, got {other:?}"),
         }
     }
 
     #[test]
-    fn require_id_missing_maps_to_missing_parameter() {
-        let args = json!({});
-        let err = require_id::<SessionId>(&args, "session_id").unwrap_err();
-        match err {
-            ToolExecutionResult::ToolError(msg) => {
-                assert_eq!(msg, "Missing required parameter: session_id");
-            }
-            other => panic!("expected ToolError, got {other:?}"),
+    fn required_id_preserves_identity_and_distinguishes_missing_from_invalid() {
+        let wire = "session_12345678123456789abc123456789abc";
+        let expected = uuid::Uuid::parse_str("12345678-1234-5678-9abc-123456789abc").unwrap();
+        assert_eq!(
+            require_id::<SessionId>(&json!({"session_id":wire}), "session_id")
+                .unwrap()
+                .uuid(),
+            expected
+        );
+        assert_eq!(
+            parse_id::<SessionId>(wire, "session").unwrap().uuid(),
+            expected
+        );
+        for args in [
+            json!({}),
+            json!({"session_id":""}),
+            json!({"session_id":null}),
+            json!({"session_id":42}),
+        ] {
+            assert!(
+                matches!(require_id::<SessionId>(&args,"session_id"),Err(ToolExecutionResult::ToolError(message)) if message == "Missing required parameter: session_id")
+            );
+        }
+        for raw in [
+            "not-a-valid-id",
+            "agent_12345678123456789abc123456789abc",
+            " ",
+            "session_1234",
+        ] {
+            assert!(
+                matches!(require_id::<SessionId>(&json!({"session_id":raw}),"session_id"),Err(ToolExecutionResult::ToolError(message)) if message == format!("Invalid session_id: {raw}"))
+            );
         }
     }
 
