@@ -4512,6 +4512,14 @@ async fn astra_proactive_and_reactive_compaction_restore_durable_effort_after_re
         );
         assert!(config.provider_opaque_context.is_some());
         let events = rig.event_emitter.events().await;
+        let compacted_generation = events
+            .iter()
+            .find_map(|event| match &event.data {
+                everruns_core::EventData::LlmGeneration(data) => data.metadata.compaction.as_ref(),
+                _ => None,
+            })
+            .expect("compaction generation metadata");
+        assert_eq!(compacted_generation.input_tokens_before, Some(100_000));
         let options = events.iter().rev().find_map(|event| match &event.data {
             everruns_core::EventData::LlmGeneration(data) => data.metadata.request_options.as_ref(),
             _ => None,

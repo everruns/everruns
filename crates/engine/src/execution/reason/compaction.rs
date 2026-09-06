@@ -36,7 +36,6 @@ pub(super) fn proactive_source_fingerprint(
 #[derive(Debug)]
 pub(super) struct AppliedNativeCompaction {
     pub(super) checkpoint_id: Option<String>,
-    pub(super) input_items_before: usize,
     pub(super) output_items_after: usize,
     pub(super) tokens_before: Option<u64>,
     pub(super) tokens_after: Option<u64>,
@@ -133,7 +132,6 @@ pub(super) async fn try_apply_native_compaction(
         input.push(item);
     }
     let standalone_input = input;
-    let input_items_before = standalone_input.len();
     let local_tokens_before = (!stateful_response_continuation && !has_prior_opaque_context)
         .then(|| compaction_policy.estimate_total_tokens(messages_to_compact) as u64);
     let bytes_before = (!stateful_response_continuation
@@ -253,7 +251,6 @@ pub(super) async fn try_apply_native_compaction(
 
     Ok(Some(AppliedNativeCompaction {
         checkpoint_id,
-        input_items_before,
         output_items_after,
         tokens_before,
         tokens_after,
@@ -487,7 +484,9 @@ pub(super) async fn apply_proactive_compaction(
 
     Ok(applied.map(|applied| {
         LlmCompactionInfo::new(
-            Some(applied.input_items_before as u32),
+            applied
+                .tokens_before
+                .and_then(|value| u32::try_from(value).ok()),
             applied
                 .tokens_after
                 .and_then(|value| u32::try_from(value).ok()),
@@ -625,7 +624,9 @@ pub(super) async fn apply_reactive_compaction(
         .await?
     {
         generation_info = Some(LlmCompactionInfo::new(
-            Some(applied.input_items_before as u32),
+            applied
+                .tokens_before
+                .and_then(|value| u32::try_from(value).ok()),
             applied
                 .tokens_after
                 .and_then(|value| u32::try_from(value).ok()),
