@@ -156,7 +156,11 @@ pub fn reconstruct_skill_md(
     user_invocable: bool,
     disable_model_invocation: bool,
 ) -> String {
-    let safe_description = format!("\"{}\"", description.replace('"', "\\\""));
+    // YAML serialization preserves escapes and line breaks in supplied metadata.
+    let safe_description = serde_yaml::to_string(description)
+        .expect("a string is serializable")
+        .trim_end_matches('\n')
+        .to_string();
     let invocable_line = if user_invocable {
         String::new()
     } else {
@@ -231,17 +235,157 @@ mod tests {
     use super::*;
 
     #[test]
-    fn skill_identity_round_trips() {
-        let skill_id = Uuid::new_v4();
-        let capability_id = skill_capability_id(skill_id);
-        assert!(is_skill_capability(&capability_id));
-        assert_eq!(parse_skill_capability_id(&capability_id), Some(skill_id));
-        assert_eq!(CapabilityId::skill(skill_id).skill_id(), Some(skill_id));
+    fn skill_identity_uses_literal_namespace_and_rejects_invalid_ids() {
+        let uuid = Uuid::parse_str("12345678-1234-5678-9abc-123456789abc").unwrap();
+        let wire = "skill:12345678-1234-5678-9abc-123456789abc";
+        assert_eq!(skill_capability_id(uuid), wire);
+        let typed = CapabilityId::skill(uuid);
+        assert_eq!(typed.as_str(), wire);
+        assert!(typed.is_skill());
+        assert_eq!(typed.skill_id(), Some(uuid));
+        assert_eq!(parse_skill_capability_id(wire), Some(uuid));
+        for (candidate, namespace) in [
+            ("skill:", true),
+            ("skill:not-a-uuid", true),
+            ("skills:12345678-1234-5678-9abc-123456789abc", false),
+            ("mcp:docs", false),
+            ("", false),
+        ] {
+            assert_eq!(is_skill_capability(candidate), namespace);
+            assert_eq!(CapabilityId::new(candidate).is_skill(), namespace);
+            assert_eq!(parse_skill_capability_id(candidate), None);
+            assert_eq!(CapabilityId::new(candidate).skill_id(), None);
+        }
     }
 
     #[test]
-    fn contribution_mount_uses_stable_discovery_path() {
-        let mount = SkillContribution::new("ops", "Operations", "Run safely.").to_mount("fixture");
-        assert_eq!(mount.path, "/.agents/skills/ops");
+    fn contribution_mount_preserves_metadata_files_and_invocation_flags() {
+        use crate::capability_types::{MountAccess, MountSource};
+        for user in [false, true] {
+            for model_disabled in [false, true] {
+                let mount =
+                    SkillContribution::new("ops", "Operations", "Run safely.\nKeep exact body.")
+                        .with_files(vec![("reference.txt".into(), "Reference α".into())])
+                        .with_user_invocable(user)
+                        .with_disable_model_invocation(model_disabled)
+                        .to_mount("owner-42");
+                assert_eq!(mount.path, "/.agents/skills/ops");
+                assert_eq!(mount.capability_id, "owner-42");
+                assert_eq!(mount.access, MountAccess::ReadOnly);
+                let MountSource::InlineDirectory { entries } = mount.source else {
+                    panic!("expected directory")
+                };
+                assert_eq!(entries.len(), 2);
+                assert_eq!(
+                    entries["reference.txt"].source,
+                    MountSource::text_file("Reference α")
+                );
+                let MountSource::InlineFile { content, encoding } = &entries["SKILL.md"].source
+                else {
+                    panic!("expected SKILL.md")
+                };
+                assert_eq!(encoding, "text");
+                let parsed = crate::skill::parse_skill_md(content).unwrap();
+                assert_eq!(parsed.name, "ops");
+                assert_eq!(parsed.description, "Operations");
+                assert_eq!(parsed.instructions, "Run safely.\nKeep exact body.");
+                assert_eq!(parsed.user_invocable, user);
+                assert_eq!(parsed.disable_model_invocation, model_disabled);
+            }
+        }
+    }
+
+    #[test]
+    fn reconstruction_preserves_yaml_sensitive_description_text() {
+        for description in [
+            r#"Use "quotes" and C:\new\tools"#,
+            "Line one\nLine two",
+            "Carriage\rreturn\ttab",
+            "Before\n---\nafter",
+            "Unicode α\u{85}β\u{2028}γ\u{2029}δ",
+            "Backslash \\",
+        ] {
+            let content = reconstruct_skill_md("ops", description, "Instructions.", true, false);
+            let parsed = crate::skill::parse_skill_md(&content).unwrap();
+            assert_eq!(parsed.description, description, "{content}");
+            assert_eq!(parsed.instructions, "Instructions.");
+            assert!(parsed.user_invocable);
+            assert!(!parsed.disable_model_invocation);
+        }
+    }
+
+    #[test]
+    fn discovery_skips_invalid_entries_and_preserves_valid_content_and_source() {
+        let entries = vec![
+            ("/bad/SKILL.md".into(), "invalid".into()),
+            (
+                "/first/SKILL.md".into(),
+                reconstruct_skill_md("first", "First", "Body one", false, true),
+            ),
+            (
+                "/second/SKILL.md".into(),
+                reconstruct_skill_md("second", "Second", "Body two", true, false),
+            ),
+        ];
+        let found = discover_skills_from_entries(&entries);
+        assert_eq!(found.len(), 2);
+        for ((meta, instructions), (name, description, path, body, user, model_disabled)) in
+            found.iter().zip([
+                ("first", "First", "/first/SKILL.md", "Body one", false, true),
+                (
+                    "second",
+                    "Second",
+                    "/second/SKILL.md",
+                    "Body two",
+                    true,
+                    false,
+                ),
+            ])
+        {
+            assert_eq!(meta.name, name);
+            assert_eq!(meta.description, description);
+            assert_eq!(meta.source, SkillSource::Filesystem { path: path.into() });
+            assert_eq!(meta.user_invocable, user);
+            assert_eq!(meta.disable_model_invocation, model_disabled);
+            assert_eq!(instructions.instructions, body);
+            assert!(instructions.files.is_empty());
+        }
+    }
+    #[test]
+    fn skill_metadata_pins_both_source_wire_shapes_and_missing_flag_defaults() {
+        for (source, wire) in [
+            (
+                SkillSource::Registry {
+                    skill_id: "skill-42".into(),
+                },
+                serde_json::json!({"Registry":{"skill_id":"skill-42"}}),
+            ),
+            (
+                SkillSource::Filesystem {
+                    path: "/.agents/skills/ops/SKILL.md".into(),
+                },
+                serde_json::json!({"Filesystem":{"path":"/.agents/skills/ops/SKILL.md"}}),
+            ),
+        ] {
+            let meta = SkillMeta {
+                name: "ops".into(),
+                description: "Operations".into(),
+                source: source.clone(),
+                user_invocable: false,
+                disable_model_invocation: true,
+            };
+            let value = serde_json::json!({"name":"ops","description":"Operations","source":wire,"user_invocable":false,"disable_model_invocation":true});
+            assert_eq!(serde_json::to_value(&meta).unwrap(), value);
+            let parsed: SkillMeta = serde_json::from_value(value).unwrap();
+            assert_eq!(parsed.source, source);
+            assert!(!parsed.user_invocable);
+            assert!(parsed.disable_model_invocation);
+            let defaulted: SkillMeta = serde_json::from_value(
+                serde_json::json!({"name":"ops","description":"Operations","source":wire}),
+            )
+            .unwrap();
+            assert!(defaulted.user_invocable);
+            assert!(!defaulted.disable_model_invocation);
+        }
     }
 }

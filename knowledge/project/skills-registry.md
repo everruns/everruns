@@ -218,6 +218,8 @@ Contributed skills flow through the **same** discovery/activation path as other 
 2. When the built-in `skills` capability is active, its VFS scan finds these mounts alongside `AttachSkillCapability` mounts and filesystem-resident skills.
 3. `list_skills`, `activate_skill`, prompt listing, and `/slash` command visibility all go through the existing path, the frontmatter flags `user-invocable` and `disable-model-invocation` are honored the same way.
 
+Reconstruction preserves description text exactly, including YAML-sensitive quotes, backslashes and line breaks, so discovery and activation see the same metadata supplied by the contributor.
+
 The mount's `capability_id` is set to the contributing capability's ID so the VFS layer attributes the mounted files correctly and so users can see which capability a skill came from. There is no separate database row and no parallel prompt-injection path: if a capability wants a skill, it returns a `SkillContribution` and the rest is shared pipeline.
 
 ## Database Schema
