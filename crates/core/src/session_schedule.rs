@@ -203,43 +203,173 @@ impl SessionSchedule {
 #[cfg(test)]
 mod limit_tests {
     use super::*;
+    use crate::error::{AgentLoopError, Result};
+    use crate::session_services::SessionScheduleStore;
 
     #[test]
-    fn cron_interval_every_minute_is_60() {
-        // 5-field every-minute cron.
-        assert_eq!(cron_min_interval_seconds("* * * * *"), Some(60));
+    fn cron_forms_preserve_literal_intervals() {
+        for (expression, seconds) in [
+            ("* * * * *", 60),
+            ("*/5 * * * *", 300),
+            ("*/30 * * * * *", 30),
+            ("0 */5 * * * * *", 300),
+            ("  */5   * * * *  ", 300),
+            ("0 3 * * *", 86_400),
+        ] {
+            assert_eq!(
+                cron_min_interval_seconds(expression),
+                Some(seconds),
+                "{expression}"
+            );
+        }
     }
 
     #[test]
-    fn cron_interval_every_5_min_is_300() {
-        assert_eq!(cron_min_interval_seconds("*/5 * * * *"), Some(300));
+    fn unrecognized_or_exhausted_cron_has_no_interval_and_defers_validation() {
+        for expression in [
+            "not a cron",
+            "* * *",
+            "* * * * * * * *",
+            "99 * * * *",
+            "0 0 0 1 1 * 2000",
+        ] {
+            assert_eq!(cron_min_interval_seconds(expression), None, "{expression}");
+            assert_eq!(validate_cron_min_interval(expression), Ok(()));
+        }
     }
 
     #[test]
-    fn cron_interval_six_field_every_30s() {
-        // 6-field (seconds) form, every 30 seconds.
-        assert_eq!(cron_min_interval_seconds("*/30 * * * * *"), Some(30));
+    fn interval_gate_enforces_default_and_custom_inclusive_boundaries() {
+        assert_eq!(validate_cron_min_interval("* * * * *"), Err("Schedule cron must fire no more than once every 300 seconds (≥ 5 min); expression fires every 60 seconds".into()));
+        assert_eq!(validate_cron_min_interval("*/5 * * * *"), Ok(()));
+        assert_eq!(validate_cron_min_interval("0 3 * * *"), Ok(()));
+        assert_eq!(validate_cron_min_interval_with("* * * * *", 59), Ok(()));
+        assert_eq!(validate_cron_min_interval_with("* * * * *", 60), Ok(()));
+        assert_eq!(validate_cron_min_interval_with("* * * * *", 61), Err("Schedule cron must fire no more than once every 61 seconds (≥ 1 min); expression fires every 60 seconds".into()));
     }
 
-    #[test]
-    fn cron_interval_unparseable_is_none() {
-        assert_eq!(cron_min_interval_seconds("not a cron"), None);
-        assert_eq!(cron_min_interval_seconds("* * *"), None);
+    struct Counts {
+        session: std::result::Result<u32, &'static str>,
+        org: std::result::Result<u32, &'static str>,
     }
 
-    #[test]
-    fn validate_rejects_every_minute_at_default() {
-        assert!(validate_cron_min_interval("* * * * *").is_err());
+    #[async_trait::async_trait]
+    impl SessionScheduleStore for Counts {
+        async fn create_schedule(
+            &self,
+            _: SessionId,
+            _: String,
+            _: Option<String>,
+            _: Option<DateTime<Utc>>,
+            _: String,
+        ) -> Result<SessionSchedule> {
+            panic!("validation must not create schedules")
+        }
+        async fn cancel_schedule(&self, _: SessionId, _: ScheduleId) -> Result<SessionSchedule> {
+            panic!("validation must not cancel schedules")
+        }
+        async fn list_schedules(&self, _: SessionId) -> Result<Vec<SessionSchedule>> {
+            panic!("validation must use counts rather than fetching schedules")
+        }
+        async fn count_active_schedules(&self, session_id: SessionId) -> Result<u32> {
+            assert_eq!(session_id, SessionId::from_seed(9));
+            self.session.map_err(AgentLoopError::store)
+        }
+        async fn count_active_org_schedules(&self) -> Result<u32> {
+            self.org.map_err(AgentLoopError::store)
+        }
     }
 
-    #[test]
-    fn validate_accepts_daily() {
-        assert!(validate_cron_min_interval("0 3 * * *").is_ok());
+    #[tokio::test]
+    async fn create_limits_enforce_independent_session_org_and_cron_caps() {
+        let session = SessionId::from_seed(9);
+        for (per_session, per_org, cron, expected) in [
+            (4, 99, None, None),
+            (4, 99, Some("*/5 * * * *"), None),
+            (
+                5,
+                0,
+                None,
+                Some("Maximum 5 active schedules per session. Cancel an existing schedule first."),
+            ),
+            (
+                6,
+                100,
+                None,
+                Some("Maximum 5 active schedules per session. Cancel an existing schedule first."),
+            ),
+            (
+                0,
+                100,
+                None,
+                Some(
+                    "Maximum 100 active schedules per org reached. Cancel an existing schedule first.",
+                ),
+            ),
+            (
+                0,
+                101,
+                None,
+                Some(
+                    "Maximum 100 active schedules per org reached. Cancel an existing schedule first.",
+                ),
+            ),
+            (
+                0,
+                0,
+                Some("* * * * *"),
+                Some(
+                    "Schedule cron must fire no more than once every 300 seconds (≥ 5 min); expression fires every 60 seconds",
+                ),
+            ),
+        ] {
+            let store = Counts {
+                session: Ok(per_session),
+                org: Ok(per_org),
+            };
+            match (
+                validate_schedule_create_limits(&store, session, cron).await,
+                expected,
+            ) {
+                (Ok(()), None) => {}
+                (Err(ScheduleLimitError::Rejected(message)), Some(expected)) => {
+                    assert_eq!(message, expected)
+                }
+                _ => panic!("unexpected result for {per_session}/{per_org}/{cron:?}"),
+            }
+        }
     }
 
-    #[test]
-    fn validate_accepts_unparseable() {
-        // Unrecognized forms pass the gate; the create path rejects them later.
-        assert!(validate_cron_min_interval("garbage").is_ok());
+    #[tokio::test]
+    async fn count_failures_remain_store_errors_and_session_rejection_wins() {
+        let session = SessionId::from_seed(9);
+        for store in [
+            Counts {
+                session: Err("session unavailable"),
+                org: Ok(0),
+            },
+            Counts {
+                session: Ok(0),
+                org: Err("org unavailable"),
+            },
+        ] {
+            let expected = store.session.err().or(store.org.err()).unwrap();
+            match validate_schedule_create_limits(&store, session, None).await {
+                Err(ScheduleLimitError::Store(error)) => {
+                    assert_eq!(
+                        error.to_string(),
+                        format!("Message store error: {expected}")
+                    )
+                }
+                _ => panic!("count failure must remain a store error"),
+            }
+        }
+        let store = Counts {
+            session: Ok(5),
+            org: Err("must not mask session limit"),
+        };
+        assert!(
+            matches!(validate_schedule_create_limits(&store, session, None).await, Err(ScheduleLimitError::Rejected(message)) if message == "Maximum 5 active schedules per session. Cancel an existing schedule first.")
+        );
     }
 }

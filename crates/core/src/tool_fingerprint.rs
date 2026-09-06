@@ -134,50 +134,129 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tool_call_fingerprint_ignores_ui_only_fields_and_key_order() {
-        let a = ToolCall {
-            id: "call_a".to_string(),
-            name: "bash".to_string(),
-            arguments: json!({
-                "cmd": "cargo test",
-                "human_intent": "Testing",
-                "output": "verbose"
-            }),
-        };
-        let b = ToolCall {
-            id: "call_b".to_string(),
-            name: "bash".to_string(),
-            arguments: json!({
-                "output": "concise",
-                "cmd": "cargo test"
-            }),
-        };
-
-        assert_eq!(tool_call_fingerprint(&a), tool_call_fingerprint(&b));
+    fn calls_pin_canonical_hash_and_ignore_only_declared_metadata() {
+        let expected = "sha256:40d39e472be6e5bd359976a905c732cbce4beeaade5d408b7c63fc27a79fb640";
+        for arguments in [
+            json!({"cmd":"cargo test"}),
+            json!({"output":"verbose","human_intent":"Testing","cmd":"cargo test"}),
+        ] {
+            let call = ToolCall {
+                id: "call_a".into(),
+                name: "bash".into(),
+                arguments: arguments.clone(),
+            };
+            assert_eq!(tool_call_fingerprint(&call), expected);
+            assert_eq!(tool_call_parts_fingerprint("bash", &arguments), expected);
+        }
+        for (name, args) in [
+            ("other", json!({"cmd":"cargo test"})),
+            ("bash", json!({"cmd":"cargo build"})),
+            ("bash", json!({"cmd":"cargo test","cwd":"/work"})),
+        ] {
+            assert_ne!(tool_call_parts_fingerprint(name, &args), expected);
+        }
     }
 
     #[test]
-    fn tool_result_fingerprint_ignores_volatile_result_fields() {
-        let a = ToolResult {
-            tool_call_id: "call_a".to_string(),
-            result: Some(json!({"value": 1, "duration_ms": 10})),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
-        };
-        let b = ToolResult {
-            tool_call_id: "call_b".to_string(),
-            result: Some(json!({"duration_ms": 99, "value": 1})),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
-        };
-
-        assert_eq!(
-            tool_result_fingerprint("demo", &a),
-            tool_result_fingerprint("demo", &b)
+    fn nested_normalization_preserves_array_order_and_meaningful_text() {
+        let plain = json!({"steps":[{"text":"first\nsecond"},{"value":2}]});
+        let formatted = json!({"output":"quiet","steps":[{"human_intent":"hint","text":" first \r\nsecond \r\n"},{"value":2,"output":"verbose"}]});
+        let fingerprint = tool_call_parts_fingerprint("run", &plain);
+        assert_eq!(tool_call_parts_fingerprint("run", &formatted), fingerprint);
+        assert_ne!(
+            tool_call_parts_fingerprint(
+                "run",
+                &json!({"steps":[{"value":2},{"text":"first\nsecond"}]})
+            ),
+            fingerprint
         );
+        assert_ne!(
+            tool_call_parts_fingerprint(
+                "run",
+                &json!({"steps":[{"text":"first second"},{"value":2}]})
+            ),
+            fingerprint
+        );
+    }
+
+    #[test]
+    fn results_ignore_volatile_fields_but_preserve_result_error_and_connection_identity() {
+        let mut result = ToolResult {
+            tool_call_id: "call_a".into(),
+            result: Some(json!({"value":1})),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+        let expected = "sha256:b2ef7dd0adef1ed7dbad196e8f582e211a4c13ab82c79a8afeb5517c11d46000";
+        assert_eq!(tool_result_fingerprint("demo", &result), expected);
+        for key in [
+            "created_at",
+            "duration_ms",
+            "elapsed_ms",
+            "request_id",
+            "time_ms",
+            "timestamp",
+            "updated_at",
+        ] {
+            let mut with_metadata = result.clone();
+            with_metadata
+                .result
+                .as_mut()
+                .unwrap()
+                .as_object_mut()
+                .unwrap()
+                .insert(key.into(), json!("volatile"));
+            assert_eq!(
+                tool_result_fingerprint("demo", &with_metadata),
+                expected,
+                "{key}"
+            );
+        }
+        result.tool_call_id = "call_b".into();
+        result.raw_output = Some("private full output".into());
+        assert_eq!(tool_result_fingerprint("demo", &result), expected);
+        assert_ne!(tool_result_fingerprint("other", &result), expected);
+        for changed in [
+            ToolResult {
+                result: Some(json!({"value":2})),
+                ..result.clone()
+            },
+            ToolResult {
+                error: Some("failed".into()),
+                ..result.clone()
+            },
+            ToolResult {
+                connection_required: Some("github".into()),
+                ..result.clone()
+            },
+        ] {
+            assert_ne!(tool_result_fingerprint("demo", &changed), expected);
+        }
+        let mut nested = result.clone();
+        nested.result = Some(json!({"items":[{"value":1,"duration_ms":12}]}));
+        let mut plain = nested.clone();
+        plain.result = Some(json!({"items":[{"value":1}]}));
+        assert_eq!(
+            tool_result_fingerprint("demo", &nested),
+            tool_result_fingerprint("demo", &plain)
+        );
+    }
+
+    #[test]
+    fn error_fingerprints_normalize_text_without_merging_status_or_tool() {
+        let expected = tool_error_fingerprint("bash", "failed", "first\nsecond");
+        assert_eq!(
+            tool_error_fingerprint("bash", "failed", " first \r\nsecond \r\n"),
+            expected
+        );
+        for (tool, status, error) in [
+            ("other", "failed", "first\nsecond"),
+            ("bash", "blocked", "first\nsecond"),
+            ("bash", "failed", "different"),
+        ] {
+            assert_ne!(tool_error_fingerprint(tool, status, error), expected);
+        }
     }
 }
