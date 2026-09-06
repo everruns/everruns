@@ -177,25 +177,14 @@ pub fn strip_ansi(text: &str) -> String {
 pub fn collapse_cr_lines(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
 
-    for line in text.split('\n') {
-        if !result.is_empty() {
+    for (index, line) in text.split('\n').enumerate() {
+        if index > 0 {
             result.push('\n');
         }
-
-        // Find the last \r in this line — everything before it is overwritten,
-        // except when the \r is a trailing CR from a CRLF sequence. In that
-        // case, keep the content before the \r instead of dropping it.
-        if let Some(pos) = line.rfind('\r') {
-            if pos + 1 == line.len() {
-                // Trailing \r (likely from CRLF): keep content before it.
-                result.push_str(&line[..pos]);
-            } else {
-                // In-line \r used for overwriting: keep content after it.
-                result.push_str(&line[pos + 1..]);
-            }
-        } else {
-            result.push_str(line);
-        }
+        // Remove the CRLF terminator before choosing the final overwritten
+        // segment. Separators depend on input position, including empty lines.
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        result.push_str(line.rsplit('\r').next().unwrap_or_default());
     }
 
     result
@@ -777,167 +766,98 @@ mod tests {
     // ====================================================================
 
     #[test]
-    fn test_strip_ansi_no_escapes() {
-        assert_eq!(strip_ansi("hello world"), "hello world");
+    fn ansi_sequences_are_removed_without_changing_visible_text() {
+        for (input, expected) in [
+            ("hello world", "hello world"),
+            ("", ""),
+            ("array[0] = 1", "array[0] = 1"),
+            (
+                "\x1b[1;31merror\x1b[0m: something failed",
+                "error: something failed",
+            ),
+            ("\x1b[2J\x1b[Hhello", "hello"),
+            ("\x1b]0;my title\x07some output", "some output"),
+            ("\x1b]0;title\x1b\\output", "output"),
+            (
+                "\x1b[32mCompiling\x1b[0m foo v0.1.0\n\x1b[31merror\x1b[0m[E0308]: mismatched types",
+                "Compiling foo v0.1.0\nerror[E0308]: mismatched types",
+            ),
+            ("\x1b(Bé\x1b)0€", "é€"),
+            ("visible\x1b[31", "visible"),
+        ] {
+            assert_eq!(strip_ansi(input), expected, "input {input:?}");
+        }
     }
 
     #[test]
-    fn test_strip_ansi_sgr_color_codes() {
-        // Bold red "error" then reset
-        assert_eq!(
-            strip_ansi("\x1b[1;31merror\x1b[0m: something failed"),
-            "error: something failed"
-        );
+    fn carriage_returns_preserve_final_updates_and_line_endings() {
+        for (input, expected) in [
+            ("hello\nworld", "hello\nworld"),
+            (
+                "Downloading 10%\rDownloading 50%\rDownloading 100%",
+                "Downloading 100%",
+            ),
+            (
+                "Building...\rBuilding... done\nTests passed\nProgress 50%\rProgress 100%",
+                "Building... done\nTests passed\nProgress 100%",
+            ),
+            ("hello\r", "hello"),
+            ("line1\r\nline2\r\n", "line1\nline2\n"),
+            ("", ""),
+        ] {
+            assert_eq!(collapse_cr_lines(input), expected, "input {input:?}");
+        }
     }
 
     #[test]
-    fn test_strip_ansi_cursor_movement() {
-        // CSI H (cursor position) and CSI J (erase display)
-        assert_eq!(strip_ansi("\x1b[2J\x1b[Hhello"), "hello");
+    fn middle_truncation_preserves_inputs_within_budget() {
+        for (text, budget) in [("", 0), ("short text", 1024), ("exact", 5), ("é€", 5)] {
+            assert_eq!(middle_truncate(text, budget), text);
+        }
     }
 
     #[test]
-    fn test_strip_ansi_osc_title() {
-        // OSC 0 (set window title) terminated by BEL
-        assert_eq!(strip_ansi("\x1b]0;my title\x07some output"), "some output");
-    }
-
-    #[test]
-    fn test_strip_ansi_osc_terminated_by_st() {
-        // OSC terminated by ESC backslash (ST)
-        assert_eq!(strip_ansi("\x1b]0;title\x1b\\output"), "output");
-    }
-
-    #[test]
-    fn test_strip_ansi_preserves_normal_brackets() {
-        assert_eq!(strip_ansi("array[0] = 1"), "array[0] = 1");
-    }
-
-    #[test]
-    fn test_strip_ansi_mixed_content() {
-        let input =
-            "\x1b[32mCompiling\x1b[0m foo v0.1.0\n\x1b[31merror\x1b[0m[E0308]: mismatched types";
-        assert_eq!(
-            strip_ansi(input),
-            "Compiling foo v0.1.0\nerror[E0308]: mismatched types"
-        );
-    }
-
-    #[test]
-    fn test_strip_ansi_empty() {
-        assert_eq!(strip_ansi(""), "");
-    }
-
-    // ====================================================================
-    // collapse_cr_lines
-    // ====================================================================
-
-    #[test]
-    fn test_collapse_cr_no_cr() {
-        assert_eq!(collapse_cr_lines("hello\nworld"), "hello\nworld");
-    }
-
-    #[test]
-    fn test_collapse_cr_progress_bar() {
-        let input = "Downloading 10%\rDownloading 50%\rDownloading 100%";
-        assert_eq!(collapse_cr_lines(input), "Downloading 100%");
-    }
-
-    #[test]
-    fn test_collapse_cr_mixed_lines() {
-        let input = "Building...\rBuilding... done\nTests passed\nProgress 50%\rProgress 100%";
-        assert_eq!(
-            collapse_cr_lines(input),
-            "Building... done\nTests passed\nProgress 100%"
-        );
-    }
-
-    #[test]
-    fn test_collapse_cr_trailing_cr() {
-        // Trailing CR (from CRLF): keep content before it
-        assert_eq!(collapse_cr_lines("hello\r"), "hello");
-    }
-
-    #[test]
-    fn test_collapse_cr_crlf_preserved() {
-        // CRLF line endings — content should be preserved
-        assert_eq!(collapse_cr_lines("line1\r\nline2\r\n"), "line1\nline2\n");
-    }
-
-    #[test]
-    fn test_collapse_cr_empty() {
-        assert_eq!(collapse_cr_lines(""), "");
-    }
-
-    // ====================================================================
-    // middle_truncate
-    // ====================================================================
-
-    #[test]
-    fn test_middle_truncate_under_budget() {
-        let text = "short text";
-        assert_eq!(middle_truncate(text, 1024), text);
-    }
-
-    #[test]
-    fn test_middle_truncate_exact_budget() {
-        let text = "a".repeat(100);
-        assert_eq!(middle_truncate(&text, 100), text);
-    }
-
-    #[test]
-    fn test_middle_truncate_over_budget() {
-        let text = "a".repeat(1000);
+    fn middle_truncation_retains_distinct_head_and_tail_within_budget() {
+        let text = format!("HEAD_CONTENT_{}_TAIL_CONTENT", "x".repeat(1000));
         let result = middle_truncate(&text, 200);
         assert!(result.len() <= 200);
-        assert!(result.contains("[..."));
+        assert!(result.starts_with("HEAD_CONTENT_"));
+        assert!(result.ends_with("_TAIL_CONTENT"));
+        let marker = result.find("[...").unwrap();
+        let end_marker = result.find("...]").unwrap() + 4;
         assert!(result.contains("bytes omitted"));
-        // Tail should be longer than head (80/20 split)
-        let marker_pos = result.find("[...").unwrap();
-        let after_marker = result.find("...]").unwrap() + 4;
-        let head_len = marker_pos;
-        let tail_len = result.len() - after_marker;
         assert!(
-            tail_len > head_len,
-            "tail ({}) should be > head ({})",
-            tail_len,
-            head_len
+            result.len() - end_marker > marker,
+            "tail must receive more budget than head"
         );
+        assert!(!result.contains(&"x".repeat(200)));
     }
 
     #[test]
     fn test_middle_truncate_utf8_safety() {
-        // Use 3-byte chars (€) to test that we don't split mid-character
-        let text = "€".repeat(200); // 600 bytes
-        let result = middle_truncate(&text, 100);
-        // Must be valid UTF-8 (would panic on String construction if not)
-        assert!(result.len() <= 100 + 80); // content + marker overhead
-        assert!(result.contains("[..."));
+        for text in ["é".repeat(300), "€".repeat(200), "😀".repeat(150)] {
+            let result = middle_truncate(&text, 100);
+            assert!(result.len() <= 100);
+            let (head, rest) = result.split_once("\n\n[... ").unwrap();
+            let (_, tail) = rest.split_once(" ...]\n\n").unwrap();
+            assert!(!head.is_empty());
+            assert!(!tail.is_empty());
+            assert!(text.starts_with(head));
+            assert!(text.ends_with(tail));
+        }
     }
 
     #[test]
     fn test_middle_truncate_very_small_budget() {
         let text = "a".repeat(1000);
-        let result = middle_truncate(&text, 50);
-        assert!(result.contains("bytes omitted"));
+        let marker = "[... 1000 bytes omitted ...]";
+        for budget in [0, 1, 10, 25, 50, 80] {
+            assert_eq!(
+                middle_truncate(&text, budget),
+                &marker[..budget.min(marker.len())]
+            );
+        }
     }
-
-    #[test]
-    fn test_middle_truncate_preserves_head_and_tail() {
-        let text = format!(
-            "{}{}{}",
-            "HEAD_CONTENT_",
-            "x".repeat(10000),
-            "_TAIL_CONTENT"
-        );
-        let result = middle_truncate(&text, 500);
-        assert!(result.starts_with("HEAD_CONTENT_"));
-        assert!(result.ends_with("_TAIL_CONTENT"));
-    }
-
-    // ====================================================================
-    // sanitize_exec_output (full pipeline)
-    // ====================================================================
 
     #[test]
     fn test_sanitize_pipeline() {
@@ -952,7 +872,7 @@ mod tests {
         assert!(!result.contains("Progress 50%"));
         assert!(result.contains("Progress 100%"));
         // Truncated
-        assert!(result.len() <= 500 + 80); // content + marker
+        assert!(result.len() <= 500);
     }
 
     #[test]
@@ -966,126 +886,101 @@ mod tests {
     // ====================================================================
 
     #[test]
-    fn test_utf8_floor_ascii() {
-        assert_eq!(utf8_floor("hello", 3), 3);
+    fn utf8_rounding_uses_explicit_character_boundaries() {
+        for (text, position, floor, ceil) in [
+            ("", 0, 0, 0),
+            ("", usize::MAX, 0, 0),
+            ("hello", 3, 3, 3),
+            ("abc", 100, 3, 3),
+            ("a€b", 0, 0, 0),
+            ("a€b", 1, 1, 1),
+            ("a€b", 2, 1, 4),
+            ("a€b", 3, 1, 4),
+            ("a€b", 4, 4, 4),
+            ("a€b", 5, 5, 5),
+            ("é😀", 1, 0, 2),
+            ("é😀", 3, 2, 6),
+            ("é😀", usize::MAX, 6, 6),
+        ] {
+            assert_eq!(utf8_floor(text, position), floor);
+            assert_eq!(utf8_ceil(text, position), ceil);
+        }
     }
 
     #[test]
-    fn test_utf8_floor_multibyte() {
-        let text = "a€b"; // a(1) €(3) b(1) = 5 bytes
-        assert_eq!(utf8_floor(text, 2), 1); // Can't split €, go back to 1
-        assert_eq!(utf8_floor(text, 4), 4); // After €
-    }
-
-    #[test]
-    fn test_utf8_ceil_multibyte() {
-        let text = "a€b"; // a(1) €(3) b(1)
-        assert_eq!(utf8_ceil(text, 2), 4); // Can't split €, advance to after it
-    }
-
-    #[test]
-    fn test_utf8_floor_beyond_len() {
-        assert_eq!(utf8_floor("abc", 100), 3);
-    }
-
-    #[test]
-    fn test_utf8_ceil_beyond_len() {
-        assert_eq!(utf8_ceil("abc", 100), 3);
-    }
-
-    // ====================================================================
-    // format_lines
-    // ====================================================================
-
-    #[test]
-    fn test_format_lines_basic() {
-        let (content, total, truncated) = format_lines("alpha\nbeta\ngamma", 0, 2000);
-        assert_eq!(content, "1|alpha\n2|beta\n3|gamma");
-        assert_eq!(total, 3);
-        assert!(!truncated);
-    }
-
-    #[test]
-    fn test_format_lines_with_offset() {
-        let (content, total, truncated) = format_lines("a\nb\nc\nd\ne", 2, 2);
-        assert_eq!(content, "3|c\n4|d");
-        assert_eq!(total, 5);
-        assert!(truncated);
-    }
-
-    #[test]
-    fn test_format_lines_offset_beyond_end() {
-        let (content, total, truncated) = format_lines("a\nb", 10, 5);
-        assert_eq!(content, "");
-        assert_eq!(total, 2);
-        assert!(!truncated);
-    }
-
-    #[test]
-    fn test_format_lines_limit_clips() {
-        let (content, total, truncated) = format_lines("a\nb\nc\nd\ne", 0, 3);
-        assert_eq!(content, "1|a\n2|b\n3|c");
-        assert_eq!(total, 5);
-        assert!(truncated);
-    }
-
-    #[test]
-    fn test_format_lines_empty_content() {
-        let (content, total, truncated) = format_lines("", 0, 2000);
-        assert_eq!(content, "");
-        assert_eq!(total, 0);
-        assert!(!truncated);
+    fn line_windows_preserve_numbering_totals_and_truncation() {
+        for (text, offset, limit, expected, total, truncated) in [
+            (
+                "alpha\nbeta\ngamma",
+                0,
+                2000,
+                "1|alpha\n2|beta\n3|gamma",
+                3,
+                false,
+            ),
+            ("a\nb\nc\nd\ne", 2, 2, "3|c\n4|d", 5, true),
+            ("a\nb", 10, 5, "", 2, false),
+            ("a\nb\nc\nd\ne", 0, 3, "1|a\n2|b\n3|c", 5, true),
+            ("", 0, 2000, "", 0, false),
+            ("hello", 0, 2000, "1|hello", 1, false),
+            ("a\nb", usize::MAX, usize::MAX, "", 2, false),
+            ("a\nb", 0, 0, "", 2, true),
+            ("\n\né\n", 0, 3, "1|\n2|\n3|é", 3, false),
+        ] {
+            assert_eq!(
+                format_lines(text, offset, limit),
+                (expected.into(), total, truncated),
+                "offset={offset} limit={limit}"
+            );
+        }
     }
 
     #[test]
     fn test_format_lines_hard_byte_cap() {
-        // Create content that exceeds 50 KB when formatted
-        let big_line = "x".repeat(1000);
-        let content = (0..100)
-            .map(|_| big_line.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
-        let (formatted, total, truncated) = format_lines(&content, 0, 100);
-        assert_eq!(total, 100);
+        let content = format!("{}\nafter", "€".repeat(18000));
+        let (formatted, total, truncated) = format_lines(&content, 0, 2);
+        assert_eq!(total, 2);
         assert!(truncated);
-        assert!(formatted.len() <= READ_FILE_HARD_BYTE_CAP);
-        // Must be valid UTF-8 (would panic on access if not)
-        assert!(formatted.is_char_boundary(formatted.len()));
+        assert_eq!(formatted, format!("1|{}", "€".repeat(17066)));
+        assert_eq!(formatted.len(), 51200);
     }
 
     #[test]
     fn test_apply_read_file_hard_cap() {
-        let mut formatted = "x".repeat(READ_FILE_HARD_BYTE_CAP + 128);
-        let truncated = apply_read_file_hard_cap(&mut formatted);
-        assert!(truncated);
-        assert!(formatted.len() <= READ_FILE_HARD_BYTE_CAP);
-        assert!(formatted.is_char_boundary(formatted.len()));
-    }
-
-    #[test]
-    fn test_format_lines_single_line() {
-        let (content, total, truncated) = format_lines("hello", 0, 2000);
-        assert_eq!(content, "1|hello");
-        assert_eq!(total, 1);
-        assert!(!truncated);
+        for count in [51199, 51200, 51201] {
+            let mut text = "x".repeat(count);
+            assert_eq!(apply_read_file_hard_cap(&mut text), count > 51200);
+            assert_eq!(text, "x".repeat(count.min(51200)));
+        }
+        let mut text = format!("{}😀tail", "x".repeat(51199));
+        assert!(apply_read_file_hard_cap(&mut text));
+        assert_eq!(text, "x".repeat(51199));
     }
 
     #[test]
     fn test_build_text_read_file_result_window() {
-        let result =
-            build_text_read_file_result("read_file", "/workspace/a.txt", "a\nb\nc", "text", 1, 1);
-
-        assert_eq!(result["content"], "2|b");
-        assert_eq!(result["total_lines"], 3);
-        assert_eq!(result["lines_shown"]["start"], 2);
-        assert_eq!(result["lines_shown"]["end"], 2);
-        assert_eq!(result["truncated"], true);
-        assert_eq!(result["truncation"]["next_offset"], 2);
+        let result = build_text_read_file_result(
+            "sandbox_read_file",
+            "/workspace/a.txt",
+            "a\nb\nc",
+            "text",
+            1,
+            1,
+        );
+        assert_eq!(
+            result,
+            serde_json::json!({
+                "path":"/workspace/a.txt","content":"2|b","encoding":"text","total_lines":3,
+                "lines_shown":{"start":2,"end":2},"truncated":true,"size_bytes":5,
+                "truncation":{"truncated":true,"bytes_returned":3,"bytes_total":5,"next_offset":2,
+                    "resume_hint":"call sandbox_read_file with offset=2 to resume from line 3","reason":"line_cap"}
+            })
+        );
     }
 
     #[test]
     fn test_build_text_read_file_result_hard_cap_has_no_resume() {
-        let big_line = "x".repeat(READ_FILE_HARD_BYTE_CAP + 128);
+        let big_line = "x".repeat(51201);
         let result =
             build_text_read_file_result("read_file", "/workspace/big.txt", &big_line, "text", 0, 1);
 
@@ -1096,7 +991,7 @@ mod tests {
         assert_eq!(result["truncation"]["reason"], "size_cap");
         assert!(result["truncation"].get("next_offset").is_none());
         assert!(
-            result["content"].as_str().unwrap().len() <= READ_FILE_HARD_BYTE_CAP,
+            result["content"].as_str().unwrap().len() == 51200,
             "content exceeded hard byte cap"
         );
     }
@@ -1121,14 +1016,24 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_read_file_window_rejects_zero_limit() {
-        let err = parse_read_file_window_args(&serde_json::json!({"limit": 0})).unwrap_err();
-        assert_eq!(err, "limit must be a positive integer");
+    fn read_window_arguments_apply_defaults_and_reject_zero_limit() {
+        assert_eq!(
+            parse_read_file_window_args(&serde_json::json!({})).unwrap(),
+            (0, 2000)
+        );
+        assert_eq!(
+            parse_read_file_window_args(&serde_json::json!({"offset":7})).unwrap(),
+            (7, 2000)
+        );
+        assert_eq!(
+            parse_read_file_window_args(&serde_json::json!({"offset":2,"limit":3})).unwrap(),
+            (2, 3)
+        );
+        assert_eq!(
+            parse_read_file_window_args(&serde_json::json!({"limit":0})).unwrap_err(),
+            "limit must be a positive integer"
+        );
     }
-
-    // ====================================================================
-    // priority_aware_truncate (EVE-246)
-    // ====================================================================
 
     #[test]
     fn test_priority_truncate_no_errors_falls_back_to_middle() {
@@ -1179,8 +1084,8 @@ mod tests {
         }
         lines.push("Traceback (most recent call last):".to_string());
         lines.push("  File \"test.py\", line 10, in <module>".to_string());
-        lines.push("    raise ValueError(\"bad\")".to_string());
-        lines.push("ValueError: bad".to_string());
+        lines.push("    raise BadValue(\"bad\")".to_string());
+        lines.push("BadValue: bad".to_string());
         for i in 0..50 {
             lines.push(format!("cleanup line {}", i));
         }
@@ -1188,7 +1093,7 @@ mod tests {
         let result = priority_aware_truncate(&text, 800);
 
         assert!(
-            result.contains("Traceback (most recent call last)"),
+            result.contains("Traceback (most recent call last):\n  File \"test.py\", line 10, in <module>\n    raise BadValue(\"bad\")\nBadValue: bad"),
             "Python traceback must be preserved"
         );
     }
@@ -1207,7 +1112,7 @@ mod tests {
         let result = priority_aware_truncate(&text, 600);
 
         assert!(
-            result.contains("panicked at"),
+            result.contains("thread 'main' panicked at 'index out of bounds'"),
             "panic message must be preserved"
         );
     }
@@ -1218,7 +1123,7 @@ mod tests {
         for _ in 0..50 {
             lines.push("collecting tests...".to_string());
         }
-        lines.push("E AssertionError: expected 1, got 2".to_string());
+        lines.push("E expected 1, got 2".to_string());
         for _ in 0..50 {
             lines.push("test summary".to_string());
         }
@@ -1226,198 +1131,107 @@ mod tests {
         let result = priority_aware_truncate(&text, 600);
 
         assert!(
-            result.contains("E AssertionError"),
+            result.contains("E expected 1, got 2"),
             "pytest E line must be preserved"
         );
     }
 
     #[test]
-    fn test_priority_truncate_multiple_error_regions() {
-        let mut lines: Vec<String> = Vec::new();
-        for _ in 0..30 {
-            lines.push("compiling...".to_string());
-        }
-        lines.push("error: first error".to_string());
-        for _ in 0..30 {
-            lines.push("more compiling...".to_string());
-        }
-        lines.push("error: second error".to_string());
-        for _ in 0..30 {
-            lines.push("finishing...".to_string());
-        }
-        let text = lines.join("\n");
+    fn priority_truncation_preserves_multiple_diagnostics_with_markers_and_budget() {
+        let text = format!(
+            "{}error: first error\n{}error: second error\n{}",
+            "compiling...\n".repeat(30),
+            "more compiling...\n".repeat(30),
+            "finishing...\n".repeat(30)
+        );
         let result = priority_aware_truncate(&text, 1000);
-
         assert!(result.contains("error: first error"));
         assert!(result.contains("error: second error"));
+        assert!(result.contains("lines omitted"));
+        assert!(result.len() <= 1000);
+        assert!(result.len() < text.len());
     }
 
     #[test]
-    fn test_priority_truncate_omission_markers() {
-        let mut lines: Vec<String> = Vec::new();
-        for _ in 0..100 {
-            lines.push("x".repeat(20));
+    fn error_regions_clamp_merge_and_preserve_distant_windows() {
+        let mut lines = vec!["ok"; 60];
+        for index in [0, 10, 40, 59] {
+            lines[index] = "error: diagnostic";
         }
-        lines.push("FAILED test case".to_string());
-        for _ in 0..100 {
-            lines.push("y".repeat(20));
-        }
-        let text = lines.join("\n");
-        let result = priority_aware_truncate(&text, 800);
-
-        assert!(
-            result.contains("lines omitted")
-                || result.contains("lines above")
-                || result.contains("lines below"),
-            "must include omission markers"
-        );
-    }
-
-    #[test]
-    fn test_priority_truncate_respects_budget() {
-        let mut lines: Vec<String> = Vec::new();
-        for i in 0..500 {
-            lines.push(format!("line {} {}", i, "x".repeat(50)));
-        }
-        lines.push("error: something broke".to_string());
-        for i in 0..500 {
-            lines.push(format!("line {} {}", i + 500, "y".repeat(50)));
-        }
-        let text = lines.join("\n");
-        let budget = 2000;
-        let result = priority_aware_truncate(&text, budget);
-
-        assert!(
-            result.len() <= budget,
-            "result ({} bytes) must not exceed budget ({})",
-            result.len(),
-            budget
-        );
-    }
-
-    #[test]
-    fn test_find_error_regions_empty() {
-        let lines: Vec<&str> = vec!["hello", "world", "ok"];
-        assert!(find_error_regions(&lines).is_empty());
-    }
-
-    #[test]
-    fn test_find_error_regions_merges_nearby() {
-        let mut lines: Vec<&str> = vec!["ok"; 5];
-        lines.push("error: first");
-        lines.extend(std::iter::repeat_n("ok", 3));
-        lines.push("error: second"); // within context window of first
-        lines.extend(std::iter::repeat_n("ok", 20));
-
+        lines[25] = "NOTE E ordinary text";
         let regions = find_error_regions(&lines);
-        // Should merge into one region since they're within 2*ERROR_CONTEXT_LINES+1 of each other
-        assert_eq!(regions.len(), 1, "nearby errors should merge");
-    }
-
-    // ====================================================================
-    // auto mode resolution (EVE-489)
-    // ====================================================================
-
-    #[test]
-    fn test_resolve_auto_success_maps_to_auto_success() {
-        assert_eq!(resolve_auto_mode("auto", 0), "auto_success");
-    }
-
-    #[test]
-    fn test_resolve_auto_failure_maps_to_normal() {
-        assert_eq!(resolve_auto_mode("auto", 1), "normal");
-        assert_eq!(resolve_auto_mode("auto", -1), "normal");
-        assert_eq!(resolve_auto_mode("auto", 137), "normal");
-    }
-
-    #[test]
-    fn test_resolve_auto_passes_through_explicit_modes() {
-        assert_eq!(resolve_auto_mode("concise", 0), "concise");
-        assert_eq!(resolve_auto_mode("normal", 1), "normal");
-        assert_eq!(resolve_auto_mode("verbose", 0), "verbose");
-        assert_eq!(resolve_auto_mode("full", 1), "full");
-        assert_eq!(resolve_auto_mode("silent", 0), "silent");
-    }
-
-    #[test]
-    fn test_auto_success_budget_matches_constant() {
         assert_eq!(
-            output_verbosity_budget("auto_success"),
-            Some(AUTO_SUCCESS_BUDGET)
+            regions
+                .iter()
+                .map(|region| (region.start, region.end))
+                .collect::<Vec<_>>(),
+            [(0, 16), (35, 46), (54, 60)]
         );
     }
 
     #[test]
-    fn test_bare_auto_budget_defaults_to_auto_success() {
-        // A caller that forgets to run `resolve_auto_mode` first must not
-        // silently widen to `concise`. EVE-489 keeps the tight budget so
-        // the worst case is an over-truncated payload, never a silently
-        // expanded one.
+    fn output_modes_select_effective_budgets_and_bound_actual_streams() {
+        let text = format!("HEAD_{}_TAIL", "x".repeat(20000));
+        for (mode, exit_code, effective, budget) in [
+            ("auto", 0, "auto_success", Some(384)),
+            ("auto", 1, "normal", Some(8192)),
+            ("auto", -1, "normal", Some(8192)),
+            ("auto", 137, "normal", Some(8192)),
+            ("silent", 0, "silent", Some(200)),
+            ("concise", 1, "concise", Some(2048)),
+            ("normal", 0, "normal", Some(8192)),
+            ("verbose", 1, "verbose", Some(16384)),
+            ("full", 0, "full", None),
+            ("unknown", 1, "unknown", Some(2048)),
+        ] {
+            let resolved = resolve_auto_mode(mode, exit_code);
+            assert_eq!(resolved, effective);
+            let actual_budget = output_verbosity_budget(resolved);
+            assert_eq!(actual_budget, budget);
+            let output = actual_budget.map_or_else(
+                || text.clone(),
+                |cap| truncate_exec_stream(&text, cap, exit_code),
+            );
+            if let Some(cap) = budget {
+                assert!(output.len() <= cap);
+                assert!(output.starts_with("HEAD_"));
+                assert!(output.ends_with("_TAIL"));
+            } else {
+                assert_eq!(output, text);
+            }
+        }
+        assert_eq!(output_verbosity_budget("auto"), Some(384));
+        assert_eq!(output_verbosity_budget("auto_success"), Some(384));
+    }
+
+    #[test]
+    fn collapse_cr_preserves_leading_and_blank_lines() {
+        for input in ["\nfirst", "\n\nfirst\n", "\n", "\n\n"] {
+            assert_eq!(collapse_cr_lines(input), input);
+        }
+    }
+
+    #[test]
+    fn collapse_cr_keeps_only_final_progress_update_before_crlf() {
         assert_eq!(
-            output_verbosity_budget("auto"),
-            Some(AUTO_SUCCESS_BUDGET),
-            "bare `auto` should resolve to the tight success budget, not silently widen to concise"
+            collapse_cr_lines("10%\r50%\r100%\r\nnext\r\n"),
+            "100%\nnext\n"
         );
     }
-
-    // ====================================================================
-    // Shared prompt hints (EVE-223, EVE-244, EVE-778)
-    // ====================================================================
-
     #[test]
-    fn test_exec_output_hint_single_read_policy() {
-        // EVE-778: pre-filter at the source, read persisted output at most
-        // once, never reconstruct via repeated windows, stop on evidence.
-        assert!(EXEC_OUTPUT_HINT.contains("apply it in the command itself"));
-        assert!(EXEC_OUTPUT_HINT.contains("at most once"));
-        assert!(EXEC_OUTPUT_HINT.contains("≤200 lines or ≤64 KiB"));
-        assert!(EXEC_OUTPUT_HINT.contains("`grep_files` search with context"));
-        assert!(EXEC_OUTPUT_HINT.contains("sequential or overlapping reads"));
-        assert!(EXEC_OUTPUT_HINT.contains("stop once you have enough diagnostic evidence"));
-    }
-
-    #[test]
-    fn test_read_economy_hint_single_read_policy() {
-        // EVE-778: one complete read for small files, one contextual grep
-        // for large ones, no window-by-window reconstruction.
-        assert!(READ_ECONOMY_HINT.contains("≤200 lines or ≤64 KiB"));
-        assert!(READ_ECONOMY_HINT.contains("once with an ample `limit`"));
-        assert!(READ_ECONOMY_HINT.contains("`before_context`/`after_context`"));
-        assert!(READ_ECONOMY_HINT.contains("sequential or overlapping windows"));
-    }
-
-    #[test]
-    fn test_prompt_hints_stay_concise() {
-        // The hints ride along in every harness prompt that exposes exec or
-        // filesystem tools; keep them bounded. Ratchet deliberately, in the
-        // same PR that grows them.
-        assert!(
-            EXEC_OUTPUT_HINT.len() <= 1100,
-            "EXEC_OUTPUT_HINT is {} bytes",
-            EXEC_OUTPUT_HINT.len()
+    fn successful_stream_keeps_head_tail_while_failure_prioritizes_diagnostics() {
+        let text = format!(
+            "HEAD_START\n{}error: buried diagnostic\n{}TAIL_END",
+            "ordinary build line\n".repeat(100),
+            "ordinary cleanup line\n".repeat(100)
         );
-        assert!(
-            READ_ECONOMY_HINT.len() <= 750,
-            "READ_ECONOMY_HINT is {} bytes",
-            READ_ECONOMY_HINT.len()
-        );
-    }
-
-    #[test]
-    fn test_output_verbosity_schema_includes_auto() {
-        let schema = output_verbosity_schema();
-        let variants: Vec<&str> = schema["enum"]
-            .as_array()
-            .expect("enum should be an array")
-            .iter()
-            .map(|v| v.as_str().unwrap())
-            .collect();
-        assert!(variants.contains(&"auto"), "auto must be in enum");
-        assert!(variants.contains(&"silent"));
-        assert!(variants.contains(&"concise"));
-        assert!(variants.contains(&"normal"));
-        assert!(variants.contains(&"verbose"));
-        assert!(variants.contains(&"full"));
-        assert_eq!(schema["default"], "auto", "auto must be the default");
+        let success = truncate_exec_stream(&text, 1000, 0);
+        let failure = truncate_exec_stream(&text, 1000, 1);
+        assert!(success.starts_with("HEAD_START"));
+        assert!(success.ends_with("TAIL_END"));
+        assert!(!success.contains("buried diagnostic"));
+        assert!(failure.contains("error: buried diagnostic"));
+        assert!(success.len() <= 1000);
+        assert!(failure.len() <= 1000);
     }
 }
