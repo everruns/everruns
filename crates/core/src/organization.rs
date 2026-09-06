@@ -108,11 +108,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_org_internal_id_round_trips() {
-        for internal in [DEFAULT_ORG_ID, 5, 42, 1_000_000] {
-            let public = org_public_id_from_internal(internal);
-            let org_id: crate::typed_id::OrgId = public.parse().expect("parse org id");
-            assert_eq!(org_internal_id_from_public(org_id), internal);
+    fn organization_ids_match_literal_public_and_internal_values() {
+        for (internal, public) in [
+            (0, "org_00000000000000000000000000000000"),
+            (1, "org_00000000000000000000000000000001"),
+            (42, "org_0000000000000000000000000000002a"),
+            (i64::MAX, "org_00000000000000007fffffffffffffff"),
+            (i64::MIN, "org_00000000000000008000000000000000"),
+        ] {
+            assert_eq!(org_public_id_from_internal(internal), public);
+            assert_eq!(
+                org_internal_id_from_public(public.parse().unwrap()),
+                internal
+            );
         }
     }
 
@@ -132,16 +140,28 @@ mod tests {
     }
 
     #[test]
-    fn test_org_role_str_roundtrip() {
-        for role in [OrgRole::Member, OrgRole::Admin, OrgRole::Owner] {
-            let s = role.as_str();
-            let parsed: OrgRole = s.parse().unwrap();
-            assert_eq!(parsed, role);
+    fn organization_roles_use_literal_storage_wire_and_default_contracts() {
+        for (role, name) in [
+            (OrgRole::Member, "member"),
+            (OrgRole::Admin, "admin"),
+            (OrgRole::Owner, "owner"),
+        ] {
+            assert_eq!(role.as_str(), name);
+            assert_eq!(role.to_string(), name);
+            assert_eq!(name.parse::<OrgRole>(), Ok(role));
+            assert_eq!(serde_json::to_value(role).unwrap(), serde_json::json!(name));
+            assert_eq!(
+                serde_json::from_value::<OrgRole>(serde_json::json!(name)).unwrap(),
+                role
+            );
         }
-    }
-
-    #[test]
-    fn test_org_role_default() {
+        for invalid in ["", "Owner", " owner", "admin ", "superuser"] {
+            assert_eq!(
+                invalid.parse::<OrgRole>(),
+                Err(format!("invalid org role: {invalid}"))
+            );
+            assert!(serde_json::from_value::<OrgRole>(serde_json::json!(invalid)).is_err());
+        }
         assert_eq!(OrgRole::default(), OrgRole::Owner);
     }
 }
