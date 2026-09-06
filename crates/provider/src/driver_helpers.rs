@@ -439,12 +439,22 @@ pub fn merge_request_headers(
             );
             continue;
         }
-        match merged
-            .iter_mut()
-            .find(|(existing, _)| existing.eq_ignore_ascii_case(name))
-        {
-            Some(slot) => slot.1 = value.clone(),
-            None => merged.push((name.to_string(), value.clone())),
+        // Preserve the first slot's order/name, but replace every occurrence
+        // of the overridden name so a stale duplicate cannot also be sent.
+        let mut replaced = false;
+        merged.retain_mut(|(existing, existing_value)| {
+            if !existing.eq_ignore_ascii_case(name) {
+                return true;
+            }
+            if replaced {
+                return false;
+            }
+            *existing_value = value.clone();
+            replaced = true;
+            true
+        });
+        if !replaced {
+            merged.push((name.to_string(), value.clone()));
         }
     }
     merged
@@ -456,209 +466,225 @@ mod tests {
     use std::str::FromStr;
 
     #[test]
-    fn test_parse_data_url_valid() {
-        let result = parse_data_url("data:image/png;base64,iVBOR").unwrap();
-        assert_eq!(result.media_type, "image/png");
-        assert_eq!(result.data, "iVBOR");
+    fn data_urls_preserve_media_and_complete_payload() {
+        for (url, media, data) in [
+            ("data:image/png;base64,iVBOR", "image/png", "iVBOR"),
+            ("data:image/jpeg;base64,/9j/4AAQ", "image/jpeg", "/9j/4AAQ"),
+            ("data:text/plain,one,two", "text/plain", "one,two"),
+            ("data:image/svg+xml;base64,PD4=", "image/svg+xml", "PD4="),
+            (
+                "data:text/plain;charset=utf-8;base64,",
+                "text/plain;charset=utf-8",
+                "",
+            ),
+        ] {
+            let parsed = parse_data_url(url).unwrap();
+            assert_eq!(
+                (parsed.media_type.as_str(), parsed.data.as_str()),
+                (media, data)
+            );
+        }
+        for invalid in [
+            "https://example.com/image.png",
+            "data:image/jpeg;base64",
+            "",
+            "image/png,data",
+        ] {
+            assert!(parse_data_url(invalid).is_none(), "{invalid}");
+        }
     }
 
     #[test]
-    fn test_parse_data_url_jpeg() {
-        let result = parse_data_url("data:image/jpeg;base64,/9j/4AAQ").unwrap();
-        assert_eq!(result.media_type, "image/jpeg");
-        assert_eq!(result.data, "/9j/4AAQ");
-    }
-
-    #[test]
-    fn test_parse_data_url_not_data() {
-        assert!(parse_data_url("https://example.com/image.png").is_none());
-    }
-
-    #[test]
-    fn test_parse_data_url_no_comma() {
-        assert!(parse_data_url("data:image/jpeg;base64").is_none());
-    }
-
-    #[test]
-    fn test_is_request_too_large_413() {
+    fn payload_classification_requires_status_and_token_context_or_provider_pattern() {
+        for (message, patterns, matches) in [
+            ("INPUT IS TOO LONG", &[][..], true),
+            ("maximum context reached", &[][..], true),
+            ("request exceeds the maximum token count", &[][..], true),
+            ("context exceeds the maximum", &[][..], true),
+            ("rate exceeds the maximum", &[][..], false),
+            ("authentication failed", &[][..], false),
+            (
+                "prompt is too long: 100000 tokens",
+                ANTHROPIC_TOO_LARGE_PATTERNS,
+                true,
+            ),
+            ("request size exceeded", ANTHROPIC_TOO_LARGE_PATTERNS, true),
+            (
+                "context length exceeded",
+                ANTHROPIC_TOO_LARGE_PATTERNS,
+                true,
+            ),
+            ("TOO MANY TOKENS", ANTHROPIC_TOO_LARGE_PATTERNS, true),
+            (
+                "request payload size exceeds limit",
+                GEMINI_TOO_LARGE_PATTERNS,
+                true,
+            ),
+            ("content too large", GEMINI_TOO_LARGE_PATTERNS, true),
+            ("token limit exceeded", GEMINI_TOO_LARGE_PATTERNS, true),
+            ("prompt is too long", GEMINI_TOO_LARGE_PATTERNS, false),
+        ] {
+            for (status, expected) in [
+                (StatusCode::BAD_REQUEST, matches),
+                (StatusCode::PAYLOAD_TOO_LARGE, true),
+                (StatusCode::INTERNAL_SERVER_ERROR, false),
+                (StatusCode::OK, false),
+            ] {
+                assert_eq!(
+                    is_request_too_large(status, message, patterns),
+                    expected,
+                    "{status}: {message}"
+                );
+            }
+        }
         assert!(is_request_too_large(StatusCode::PAYLOAD_TOO_LARGE, "", &[]));
     }
 
     #[test]
-    fn test_is_request_too_large_generic() {
-        assert!(is_request_too_large(
-            StatusCode::BAD_REQUEST,
-            "input is too long",
-            &[]
-        ));
-    }
-
-    #[test]
-    fn test_is_request_too_large_anthropic() {
-        assert!(is_request_too_large(
-            StatusCode::BAD_REQUEST,
-            "prompt is too long: 100000 tokens",
-            ANTHROPIC_TOO_LARGE_PATTERNS
-        ));
-    }
-
-    #[test]
-    fn test_is_request_too_large_gemini() {
-        assert!(is_request_too_large(
-            StatusCode::BAD_REQUEST,
-            "request payload size exceeds limit",
-            GEMINI_TOO_LARGE_PATTERNS
-        ));
-    }
-
-    #[test]
-    fn test_is_model_not_found_with_pattern() {
-        assert!(is_model_not_found(
-            StatusCode::NOT_FOUND,
-            r#"{"error":{"type":"not_found_error"}}"#,
-            ANTHROPIC_NOT_FOUND_PATTERNS
-        ));
-    }
-
-    #[test]
-    fn test_is_model_not_found_no_match_without_pattern() {
-        // Generic "not found" without matching patterns should NOT match
-        assert!(!is_model_not_found(
-            StatusCode::NOT_FOUND,
-            "Endpoint not found",
-            ANTHROPIC_NOT_FOUND_PATTERNS
-        ));
-    }
-
-    #[test]
-    fn test_is_model_not_found_not_404() {
-        assert!(!is_model_not_found(
-            StatusCode::BAD_REQUEST,
-            "model not found",
-            &[]
-        ));
-    }
-
-    #[test]
-    fn test_is_model_not_found_gemini() {
-        assert!(is_model_not_found(
-            StatusCode::NOT_FOUND,
-            r#"{"error":{"status":"NOT_FOUND","message":"model foo"}}"#,
-            GEMINI_NOT_FOUND_PATTERNS
-        ));
-    }
-
-    #[tokio::test]
-    async fn ssrf_resolver_blocks_loopback_literal() {
-        // A literal loopback "hostname" must be refused at resolve time so the
-        // shared provider clients can never connect to 127.0.0.1 (EVE-623).
-        let resolver = SsrfGuardResolver;
-        let name = Name::from_str("127.0.0.1").unwrap();
-        let result = resolver.resolve(name).await;
-        assert!(result.is_err(), "loopback literal should be blocked");
-    }
-
-    #[tokio::test]
-    async fn ssrf_resolver_blocks_link_local_metadata_literal() {
-        // The cloud metadata endpoint is the primary SSRF target.
-        let resolver = SsrfGuardResolver;
-        let name = Name::from_str("169.254.169.254").unwrap();
-        let result = resolver.resolve(name).await;
-        assert!(result.is_err(), "metadata IP should be blocked");
-    }
-
-    #[tokio::test]
-    async fn ssrf_resolver_blocks_private_rfc1918_literal() {
-        let resolver = SsrfGuardResolver;
-        for host in ["10.0.0.1", "192.168.1.1", "172.16.0.1"] {
-            let name = Name::from_str(host).unwrap();
-            assert!(
-                resolver.resolve(name).await.is_err(),
-                "{host} (RFC1918) should be blocked"
-            );
+    fn missing_model_classification_requires_404_and_provider_evidence() {
+        for (message, patterns, matches) in [
+            (
+                r#"{"error":{"type":"not_found_error"}}"#,
+                ANTHROPIC_NOT_FOUND_PATTERNS,
+                true,
+            ),
+            ("Endpoint not found", ANTHROPIC_NOT_FOUND_PATTERNS, false),
+            ("NOT_FOUND", GEMINI_NOT_FOUND_PATTERNS, true),
+            ("MODEL foo", GEMINI_NOT_FOUND_PATTERNS, true),
+            ("missing endpoint", GEMINI_NOT_FOUND_PATTERNS, false),
+            ("model not found", &[][..], false),
+        ] {
+            for (status, expected) in [
+                (StatusCode::NOT_FOUND, matches),
+                (StatusCode::BAD_REQUEST, false),
+                (StatusCode::INTERNAL_SERVER_ERROR, false),
+                (StatusCode::OK, false),
+            ] {
+                assert_eq!(
+                    is_model_not_found(status, message, patterns),
+                    expected,
+                    "{status}: {message}"
+                );
+            }
         }
     }
 
     #[tokio::test]
-    async fn ssrf_resolver_allows_public_literal() {
-        // A public IP literal resolves to itself and must be allowed through.
-        let resolver = SsrfGuardResolver;
-        let name = Name::from_str("1.1.1.1").unwrap();
-        let result = resolver.resolve(name).await;
-        assert!(result.is_ok(), "public IP must be allowed");
+    async fn resolver_rejects_private_addresses_and_returns_exact_public_address() {
+        for host in [
+            "127.0.0.1",
+            "169.254.169.254",
+            "10.0.0.1",
+            "192.168.1.1",
+            "172.16.0.1",
+        ] {
+            let error = match SsrfGuardResolver
+                .resolve(Name::from_str(host).unwrap())
+                .await
+            {
+                Ok(_) => panic!("private address {host} accepted"),
+                Err(error) => error,
+            };
+            assert_eq!(
+                error.to_string(),
+                format!("host {host} resolves to blocked address {host} (private/internal)")
+            );
+        }
+        let addresses: Vec<_> = SsrfGuardResolver
+            .resolve(Name::from_str("1.1.1.1").unwrap())
+            .await
+            .unwrap()
+            .collect();
+        assert_eq!(addresses, ["1.1.1.1:0".parse().unwrap()]);
+    }
+
+    #[tokio::test]
+    async fn both_shared_http_clients_refuse_to_follow_redirects() {
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+        let destination = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&destination)
+            .await;
+        let source = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/source"))
+            .respond_with(ResponseTemplate::new(302).insert_header("Location", destination.uri()))
+            .expect(2)
+            .mount(&source)
+            .await;
+        for client in [shared_streaming_http_client(), shared_request_http_client()] {
+            let response = client
+                .get(format!("{}/source", source.uri()))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::FOUND);
+            assert_eq!(response.headers()["location"], destination.uri());
+        }
+        destination.verify().await;
     }
 
     #[test]
-    fn shared_clients_build_without_panicking() {
-        // Exercises the hardened builders end to end.
-        let _ = shared_streaming_http_client();
-        let _ = shared_request_http_client();
-    }
-
-    /// `minimal` is the case that mattered and the old string-matching test did
-    /// not cover: it fell through to `None`, so the lowest non-zero effort
-    /// produced no thinking at all, exactly like "none".
-    #[test]
-    fn test_thinking_budget_from_effort() {
-        use crate::model::ReasoningEffort;
-        assert_eq!(
-            thinking_budget::from_effort(ReasoningEffort::Minimal),
-            Some(1024)
-        );
-        assert_eq!(
-            thinking_budget::from_effort(ReasoningEffort::Low),
-            Some(1024)
-        );
-        assert_eq!(
-            thinking_budget::from_effort(ReasoningEffort::Medium),
-            Some(4096)
-        );
-        assert_eq!(
-            thinking_budget::from_effort(ReasoningEffort::High),
-            Some(16384)
-        );
-        assert_eq!(
-            thinking_budget::from_effort(ReasoningEffort::Xhigh),
-            Some(32768)
-        );
-        assert_eq!(thinking_budget::from_effort(ReasoningEffort::None), None);
+    fn thinking_efforts_have_literal_budgets_including_max_alias() {
+        use crate::model::ReasoningEffort::*;
+        for (effort, expected) in [
+            (None, Option::None),
+            (Minimal, Some(1024)),
+            (Low, Some(1024)),
+            (Medium, Some(4096)),
+            (High, Some(16384)),
+            (Xhigh, Some(32768)),
+            (Max, Some(32768)),
+        ] {
+            assert_eq!(thinking_budget::from_effort(effort), expected, "{effort:?}");
+        }
     }
 
     #[test]
-    fn merge_request_headers_overrides_case_insensitively() {
-        let merged = merge_request_headers(
-            vec![
-                ("anthropic-version".to_string(), "2023-06-01".to_string()),
-                ("x-api-key".to_string(), "secret".to_string()),
-            ],
-            &[
-                ("Anthropic-Version".to_string(), "2024-01-01".to_string()),
-                ("x-trace".to_string(), "abc".to_string()),
-            ],
-        );
+    fn caller_overrides_replace_all_duplicates_preserving_order_and_other_headers() {
         assert_eq!(
-            merged,
-            vec![
-                ("anthropic-version".to_string(), "2024-01-01".to_string()),
-                ("x-api-key".to_string(), "secret".to_string()),
-                ("x-trace".to_string(), "abc".to_string()),
+            merge_request_headers(
+                vec![
+                    ("X-Token".into(), "old-a".into()),
+                    ("anthropic-version".into(), "2023-06-01".into()),
+                    ("x-token".into(), "old-b".into())
+                ],
+                &[
+                    (" x-TOKEN ".into(), "new".into()),
+                    ("Anthropic-Version".into(), "2024-01-01".into()),
+                    ("x-trace".into(), "first".into()),
+                    ("X-TRACE".into(), "last".into())
+                ]
+            ),
+            [
+                ("X-Token".into(), "new".into()),
+                ("anthropic-version".into(), "2024-01-01".into()),
+                ("x-trace".into(), "last".into())
             ]
         );
     }
 
     #[test]
-    fn merge_request_headers_drops_connection_level_and_empty_names() {
-        let merged = merge_request_headers(
-            vec![("content-type".to_string(), "application/json".to_string())],
-            &[
-                ("Host".to_string(), "evil.example".to_string()),
-                ("content-length".to_string(), "0".to_string()),
-                ("  ".to_string(), "ignored".to_string()),
-            ],
-        );
-        assert_eq!(
-            merged,
-            vec![("content-type".to_string(), "application/json".to_string())]
-        );
+    fn caller_cannot_override_connection_headers_or_insert_blank_names() {
+        let base = vec![
+            ("content-type".into(), "application/json".into()),
+            ("host".into(), "configured.example".into()),
+        ];
+        let extra = [
+            " Host ",
+            "CONTENT-LENGTH",
+            "transfer-Encoding",
+            "connection",
+            "UPGRADE",
+            "",
+            " \t",
+        ]
+        .map(|name| (name.into(), "untrusted".into()));
+        assert_eq!(merge_request_headers(base.clone(), &extra), base);
     }
 }
