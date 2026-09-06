@@ -214,6 +214,10 @@ impl UserFacingError {
                 "error_fields".to_string(),
                 serde_json::to_value(fields).unwrap_or(Value::Null),
             );
+        } else {
+            // Reusing a metadata map must not retain fields from an older,
+            // more detailed error after disclosure has removed them.
+            metadata.remove("error_fields");
         }
     }
 
@@ -644,242 +648,254 @@ impl ErrorFieldsExt for UserFacingErrorFields {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    fn wire(error: &UserFacingError) -> Value {
+        serde_json::to_value(error).unwrap()
+    }
+    fn context() -> UserFacingErrorContext {
+        UserFacingErrorContext::default()
+            .with_provider("provider")
+            .with_model_id("model")
+            .with_retry_after(7)
+    }
 
     #[test]
-    fn classify_budget_exhausted_parses_fields() {
+    fn quota_classification_preserves_context_without_raw_payload_or_retry_delay() {
+        for message in [
+            "ReasonAtom execution failed: OpenAI API error (429): {\"error\":{\"type\":\"insufficient_quota\",\"message\":\"You exceeded your current quota\"}}",
+            "LLM error: insufficient_quota: You exceeded your current quota.",
+            "credit_balance_exhausted: secret=hidden",
+            "Anthropic API error (400): Your credit balance is too low to access the Anthropic API.",
+            "INSUFFICIENT QUOTA",
+        ] {
+            let error = classify_runtime_error_message(message, &context());
+            assert_eq!(
+                wire(&error),
+                json!({"code":"provider_quota_exhausted","fields":{"provider":"provider","model_id":"model"}})
+            );
+            assert_eq!(
+                error.fallback_message(),
+                "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue."
+            );
+            assert_eq!(
+                wire(&classify_runtime_error_message(
+                    message,
+                    &UserFacingErrorContext::default()
+                )),
+                json!({"code":"provider_quota_exhausted"})
+            );
+        }
+    }
+
+    #[test]
+    fn ordinary_classification_has_exact_code_and_allowed_context_fields() {
+        for (message, expected) in [
+            (
+                "OpenAI API error (429): rate limit exceeded",
+                json!({"code":"provider_rate_limited","fields":{"provider":"provider","model_id":"model","retry_after":7}}),
+            ),
+            (
+                "LLM error: API key is required. Configure the API key in provider settings.",
+                json!({"code":"provider_misconfigured","fields":{"provider":"provider","model_id":"model"}}),
+            ),
+            (
+                "ReasonAtom execution failed: Model not configured",
+                json!({"code":"model_not_configured"}),
+            ),
+            (
+                "ActAtom execution failed: Model not available: retired-model",
+                json!({"code":"model_unavailable","fields":{"model_id":"retired-model"}}),
+            ),
+            (
+                "Request too large: context length",
+                json!({"code":"request_too_large","fields":{"provider":"provider","model_id":"model"}}),
+            ),
+            (
+                "provider error (503)",
+                json!({"code":"provider_unavailable","fields":{"provider":"provider","model_id":"model"}}),
+            ),
+            (
+                "unknown raw error secret=hidden",
+                json!({"code":"processing_error","fields":{"provider":"provider","model_id":"model"}}),
+            ),
+        ] {
+            assert_eq!(
+                wire(&classify_runtime_error_message(message, &context())),
+                expected,
+                "{message}"
+            );
+        }
+        assert_eq!(
+            UserFacingError::new("model_not_configured").fallback_message(),
+            "No model is configured for this chat. Choose a model or configure a default model, then try again."
+        );
+    }
+
+    #[test]
+    fn budget_fields_drive_exact_exhausted_and_paused_copy() {
         let error = classify_runtime_error_message(
             "ReasonAtom execution failed: Budget exhausted. 12.50 usd spent exceeded the 10.00 usd limit. Increase the budget to continue.",
-            &UserFacingErrorContext::default(),
+            &context(),
         );
-
-        assert_eq!(error.code, codes::BUDGET_EXHAUSTED);
-        assert_eq!(number_field(&error.fields, "spent"), Some(12.5));
-        assert_eq!(number_field(&error.fields, "limit"), Some(10.0));
-        assert_eq!(string_field(&error.fields, "currency"), Some("usd"));
-    }
-
-    #[test]
-    fn classify_provider_rate_limit_keeps_context() {
-        let error = classify_runtime_error_message(
-            "OpenAI API error (429): rate limit exceeded",
-            &UserFacingErrorContext::default()
-                .with_provider("openai")
-                .with_model_id("gpt-5")
-                .with_retry_after(7),
-        );
-
-        assert_eq!(error.code, codes::PROVIDER_RATE_LIMITED);
-        assert_eq!(string_field(&error.fields, "provider"), Some("openai"));
-        assert_eq!(string_field(&error.fields, "model_id"), Some("gpt-5"));
-        assert_eq!(number_field(&error.fields, "retry_after"), Some(7.0));
-    }
-
-    #[test]
-    fn classifies_openai_tool_schema_rejection_without_exposing_provider_payload() {
-        let error = classify_runtime_error_message(
-            "OpenAI Responses API error (400 Bad Request): Invalid JSON schema: regex lookaround is not supported. Found at $.properties.email.pattern.",
-            &UserFacingErrorContext::default()
-                .with_provider("openai")
-                .with_model_id("gpt-5.6-terra"),
-        );
-
-        assert_eq!(error.code, codes::INVALID_TOOL_SCHEMA);
         assert_eq!(
-            error.fields.get("schema_path").and_then(Value::as_str),
-            Some("$.properties.email.pattern")
+            wire(&error),
+            json!({"code":"budget_exhausted","fields":{"spent":12.5,"limit":10.0,"currency":"usd"}})
         );
         assert_eq!(
             error.fallback_message(),
-            "A connected tool uses an input schema that this model provider does not support. Update the integration or choose a different model provider, then try again."
+            "Budget exhausted. 12.50 usd spent exceeded the 10.00 usd limit. Increase the budget to continue."
         );
-        assert!(!error.fallback_message().contains("regex lookaround"));
-    }
-
-    #[test]
-    fn invalid_tool_schema_drops_unsafe_provider_schema_path() {
-        let error = classify_runtime_error_message(
-            "Invalid JSON schema at $.properties: Found at $.properties.email.pattern?<token>.",
-            &UserFacingErrorContext::default(),
-        );
-
-        assert_eq!(error.code, codes::INVALID_TOOL_SCHEMA);
-        assert!(!error.fields.contains_key("schema_path"));
-    }
-
-    #[test]
-    fn classify_openai_insufficient_quota_as_provider_quota_exhausted() {
-        // OpenAI's exhausted-billing 429 needs operator action (top up the
-        // account), not the transient "rate limited, wait a moment" copy and
-        // not the "misconfigured" copy used for bad API keys.
-        let error = classify_runtime_error_message(
-            "ReasonAtom execution failed: OpenAI API error (429): {\"error\":{\"message\":\"You exceeded your current quota, please check your plan and billing details.\",\"type\":\"insufficient_quota\",\"code\":\"insufficient_quota\"}}",
-            &UserFacingErrorContext::default()
-                .with_provider("openai")
-                .with_model_id("gpt-4.1-mini"),
-        );
-
-        assert_eq!(error.code, codes::PROVIDER_QUOTA_EXHAUSTED);
-        assert_eq!(string_field(&error.fields, "provider"), Some("openai"));
+        for (spent, expected) in [
+            (
+                4.0,
+                "Budget paused with 4.00 tokens spent. Increase or resume the budget to continue.",
+            ),
+            (
+                5.0,
+                "Budget paused. 5.00 tokens spent reached the 5.00 tokens soft limit. Increase or resume the budget to continue.",
+            ),
+            (
+                6.0,
+                "Budget paused. 6.00 tokens spent exceeded the 5.00 tokens soft limit. Increase or resume the budget to continue.",
+            ),
+        ] {
+            let error = UserFacingError::new("budget_paused")
+                .with_field("spent", spent)
+                .with_field("soft_limit", 5.0)
+                .with_field("currency", "tokens");
+            assert_eq!(error.fallback_message(), expected);
+        }
         assert_eq!(
-            string_field(&error.fields, "model_id"),
-            Some("gpt-4.1-mini")
+            UserFacingError::new("budget_paused").fallback_message(),
+            "Budget paused. Increase or resume the budget to continue."
         );
     }
 
     #[test]
-    fn classify_insufficient_quota_without_status_prefix() {
-        // Even if upstream wrapping drops the "(429)" prefix, the explicit
-        // quota substring must still route to PROVIDER_QUOTA_EXHAUSTED rather
-        // than the canned PROCESSING_ERROR fallback (EVE-472).
-        let error = classify_runtime_error_message(
-            "LLM error: insufficient_quota: You exceeded your current quota.",
-            &UserFacingErrorContext::default(),
-        );
-
-        assert_eq!(error.code, codes::PROVIDER_QUOTA_EXHAUSTED);
+    fn schema_rejections_only_expose_safe_bounded_paths() {
+        let path200 = format!("$.{}", "a".repeat(198));
+        let path201 = format!("$.{}", "a".repeat(199));
+        for (path, expected_path) in [
+            (
+                "$.properties.email.pattern",
+                Some("$.properties.email.pattern"),
+            ),
+            ("$.properties.email.pattern?<token>", None),
+            (path200.as_str(), Some(path200.as_str())),
+            (path201.as_str(), None),
+        ] {
+            let error = classify_runtime_error_message(
+                &format!(
+                    "Invalid JSON schema at $.properties: regex lookaround is unsupported. Found at {path}."
+                ),
+                &context(),
+            );
+            let mut fields = json!({"provider":"provider","model_id":"model"});
+            if let Some(path) = expected_path {
+                fields["schema_path"] = json!(path);
+            }
+            assert_eq!(
+                wire(&error),
+                json!({"code":"invalid_tool_schema","fields":fields})
+            );
+            assert_eq!(
+                error.fallback_message(),
+                "A connected tool uses an input schema that this model provider does not support. Update the integration or choose a different model provider, then try again."
+            );
+        }
     }
 
     #[test]
-    fn classify_credit_balance_exhausted_as_provider_quota_exhausted() {
+    fn usage_limits_have_exact_reset_copy_and_explicit_auto_continue_policy() {
         let error = classify_runtime_error_message(
-            "LLM error: credit_balance_exhausted: You have no credits remaining. secret=hidden",
-            &UserFacingErrorContext::default(),
+            "Codex API error (429 Too Many Requests): {\"error\":{\"type\":\"usage_limit_reached\",\"resets_at\":1783767823,\"resets_in_seconds\":12337}}",
+            &context(),
         );
-
-        assert_eq!(error.code, codes::PROVIDER_QUOTA_EXHAUSTED);
+        assert_eq!(
+            wire(&error),
+            json!({"code":"provider_usage_limit_reached","fields":{"provider":"provider","model_id":"model","resets_at":1783767823}})
+        );
         assert_eq!(
             error.fallback_message(),
-            "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue."
+            "You're out of LLM usage limits. Your usage limit resets at 11:03 UTC on Jul 11."
         );
-        assert!(!error.fallback_message().contains("secret"));
-    }
-
-    #[test]
-    fn classify_codex_usage_limit_reached_as_usage_limit() {
-        // The Codex/ChatGPT 429 usage-limit body must route to its own code
-        // (recovers at `resets_at`) rather than the transient rate-limit copy,
-        // and must capture the absolute reset timestamp for clients to localize.
-        let error = classify_runtime_error_message(
-            "LLM error: Codex API error (429 Too Many Requests): {\"error\":{\"type\":\"usage_limit_reached\",\"message\":\"The usage limit has been reached\",\"plan_type\":\"pro\",\"resets_at\":1783767823,\"eligible_promo\":null,\"resets_in_seconds\":12337}}",
-            &UserFacingErrorContext::default()
-                .with_provider("openai-codex")
-                .with_model_id("gpt-5-codex"),
-        );
-
-        assert_eq!(error.code, codes::PROVIDER_USAGE_LIMIT_REACHED);
         assert_eq!(
-            string_field(&error.fields, "provider"),
-            Some("openai-codex")
+            error
+                .clone()
+                .with_field("auto_continue", true)
+                .fallback_message(),
+            "You're out of LLM usage limits. Your usage limit resets at 11:03 UTC on Jul 11. We'll continue work automatically once it resets."
         );
-        assert_eq!(number_field(&error.fields, "resets_at"), Some(1783767823.0));
-
-        // Base copy is human-readable and names the reset time; without the
-        // capability field it makes no automatic-continuation promise.
-        let message = error.fallback_message();
-        assert!(
-            message.starts_with("You're out of LLM usage limits."),
-            "unexpected copy: {message}"
+        assert_eq!(
+            error
+                .clone()
+                .with_field("auto_continue", false)
+                .fallback_message(),
+            error.fallback_message()
         );
-        assert!(
-            message.contains("resets at"),
-            "missing reset time: {message}"
-        );
-        assert!(
-            !message.contains("automatically"),
-            "unexpected promise: {message}"
-        );
-    }
-
-    #[test]
-    fn usage_limit_message_without_reset_time_stays_generic() {
-        let error = classify_runtime_error_message(
+        let no_reset = classify_runtime_error_message(
             "Some Provider API error (429): usage limit reached",
             &UserFacingErrorContext::default(),
         );
-
-        assert_eq!(error.code, codes::PROVIDER_USAGE_LIMIT_REACHED);
-        assert_eq!(number_field(&error.fields, "resets_at"), None);
-        assert_eq!(error.fallback_message(), "You're out of LLM usage limits.");
-    }
-
-    #[test]
-    fn usage_limit_message_appends_auto_continue_suffix_when_flagged() {
-        // The emit site sets `auto_continue` only when an auto-continue
-        // capability is active; the copy then promises automatic resumption.
-        let error = UserFacingError::new(codes::PROVIDER_USAGE_LIMIT_REACHED)
-            .with_field("resets_at", 1783767823)
-            .with_field("auto_continue", true);
-
-        let message = error.fallback_message();
-        assert!(
-            message.contains("resets at"),
-            "missing reset time: {message}"
-        );
-        assert!(
-            message.contains("We'll continue work automatically once it resets."),
-            "missing auto-continue promise: {message}"
-        );
-    }
-
-    #[test]
-    fn classify_anthropic_low_credit_balance_as_provider_quota_exhausted() {
-        let error = classify_runtime_error_message(
-            "Anthropic API error (400): {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"}}",
-            &UserFacingErrorContext::default().with_provider("anthropic"),
-        );
-
-        assert_eq!(error.code, codes::PROVIDER_QUOTA_EXHAUSTED);
-    }
-
-    #[test]
-    fn disclosure_generic_collapses_code_and_fields() {
-        let error = UserFacingError::new(codes::PROVIDER_QUOTA_EXHAUSTED)
-            .with_field("provider", "openai")
-            .with_field("model_id", "gpt-4.1-mini");
-
-        let disclosed = error.apply_disclosure(ErrorDisclosure::Generic, Some("raw detail"));
-
-        assert_eq!(disclosed.code, codes::PROCESSING_ERROR);
-        assert!(disclosed.fields.is_empty());
         assert_eq!(
-            disclosed.fallback_message(),
+            wire(&no_reset),
+            json!({"code":"provider_usage_limit_reached"})
+        );
+        assert_eq!(
+            no_reset.fallback_message(),
+            "You're out of LLM usage limits."
+        );
+    }
+
+    #[test]
+    fn disclosure_modes_preserve_only_their_allowed_fields() {
+        let error = UserFacingError::new("provider_quota_exhausted")
+            .with_field("provider", "openai")
+            .with_field("model_id", "model");
+        let detail = " Authorization: Bearer synthetic-secret ";
+        let generic = error.apply_disclosure(ErrorDisclosure::Generic, Some(detail));
+        assert_eq!(wire(&generic), json!({"code":"processing_error"}));
+        assert_eq!(
+            generic.fallback_message(),
             "I encountered an error while processing your request. Please try again later."
         );
-    }
-
-    #[test]
-    fn disclosure_standard_is_identity() {
-        let error = UserFacingError::new(codes::PROVIDER_RATE_LIMITED).with_field("retry_after", 7);
-        let disclosed = error.apply_disclosure(ErrorDisclosure::Standard, Some("raw detail"));
-        assert_eq!(disclosed, error);
-    }
-
-    #[test]
-    fn disclosure_detailed_attaches_detail_without_rendering_it() {
-        let error = UserFacingError::new(codes::PROVIDER_QUOTA_EXHAUSTED);
-        let disclosed = error.apply_disclosure(
-            ErrorDisclosure::Detailed,
-            Some("OpenAI API error (429): insufficient_quota Authorization: Bearer sk-secret"),
-        );
-
-        assert_eq!(disclosed.code, codes::PROVIDER_QUOTA_EXHAUSTED);
         assert_eq!(
-            string_field(&disclosed.fields, "detail"),
-            Some("OpenAI API error (429): insufficient_quota Authorization: Bearer sk-secret")
+            error.apply_disclosure(ErrorDisclosure::Standard, Some(detail)),
+            error
         );
-        let message = disclosed.fallback_message();
-        assert!(message.contains("out of credits or quota"));
-        assert!(!message.contains("insufficient_quota"));
-        assert!(!message.contains("sk-secret"));
+        let detailed = error.apply_disclosure(ErrorDisclosure::Detailed, Some(detail));
+        assert_eq!(
+            wire(&detailed),
+            json!({"code":"provider_quota_exhausted","fields":{"provider":"openai","model_id":"model","detail":"Authorization: Bearer synthetic-secret"}})
+        );
+        assert_eq!(
+            detailed.fallback_message(),
+            "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue."
+        );
+        for empty in [None, Some(""), Some(" \n\t")] {
+            assert_eq!(
+                error.apply_disclosure(ErrorDisclosure::Detailed, empty),
+                error
+            );
+        }
     }
 
     #[test]
-    fn disclosure_detailed_truncates_long_detail() {
-        let error = UserFacingError::new(codes::PROCESSING_ERROR);
-        let long_detail = "x".repeat(5000);
-        let disclosed = error.apply_disclosure(ErrorDisclosure::Detailed, Some(&long_detail));
-        let detail = string_field(&disclosed.fields, "detail").unwrap();
-        assert!(detail.chars().count() <= 1001); // 1000 + ellipsis
+    fn detailed_disclosure_has_literal_unicode_character_boundary() {
+        let error = UserFacingError::new("processing_error");
+        for length in [999, 1000, 1001] {
+            let input = "🦀".repeat(length);
+            let expected = if length <= 1000 {
+                input.clone()
+            } else {
+                format!("{}…", "🦀".repeat(1000))
+            };
+            assert_eq!(
+                wire(&error.apply_disclosure(ErrorDisclosure::Detailed, Some(&input))),
+                json!({"code":"processing_error","fields":{"detail":expected}})
+            );
+        }
     }
 
     #[test]
@@ -899,37 +915,54 @@ mod tests {
     }
 
     #[test]
-    fn classify_missing_api_key_as_provider_misconfigured() {
-        let error = classify_runtime_error_message(
-            "LLM error: API key is required. Configure the API key in provider settings.",
-            &UserFacingErrorContext::default().with_provider("openai"),
-        );
-
-        assert_eq!(error.code, codes::PROVIDER_MISCONFIGURED);
-        assert_eq!(string_field(&error.fields, "provider"), Some("openai"));
-    }
-
-    #[test]
-    fn classify_missing_model_as_model_not_configured() {
-        let error = classify_runtime_error_message(
-            "ReasonAtom execution failed: Model not configured",
-            &UserFacingErrorContext::default(),
-        );
-
-        assert_eq!(error.code, codes::MODEL_NOT_CONFIGURED);
-        assert!(error.fallback_message().contains("Choose a model"));
-    }
-
-    #[test]
-    fn fallback_message_reuses_budget_fields() {
-        let error = UserFacingError::new(codes::BUDGET_PAUSED)
-            .with_field("spent", 5.0)
-            .with_field("soft_limit", 5.0)
-            .with_field("currency", "tokens");
-
+    fn applying_error_replaces_owned_metadata_and_clears_previous_detail() {
+        let mut metadata = HashMap::from([
+            ("other".into(), json!("preserve")),
+            (
+                "error_fields".into(),
+                json!({"detail":"old-private-detail"}),
+            ),
+            ("error_code".into(), json!("old-code")),
+        ]);
+        let error = UserFacingError::new("provider_rate_limited").with_field("retry_after", 7);
+        error.apply_to_message_metadata(&mut metadata);
         assert_eq!(
-            error.fallback_message(),
-            "Budget paused. 5.00 tokens spent reached the 5.00 tokens soft limit. Increase or resume the budget to continue."
+            metadata,
+            HashMap::from([
+                ("other".into(), json!("preserve")),
+                ("error_code".into(), json!("provider_rate_limited")),
+                ("error_fields".into(), json!({"retry_after":7}))
+            ])
+        );
+        let generic = error.apply_disclosure(ErrorDisclosure::Generic, None);
+        generic.apply_to_message_metadata(&mut metadata);
+        assert_eq!(
+            metadata,
+            HashMap::from([
+                ("other".into(), json!("preserve")),
+                ("error_code".into(), json!("processing_error"))
+            ])
+        );
+        let mut code = Some("old-code".into());
+        let mut fields = Some(BTreeMap::from([(
+            "detail".into(),
+            json!("old-private-detail"),
+        )]));
+        generic.apply_to_event_fields(&mut code, &mut fields);
+        assert_eq!((code, fields), (Some("processing_error".into()), None));
+        UserFacingError::apply_disclosure_to_message_metadata(
+            &mut metadata,
+            ErrorDisclosure::Generic,
+            "provider_rate_limited",
+        );
+        assert_eq!(
+            metadata,
+            HashMap::from([
+                ("other".into(), json!("preserve")),
+                ("error_code".into(), json!("processing_error")),
+                ("error_disclosure".into(), json!("generic")),
+                ("source_error_code".into(), json!("provider_rate_limited"))
+            ])
         );
     }
 }
