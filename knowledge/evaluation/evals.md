@@ -232,3 +232,14 @@ published results are tracked in
 - Artifact paths are resolved through the session filesystem boundary.
 - Scorer failures do not expose internal provider or storage errors to public
   consumers.
+
+## Harness prompt experiments
+
+The standalone [Generic Mira study](../../evals/generic/README.md#harness-behavior-comparison)
+compares a frozen Generic baseline with an opt-in candidate under identical
+capabilities. Candidate prompts are evaluation assets, not production defaults.
+The comparison targets completed artifacts, necessary versus redundant questions,
+instruction conflicts, objective retention, delegation decisions, and proportionate
+verification. Local runtime/scorer checks cannot establish model behavior; production
+adoption requires live comparison and transcript review. The documented blocked
+comparison remains an open acceptance step, not a passing result.

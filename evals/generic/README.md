@@ -38,7 +38,7 @@ hermetic, and exercises exactly the code in your working tree.
 |------|--------|--------------|---------|
 | **target** (model) | `anthropic/<model>`, `openai/<model>`, `openrouter/<vendor>/<model>` | `EVERRUNS_EVAL_TARGETS` | key-gated `anthropic/claude-sonnet-5` + `openai/gpt-5.5` + `openrouter/z-ai/glm-5.2` |
 | **effort** | `default`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh` | `EVERRUNS_EVAL_EFFORTS` | `default` (no override) |
-| **harness** | `minimal`, `workspace`, `coding` | `EVERRUNS_EVAL_HARNESSES` | `coding` |
+| **harness** | `minimal`, `workspace`, `coding`, `behavior-baseline`, `behavior-tuned` | `EVERRUNS_EVAL_HARNESSES` | `coding` |
 | **config** | `default`, `tight-iterations`, `parallel-tools` | `EVERRUNS_EVAL_CONFIGS` | `default` |
 
 - **Targets** are key-gated (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` /
@@ -51,7 +51,8 @@ hermetic, and exercises exactly the code in your working tree.
   unsupported combination surfaces as a provider error on that case.
 - **Harness profiles** ([`src/profiles.rs`](src/profiles.rs)) are code-built
   harnesses: `minimal` (no capabilities), `workspace` (`session_file_system` +
-  `current_time`), `coding` (workspace + `bashkit_shell`). Cases declare needed
+  `current_time`), `coding` (workspace + `bashkit_shell`), and the paired `behavior-baseline` /
+  `behavior-tuned` profiles (coding + skills + instruction files). Cases declare needed
   capabilities in `metadata.requires`; on a profile that lacks them the case is
   skipped (all scorers N/A), so any dataset × harness crossing is meaningful.
 - **Config profiles** vary runtime knobs orthogonal to the harness (iteration
@@ -165,3 +166,56 @@ subject error; infra faults score N/A and are retried). Skipped cases
 ```bash
 cargo test    # validates the dataset, scorers, and the subject's skip/validation paths
 ```
+
+## Harness behavior comparison
+
+The `behavior` tag covers request completion, routine choices, necessary
+clarification, reviewable approval preparation, skill/project instruction conflicts,
+follow-up corrections and side questions, cancellation, delegation planning, and
+proportionate verification. File expectations inspect resulting workspace state;
+tool budgets catch excessive verification. Regex checks are narrow indicators,
+not a semantic judge. Inspect transcripts when comparing failures.
+
+`behavior-baseline` freezes the previous Generic prompt; `behavior-tuned` loads an
+[experimental candidate prompt](prompts/behavior-candidate.md). Neither profile
+changes a production harness. Both enable the same filesystem, clock, shell, skill, and instruction-file
+capabilities. They deliberately do not reproduce every server Generic capability.
+The study enables the Framework `bashkit` feature so its declared shell capability
+is available at runtime. Workspace setup registers filesystem capability once;
+a deterministic test builds every real subject profile to catch missing features
+and duplicate registrations. The existing default target and harness axes are unchanged. The new skill cases
+skip on profiles without skill support.
+
+```bash
+EVERRUNS_EVAL_TARGETS="openai/gpt-6-astra" \
+EVERRUNS_EVAL_EFFORTS="low" \
+EVERRUNS_EVAL_HARNESSES="behavior-baseline,behavior-tuned" \
+mira run --tag behavior --trials 3 --group-by harness --timeout 120
+```
+
+Run with a provider account that has Astra access. Compare per-case pass rates,
+tool counts, iterations, and transcripts, keeping the target/effort/config fixed.
+A missing key skips the target; that is not behavioral evidence. `cargo test`
+validates dataset structure, regexes, scorers, and paired profile configuration
+without calling a model. The offline smoke uses the in-process simulator to activate
+a skill, edit through Bashkit, read back the result, record tool events, and score
+the artifact and tool budget on both profiles. The dedicated Generic Eval Checks
+workflow runs these checks on study PRs and merges. Follow-ups run sequentially after idle, not as mid-turn
+steering. The positive delegation case evaluates a plan with hypothetical authorized
+reviewers; it does not measure actual spawning. Platform Chat's existing
+[`platform-capability`](../platform-capability) study separately covers confirmation
+before creation and execution after confirmation.
+
+### Acceptance status
+
+The candidate follows [official Astra prompting guidance](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra)
+(reviewed 2026-09-05). Production adoption requires live behavioral comparison;
+local deterministic tests establish runtime/scorer correctness only. Automatic
+approval review blocked sending the internal harness prompts to OpenAI Astra,
+even after confirming the selected eleven fixtures are synthetic and contain no
+attachments. No live scores or Astra acceptance are claimed.
+
+The full unshipped production-prompt proposal is preserved on local branch
+`codex/astra-harness-behavior`, commit `db74ce86d`. It remains an open objective:
+obtain explicit authorization for the prompt payload and destination, run the
+paired comparison, inspect regressions, then review production adoption separately.

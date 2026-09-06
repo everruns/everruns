@@ -543,149 +543,213 @@ mod pre_tool_use_tests {
         })
     }
 
+    fn assert_call(actual: &ToolCall, expected: &ToolCall) {
+        assert_eq!(
+            serde_json::to_value(actual).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+    }
+
     #[tokio::test]
-    async fn matcher_miss_skips_executor() {
-        let exec = programmed(HookOutcome::Allow);
-        let exec_arc: Arc<dyn HookExecutor> = exec.clone();
+    async fn matcher_miss_skips_executor_and_preserves_call() {
+        let exec = programmed(HookOutcome::Block {
+            reason: "must not run".into(),
+            user_message: None,
+        });
         let matcher = crate::user_hook_types::HookMatcher {
             tool_name: Some("edit_file".into()),
             ..Default::default()
         };
-        let adapter = PreToolUseHookAdapter::new(make_spec(matcher), exec_arc);
-        let ctx = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
-
-        let decision = adapter
-            .before_exec(make_tool_call(), &make_tool_def(), &ctx)
-            .await;
-        assert!(matches!(decision, PreToolUseDecision::Continue(_)));
-        assert_eq!(exec.calls.lock().unwrap().len(), 0);
-    }
-
-    #[tokio::test]
-    async fn allow_outcome_returns_continue_unchanged() {
-        let exec_arc: Arc<dyn HookExecutor> = programmed(HookOutcome::Allow);
-        let adapter = PreToolUseHookAdapter::new(make_spec(Default::default()), exec_arc);
-        let ctx = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
-        let original = make_tool_call();
-
-        let decision = adapter
-            .before_exec(original.clone(), &make_tool_def(), &ctx)
-            .await;
-        match decision {
-            PreToolUseDecision::Continue(tc) => assert_eq!(tc.arguments, original.arguments),
-            other => panic!("expected Continue, got {other:?}"),
+        let adapter = PreToolUseHookAdapter::new(make_spec(matcher), exec.clone());
+        let ctx = ToolContext::new(crate::typed_id::SessionId::from_seed(42));
+        let call = make_tool_call();
+        match adapter
+            .before_exec(call.clone(), &make_tool_def(), &ctx)
+            .await
+        {
+            PreToolUseDecision::Continue(actual) => assert_call(&actual, &call),
+            other => panic!("unexpected {other:?}"),
         }
+        assert!(exec.calls.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
-    async fn block_outcome_propagates() {
-        let exec_arc: Arc<dyn HookExecutor> = programmed(HookOutcome::Block {
-            reason: "denied".into(),
-            user_message: Some("nope".into()),
-        });
-        let adapter = PreToolUseHookAdapter::new(make_spec(Default::default()), exec_arc);
-        let ctx = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
-
-        let decision = adapter
-            .before_exec(make_tool_call(), &make_tool_def(), &ctx)
-            .await;
-        match decision {
-            PreToolUseDecision::Block {
-                reason,
-                user_message,
-                ..
-            } => {
-                assert_eq!(reason, "denied");
-                assert_eq!(user_message.as_deref(), Some("nope"));
+    async fn outcomes_preserve_call_identity_and_apply_all_error_policies() {
+        let ctx = ToolContext::new(crate::typed_id::SessionId::from_seed(42));
+        for policy in [OnError::Block, OnError::Warn, OnError::Allow] {
+            for outcome in [
+                HookOutcome::Allow,
+                HookOutcome::Block {
+                    reason: "denied".into(),
+                    user_message: Some("nope".into()),
+                },
+                HookOutcome::Error {
+                    message: "boom".into(),
+                },
+            ] {
+                let expected_block = match &outcome {
+                    HookOutcome::Block { .. } => Some(("denied", Some("nope"))),
+                    HookOutcome::Error { .. } if matches!(policy, OnError::Block) => {
+                        Some(("hook user:pre errored: boom", None))
+                    }
+                    _ => None,
+                };
+                let exec = programmed(outcome);
+                let mut spec = make_spec(Default::default());
+                spec.on_error = policy;
+                let adapter = PreToolUseHookAdapter::new(spec, exec.clone());
+                let call = make_tool_call();
+                match (
+                    adapter
+                        .before_exec(call.clone(), &make_tool_def(), &ctx)
+                        .await,
+                    expected_block,
+                ) {
+                    (PreToolUseDecision::Continue(actual), None) => assert_call(&actual, &call),
+                    (
+                        PreToolUseDecision::Block {
+                            tool_call,
+                            reason,
+                            user_message,
+                        },
+                        Some((expected_reason, expected_message)),
+                    ) => {
+                        assert_call(&tool_call, &call);
+                        assert_eq!(reason, expected_reason);
+                        assert_eq!(user_message.as_deref(), expected_message);
+                    }
+                    other => panic!("unexpected decision for {policy:?}: {other:?}"),
+                }
+                assert_eq!(exec.calls.lock().unwrap().len(), 1);
             }
-            other => panic!("expected Block, got {other:?}"),
         }
     }
 
     #[tokio::test]
-    async fn mutate_patch_merges_arguments() {
-        let exec_arc: Arc<dyn HookExecutor> = programmed(HookOutcome::Mutate {
-            patch: json!({ "arguments": { "command": "ls" } }),
-            reason: None,
-        });
-        let adapter = PreToolUseHookAdapter::new(make_spec(Default::default()), exec_arc);
-        let ctx = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
-
-        let decision = adapter
-            .before_exec(make_tool_call(), &make_tool_def(), &ctx)
-            .await;
-        match decision {
-            PreToolUseDecision::Continue(tc) => {
-                assert_eq!(tc.arguments["command"], "ls");
+    async fn mutation_merges_only_argument_objects_and_preserves_identity() {
+        let ctx = ToolContext::new(crate::typed_id::SessionId::from_seed(42));
+        for (arguments, patch, expected) in [
+            (
+                json!({"command":"old","keep":7,"nested":{"old":true}}),
+                json!({"arguments":{"command":"ls","added":true,"nested":{"new":true}},"name":"evil","id":"evil"}),
+                json!({"command":"ls","keep":7,"added":true,"nested":{"new":true}}),
+            ),
+            (
+                json!(null),
+                json!({"arguments":{"command":"ls"}}),
+                json!({"command":"ls"}),
+            ),
+            (json!([1]), json!({"arguments":{}}), json!({})),
+            (json!({"keep":7}), json!(null), json!({"keep":7})),
+            (
+                json!({"keep":7}),
+                json!({"result":"ignored"}),
+                json!({"keep":7}),
+            ),
+            (
+                json!({"keep":7}),
+                json!({"arguments":[1]}),
+                json!({"keep":7}),
+            ),
+            (
+                json!({"keep":7}),
+                json!({"arguments":null}),
+                json!({"keep":7}),
+            ),
+        ] {
+            let exec = programmed(HookOutcome::Mutate {
+                patch: patch.clone(),
+                reason: None,
+            });
+            let adapter = PreToolUseHookAdapter::new(make_spec(Default::default()), exec.clone());
+            let mut call = make_tool_call();
+            call.arguments = arguments;
+            let mut expected_call = call.clone();
+            expected_call.arguments = expected;
+            match adapter.before_exec(call, &make_tool_def(), &ctx).await {
+                PreToolUseDecision::Continue(actual) => assert_call(&actual, &expected_call),
+                other => panic!("unexpected {other:?} for {patch}"),
             }
-            other => panic!("expected Continue, got {other:?}"),
+            assert_eq!(exec.calls.lock().unwrap().len(), 1);
         }
     }
 
     #[tokio::test]
-    async fn error_with_on_error_block_returns_block() {
-        let exec_arc: Arc<dyn HookExecutor> = programmed(HookOutcome::Error {
-            message: "boom".into(),
+    async fn factory_validates_globs_and_dispatches_only_matching_pre_tool_hooks() {
+        let valid = make_spec(crate::user_hook_types::HookMatcher {
+            tool_name_glob: Some(" bash* | edit_file ".into()),
+            ..Default::default()
         });
-        let mut spec = make_spec(Default::default());
-        spec.on_error = OnError::Block;
-        let adapter = PreToolUseHookAdapter::new(spec, exec_arc);
-        let ctx = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
-
-        let decision = adapter
-            .before_exec(make_tool_call(), &make_tool_def(), &ctx)
-            .await;
-        match decision {
-            PreToolUseDecision::Block { reason, .. } => {
-                assert!(reason.contains("boom"), "{reason}");
-            }
-            other => panic!("expected Block, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn error_with_on_error_warn_returns_continue() {
-        let exec_arc: Arc<dyn HookExecutor> = programmed(HookOutcome::Error {
-            message: "boom".into(),
-        });
-        let adapter = PreToolUseHookAdapter::new(make_spec(Default::default()), exec_arc);
-        let ctx = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
-
-        let decision = adapter
-            .before_exec(make_tool_call(), &make_tool_def(), &ctx)
-            .await;
-        assert!(matches!(decision, PreToolUseDecision::Continue(_)));
-    }
-
-    #[test]
-    fn factory_filters_to_pre_tool_use_event() {
+        let mut invalid = valid.clone();
+        invalid.matcher.tool_name_glob = Some("bash**".into());
         let specs = vec![
-            make_spec(Default::default()),
+            valid.clone(),
             UserHookSpec {
                 event: HookEvent::PostToolUse,
-                ..make_spec(Default::default())
+                ..valid
             },
+            invalid,
         ];
-        struct NoopDispatcher;
+        struct RecordingDispatcher(Mutex<Vec<HookPayload>>);
         #[async_trait]
-        impl BashHookDispatcher for NoopDispatcher {
+        impl BashHookDispatcher for RecordingDispatcher {
             async fn dispatch(
                 &self,
-                _payload: &HookPayload,
-                _command: &str,
-                _extra_env: &std::collections::BTreeMap<String, String>,
-                _opts: &ExecutorOpts,
+                payload: &HookPayload,
+                command: &str,
+                extra_env: &std::collections::BTreeMap<String, String>,
+                opts: &ExecutorOpts,
             ) -> Result<crate::hook_executor::BashExecOutput, String> {
+                assert_eq!(command, "true");
+                assert!(extra_env.is_empty());
+                assert_eq!(opts.timeout_ms, 5000);
+                self.0.lock().unwrap().push(payload.clone());
                 Ok(crate::hook_executor::BashExecOutput {
                     exit_code: 0,
-                    stdout: String::new(),
+                    stdout: r#"{"decision":"block","reason":"policy","user_message":"denied"}"#
+                        .into(),
                     stderr: String::new(),
                 })
             }
         }
-        let dispatcher: Arc<dyn BashHookDispatcher> = Arc::new(NoopDispatcher);
-        let hooks = build_pre_tool_use_hooks(&specs, dispatcher);
+        let dispatcher = Arc::new(RecordingDispatcher(Mutex::new(Vec::new())));
+        let hooks = build_pre_tool_use_hooks(&specs, dispatcher.clone());
         assert_eq!(hooks.len(), 1);
+        let ctx = ToolContext::new(crate::typed_id::SessionId::from_seed(42));
+        let call = make_tool_call();
+        match hooks[0]
+            .before_exec(call.clone(), &make_tool_def(), &ctx)
+            .await
+        {
+            PreToolUseDecision::Block {
+                tool_call,
+                reason,
+                user_message,
+            } => {
+                assert_eq!(tool_call.id, call.id);
+                assert_eq!(tool_call.arguments, call.arguments);
+                assert_eq!(reason, "policy");
+                assert_eq!(user_message.as_deref(), Some("denied"));
+            }
+            other => panic!("expected executed hook block, got {other:?}"),
+        }
+        let mut unrelated = call.clone();
+        unrelated.name = "read_file".into();
+        assert!(matches!(
+            hooks[0]
+                .before_exec(unrelated, &make_tool_def(), &ctx)
+                .await,
+            PreToolUseDecision::Continue(_)
+        ));
+        let payloads = dispatcher.0.lock().unwrap();
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(payloads[0].event, HookEvent::PreToolUse);
+        assert_eq!(payloads[0].session_id, ctx.session_id);
+        assert_eq!(payloads[0].hook_id.as_str(), "user:pre");
+        assert_eq!(
+            payloads[0].data,
+            json!({"tool_name":"bash","tool_call_id":"call_x","arguments":{"command":"rm -rf /"}})
+        );
     }
 }
 
@@ -738,10 +802,13 @@ mod tests {
         ToolResult {
             tool_call_id: "call_1".into(),
             result: Some(json!({"out": "stuff"})),
-            images: None,
+            images: Some(vec![crate::tool_types::ToolResultImage {
+                base64: "aW1hZ2U=".into(),
+                media_type: "image/png".into(),
+            }]),
             error: None,
-            connection_required: None,
-            raw_output: None,
+            connection_required: Some("provider".into()),
+            raw_output: Some("private raw output".into()),
         }
     }
 
@@ -749,6 +816,7 @@ mod tests {
     struct ProgrammedExecutor {
         outcome: HookOutcome,
         calls: Mutex<Vec<HookPayload>>,
+        options: Mutex<Vec<ExecutorOpts>>,
     }
 
     #[async_trait]
@@ -756,8 +824,9 @@ mod tests {
         fn kind(&self) -> &'static str {
             "test"
         }
-        async fn run(&self, payload: HookPayload, _opts: &ExecutorOpts) -> HookOutcome {
+        async fn run(&self, payload: HookPayload, opts: &ExecutorOpts) -> HookOutcome {
             self.calls.lock().unwrap().push(payload);
+            self.options.lock().unwrap().push(opts.clone());
             self.outcome.clone()
         }
     }
@@ -766,184 +835,264 @@ mod tests {
         Arc::new(ProgrammedExecutor {
             outcome,
             calls: Mutex::new(Vec::new()),
+            options: Mutex::new(Vec::new()),
         })
     }
 
-    #[tokio::test]
-    async fn adapter_runs_executor_when_matcher_passes() {
-        let exec = programmed(HookOutcome::Allow);
-        let exec_arc: Arc<dyn HookExecutor> = exec.clone();
-        let adapter =
-            PostToolUseHookAdapter::new(make_spec(HookEvent::PostToolUse, "true"), exec_arc);
-
-        let tc = make_tool_call("edit_file");
-        let td = make_tool_def("edit_file");
-        let mut result = empty_result();
-        let ctx = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
-        adapter.after_exec(&tc, &td, &mut result, &ctx).await;
-
-        assert_eq!(exec.calls.lock().unwrap().len(), 1);
+    fn assert_result(actual: &ToolResult, expected: &ToolResult) {
+        assert_eq!(
+            serde_json::to_value(actual).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+        assert_eq!(actual.raw_output, expected.raw_output);
     }
 
     #[tokio::test]
-    async fn adapter_skips_when_matcher_rejects() {
-        let exec = programmed(HookOutcome::Allow);
-        let mut spec = make_spec(HookEvent::PostToolUse, "true");
-        spec.matcher.tool_name = Some("read_file".into()); // won't match edit_file
-        let exec_arc: Arc<dyn HookExecutor> = exec.clone();
-        let adapter = PostToolUseHookAdapter::new(spec, exec_arc);
-
-        let tc = make_tool_call("edit_file");
-        let td = make_tool_def("edit_file");
-        let mut result = empty_result();
-        let ctx = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
-        adapter.after_exec(&tc, &td, &mut result, &ctx).await;
-
-        assert_eq!(exec.calls.lock().unwrap().len(), 0);
+    async fn matching_executor_receives_result_identity_and_configured_limits() {
+        for error in [None, Some("tool failed".to_string())] {
+            let exec = programmed(HookOutcome::Allow);
+            let mut spec = make_spec(HookEvent::PostToolUse, "true");
+            spec.timeout_ms = 1234;
+            spec.id = None;
+            let adapter = PostToolUseHookAdapter::with_index(spec, exec.clone(), 7);
+            let mut tc = make_tool_call("edit_file");
+            tc.arguments = json!({"path":"a.txt"});
+            let mut result = empty_result();
+            result.error = error.clone();
+            let expected = result.clone();
+            let ctx = ToolContext::new(crate::typed_id::SessionId::from_seed(42))
+                .with_org_id(crate::typed_id::OrgId::from_seed(77));
+            adapter
+                .after_exec(&tc, &make_tool_def("edit_file"), &mut result, &ctx)
+                .await;
+            assert_result(&result, &expected);
+            let calls = exec.calls.lock().unwrap();
+            assert_eq!(calls.len(), 1);
+            let payload = &calls[0];
+            assert_eq!(payload.event, HookEvent::PostToolUse);
+            assert_eq!(payload.hook_id.as_str(), "user:post_tool_use_7");
+            assert_eq!(payload.session_id, ctx.session_id);
+            assert_eq!(payload.org_id, ctx.org_id);
+            assert!(payload.turn_id.is_none());
+            assert!(payload.agent_id.is_none());
+            chrono::DateTime::parse_from_rfc3339(&payload.ts).unwrap();
+            assert_eq!(
+                payload.data,
+                json!({"tool_name":"edit_file","tool_call_id":"call_1","arguments":{"path":"a.txt"},"result":{"out":"stuff"},"error":error,"success":error.is_none()})
+            );
+            let opts = exec.options.lock().unwrap();
+            assert_eq!(opts.len(), 1);
+            assert_eq!(opts[0].timeout_ms, 1234);
+            assert_eq!(opts[0].max_output_bytes, 65536);
+        }
     }
 
     #[tokio::test]
-    async fn mutate_patch_replaces_result_and_error() {
-        let exec_arc: Arc<dyn HookExecutor> = Arc::new(ProgrammedExecutor {
-            outcome: HookOutcome::Mutate {
-                patch: json!({
-                    "result": {"replaced": true},
-                    "error": "redacted",
-                }),
-                reason: None,
-            },
-            calls: Mutex::new(Vec::new()),
-        });
-        let adapter =
-            PostToolUseHookAdapter::new(make_spec(HookEvent::PostToolUse, "true"), exec_arc);
-
-        let tc = make_tool_call("edit_file");
-        let td = make_tool_def("edit_file");
-        let mut result = empty_result();
-        let ctx = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
-        adapter.after_exec(&tc, &td, &mut result, &ctx).await;
-
-        assert_eq!(result.result, Some(json!({"replaced": true})));
-        assert_eq!(result.error.as_deref(), Some("redacted"));
-    }
-
-    #[tokio::test]
-    async fn mutate_additional_context_appends_hook_context() {
-        let exec_arc: Arc<dyn HookExecutor> = Arc::new(ProgrammedExecutor {
-            outcome: HookOutcome::Mutate {
-                patch: json!({"additional_context": "fmt clean"}),
-                reason: None,
-            },
-            calls: Mutex::new(Vec::new()),
-        });
-        let adapter =
-            PostToolUseHookAdapter::new(make_spec(HookEvent::PostToolUse, "true"), exec_arc);
-
-        let tc = make_tool_call("edit_file");
-        let td = make_tool_def("edit_file");
-        let mut result = empty_result();
-        let ctx = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
-        adapter.after_exec(&tc, &td, &mut result, &ctx).await;
-
-        // Should append a hook_context key to the existing object result.
-        let r = result.result.as_ref().unwrap();
-        assert_eq!(r["hook_context"], "fmt clean");
-        assert_eq!(r["out"], "stuff"); // original keys preserved
-    }
-
-    #[tokio::test]
-    async fn block_outcome_is_ignored_for_post_tool_use() {
-        let exec_arc: Arc<dyn HookExecutor> = Arc::new(ProgrammedExecutor {
-            outcome: HookOutcome::Block {
-                reason: "bogus".into(),
-                user_message: None,
-            },
-            calls: Mutex::new(Vec::new()),
-        });
-        let adapter =
-            PostToolUseHookAdapter::new(make_spec(HookEvent::PostToolUse, "true"), exec_arc);
-
-        let tc = make_tool_call("edit_file");
-        let td = make_tool_def("edit_file");
-        let mut result = empty_result();
-        let original = result.result.clone();
-        let ctx = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
-        adapter.after_exec(&tc, &td, &mut result, &ctx).await;
-
-        assert_eq!(result.result, original);
-        assert!(result.error.is_none());
-    }
-
-    #[tokio::test]
-    async fn error_with_on_error_block_replaces_result_with_error() {
-        let exec_arc: Arc<dyn HookExecutor> = Arc::new(ProgrammedExecutor {
-            outcome: HookOutcome::Error {
-                message: "boom".into(),
-            },
-            calls: Mutex::new(Vec::new()),
+    async fn rejected_matcher_skips_executor_and_preserves_complete_result() {
+        let exec = programmed(HookOutcome::Mutate {
+            patch: json!({"result":"must not apply"}),
+            reason: None,
         });
         let mut spec = make_spec(HookEvent::PostToolUse, "true");
-        spec.on_error = OnError::Block;
-        let adapter = PostToolUseHookAdapter::new(spec, exec_arc);
-
-        let tc = make_tool_call("edit_file");
-        let td = make_tool_def("edit_file");
+        spec.matcher.tool_name = Some("read_file".into());
+        let adapter = PostToolUseHookAdapter::new(spec, exec.clone());
         let mut result = empty_result();
-        let ctx = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
-        adapter.after_exec(&tc, &td, &mut result, &ctx).await;
-
-        let err = result.error.unwrap();
-        assert!(err.contains("boom"), "{err}");
+        let expected = result.clone();
+        let ctx = ToolContext::new(crate::typed_id::SessionId::from_seed(42));
+        adapter
+            .after_exec(
+                &make_tool_call("edit_file"),
+                &make_tool_def("edit_file"),
+                &mut result,
+                &ctx,
+            )
+            .await;
+        assert_result(&result, &expected);
+        assert!(exec.calls.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
-    async fn error_with_on_error_warn_keeps_result_intact() {
-        let exec_arc: Arc<dyn HookExecutor> = Arc::new(ProgrammedExecutor {
-            outcome: HookOutcome::Error {
-                message: "boom".into(),
-            },
-            calls: Mutex::new(Vec::new()),
-        });
-        let adapter =
-            PostToolUseHookAdapter::new(make_spec(HookEvent::PostToolUse, "true"), exec_arc);
-
-        let tc = make_tool_call("edit_file");
-        let td = make_tool_def("edit_file");
-        let mut result = empty_result();
-        let original = result.result.clone();
-        let ctx = ToolContext::new(crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()));
-        adapter.after_exec(&tc, &td, &mut result, &ctx).await;
-
-        assert_eq!(result.result, original);
-        assert!(result.error.is_none());
+    async fn post_mutations_update_only_supported_fields_across_result_shapes() {
+        let ctx = ToolContext::new(crate::typed_id::SessionId::from_seed(42));
+        for (initial, patch, expected_value, expected_error) in [
+            (
+                Some(json!({"out":"stuff"})),
+                json!({"result":{"replaced":true},"error":"redacted","tool_call_id":"evil","raw_output":"evil"}),
+                Some(json!({"replaced":true})),
+                Some("redacted"),
+            ),
+            (
+                Some(json!({"out":"stuff"})),
+                json!({"additional_context":"fmt clean"}),
+                Some(json!({"out":"stuff","hook_context":"fmt clean"})),
+                None,
+            ),
+            (
+                Some(json!("text")),
+                json!({"additional_context":"context"}),
+                Some(json!({"value":"text","hook_context":"context"})),
+                None,
+            ),
+            (
+                Some(json!([1])),
+                json!({"additional_context":"context"}),
+                Some(json!({"value":[1],"hook_context":"context"})),
+                None,
+            ),
+            (
+                None,
+                json!({"additional_context":"context"}),
+                Some(json!({"hook_context":"context"})),
+                None,
+            ),
+            (
+                Some(json!({"old":true})),
+                json!({"result":null,"additional_context":"context"}),
+                Some(json!({"value":null,"hook_context":"context"})),
+                None,
+            ),
+            (
+                Some(json!({"old":true})),
+                json!({"result":null}),
+                Some(json!(null)),
+                None,
+            ),
+            (
+                Some(json!({"old":true})),
+                json!({"error":7,"additional_context":null}),
+                Some(json!({"old":true})),
+                None,
+            ),
+            (
+                Some(json!({"old":true})),
+                json!(null),
+                Some(json!({"old":true})),
+                None,
+            ),
+        ] {
+            let exec = programmed(HookOutcome::Mutate {
+                patch: patch.clone(),
+                reason: None,
+            });
+            let adapter = PostToolUseHookAdapter::new(
+                make_spec(HookEvent::PostToolUse, "true"),
+                exec.clone(),
+            );
+            let mut result = empty_result();
+            result.result = initial;
+            let mut expected = result.clone();
+            expected.result = expected_value;
+            expected.error = expected_error.map(str::to_string);
+            adapter
+                .after_exec(
+                    &make_tool_call("edit_file"),
+                    &make_tool_def("edit_file"),
+                    &mut result,
+                    &ctx,
+                )
+                .await;
+            assert_result(&result, &expected);
+            assert_eq!(exec.calls.lock().unwrap().len(), 1);
+        }
     }
 
-    #[test]
-    fn factory_filters_to_post_tool_use_event() {
+    #[tokio::test]
+    async fn post_outcomes_apply_error_policy_without_retroactive_blocking() {
+        let ctx = ToolContext::new(crate::typed_id::SessionId::from_seed(42));
+        for policy in [OnError::Block, OnError::Warn, OnError::Allow] {
+            for outcome in [
+                HookOutcome::Allow,
+                HookOutcome::Block {
+                    reason: "ignored".into(),
+                    user_message: Some("ignored".into()),
+                },
+                HookOutcome::Error {
+                    message: "boom".into(),
+                },
+            ] {
+                let mut result = empty_result();
+                result.error = Some("existing tool error".into());
+                let mut expected = result.clone();
+                if matches!(outcome, HookOutcome::Error { .. }) && matches!(policy, OnError::Block)
+                {
+                    expected.error = Some("hook user:t: boom".into());
+                }
+                let exec = programmed(outcome);
+                let mut spec = make_spec(HookEvent::PostToolUse, "true");
+                spec.on_error = policy;
+                let adapter = PostToolUseHookAdapter::new(spec, exec.clone());
+                adapter
+                    .after_exec(
+                        &make_tool_call("edit_file"),
+                        &make_tool_def("edit_file"),
+                        &mut result,
+                        &ctx,
+                    )
+                    .await;
+                assert_result(&result, &expected);
+                assert_eq!(exec.calls.lock().unwrap().len(), 1);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn factory_validates_and_dispatches_only_post_tool_specs() {
+        let mut valid = make_spec(HookEvent::PostToolUse, "sanitize");
+        valid.id = None;
+        valid.timeout_ms = 1234;
+        valid.executor = ExecutorSpec::Bash {
+            command: "sanitize".into(),
+            env: [("MODE".into(), "strict".into())].into(),
+        };
+        let mut invalid = valid.clone();
+        invalid.timeout_ms = 99;
         let specs = vec![
-            make_spec(HookEvent::PostToolUse, "true"),
-            make_spec(HookEvent::PreToolUse, "true"),
-            make_spec(HookEvent::SessionStart, "true"),
+            make_spec(HookEvent::PreToolUse, "ignored"),
+            invalid,
+            valid,
+            make_spec(HookEvent::SessionStart, "ignored"),
         ];
-        struct NoopDispatcher;
+        struct RecordingDispatcher(Mutex<Vec<HookPayload>>);
         #[async_trait]
-        impl BashHookDispatcher for NoopDispatcher {
+        impl BashHookDispatcher for RecordingDispatcher {
             async fn dispatch(
                 &self,
-                _payload: &HookPayload,
-                _command: &str,
-                _extra_env: &std::collections::BTreeMap<String, String>,
-                _opts: &ExecutorOpts,
+                payload: &HookPayload,
+                command: &str,
+                extra_env: &std::collections::BTreeMap<String, String>,
+                opts: &ExecutorOpts,
             ) -> Result<crate::hook_executor::BashExecOutput, String> {
+                assert_eq!(command, "sanitize");
+                assert_eq!(extra_env, &[("MODE".into(), "strict".into())].into());
+                assert_eq!(opts.timeout_ms, 1234);
+                assert_eq!(opts.max_output_bytes, 65536);
+                self.0.lock().unwrap().push(payload.clone());
                 Ok(crate::hook_executor::BashExecOutput {
                     exit_code: 0,
-                    stdout: String::new(),
+                    stdout: r#"{"decision":"mutate","patch":{"result":{"sanitized":true}}}"#.into(),
                     stderr: String::new(),
                 })
             }
         }
-        let dispatcher: Arc<dyn BashHookDispatcher> = Arc::new(NoopDispatcher);
-        let hooks = build_post_tool_use_hooks(&specs, dispatcher);
-        assert_eq!(hooks.len(), 1, "only the PostToolUse spec should be built");
+        let dispatcher = Arc::new(RecordingDispatcher(Mutex::new(Vec::new())));
+        let hooks = build_post_tool_use_hooks(&specs, dispatcher.clone());
+        assert_eq!(hooks.len(), 1);
+        let ctx = ToolContext::new(crate::typed_id::SessionId::from_seed(42));
+        let mut result = empty_result();
+        let mut expected = result.clone();
+        expected.result = Some(json!({"sanitized":true}));
+        hooks[0]
+            .after_exec(
+                &make_tool_call("edit_file"),
+                &make_tool_def("edit_file"),
+                &mut result,
+                &ctx,
+            )
+            .await;
+        assert_result(&result, &expected);
+        let calls = dispatcher.0.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].hook_id.as_str(), "user:post_tool_use_2");
+        assert_eq!(calls[0].event, HookEvent::PostToolUse);
     }
 }
