@@ -1414,7 +1414,8 @@ mod tests {
     async fn mock_provider(sse: &str) -> (wiremock::MockServer, crate::Provider) {
         use wiremock::matchers::{header, method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
-        let server = MockServer::start().await;
+        // A pooled server can reuse connections owned by an earlier test runtime.
+        let server = MockServer::builder().start().await;
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
             .and(header("authorization", "Bearer synthetic-key"))
