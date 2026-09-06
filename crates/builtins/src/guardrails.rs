@@ -526,6 +526,10 @@ async fn run_mcp_check(
     tool_name: &str,
     content: &str,
 ) -> Option<GuardrailAction> {
+    if !everruns_core::mcp_server::is_valid_mcp_server_name(&check.server) {
+        tracing::warn!(check = %check.label, "guardrails: ambiguous MCP server prefix, skipping check");
+        return None;
+    }
     let payload = truncate_on_char_boundary(content, MCP_CONTENT_CAP);
     // The guardrail tool receives a structured payload describing the stage
     // under inspection. Tenant scoping is enforced by the host's per-session
@@ -2267,5 +2271,23 @@ mod tests {
             )
             .await;
         assert_eq!(result.result, Some(json!("no pii here")));
+    }
+    #[tokio::test]
+    async fn mcp_check_never_invokes_a_different_server_through_an_ambiguous_name() {
+        for server in ["guard_", "guard-", "guard__private"] {
+            let invoker = StubMcpInvoker::block();
+            let hooks = GuardrailsCapability.pre_tool_use_hooks_with_config(&json!({
+                "mode":"active", "checks":[{"stage":"tool_use","type":"mcp","server":server,"tool":"screen","on_fail":"block"}]
+            }));
+            let ctx = ToolContext::new(SessionId::new()).with_mcp_invoker(invoker.clone());
+            let decision = hooks[0]
+                .before_exec(tool_call("read_file", json!({})), &tool_def(), &ctx)
+                .await;
+            assert!(matches!(decision, PreToolUseDecision::Continue(_)));
+            assert!(
+                invoker.last_call.lock().unwrap().is_none(),
+                "ambiguous server {server} reached invoker"
+            );
+        }
     }
 }

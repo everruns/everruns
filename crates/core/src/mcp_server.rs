@@ -411,6 +411,9 @@ pub fn apply_mcp_secret_binding_schemas(
     bindings: &[McpSecretBindingMetadata],
 ) {
     for binding in bindings {
+        if !is_valid_mcp_server_name(&binding.server_name) {
+            continue;
+        }
         let tool_name = crate::mcp_tool_name(&binding.server_name, &binding.tool_name);
         let Some(crate::ToolDefinition::Builtin(definition)) = definitions
             .iter_mut()
@@ -653,6 +656,16 @@ pub fn sanitize_mcp_server_name(server_name: &str) -> String {
         .chars()
         .map(|c| if c.is_alphanumeric() { c } else { '_' })
         .collect::<String>()
+}
+
+/// Whether a server name produces an unambiguous MCP tool prefix.
+///
+/// Repeated underscores collide with the separator inside a prefix; a trailing
+/// underscore collides with it at the server/tool boundary. A single leading
+/// underscore and underscores inside tool names remain valid.
+pub fn is_valid_mcp_server_name(server_name: &str) -> bool {
+    let prefix = sanitize_mcp_server_name(server_name);
+    !prefix.is_empty() && !prefix.contains("__") && !prefix.ends_with('_')
 }
 
 /// Check if a tool name is an MCP tool (starts with "mcp_").
@@ -1492,6 +1505,70 @@ mod tests {
         assert_eq!(
             serde_json::to_value(full).unwrap(),
             json!({"code":"tool_timeout","message":"tool timed out after 30000ms","category":"auth","retryable":false,"retry_after_seconds":10,"hint":"Reduce input size before retrying.","cause_chain":["root cause","downstream: upstream gateway timeout"]})
+        );
+    }
+    #[test]
+    fn server_name_validation_preserves_unambiguous_generated_names() {
+        for name in [
+            "",
+            "_",
+            "docs_",
+            "docs-",
+            "docs ",
+            "docs__private",
+            "docs..private",
+            "--docs",
+        ] {
+            assert!(!is_valid_mcp_server_name(name), "{name:?}");
+        }
+        for (name, prefix) in [
+            ("docs", "docs"),
+            ("docs-api", "docs_api"),
+            ("_docs", "_docs"),
+            ("Docs API", "docs_api"),
+        ] {
+            assert!(is_valid_mcp_server_name(name), "{name:?}");
+            for tool in ["search", "_search", "read__file"] {
+                assert_eq!(
+                    parse_mcp_tool_name(&mcp_tool_name(name, tool)),
+                    Some((prefix.into(), tool.into()))
+                );
+            }
+        }
+    }
+    #[test]
+    fn ambiguous_bindings_do_not_rewrite_a_different_tool() {
+        let schema = serde_json::json!({"type":"object","properties":{"key":{"type":"string"}},"required":["key"]});
+        let mut definitions = vec![crate::ToolDefinition::Builtin(crate::BuiltinTool {
+            name: "mcp_docs___search".into(),
+            display_name: None,
+            description: "Search".into(),
+            parameters: schema,
+            policy: Default::default(),
+            category: None,
+            deferrable: Default::default(),
+            hints: Default::default(),
+            full_parameters: None,
+        })];
+        let before = serde_json::to_value(&definitions).unwrap();
+        let mut binding = McpSecretBindingMetadata {
+            server_name: "docs_".into(),
+            tool_name: "search".into(),
+            parameter_name: "key".into(),
+            configured: true,
+            setup_url: "/setup".into(),
+        };
+        apply_mcp_secret_binding_schemas(&mut definitions, &[binding.clone()]);
+        assert_eq!(serde_json::to_value(&definitions).unwrap(), before);
+        binding.server_name = "docs".into();
+        binding.tool_name = "_search".into();
+        apply_mcp_secret_binding_schemas(&mut definitions, &[binding]);
+        let crate::ToolDefinition::Builtin(definition) = &definitions[0] else {
+            panic!("expected builtin")
+        };
+        assert_eq!(
+            definition.parameters,
+            serde_json::json!({"type":"object","properties":{},"required":[]})
         );
     }
     #[test]

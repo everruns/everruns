@@ -379,7 +379,7 @@ To avoid naming conflicts, MCP tools are prefixed with the server name using a *
 mcp_{server_name}__{tool_name}
 ```
 
-The double underscore (`__`) separator is used instead of single underscore because server names can contain underscores (e.g., `microsoft_learn`). This allows unambiguous parsing of the tool name back to its components.
+The double underscore (`__`) separator allows single underscores inside server names (e.g., `microsoft_learn`). A sanitized server prefix must be nonempty and contain neither consecutive nor trailing underscores. Configuration rejects ambiguous names; runtime paths also exclude existing invalid configurations so they cannot publish or invoke a different server/tool pair. The shared validation contract lives in `crates/core/src/mcp_server.rs`. Tool names may contain underscores, including consecutive ones.
 
 **Examples:**
 - Server `microsoft_learn` with tool `search` → `mcp_microsoft_learn__search`

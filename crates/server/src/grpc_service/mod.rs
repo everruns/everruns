@@ -996,6 +996,10 @@ impl WorkerServiceImpl {
                 continue;
             };
 
+            if !everruns_core::mcp_server::is_valid_mcp_server_name(&server.name) {
+                tracing::warn!(server_id = %server_id, "MCP tools omitted: ambiguous server prefix");
+                continue;
+            }
             for tool in tools {
                 let prefixed_name = mcp_tool_name(&server.name, &tool.name);
                 let description = tool

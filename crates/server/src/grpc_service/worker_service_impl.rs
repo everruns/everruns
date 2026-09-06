@@ -33,6 +33,9 @@ fn apply_proto_secret_binding_schemas(
     bindings: &[everruns_core::McpSecretBindingMetadata],
 ) {
     for binding in bindings {
+        if !everruns_core::mcp_server::is_valid_mcp_server_name(&binding.server_name) {
+            continue;
+        }
         let tool_name = everruns_core::mcp_tool_name(&binding.server_name, &binding.tool_name);
         let Some(definition) = definitions
             .iter_mut()
@@ -4940,6 +4943,35 @@ mod tests {
         assert_eq!(
             normalize_turn_context_message_limit(Some(i32::MAX), 123),
             MAX_TURN_CONTEXT_MESSAGE_LIMIT
+        );
+    }
+    #[test]
+    fn ambiguous_bindings_do_not_rewrite_a_different_proto_tool() {
+        let schema = serde_json::json!({"type":"object","properties":{"key":{"type":"string"}},"required":["key"]});
+        let mut definitions = vec![super::McpToolDef {
+            name: "mcp_docs___search".into(),
+            description: "Search".into(),
+            parameters: Some(everruns_internal_protocol::json_to_proto_struct(&schema)),
+            ..Default::default()
+        }];
+        let before = definitions.clone();
+        let mut binding = everruns_core::McpSecretBindingMetadata {
+            server_name: "docs_".into(),
+            tool_name: "search".into(),
+            parameter_name: "key".into(),
+            configured: true,
+            setup_url: "/setup".into(),
+        };
+        super::apply_proto_secret_binding_schemas(&mut definitions, &[binding.clone()]);
+        assert_eq!(definitions, before);
+        binding.server_name = "docs".into();
+        binding.tool_name = "_search".into();
+        super::apply_proto_secret_binding_schemas(&mut definitions, &[binding]);
+        assert_eq!(
+            everruns_internal_protocol::proto_struct_to_json(
+                definitions[0].parameters.as_ref().unwrap()
+            ),
+            serde_json::json!({"type":"object","properties":{},"required":[]})
         );
     }
 }
