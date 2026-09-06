@@ -123,75 +123,62 @@ mod tests {
     use super::*;
 
     #[test]
-    fn embedded_allowlist_parses_and_has_groups() {
+    fn embedded_policy_permits_curated_services_and_denies_tenant_controlled_hosts() {
         let allowlist = SystemAllowlist::embedded();
-        assert!(
-            !allowlist.groups().is_empty(),
-            "embedded allowlist should define groups"
-        );
-        // Every group should contribute at least one pattern.
-        for group in allowlist.groups() {
-            assert!(
-                !group.allowed.is_empty(),
-                "group {} has no patterns",
-                group.name
-            );
-        }
-    }
-
-    #[test]
-    fn embedded_allowlist_permits_known_public_resources() {
-        let allowlist = SystemAllowlist::embedded();
-        for url in [
-            "https://registry.npmjs.org/left-pad",
-            "https://static.crates.io/crates/serde/serde-1.0.0.crate",
-            "https://files.pythonhosted.org/packages/abc.whl",
-            "https://api.openai.com/v1/responses",
-            "https://api.anthropic.com/v1/messages",
-            "https://codeload.github.com/owner/repo/tar.gz/main",
-            "https://ghcr.io/v2/owner/image/manifests/latest",
-            "https://gcp-us-central1.turbopuffer.com/v2/namespaces/org_1__kidx_a",
+        assert!(!allowlist.groups().is_empty());
+        assert!(allowlist.groups().iter().all(|g| !g.allowed.is_empty()));
+        for (url, expected) in [
+            ("https://registry.npmjs.org/left-pad", true),
+            (
+                "https://static.crates.io/crates/serde/serde-1.0.0.crate",
+                true,
+            ),
+            ("https://files.pythonhosted.org/packages/abc.whl", true),
+            ("https://api.openai.com/v1/responses", true),
+            ("https://api.anthropic.com/v1/messages", true),
+            ("https://codeload.github.com/owner/repo/tar.gz/main", true),
+            ("https://ghcr.io/v2/owner/image/manifests/latest", true),
+            (
+                "https://gcp-us-central1.turbopuffer.com/v2/namespaces/org_1__kidx_a",
+                true,
+            ),
+            (
+                "https://my-resource.openai.azure.com/openai/deployments/gpt-4/chat/completions",
+                true,
+            ),
+            (
+                "https://my-resource.services.ai.azure.com/openai/v1/responses",
+                true,
+            ),
+            ("https://evil.example.com/payload", false),
+            ("http://169.254.169.254/latest/meta-data/", false),
+            ("https://random-blog.net/post", false),
+            (
+                "https://attacker123.execute-api.us-east-1.amazonaws.com/collect?data=secret",
+                false,
+            ),
+            (
+                "https://evil-bucket.s3.us-west-2.amazonaws.com/collect?data=secret",
+                false,
+            ),
+            (
+                "https://evil-bucket.s3-website-us-west-2.amazonaws.com/collect?data=secret",
+                false,
+            ),
+            ("https://attacker-org.github.io/collect?data=secret", false),
+            (
+                "https://evil.z13.web.core.windows.net/collect?data=secret",
+                false,
+            ),
+            ("https://evil.azureedge.net/collect?data=secret", false),
+            (
+                "https://evil-bucket.nyc3.digitaloceanspaces.com/collect?data=secret",
+                false,
+            ),
+            ("https://api.openai.com.evil.test/", false),
+            ("https://api.openai.com@evil.test/", false),
         ] {
-            assert!(allowlist.is_url_allowed(url), "should allow {url}");
-        }
-    }
-
-    #[test]
-    fn embedded_allowlist_denies_unlisted_hosts() {
-        let allowlist = SystemAllowlist::embedded();
-        for url in [
-            "https://evil.example.com/payload",
-            "http://169.254.169.254/latest/meta-data/",
-            "https://random-blog.net/post",
-        ] {
-            assert!(!allowlist.is_url_allowed(url), "should deny {url}");
-        }
-    }
-
-    #[test]
-    fn embedded_allowlist_permits_azure_openai_hosts() {
-        let allowlist = SystemAllowlist::embedded();
-        for url in [
-            "https://my-resource.openai.azure.com/openai/deployments/gpt-4/chat/completions",
-            "https://my-resource.services.ai.azure.com/openai/v1/responses",
-        ] {
-            assert!(allowlist.is_url_allowed(url), "should permit {url}");
-        }
-    }
-
-    #[test]
-    fn embedded_allowlist_denies_attacker_controlled_provider_hosts() {
-        let allowlist = SystemAllowlist::embedded();
-        for url in [
-            "https://attacker123.execute-api.us-east-1.amazonaws.com/collect?data=secret",
-            "https://evil-bucket.s3.us-west-2.amazonaws.com/collect?data=secret",
-            "https://evil-bucket.s3-website-us-west-2.amazonaws.com/collect?data=secret",
-            "https://attacker-org.github.io/collect?data=secret",
-            "https://evil.z13.web.core.windows.net/collect?data=secret",
-            "https://evil.azureedge.net/collect?data=secret",
-            "https://evil-bucket.nyc3.digitaloceanspaces.com/collect?data=secret",
-        ] {
-            assert!(!allowlist.is_url_allowed(url), "should deny {url}");
+            assert_eq!(allowlist.is_url_allowed(url), expected, "{url}");
         }
     }
 
@@ -222,9 +209,61 @@ mod tests {
         )
         .expect("valid toml");
 
-        assert_eq!(allowlist.groups().len(), 2);
+        assert_eq!(
+            allowlist.groups(),
+            &[
+                AllowGroup {
+                    name: "alpha".into(),
+                    description: Some("first".into()),
+                    allowed: vec!["*.alpha.test".into()]
+                },
+                AllowGroup {
+                    name: "beta".into(),
+                    description: None,
+                    allowed: vec!["beta.test".into()]
+                },
+            ]
+        );
+        assert!(SystemAllowlist::from_toml("[groups.bad]\nallowed = 42").is_err());
         assert!(allowlist.is_url_allowed("https://api.alpha.test/x"));
         assert!(allowlist.is_url_allowed("https://beta.test/y"));
         assert!(!allowlist.is_url_allowed("https://gamma.test/z"));
+    }
+    #[test]
+    fn environment_activation_is_exact_and_process_isolated() {
+        const CHILD: &str = "EVERRUNS_TEST_ALLOWLIST_EXPECTED";
+        if let Ok(expected) = std::env::var(CHILD) {
+            assert_eq!(SystemAllowlist::from_env().is_some(), expected == "enabled");
+            return;
+        }
+        for (value, enabled) in [
+            (None, false),
+            (Some("true"), true),
+            (Some("1"), true),
+            (Some("false"), false),
+            (Some("0"), false),
+            (Some("TRUE"), false),
+            (Some(" true"), false),
+        ] {
+            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            command
+                .args([
+                    "--exact",
+                    "system_allowlist::tests::environment_activation_is_exact_and_process_isolated",
+                    "--nocapture",
+                ])
+                .env(CHILD, if enabled { "enabled" } else { "disabled" })
+                .env_remove("EVERRUNS_SYSTEM_ALLOWLIST_ENABLED");
+            if let Some(value) = value {
+                command.env("EVERRUNS_SYSTEM_ALLOWLIST_ENABLED", value);
+            }
+            let output = command.output().unwrap();
+            assert!(
+                output.status.success(),
+                "value={value:?}: {} {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
     }
 }

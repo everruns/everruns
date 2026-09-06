@@ -85,6 +85,14 @@ fn normalize_strict_node(node: &mut Value) -> Option<()> {
     }
 
     if is_object {
+        // Explicitly open/dictionary shapes cannot be closed without removing
+        // valid entries. Preserve them through the caller's non-strict fallback.
+        if object
+            .get("additionalProperties")
+            .is_some_and(|value| value != &Value::Bool(false))
+        {
+            return None;
+        }
         // A union containing object and another non-null type has no unambiguous
         // place for object-only strict constraints.
         if types
@@ -139,6 +147,14 @@ fn normalize_strict_node(node: &mut Value) -> Option<()> {
 
 fn make_nullable(schema: &mut Value) -> Option<()> {
     let object = schema.as_object_mut()?;
+    // Type and enum constraints both apply: adding null only to `type` still
+    // leaves an optional enum impossible to omit in strict mode.
+    if let Some(values) = object.get_mut("enum") {
+        let values = values.as_array_mut()?;
+        if !values.contains(&Value::Null) {
+            values.push(Value::Null);
+        }
+    }
     if let Some(schema_type) = object.get_mut("type") {
         match schema_type {
             Value::String(value) if value != "null" => {
@@ -194,8 +210,36 @@ fn sanitize_node(node: &mut Value) {
                     object.insert("description".to_string(), Value::String(description));
                 }
             }
-            for value in object.values_mut() {
-                sanitize_node(value);
+            // Recurse only into schema-valued keywords. Objects in enum,
+            // default, const, examples or extension data are literal payloads.
+            for (keyword, value) in object.iter_mut() {
+                match keyword.as_str() {
+                    "properties" | "patternProperties" | "$defs" | "definitions"
+                    | "dependentSchemas" | "dependencies" => {
+                        if let Some(schemas) = value.as_object_mut() {
+                            for schema in schemas.values_mut() {
+                                sanitize_node(schema);
+                            }
+                        }
+                    }
+                    "items"
+                    | "additionalItems"
+                    | "additionalProperties"
+                    | "contains"
+                    | "propertyNames"
+                    | "not"
+                    | "if"
+                    | "then"
+                    | "else"
+                    | "unevaluatedProperties"
+                    | "unevaluatedItems"
+                    | "contentSchema"
+                    | "allOf"
+                    | "anyOf"
+                    | "oneOf"
+                    | "prefixItems" => sanitize_node(value),
+                    _ => {}
+                }
             }
         }
         Value::Array(items) => {
@@ -259,10 +303,18 @@ mod tests {
         let pattern = sanitized["properties"]["email"]["pattern"]
             .as_str()
             .unwrap();
-        assert_eq!(pattern, OPENAI_SAFE_ZOD_EMAIL_PATTERN);
+        assert_eq!(
+            pattern,
+            r"^[A-Za-z0-9_'+\-](?:[A-Za-z0-9_'+\-]|\.[A-Za-z0-9_'+\-])*@([A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$"
+        );
 
         let email = Regex::new(pattern).unwrap();
-        for valid in ["a@example.com", "first.last+tag@example.co.uk"] {
+        for valid in [
+            "a@example.com",
+            "first.last+tag@example.co.uk",
+            "o'neill@example.com",
+            "_@example.com",
+        ] {
             assert!(email.is_match(valid), "expected valid: {valid}");
         }
         for invalid in [
@@ -274,6 +326,25 @@ mod tests {
         ] {
             assert!(!email.is_match(invalid), "expected invalid: {invalid}");
         }
+    }
+
+    #[test]
+    fn sanitizer_preserves_literal_data_while_visiting_schema_branches() {
+        let schema = json!({
+            "type":"object",
+            "properties":{"payload":{
+                "type":"object",
+                "default":{"pattern":"(?=literal)"},
+                "enum":[{"pattern":"(?=literal)"}],
+                "examples":[{"pattern":"(?=literal)"}]
+            }},
+            "$defs":{"code":{"type":"string","pattern":"(?=real)"}},
+            "anyOf":[{"properties":{"code":{"type":"string","pattern":"(?<=real)"}}}]
+        });
+        let mut expected = schema.clone();
+        expected["$defs"]["code"] = json!({"type":"string","description":"Validation for this value is enforced by the tool."});
+        expected["anyOf"][0]["properties"]["code"] = json!({"type":"string","description":"Validation for this value is enforced by the tool."});
+        assert_eq!(sanitize_openai_tool_schema(&schema), expected);
     }
 
     #[test]
@@ -292,22 +363,25 @@ mod tests {
 
     #[test]
     fn removes_other_unsupported_lookaround_but_preserves_server_validation_notice() {
-        let schema = json!({
-            "type": "array",
-            "items": {
-                "type": "string",
-                "description": "Tenant-scoped identifier.",
-                "pattern": "^(?=.{3,20}$)[a-z]+$"
+        for pattern in ["^(?=.{3,20}$)[a-z]+$", "a(?!b)", "(?<=a)b", "(?<!a)b"] {
+            for description in [None, Some("Tenant-scoped identifier.")] {
+                let mut item = json!({"type":"string","pattern":pattern});
+                if let Some(description) = description {
+                    item["description"] = json!(description);
+                }
+                let schema = json!({"type":"array","items":item});
+                let notice = match description {
+                    Some(_) => {
+                        "Tenant-scoped identifier. Validation for this value is enforced by the tool."
+                    }
+                    None => "Validation for this value is enforced by the tool.",
+                };
+                assert_eq!(
+                    sanitize_openai_tool_schema(&schema),
+                    json!({"type":"array","items":{"type":"string","description":notice}})
+                );
             }
-        });
-
-        let sanitized = sanitize_openai_tool_schema(&schema);
-
-        assert!(sanitized["items"].get("pattern").is_none());
-        assert_eq!(
-            sanitized["items"]["description"],
-            "Tenant-scoped identifier. Validation for this value is enforced by the tool."
-        );
+        }
     }
 }
 
@@ -335,33 +409,32 @@ mod strict_tests {
         }))
         .unwrap();
 
-        assert_eq!(normalized["required"], json!(["fixed", "list", "nested"]));
-        assert_eq!(normalized["additionalProperties"], false);
-        assert_eq!(normalized["properties"]["fixed"]["type"], "string");
         assert_eq!(
-            normalized["properties"]["nested"]["type"],
-            json!(["object", "null"])
-        );
-        assert_eq!(
-            normalized["properties"]["nested"]["additionalProperties"],
-            false
-        );
-        assert_eq!(
-            normalized["properties"]["nested"]["properties"]["value"]["type"],
-            "integer"
-        );
-        assert_eq!(
-            normalized["properties"]["list"]["items"]["additionalProperties"],
-            false
-        );
-        assert_eq!(
-            normalized["properties"]["list"]["items"]["properties"]["flag"]["type"],
-            json!(["boolean", "null"])
+            normalized,
+            json!({
+                "type":"object", "additionalProperties":false, "required":["fixed","list","nested"],
+                "properties": {
+                    "fixed":{"type":"string"},
+                    "nested":{"type":["object","null"],"properties":{"value":{"type":"integer"}},"required":["value"],"additionalProperties":false},
+                    "list":{"type":["array","null"],"items":{
+                        "type":"object","properties":{"flag":{"type":["boolean","null"]}},"required":["flag"],"additionalProperties":false
+                    }}
+                }
+            })
         );
     }
 
     #[test]
     fn strict_schema_declines_ambiguous_composition() {
+        for input in [
+            json!({"type":"array","items":{"type":"string"}}),
+            json!({"type":"object","required":["missing"]}),
+            json!({"type":"object","properties":{"value":{"type":"array"}}}),
+            json!({"type":"object","properties":{"value":{"type":["object","string"]}}}),
+            json!({"type":"object","properties":{"value":{"anyOf":[]}}}),
+        ] {
+            assert_eq!(strict_openai_tool_schema(&input), None, "{input}");
+        }
         assert!(
             strict_openai_tool_schema(&json!({
                 "type": "object",
@@ -376,5 +449,33 @@ mod strict_tests {
             }))
             .is_none()
         );
+    }
+    #[test]
+    fn optional_enum_allows_null_without_relaxing_required_enum() {
+        let input = json!({"type":"object", "properties": {
+            "choice":{"type":"string","enum":["a","b"]},
+            "fixed":{"type":"string","enum":["x"]},
+            "nullable":{"type":["string","null"],"enum":["a",null]}
+        }, "required":["fixed"]});
+        assert_eq!(
+            strict_openai_tool_schema(&input),
+            Some(json!({
+                "type":"object", "properties": {
+                    "choice":{"type":["string","null"],"enum":["a","b",null]},
+                    "fixed":{"type":"string","enum":["x"]},
+                    "nullable":{"type":["string","null"],"enum":["a",null]}
+                }, "required":["choice","fixed","nullable"],"additionalProperties":false
+            }))
+        );
+    }
+
+    #[test]
+    fn strict_schema_declines_dictionary_shapes_instead_of_discarding_entries() {
+        for additional in [json!(true), json!({"type":"string"})] {
+            let input = json!({"type":"object","properties":{"labels":{
+                "type":"object","additionalProperties":additional
+            }},"required":["labels"]});
+            assert_eq!(strict_openai_tool_schema(&input), None, "{input}");
+        }
     }
 }

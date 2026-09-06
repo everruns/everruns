@@ -239,7 +239,7 @@ mod tests {
             source_sequence,
             provider_type: "openai".to_string(),
             model: "gpt-5.4".to_string(),
-            format_version: COMPACTION_CHECKPOINT_FORMAT_VERSION,
+            format_version: 1,
             payload: CompactionCheckpointPayload::ProviderOpaque {
                 context: ProviderOpaqueContext::OpenResponsesCompact {
                     output: vec![CompactOutputItem::Compaction {
@@ -279,23 +279,52 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn proactive_attempt_tracker_evicts_oldest_entry_at_capacity() {
-        let tracker = ProactiveCompactionAttemptTracker::default();
-        let first = SessionId::new();
-        let attempt = ProactiveCompactionAttempt {
-            source_sequence: 1,
+    async fn proactive_attempt_updates_preserve_monotonicity_and_fifo_eviction() {
+        let tracker = ProactiveCompactionAttemptTracker {
+            capacity: 2,
+            state: Mutex::default(),
+        };
+        let session = SessionId::from_seed(1);
+        let original = ProactiveCompactionAttempt {
+            source_sequence: 2,
             estimated_input_tokens: 10_000,
             input_message_count: 1,
             source_fingerprint: [7; 32],
         };
-        tracker.record(first, "openai", "gpt-5.4", attempt).await;
-        let mut last = first;
-        for _ in 1..=DEFAULT_PROACTIVE_ATTEMPT_CAPACITY {
-            last = SessionId::new();
-            tracker.record(last, "openai", "gpt-5.4", attempt).await;
-        }
-
-        assert!(tracker.get(first, "openai", "gpt-5.4").await.is_none());
-        assert_eq!(tracker.get(last, "openai", "gpt-5.4").await, Some(attempt));
+        let newer = ProactiveCompactionAttempt {
+            source_sequence: 3,
+            estimated_input_tokens: 20_000,
+            input_message_count: 2,
+            source_fingerprint: [8; 32],
+        };
+        assert_eq!(tracker.get(session, "openai", "a").await, None);
+        tracker.record(session, "openai", "a", original).await;
+        tracker.record(session, "openai", "b", original).await;
+        tracker.record(session, "openai", "a", newer).await;
+        tracker.record(session, "openai", "a", original).await;
+        assert_eq!(tracker.get(session, "openai", "a").await, Some(newer));
+        let equal = ProactiveCompactionAttempt {
+            estimated_input_tokens: 30_000,
+            source_fingerprint: [9; 32],
+            ..newer
+        };
+        tracker.record(session, "openai", "a", equal).await;
+        assert_eq!(tracker.get(session, "openai", "a").await, Some(equal));
+        tracker.record(session, "other", "a", original).await;
+        assert_eq!(tracker.get(session, "openai", "a").await, None);
+        assert_eq!(tracker.get(session, "openai", "b").await, Some(original));
+        assert_eq!(tracker.get(session, "other", "a").await, Some(original));
+        tracker
+            .record(SessionId::from_seed(2), "other", "a", newer)
+            .await;
+        assert_eq!(tracker.get(session, "openai", "b").await, None);
+        assert_eq!(tracker.get(session, "other", "a").await, Some(original));
+        assert_eq!(
+            tracker.get(SessionId::from_seed(2), "other", "a").await,
+            Some(newer)
+        );
+        let state = tracker.state.lock().await;
+        assert_eq!(state.attempts.len(), 2);
+        assert_eq!(state.insertion_order.len(), 2);
     }
 }
