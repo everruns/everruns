@@ -131,6 +131,35 @@ mod tests {
     use super::DriverId;
 
     #[test]
+    fn built_in_driver_ids_share_literal_wire_and_display_contracts() {
+        for (driver, wire) in [
+            (DriverId::OpenAI, "openai"),
+            (DriverId::OpenRouter, "openrouter"),
+            (DriverId::AzureOpenAI, "azure_openai"),
+            (DriverId::OpenAICompletions, "openai_completions"),
+            (DriverId::Anthropic, "anthropic"),
+            (DriverId::Gemini, "gemini"),
+            (DriverId::LlmSim, "llmsim"),
+            (DriverId::Bedrock, "bedrock"),
+            (DriverId::Mai, "mai"),
+            (DriverId::Fireworks, "fireworks"),
+            (DriverId::Meta, "meta"),
+        ] {
+            assert_eq!(driver.as_str(), wire);
+            assert_eq!(driver.to_string(), wire);
+            assert_eq!(wire.parse::<DriverId>().unwrap(), driver);
+            assert_eq!(
+                serde_json::to_value(&driver).unwrap(),
+                serde_json::json!(wire)
+            );
+            assert_eq!(
+                serde_json::from_value::<DriverId>(serde_json::json!(wire)).unwrap(),
+                driver
+            );
+        }
+    }
+
+    #[test]
     fn wire_ids_reject_empty_and_padded_values() {
         for value in ["", " ", "\t\n"] {
             let error = serde_json::from_value::<DriverId>(serde_json::json!(value)).unwrap_err();
@@ -142,12 +171,17 @@ mod tests {
 
     #[test]
     fn wire_ids_normalize_case_and_accept_extensions() {
+        let driver = serde_json::from_str::<DriverId>(r#""Custom-Driver""#).unwrap();
+        assert_eq!(driver.as_str(), "custom-driver");
         assert_eq!(
-            serde_json::from_str::<DriverId>(r#""Custom-Driver""#)
-                .unwrap()
-                .as_str(),
-            "custom-driver"
+            serde_json::to_string(&driver).unwrap(),
+            r#""custom-driver""#
         );
+        assert_eq!(" Custom-Driver ".parse::<DriverId>().unwrap(), driver);
+        let mut ids = std::collections::HashSet::new();
+        ids.insert(driver);
+        ids.insert(DriverId::external("CUSTOM-DRIVER"));
+        assert_eq!(ids.len(), 1, "normalization must preserve hash identity");
     }
 }
 
