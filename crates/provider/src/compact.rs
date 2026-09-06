@@ -235,3 +235,174 @@ pub fn messages_to_compact_input(messages: &[LlmMessage]) -> Vec<CompactInputIte
         .flat_map(CompactInputItem::from_llm_message)
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn request_wire_covers_every_item_and_omits_absent_continuation_fields() {
+        let request = CompactRequest {
+            model: "model".into(),
+            input: vec![
+                CompactInputItem::Message {
+                    role: "user".into(),
+                    content: CompactContent::Text("hello".into()),
+                },
+                CompactInputItem::Message {
+                    role: "assistant".into(),
+                    content: CompactContent::Parts(vec![
+                        CompactContentPart::InputText {
+                            text: "image".into(),
+                        },
+                        CompactContentPart::InputImage {
+                            image_url: "data:image/png;base64,abc".into(),
+                        },
+                    ]),
+                },
+                CompactInputItem::FunctionCall {
+                    call_id: "call-1".into(),
+                    name: "lookup".into(),
+                    arguments: r#"{"city":"NYC"}"#.into(),
+                },
+                CompactInputItem::FunctionCallOutput {
+                    call_id: "call-1".into(),
+                    output: "result".into(),
+                },
+                CompactInputItem::Compaction {
+                    encrypted_content: "opaque".into(),
+                },
+            ],
+            previous_response_id: None,
+            instructions: Some("rules".into()),
+        };
+        assert_eq!(
+            serde_json::to_value(request).unwrap(),
+            json!({"model":"model","instructions":"rules","input":[
+                {"type":"message","role":"user","content":"hello"},
+                {"type":"message","role":"assistant","content":[{"type":"input_text","text":"image"},{"type":"input_image","image_url":"data:image/png;base64,abc"}]},
+                {"type":"function_call","call_id":"call-1","name":"lookup","arguments":"{\"city\":\"NYC\"}"},
+                {"type":"function_call_output","call_id":"call-1","output":"result"},
+                {"type":"compaction","encrypted_content":"opaque"}
+            ]})
+        );
+        assert_eq!(
+            serde_json::to_value(CompactRequest {
+                model: "model".into(),
+                input: vec![],
+                previous_response_id: Some("resp-previous".into()),
+                instructions: None
+            })
+            .unwrap(),
+            json!({"model":"model","previous_response_id":"resp-previous"})
+        );
+    }
+
+    #[test]
+    fn response_decoding_preserves_opaque_and_multipart_replay_with_optional_usage() {
+        let output = json!([
+            {"type":"message","role":"user","content":"hello"},
+            {"type":"message","role":"user","content":[{"type":"input_text","text":"see"},{"type":"input_image","image_url":"https://images.example/a.png"}]},
+            {"type":"compaction","encrypted_content":"opaque-secret"}
+        ]);
+        let response: CompactResponse = serde_json::from_value(json!({"output":output,"usage":{"input_tokens":100,"output_tokens":50,"total_tokens":150,"cost":0.04}})).unwrap();
+        assert_eq!(serde_json::to_value(&response.output).unwrap(), output);
+        let replay: Vec<_> = response.output.iter().map(CompactInputItem::from).collect();
+        assert_eq!(serde_json::to_value(replay).unwrap(), output);
+        let usage = response.usage.unwrap();
+        assert_eq!(
+            (
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.total_tokens,
+                usage.cost
+            ),
+            (Some(100), Some(50), Some(150), Some(0.04))
+        );
+        let minimal: CompactResponse = serde_json::from_value(json!({"output":[]})).unwrap();
+        assert!(minimal.output.is_empty());
+        assert!(minimal.usage.is_none());
+        let sparse: CompactResponse =
+            serde_json::from_value(json!({"output":[],"usage":{"input_tokens":9}})).unwrap();
+        let usage = sparse.usage.unwrap();
+        assert_eq!(
+            (
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.total_tokens,
+                usage.cost
+            ),
+            (Some(9), None, None, None)
+        );
+        for invalid in [
+            json!({"type":"compaction"}),
+            json!({"type":"unknown","encrypted_content":"x"}),
+            json!({"type":"message","role":"user"}),
+        ] {
+            assert!(
+                serde_json::from_value::<CompactOutputItem>(invalid.clone()).is_err(),
+                "{invalid}"
+            );
+        }
+    }
+
+    #[test]
+    fn message_conversion_keeps_roles_call_order_and_supported_content() {
+        let mut assistant = LlmMessage::text(LlmMessageRole::Assistant, "checking");
+        assistant.tool_calls = Some(vec![crate::tool_types::ToolCall {
+            id: "call-1".into(),
+            name: "lookup".into(),
+            arguments: json!({"q":1}),
+        }]);
+        let mut result = LlmMessage::parts(
+            LlmMessageRole::Tool,
+            vec![
+                LlmContentPart::text("do"),
+                LlmContentPart::image("https://images.example/ignored.png"),
+                LlmContentPart::text("ne"),
+            ],
+        );
+        result.tool_call_id = Some("call-1".into());
+        let input = messages_to_compact_input(&[
+            LlmMessage::text(LlmMessageRole::System, "rules"),
+            LlmMessage::parts(
+                LlmMessageRole::User,
+                vec![
+                    LlmContentPart::text("see"),
+                    LlmContentPart::image("https://images.example/a.png"),
+                    LlmContentPart::Audio {
+                        url: "data:audio/wav;base64,aA==".into(),
+                    },
+                ],
+            ),
+            assistant,
+            result,
+            LlmMessage::parts(
+                LlmMessageRole::User,
+                vec![LlmContentPart::text("only text")],
+            ),
+        ]);
+        assert_eq!(
+            serde_json::to_value(input).unwrap(),
+            json!([
+                {"type":"message","role":"developer","content":"rules"},
+                {"type":"message","role":"user","content":[{"type":"input_text","text":"see"},{"type":"input_image","image_url":"https://images.example/a.png"}]},
+                {"type":"message","role":"assistant","content":"checking"},
+                {"type":"function_call","call_id":"call-1","name":"lookup","arguments":"{\"q\":1}"},
+                {"type":"function_call_output","call_id":"call-1","output":"done"},
+                {"type":"message","role":"user","content":"only text"}
+            ])
+        );
+        let mut calls_only = LlmMessage::text(LlmMessageRole::Assistant, "");
+        calls_only.tool_calls = Some(vec![crate::tool_types::ToolCall {
+            id: "call-2".into(),
+            name: "clock".into(),
+            arguments: json!({}),
+        }]);
+        assert_eq!(
+            serde_json::to_value(CompactInputItem::from_llm_message(&calls_only)).unwrap(),
+            json!([{"type":"function_call","call_id":"call-2","name":"clock","arguments":"{}"}])
+        );
+    }
+}

@@ -614,14 +614,13 @@ impl OpenResponsesProtocolChatDriver {
         let responses_url = endpoint.url("responses").ok_or_else(|| {
             AgentLoopError::Configuration("Open Responses provider has no base URL".to_string())
         })?;
-        let compact_url = if responses_url.ends_with("/responses") {
-            format!("{responses_url}/compact")
-        } else if responses_url.ends_with("/responses/") {
-            format!("{responses_url}compact")
-        } else {
-            // Custom URL - just append /compact
-            format!("{}/compact", responses_url.trim_end_matches('/'))
-        };
+        let mut compact_url = url::Url::parse(&responses_url)
+            .map_err(|e| AgentLoopError::config(format!("Invalid compact endpoint URL: {e}")))?;
+        compact_url.set_path(&format!(
+            "{}/compact",
+            compact_url.path().trim_end_matches('/')
+        ));
+        let compact_url = compact_url.to_string();
         let body = serde_json::to_vec(&request).map_err(|e| {
             AgentLoopError::llm(format!("failed to serialize compact request: {e}"))
         })?;
@@ -3850,154 +3849,6 @@ mod tests {
     // Compact endpoint tests
     // ========================================================================
 
-    #[test]
-    fn test_compact_request_serialization() {
-        let request = CompactRequest {
-            model: "gpt-5.2".to_string(),
-            input: vec![
-                CompactInputItem::Message {
-                    role: "user".to_string(),
-                    content: CompactContent::Text("Hello!".to_string()),
-                },
-                CompactInputItem::Message {
-                    role: "assistant".to_string(),
-                    content: CompactContent::Text("Hi there!".to_string()),
-                },
-            ],
-            previous_response_id: None,
-            instructions: Some("Be helpful".to_string()),
-        };
-
-        let json = serde_json::to_value(&request).unwrap();
-        assert_eq!(json["model"], "gpt-5.2");
-        assert_eq!(json["instructions"], "Be helpful");
-        assert!(json["input"].is_array());
-        assert_eq!(json["input"].as_array().unwrap().len(), 2);
-    }
-
-    #[test]
-    fn test_compact_input_item_message_serialization() {
-        let item = CompactInputItem::Message {
-            role: "user".to_string(),
-            content: CompactContent::Text("Test message".to_string()),
-        };
-
-        let json = serde_json::to_value(&item).unwrap();
-        assert_eq!(json["type"], "message");
-        assert_eq!(json["role"], "user");
-        assert_eq!(json["content"], "Test message");
-    }
-
-    #[test]
-    fn test_compact_input_item_function_call_serialization() {
-        let item = CompactInputItem::FunctionCall {
-            call_id: "call_123".to_string(),
-            name: "get_weather".to_string(),
-            arguments: r#"{"city":"NYC"}"#.to_string(),
-        };
-
-        let json = serde_json::to_value(&item).unwrap();
-        assert_eq!(json["type"], "function_call");
-        assert_eq!(json["call_id"], "call_123");
-        assert_eq!(json["name"], "get_weather");
-        assert_eq!(json["arguments"], r#"{"city":"NYC"}"#);
-    }
-
-    #[test]
-    fn test_compact_input_item_compaction_serialization() {
-        let item = CompactInputItem::Compaction {
-            encrypted_content: "encrypted_data_here".to_string(),
-        };
-
-        let json = serde_json::to_value(&item).unwrap();
-        assert_eq!(json["type"], "compaction");
-        assert_eq!(json["encrypted_content"], "encrypted_data_here");
-    }
-
-    #[test]
-    fn test_compact_output_item_deserialization() {
-        let json = r#"{
-            "type": "message",
-            "role": "user",
-            "content": "Hello"
-        }"#;
-
-        let item: CompactOutputItem = serde_json::from_str(json).unwrap();
-        match item {
-            CompactOutputItem::Message { role, content } => {
-                assert_eq!(role, "user");
-                match content {
-                    CompactContent::Text(text) => assert_eq!(text, "Hello"),
-                    _ => panic!("Expected text content"),
-                }
-            }
-            _ => panic!("Expected Message item"),
-        }
-    }
-
-    #[test]
-    fn test_compact_output_compaction_deserialization() {
-        let json = r#"{
-            "type": "compaction",
-            "encrypted_content": "abc123encrypted"
-        }"#;
-
-        let item: CompactOutputItem = serde_json::from_str(json).unwrap();
-        match item {
-            CompactOutputItem::Compaction { encrypted_content } => {
-                assert_eq!(encrypted_content, "abc123encrypted");
-            }
-            _ => panic!("Expected Compaction item"),
-        }
-    }
-
-    #[test]
-    fn test_compact_response_deserialization() {
-        let json = r#"{
-            "output": [
-                {"type": "message", "role": "user", "content": "Hello"},
-                {"type": "compaction", "encrypted_content": "xyz789"}
-            ],
-            "usage": {
-                "input_tokens": 100,
-                "output_tokens": 50,
-                "total_tokens": 150
-            }
-        }"#;
-
-        let response: CompactResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(response.output.len(), 2);
-        assert!(response.usage.is_some());
-        let usage = response.usage.unwrap();
-        assert_eq!(usage.input_tokens, Some(100));
-        assert_eq!(usage.output_tokens, Some(50));
-        assert_eq!(usage.total_tokens, Some(150));
-    }
-
-    #[test]
-    fn test_compact_content_parts_serialization() {
-        let content = CompactContent::Parts(vec![
-            CompactContentPart::InputText {
-                text: "Check this image".to_string(),
-            },
-            CompactContentPart::InputImage {
-                image_url: "data:image/png;base64,abc".to_string(),
-            },
-        ]);
-
-        let json = serde_json::to_value(&content).unwrap();
-        assert!(json.is_array());
-        assert_eq!(json[0]["type"], "input_text");
-        assert_eq!(json[0]["text"], "Check this image");
-        assert_eq!(json[1]["type"], "input_image");
-    }
-
-    #[test]
-    fn test_wire_protocol_supports_compact() {
-        let driver = OpenResponsesProtocolChatDriver::new();
-        assert!(driver.supports_compact());
-    }
-
     // ========================================================================
     // OpenAI Thinking/Reasoning Support Tests
     // ========================================================================
@@ -5601,5 +5452,67 @@ mod tests {
         .unwrap();
         assert!(serialized.get("strict").is_none());
         assert!(serialized["parameters"].get("allOf").is_some());
+    }
+    #[tokio::test]
+    async fn compact_request_preserves_endpoint_query_and_complete_contract() {
+        use wiremock::matchers::{header, method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).and(path("/v1/responses/compact"))
+            .and(query_param("api-version", "preview"))
+            .and(header("authorization", "Bearer compact-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "output":[{"type":"message","role":"user","content":"keep me"},{"type":"compaction","encrypted_content":"opaque"}],
+                "usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120,"cost":0.03}
+            }))).expect(1).mount(&server).await;
+        let provider = crate::runtime_provider::RuntimeProvider::new(
+            "compact-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url(format!("{}/v1/responses?api-version=preview", server.uri()))
+        .auth(crate::runtime_provider::BearerAuth::new("compact-key"));
+        let driver =
+            OpenResponsesProtocolChatDriver::new().with_retry_config(LlmRetryConfig::no_retry());
+        let result = ChatDriver::compact(
+            &driver,
+            provider.endpoint(),
+            CompactRequest {
+                model: "model-compact".into(),
+                input: vec![CompactInputItem::Message {
+                    role: "user".into(),
+                    content: CompactContent::Text("keep me".into()),
+                }],
+                previous_response_id: None,
+                instructions: Some("preserve facts".into()),
+            },
+        )
+        .await
+        .unwrap()
+        .expect("advertised compact capability must return output");
+        assert!(ChatDriver::supports_compact(&driver));
+        assert_eq!(
+            serde_json::to_value(&result.output).unwrap(),
+            json!([
+                {"type":"message","role":"user","content":"keep me"},
+                {"type":"compaction","encrypted_content":"opaque"}
+            ])
+        );
+        let usage = result.usage.unwrap();
+        assert_eq!(
+            (
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.total_tokens,
+                usage.cost
+            ),
+            (Some(100), Some(20), Some(120), Some(0.03))
+        );
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        let body: Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(
+            body,
+            json!({"model":"model-compact","input":[{"type":"message","role":"user","content":"keep me"}],"instructions":"preserve facts"})
+        );
     }
 }
