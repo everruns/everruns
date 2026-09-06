@@ -160,45 +160,96 @@ mod tests {
     use crate::LlmMessageRole;
 
     #[tokio::test]
-    async fn disabled_service_reports_not_configured() {
+    async fn disabled_service_rejects_streaming_and_nonstreaming_requests() {
         let service = DisabledUtilityLlmService;
-
         assert!(!service.is_configured());
-        let error = service
+        let completion = service
             .chat_completion(UtilityLlmRequest::user_text("summarize this"))
             .await
             .unwrap_err();
-        assert!(error.to_string().contains("disabled"));
+        let stream = service
+            .chat_completion_stream(UtilityLlmRequest::user_text("summarize this"))
+            .await
+            .err()
+            .expect("disabled stream must fail before returning a stream");
+        assert_eq!(
+            completion.to_string(),
+            "LLM error: utility LLM service is disabled"
+        );
+        assert_eq!(
+            stream.to_string(),
+            "LLM error: utility LLM service is disabled"
+        );
     }
 
     #[test]
-    fn request_builds_hardcoded_model_without_reasoning_by_default() {
-        let request = UtilityLlmRequest::user_text("summarize this");
-        let (messages, config) = request.into_driver_request().unwrap();
-
+    fn default_request_preserves_user_text_and_disables_agent_controls() {
+        let (messages, config) = UtilityLlmRequest::user_text("summarize α")
+            .into_driver_request()
+            .unwrap();
         assert_eq!(messages.len(), 1);
-        assert_eq!(config.model, UTILITY_LLM_MODEL);
+        assert_eq!(messages[0].role, LlmMessageRole::User);
+        assert_eq!(messages[0].content_as_text(), "summarize α");
+        assert_eq!(config.model, "gpt-5.5");
         assert_eq!(config.reasoning_effort, None);
+        assert_eq!(config.temperature, None);
+        assert_eq!(config.max_tokens, None);
+        assert!(config.metadata.is_empty());
         assert!(config.tools.is_empty());
         assert!(config.tool_search.is_none());
+        assert!(config.previous_response_id.is_none());
+        assert!(config.provider_opaque_context.is_none());
+        assert!(config.prompt_cache.is_none());
+        assert!(config.openrouter_routing.is_none());
+        assert_eq!(config.parallel_tool_calls, None);
+        assert_eq!(config.volatile_suffix_len, 0);
+        assert!(config.extra_headers.is_empty());
+        assert!(config.speed.is_none());
+        assert!(config.verbosity.is_none());
+        assert!(config.cache_diagnostics.is_none());
     }
 
     #[test]
-    fn request_accepts_supported_reasoning_efforts() {
+    fn configured_requests_preserve_messages_limits_metadata_and_reasoning() {
         for (effort, expected) in [
             (UtilityLlmReasoningEffort::Low, "low"),
             (UtilityLlmReasoningEffort::Medium, "medium"),
             (UtilityLlmReasoningEffort::High, "high"),
         ] {
-            let (_, config) = UtilityLlmRequest::new(vec![LlmMessage::text(
-                LlmMessageRole::User,
-                "classify this",
-            )])
+            let (messages, config) = UtilityLlmRequest::new(vec![
+                LlmMessage::text(LlmMessageRole::System, "Classify"),
+                LlmMessage::text(LlmMessageRole::User, "Input α"),
+            ])
             .with_reasoning_effort(effort)
+            .with_temperature(0.25)
+            .with_max_tokens(123)
+            .with_metadata("source", "old")
+            .with_metadata("request", "request_1")
+            .with_metadata("source", "judge")
             .into_driver_request()
             .unwrap();
-
+            assert_eq!(
+                messages
+                    .iter()
+                    .map(|m| (m.role.clone(), m.content_as_text()))
+                    .collect::<Vec<_>>(),
+                [
+                    (LlmMessageRole::System, "Classify".into()),
+                    (LlmMessageRole::User, "Input α".into())
+                ]
+            );
             assert_eq!(config.reasoning_effort.map(|e| e.as_str()), Some(expected));
+            assert_eq!(effort.as_str(), expected);
+            assert_eq!(config.temperature, Some(0.25));
+            assert_eq!(config.max_tokens, Some(123));
+            assert_eq!(
+                config.metadata,
+                HashMap::from([
+                    ("source".into(), "judge".into()),
+                    ("request".into(), "request_1".into())
+                ])
+            );
+            assert_eq!(config.model, "gpt-5.5");
         }
     }
 
@@ -207,7 +258,9 @@ mod tests {
         let error = UtilityLlmRequest::new(vec![])
             .into_driver_request()
             .unwrap_err();
-
-        assert!(error.to_string().contains("at least one message"));
+        assert_eq!(
+            error.to_string(),
+            "LLM error: utility LLM request must include at least one message"
+        );
     }
 }

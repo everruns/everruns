@@ -122,23 +122,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_resolved_image_new() {
-        let image = ResolvedImage::new("SGVsbG8=", "image/png");
-        assert_eq!(image.base64, "SGVsbG8=");
-        assert_eq!(image.media_type, "image/png");
-    }
-
-    #[test]
-    fn test_resolved_image_to_data_url() {
-        let image = ResolvedImage::new("SGVsbG8=", "image/png");
-        let data_url = image.to_data_url();
-        assert_eq!(data_url, "data:image/png;base64,SGVsbG8=");
-    }
-
-    #[test]
-    fn test_resolved_image_jpeg() {
-        let image = ResolvedImage::new("base64data", "image/jpeg");
-        let data_url = image.to_data_url();
-        assert!(data_url.starts_with("data:image/jpeg;base64,"));
+    fn resolved_images_preserve_mime_and_base64_in_complete_data_urls() {
+        for (data, mime, expected) in [
+            ("SGVsbG8=", "image/png", "data:image/png;base64,SGVsbG8="),
+            ("+/8=", "image/jpeg", "data:image/jpeg;base64,+/8="),
+            (
+                "PHN2Zy8+",
+                "image/svg+xml",
+                "data:image/svg+xml;base64,PHN2Zy8+",
+            ),
+        ] {
+            assert_eq!(ResolvedImage::new(data, mime).to_data_url(), expected);
+        }
     }
 }
