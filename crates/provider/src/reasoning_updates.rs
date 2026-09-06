@@ -8,8 +8,16 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReasoningState {
     /// A new epoch starts when switching model/provider or entering this mode.
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "01933b5a-0000-7000-8000-000000000001")
+    )]
     pub epoch: String,
+    /// Original request-level effort preserved throughout this epoch.
+    #[cfg_attr(feature = "openapi", schema(example = "low"))]
     pub baseline: Option<ReasoningEffort>,
+    /// Effort currently active after ordered configuration updates.
+    #[cfg_attr(feature = "openapi", schema(example = "high"))]
     pub effective: Option<ReasoningEffort>,
     /// Pending transition for this request; completed-message snapshots omit it.
     #[serde(skip)]

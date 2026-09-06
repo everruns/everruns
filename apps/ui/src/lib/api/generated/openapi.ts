@@ -13583,7 +13583,10 @@ export interface components {
     ReasoningState: {
       baseline?: null | components["schemas"]["ReasoningEffort"];
       effective?: null | components["schemas"]["ReasoningEffort"];
-      /** @description A new epoch starts when switching model/provider or entering this mode. */
+      /**
+       * @description A new epoch starts when switching model/provider or entering this mode.
+       * @example 01933b5a-0000-7000-8000-000000000001
+       */
       epoch: string;
     };
     /**

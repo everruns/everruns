@@ -32780,7 +32780,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/ReasoningEffort"
+                "$ref": "#/components/schemas/ReasoningEffort",
+                "description": "Original request-level effort preserved throughout this epoch."
               }
             ]
           },
@@ -32790,13 +32791,15 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/ReasoningEffort"
+                "$ref": "#/components/schemas/ReasoningEffort",
+                "description": "Effort currently active after ordered configuration updates."
               }
             ]
           },
           "epoch": {
             "type": "string",
-            "description": "A new epoch starts when switching model/provider or entering this mode."
+            "description": "A new epoch starts when switching model/provider or entering this mode.",
+            "example": "01933b5a-0000-7000-8000-000000000001"
           }
         }
       },
