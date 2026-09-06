@@ -72,6 +72,37 @@ pub fn is_reconnectable_stream_error(err: &EventStreamError<reqwest::Error>) -> 
     }
 }
 
+fn reconnect_budget_error(
+    config: &LlmRetryConfig,
+    driver: &str,
+    metadata: &RetryMetadata,
+) -> AgentLoopError {
+    AgentLoopError::llm_kind(
+        crate::error::LlmErrorKind::Unavailable,
+        format!(
+            "{driver} stream reconnect budget exhausted after {} retries over {:.1}s",
+            metadata.attempts,
+            config.max_retry_elapsed.as_secs_f64()
+        ),
+    )
+    .with_retry_metadata(metadata)
+}
+
+fn reconnect_remaining(
+    config: &LlmRetryConfig,
+    driver: &str,
+    metadata: &RetryMetadata,
+    started: Option<tokio::time::Instant>,
+) -> Result<Option<Duration>, AgentLoopError> {
+    match started {
+        None => Ok(None),
+        Some(_) => match remaining_retry_time(config, started) {
+            Some(remaining) if !remaining.is_zero() => Ok(Some(remaining)),
+            _ => Err(reconnect_budget_error(config, driver, metadata)),
+        },
+    }
+}
+
 /// Establish an SSE event stream with transparent reconnect on a
 /// pre-first-event transport failure.
 ///
@@ -125,21 +156,11 @@ where
     let mut retry_started_at = None;
     loop {
         let connected = if let Some(remaining) =
-            remaining_retry_time(retry_config, retry_started_at)
+            reconnect_remaining(retry_config, driver_name, &retry_metadata, retry_started_at)?
         {
             tokio::time::timeout(remaining, connect(retry_metadata.attempts))
                 .await
-                .map_err(|_| {
-                    AgentLoopError::llm_kind(
-                        crate::error::LlmErrorKind::Unavailable,
-                        format!(
-                            "{driver_name} stream reconnect budget exhausted after {} retries over {:.1}s",
-                            retry_metadata.attempts,
-                            retry_config.max_retry_elapsed.as_secs_f64()
-                        ),
-                    )
-                    .with_retry_metadata(&retry_metadata)
-                })?
+                .map_err(|_| reconnect_budget_error(retry_config, driver_name, &retry_metadata))?
         } else {
             connect(retry_metadata.attempts).await
         };
@@ -156,10 +177,11 @@ where
         // (the observed "error decoding response body") lands here. Bound this
         // setup wait so a silent 200 response cannot sit outside the Reason
         // atom's provider stall timeout for the longer HTTP read timeout.
-        let item_timeout = remaining_retry_time(retry_config, retry_started_at)
-            .map_or(first_item_timeout, |remaining| {
-                remaining.min(first_item_timeout)
-            });
+        let item_timeout =
+            reconnect_remaining(retry_config, driver_name, &retry_metadata, retry_started_at)?
+                .map_or(first_item_timeout, |remaining| {
+                    remaining.min(first_item_timeout)
+                });
         let (first, rest) = tokio::time::timeout(item_timeout, events.into_future())
             .await
             .map_err(|_| {
@@ -179,15 +201,11 @@ where
             let proposed_wait = retry_config.calculate_backoff(retry_metadata.attempts);
             let Some(wait) = reserve_retry_wait(retry_config, &mut retry_started_at, proposed_wait)
             else {
-                return Err(AgentLoopError::llm_kind(
-                    crate::error::LlmErrorKind::Unavailable,
-                    format!(
-                        "{driver_name} stream reconnect budget exhausted after {} retries over {:.1}s",
-                        retry_metadata.attempts,
-                        retry_config.max_retry_elapsed.as_secs_f64()
-                    ),
-                )
-                .with_retry_metadata(&retry_metadata));
+                return Err(reconnect_budget_error(
+                    retry_config,
+                    driver_name,
+                    &retry_metadata,
+                ));
             };
             retry_metadata.record_retry(wait, None);
             if let Some(Err(e)) = &first {
@@ -216,6 +234,9 @@ where
         }
 
         if retry_metadata.had_retries() {
+            retry_metadata.total_retry_elapsed = retry_started_at
+                .map(|started| started.elapsed())
+                .unwrap_or_default();
             tracing::info!(
                 driver = driver_name,
                 retries = retry_metadata.attempts,
@@ -267,21 +288,11 @@ where
     let mut retry_started_at = None;
     loop {
         let connected = if let Some(remaining) =
-            remaining_retry_time(retry_config, retry_started_at)
+            reconnect_remaining(retry_config, driver_name, &retry_metadata, retry_started_at)?
         {
             tokio::time::timeout(remaining, connect(retry_metadata.attempts))
                 .await
-                .map_err(|_| {
-                    AgentLoopError::llm_kind(
-                        crate::error::LlmErrorKind::Unavailable,
-                        format!(
-                            "{driver_name} stream reconnect budget exhausted after {} retries over {:.1}s",
-                            retry_metadata.attempts,
-                            retry_config.max_retry_elapsed.as_secs_f64()
-                        ),
-                    )
-                    .with_retry_metadata(&retry_metadata)
-                })?
+                .map_err(|_| reconnect_budget_error(retry_config, driver_name, &retry_metadata))?
         } else {
             connect(retry_metadata.attempts).await
         };
@@ -293,10 +304,11 @@ where
         }
         retry_metadata.absorb(metadata);
         let bytes = Box::pin(response.bytes_stream());
-        let item_timeout = remaining_retry_time(retry_config, retry_started_at)
-            .map_or(first_item_timeout, |remaining| {
-                remaining.min(first_item_timeout)
-            });
+        let item_timeout =
+            reconnect_remaining(retry_config, driver_name, &retry_metadata, retry_started_at)?
+                .map_or(first_item_timeout, |remaining| {
+                    remaining.min(first_item_timeout)
+                });
         let (first, rest) = tokio::time::timeout(item_timeout, bytes.into_future())
             .await
             .map_err(|_| {
@@ -316,15 +328,11 @@ where
             let proposed_wait = retry_config.calculate_backoff(retry_metadata.attempts);
             let Some(wait) = reserve_retry_wait(retry_config, &mut retry_started_at, proposed_wait)
             else {
-                return Err(AgentLoopError::llm_kind(
-                    crate::error::LlmErrorKind::Unavailable,
-                    format!(
-                        "{driver_name} stream reconnect budget exhausted after {} retries over {:.1}s",
-                        retry_metadata.attempts,
-                        retry_config.max_retry_elapsed.as_secs_f64()
-                    ),
-                )
-                .with_retry_metadata(&retry_metadata));
+                return Err(reconnect_budget_error(
+                    retry_config,
+                    driver_name,
+                    &retry_metadata,
+                ));
             };
             retry_metadata.record_retry(wait, None);
             if let Some(Err(e)) = &first {
@@ -353,6 +361,9 @@ where
         }
 
         if retry_metadata.had_retries() {
+            retry_metadata.total_retry_elapsed = retry_started_at
+                .map(|started| started.elapsed())
+                .unwrap_or_default();
             tracing::info!(
                 driver = driver_name,
                 retries = retry_metadata.attempts,
@@ -521,19 +532,10 @@ mod tests {
             2,
             "should reconnect exactly once"
         );
-        // The reconnected stream yields the content event and [DONE], no error.
-        let texts: Vec<String> = items
-            .iter()
-            .filter_map(|i| i.as_ref().ok())
-            .map(|ev| ev.data.clone())
-            .collect();
-        assert!(
-            texts.iter().any(|d| d.contains("hi")),
-            "expected content event after reconnect, got {texts:?}"
-        );
-        assert!(
-            items.iter().all(|i| i.is_ok()),
-            "reconnected stream should carry no transport error"
+        let texts: Vec<_> = items.into_iter().map(|item| item.unwrap().data).collect();
+        assert_eq!(
+            texts,
+            [r#"{"choices":[{"delta":{"content":"hi"}}]}"#, "[DONE]"]
         );
     }
 
@@ -568,7 +570,13 @@ mod tests {
         assert_eq!(count.load(Ordering::SeqCst), 2);
         assert_eq!(*consumed.lock().unwrap(), vec![0, 2]);
         assert_eq!(metadata.attempts, 2);
-        assert!(items.iter().all(Result::is_ok));
+        assert_eq!(
+            items
+                .into_iter()
+                .map(|item| item.unwrap().data)
+                .collect::<Vec<_>>(),
+            [r#"{"choices":[{"delta":{"content":"hi"}}]}"#, "[DONE]"]
+        );
     }
 
     #[tokio::test]
@@ -586,7 +594,14 @@ mod tests {
         );
         assert!(error.llm_retry_handled());
         assert_eq!(error.llm_retry_attempts(), 2);
-        assert!(error.to_string().contains("safe to resume"));
+        assert_eq!(
+            error.llm_error_kind(),
+            Some(crate::error::LlmErrorKind::Unavailable)
+        );
+        assert_eq!(
+            error.to_string(),
+            "LLM error: test stream transport failed after 2 retries; the turn is safe to resume"
+        );
     }
 
     #[tokio::test]
@@ -601,8 +616,13 @@ mod tests {
             1,
             "healthy stream must not reconnect"
         );
-        assert!(items.iter().all(|i| i.is_ok()));
-        assert!(items.iter().filter_map(|i| i.as_ref().ok()).count() >= 1);
+        assert_eq!(
+            items
+                .into_iter()
+                .map(|item| item.unwrap().data)
+                .collect::<Vec<_>>(),
+            [r#"{"choices":[{"delta":{"content":"hi"}}]}"#, "[DONE]"]
+        );
     }
 
     #[tokio::test]
@@ -625,10 +645,12 @@ mod tests {
             1,
             "setup-time stall must not retry up to the transport read timeout"
         );
-        assert!(
-            err.to_string().contains("no first event"),
-            "expected first-event stall error, got {err}"
+        assert_eq!(
+            err.to_string(),
+            "LLM error: provider stream stall: no first event for 0s"
         );
+        assert_eq!(err.llm_retry_attempts(), 0);
+        assert!(!err.llm_retry_handled());
     }
 
     #[tokio::test]
@@ -664,10 +686,12 @@ mod tests {
             1,
             "setup-time stall must not retry up to the transport read timeout"
         );
-        assert!(
-            err.to_string().contains("no first chunk"),
-            "expected first-chunk stall error, got {err}"
+        assert_eq!(
+            err.to_string(),
+            "LLM error: provider stream stall: no first chunk for 0s"
         );
+        assert_eq!(err.llm_retry_attempts(), 0);
+        assert!(!err.llm_retry_handled());
     }
 
     #[tokio::test]
@@ -684,21 +708,217 @@ mod tests {
             1,
             "committed stream must not reconnect after emitting an event"
         );
-        assert!(
-            items.first().is_some_and(|i| i.is_ok()),
-            "first item should be the committed event"
+        assert_eq!(items.len(), 2);
+        assert_eq!(
+            items[0].as_ref().unwrap().data,
+            r#"{"choices":[{"delta":{"content":"hi"}}]}"#
         );
-        assert!(
-            items.last().is_some_and(|i| i.is_err()),
-            "trailing transport error should pass through"
-        );
+        assert!(matches!(&items[1], Err(EventStreamError::Transport(_))));
     }
 
-    #[test]
-    fn classifier_rejects_non_transport_errors() {
-        // A UTF-8 decode failure is a malformed payload, not a transport flake.
-        let utf8_err = String::from_utf8(vec![0xff, 0xfe]).unwrap_err();
-        let err: EventStreamError<reqwest::Error> = EventStreamError::Utf8(utf8_err);
-        assert!(!is_reconnectable_stream_error(&err));
+    #[tokio::test]
+    async fn malformed_sse_is_returned_without_reconnection() {
+        let mut calls = 0;
+        let (mut events, metadata) = connect_sse_with_reconnect(&fast_config(2), "test", |_| {
+            calls += 1;
+            async {
+                Ok((
+                    reqwest::Response::from(http::Response::new(reqwest::Body::from(vec![
+                        0xff, 0xfe,
+                    ]))),
+                    RetryMetadata::default(),
+                ))
+            }
+        })
+        .await
+        .unwrap();
+        let error = events.next().await.unwrap().unwrap_err();
+        assert!(matches!(error, EventStreamError::Utf8(_)));
+        assert!(!is_reconnectable_stream_error(&error));
+        assert_eq!(calls, 1);
+        assert_eq!(metadata.attempts, 0);
+    }
+
+    #[tokio::test]
+    async fn committed_byte_stream_preserves_first_chunk_and_transport_failure() {
+        let mut calls = 0;
+        let (mut bytes, metadata) = connect_bytes_with_reconnect(&fast_config(2), "test", |_| {
+            calls += 1;
+            async {
+                let chunks = stream::iter([
+                    Ok(Bytes::from_static(b"committed")),
+                    Err(std::io::Error::other("truncated fixture")),
+                ]);
+                Ok((
+                    reqwest::Response::from(http::Response::new(reqwest::Body::wrap_stream(
+                        chunks,
+                    ))),
+                    RetryMetadata::default(),
+                ))
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            bytes.next().await.unwrap().unwrap(),
+            Bytes::from_static(b"committed")
+        );
+        let error = bytes.next().await.unwrap().unwrap_err();
+        assert!(is_reconnectable_reqwest_error(&error));
+        assert!(bytes.next().await.is_none());
+        assert_eq!(calls, 1);
+        assert_eq!(metadata.attempts, 0);
+    }
+
+    fn synthetic_response(fail: bool) -> reqwest::Response {
+        let body = if fail {
+            reqwest::Body::wrap_stream(stream::iter([Err::<Bytes, _>(std::io::Error::other(
+                "truncated fixture",
+            ))]))
+        } else {
+            reqwest::Body::from("data: first\n\ndata: second\n\n")
+        };
+        reqwest::Response::from(http::Response::builder().status(200).body(body).unwrap())
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn exhausted_header_budget_cannot_restart_the_first_item_timeout() {
+        for sse in [true, false] {
+            let config = LlmRetryConfig {
+                max_retry_elapsed: Duration::from_secs(2),
+                ..fast_config(3)
+            };
+            let mut connect = |_| async {
+                Ok((
+                    synthetic_response(false),
+                    RetryMetadata {
+                        attempts: 1,
+                        total_retry_elapsed: Duration::from_secs(3),
+                        ..Default::default()
+                    },
+                ))
+            };
+            let result = if sse {
+                connect_sse_with_reconnect_timeout(
+                    &config,
+                    "test",
+                    &mut connect,
+                    Duration::from_secs(120),
+                )
+                .await
+                .map(|_| ())
+            } else {
+                connect_bytes_with_reconnect_timeout(
+                    &config,
+                    "test",
+                    &mut connect,
+                    Duration::from_secs(120),
+                )
+                .await
+                .map(|_| ())
+            };
+            let error =
+                result.expect_err("header retry elapsed time must not become a fresh timeout");
+            assert_eq!(
+                error.llm_error_kind(),
+                Some(crate::error::LlmErrorKind::Unavailable)
+            );
+            assert_eq!(error.llm_retry_attempts(), 1);
+            assert!(error.llm_retry_handled());
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn late_reconnect_wakeup_does_not_start_another_connection() {
+        for sse in [true, false] {
+            let calls = Arc::new(AtomicU32::new(0));
+            let observed = calls.clone();
+            let task = tokio::spawn(async move {
+                let config = LlmRetryConfig {
+                    initial_backoff: Duration::from_secs(1),
+                    max_backoff: Duration::from_secs(1),
+                    max_retry_elapsed: Duration::from_secs(2),
+                    ..fast_config(3)
+                };
+                let mut connect = move |_| {
+                    let n = observed.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        if n == 0 {
+                            Ok((synthetic_response(true), RetryMetadata::default()))
+                        } else {
+                            std::future::pending().await
+                        }
+                    }
+                };
+                if sse {
+                    connect_sse_with_reconnect_timeout(
+                        &config,
+                        "test",
+                        &mut connect,
+                        Duration::from_secs(120),
+                    )
+                    .await
+                    .map(|_| ())
+                } else {
+                    connect_bytes_with_reconnect_timeout(
+                        &config,
+                        "test",
+                        &mut connect,
+                        Duration::from_secs(120),
+                    )
+                    .await
+                    .map(|_| ())
+                }
+            });
+            tokio::task::yield_now().await;
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            tokio::time::advance(Duration::from_secs(3)).await;
+            tokio::task::yield_now().await;
+            assert!(
+                task.is_finished(),
+                "expired reconnect must terminate, SSE={sse}"
+            );
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            let error = task.await.unwrap().unwrap_err();
+            assert_eq!(error.llm_retry_attempts(), 1);
+            assert!(error.llm_retry_handled());
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn successful_reconnect_reports_elapsed_recovery_and_replays_all_items() {
+        for sse in [true, false] {
+            let config = LlmRetryConfig {
+                initial_backoff: Duration::from_secs(1),
+                max_backoff: Duration::from_secs(1),
+                ..fast_config(2)
+            };
+            let mut calls = 0;
+            let mut connect = |_| {
+                calls += 1;
+                let failed = calls == 1;
+                async move { Ok((synthetic_response(failed), RetryMetadata::default())) }
+            };
+            let metadata = if sse {
+                let (stream, metadata) = connect_sse_with_reconnect(&config, "test", &mut connect)
+                    .await
+                    .unwrap();
+                let items: Vec<_> = stream.map(|item| item.unwrap().data).collect().await;
+                assert_eq!(items, ["first", "second"]);
+                metadata
+            } else {
+                let (stream, metadata) =
+                    connect_bytes_with_reconnect(&config, "test", &mut connect)
+                        .await
+                        .unwrap();
+                let chunks: Vec<_> = stream.map(|item| item.unwrap()).collect().await;
+                assert_eq!(chunks.concat(), b"data: first\n\ndata: second\n\n");
+                metadata
+            };
+            assert_eq!(calls, 2);
+            assert_eq!(metadata.attempts, 1);
+            assert_eq!(metadata.total_retry_wait, Duration::from_secs(1));
+            assert_eq!(metadata.total_retry_elapsed, Duration::from_secs(1));
+        }
     }
 }
