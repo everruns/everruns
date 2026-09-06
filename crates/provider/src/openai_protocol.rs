@@ -378,6 +378,14 @@ impl OpenAIProtocolChatDriver {
     }
 }
 
+// Provider usage is authoritative, including zero; estimates must never be
+// added to it when usage and text share a frame or more text follows usage.
+#[derive(Default)]
+struct CompletionTokenCount {
+    estimated: u32,
+    reported: Option<u32>,
+}
+
 impl Default for OpenAIProtocolChatDriver {
     fn default() -> Self {
         Self::new()
@@ -495,7 +503,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             .await?;
 
         let model = config.model.clone();
-        let total_tokens = Arc::new(Mutex::new(0u32));
+        let completion_tokens = Arc::new(Mutex::new(CompletionTokenCount::default()));
         let prompt_tokens = Arc::new(Mutex::new(0u32));
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         // OpenAI-compatible gateways (e.g. OpenRouter) report an authoritative
@@ -525,7 +533,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             event_stream
                 .then(move |result| {
                     let model = model.clone();
-                    let total_tokens = Arc::clone(&total_tokens);
+                    let completion_tokens = Arc::clone(&completion_tokens);
                     let prompt_tokens = Arc::clone(&prompt_tokens);
                     let cache_read_tokens = Arc::clone(&cache_read_tokens);
                     let provider_cost_usd = Arc::clone(&provider_cost_usd);
@@ -546,7 +554,10 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                         };
 
                         if event.data == "[DONE]" {
-                            let output_tokens = *total_tokens.lock().unwrap();
+                            let output_tokens = {
+                                let counts = completion_tokens.lock().unwrap();
+                                counts.reported.unwrap_or(counts.estimated)
+                            };
                             let input_tokens = *prompt_tokens.lock().unwrap();
                             let cached = *cache_read_tokens.lock().unwrap();
                             let cost = *provider_cost_usd.lock().unwrap();
@@ -638,7 +649,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                         *prompt_tokens.lock().unwrap() = pt;
                                     }
                                     if let Some(ct) = usage.completion_tokens {
-                                        *total_tokens.lock().unwrap() = ct;
+                                        completion_tokens.lock().unwrap().reported = Some(ct);
                                     }
                                     // Capture cached tokens from prompt_tokens_details
                                     if let Some(details) = &usage.prompt_tokens_details
@@ -654,11 +665,15 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                 }
 
                                 if let Some(choice) = chunk.choices.first() {
-                                    let mut tt = total_tokens.lock().unwrap();
+                                    let mut counts = completion_tokens.lock().unwrap();
                                     let mut acc = accumulated_tool_calls.lock().unwrap();
                                     let mut fr = finish_reason.lock().unwrap();
-                                    let stream_event =
-                                        process_stream_choice(choice, &mut tt, &mut acc, &mut fr);
+                                    let stream_event = process_stream_choice(
+                                        choice,
+                                        &mut counts.estimated,
+                                        &mut acc,
+                                        &mut fr,
+                                    );
                                     // Mirror reasoning deltas into the artifact
                                     // buffer as they stream, so the durable item
                                     // assembled at [DONE] carries the whole text.
@@ -1414,7 +1429,8 @@ mod tests {
     async fn mock_provider(sse: &str) -> (wiremock::MockServer, crate::Provider) {
         use wiremock::matchers::{header, method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
-        let server = MockServer::start().await;
+        // A pooled server can reuse connections owned by an earlier test runtime.
+        let server = MockServer::builder().start().await;
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
             .and(header("authorization", "Bearer synthetic-key"))
@@ -1495,6 +1511,27 @@ mod tests {
 
     #[tokio::test]
     async fn streamed_usage_and_first_id_reach_completion_metadata() {
+        for (reported, usage_index) in [(0, 0), (2, 1), (3, 2)] {
+            let mut chunks = [
+                json!({"choices":[{"delta":{"content":"Hello"}}]}),
+                json!({"choices":[{"delta":{"content":"!"},"finish_reason":"stop"}]}),
+                json!({"choices":[]}),
+            ];
+            chunks[usage_index]["usage"] = json!({"prompt_tokens":10,"completion_tokens":reported});
+            let sse = chunks
+                .iter()
+                .map(|chunk| format!("data: {chunk}\n\n"))
+                .collect::<String>()
+                + "data: [DONE]\n\n";
+            let (_server, provider) = mock_provider(&sse).await;
+            let response = provider
+                .chat_completion(vec![], &call_config())
+                .await
+                .unwrap();
+            assert_eq!(response.text, "Hello!");
+            assert_eq!(response.metadata.completion_tokens, Some(reported));
+            assert_eq!(response.metadata.total_tokens, Some(10 + reported));
+        }
         for (usage, expected) in [
             (
                 json!({"prompt_tokens":150,"completion_tokens":42}),

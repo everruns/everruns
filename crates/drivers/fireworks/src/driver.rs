@@ -354,225 +354,204 @@ impl Default for FireworksChatDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::driver_registry::{ProviderConfig, ServiceKind};
+    use everruns_provider::driver_registry::{LlmMessageRole, ProviderConfig, ServiceKind};
+    use serde_json::{Value, json};
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    #[test]
-    fn default_driver_uses_fireworks_endpoint() {
-        let service = provider("fireworks", "fw-key");
-        assert_eq!(
-            service.endpoint().url("chat/completions").as_deref(),
-            Some(FIREWORKS_DEFAULT_API_URL)
-        );
-    }
-
-    #[test]
-    fn with_base_url_normalizes_to_chat_completions() {
-        let service =
-            provider("fireworks", "fw-key").base_url("https://api.fireworks.ai/inference/v1");
-        assert_eq!(
-            service.endpoint().url("chat/completions").as_deref(),
-            Some(FIREWORKS_DEFAULT_API_URL)
-        );
-    }
-
-    #[test]
-    fn with_base_url_preserves_full_chat_completions_url() {
-        let service = provider("fireworks", "fw-key").base_url(FIREWORKS_DEFAULT_API_URL);
-        assert_eq!(
-            service.endpoint().url("chat/completions").as_deref(),
-            Some(FIREWORKS_DEFAULT_API_URL)
-        );
-    }
-
-    #[test]
-    fn is_fireworks_api_url_matches_host_only() {
-        assert!(is_fireworks_api_url(
-            "https://api.fireworks.ai/inference/v1/chat/completions"
-        ));
-        assert!(is_fireworks_api_url(
-            "https://api.fireworks.ai/inference/v1"
-        ));
-        assert!(!is_fireworks_api_url("https://proxy.example.com/v1"));
-        assert!(!is_fireworks_api_url("https://fireworks.ai/v1"));
-    }
-
-    #[test]
-    fn short_model_name_takes_last_segment() {
-        assert_eq!(
-            short_model_name("accounts/fireworks/models/llama-v3p1-70b-instruct"),
-            "llama-v3p1-70b-instruct"
-        );
-        assert_eq!(short_model_name("gpt-oss-120b"), "gpt-oss-120b");
-    }
-
-    #[test]
-    fn chat_model_filter_uses_supports_chat() {
-        let model = |id: &str, chat: Option<bool>| FireworksModelInfo {
-            id: id.to_string(),
-            created: None,
-            owned_by: None,
-            supports_chat: chat,
-            supports_image_input: None,
-            supports_tools: None,
-            context_length: None,
-        };
-        assert!(model("gpt-oss-120b", Some(true)).is_chat_model());
-        assert!(!model("flux-1-schnell-fp8", Some(false)).is_chat_model());
-        // Absent flag defaults to non-chat (conservative).
-        assert!(!model("mystery", None).is_chat_model());
-    }
-
-    #[test]
-    fn profile_maps_capabilities_and_limits() {
-        let model = FireworksModelInfo {
-            id: "accounts/fireworks/models/kimi-k2p6".to_string(),
-            created: None,
-            owned_by: Some("fireworks".to_string()),
-            supports_chat: Some(true),
-            supports_image_input: Some(true),
-            supports_tools: Some(true),
-            context_length: Some(262_144),
-        };
-        let profile = model.to_discovered_profile();
-        assert_eq!(profile.name, "kimi-k2p6");
-        assert!(profile.tool_call);
-        assert!(profile.attachment);
-        assert!(profile.open_weights);
-        let limits = profile.limits.expect("limits present");
-        assert_eq!(limits.context, 262_144);
-        assert_eq!(limits.output, 262_144);
-        let modalities = profile.modalities.expect("modalities present");
-        assert!(modalities.input.contains(&Modality::Image));
-    }
-
-    #[test]
-    fn profile_without_context_has_no_limits() {
-        let model = FireworksModelInfo {
-            id: "accounts/fireworks/models/text-only".to_string(),
-            created: None,
-            owned_by: None,
-            supports_chat: Some(true),
-            supports_image_input: Some(false),
-            supports_tools: Some(false),
-            context_length: None,
-        };
-        let profile = model.to_discovered_profile();
-        assert!(profile.limits.is_none());
-        assert!(!profile.tool_call);
-        assert!(!profile.attachment);
-    }
-
-    #[test]
-    fn clamp_saturates_above_i32_max() {
-        assert_eq!(clamp_i64_to_i32(10), 10);
-        assert_eq!(clamp_i64_to_i32(-5), 0);
-        assert_eq!(clamp_i64_to_i32(i64::MAX), i32::MAX);
+    fn config() -> LlmCallConfig {
+        LlmCallConfig {
+            model: "accounts/fireworks/models/example".into(),
+            temperature: Some(0.25),
+            max_tokens: Some(64),
+            tools: vec![],
+            reasoning_effort: None,
+            speed: None,
+            verbosity: None,
+            metadata: Default::default(),
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: None,
+            parallel_tool_calls: Some(false),
+            volatile_suffix_len: 0,
+            extra_headers: vec![],
+            cache_diagnostics: None,
+        }
     }
 
     #[tokio::test]
-    async fn list_models_skips_custom_non_fireworks_host() {
-        let service = Provider::new("proxy", FireworksChatDriver::new())
-            .base_url("https://proxy.example.com/v1");
-        let driver = FireworksChatDriver::new();
-        assert!(
-            driver
-                .list_models(service.endpoint())
-                .await
-                .unwrap()
-                .is_none()
-        );
-    }
-
-    #[tokio::test]
-    async fn discovery_fetch_authenticates_filters_and_maps() {
-        // `list_fireworks_models` is exercised directly so the Fireworks-host
-        // gate (which a wiremock 127.0.0.1 host cannot satisfy) does not block
-        // the HTTP path.
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/inference/v1/models"))
-            .and(header("authorization", "Bearer fw-secret"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "object": "list",
-                "data": [
-                    {
-                        "id": "accounts/fireworks/models/gpt-oss-120b",
-                        "object": "model",
-                        "created": 1_700_000_000,
-                        "owned_by": "fireworks",
-                        "supports_chat": true,
-                        "supports_tools": true,
-                        "supports_image_input": false,
-                        "context_length": 131_072
-                    },
-                    {
-                        "id": "accounts/fireworks/models/flux-1-schnell-fp8",
-                        "object": "model",
-                        "supports_chat": false
-                    },
-                ],
-            })))
-            .mount(&server)
-            .await;
-
-        let models_url = format!("{}/inference/v1/models", server.uri());
-        let service = Provider::new("fireworks-test", FireworksChatDriver::new())
-            .base_url(format!("{}/inference/v1", server.uri()))
-            .auth(BearerAuth::new("fw-secret"));
-        let discovered =
-            list_fireworks_models(&reqwest::Client::new(), service.endpoint(), &models_url)
-                .await
-                .expect("discovery request should succeed")
-                .expect("discovery should return a model list");
-
-        // Image model filtered out; chat model retained with a discovered profile.
-        assert_eq!(discovered.len(), 1);
+    async fn direct_and_registered_providers_preserve_authenticated_chat_contract() {
+        let direct = provider("fireworks", "synthetic-key");
         assert_eq!(
-            discovered[0].model_id,
-            "accounts/fireworks/models/gpt-oss-120b"
+            direct.endpoint().url("chat/completions").as_deref(),
+            Some("https://api.fireworks.ai/inference/v1/chat/completions")
         );
-        assert_eq!(discovered[0].display_name.as_deref(), Some("gpt-oss-120b"));
-        assert_eq!(discovered[0].owned_by.as_deref(), Some("fireworks"));
-        let profile = discovered[0]
-            .discovered_profile
-            .as_ref()
-            .expect("profile present");
-        assert!(profile.tool_call);
-        assert_eq!(profile.limits.as_ref().unwrap().context, 131_072);
-        assert!(discovered[0].created_at.is_some());
-    }
-
-    #[test]
-    fn register_driver_registers_fireworks() {
         let mut registry = DriverRegistry::new();
-        assert!(!registry.has_driver(&DriverId::Fireworks));
         register_driver(&mut registry);
-        assert!(registry.has_driver(&DriverId::Fireworks));
-
         let descriptor = registry.descriptor(&DriverId::Fireworks).unwrap();
-        assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
         assert_eq!(descriptor.display_name, "Fireworks AI");
-        // Credential schema: a single required api_key. The endpoint override is
-        // the provider's first-class `base_url`, not a credential field (see
-        // `fireworks_credential_schema`), so the schema has exactly one field.
+        assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
         assert_eq!(descriptor.credential_schema.fields.len(), 1);
         assert_eq!(descriptor.credential_schema.fields[0].name, "api_key");
         assert!(descriptor.credential_schema.fields[0].required);
+        for suffix in ["/inference/v1", "/inference/v1/chat/completions"] {
+            for registered in [false, true] {
+                let server = MockServer::builder().start().await;
+                Mock::given(method("POST")).and(path("/inference/v1/chat/completions")).and(header("authorization", "Bearer synthetic-key")).respond_with(ResponseTemplate::new(200).insert_header("content-type", "text/event-stream").set_body_string("data: {\"id\":\"response-1\",\"choices\":[{\"delta\":{\"content\":\"answer\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2}}\n\ndata: [DONE]\n\n")).expect(1).mount(&server).await;
+                let url = format!("{}{suffix}", server.uri());
+                let messages = vec![
+                    LlmMessage::text(LlmMessageRole::System, "rules"),
+                    LlmMessage::text(LlmMessageRole::User, "question"),
+                ];
+                let result = if registered {
+                    registry
+                        .create_chat_driver(
+                            &ProviderConfig::new(DriverId::Fireworks)
+                                .with_api_key("synthetic-key")
+                                .with_base_url(url),
+                        )
+                        .unwrap()
+                        .chat_completion(&ProviderEndpoint::default(), messages, &config())
+                        .await
+                } else {
+                    provider("direct", "synthetic-key")
+                        .base_url(url)
+                        .chat_completion(messages, &config())
+                        .await
+                }
+                .unwrap();
+                assert_eq!(result.text, "answer");
+                assert!(result.tool_calls.is_none());
+                assert!(result.reasoning.is_empty());
+                assert_eq!(result.metadata.response_id.as_deref(), Some("response-1"));
+                assert_eq!(result.metadata.finish_reason.as_deref(), Some("stop"));
+                assert_eq!(
+                    (
+                        result.metadata.prompt_tokens,
+                        result.metadata.completion_tokens,
+                        result.metadata.total_tokens
+                    ),
+                    (Some(10), Some(2), Some(12))
+                );
+                let requests = server.received_requests().await.unwrap();
+                assert_eq!(requests.len(), 1);
+                assert_eq!(
+                    requests[0].body_json::<Value>().unwrap(),
+                    json!({"model":"accounts/fireworks/models/example","messages":[{"role":"system","content":"rules"},{"role":"user","content":"question"}],"temperature":0.25,"max_tokens":64,"parallel_tool_calls":false,"stream":true,"stream_options":{"include_usage":true}})
+                );
+            }
+        }
+        let keyless = registry
+            .create_chat_driver(&ProviderConfig::new(DriverId::Fireworks))
+            .unwrap();
+        let error = keyless
+            .chat_completion(&ProviderEndpoint::default(), vec![], &config())
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.llm_error_kind(),
+            Some(everruns_provider::error::LlmErrorKind::Authentication)
+        );
+    }
 
-        // A provider with an api key builds a usable chat driver.
-        let config = ProviderConfig::new(DriverId::Fireworks).with_api_key("fw-key");
-        assert!(registry.create_chat_driver(&config).is_ok());
+    #[tokio::test]
+    async fn discovery_host_gate_rejects_lookalikes_before_authentication() {
+        use everruns_provider::runtime_provider::{ProviderAuth, ProviderAuthRequest};
+        struct ForbiddenAuth;
+        #[async_trait]
+        impl ProviderAuth for ForbiddenAuth {
+            async fn headers(&self, _: ProviderAuthRequest<'_>) -> Result<Vec<(String, String)>> {
+                panic!("disallowed discovery must not resolve credentials")
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+        for allowed in [
+            "https://api.fireworks.ai/inference/v1",
+            "https://API.FIREWORKS.AI:443/custom?x=y",
+        ] {
+            assert!(is_fireworks_api_url(allowed), "{allowed}");
+        }
+        for url in [
+            None,
+            Some("https://proxy.example/v1"),
+            Some("https://fireworks.ai/v1"),
+            Some("https://api.fireworks.ai.evil.example/v1"),
+            Some("https://api.fireworks.ai@evil.example/v1"),
+            Some("https://evil.example/api.fireworks.ai"),
+            Some("not a URL"),
+        ] {
+            let service = Provider::new("gate", FireworksChatDriver::new()).auth(ForbiddenAuth);
+            let service = if let Some(url) = url {
+                assert!(!is_fireworks_api_url(url), "{url}");
+                service.base_url(url)
+            } else {
+                service
+            };
+            assert!(service.list_models().await.unwrap().is_none());
+        }
+    }
 
-        // A selected provider remains constructible for configuration
-        // commands, while its first provider operation fails locally.
-        let no_key = ProviderConfig::new(DriverId::Fireworks);
-        let driver = registry
-            .create_chat_driver(&no_key)
-            .expect("selected provider remains constructible");
-        let error = futures::executor::block_on(driver.list_models(&ProviderEndpoint::default()))
-            .expect_err("missing credentials fail before network I/O");
-        assert!(error.to_string().contains("API key is required"));
+    fn expected_profile(
+        name: &str,
+        family: &str,
+        image: bool,
+        tools: bool,
+        limits: Option<i32>,
+    ) -> Value {
+        let mut expected = json!({"name":name,"family":family,"attachment":image,"reasoning":false,"temperature":true,"tool_call":tools,"structured_output":true,"open_weights":true,"modalities":{"input":if image { vec!["text","image"] } else { vec!["text"] },"output":["text"]},"tool_search":false,"supports_phases":false});
+        if let Some(limit) = limits {
+            expected["limits"] = json!({"context":limit,"output":limit});
+        }
+        expected
+    }
+
+    #[tokio::test]
+    async fn discovery_preserves_complete_catalog_profiles_and_numeric_boundaries() {
+        let server = MockServer::builder().start().await;
+        Mock::given(method("GET")).and(path("/inference/v1/models")).and(header("authorization", "Bearer synthetic-key")).respond_with(ResponseTemplate::new(200).set_body_json(json!({"data":[
+            {"id":"accounts/fireworks/models/vision","supports_chat":true,"supports_image_input":true,"supports_tools":true,"context_length":262144,"created":1700000000,"owned_by":"fireworks"},
+            {"id":"plain","supports_chat":true,"supports_image_input":false,"supports_tools":false},
+            {"id":"negative","supports_chat":true,"context_length":-5,"created":9223372036854775807_i64},
+            {"id":"huge","supports_chat":true,"context_length":9223372036854775807_i64},
+            {"id":"not-chat","supports_chat":false}, {"id":"unknown"}
+        ]}))).expect(1).mount(&server).await;
+        let service = provider("catalog", "synthetic-key");
+        let models = list_fireworks_models(
+            &reqwest::Client::new(),
+            service.endpoint(),
+            &format!("{}/inference/v1/models", server.uri()),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(models.len(), 4);
+        for (model, (id, name, image, tools, limit, created, owner)) in models.iter().zip([
+            (
+                "accounts/fireworks/models/vision",
+                "vision",
+                true,
+                true,
+                Some(262144),
+                Some(1700000000),
+                Some("fireworks"),
+            ),
+            ("plain", "plain", false, false, None, None, None),
+            ("negative", "negative", false, false, Some(0), None, None),
+            ("huge", "huge", false, false, Some(2147483647), None, None),
+        ]) {
+            assert_eq!(model.model_id, id);
+            assert_eq!(model.display_name.as_deref(), Some(name));
+            assert_eq!(model.capabilities, vec!["chat"]);
+            assert_eq!(model.created_at.map(|time| time.timestamp()), created);
+            assert_eq!(model.owned_by.as_deref(), owner);
+            assert_eq!(
+                serde_json::to_value(model.discovered_profile.as_ref().unwrap()).unwrap(),
+                expected_profile(name, id, image, tools, limit)
+            );
+        }
     }
 }
