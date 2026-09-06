@@ -412,7 +412,7 @@ fn drop_orphaned_tool_messages(messages: &[LlmMessage]) -> Vec<LlmMessage> {
                 return m
                     .tool_call_id
                     .as_deref()
-                    .is_none_or(|id| visible_call_ids.contains(id));
+                    .is_some_and(|id| visible_call_ids.contains(id));
             }
             true
         })
@@ -1024,6 +1024,12 @@ fn process_stream_choice(
     accumulated_tool_calls: &mut StreamToolCallAccumulator,
     finish_reason: &mut Option<String>,
 ) -> LlmStreamEvent {
+    // THREAT[TM-TOOL-036]: a terminal reason can share a final tool fragment.
+    // Preserve it before any delta branch returns, especially for rejected calls.
+    if let Some(reason) = &choice.finish_reason {
+        *finish_reason = Some(reason.clone());
+    }
+
     // Accumulate streamed tool-call fragments, keyed by the chunk `index`. The
     // shared accumulator appends argument fragments in place (EVE-636: amortized
     // O(total)) and parses the JSON once at finalize.
@@ -1058,15 +1064,10 @@ fn process_stream_choice(
         return LlmStreamEvent::TextDelta(content.clone());
     }
 
-    // Finish reason. Store it for the [DONE] handler; for tool_calls, emit the
-    // accumulated calls immediately so the agent can start working. Draining the
-    // accumulator prevents a second finish chunk from re-emitting the calls.
-    if let Some(fr) = &choice.finish_reason {
-        *finish_reason = Some(fr.clone());
-
-        if fr == "tool_calls" && !accumulated_tool_calls.is_empty() {
-            return LlmStreamEvent::ToolCalls(accumulated_tool_calls.take_finalized());
-        }
+    // Emit completed calls immediately. Draining prevents repeated finish
+    // chunks from emitting the same calls again.
+    if choice.finish_reason.as_deref() == Some("tool_calls") && !accumulated_tool_calls.is_empty() {
+        return LlmStreamEvent::ToolCalls(accumulated_tool_calls.take_finalized());
     }
 
     LlmStreamEvent::TextDelta(String::new())
@@ -1081,540 +1082,17 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    #[test]
-    fn test_convert_message_preserves_multiple_system_messages() {
-        // OpenAI chat-completions keeps the system role inline, so both the agent
-        // system prompt and a later notice/summary System message (infinity_context
-        // / compaction) pass through as separate `system` entries — neither is
-        // dropped. Lock that in alongside the "separate system field" drivers.
-        let messages = [
-            LlmMessage::text(LlmMessageRole::System, "A"),
-            LlmMessage::text(LlmMessageRole::User, "hi"),
-            LlmMessage::text(LlmMessageRole::System, "B"),
-        ];
-        let converted: Vec<OpenAiMessage> = messages
-            .iter()
-            .map(OpenAIProtocolChatDriver::convert_message)
-            .collect();
-        let system_texts: Vec<String> = converted
-            .iter()
-            .filter(|m| m.role == "system")
-            .filter_map(|m| match &m.content {
-                Some(OpenAiContent::Text(t)) => Some(t.clone()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(system_texts, vec!["A".to_string(), "B".to_string()]);
-    }
-
-    #[test]
-    fn test_is_azure_openai_api_url() {
-        assert!(is_azure_openai_api_url(
-            "https://example.openai.azure.com/openai/v1/chat/completions"
-        ));
-        assert!(is_azure_openai_api_url(
-            "https://example.services.ai.azure.com/openai/v1/responses"
-        ));
-        assert!(!is_azure_openai_api_url(
-            "https://api.openai.com/v1/chat/completions"
-        ));
-    }
-
-    #[test]
-    fn test_request_includes_stream_options_for_usage() {
-        // OpenAI streaming API requires stream_options.include_usage=true
-        // to return token usage in the response
-        let request = OpenAiRequest {
-            verbosity: None,
-            service_tier: None,
-            model: "gpt-5.2".to_string(),
-            messages: vec![OpenAiMessage {
-                role: "user".to_string(),
-                content: Some(OpenAiContent::Text("Hello".to_string())),
-                tool_calls: None,
-                tool_call_id: None,
-            }],
-            temperature: None,
-            max_tokens: None,
-            stream: true,
-            stream_options: Some(OpenAiStreamOptions {
-                include_usage: true,
-            }),
-            tools: None,
-            parallel_tool_calls: None,
-            reasoning_effort: None,
-            metadata: None,
-        };
-
-        let json = serde_json::to_value(&request).unwrap();
-        assert_eq!(json["stream"], true);
-        assert_eq!(json["stream_options"]["include_usage"], true);
-    }
-
-    #[test]
-    fn test_request_includes_metadata() {
-        // Metadata should be included when provided
-        let mut metadata = std::collections::HashMap::new();
-        metadata.insert("session_id".to_string(), "session_abc123".to_string());
-        metadata.insert("agent_id".to_string(), "agent_xyz789".to_string());
-
-        let request = OpenAiRequest {
-            verbosity: None,
-            service_tier: None,
-            model: "gpt-5.2".to_string(),
-            messages: vec![OpenAiMessage {
-                role: "user".to_string(),
-                content: Some(OpenAiContent::Text("Hello".to_string())),
-                tool_calls: None,
-                tool_call_id: None,
-            }],
-            temperature: None,
-            max_tokens: None,
-            stream: true,
-            stream_options: None,
-            tools: None,
-            parallel_tool_calls: None,
-            reasoning_effort: None,
-            metadata: Some(metadata),
-        };
-
-        let json = serde_json::to_value(&request).unwrap();
-        assert_eq!(json["metadata"]["session_id"], "session_abc123");
-        assert_eq!(json["metadata"]["agent_id"], "agent_xyz789");
-    }
-
-    #[test]
-    fn test_usage_chunk_parsing() {
-        // OpenAI sends usage in a separate chunk after finish_reason
-        // This test verifies we can parse it correctly
-        let usage_chunk = r#"{
-            "id": "chatcmpl-123",
-            "object": "chat.completion.chunk",
-            "created": 1234567890,
-            "model": "gpt-5.2",
-            "choices": [],
-            "usage": {
-                "prompt_tokens": 150,
-                "completion_tokens": 42,
-                "total_tokens": 192
-            }
-        }"#;
-
-        let chunk: OpenAiStreamChunk = serde_json::from_str(usage_chunk).unwrap();
-        assert!(chunk.usage.is_some());
-        let usage = chunk.usage.unwrap();
-        assert_eq!(usage.prompt_tokens, Some(150));
-        assert_eq!(usage.completion_tokens, Some(42));
-    }
-
-    #[test]
-    fn test_usage_chunk_with_cached_tokens() {
-        // OpenAI includes cached_tokens in prompt_tokens_details
-        let usage_chunk = r#"{
-            "id": "chatcmpl-123",
-            "choices": [],
-            "usage": {
-                "prompt_tokens": 150,
-                "completion_tokens": 42,
-                "prompt_tokens_details": {
-                    "cached_tokens": 100
-                }
-            }
-        }"#;
-
-        let chunk: OpenAiStreamChunk = serde_json::from_str(usage_chunk).unwrap();
-        let usage = chunk.usage.unwrap();
-        assert_eq!(usage.prompt_tokens, Some(150));
-        assert_eq!(usage.completion_tokens, Some(42));
-        assert!(usage.prompt_tokens_details.is_some());
-        assert_eq!(
-            usage.prompt_tokens_details.unwrap().cached_tokens,
-            Some(100)
-        );
-    }
-
-    #[test]
-    fn test_usage_chunk_with_openrouter_cost() {
-        // OpenAI-compatible gateways like OpenRouter add `usage.cost` (USD credits).
-        let usage_chunk = r#"{
-            "id": "gen-123",
-            "choices": [],
-            "usage": {
-                "prompt_tokens": 194,
-                "completion_tokens": 2,
-                "total_tokens": 196,
-                "cost": 0.00095
-            }
-        }"#;
-
-        let chunk: OpenAiStreamChunk = serde_json::from_str(usage_chunk).unwrap();
-        let usage = chunk.usage.unwrap();
-        assert_eq!(usage.cost, Some(0.00095));
-    }
-
-    #[test]
-    fn test_usage_chunk_without_cost_defaults_none() {
-        // Direct OpenAI omits `cost`; it must deserialize to None, not error.
-        let usage_chunk = r#"{
-            "id": "chatcmpl-123",
-            "choices": [],
-            "usage": { "prompt_tokens": 10, "completion_tokens": 5 }
-        }"#;
-
-        let chunk: OpenAiStreamChunk = serde_json::from_str(usage_chunk).unwrap();
-        assert_eq!(chunk.usage.unwrap().cost, None);
-    }
-
-    #[test]
-    fn test_chunk_id_is_captured() {
-        let chunk_with_id: OpenAiStreamChunk =
-            serde_json::from_str(r#"{"id":"gen-abc123","choices":[]}"#).unwrap();
-        assert_eq!(chunk_with_id.id.as_deref(), Some("gen-abc123"));
-
-        let chunk_no_id: OpenAiStreamChunk = serde_json::from_str(r#"{"choices":[]}"#).unwrap();
-        assert!(chunk_no_id.id.is_none());
-    }
-
-    #[test]
-    fn test_finish_reason_chunk_parsing() {
-        // Finish reason comes in a chunk BEFORE the usage chunk
-        let finish_chunk = r#"{
-            "id": "chatcmpl-123",
-            "choices": [{
-                "index": 0,
-                "delta": {},
-                "finish_reason": "stop"
-            }]
-        }"#;
-
-        let chunk: OpenAiStreamChunk = serde_json::from_str(finish_chunk).unwrap();
-        assert!(chunk.usage.is_none()); // No usage in finish_reason chunk
-        assert_eq!(chunk.choices.len(), 1);
-        assert_eq!(chunk.choices[0].finish_reason, Some("stop".to_string()));
-    }
-
     // ========================================================================
     // Request-too-large detection tests
     // ========================================================================
-
-    #[test]
-    fn test_is_openai_request_too_large_429_request_too_large() {
-        let error = r#"{"error":{"message":"Request too large for gpt-4o in organization org-xxx on tokens per min (TPM): Limit 500000, Requested 538772."}}"#;
-        assert!(is_openai_request_too_large(
-            reqwest::StatusCode::TOO_MANY_REQUESTS,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_openai_request_too_large_429_token_limit() {
-        let error =
-            r#"{"error":{"message":"tokens per min (TPM): Limit 500000, Requested 600000"}}"#;
-        assert!(is_openai_request_too_large(
-            reqwest::StatusCode::TOO_MANY_REQUESTS,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_openai_request_too_large_400_context_length() {
-        let error = r#"{"error":{"code":"context_length_exceeded","message":"This model's maximum context length is 128000 tokens."}}"#;
-        assert!(is_openai_request_too_large(
-            reqwest::StatusCode::BAD_REQUEST,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_openai_request_too_large_400_max_context() {
-        let error =
-            r#"{"error":{"message":"This model's maximum context length is 128000 tokens"}}"#;
-        assert!(is_openai_request_too_large(
-            reqwest::StatusCode::BAD_REQUEST,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_openai_request_too_large_tokens_must_be_reduced() {
-        let error = r#"{"error":{"message":"The input or output tokens must be reduced"}}"#;
-        assert!(is_openai_request_too_large(
-            reqwest::StatusCode::BAD_REQUEST,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_openai_request_too_large_false_for_other_errors() {
-        // Regular rate limit (not token-related)
-        let error = r#"{"error":{"message":"Rate limit exceeded: too many requests per minute"}}"#;
-        assert!(!is_openai_request_too_large(
-            reqwest::StatusCode::TOO_MANY_REQUESTS,
-            error
-        ));
-
-        // Internal server error
-        let error = r#"{"error":{"message":"Internal server error"}}"#;
-        assert!(!is_openai_request_too_large(
-            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
-            error
-        ));
-
-        // Generic 400 error
-        let error = r#"{"error":{"message":"Invalid request"}}"#;
-        assert!(!is_openai_request_too_large(
-            reqwest::StatusCode::BAD_REQUEST,
-            error
-        ));
-    }
 
     // ========================================================================
     // Model-not-found detection tests
     // ========================================================================
 
-    #[test]
-    fn test_is_openai_model_not_found_real_error() {
-        // Real OpenAI 404 response for nonexistent model
-        let error = r#"{"error":{"code":"model_not_found","message":"The model 'gpt-99' does not exist or you do not have access to it.","type":"invalid_request_error","param":null}}"#;
-        assert!(is_openai_model_not_found(
-            reqwest::StatusCode::NOT_FOUND,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_openai_model_not_found_does_not_exist() {
-        let error = r#"{"error":{"message":"The model 'fake-model' does not exist"}}"#;
-        assert!(is_openai_model_not_found(
-            reqwest::StatusCode::NOT_FOUND,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_openai_model_not_found_generic_not_found() {
-        let error = r#"{"error":{"message":"Model not found"}}"#;
-        assert!(is_openai_model_not_found(
-            reqwest::StatusCode::NOT_FOUND,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_openai_model_not_found_400_with_model_not_found_code() {
-        // OpenAI Responses API returns 400 (not 404) for nonexistent models
-        let error = r#"{"error":{"code":"model_not_found","message":"The requested model 'gpt-99' does not exist.","type":"invalid_request_error","param":"model"}}"#;
-        assert!(is_openai_model_not_found(
-            reqwest::StatusCode::BAD_REQUEST,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_openai_model_not_found_false_for_non_model_error() {
-        // 400 without model_not_found code should not match
-        let error = r#"{"error":{"code":"invalid_request","message":"Some other error"}}"#;
-        assert!(!is_openai_model_not_found(
-            reqwest::StatusCode::BAD_REQUEST,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_openai_model_not_found_false_for_other_404() {
-        // 404 without model-related message
-        let error = r#"{"error":{"message":"Endpoint not found"}}"#;
-        assert!(!is_openai_model_not_found(
-            reqwest::StatusCode::NOT_FOUND,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_openai_model_not_found_403_tier_gated_model() {
-        // OpenAI returns 403 for models that exist but require a higher API tier;
-        // these must classify as model_unavailable, not provider_misconfigured.
-        let error = r#"{"error":{"code":"model_not_found","message":"The model 'gpt-5.4-mini' does not exist or you do not have access to it.","type":"invalid_request_error","param":null}}"#;
-        assert!(is_openai_model_not_found(
-            reqwest::StatusCode::FORBIDDEN,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_openai_model_not_found_403_plain_auth_error_is_not_model_not_found() {
-        // A plain 403 without model_not_found code is a real auth error and must
-        // NOT be classified as model_unavailable.
-        let error = r#"{"error":{"message":"Invalid authentication credentials","type":"authentication_error"}}"#;
-        assert!(!is_openai_model_not_found(
-            reqwest::StatusCode::FORBIDDEN,
-            error
-        ));
-    }
-
     // ========================================================================
     // Reasoning effort guard tests
     // ========================================================================
-
-    #[test]
-    fn test_reasoning_effort_none_is_omitted() {
-        // When reasoning_effort is "none", it should be filtered out
-        // to avoid "Unrecognized request argument" errors on non-thinking models
-        let request = OpenAiRequest {
-            verbosity: None,
-            service_tier: None,
-            model: "gpt-5.4-mini".to_string(),
-            messages: vec![OpenAiMessage {
-                role: "user".to_string(),
-                content: Some(OpenAiContent::Text("Hello".to_string())),
-                tool_calls: None,
-                tool_call_id: None,
-            }],
-            temperature: None,
-            max_tokens: None,
-            stream: true,
-            stream_options: None,
-            tools: None,
-            parallel_tool_calls: None,
-            reasoning_effort: Some(crate::model::ReasoningEffort::None)
-                .filter(crate::model::ReasoningEffort::requests_reasoning)
-                .map(|e| e.as_str().to_string()),
-            metadata: None,
-        };
-
-        let json = serde_json::to_value(&request).unwrap();
-        assert!(
-            json.get("reasoning_effort").is_none(),
-            "reasoning_effort should be omitted when effort is 'none'"
-        );
-    }
-
-    #[test]
-    fn test_reasoning_effort_high_is_included() {
-        let request = OpenAiRequest {
-            verbosity: None,
-            service_tier: None,
-            model: "o4-mini".to_string(),
-            messages: vec![OpenAiMessage {
-                role: "user".to_string(),
-                content: Some(OpenAiContent::Text("Hello".to_string())),
-                tool_calls: None,
-                tool_call_id: None,
-            }],
-            temperature: None,
-            max_tokens: None,
-            stream: true,
-            stream_options: None,
-            tools: None,
-            parallel_tool_calls: None,
-            reasoning_effort: Some(crate::model::ReasoningEffort::High)
-                .filter(crate::model::ReasoningEffort::requests_reasoning)
-                .map(|e| e.as_str().to_string()),
-            metadata: None,
-        };
-
-        let json = serde_json::to_value(&request).unwrap();
-        assert_eq!(json["reasoning_effort"], "high");
-    }
-
-    /// EVE-598: the Chat Completions request (used by the OpenAI Chat driver,
-    /// OpenRouter, and MAI) serializes `parallel_tool_calls` only when set, so
-    /// the provider default applies when the operator leaves it unset.
-    #[test]
-    fn test_request_serializes_parallel_tool_calls() {
-        fn build(flag: Option<bool>) -> serde_json::Value {
-            let request = OpenAiRequest {
-                verbosity: None,
-                service_tier: None,
-                model: "gpt-5.4-mini".to_string(),
-                messages: vec![OpenAiMessage {
-                    role: "user".to_string(),
-                    content: Some(OpenAiContent::Text("Hello".to_string())),
-                    tool_calls: None,
-                    tool_call_id: None,
-                }],
-                temperature: None,
-                max_tokens: None,
-                stream: true,
-                stream_options: None,
-                tools: None,
-                parallel_tool_calls: flag,
-                reasoning_effort: None,
-                metadata: None,
-            };
-            serde_json::to_value(&request).unwrap()
-        }
-
-        // Omitted when None.
-        assert!(build(None).get("parallel_tool_calls").is_none());
-        // Present and preserved for Some(_).
-        assert_eq!(build(Some(true))["parallel_tool_calls"], true);
-        assert_eq!(build(Some(false))["parallel_tool_calls"], false);
-    }
-
-    /// The speed selector serializes as `service_tier` only when set, so the
-    /// provider's default ("auto") routing applies when unset.
-    #[test]
-    fn test_request_serializes_service_tier() {
-        fn build(tier: Option<&str>) -> serde_json::Value {
-            let request = OpenAiRequest {
-                service_tier: tier.map(str::to_string),
-                verbosity: None,
-                model: "gpt-5.4-mini".to_string(),
-                messages: vec![OpenAiMessage {
-                    role: "user".to_string(),
-                    content: Some(OpenAiContent::Text("Hello".to_string())),
-                    tool_calls: None,
-                    tool_call_id: None,
-                }],
-                temperature: None,
-                max_tokens: None,
-                stream: true,
-                stream_options: None,
-                tools: None,
-                parallel_tool_calls: None,
-                reasoning_effort: None,
-                metadata: None,
-            };
-            serde_json::to_value(&request).unwrap()
-        }
-
-        assert!(build(None).get("service_tier").is_none());
-        assert_eq!(build(Some("flex"))["service_tier"], "flex");
-        assert_eq!(build(Some("priority"))["service_tier"], "priority");
-    }
-
-    /// Verbosity serializes as a top-level `verbosity` field only when set, so
-    /// the provider's default output length applies when unset.
-    #[test]
-    fn test_request_serializes_verbosity() {
-        fn build(verbosity: Option<&str>) -> serde_json::Value {
-            let request = OpenAiRequest {
-                service_tier: None,
-                verbosity: verbosity.map(str::to_string),
-                model: "gpt-5.6-sol".to_string(),
-                messages: vec![OpenAiMessage {
-                    role: "user".to_string(),
-                    content: Some(OpenAiContent::Text("Hello".to_string())),
-                    tool_calls: None,
-                    tool_call_id: None,
-                }],
-                temperature: None,
-                max_tokens: None,
-                stream: true,
-                stream_options: None,
-                tools: None,
-                parallel_tool_calls: None,
-                reasoning_effort: None,
-                metadata: None,
-            };
-            serde_json::to_value(&request).unwrap()
-        }
-
-        assert!(build(None).get("verbosity").is_none());
-        assert_eq!(build(Some("low"))["verbosity"], "low");
-        assert_eq!(build(Some("high"))["verbosity"], "high");
-    }
 
     // ------------------------------------------------------------------
     // EVE-522: streaming chunk handling (process_stream_choice)
@@ -1725,10 +1203,8 @@ mod tests {
         );
 
         let payload = r#"{"path":"a.rs","contents":"a fairly long contents value streamed one character at a time to exceed one hundred chunks","n":987654321}"#;
-        assert!(payload.chars().count() > 100);
 
         // Stream the arguments one character per chunk.
-        let mut expected = String::new();
         for ch in payload.chars() {
             let frag = ch.to_string();
             let chunk = json!({
@@ -1742,7 +1218,6 @@ mod tests {
                 &mut acc,
                 &mut finish_reason,
             );
-            expected.push_str(&frag);
         }
 
         // Mid-stream the shared accumulator holds the fragments as a raw string
@@ -1760,6 +1235,7 @@ mod tests {
             LlmStreamEvent::ToolCalls(calls) => {
                 assert_eq!(calls.len(), 1);
                 assert_eq!(calls[0].id, "call_1");
+                assert_eq!(calls[0].name, "write_file");
                 assert_eq!(
                     calls[0].arguments,
                     serde_json::from_str::<serde_json::Value>(payload).unwrap()
@@ -1795,7 +1271,10 @@ mod tests {
         match e {
             LlmStreamEvent::ToolCalls(calls) => {
                 assert_eq!(calls.len(), 1);
-                assert_eq!(calls[0].name, "list_dir");
+                assert_eq!(
+                    serde_json::to_value(&calls).unwrap(),
+                    json!([{"id":"call_9","name":"list_dir","arguments":{}}])
+                );
             }
             other => panic!("expected ToolCalls, got {:?}", other),
         }
@@ -1820,6 +1299,7 @@ mod tests {
         match take_pending_tool_calls(&mut acc, None) {
             Some(LlmStreamEvent::ToolCalls(calls)) => {
                 assert_eq!(calls.len(), 1);
+                assert_eq!(calls[0].id, "call_1");
                 assert_eq!(calls[0].name, "read_file");
                 assert_eq!(calls[0].arguments, json!({"path": "Cargo.toml"}));
             }
@@ -1880,57 +1360,6 @@ mod tests {
     }
 
     #[test]
-    fn drop_orphaned_tool_messages_removes_unmatched_tool_results() {
-        use crate::driver_registry::LlmMessageContent;
-
-        let messages = vec![
-            LlmMessage::text(LlmMessageRole::User, "hello"),
-            LlmMessage {
-                role: LlmMessageRole::Tool,
-                content: LlmMessageContent::Text("result".to_string()),
-                tool_calls: None,
-                tool_call_id: Some("call_trimmed".to_string()),
-                phase: None,
-                reasoning: Vec::new(),
-            },
-        ];
-        let filtered = drop_orphaned_tool_messages(&messages);
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].role, LlmMessageRole::User);
-    }
-
-    #[test]
-    fn drop_orphaned_tool_messages_keeps_matched_tool_results() {
-        use crate::driver_registry::LlmMessageContent;
-        use crate::tool_types::ToolCall;
-
-        let messages = vec![
-            LlmMessage {
-                role: LlmMessageRole::Assistant,
-                content: LlmMessageContent::Text(String::new()),
-                tool_calls: Some(vec![ToolCall {
-                    id: "call_1".to_string(),
-                    name: "read_file".to_string(),
-                    arguments: json!({}),
-                }]),
-                tool_call_id: None,
-                phase: None,
-                reasoning: Vec::new(),
-            },
-            LlmMessage {
-                role: LlmMessageRole::Tool,
-                content: LlmMessageContent::Text("file content".to_string()),
-                tool_calls: None,
-                tool_call_id: Some("call_1".to_string()),
-                phase: None,
-                reasoning: Vec::new(),
-            },
-        ];
-        let filtered = drop_orphaned_tool_messages(&messages);
-        assert_eq!(filtered.len(), 2);
-    }
-
-    #[test]
     fn function_tools_serialize_strict_only_for_compatible_schemas() {
         use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
         let make_tool = |parameters| {
@@ -1947,24 +1376,393 @@ mod tests {
             })
         };
         let compatible = OpenAIProtocolChatDriver::convert_tools(&[make_tool(json!({
-            "type": "object", "properties": {"query": {"type": "string"}}
+            "type":"object","properties":{"query":{"type":"string"}}
         }))]);
-        let serialized = serde_json::to_value(&compatible[0]).unwrap();
-        assert_eq!(serialized["function"]["strict"], true);
         assert_eq!(
-            serialized["function"]["parameters"]["required"],
-            json!(["query"])
+            serde_json::to_value(&compatible).unwrap(),
+            json!([{"type":"function","function":{"name":"lookup","description":"Lookup","strict":true,"parameters":{"type":"object","properties":{"query":{"type":["string","null"]}},"required":["query"],"additionalProperties":false}}}])
         );
-        assert_eq!(
-            serialized["function"]["parameters"]["properties"]["query"]["type"],
-            json!(["string", "null"])
-        );
-
         let incompatible = OpenAIProtocolChatDriver::convert_tools(&[make_tool(json!({
-            "type": "object", "allOf": [{"type": "object"}]
+            "type":"object","allOf":[{"type":"object"}]
         }))]);
-        let serialized = serde_json::to_value(&incompatible[0]).unwrap();
-        assert!(serialized["function"].get("strict").is_none());
-        assert!(serialized["function"]["parameters"].get("allOf").is_some());
+        assert_eq!(
+            serde_json::to_value(&incompatible).unwrap(),
+            json!([{"type":"function","function":{"name":"lookup","description":"Lookup","parameters":{"type":"object","allOf":[{"type":"object"}]}}}])
+        );
+    }
+    fn call_config() -> LlmCallConfig {
+        LlmCallConfig {
+            model: "model".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            speed: None,
+            verbosity: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: None,
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
+        }
+    }
+    async fn mock_provider(sse: &str) -> (wiremock::MockServer, crate::Provider) {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        // A pooled server can reuse connections owned by an earlier test runtime.
+        let server = MockServer::builder().start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(header("authorization", "Bearer synthetic-key"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(sse),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let provider = crate::Provider::new(
+            "test",
+            OpenAIProtocolChatDriver::new().with_retry_config(LlmRetryConfig {
+                max_retries: 0,
+                ..Default::default()
+            }),
+        )
+        .base_url(format!("{}/v1", server.uri()))
+        .auth(crate::BearerAuth::new("synthetic-key"));
+        (server, provider)
+    }
+
+    #[tokio::test]
+    async fn request_options_reach_complete_http_payload_without_reimplementing_filters() {
+        for (reasoning, parallel, tier, verbosity) in [
+            (Some(crate::model::ReasoningEffort::None), None, None, None),
+            (
+                Some(crate::model::ReasoningEffort::High),
+                Some(true),
+                Some("priority"),
+                Some("high"),
+            ),
+            (None, Some(false), Some("flex"), Some("low")),
+        ] {
+            let (server, provider) = mock_provider("data: [DONE]\n\n").await;
+            let mut config = call_config();
+            config.reasoning_effort = reasoning;
+            config.parallel_tool_calls = parallel;
+            config.speed = tier.map(str::to_string);
+            config.verbosity = verbosity.map(str::to_string);
+            config.temperature = Some(0.5);
+            config.max_tokens = Some(128);
+            if tier.is_some() {
+                config
+                    .metadata
+                    .insert("session_id".into(), "session_abc123".into());
+                config
+                    .metadata
+                    .insert("agent_id".into(), "agent_xyz789".into());
+            }
+            let messages = vec![
+                LlmMessage::text(LlmMessageRole::System, "A"),
+                LlmMessage::text(LlmMessageRole::User, "Hello"),
+                LlmMessage::text(LlmMessageRole::System, "B"),
+            ];
+            provider.chat_completion(messages, &config).await.unwrap();
+            let requests = server.received_requests().await.unwrap();
+            assert_eq!(requests.len(), 1);
+            let mut expected = json!({"model":"model","messages":[{"role":"system","content":"A"},{"role":"user","content":"Hello"},{"role":"system","content":"B"}],"temperature":0.5,"max_tokens":128,"stream":true,"stream_options":{"include_usage":true}});
+            if tier == Some("priority") {
+                expected["reasoning_effort"] = json!("high");
+            }
+            if let Some(value) = parallel {
+                expected["parallel_tool_calls"] = json!(value);
+            }
+            if let Some(value) = tier {
+                expected["service_tier"] = json!(value);
+                expected["metadata"] =
+                    json!({"session_id":"session_abc123","agent_id":"agent_xyz789"});
+            }
+            if let Some(value) = verbosity {
+                expected["verbosity"] = json!(value);
+            }
+            assert_eq!(requests[0].body_json::<Value>().unwrap(), expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn streamed_usage_and_first_id_reach_completion_metadata() {
+        for (usage, expected) in [
+            (
+                json!({"prompt_tokens":150,"completion_tokens":42}),
+                (150, 42, None, None, 192),
+            ),
+            (
+                json!({"prompt_tokens":150,"completion_tokens":42,"prompt_tokens_details":{"cached_tokens":100}}),
+                (50, 42, Some(100), None, 192),
+            ),
+            (
+                json!({"prompt_tokens":194,"completion_tokens":2,"cost":0.00095}),
+                (194, 2, None, Some(0.00095), 196),
+            ),
+            (
+                json!({"prompt_tokens":10,"completion_tokens":5,"cost":0.0}),
+                (10, 5, None, Some(0.0), 15),
+            ),
+        ] {
+            let sse = format!(
+                "data: {}\n\ndata: {}\n\ndata: {}\n\ndata: [DONE]\n\n",
+                json!({"choices":[{"delta":{"content":"Hello"}}]}),
+                json!({"id":"first-id","choices":[{"delta":{},"finish_reason":"stop"}]}),
+                json!({"id":"later-id","choices":[],"usage":usage})
+            );
+            let (_server, provider) = mock_provider(&sse).await;
+            let response = provider
+                .chat_completion(vec![], &call_config())
+                .await
+                .unwrap();
+            assert_eq!(response.text, "Hello");
+            assert!(response.tool_calls.is_none());
+            assert!(response.reasoning.is_empty());
+            let meta = response.metadata;
+            assert_eq!(
+                (
+                    meta.prompt_tokens,
+                    meta.completion_tokens,
+                    meta.cache_read_tokens,
+                    meta.provider_cost_usd
+                ),
+                (Some(expected.0), Some(expected.1), expected.2, expected.3)
+            );
+            assert_eq!(meta.total_tokens, Some(expected.4));
+            assert_eq!(meta.response_id.as_deref(), Some("first-id"));
+            assert_eq!(meta.finish_reason.as_deref(), Some("stop"));
+            assert_eq!(meta.model.as_deref(), Some("model"));
+            assert!(meta.cache_creation_tokens.is_none());
+            assert!(meta.retry_metadata.is_none());
+        }
+        let (_server, provider) = mock_provider(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"text\"}}]}\n\ndata: [DONE]\n\n",
+        )
+        .await;
+        let response = provider
+            .chat_completion(vec![], &call_config())
+            .await
+            .unwrap();
+        assert_eq!(response.metadata.response_id, None);
+        assert_eq!(response.metadata.completion_tokens, Some(1));
+        assert_eq!(response.metadata.provider_cost_usd, None);
+    }
+
+    #[tokio::test]
+    async fn terminal_reasons_survive_final_deltas_and_block_truncated_tool_execution() {
+        for reason in ["length", "content_filter"] {
+            for delta in [
+                json!({"content":"partial"}),
+                json!({"tool_calls":[{"index":0,"id":"call","function":{"name":"run","arguments":"{}"}}]}),
+            ] {
+                let sse = format!(
+                    "data: {}\n\ndata: [DONE]\n\n",
+                    json!({"choices":[{"delta":delta,"finish_reason":reason}]})
+                );
+                let (_server, provider) = mock_provider(&sse).await;
+                let response = provider
+                    .chat_completion(vec![], &call_config())
+                    .await
+                    .unwrap();
+                assert_eq!(response.metadata.finish_reason.as_deref(), Some(reason));
+                assert!(
+                    response.tool_calls.is_none(),
+                    "truncated/rejected calls must not execute"
+                );
+                assert_eq!(
+                    response.text,
+                    if delta.get("content").is_some() {
+                        "partial"
+                    } else {
+                        ""
+                    }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn azure_host_detection_rejects_lookalikes_and_ignores_url_components() {
+        for (url, azure) in [
+            (
+                "https://example.openai.azure.com/openai/v1/chat/completions",
+                true,
+            ),
+            (
+                "https://example.services.ai.azure.com/openai/v1/responses",
+                true,
+            ),
+            ("https://EXAMPLE.OPENAI.AZURE.COM:8443/path?x=1", true),
+            ("https://api.openai.com/v1/chat/completions", false),
+            ("https://example.openai.azure.com.evil.test/path", false),
+            ("https://example.openai.azure.com@evil.test/", false),
+            ("https://evil.test/?host=example.openai.azure.com", false),
+            ("not a URL", false),
+        ] {
+            assert_eq!(is_azure_openai_api_url(url), azure, "{url}");
+        }
+    }
+
+    #[test]
+    fn request_size_classification_distinguishes_status_gates_and_generic_limits() {
+        for (status, body, expected) in [
+            (
+                429,
+                r#"{"error":{"message":"Request too large for gpt-4o in organization org-xxx on tokens per min (TPM): Limit 500000, Requested 538772."}}"#,
+                true,
+            ),
+            (
+                429,
+                r#"{"error":{"message":"tokens per min (TPM): Limit 500000, Requested 600000"}}"#,
+                true,
+            ),
+            (
+                400,
+                r#"{"error":{"code":"context_length_exceeded","message":"This model's maximum context length is 128000 tokens."}}"#,
+                true,
+            ),
+            (
+                400,
+                r#"{"error":{"message":"This model's maximum context length is 128000 tokens"}}"#,
+                true,
+            ),
+            (
+                400,
+                r#"{"error":{"message":"The input or output tokens must be reduced"}}"#,
+                true,
+            ),
+            (
+                429,
+                r#"{"error":{"message":"Rate limit exceeded: too many requests per minute"}}"#,
+                false,
+            ),
+            (
+                500,
+                r#"{"error":{"message":"Internal server error"}}"#,
+                false,
+            ),
+            (400, r#"{"error":{"message":"Invalid request"}}"#, false),
+            (400, "request too large", false),
+            (429, "context_length_exceeded", false),
+            (500, "tokens limit", false),
+            (400, "REDUCE THE LENGTH", true),
+            (413, "input is too long", true),
+        ] {
+            assert_eq!(
+                is_openai_request_too_large(reqwest::StatusCode::from_u16(status).unwrap(), body),
+                expected,
+                "{status}: {body}"
+            );
+        }
+    }
+
+    #[test]
+    fn model_unavailable_classification_separates_auth_endpoint_and_model_errors() {
+        for (status, body, expected) in [
+            (
+                404,
+                r#"{"error":{"code":"model_not_found","message":"The model 'gpt-99' does not exist or you do not have access to it.","type":"invalid_request_error","param":null}}"#,
+                true,
+            ),
+            (
+                404,
+                r#"{"error":{"message":"The model 'fake-model' does not exist"}}"#,
+                true,
+            ),
+            (404, r#"{"error":{"message":"Model not found"}}"#, true),
+            (
+                400,
+                r#"{"error":{"code":"model_not_found","message":"The requested model 'gpt-99' does not exist.","type":"invalid_request_error","param":"model"}}"#,
+                true,
+            ),
+            (
+                400,
+                r#"{"error":{"code":"invalid_request","message":"Some other error"}}"#,
+                false,
+            ),
+            (404, r#"{"error":{"message":"Endpoint not found"}}"#, false),
+            (
+                403,
+                r#"{"error":{"code":"model_not_found","message":"The model 'gpt-5.4-mini' does not exist or you do not have access to it.","type":"invalid_request_error","param":null}}"#,
+                true,
+            ),
+            (
+                403,
+                r#"{"error":{"message":"Invalid authentication credentials","type":"authentication_error"}}"#,
+                false,
+            ),
+            (401, "model_not_found", false),
+            (500, "model_not_found", false),
+            (400, "model does not exist", false),
+            (403, "model not found", false),
+            (404, "MODEL NOT FOUND", true),
+        ] {
+            assert_eq!(
+                is_openai_model_not_found(reqwest::StatusCode::from_u16(status).unwrap(), body),
+                expected,
+                "{status}: {body}"
+            );
+        }
+    }
+
+    #[test]
+    fn orphan_filter_preserves_complete_matched_transcript_and_rejects_missing_ids() {
+        use crate::tool_types::ToolCall;
+        let mut assistant = LlmMessage::text(LlmMessageRole::Assistant, "");
+        assistant.tool_calls = Some(vec![ToolCall {
+            id: "call".into(),
+            name: "read_file".into(),
+            arguments: json!({"path":"a"}),
+        }]);
+        let tool = |id: Option<&str>, text: &str| {
+            let mut m = LlmMessage::text(LlmMessageRole::Tool, text);
+            m.tool_call_id = id.map(str::to_string);
+            m
+        };
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "hello"),
+            assistant,
+            tool(Some("call"), "file content"),
+            tool(Some("trimmed"), "orphan"),
+            tool(None, "missing id"),
+        ];
+        let filtered = drop_orphaned_tool_messages(&messages);
+        let wire: Vec<_> = filtered
+            .iter()
+            .map(OpenAIProtocolChatDriver::convert_message)
+            .collect();
+        assert_eq!(
+            serde_json::to_value(wire).unwrap(),
+            json!([
+                {"role":"user","content":"hello"},
+                {"role":"assistant","content":"","tool_calls":[{"id":"call","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"a\"}"}}]},
+                {"role":"tool","content":"file content","tool_call_id":"call"}
+            ])
+        );
+        let only_user = drop_orphaned_tool_messages(&[
+            messages[0].clone(),
+            messages[3].clone(),
+            messages[4].clone(),
+        ]);
+        assert_eq!(
+            serde_json::to_value(
+                only_user
+                    .iter()
+                    .map(OpenAIProtocolChatDriver::convert_message)
+                    .collect::<Vec<_>>()
+            )
+            .unwrap(),
+            json!([{"role":"user","content":"hello"}])
+        );
     }
 }
