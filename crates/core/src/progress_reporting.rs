@@ -240,153 +240,201 @@ mod tests {
 
     #[tokio::test]
     async fn test_report_progress_tool_success() {
-        let tool = ReportProgressTool;
-        let result = tool
-            .execute(serde_json::json!({
-                "status": "completed",
-                "summary": "Fixed the failing Slack session routing",
-                "details": ["added reply-mode tags", "wired deterministic progress delivery"]
-            }))
-            .await;
-
-        match result {
-            ToolExecutionResult::Success(value) => {
-                let payload: ProgressReportPayload = serde_json::from_value(value).unwrap();
-                assert_eq!(payload.status, ProgressReportStatus::Completed);
-                assert_eq!(payload.summary, "Fixed the failing Slack session routing");
-                assert_eq!(payload.details.len(), 2);
-            }
-            other => panic!("Expected success, got {:?}", other),
+        for status in ["progress", "blocked", "completed"] {
+            let result=ReportProgressTool.execute(serde_json::json!({"status":status,"summary":" \tSummary α\n","details":[" first ","\nsecond\t"]})).await;
+            let ToolExecutionResult::Success(value) = result else {
+                panic!("expected success: {result:?}")
+            };
+            assert_eq!(
+                value,
+                serde_json::json!({"status":status,"summary":"Summary α","details":["first","second"]})
+            );
         }
+        let result = ReportProgressTool
+            .execute(serde_json::json!({"status":"progress","summary":"No details"}))
+            .await;
+        assert!(
+            matches!(result,ToolExecutionResult::Success(value) if value==serde_json::json!({"status":"progress","summary":"No details"}))
+        );
     }
 
     #[tokio::test]
-    async fn test_report_progress_tool_rejects_empty_summary() {
-        let tool = ReportProgressTool;
-        let result = tool
-            .execute(serde_json::json!({
-                "status": "progress",
-                "summary": "   "
-            }))
-            .await;
-
-        match result {
-            ToolExecutionResult::ToolError(message) => {
-                assert_eq!(message, "Missing required field: 'summary'");
-            }
-            other => panic!("Expected tool error, got {:?}", other),
+    async fn report_progress_rejects_invalid_arguments_with_useful_errors() {
+        for args in [
+            serde_json::json!({}),
+            serde_json::json!({"status":"unknown","summary":"ok"}),
+            serde_json::json!({"status":"progress","summary":42}),
+            serde_json::json!({"status":"progress","summary":"ok","details":[42]}),
+        ] {
+            assert!(
+                matches!(ReportProgressTool.execute(args).await,ToolExecutionResult::ToolError(message) if message.starts_with("Invalid report_progress arguments:"))
+            );
+        }
+        for (args, error) in [
+            (
+                serde_json::json!({"status":"progress","summary":" \t\n"}),
+                "Missing required field: 'summary'",
+            ),
+            (
+                serde_json::json!({"status":"progress","summary":"ok","details":[" "]}),
+                "details[0] must not be empty",
+            ),
+            (
+                serde_json::json!({"status":"progress","summary":"ok","details":["valid","\u{2003}"]}),
+                "details[1] must not be empty",
+            ),
+        ] {
+            assert!(
+                matches!(ReportProgressTool.execute(args).await,ToolExecutionResult::ToolError(message) if message==error)
+            );
         }
     }
 
     #[test]
     fn test_sync_slack_reply_mode_tags() {
         let mut tags = vec![
-            "slack:app:app_123".to_string(),
-            "slack:thread:123.456".to_string(),
-            "slack:reply_mode:all_messages".to_string(),
+            "slack:app:app_123".into(),
+            "slack:thread:123.456".into(),
+            "slack:reply_mode:all_messages".into(),
+            "slack:reply_mode:report_progress_only".into(),
+            "channel:reply_mode:all_messages".into(),
+            "other:tag".into(),
         ];
-
+        let unrelated = vec!["slack:app:app_123", "slack:thread:123.456", "other:tag"];
         sync_slack_reply_mode_tags(&mut tags, ChannelReplyMode::ReportProgressOnly);
-
-        // Should have both legacy slack: and generic channel: tags
-        assert!(tags.iter().any(|tag| tag == SLACK_REPORT_PROGRESS_ONLY_TAG));
-        assert!(
-            tags.iter()
-                .any(|tag| tag == CHANNEL_REPORT_PROGRESS_ONLY_TAG)
-        );
         assert_eq!(
-            tags.iter()
-                .filter(|tag| tag.starts_with(SLACK_REPLY_MODE_TAG_PREFIX))
-                .count(),
-            1
+            tags,
+            [
+                "slack:app:app_123",
+                "slack:thread:123.456",
+                "other:tag",
+                "slack:reply_mode:report_progress_only",
+                "channel:reply_mode:report_progress_only"
+            ]
         );
+        let once = tags.clone();
+        sync_slack_reply_mode_tags(&mut tags, ChannelReplyMode::ReportProgressOnly);
+        assert_eq!(tags, once);
+        sync_slack_reply_mode_tags(&mut tags, ChannelReplyMode::AllMessages);
+        assert_eq!(tags, unrelated);
+        assert!(!session_uses_report_progress(&tags));
     }
 
     #[test]
     fn test_sync_channel_reply_mode_tags() {
-        let mut tags = vec!["other:tag".to_string()];
-
+        let mut tags = vec![
+            "other:tag".into(),
+            "channel:reply_mode:obsolete".into(),
+            "channel:reply_mode:report_progress_only".into(),
+            "channel:reply_modes:decoy".into(),
+        ];
         sync_channel_reply_mode_tags(&mut tags, ChannelReplyMode::ReportProgressOnly);
-        assert!(
-            tags.iter()
-                .any(|tag| tag == CHANNEL_REPORT_PROGRESS_ONLY_TAG)
+        assert_eq!(
+            tags,
+            [
+                "other:tag",
+                "channel:reply_modes:decoy",
+                "channel:reply_mode:report_progress_only"
+            ]
         );
-
+        let once = tags.clone();
+        sync_channel_reply_mode_tags(&mut tags, ChannelReplyMode::ReportProgressOnly);
+        assert_eq!(tags, once);
         sync_channel_reply_mode_tags(&mut tags, ChannelReplyMode::AllMessages);
-        assert!(
-            !tags
-                .iter()
-                .any(|tag| tag.starts_with(CHANNEL_REPLY_MODE_TAG_PREFIX))
-        );
+        assert_eq!(tags, ["other:tag", "channel:reply_modes:decoy"]);
     }
 
     #[test]
-    fn test_session_uses_report_progress_generic_tag() {
-        let tags = vec![CHANNEL_REPORT_PROGRESS_ONLY_TAG.to_string()];
-        assert!(session_uses_report_progress(&tags));
-    }
-
-    #[test]
-    fn test_session_uses_report_progress_legacy_tag() {
-        let tags = vec![SLACK_REPORT_PROGRESS_ONLY_TAG.to_string()];
-        assert!(session_uses_report_progress(&tags));
+    fn progress_mode_requires_exact_generic_or_legacy_tag() {
+        for (tags, expected) in [
+            (vec![], false),
+            (vec!["channel:reply_mode:report_progress_only"], true),
+            (vec!["slack:reply_mode:report_progress_only"], true),
+            (
+                vec!["other", "channel:reply_mode:report_progress_only"],
+                true,
+            ),
+            (
+                vec![
+                    "channel:reply_mode:report_progress_only_extra",
+                    "slack:reply_mode:all_messages",
+                    "channel:reply_mode:",
+                ],
+                false,
+            ),
+        ] {
+            assert_eq!(
+                session_uses_report_progress(
+                    &tags.into_iter().map(str::to_string).collect::<Vec<_>>()
+                ),
+                expected
+            );
+        }
     }
 
     #[test]
     fn test_apply_report_progress_mode_adds_tool_and_prompt_once() {
-        let runtime_agent = RuntimeAgent::new("Base prompt.", "gpt-5.4");
-
-        let runtime_agent = apply_report_progress_mode(runtime_agent);
-        let runtime_agent = apply_report_progress_mode(runtime_agent);
-
+        for base in ["", "Base prompt."] {
+            let mut agent = RuntimeAgent::new(base, "model-42");
+            agent.max_tokens = Some(17);
+            agent.parallel_tool_calls = Some(false);
+            let first = apply_report_progress_mode(agent);
+            assert_eq!(first.model, "model-42");
+            assert_eq!(first.max_tokens, Some(17));
+            assert_eq!(first.parallel_tool_calls, Some(false));
+            assert_eq!(
+                first.tools.iter().map(|t| t.name()).collect::<Vec<_>>(),
+                ["report_progress"]
+            );
+            assert!(
+                first
+                    .system_prompt
+                    .starts_with("# External Progress Reporting\n")
+            );
+            assert!(first.system_prompt.contains("before the turn ends"));
+            if !base.is_empty() {
+                assert!(first.system_prompt.ends_with("\n\nBase prompt."));
+            }
+            let before = serde_json::to_value(&first).unwrap();
+            assert_eq!(
+                serde_json::to_value(apply_report_progress_mode(first)).unwrap(),
+                before
+            );
+        }
+        let mut agent = RuntimeAgent::new("Base", "model-42");
+        let mut tool = report_progress_tool_definition();
+        if let ToolDefinition::Builtin(ref mut definition) = tool {
+            definition.description = "Custom existing description".into();
+        }
+        agent.tools.push(tool.clone());
+        let result = apply_report_progress_mode(agent);
         assert_eq!(
-            runtime_agent
-                .tools
-                .iter()
-                .filter(|tool| tool.name() == REPORT_PROGRESS_TOOL_NAME)
-                .count(),
-            1
-        );
-        assert_eq!(
-            runtime_agent
-                .system_prompt
-                .matches(REPORT_PROGRESS_PROMPT_MARKER)
-                .count(),
-            1
+            serde_json::to_value(result.tools).unwrap(),
+            serde_json::to_value(vec![tool]).unwrap()
         );
     }
 
     #[test]
-    fn test_format_progress_report_generic() {
-        let text = format_progress_report(&ProgressReportPayload {
-            status: ProgressReportStatus::Progress,
-            summary: "Deploying to staging".to_string(),
-            details: vec!["built image".to_string(), "pushing to registry".to_string()],
-        });
-        assert_eq!(
-            text,
-            "Update: Deploying to staging\n- built image\n- pushing to registry"
-        );
-
-        let text_no_details = format_progress_report(&ProgressReportPayload {
-            status: ProgressReportStatus::Completed,
-            summary: "All done".to_string(),
-            details: vec![],
-        });
-        assert_eq!(text_no_details, "Done: All done");
-    }
-
-    #[test]
-    fn test_format_progress_report_for_slack() {
-        let text = format_progress_report_for_slack(&ProgressReportPayload {
-            status: ProgressReportStatus::Blocked,
-            summary: "Waiting on credentials".to_string(),
-            details: vec!["need Slack bot token".to_string()],
-        });
-
-        assert_eq!(
-            text,
-            "Blocked: Waiting on credentials\n- need Slack bot token"
-        );
+    fn both_progress_formatters_preserve_status_headings_and_detail_order() {
+        for (status, heading) in [
+            (ProgressReportStatus::Progress, "Update"),
+            (ProgressReportStatus::Blocked, "Blocked"),
+            (ProgressReportStatus::Completed, "Done"),
+        ] {
+            for details in [vec![], vec!["First α".into(), "Second".into()]] {
+                let report = ProgressReportPayload {
+                    status,
+                    summary: "Summary".into(),
+                    details,
+                };
+                let expected = if report.details.is_empty() {
+                    format!("{heading}: Summary")
+                } else {
+                    format!("{heading}: Summary\n- First α\n- Second")
+                };
+                assert_eq!(format_progress_report(&report), expected);
+                assert_eq!(format_progress_report_for_slack(&report), expected);
+            }
+        }
     }
 }
