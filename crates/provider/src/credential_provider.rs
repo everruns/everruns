@@ -123,90 +123,136 @@ impl CredentialProvider for EnvCredentialProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
-    fn lookup_from(map: &HashMap<&'static str, &'static str>) -> impl Fn(&str) -> Option<String> {
-        let owned: HashMap<String, String> = map
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
-        move |name: &str| owned.get(name).cloned()
+    fn resolve(driver: &str, entries: &[(&str, &str)]) -> Option<ProviderCredentials> {
+        EnvCredentialProvider::resolve_with(&DriverId::external(driver), |key| {
+            entries
+                .iter()
+                .find(|(name, _)| *name == key)
+                .map(|(_, value)| value.to_string())
+        })
+    }
+
+    fn credentials(key: Option<&str>, url: Option<&str>) -> Option<ProviderCredentials> {
+        Some(ProviderCredentials {
+            api_key: key.map(str::to_owned),
+            base_url: url.map(str::to_owned),
+        })
     }
 
     #[test]
-    fn openai_reads_key_and_base_url() {
-        let env = HashMap::from([
-            ("OPENAI_API_KEY", "sk-test"),
-            ("OPENAI_BASE_URL", "https://proxy.example/v1"),
-        ]);
-        let creds = EnvCredentialProvider::resolve_with(&DriverId::OpenAI, lookup_from(&env))
-            .expect("credentials");
-        assert_eq!(creds.api_key.as_deref(), Some("sk-test"));
-        assert_eq!(creds.base_url.as_deref(), Some("https://proxy.example/v1"));
+    fn explicit_driver_environment_names_preserve_both_fields_and_isolate_other_keys() {
+        for (driver, key_name, url_name) in [
+            ("openai", "OPENAI_API_KEY", "OPENAI_BASE_URL"),
+            ("anthropic", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"),
+            ("gemini", "GEMINI_API_KEY", "GEMINI_BASE_URL"),
+            (
+                "custom-driver.v2",
+                "CUSTOM_DRIVER_V2_API_KEY",
+                "CUSTOM_DRIVER_V2_BASE_URL",
+            ),
+        ] {
+            let entries = [
+                (key_name, "key"),
+                (url_name, "https://proxy.example/v1"),
+                ("OTHER_API_KEY", "unrelated"),
+            ];
+            assert_eq!(
+                resolve(driver, &entries),
+                credentials(Some("key"), Some("https://proxy.example/v1")),
+                "{driver}"
+            );
+            assert_eq!(
+                resolve(driver, &[(url_name, "https://proxy.example/v1")]),
+                credentials(None, Some("https://proxy.example/v1"))
+            );
+            assert_eq!(resolve(driver, &[(key_name, ""), (url_name, "")]), None);
+            assert_eq!(resolve(driver, &[]), None);
+        }
+        for driver in ["bedrock", "llmsim"] {
+            assert_eq!(
+                resolve(
+                    driver,
+                    &[
+                        ("AWS_ACCESS_KEY_ID", "unrelated"),
+                        ("OPENAI_API_KEY", "other provider")
+                    ]
+                ),
+                None
+            );
+        }
     }
 
     #[test]
-    fn openai_completions_shares_openai_key() {
-        let env = HashMap::from([("OPENAI_API_KEY", "sk-test")]);
-        let creds =
-            EnvCredentialProvider::resolve_with(&DriverId::OpenAICompletions, lookup_from(&env))
-                .expect("credentials");
-        assert_eq!(creds.api_key.as_deref(), Some("sk-test"));
-        assert!(creds.base_url.is_none());
-    }
-
-    #[test]
-    fn anthropic_and_gemini_keys() {
-        let env = HashMap::from([("ANTHROPIC_API_KEY", "sk-ant"), ("GEMINI_API_KEY", "g-key")]);
-        let lookup = lookup_from(&env);
+    fn completions_fallback_is_independent_per_field_and_never_overrides_specific_values() {
+        for (specific_key, specific_url, expected_key, expected_url) in [
+            (None, None, "legacy-key", "https://legacy.example/v1"),
+            (
+                Some(""),
+                Some(""),
+                "legacy-key",
+                "https://legacy.example/v1",
+            ),
+            (
+                Some("specific-key"),
+                None,
+                "specific-key",
+                "https://legacy.example/v1",
+            ),
+            (
+                None,
+                Some("https://specific.example/v1"),
+                "legacy-key",
+                "https://specific.example/v1",
+            ),
+            (
+                Some("specific-key"),
+                Some("https://specific.example/v1"),
+                "specific-key",
+                "https://specific.example/v1",
+            ),
+        ] {
+            let mut entries = vec![
+                ("OPENAI_API_KEY", "legacy-key"),
+                ("OPENAI_BASE_URL", "https://legacy.example/v1"),
+            ];
+            if let Some(key) = specific_key {
+                entries.push(("OPENAI_COMPLETIONS_API_KEY", key));
+            }
+            if let Some(url) = specific_url {
+                entries.push(("OPENAI_COMPLETIONS_BASE_URL", url));
+            }
+            assert_eq!(
+                resolve("openai_completions", &entries),
+                credentials(Some(expected_key), Some(expected_url))
+            );
+        }
         assert_eq!(
-            EnvCredentialProvider::resolve_with(&DriverId::Anthropic, &lookup)
-                .and_then(|c| c.api_key)
-                .as_deref(),
-            Some("sk-ant"),
+            resolve("openai_completions", &[("OPENAI_API_KEY", "legacy-key")]),
+            credentials(Some("legacy-key"), None)
         );
         assert_eq!(
-            EnvCredentialProvider::resolve_with(&DriverId::Gemini, &lookup)
-                .and_then(|c| c.api_key)
-                .as_deref(),
-            Some("g-key"),
-        );
-    }
-
-    #[test]
-    fn empty_or_missing_yields_none() {
-        let env = HashMap::from([("OPENAI_API_KEY", "")]);
-        assert!(
-            EnvCredentialProvider::resolve_with(&DriverId::OpenAI, lookup_from(&env)).is_none()
-        );
-
-        let empty = HashMap::new();
-        assert!(
-            EnvCredentialProvider::resolve_with(&DriverId::Anthropic, lookup_from(&empty))
-                .is_none()
+            resolve(
+                "openai_completions",
+                &[("OPENAI_API_KEY", ""), ("OPENAI_BASE_URL", "")]
+            ),
+            None
         );
     }
 
     #[test]
     fn debug_output_redacts_the_api_key() {
-        let creds = ProviderCredentials {
-            api_key: Some("sk-super-secret".to_string()),
-            base_url: Some("https://proxy.example/v1".to_string()),
-        };
-        let rendered = format!("{creds:?}");
-        assert!(!rendered.contains("sk-super-secret"), "{rendered}");
-        assert!(rendered.contains("[REDACTED]"));
-        assert!(
-            rendered.contains("https://proxy.example/v1"),
-            "base URL is not a secret: {rendered}"
-        );
-    }
-
-    #[test]
-    fn unsupported_drivers_return_none() {
-        let env = HashMap::from([("AWS_ACCESS_KEY_ID", "x")]);
-        let lookup = lookup_from(&env);
-        assert!(EnvCredentialProvider::resolve_with(&DriverId::Bedrock, &lookup).is_none());
-        assert!(EnvCredentialProvider::resolve_with(&DriverId::LlmSim, &lookup).is_none());
+        for api_key in [None, Some(""), Some("sk-super-secret")] {
+            let creds = ProviderCredentials {
+                api_key: api_key.map(str::to_owned),
+                base_url: Some("https://proxy.example/v1".into()),
+            };
+            let expected = if api_key.is_some() {
+                "ProviderCredentials { api_key: Some(\"[REDACTED]\"), base_url: Some(\"https://proxy.example/v1\") }"
+            } else {
+                "ProviderCredentials { api_key: None, base_url: Some(\"https://proxy.example/v1\") }"
+            };
+            assert_eq!(format!("{creds:?}"), expected);
+        }
     }
 }
