@@ -79,11 +79,13 @@ fn display_name(
 
 /// Read the first present, non-empty string argument among `keys`.
 pub fn arg_str<'a>(arguments: &'a Value, keys: &[&str]) -> Option<&'a str> {
-    keys.iter()
-        .find_map(|key| arguments.get(*key))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
+    keys.iter().find_map(|key| {
+        arguments
+            .get(*key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    })
 }
 
 /// Argument key fragments that may carry secrets. Narration never renders the
@@ -109,10 +111,13 @@ fn is_secret_key(key: &str) -> bool {
 pub fn safe_arg_str<'a>(arguments: &'a Value, keys: &[&str]) -> Option<&'a str> {
     keys.iter()
         .filter(|key| !is_secret_key(key))
-        .find_map(|key| arguments.get(*key))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
+        .find_map(|key| {
+            arguments
+                .get(*key)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
 }
 
 /// Final path component, for compact file narration.
@@ -1455,13 +1460,9 @@ mod tests {
     use super::*;
     use crate::tool_types::ToolCall;
 
-    fn args(value: serde_json::Value) -> serde_json::Value {
-        value
-    }
-
     #[test]
     fn list_directory_helper_without_store_echoes_legacy_alias() {
-        let a = args(json!({ "path": "/workspace/crates" }));
+        let a = json!({ "path": "/workspace/crates" });
         assert_eq!(
             narrate_list_directory(
                 &a,
@@ -1474,44 +1475,33 @@ mod tests {
     }
 
     #[test]
-    fn list_directory_helper_uses_store_display_path() {
+    fn list_directory_delegates_to_the_correct_store_path_contract() {
         use crate::error::Result;
         use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
         use crate::typed_id::SessionId;
         use async_trait::async_trait;
 
         struct HostBackedStore {
-            root: String,
+            mount_resolver: bool,
         }
 
         #[async_trait]
         impl SessionFileSystem for HostBackedStore {
-            fn display_root(&self) -> String {
-                self.root.clone()
+            fn display_path(&self, path: &str) -> String {
+                assert!(
+                    !self.mount_resolver,
+                    "mount resolvers must use resolve_path"
+                );
+                format!("display::{path}")
             }
 
-            fn display_path(&self, path: &str) -> String {
-                if path == "/" || path == "/workspace" || path == "." {
-                    return self.root.clone();
-                }
-                if path == self.root || path.starts_with(&format!("{}/", self.root)) {
-                    return path.to_string();
-                }
-                if let Some(rest) = path.strip_prefix("/workspace/") {
-                    return format!("{}/{}", self.root.trim_end_matches('/'), rest);
-                }
-                if path.starts_with('/') {
-                    return format!(
-                        "{}/{}",
-                        self.root.trim_end_matches('/'),
-                        path.trim_start_matches('/')
-                    );
-                }
-                format!("{}/{}", self.root.trim_end_matches('/'), path)
+            fn resolve_path(&self, path: &str) -> String {
+                assert!(self.mount_resolver, "ordinary stores must use display_path");
+                format!("resolve::{path}")
             }
 
             fn is_mount_resolver(&self) -> bool {
-                false
+                self.mount_resolver
             }
 
             async fn read_file(&self, _: SessionId, _: &str) -> Result<Option<SessionFile>> {
@@ -1548,46 +1538,35 @@ mod tests {
             }
         }
 
-        let store = HostBackedStore {
-            root: "/repo".to_string(),
-        };
-        let ctx = ToolNarrationContext::new(Some(&store));
-        let workspace_alias = args(json!({ "path": "/workspace/crates" }));
-        assert_eq!(
-            narrate_list_directory(&workspace_alias, ToolNarrationPhase::Started, None, ctx),
-            "Listing files in /repo/crates"
-        );
-        assert_eq!(
-            narrate_list_directory(&workspace_alias, ToolNarrationPhase::Completed, None, ctx),
-            "Listed files in /repo/crates"
-        );
-        assert_eq!(
-            narrate_list_directory(&workspace_alias, ToolNarrationPhase::Failed, None, ctx),
-            "Failed to list files in /repo/crates"
-        );
-
-        let relative = args(json!({ "path": "crates" }));
-        assert_eq!(
-            narrate_list_directory(&relative, ToolNarrationPhase::Completed, None, ctx),
-            "Listed files in /repo/crates"
-        );
-
-        let host_absolute = args(json!({ "path": "/repo/crates" }));
-        assert_eq!(
-            narrate_list_directory(&host_absolute, ToolNarrationPhase::Completed, None, ctx),
-            "Listed files in /repo/crates"
-        );
-
-        let root = args(json!({}));
-        assert_eq!(
-            narrate_list_directory(&root, ToolNarrationPhase::Completed, None, ctx),
-            "Listed files in /repo"
-        );
+        for mount_resolver in [false, true] {
+            let store = HostBackedStore { mount_resolver };
+            let ctx = ToolNarrationContext::new(Some(&store));
+            let prefix = if mount_resolver { "resolve" } else { "display" };
+            for (arguments, expected_path) in [
+                (json!({"path":" /workspace/crates "}), "/workspace/crates"),
+                (json!({"path":"crates"}), "crates"),
+                (json!({"path":"/repo/crates"}), "/repo/crates"),
+                (json!({}), "/workspace"),
+                (json!({"path":" "}), "/workspace"),
+            ] {
+                for (phase, verb) in [
+                    (ToolNarrationPhase::Started, "Listing files in"),
+                    (ToolNarrationPhase::Waiting, "Listing files in"),
+                    (ToolNarrationPhase::Completed, "Listed files in"),
+                    (ToolNarrationPhase::Failed, "Failed to list files in"),
+                ] {
+                    assert_eq!(
+                        narrate_list_directory(&arguments, phase, None, ctx),
+                        format!("{verb} {prefix}::{expected_path}")
+                    );
+                }
+            }
+        }
     }
 
     #[test]
     fn shell_exec_helper_en_and_uk() {
-        let a = args(json!({ "command": "cargo test" }));
+        let a = json!({ "command": "cargo test" });
         assert_eq!(
             narrate_shell_exec(&a, "Shell", ToolNarrationPhase::Started, None),
             "Running `cargo test`"
@@ -1600,7 +1579,7 @@ mod tests {
 
     #[test]
     fn read_file_helper_uses_basename() {
-        let a = args(json!({ "path": "/workspace/AGENTS.md" }));
+        let a = json!({ "path": "/workspace/AGENTS.md" });
         assert_eq!(
             narrate_read_file(&a, ToolNarrationPhase::Started, None),
             "Reading AGENTS.md"
@@ -1613,7 +1592,7 @@ mod tests {
 
     #[test]
     fn edit_file_helper() {
-        let a = args(json!({ "path": "/workspace/src/main.rs" }));
+        let a = json!({ "path": "/workspace/src/main.rs" });
         assert_eq!(
             narrate_edit_file(&a, ToolNarrationPhase::Completed, None),
             "Edited main.rs"
@@ -1622,7 +1601,7 @@ mod tests {
 
     #[test]
     fn web_fetch_helper_strips_scheme_and_query() {
-        let a = args(json!({ "url": "https://example.com/page?token=abc#frag" }));
+        let a = json!({ "url": "https://example.com/page?token=abc#frag" });
         assert_eq!(
             narrate_web_fetch(&a, ToolNarrationPhase::Completed, None),
             "Fetched URL: example.com/page"
@@ -1636,10 +1615,10 @@ mod tests {
 
     #[test]
     fn web_fetch_helper_narrates_download_when_save_path_is_present() {
-        let a = args(json!({
+        let a = json!({
             "url": "https://example.com/file?token=abc",
             "save_to_file": "/downloads/file"
-        }));
+        });
         assert_eq!(
             narrate_web_fetch(&a, ToolNarrationPhase::Started, None),
             "Downloading URL: example.com/file"
@@ -1657,10 +1636,10 @@ mod tests {
             "Завантажив URL: example.com/file"
         );
 
-        let blank = args(json!({
+        let blank = json!({
             "url": "https://example.com/file",
             "save_to_file": "   "
-        }));
+        });
         assert_eq!(
             narrate_web_fetch(&blank, ToolNarrationPhase::Completed, None),
             "Fetched URL: example.com/file"
@@ -1694,31 +1673,43 @@ mod tests {
             "javascript:alert('user:s3cret@host')",
             "user:s3cret-pass@no-scheme/path",
         ] {
-            let a = args(json!({ "url": raw }));
+            let a = json!({ "url": raw });
             let started = narrate_web_fetch(&a, ToolNarrationPhase::Started, None);
             let completed = narrate_web_fetch(&a, ToolNarrationPhase::Completed, None);
             assert_eq!(started, "Fetching URL", "input: {raw}");
             assert_eq!(completed, "Fetched URL", "input: {raw}");
-            assert!(
-                !started.contains("secret"),
-                "leaked secret for input: {raw}"
-            );
-            assert!(
-                !started.contains("s3cret"),
-                "leaked secret for input: {raw}"
-            );
-            assert!(
-                !completed.contains("s3cret"),
-                "leaked secret for input: {raw}"
-            );
         }
     }
 
     #[test]
-    fn provider_search_never_leaks_secret() {
-        let a = args(json!({ "token": "super-secret" }));
+    fn secret_key_filter_rejects_every_candidate_before_using_safe_fallback() {
+        for key in [
+            "token",
+            "ACCESS_TOKEN",
+            "api_key",
+            "APIKEY",
+            "user_password",
+            "clientSecret",
+            "Authorization",
+        ] {
+            let arguments = json!({key:"SENSITIVE_VALUE","query":" public query "});
+            assert_eq!(safe_arg_str(&arguments, &[key]), None, "{key}");
+            assert_eq!(
+                safe_arg_str(&arguments, &[key, "query"]),
+                Some("public query"),
+                "{key}"
+            );
+            assert_eq!(
+                narrate_provider_search(&arguments, ToolNarrationPhase::Started, None),
+                "Searching: public query"
+            );
+        }
         assert_eq!(
-            narrate_provider_search(&a, ToolNarrationPhase::Started, None),
+            narrate_provider_search(
+                &json!({"token":"SENSITIVE_VALUE"}),
+                ToolNarrationPhase::Started,
+                None
+            ),
             "Searching"
         );
     }
@@ -1746,19 +1737,35 @@ mod tests {
     }
 
     #[test]
-    fn skill_helper_dispatches_family() {
+    fn skill_helper_dispatches_every_family_member_and_rejects_other_names() {
+        for (name, expected) in [
+            ("activate_skill", Some("Activated skill: ship")),
+            ("read_skill", Some("Read skill: ship")),
+            ("write_skill", Some("Wrote skill: ship")),
+            ("list_skills", Some("Listed skills")),
+            ("not_a_skill", None),
+        ] {
+            assert_eq!(
+                narrate_skill(
+                    name,
+                    &json!({"name":"ship"}),
+                    ToolNarrationPhase::Completed,
+                    None
+                )
+                .as_deref(),
+                expected,
+                "{name}"
+            );
+        }
         assert_eq!(
             narrate_skill(
-                "activate_skill",
-                &json!({ "name": "ship" }),
+                "write_skill",
+                &json!({"name":"pdf"}),
                 ToolNarrationPhase::Completed,
                 None
-            ),
-            Some("Activated skill: ship".to_string())
-        );
-        assert_eq!(
-            narrate_skill("not_a_skill", &json!({}), ToolNarrationPhase::Started, None),
-            None
+            )
+            .as_deref(),
+            Some("Wrote skill: pdf")
         );
     }
 
@@ -1799,7 +1806,7 @@ mod tests {
 
     #[test]
     fn write_session_title_all_phases_and_bounded_detail() {
-        let a = args(json!({ "title": "Improve tool narration" }));
+        let a = json!({ "title": "Improve tool narration" });
         assert_eq!(
             narrate_write_session_title(&a, ToolNarrationPhase::Started, None),
             "Updating session title: Improve tool narration"
@@ -1820,24 +1827,29 @@ mod tests {
     }
 
     #[test]
-    fn write_session_title_truncates_long_title_and_drops_missing() {
-        let long = "x".repeat(120);
-        let a = args(json!({ "title": long }));
-        let narration = narrate_write_session_title(&a, ToolNarrationPhase::Started, None);
-        // 48-char cap + ellipsis, plus the phase-specific label.
-        assert!(narration.starts_with("Updating session title: "));
-        assert!(narration.ends_with("..."));
-        assert!(
-            narration.chars().count() <= "Updating session title: ".chars().count() + 48 + 3,
-            "narration too long: {narration}"
-        );
-
-        // No title → bare verb, no dangling separator.
-        let empty = args(json!({}));
-        assert_eq!(
-            narrate_write_session_title(&empty, ToolNarrationPhase::Started, None),
-            "Updating session title"
-        );
+    fn write_session_title_truncates_exact_characters_and_drops_blank_detail() {
+        for count in [47, 48, 49] {
+            let title = "é".repeat(count);
+            let expected_detail = if count <= 48 {
+                title.clone()
+            } else {
+                format!("{}...", "é".repeat(48))
+            };
+            assert_eq!(
+                narrate_write_session_title(
+                    &json!({"title":title}),
+                    ToolNarrationPhase::Started,
+                    None
+                ),
+                format!("Updating session title: {expected_detail}")
+            );
+        }
+        for arguments in [json!({}), json!({"title":"  "}), json!({"title":null})] {
+            assert_eq!(
+                narrate_write_session_title(&arguments, ToolNarrationPhase::Started, None),
+                "Updating session title"
+            );
+        }
     }
 
     #[test]
@@ -1858,7 +1870,7 @@ mod tests {
 
     #[test]
     fn session_schedule_family_labels_and_detail() {
-        let a = args(json!({ "description": "Run nightly backup" }));
+        let a = json!({ "description": "Run nightly backup" });
         assert_eq!(
             narrate_session_schedule("create_schedule", &a, ToolNarrationPhase::Completed, None),
             Some("Created schedule: Run nightly backup".to_string())
@@ -1894,7 +1906,7 @@ mod tests {
 
     #[test]
     fn session_task_family_labels_and_detail() {
-        let a = args(json!({ "task_id": "task_abc" }));
+        let a = json!({ "task_id": "task_abc" });
         assert_eq!(
             narrate_session_task("get_task", &a, ToolNarrationPhase::Completed, None),
             Some("Read task: task_abc".to_string())
@@ -1902,6 +1914,11 @@ mod tests {
         assert_eq!(
             narrate_session_task("list_tasks", &json!({}), ToolNarrationPhase::Started, None),
             Some("Listing tasks".to_string())
+        );
+        assert_eq!(
+            narrate_session_task("message_task", &a, ToolNarrationPhase::Completed, None)
+                .as_deref(),
+            Some("Messaged task: task_abc")
         );
         // No task_id → bare verb.
         assert_eq!(
@@ -1924,7 +1941,7 @@ mod tests {
             narrate_sandbox_status(ToolNarrationPhase::Completed, None),
             "Checked sandbox status"
         );
-        let a = args(json!({ "action": "pause" }));
+        let a = json!({ "action": "pause" });
         assert_eq!(
             narrate_sandbox_manage(&a, ToolNarrationPhase::Started, None),
             "Managing sandbox: pause"
@@ -1937,17 +1954,17 @@ mod tests {
 
     #[test]
     fn sql_family_omits_statement() {
-        let a = args(json!({ "sql": "SELECT * FROM users WHERE api_token = 'SECRET42'" }));
+        let a = json!({ "sql": "SELECT * FROM users WHERE api_token = 'SECRET42'" });
         assert_eq!(
             narrate_sql("sql_query", &a, ToolNarrationPhase::Completed, None),
             Some("Queried SQL".to_string())
         );
         assert_eq!(
-            narrate_sql("sql_execute", &json!({}), ToolNarrationPhase::Started, None),
+            narrate_sql("sql_execute", &a, ToolNarrationPhase::Started, None),
             Some("Running SQL".to_string())
         );
         assert_eq!(
-            narrate_sql("sql_schema", &json!({}), ToolNarrationPhase::Started, None),
+            narrate_sql("sql_schema", &a, ToolNarrationPhase::Started, None),
             Some("Reading database schema".to_string())
         );
         assert_eq!(
@@ -1957,8 +1974,8 @@ mod tests {
     }
 
     #[test]
-    fn search_knowledge_and_history_never_leak_secret() {
-        let query = args(json!({ "query": "orders" }));
+    fn knowledge_and_history_search_show_queries_and_ignore_unrelated_fields() {
+        let query = json!({ "query": "orders" });
         assert_eq!(
             narrate_search_knowledge(&query, ToolNarrationPhase::Completed, None),
             "Searched knowledge: orders"
@@ -1968,23 +1985,14 @@ mod tests {
             "Searched history: orders"
         );
         // A secret-named field is never rendered even if it is the only arg.
-        let secret = args(json!({ "api_key": "sk-live-123" }));
+        let secret = json!({ "api_key": "sk-live-123" });
         assert_eq!(
             narrate_search_knowledge(&secret, ToolNarrationPhase::Started, None),
             "Searching knowledge"
         );
-    }
-
-    #[test]
-    fn skill_helper_covers_write_skill() {
         assert_eq!(
-            narrate_skill(
-                "write_skill",
-                &json!({ "name": "pdf" }),
-                ToolNarrationPhase::Completed,
-                None
-            ),
-            Some("Wrote skill: pdf".to_string())
+            narrate_query_history(&secret, ToolNarrationPhase::Started, None),
+            "Searching history"
         );
     }
 
@@ -2005,15 +2013,29 @@ mod tests {
     }
 
     #[test]
-    fn fallback_uses_display_name_for_unowned_tool() {
-        let tool_call = ToolCall {
-            id: "call_1".to_string(),
-            name: "mystery_tool".to_string(),
-            arguments: json!({}),
+    fn fallback_prefers_definition_display_name_then_title_cases_unowned_tools() {
+        let call = ToolCall {
+            id: "call_1".into(),
+            name: "mystery__tool".into(),
+            arguments: json!({"token":"SENSITIVE_VALUE"}),
         };
+        let definition = tool_definition("mystery__tool", Some("Friendly Tool"), None);
         assert_eq!(
-            render_tool_narration(None, &tool_call, ToolNarrationPhase::Completed),
+            render_tool_narration(Some(&definition), &call, ToolNarrationPhase::Completed),
+            "Ran Friendly Tool"
+        );
+        assert_eq!(
+            render_tool_narration(None, &call, ToolNarrationPhase::Completed),
             "Ran Mystery Tool"
+        );
+        assert_eq!(
+            render_tool_narration_with_locale(
+                Some(&definition),
+                &call,
+                ToolNarrationPhase::Waiting,
+                Some("uk-UA")
+            ),
+            "Запускаю Friendly Tool"
         );
     }
 
@@ -2040,61 +2062,26 @@ mod tests {
     }
 
     #[test]
-    fn group_headline_summarizes_two_repeated_actions() {
-        let actions = [
-            group_action(
-                "grep_files",
-                "Searched files for full_name",
-                "Searched files",
-            ),
-            group_action("grep_files", "Searched files for login", "Searched files"),
-        ];
-
-        assert_eq!(
-            summarize_group_actions(&actions, None),
-            "Searched files twice"
-        );
-    }
-
-    #[test]
-    fn group_headline_summarizes_more_than_two_repeated_actions() {
-        let actions = [
-            group_action("grep_files", "Searched files for one", "Searched files"),
-            group_action("grep_files", "Searched files for two", "Searched files"),
-            group_action("grep_files", "Searched files for three", "Searched files"),
-        ];
-
-        assert_eq!(
-            summarize_group_actions(&actions, None),
-            "Searched files 3 times"
-        );
-    }
-
-    #[test]
-    fn group_headline_localizes_repeated_action_counts() {
-        let three_actions = [
-            group_action("grep_files", "Шукав у файлах: один", "Шукав у файлах"),
-            group_action("grep_files", "Шукав у файлах: два", "Шукав у файлах"),
-            group_action("grep_files", "Шукав у файлах: три", "Шукав у файлах"),
-        ];
-        let twelve_actions = (0..12)
-            .map(|index| {
-                group_action(
-                    "grep_files",
-                    &format!("Шукав у файлах: {index}"),
-                    "Шукав у файлах",
-                )
-            })
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            summarize_group_actions(&three_actions, Some("uk")),
-            "Шукав у файлах 3 рази"
-        );
-        assert_eq!(
-            summarize_group_actions(&twelve_actions, Some("uk")),
-            "Шукав у файлах 12 разів"
-        );
+    fn group_headline_counts_repeats_with_localized_boundaries() {
+        for (count, locale, expected) in [
+            (2, None, "Searched files twice"),
+            (3, None, "Searched files 3 times"),
+            (2, Some("uk"), "Шукав у файлах двічі"),
+            (3, Some("uk"), "Шукав у файлах 3 рази"),
+            (5, Some("uk"), "Шукав у файлах 5 разів"),
+            (12, Some("uk"), "Шукав у файлах 12 разів"),
+            (22, Some("uk"), "Шукав у файлах 22 рази"),
+        ] {
+            let repeated = if locale.is_some() {
+                "Шукав у файлах"
+            } else {
+                "Searched files"
+            };
+            let actions = (0..count)
+                .map(|i| group_action("grep_files", &format!("query {i}"), repeated))
+                .collect::<Vec<_>>();
+            assert_eq!(summarize_group_actions(&actions, locale), expected);
+        }
     }
 
     #[test]
@@ -2192,5 +2179,99 @@ mod tests {
             narrate_subagent_spawn(&call, ToolNarrationPhase::Started, Some("uk")),
             "Запускаю субагента Orbit Scout"
         );
+    }
+    #[test]
+    fn argument_aliases_skip_empty_or_non_string_candidates() {
+        for first in [json!(null), json!("  "), json!(12), json!([]), json!({})] {
+            let arguments = json!({"commands":first,"command":"  cargo test  "});
+            assert_eq!(
+                arg_str(&arguments, &["commands", "command"]),
+                Some("cargo test")
+            );
+            assert_eq!(
+                safe_arg_str(&arguments, &["commands", "command"]),
+                Some("cargo test")
+            );
+            assert_eq!(
+                narrate_shell_exec(&arguments, "Shell", ToolNarrationPhase::Completed, None),
+                "Ran `cargo test`"
+            );
+        }
+        let arguments = json!({"query":"first","q":"second"});
+        assert_eq!(arg_str(&arguments, &["query", "q"]), Some("first"));
+        assert_eq!(safe_arg_str(&arguments, &["query", "q"]), Some("first"));
+    }
+
+    fn tool_definition(name: &str, display: Option<&str>, noun: Option<&str>) -> ToolDefinition {
+        use crate::tool_types::{BuiltinTool, ToolHints};
+        ToolDefinition::Builtin(BuiltinTool {
+            name: name.into(),
+            display_name: display.map(str::to_owned),
+            description: String::new(),
+            parameters: json!({}),
+            policy: Default::default(),
+            category: None,
+            deferrable: Default::default(),
+            hints: noun.map_or_else(ToolHints::default, |noun| {
+                ToolHints::default().with_narration_noun(noun)
+            }),
+            full_parameters: None,
+        })
+    }
+
+    #[test]
+    fn group_renderer_preserves_operation_identity_order_and_omitted_call_count() {
+        let definitions = [
+            tool_definition("manage", Some("Manage"), Some("agent")),
+            tool_definition("other", Some("Other"), Some("agent")),
+        ];
+        let call = |tool: &str, operation: &str, name: &str| ToolCall {
+            id: format!("call-{name}"),
+            name: tool.into(),
+            arguments: json!({"operation":operation,"name":name,"token":"SENSITIVE_VALUE"}),
+        };
+        let calls = [
+            call("manage", "create", "first"),
+            call("manage", "create", "second"),
+            call("manage", "delete", "third"),
+            call("other", "create", "fourth"),
+            call("other", "create", "fifth"),
+        ];
+        assert_eq!(
+            render_group_headline(&[], &definitions, ToolNarrationPhase::Completed),
+            None
+        );
+        assert_eq!(
+            render_group_headline(&calls[..1], &definitions, ToolNarrationPhase::Completed)
+                .as_deref(),
+            Some("Created agent: first")
+        );
+        assert_eq!(
+            render_group_headline(&calls, &definitions, ToolNarrationPhase::Completed).as_deref(),
+            Some("Created agent twice, Deleted agent: third, and 2 more actions")
+        );
+        // Same wording from different tools must remain two distinct actions.
+        assert_eq!(
+            render_group_headline(
+                &[calls[0].clone(), calls[3].clone()],
+                &definitions,
+                ToolNarrationPhase::Completed
+            )
+            .as_deref(),
+            Some("Created agent: first and Created agent: fourth")
+        );
+        let original = ToolCall {
+            id: "identity".into(),
+            name: "manage".into(),
+            arguments: json!({"action":"delete","operation":"create","name":"private","token":"SENSITIVE_VALUE"}),
+        };
+        let summary = tool_call_for_group_summary(&original);
+        assert_eq!(summary.id, "identity");
+        assert_eq!(summary.name, "manage");
+        assert_eq!(
+            summary.arguments,
+            json!({"action":"delete","operation":"create"})
+        );
+        assert_eq!(original.arguments["name"], "private");
     }
 }
