@@ -264,7 +264,7 @@ impl<T: IdMarker> utoipa::ToSchema for TypedId<T> {
 impl<T: IdMarker> utoipa::PartialSchema for TypedId<T> {
     #[allow(deprecated)]
     fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        let example_value = format!("{}_{}", T::PREFIX, "01933b5a00007000800000000000001");
+        let example_value = format!("{}_{}", T::PREFIX, "01933b5a000070008000000000000001");
         utoipa::openapi::ObjectBuilder::new()
             .schema_type(utoipa::openapi::schema::Type::String)
             .description(Some(format!(
@@ -784,63 +784,135 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_new_agent_id() {
-        let id = AgentId::new();
-        let s = id.to_string();
-        assert!(s.starts_with("agent_"));
-        assert_eq!(s.len(), 38); // "agent_" + 32 hex chars
+    fn literal_ids_preserve_seed_uuid_and_wire_identity() {
+        for (seed, wire) in [
+            (0, "agent_00000000000000000000000000000000"),
+            (1, "agent_00000000000000000000000000000001"),
+            (u128::MAX, "agent_ffffffffffffffffffffffffffffffff"),
+        ] {
+            let id = AgentId::from_seed(seed);
+            assert_eq!(id.to_string(), wire);
+            assert_eq!(AgentId::parse(wire).unwrap(), id);
+            assert_eq!(wire.parse::<AgentId>().unwrap(), id);
+            assert_eq!(id.uuid().as_u128(), seed);
+            assert_eq!(serde_json::to_value(id).unwrap(), serde_json::json!(wire));
+            assert_eq!(
+                serde_json::from_value::<AgentId>(serde_json::json!(wire)).unwrap(),
+                id
+            );
+        }
     }
 
     #[test]
-    fn test_parse_agent_id() {
-        let id = AgentId::new();
-        let s = id.to_string();
-        let parsed = AgentId::parse(&s).unwrap();
-        assert_eq!(id, parsed);
-    }
-
-    #[test]
-    fn test_parse_invalid_prefix() {
-        let result = AgentId::parse("session_01933b5a00007000800000000000001");
-        assert!(matches!(result, Err(IdParseError::InvalidPrefix { .. })));
-    }
-
-    #[test]
-    fn test_parse_invalid_length() {
-        let result = AgentId::parse("agent_123");
-        assert!(matches!(result, Err(IdParseError::InvalidLength { .. })));
-    }
-
-    #[test]
-    fn test_parse_invalid_hex() {
-        let result = AgentId::parse("agent_GHIJKLMNOPQRSTUVWXYZ123456789012");
-        assert!(matches!(result, Err(IdParseError::InvalidHex(_))));
-    }
-
-    #[test]
-    fn test_from_seed() {
-        let id = AgentId::from_seed(1);
-        assert_eq!(id.to_string(), "agent_00000000000000000000000000000001");
-    }
-
-    #[test]
-    fn test_serde_roundtrip() {
-        let id = AgentId::new();
-        let json = serde_json::to_string(&id).unwrap();
-        let parsed: AgentId = serde_json::from_str(&json).unwrap();
-        assert_eq!(id, parsed);
-    }
-
-    #[test]
-    fn test_default_org_id() {
+    fn parsing_rejects_wrong_namespace_length_and_noncanonical_hex() {
+        for (input, prefix) in [
+            ("session_00000000000000000000000000000001", "session"),
+            ("agentx_00000000000000000000000000000001", "agentx"),
+            ("", ""),
+        ] {
+            assert_eq!(
+                AgentId::parse(input),
+                Err(IdParseError::InvalidPrefix {
+                    expected: "agent",
+                    got: prefix.into()
+                })
+            );
+        }
+        for size in [0, 31, 33] {
+            assert_eq!(
+                AgentId::parse(&format!("agent_{}", "0".repeat(size))),
+                Err(IdParseError::InvalidLength {
+                    expected: 32,
+                    got: size
+                })
+            );
+        }
+        for suffix in [
+            "A".repeat(32),
+            "g".repeat(32),
+            "é".repeat(16),
+            "0".repeat(31) + " ",
+        ] {
+            assert_eq!(
+                AgentId::parse(&format!("agent_{suffix}")),
+                Err(IdParseError::InvalidHex(suffix))
+            );
+        }
+        for value in [
+            serde_json::json!(42),
+            serde_json::json!(null),
+            serde_json::json!("session_00000000000000000000000000000001"),
+            serde_json::json!("agent_123"),
+        ] {
+            assert!(serde_json::from_value::<AgentId>(value).is_err());
+        }
         assert_eq!(
-            DEFAULT_ORG_ID.to_string(),
-            "org_00000000000000000000000000000001"
+            AgentId::parse("agent_123").unwrap_err().to_string(),
+            "invalid length: expected 32, got 3"
+        );
+        assert_eq!(
+            AgentId::parse("session_123").unwrap_err().to_string(),
+            "invalid prefix: expected 'agent', got 'session'"
         );
     }
 
     #[test]
-    fn test_well_known_provider_ids() {
+    fn uuid_conversions_support_borrowed_map_lookup() {
+        let first = Uuid::from_u128(17);
+        let second = Uuid::from_u128(23);
+        let first_id = AgentId::from_uuid(first);
+        let second_id: AgentId = second.into();
+        let map = std::collections::HashMap::from([(first_id, "first"), (second_id, "second")]);
+        assert_eq!(map.get(&first), Some(&"first"));
+        assert_eq!(map.get(&second), Some(&"second"));
+        assert_eq!(map.get(&Uuid::from_u128(99)), None);
+        assert_eq!(first_id.as_ref(), &first);
+        assert_eq!(Uuid::from(second_id), second);
+        assert_eq!(first_id, first);
+        assert_eq!(first, first_id);
+        assert_ne!(first_id, second);
+        assert_ne!(second, first_id);
+    }
+
+    #[test]
+    fn generation_respects_storage_policy_and_explicit_random_override() {
+        for uuid in [
+            AgentId::new().uuid(),
+            AgentId::default().uuid(),
+            SessionId::new().uuid(),
+            EventId::new().uuid(),
+            TurnId::new().uuid(),
+        ] {
+            assert_eq!(uuid.get_version_num(), 7);
+        }
+        for uuid in [
+            MessageId::new().uuid(),
+            MessageId::default().uuid(),
+            MessageId::new_random().uuid(),
+            AgentId::new_random().uuid(),
+        ] {
+            assert_eq!(uuid.get_version_num(), 4);
+        }
+    }
+
+    #[test]
+    fn message_ids_accept_literal_legacy_and_random_versions() {
+        for (wire, version) in [
+            ("message_01933b5a000070008000000000000001", 7),
+            ("message_01933b5a000040008000000000000001", 4),
+        ] {
+            let id = MessageId::parse(wire).unwrap();
+            assert_eq!(id.uuid().get_version_num(), version);
+            assert_eq!(id.to_string(), wire);
+        }
+    }
+
+    #[test]
+    fn seeded_database_identities_remain_stable() {
+        assert_eq!(
+            DEFAULT_ORG_ID.to_string(),
+            "org_00000000000000000000000000000001"
+        );
         assert_eq!(
             well_known::OPENAI_PROVIDER_ID.to_string(),
             "provider_01933b5a000070008000000000000001"
@@ -851,69 +923,16 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "openapi")]
     #[test]
-    fn test_from_uuid() {
-        let uuid = Uuid::now_v7();
-        let id = AgentId::from_uuid(uuid);
-        assert_eq!(id.uuid(), uuid);
-    }
-
-    #[test]
-    fn test_hash() {
-        use std::collections::HashSet;
-        let id1 = AgentId::new();
-        let id2 = AgentId::new();
-        let mut set = HashSet::new();
-        set.insert(id1);
-        set.insert(id2);
-        assert_eq!(set.len(), 2);
-        set.insert(id1);
-        assert_eq!(set.len(), 2); // No duplicate
-    }
-
-    #[test]
-    fn test_message_id_is_random_v4() {
-        // MessageId is a random-public id class: new() and new_random() must
-        // both yield UUIDv4, unlike the default UUIDv7 classes.
-        let id = MessageId::new();
-        assert_eq!(
-            id.uuid().get_version_num(),
-            4,
-            "MessageId::new() must be v4"
+    fn openapi_examples_match_the_identifier_contract() {
+        let schema = serde_json::to_value(<AgentId as utoipa::PartialSchema>::schema()).unwrap();
+        assert_eq!(schema["type"], "string");
+        assert_eq!(schema["pattern"], "^agent_[0-9a-f]{32}$");
+        let example = schema["example"].as_str().unwrap();
+        assert!(
+            AgentId::parse(example).is_ok(),
+            "invalid schema example: {example}"
         );
-        assert_eq!(
-            MessageId::new_random().uuid().get_version_num(),
-            4,
-            "MessageId::new_random() must be v4"
-        );
-        // Format is unchanged: message_ + 32 lowercase hex, still parseable.
-        let s = id.to_string();
-        assert!(s.starts_with("message_"));
-        assert_eq!(s.len(), "message_".len() + 32);
-        assert_eq!(MessageId::parse(&s).unwrap(), id);
-    }
-
-    #[test]
-    fn test_default_id_class_stays_v7() {
-        // DB-backed classes keep UUIDv7 for B-tree locality / sortability.
-        assert_eq!(AgentId::new().uuid().get_version_num(), 7);
-        assert_eq!(SessionId::new().uuid().get_version_num(), 7);
-        assert_eq!(EventId::new().uuid().get_version_num(), 7);
-        // TurnId decision (EVE-771): stays UUIDv7 — turn ordering is used by
-        // durable execution and its public AG-UI exposure is being removed by
-        // the streaming message_id work (EVE-773), so it is not changed here.
-        assert_eq!(TurnId::new().uuid().get_version_num(), 7);
-    }
-
-    #[test]
-    fn test_message_id_parse_compat_legacy_and_random() {
-        // Legacy message ids were UUIDv7; new ones are UUIDv4. Both must parse
-        // identically — the wire format did not change, so no migration.
-        let legacy_v7 = format!("message_{}", Uuid::now_v7().simple());
-        let new_v4 = format!("message_{}", Uuid::new_v4().simple());
-        for s in [legacy_v7, new_v4] {
-            let parsed = MessageId::parse(&s).expect("both id vintages must parse");
-            assert_eq!(parsed.to_string(), s);
-        }
     }
 }
