@@ -3286,7 +3286,8 @@ mod tests {
         use wiremock::matchers::method;
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
-        let server = MockServer::start().await;
+        // Keep the endpoint distinct from connections owned by earlier test runtimes.
+        let server = MockServer::builder().start().await;
         // Any 200 lets the request through; we inspect the captured request, not
         // the (empty) streamed body.
         Mock::given(method("POST"))
@@ -3400,7 +3401,7 @@ mod tests {
         use wiremock::matchers::{body_partial_json, method};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
-        let server = MockServer::start().await;
+        let server = MockServer::builder().start().await;
         Mock::given(method("POST"))
             .and(body_partial_json(json!({
                 "previous_response_id": "resp_tool_turn"
@@ -3509,7 +3510,7 @@ mod tests {
         use wiremock::matchers::method;
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
-        let server = MockServer::start().await;
+        let server = MockServer::builder().start().await;
         Mock::given(method("POST"))
             .respond_with(ResponseTemplate::new(200).set_body_string(""))
             .mount(&server)
@@ -3589,7 +3590,7 @@ mod tests {
         use wiremock::matchers::method;
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
-        let server = MockServer::start().await;
+        let server = MockServer::builder().start().await;
         Mock::given(method("POST"))
             .respond_with(ResponseTemplate::new(200).set_body_string(""))
             .mount(&server)
@@ -3665,7 +3666,7 @@ mod tests {
         // A normal text delta followed by the trailing `[DONE]` sentinel.
         let body =
             "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\ndata: [DONE]\n\n";
-        let server = MockServer::start().await;
+        let server = MockServer::builder().start().await;
         Mock::given(method("POST"))
             .respond_with(
                 ResponseTemplate::new(200)
@@ -3743,7 +3744,7 @@ mod tests {
             "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"model\":\"openai/gpt-5.6-luna\",\"output\":[],\"usage\":{\"input_tokens\":4,\"output_tokens\":2,\"total_tokens\":6}}}\n\n",
             "data: [DONE]\n\n",
         );
-        let server = MockServer::start().await;
+        let server = MockServer::builder().start().await;
         Mock::given(method("POST"))
             .respond_with(
                 ResponseTemplate::new(200)
@@ -5415,7 +5416,7 @@ mod tests {
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer};
         for (static_header, caller_override) in [(false, false), (true, false), (false, true)] {
-            let server = MockServer::start().await;
+            let server = MockServer::builder().start().await;
             Mock::given(method("POST"))
                 .and(path("/v1/responses"))
                 .respond_with(successful_auth_stream())
@@ -5506,7 +5507,7 @@ mod tests {
     async fn refreshed_tokens_and_signed_payload_reach_each_retry_attempt() {
         use wiremock::matchers::{header, method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
-        let server = MockServer::start().await;
+        let server = MockServer::builder().start().await;
         Mock::given(method("POST"))
             .and(path("/v1/responses"))
             .and(header("authorization", "Bearer token-1"))
@@ -5564,7 +5565,7 @@ mod tests {
         use wiremock::matchers::method;
         use wiremock::{Mock, MockServer, ResponseTemplate};
         for fail_on in [1, 2] {
-            let server = MockServer::start().await;
+            let server = MockServer::builder().start().await;
             Mock::given(method("POST"))
                 .respond_with(ResponseTemplate::new(503).set_body_string("overloaded"))
                 .expect((fail_on - 1) as u64)

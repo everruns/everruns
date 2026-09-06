@@ -18,7 +18,7 @@ use everruns_provider::driver_registry::{
 };
 use everruns_provider::{Provider, StaticHeaderAuth};
 use futures::StreamExt;
-use wiremock::matchers::{method, path_regex};
+use wiremock::matchers::{method, path_regex, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn config(model: &str) -> LlmCallConfig {
@@ -133,6 +133,7 @@ async fn drain_golden(mut stream: LlmResponseStream) -> Vec<Golden> {
 async fn mount_sse(server: &MockServer, body: String) {
     Mock::given(method("POST"))
         .and(path_regex(r"^/models/.+:streamGenerateContent$"))
+        .and(query_param("alt", "sse"))
         .respond_with(ResponseTemplate::new(200).set_body_raw(body, "text/event-stream"))
         .mount(server)
         .await;
@@ -166,6 +167,13 @@ async fn text_stream_golden_events() {
         .await
         .expect("gemini stream should start");
 
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        requests[0].url.path(),
+        "/models/gemini-2.5-flash:streamGenerateContent"
+    );
+    assert_eq!(requests[0].url.query(), Some("alt=sse"));
     let events = drain_golden(stream).await;
     assert_eq!(
         events,

@@ -1097,10 +1097,11 @@ impl OpenRouterRoutingConfig {
                     if prompt_usd_per_million.is_some() || completion_usd_per_million.is_some() {
                         let mp = derived.max_price.get_or_insert_with(Default::default);
                         if let Some(p) = prompt_usd_per_million {
-                            mp.prompt = Some(p / 1_000_000.0);
+                            // Routing ceilings use USD per million, unlike model catalog pricing.
+                            mp.prompt = Some(*p);
                         }
                         if let Some(c) = completion_usd_per_million {
-                            mp.completion = Some(c / 1_000_000.0);
+                            mp.completion = Some(*c);
                         }
                     }
                 }
@@ -2654,45 +2655,6 @@ mod tests {
     }
 
     #[test]
-    fn test_openrouter_fallback_models_empty_is_empty() {
-        let routing = OpenRouterRoutingConfig::fallback_models(std::iter::empty::<String>());
-
-        assert!(routing.is_empty());
-        assert_eq!(routing.route, None);
-    }
-
-    #[test]
-    fn test_openrouter_routing_validates_primary_model() {
-        let routing = OpenRouterRoutingConfig::fallback_models([
-            "openai/gpt-5-mini",
-            "anthropic/claude-sonnet-4.5",
-        ]);
-
-        assert!(
-            routing
-                .validate_for_primary_model("openai/gpt-5-mini")
-                .is_ok()
-        );
-        let err = routing
-            .validate_for_primary_model("anthropic/claude-sonnet-4.5")
-            .unwrap_err();
-        assert!(err.contains("models[0]"));
-    }
-
-    #[test]
-    fn test_openrouter_routing_rejects_fallback_without_models() {
-        let routing = OpenRouterRoutingConfig {
-            route: Some(OpenRouterRoute::Fallback),
-            ..Default::default()
-        };
-
-        let err = routing
-            .validate_for_primary_model("openai/gpt-5-mini")
-            .unwrap_err();
-        assert!(err.contains("requires at least one model"));
-    }
-
-    #[test]
     fn test_openrouter_routing_serializes_request_fields() {
         let routing = OpenRouterRoutingConfig {
             models: vec![
@@ -3140,169 +3102,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_openrouter_plugin_config_is_empty() {
-        assert!(OpenRouterPluginConfig::default().is_empty());
-        assert!(
-            !OpenRouterPluginConfig {
-                web: Some(OpenRouterWebSearchPlugin::default()),
-                file: None,
-            }
-            .is_empty()
-        );
-        assert!(
-            !OpenRouterPluginConfig {
-                web: None,
-                file: Some(OpenRouterFilePlugin {}),
-            }
-            .is_empty()
-        );
-    }
-
-    #[test]
-    fn test_openrouter_routing_is_empty_with_plugins() {
-        let with_plugins = OpenRouterRoutingConfig {
-            plugins: Some(OpenRouterPluginConfig {
-                web: Some(OpenRouterWebSearchPlugin::default()),
-                file: None,
-            }),
-            ..Default::default()
-        };
-        assert!(!with_plugins.is_empty());
-
-        let empty_plugins = OpenRouterRoutingConfig {
-            plugins: Some(OpenRouterPluginConfig::default()),
-            ..Default::default()
-        };
-        assert!(empty_plugins.is_empty());
-    }
-
-    #[test]
-    fn test_openrouter_web_search_plugin_serialization() {
-        let plugin = OpenRouterWebSearchPlugin {
-            max_results: Some(10),
-            search_prompt: Some("search for Rust crates".to_string()),
-        };
-        let json = serde_json::to_value(&plugin).unwrap();
-        assert_eq!(json["max_results"], 10);
-        assert_eq!(json["search_prompt"], "search for Rust crates");
-    }
-
-    #[test]
-    fn test_openrouter_web_search_plugin_omits_none_fields() {
-        let plugin = OpenRouterWebSearchPlugin::default();
-        let json = serde_json::to_value(&plugin).unwrap();
-        assert!(json.get("max_results").is_none());
-        assert!(json.get("search_prompt").is_none());
-    }
-
-    #[test]
-    fn test_capacity_strategy_shared_capacity_is_noop() {
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            capacity_strategy: Some(OpenRouterCapacityStrategy::SharedCapacity),
-            ..Default::default()
-        };
-        let result = base.apply_capacity_strategy().unwrap();
-        assert_eq!(
-            result.capacity_strategy,
-            Some(OpenRouterCapacityStrategy::SharedCapacity)
-        );
-        assert!(result.provider.is_none());
-    }
-
-    #[test]
-    fn test_capacity_strategy_none_is_noop() {
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            capacity_strategy: None,
-            ..Default::default()
-        };
-        let result = base.apply_capacity_strategy().unwrap();
-        assert!(result.provider.is_none());
-    }
-
-    #[test]
-    fn test_capacity_strategy_byok_first_sets_allow_fallbacks() {
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokFirst),
-            ..Default::default()
-        };
-        let result = base.apply_capacity_strategy().unwrap();
-        let provider = result.provider.as_ref().expect("provider set by ByokFirst");
-        assert_eq!(provider.allow_fallbacks, Some(true));
-    }
-
-    #[test]
-    fn test_capacity_strategy_byok_first_preserves_explicit_allow_fallbacks() {
-        // If allow_fallbacks was already set explicitly, ByokFirst must not override it.
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokFirst),
-            provider: Some(OpenRouterProviderRouting {
-                allow_fallbacks: Some(false),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let result = base.apply_capacity_strategy().unwrap();
-        let provider = result.provider.as_ref().unwrap();
-        assert_eq!(provider.allow_fallbacks, Some(false));
-    }
-
-    #[test]
-    fn test_capacity_strategy_byok_only_requires_provider_only() {
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokOnly),
-            ..Default::default()
-        };
-        let err = base.apply_capacity_strategy().unwrap_err();
-        assert!(
-            err.contains("provider.only"),
-            "error should mention provider.only: {err}"
-        );
-    }
-
-    #[test]
-    fn test_capacity_strategy_byok_only_disables_fallbacks() {
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokOnly),
-            provider: Some(OpenRouterProviderRouting {
-                only: vec!["my-byok-provider".to_string()],
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let result = base.apply_capacity_strategy().unwrap();
-        let provider = result.provider.as_ref().unwrap();
-        assert_eq!(provider.allow_fallbacks, Some(false));
-        assert_eq!(provider.only, vec!["my-byok-provider"]);
-    }
-
-    #[test]
-    fn test_capacity_strategy_byok_only_not_empty_in_is_empty() {
-        let with_strategy = OpenRouterRoutingConfig {
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokOnly),
-            ..Default::default()
-        };
-        assert!(!with_strategy.is_empty());
-
-        let byok_first = OpenRouterRoutingConfig {
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokFirst),
-            ..Default::default()
-        };
-        assert!(!byok_first.is_empty());
-
-        let shared = OpenRouterRoutingConfig {
-            capacity_strategy: Some(OpenRouterCapacityStrategy::SharedCapacity),
-            ..Default::default()
-        };
-        assert!(shared.is_empty());
-    }
-
     // -------------------------------------------------------------------------
 
     // OpenRouterRoutingPreset tests
@@ -3310,164 +3109,198 @@ mod tests {
     // -------------------------------------------------------------------------
 
     #[test]
-    fn test_preset_no_presets_is_noop() {
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        assert_eq!(result, base);
-    }
-
-    #[test]
-    fn test_preset_cheapest_with_tools_sets_require_parameters_and_sort_price() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::CheapestWithTools],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        assert!(result.presets.is_empty(), "presets cleared after apply");
-        let provider = result.provider.expect("provider set by preset");
-        assert_eq!(provider.require_parameters, Some(true));
+    fn fallback_routing_preserves_order_and_rejects_invalid_primary() {
+        let empty = OpenRouterRoutingConfig::fallback_models(std::iter::empty::<String>());
+        assert_eq!(serde_json::to_value(&empty).unwrap(), serde_json::json!({}));
+        assert!(empty.is_empty());
+        assert_eq!(empty.validate_for_primary_model("primary"), Ok(()));
+        let routing = OpenRouterRoutingConfig::fallback_models(["primary", "backup", "primary"]);
         assert_eq!(
-            provider.sort,
-            Some(OpenRouterProviderSort::Simple(
-                OpenRouterProviderSortBy::Price
-            ))
+            serde_json::to_value(&routing).unwrap(),
+            serde_json::json!({"models":["primary","backup","primary"],"route":"fallback"})
         );
-    }
-
-    #[test]
-    fn test_preset_lowest_latency_review_sets_sort_throughput() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::LowestLatencyReview],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set by preset");
+        assert_eq!(routing.validate_for_primary_model("primary"), Ok(()));
         assert_eq!(
-            provider.sort,
-            Some(OpenRouterProviderSort::Simple(
-                OpenRouterProviderSortBy::Throughput
-            ))
+            routing.validate_for_primary_model("backup").unwrap_err(),
+            "OpenRouter routing models[0] ('primary') must match primary model ('backup')"
         );
-    }
-
-    #[test]
-    fn test_preset_zdr_only_sets_zdr() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::ZdrOnly],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
-        assert_eq!(provider.zdr, Some(true));
-    }
-
-    #[test]
-    fn test_preset_byok_first_sets_allow_fallbacks() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::ByokFirst],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
-        assert_eq!(provider.allow_fallbacks, Some(true));
-    }
-
-    #[test]
-    fn test_preset_no_data_collection_sets_data_collection_deny() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::NoDataCollection],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
         assert_eq!(
-            provider.data_collection,
-            Some(OpenRouterDataCollection::Deny)
+            OpenRouterRoutingConfig {
+                route: Some(OpenRouterRoute::Fallback),
+                ..Default::default()
+            }
+            .validate_for_primary_model("primary")
+            .unwrap_err(),
+            "OpenRouter fallback routing requires at least one model in `models`"
         );
     }
 
     #[test]
-    fn test_preset_strict_json_sets_require_parameters() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::StrictJson],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
-        assert_eq!(provider.require_parameters, Some(true));
+    fn routing_emptiness_preserves_each_actionable_control_in_call_config() {
+        use serde_json::json;
+        for (wire, active) in [
+            (json!({}), false),
+            (json!({"plugins":{}}), false),
+            (json!({"capacity_strategy":"shared_capacity"}), false),
+            (json!({"models":["model"]}), true),
+            (json!({"route":"fallback"}), true),
+            (json!({"provider":{"allow_fallbacks":false}}), true),
+            (json!({"plugins":{"web":{}}}), true),
+            (json!({"plugins":{"file":{}}}), true),
+            (json!({"capacity_strategy":"byok_first"}), true),
+            (json!({"capacity_strategy":"byok_only"}), true),
+            (json!({"presets":[{"kind":"zdr_only"}]}), true),
+        ] {
+            let routing: OpenRouterRoutingConfig = serde_json::from_value(wire.clone()).unwrap();
+            assert_eq!(!routing.is_empty(), active, "{wire}");
+            let config = LlmCallConfigBuilder::from_config(bare_call_config())
+                .openrouter_routing(routing.clone())
+                .build();
+            assert_eq!(
+                config.openrouter_routing,
+                active.then_some(routing),
+                "{wire}"
+            );
+        }
     }
 
     #[test]
-    fn test_preset_reasoning_required_sets_require_parameters() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::ReasoningRequired],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
-        assert_eq!(provider.require_parameters, Some(true));
+    fn plugin_payloads_preserve_options_and_omit_absent_fields() {
+        use serde_json::json;
+        for wire in [
+            json!({}),
+            json!({"web":{}}),
+            json!({"file":{}}),
+            json!({"web":{"max_results":10,"search_prompt":"search for Rust crates"},"file":{}}),
+        ] {
+            let plugins: OpenRouterPluginConfig = serde_json::from_value(wire.clone()).unwrap();
+            assert_eq!(plugins.is_empty(), wire == json!({}));
+            assert_eq!(serde_json::to_value(plugins).unwrap(), wire);
+        }
     }
 
     #[test]
-    fn test_preset_max_price_converts_usd_per_million() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::MaxPrice {
-                prompt_usd_per_million: Some(5.0),
-                completion_usd_per_million: Some(15.0),
-            }],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
-        let max_price = provider.max_price.expect("max_price set");
-        // 5.0 USD/M → 5.0 / 1_000_000 per token
-        let prompt = max_price.prompt.expect("prompt set");
-        assert!((prompt - 5.0 / 1_000_000.0).abs() < f64::EPSILON);
-        let completion = max_price.completion.expect("completion set");
-        assert!((completion - 15.0 / 1_000_000.0).abs() < f64::EPSILON);
+    fn capacity_strategies_preserve_unrelated_routing_and_enforce_byok_policy() {
+        use serde_json::json;
+        for (strategy, explicit, expected) in [
+            (None, None, None),
+            (Some("shared_capacity"), Some(false), Some(false)),
+            (Some("byok_first"), None, Some(true)),
+            (Some("byok_first"), Some(false), Some(false)),
+            (Some("byok_first"), Some(true), Some(true)),
+            (Some("byok_only"), Some(true), Some(false)),
+        ] {
+            let mut wire = json!({"models":["primary","backup"],"provider":{"only":["my-byok-provider"],"order":["first"],"zdr":true},"plugins":{"file":{}},"presets":[{"kind":"strict_json"}]});
+            if let Some(strategy) = strategy {
+                wire["capacity_strategy"] = json!(strategy);
+            }
+            if let Some(value) = explicit {
+                wire["provider"]["allow_fallbacks"] = json!(value);
+            }
+            let base: OpenRouterRoutingConfig = serde_json::from_value(wire.clone()).unwrap();
+            let result = base.apply_capacity_strategy().unwrap();
+            let mut expected_wire = wire.clone();
+            if let Some(value) = expected {
+                expected_wire["provider"]["allow_fallbacks"] = json!(value);
+            }
+            assert_eq!(serde_json::to_value(&result).unwrap(), expected_wire);
+            assert_eq!(serde_json::to_value(&base).unwrap(), wire);
+            assert_eq!(result.apply_capacity_strategy().unwrap(), result);
+        }
+        for provider in [None, Some(OpenRouterProviderRouting::default())] {
+            let base = OpenRouterRoutingConfig {
+                capacity_strategy: Some(OpenRouterCapacityStrategy::ByokOnly),
+                provider,
+                ..Default::default()
+            };
+            assert_eq!(
+                base.apply_capacity_strategy().unwrap_err(),
+                "OpenRouter BYOK-only strategy requires provider.only to list at least one upstream provider slug. Configure the provider list to match the BYOK providers registered in your OpenRouter workspace."
+            );
+        }
     }
 
     #[test]
-    fn test_preset_max_price_rejects_negative_values() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::MaxPrice {
-                prompt_usd_per_million: Some(-1.0),
-                completion_usd_per_million: None,
-            }],
+    fn presets_compile_to_complete_literal_routing_and_clear_once() {
+        use serde_json::json;
+        for (preset, provider) in [
+            (
+                OpenRouterRoutingPreset::CheapestWithTools,
+                json!({"require_parameters":true,"sort":"price"}),
+            ),
+            (
+                OpenRouterRoutingPreset::LowestLatencyReview,
+                json!({"sort":"throughput"}),
+            ),
+            (OpenRouterRoutingPreset::ZdrOnly, json!({"zdr":true})),
+            (
+                OpenRouterRoutingPreset::ByokFirst,
+                json!({"allow_fallbacks":true}),
+            ),
+            (
+                OpenRouterRoutingPreset::NoDataCollection,
+                json!({"data_collection":"deny"}),
+            ),
+            (
+                OpenRouterRoutingPreset::StrictJson,
+                json!({"require_parameters":true}),
+            ),
+            (
+                OpenRouterRoutingPreset::ReasoningRequired,
+                json!({"require_parameters":true}),
+            ),
+        ] {
+            let base = OpenRouterRoutingConfig {
+                models: vec!["primary".into()],
+                presets: vec![preset],
+                ..Default::default()
+            };
+            let before = base.clone();
+            let result = base.apply_presets().unwrap();
+            assert_eq!(
+                serde_json::to_value(&result).unwrap(),
+                json!({"models":["primary"],"provider":provider})
+            );
+            assert_eq!(base, before);
+            assert_eq!(result.apply_presets().unwrap(), result);
+        }
+        let base = OpenRouterRoutingConfig::fallback_models(["primary", "backup"]);
+        assert_eq!(base.apply_presets().unwrap(), base);
+    }
+
+    #[test]
+    fn preset_precedence_preserves_explicit_false_values_and_every_provider_field() {
+        use serde_json::json;
+        let presets = vec![
+            OpenRouterRoutingPreset::CheapestWithTools,
+            OpenRouterRoutingPreset::ZdrOnly,
+            OpenRouterRoutingPreset::NoDataCollection,
+            OpenRouterRoutingPreset::ByokFirst,
+            OpenRouterRoutingPreset::LowestLatencyReview,
+        ];
+        let combined = OpenRouterRoutingConfig {
+            presets: presets.clone(),
             ..Default::default()
-        };
-        let err = base.apply_presets().unwrap_err();
-        assert!(
-            err.contains("non-negative"),
-            "error should mention non-negative: {err}"
+        }
+        .apply_presets()
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(&combined).unwrap(),
+            json!({"provider":{"require_parameters":true,"sort":"throughput","zdr":true,"data_collection":"deny","allow_fallbacks":true}})
         );
-    }
-
-    #[test]
-    fn test_preset_max_price_both_none_no_provider_field() {
+        let explicit = json!({"order":["second","first"],"only":["allowed"],"ignore":["ignored"],"allow_fallbacks":false,"require_parameters":false,"data_collection":"allow","zdr":false,"enforce_distillable_text":false,"quantizations":["fp8"],"sort":{"by":"latency","partition":"model"},"max_price":{"prompt":7.0,"completion":8.0,"request":0.2,"image":0.1}});
         let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::MaxPrice {
-                prompt_usd_per_million: None,
-                completion_usd_per_million: None,
-            }],
+            presets,
+            provider: Some(serde_json::from_value(explicit.clone()).unwrap()),
             ..Default::default()
         };
-        let result = base.apply_presets().unwrap();
-        assert!(
-            result.provider.is_none(),
-            "MaxPrice with no dimensions should not produce a provider field"
+        assert_eq!(
+            serde_json::to_value(base.apply_presets().unwrap()).unwrap(),
+            json!({"provider":explicit})
         );
-    }
-
-    #[test]
-    fn test_preset_explicit_provider_overrides_preset() {
-        let base = OpenRouterRoutingConfig {
+        let partial = OpenRouterRoutingConfig {
             presets: vec![OpenRouterRoutingPreset::CheapestWithTools],
             provider: Some(OpenRouterProviderRouting {
-                // Caller explicitly wants throughput sort, overriding Price preset
                 sort: Some(OpenRouterProviderSort::Simple(
                     OpenRouterProviderSortBy::Throughput,
                 )),
@@ -3475,75 +3308,57 @@ mod tests {
             }),
             ..Default::default()
         };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
-        // Explicit sort wins
         assert_eq!(
-            provider.sort,
-            Some(OpenRouterProviderSort::Simple(
-                OpenRouterProviderSortBy::Throughput
-            ))
-        );
-        // But preset-derived require_parameters still set (not overridden by explicit)
-        assert_eq!(provider.require_parameters, Some(true));
-    }
-
-    #[test]
-    fn test_preset_multiple_presets_combined() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![
-                OpenRouterRoutingPreset::ZdrOnly,
-                OpenRouterRoutingPreset::NoDataCollection,
-                OpenRouterRoutingPreset::LowestLatencyReview,
-            ],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
-        assert_eq!(provider.zdr, Some(true));
-        assert_eq!(
-            provider.data_collection,
-            Some(OpenRouterDataCollection::Deny)
-        );
-        assert_eq!(
-            provider.sort,
-            Some(OpenRouterProviderSort::Simple(
-                OpenRouterProviderSortBy::Throughput
-            ))
+            serde_json::to_value(partial.apply_presets().unwrap()).unwrap(),
+            json!({"provider":{"sort":"throughput","require_parameters":true}})
         );
     }
 
     #[test]
-    fn test_preset_later_preset_overrides_sort() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![
-                OpenRouterRoutingPreset::CheapestWithTools, // sets Price sort
-                OpenRouterRoutingPreset::LowestLatencyReview, // overrides to Throughput
-            ],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
-        // Later preset wins for sort
-        assert_eq!(
-            provider.sort,
-            Some(OpenRouterProviderSort::Simple(
-                OpenRouterProviderSortBy::Throughput
-            ))
-        );
-        // require_parameters still set by CheapestWithTools
-        assert_eq!(provider.require_parameters, Some(true));
-    }
-
-    #[test]
-    fn test_preset_non_empty_in_is_empty() {
-        let with_preset = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::ZdrOnly],
-            ..Default::default()
-        };
-        assert!(!with_preset.is_empty());
-
-        let without = OpenRouterRoutingConfig::default();
-        assert!(without.is_empty());
+    fn price_presets_preserve_literal_usd_per_million_and_dimension_boundaries() {
+        use serde_json::json;
+        for (prompt, completion, expected) in [
+            (
+                Some(5.0),
+                Some(15.0),
+                json!({"provider":{"max_price":{"prompt":5.0,"completion":15.0}}}),
+            ),
+            (
+                Some(0.0),
+                None,
+                json!({"provider":{"max_price":{"prompt":0.0}}}),
+            ),
+            (
+                None,
+                Some(0.5),
+                json!({"provider":{"max_price":{"completion":0.5}}}),
+            ),
+            (None, None, json!({})),
+        ] {
+            let base = OpenRouterRoutingConfig {
+                presets: vec![OpenRouterRoutingPreset::MaxPrice {
+                    prompt_usd_per_million: prompt,
+                    completion_usd_per_million: completion,
+                }],
+                ..Default::default()
+            };
+            assert_eq!(
+                serde_json::to_value(base.apply_presets().unwrap()).unwrap(),
+                expected
+            );
+        }
+        for (prompt, completion) in [(Some(-1.0), None), (None, Some(-0.01))] {
+            let base = OpenRouterRoutingConfig {
+                presets: vec![OpenRouterRoutingPreset::MaxPrice {
+                    prompt_usd_per_million: prompt,
+                    completion_usd_per_million: completion,
+                }],
+                ..Default::default()
+            };
+            assert_eq!(
+                base.apply_presets().unwrap_err(),
+                "MaxPrice preset values must be non-negative USD per million tokens"
+            );
+        }
     }
 }
