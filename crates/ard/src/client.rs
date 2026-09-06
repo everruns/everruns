@@ -516,11 +516,18 @@ mod tests {
 
     #[test]
     fn truncate_handles_non_ascii_without_panic() {
-        // Repeated multi-byte char so `max` lands mid-codepoint.
         let s = "é".repeat(400);
-        let out = truncate(&s, 500);
-        assert!(out.ends_with('…'));
-        assert!(out.len() <= 503);
+        // Odd byte limits split a two-byte character, including the first one.
+        for (limit, expected) in [
+            (0, "…".to_string()),
+            (1, "…".to_string()),
+            (500, format!("{}…", "é".repeat(250))),
+            (501, format!("{}…", "é".repeat(250))),
+            (800, s.clone()),
+            (801, s.clone()),
+        ] {
+            assert_eq!(truncate(&s, limit), expected, "byte limit {limit}");
+        }
     }
 
     #[test]
@@ -571,6 +578,9 @@ mod tests {
         assert!(e.validate_envelope().is_err());
         e.url = Some("https://x.com".into());
         assert!(e.validate_envelope().is_ok());
+        e.url = None;
+        e.data = Some(serde_json::json!({}));
+        assert!(e.validate_envelope().is_ok());
     }
 
     fn urn(p: &str) -> ArdUrn {
@@ -605,11 +615,22 @@ mod tests {
 
     #[test]
     fn trust_rejects_domain_mismatch() {
-        let m = manifest("spiffe://evil.com/x", &["SOC2-Type2"]);
-        assert!(matches!(
-            verify_trust(&urn("acme.com"), Some(&m), &["soc2".into()]),
-            TrustOutcome::Rejected(_)
-        ));
+        for identity in [
+            "spiffe://evil.com/x",
+            "spiffe://evilacme.com/x",
+            "spiffe://acme.com.evil.com/x",
+        ] {
+            let m = manifest(identity, &["SOC2-Type2"]);
+            for required in [vec![], vec!["soc2".into()]] {
+                assert!(
+                    matches!(
+                        verify_trust(&urn("acme.com"), Some(&m), &required),
+                        TrustOutcome::Rejected(_)
+                    ),
+                    "accepted {identity} with required attestations {required:?}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -660,6 +681,6 @@ mod tests {
         let card = serde_json::json!({"name": "C", "url": "https://agent.x.com"});
         let (base, inline) = a2a_target_from_artifact(&card).unwrap();
         assert_eq!(base.as_deref(), Some("https://agent.x.com"));
-        assert!(inline.is_some());
+        assert_eq!(inline, Some(card));
     }
 }

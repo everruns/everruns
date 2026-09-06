@@ -1,18 +1,48 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { releaseCardSvg, validateChangelog, validateReleaseCard } from "./generate-release-card.mjs";
+import {
+  releaseCardSvg,
+  validateChangelog,
+  validateReleaseCard,
+} from "./generate-release-card.mjs";
 
 const validCard = {
   version: "1.2.3",
   date: "2026-09-04",
   headline: ["Reasoning,", "in order."],
   summary: ["A concise release summary."],
-  highlights: [{ title: "Ordered artifacts", description: "Replay work in the order it happened.", source: "#123" }],
+  highlights: [
+    {
+      title: "Ordered artifacts",
+      description: "Replay work in the order it happened.",
+      source: "#123",
+    },
+  ],
 };
 
 test("validates and normalizes release card content", () => {
-  assert.deepEqual(validateReleaseCard(validCard, "1.2.3"), validCard);
+  assert.deepEqual(
+    validateReleaseCard(
+      {
+        ...validCard,
+        version: " 1.2.3 ",
+        date: " 2026-09-04 ",
+        headline: [" Reasoning, ", " in order. "],
+        summary: [" A concise release summary. "],
+        highlights: [
+          {
+            title: " Ordered artifacts ",
+            description: " Replay work in the order it happened. ",
+            source: " #123 ",
+          },
+        ],
+        ignored: "not part of the card",
+      },
+      "1.2.3",
+    ),
+    validCard,
+  );
 });
 
 test("rejects a card for a different release", () => {
@@ -20,6 +50,9 @@ test("rejects a card for a different release", () => {
 });
 
 test("rejects content that cannot fit the template", () => {
+  assert.deepEqual(validateReleaseCard({ ...validCard, headline: ["x".repeat(24)] }).headline, [
+    "x".repeat(24),
+  ]);
   assert.throws(
     () => validateReleaseCard({ ...validCard, headline: ["x".repeat(25)] }),
     /headline\[0\] must be at most 24 characters/,
@@ -40,7 +73,10 @@ test("rejects content that cannot fit the template", () => {
 });
 
 test("rejects impossible calendar dates", () => {
-  assert.throws(() => validateReleaseCard({ ...validCard, date: "2026-02-31" }), /valid YYYY-MM-DD date/);
+  assert.throws(
+    () => validateReleaseCard({ ...validCard, date: "2026-02-31" }),
+    /valid YYYY-MM-DD date/,
+  );
 });
 
 test("requires highlight sources in the matching changelog section", () => {
@@ -50,6 +86,12 @@ test("requires highlight sources in the matching changelog section", () => {
     () => validateChangelog(card, "## [1.2.3] - 2026-09-04\n\n- Something else\n"),
     /source #123 is not present/,
   );
+  for (const changelog of [
+    "## [1.2.4] - 2026-09-05\n\n- #123\n\n## [1.2.3] - 2026-09-04\n\n- Something else\n",
+    "## [1.2.3] - 2026-09-04\n\n- Something else\n\n## [1.2.2] - 2026-09-03\n\n- #123\n",
+  ]) {
+    assert.throws(() => validateChangelog(card, changelog), /source #123 is not present/);
+  }
 });
 
 test("escapes user-controlled SVG text", () => {

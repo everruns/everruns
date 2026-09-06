@@ -147,10 +147,12 @@ fn merge_external_agent(session: &mut ExecutionSession, agent: &serde_json::Valu
         .as_array_mut()
         .expect("agents array ensured above");
 
-    let exists = agents
-        .iter()
-        .any(|a| a.get("id").and_then(|v| v.as_str()) == Some(agent_id));
-    if !exists {
+    if let Some(existing) = agents
+        .iter_mut()
+        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(agent_id))
+    {
+        *existing = agent.clone();
+    } else {
         agents.push(agent.clone());
     }
 }
@@ -254,7 +256,6 @@ mod tests {
     fn merges_mcp_server_into_session() {
         let mut session = test_session();
         merge_attachment_into_session(&mut session, &mcp_attachment("urn:ai:x:y:z", "docs"));
-        assert!(session.mcp_servers.contains_key("docs"));
         assert_eq!(
             session.mcp_servers["docs"].url,
             "https://docs.example.com/mcp"
@@ -265,8 +266,17 @@ mod tests {
     fn mcp_merge_is_idempotent_by_name() {
         let mut session = test_session();
         merge_attachment_into_session(&mut session, &mcp_attachment("urn:ai:x:y:z", "docs"));
-        merge_attachment_into_session(&mut session, &mcp_attachment("urn:ai:x:y:z", "docs"));
+        let mut updated = mcp_attachment("urn:ai:x:y:z", "docs");
+        let ArdAttachmentTarget::McpServer { server, .. } = &mut updated.target else {
+            unreachable!()
+        };
+        server.url = "https://updated.example.com/mcp".into();
+        merge_attachment_into_session(&mut session, &updated);
         assert_eq!(session.mcp_servers.len(), 1);
+        assert_eq!(
+            session.mcp_servers["docs"].url,
+            "https://updated.example.com/mcp"
+        );
     }
 
     #[test]
@@ -280,20 +290,32 @@ mod tests {
             .expect("a2a capability added");
         let agents = cap.config_value()["agents"].as_array().unwrap();
         assert_eq!(agents.len(), 1);
-        assert_eq!(agents[0]["id"], "concierge");
+        assert_eq!(
+            agents[0],
+            serde_json::json!({"id": "concierge", "name": "Concierge", "base_url": "https://agent.example.com"})
+        );
     }
 
     #[test]
     fn external_agent_merge_is_idempotent_by_id() {
         let mut session = test_session();
         merge_attachment_into_session(&mut session, &agent_attachment("urn:ai:x:y:c", "concierge"));
-        merge_attachment_into_session(&mut session, &agent_attachment("urn:ai:x:y:c", "concierge"));
+        let mut updated = agent_attachment("urn:ai:x:y:c", "concierge");
+        let ArdAttachmentTarget::ExternalAgent { agent } = &mut updated.target else {
+            unreachable!()
+        };
+        agent["base_url"] = serde_json::json!("https://updated.example.com");
+        merge_attachment_into_session(&mut session, &updated);
         let cap = session
             .capabilities
             .iter()
             .find(|c| c.capability_id() == "a2a_agent_delegation")
             .unwrap();
         assert_eq!(cap.config_value()["agents"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            cap.config_value()["agents"][0]["base_url"],
+            "https://updated.example.com"
+        );
         // And the capability itself is not duplicated.
         assert_eq!(
             session
@@ -312,7 +334,7 @@ mod tests {
             .capabilities
             .push(AgentCapabilityConfig::with_config(
                 "a2a_agent_delegation",
-                serde_json::json!({ "agents": [ {"id": "preexisting", "name": "Pre"} ] }),
+                serde_json::json!({ "agents": [ {"id": "preexisting", "name": "Pre"} ], "max_depth": 3 }),
             ));
         merge_attachment_into_session(&mut session, &agent_attachment("urn:ai:x:y:c", "concierge"));
         let cap = session
@@ -320,12 +342,15 @@ mod tests {
             .iter()
             .find(|c| c.capability_id() == "a2a_agent_delegation")
             .unwrap();
-        let ids: Vec<&str> = cap.config_value()["agents"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(|a| a["id"].as_str())
-            .collect();
-        assert_eq!(ids, vec!["preexisting", "concierge"]);
+        assert_eq!(
+            cap.config_value(),
+            &serde_json::json!({
+                "agents": [
+                    {"id": "preexisting", "name": "Pre"},
+                    {"id": "concierge", "name": "Concierge", "base_url": "https://agent.example.com"}
+                ],
+                "max_depth": 3
+            })
+        );
     }
 }

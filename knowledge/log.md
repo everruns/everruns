@@ -7,6 +7,12 @@
   compaction so configuration updates do not break long conversations. See
   [Compaction](runtime-resources/compaction.md).
 
+* Integration capabilities can share their protocol and vendor operation across
+  Framework and hosted execution while binding credentials in each context.
+  Brave Search establishes the application adapter pattern and separates hosted
+  connector registration from the Framework dependency graph. See
+  [Framework application boundaries](framework/application-api.md).
+
 ## 2026-09-01
 
 * **A model switch is a conversation event, not a setting.** Changing the model

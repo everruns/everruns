@@ -503,31 +503,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_chat_span_name() {
-        assert_eq!(chat_span_name("gpt-4"), "chat gpt-4");
-        assert_eq!(chat_span_name("claude-opus-5"), "chat claude-opus-5");
-    }
-
-    #[test]
-    fn test_tool_span_name() {
-        assert_eq!(tool_span_name("read_file"), "execute_tool read_file");
-        assert_eq!(tool_span_name("web_search"), "execute_tool web_search");
-    }
-
-    #[test]
-    fn test_text_completion_span_name() {
-        assert_eq!(
-            text_completion_span_name("gpt-3.5-turbo-instruct"),
-            "text_completion gpt-3.5-turbo-instruct"
-        );
-    }
-
-    #[test]
-    fn test_create_agent_span_name() {
-        assert_eq!(
-            create_agent_span_name("customer_support"),
-            "create_agent customer_support"
-        );
+    fn operation_span_names_preserve_operation_and_subject() {
+        for (make_name, expected) in [
+            (chat_span_name as fn(&str) -> String, "chat subject/α"),
+            (tool_span_name, "execute_tool subject/α"),
+            (text_completion_span_name, "text_completion subject/α"),
+            (create_agent_span_name, "create_agent subject/α"),
+            (embeddings_span_name, "embeddings subject/α"),
+        ] {
+            assert_eq!(make_name("subject/α"), expected);
+        }
     }
 
     #[test]
@@ -536,43 +521,65 @@ mod tests {
             invoke_agent_span_name(Some("customer_support")),
             "invoke_agent customer_support"
         );
+        assert_eq!(
+            invoke_agent_span_name(Some("  customer_support\n")),
+            "invoke_agent customer_support"
+        );
+        assert_eq!(invoke_agent_span_name(Some("")), "invoke_agent");
         assert_eq!(invoke_agent_span_name(None), "invoke_agent");
         assert_eq!(invoke_agent_span_name(Some("  ")), "invoke_agent");
     }
 
     #[test]
-    fn test_embeddings_span_name() {
-        assert_eq!(
-            embeddings_span_name("text-embedding-ada-002"),
-            "embeddings text-embedding-ada-002"
-        );
-    }
-
-    #[test]
     fn provider_names_follow_the_registry() {
-        assert_eq!(gen_ai::provider::from_driver_id("openai"), "openai");
-        assert_eq!(gen_ai::provider::from_driver_id("anthropic"), "anthropic");
-        assert_eq!(gen_ai::provider::from_driver_id("gemini"), "gcp.gemini");
-        assert_eq!(gen_ai::provider::from_driver_id("bedrock"), "aws.bedrock");
-        assert_eq!(
-            gen_ai::provider::from_driver_id("azure_openai"),
-            "azure.ai.openai"
-        );
-        assert_eq!(gen_ai::provider::from_driver_id("openrouter"), "openrouter");
-        assert_eq!(gen_ai::provider::from_driver_id("llmsim"), "llmsim");
+        for (driver, expected) in [
+            ("openai", "openai"),
+            ("openai_completions", "openai"),
+            ("anthropic", "anthropic"),
+            ("gemini", "gcp.gemini"),
+            ("bedrock", "aws.bedrock"),
+            ("azure_openai", "azure.ai.openai"),
+            ("vertex_ai", "gcp.vertex_ai"),
+            ("vertexai", "gcp.vertex_ai"),
+            ("mistral", "mistral_ai"),
+            ("mistral_ai", "mistral_ai"),
+            ("xai", "x_ai"),
+            ("x_ai", "x_ai"),
+            ("openrouter", "openrouter"),
+            ("llmsim", "llmsim"),
+            ("custom-driver", "custom-driver"),
+        ] {
+            assert_eq!(
+                gen_ai::provider::from_driver_id(driver),
+                expected,
+                "{driver}"
+            );
+        }
     }
 
     #[test]
-    fn error_type_prefers_codes_then_status_then_other() {
-        assert_eq!(
-            error_type(Some("budget_exhausted"), "anything"),
-            "budget_exhausted"
-        );
-        assert_eq!(error_type(None, "provider returned 503"), "503");
-        assert_eq!(error_type(None, "request timed out after 30s"), "timeout");
-        assert_eq!(error_type(None, "HTTP 429 Too Many Requests"), "429");
-        assert_eq!(error_type(None, "id 12345 not found"), "_OTHER");
-        assert_eq!(error_type(None, "something broke"), "_OTHER");
+    fn error_classification_respects_precedence_and_status_boundaries() {
+        for (code, message, expected) in [
+            (
+                Some(" budget_exhausted "),
+                "timeout HTTP 503",
+                "budget_exhausted",
+            ),
+            (Some(" "), "provider returned 503", "503"),
+            (None, "HTTP 503: request TIMED OUT", "timeout"),
+            (None, "TIMEOUT", "timeout"),
+            (None, "HTTP 429 Too Many Requests", "429"),
+            (None, "400", "400"),
+            (None, "599", "599"),
+            (None, "399 then 600", "_OTHER"),
+            (None, "A503 503B 1503 5030", "_OTHER"),
+            (None, "id 12345 not found", "_OTHER"),
+            (None, "失敗 (502), then 429", "502"),
+            (None, "something broke", "_OTHER"),
+            (None, "", "_OTHER"),
+        ] {
+            assert_eq!(error_type(code, message), expected, "{code:?}: {message}");
+        }
     }
 
     #[test]
@@ -581,11 +588,15 @@ mod tests {
             Message::system("Be terse."),
             Message::user("Hi"),
             Message::assistant("Hello"),
+            Message::system("Use tools carefully."),
         ];
         let instructions = content::system_instructions(&messages).unwrap();
         assert_eq!(
             instructions,
-            json!([{ "type": "text", "content": "Be terse." }])
+            json!([
+                { "type": "text", "content": "Be terse." },
+                { "type": "text", "content": "Use tools carefully." }
+            ])
         );
         let history = content::input_messages(&messages);
         assert_eq!(
@@ -652,52 +663,128 @@ mod tests {
     }
 
     #[test]
-    fn tool_errors_become_error_responses() {
-        let messages = vec![Message::tool_result(
-            "call_2",
-            None,
-            Some("boom".to_string()),
-        )];
-        let history = content::input_messages(&messages);
+    fn tool_errors_override_results_and_missing_results_are_null() {
+        for (result, error, expected) in [
+            (None, Some("boom".to_string()), json!({"error": "boom"})),
+            (
+                Some(json!({"ignored": true})),
+                Some("boom".to_string()),
+                json!({"error": "boom"}),
+            ),
+            (None, None, Value::Null),
+        ] {
+            let history = content::input_messages(&[Message::tool_result("call_2", result, error)]);
+            assert_eq!(
+                history,
+                json!([{"role": "tool", "parts": [{
+                    "type": "tool_call_response", "id": "call_2", "response": expected
+                }]}])
+            );
+        }
+    }
+
+    #[test]
+    fn absent_output_content_omits_optional_fields() {
+        for empty in [None, Some("")] {
+            assert_eq!(
+                content::output_messages(empty, &[], empty, None),
+                json!([{"role": "assistant", "parts": []}])
+            );
+        }
+    }
+
+    #[test]
+    fn captured_reasoning_omits_opaque_artifacts_and_redacted_parts() {
+        use everruns_provider::reasoning::ReasoningContentPart;
+        let artifact = || {
+            ReasoningContentPart::opaque("provider")
+                .with_signature("PRIVATE-SIGNATURE")
+                .with_encrypted("PRIVATE-ENCRYPTED")
+                .with_item_id("PRIVATE-ITEM")
+                .with_tokens(41)
+        };
+        let mut message = Message::assistant("");
+        message.content = vec![
+            ContentPart::Reasoning(artifact().with_text(ReasoningText::Plain {
+                text: "visible".into(),
+            })),
+            ContentPart::Reasoning(artifact().with_text(ReasoningText::Redacted)),
+            ContentPart::Reasoning(artifact()),
+            ContentPart::Reasoning(artifact().with_text(ReasoningText::Summary {
+                parts: vec!["first".into(), "second".into()],
+            })),
+        ];
         assert_eq!(
-            history[0]["parts"][0],
-            json!({ "type": "tool_call_response", "id": "call_2", "response": { "error": "boom" } })
+            content::input_messages(&[message]),
+            json!([{"role": "assistant", "parts": [
+                {"type": "reasoning", "content": "visible"},
+                {"type": "reasoning", "content": "first\nsecond"}
+            ]}])
         );
     }
 
     #[test]
     fn image_bytes_never_reach_telemetry() {
+        use crate::message::ImageContentPart;
+        let image_id = crate::typed_id::ImageId::new();
         let mut message = Message::user("");
         message.content = vec![
-            ContentPart::image_url("https://example.com/a.png"),
+            ContentPart::Image(ImageContentPart {
+                url: Some("https://example.com/a.png".into()),
+                base64: Some("PRIVATE-BYTES".into()),
+                media_type: None,
+            }),
+            ContentPart::Image(ImageContentPart {
+                url: None,
+                base64: None,
+                media_type: None,
+            }),
+            ContentPart::Image(ImageContentPart {
+                url: None,
+                base64: Some("PRIVATE-FALLBACK".into()),
+                media_type: None,
+            }),
             ContentPart::Image(crate::message::ImageContentPart::from_base64(
                 "AAAA",
                 "image/jpeg",
             )),
+            ContentPart::image_file(image_id),
         ];
         let history = content::input_messages(&[message]);
         assert_eq!(
             history[0]["parts"],
             json!([
                 { "type": "uri", "modality": "image", "uri": "https://example.com/a.png" },
+                { "type": "blob", "modality": "image", "mime_type": "image/png" },
                 { "type": "blob", "modality": "image", "mime_type": "image/jpeg" },
+                { "type": "uri", "modality": "image", "uri": format!("image_file:{image_id}") },
             ])
         );
     }
 
     #[test]
     fn tool_definitions_are_function_typed() {
-        let tools = vec![ToolDefinitionSummary {
+        assert_eq!(content::tool_definitions(&[]), json!([]));
+        let first = ToolDefinitionSummary {
             name: "read_file".to_string(),
-            display_name: None,
-            category: None,
-            capability_id: None,
-            capability_name: None,
+            display_name: Some("Internal display".into()),
+            category: Some("Internal category".into()),
+            capability_id: Some("private-capability".into()),
+            capability_name: Some("Private capability".into()),
             description: "Read a file".to_string(),
-        }];
+        };
+        let second = ToolDefinitionSummary {
+            name: "write_file".into(),
+            description: "Write a file".into(),
+            ..first.clone()
+        };
+        let tools = vec![first, second];
         assert_eq!(
             content::tool_definitions(&tools),
-            json!([{ "type": "function", "name": "read_file", "description": "Read a file" }])
+            json!([
+                { "type": "function", "name": "read_file", "description": "Read a file" },
+                { "type": "function", "name": "write_file", "description": "Write a file" }
+            ])
         );
     }
 }

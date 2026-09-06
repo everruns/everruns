@@ -259,9 +259,13 @@ mod tests {
             .and(path("/v1/test"))
             .and(header("Authorization", "Bearer test"))
             .and(body_json(json!({"ok": true})))
-            .respond_with(ResponseTemplate::new(201).set_body_json(json!({
-                "id": "response_123"
-            })))
+            .respond_with(
+                ResponseTemplate::new(201)
+                    .set_body_json(json!({
+                        "id": "response_123"
+                    }))
+                    .insert_header("X-Request-Id", "request-42"),
+            )
             .expect(1)
             .mount(&server)
             .await;
@@ -281,6 +285,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status, 201);
+        assert_eq!(
+            response.headers.get("x-request-id").map(String::as_str),
+            Some("request-42")
+        );
         assert_eq!(
             serde_json::from_slice::<serde_json::Value>(&response.body).unwrap()["id"],
             "response_123"
@@ -495,7 +503,10 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/stream"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("data: one\n\ndata: two\n\n"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_raw("data: one\n\ndata: two\n\n", "text/event-stream"),
+            )
             .expect(1)
             .mount(&server)
             .await;
@@ -510,6 +521,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status, 200);
+        assert_eq!(
+            response.headers.get("content-type").map(String::as_str),
+            Some("text/event-stream")
+        );
         let mut body = Vec::new();
         while let Some(chunk) = response.body.next().await {
             body.extend(chunk.unwrap());
@@ -518,5 +533,44 @@ mod tests {
             String::from_utf8(body).unwrap(),
             "data: one\n\ndata: two\n\n"
         );
+    }
+    #[tokio::test]
+    async fn merged_network_policy_denies_escaped_urls_before_transport() {
+        use everruns_core::network_access::merge_network_access;
+        let service = DirectEgressService::new();
+        for (parent, child, target) in [
+            (
+                "*.example.com",
+                "https://outside.invalid/path.example.com",
+                "https://outside.invalid/path.example.com",
+            ),
+            (
+                "https://api.example.com/v1/",
+                "https://api.example.com/v1/../admin",
+                "https://api.example.com/admin",
+            ),
+            (
+                "https://",
+                "https://outside.invalid/data",
+                "https://outside.invalid/data",
+            ),
+        ] {
+            let parent = NetworkAccessList::allow_only([parent]);
+            let child = NetworkAccessList::allow_only([child]);
+            let policy = merge_network_access(Some(&parent), Some(&child));
+            for streaming in [false, true] {
+                let request = EgressRequest::new("GET", target, EgressRequestKind::Capability)
+                    .network_access(policy.clone());
+                let error = if streaming {
+                    match service.send_stream(request).await {
+                        Err(error) => error,
+                        Ok(_) => panic!("streaming request escaped policy: {target}"),
+                    }
+                } else {
+                    service.send(request).await.unwrap_err()
+                };
+                assert!(matches!(error, EgressError::NetworkAccessDenied { url } if url == target));
+            }
+        }
     }
 }

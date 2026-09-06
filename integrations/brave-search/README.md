@@ -17,13 +17,30 @@ through the Everruns integration plugin system.
 ## Quick Example
 
 ```rust
-use everruns_core::capabilities::Capability;
-use everruns_integrations_brave_search::BraveSearchCapability;
+use everruns::{Agent, Model};
+use everruns_integrations_brave_search::BraveSearch;
 
-let capability = BraveSearchCapability;
-
-assert_eq!(capability.id(), "brave_search");
+let agent = Agent::builder()
+    .instructions("Search the web and cite source URLs.")
+    .model(Model::simulated("Ready."))
+    .capability(BraveSearch::from_env()?)
+    .build()?;
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
+
+Framework applications select `default-features = false` on this integration
+dependency and enable the `everruns` `capabilities` feature (enabled by default).
+Set `BRAVE_SEARCH_API_KEY` before startup, or pass an application-owned key to
+`BraveSearch::new`. Credentials stay inside the client, outside agent config and
+metadata. `BraveSearch::with_client` accepts a client with a trusted custom
+endpoint for HTTP tests. Run the agent with `Engine::new().create(agent)`.
+
+The default `hosted` feature includes connector UI metadata and inventory
+registration for the Platform. Hosted tools retain lazy connection-token lookup
+and session-secret fallback. Both adapters share the `brave_web_search` schema,
+search operation, and result mapping. Framework credentials are read at
+construction; rebuild the capability to rotate them. Framework calls use the
+application-owned HTTP client, not hosted egress or connection policies.
 
 ## What It Provides
 

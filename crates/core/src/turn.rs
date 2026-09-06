@@ -51,17 +51,25 @@ mod tests {
 
     #[test]
     fn provider_finish_reasons_are_normalized() {
-        assert_eq!(
-            TurnStopReason::from_provider_finish_reason(Some("content_filter")),
-            TurnStopReason::Refusal
-        );
-        assert_eq!(
-            TurnStopReason::from_provider_finish_reason(Some("cancelled")),
-            TurnStopReason::Cancelled
-        );
-        assert_eq!(
-            TurnStopReason::from_provider_finish_reason(None),
-            TurnStopReason::EndTurn
-        );
+        for (input, expected) in [
+            (Some("length"), TurnStopReason::MaxTokens),
+            (Some("max_tokens"), TurnStopReason::MaxTokens),
+            (Some("MAX_OUTPUT_TOKENS"), TurnStopReason::MaxTokens),
+            (Some("refusal"), TurnStopReason::Refusal),
+            (Some("content_filter"), TurnStopReason::Refusal),
+            (Some("SaFeTy"), TurnStopReason::Refusal),
+            (Some("error"), TurnStopReason::Error),
+            (Some("cancelled"), TurnStopReason::Cancelled),
+            (Some("CANCELED"), TurnStopReason::Cancelled),
+            (Some("stop"), TurnStopReason::EndTurn),
+            (Some("future-provider-reason"), TurnStopReason::EndTurn),
+            (None, TurnStopReason::EndTurn),
+        ] {
+            assert_eq!(
+                TurnStopReason::from_provider_finish_reason(input),
+                expected,
+                "{input:?}"
+            );
+        }
     }
 }

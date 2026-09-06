@@ -759,7 +759,10 @@ mod tests {
             sanitize_server_name("urn:ai:acme.com:agent:Weather--Bot"),
             "weather_bot"
         );
-        assert!(!sanitize_server_name("urn:ai:acme.com:agent:a..b__c").contains("__"));
+        assert_eq!(
+            sanitize_server_name("urn:ai:acme.com:agent:a..b__c"),
+            "a_b_c"
+        );
         // Trailing empty segments are skipped; the last non-empty wins.
         assert_eq!(sanitize_server_name("urn:ai:x.com:agent:"), "agent");
     }
@@ -768,7 +771,9 @@ mod tests {
     fn discover_schema_requires_text() {
         let tool = DiscoverResourcesTool::new(ArdConfig::default());
         let schema = tool.parameters_schema();
-        assert_eq!(schema["required"][0], "text");
+        assert_eq!(schema["required"], json!(["text"]));
+        assert_eq!(schema["properties"]["text"]["type"], "string");
+        assert_eq!(schema["additionalProperties"], false);
     }
 
     #[test]
@@ -794,16 +799,24 @@ mod tests {
     }
 
     #[test]
-    fn federation_serializes_lowercase() {
+    fn search_request_uses_registry_wire_names() {
+        let request = SearchRequest {
+            query: SearchQuery {
+                text: "weather".into(),
+                filter: Some(json!({"type": [MEDIA_TYPE_MCP_SERVER, MEDIA_TYPE_A2A_AGENT_CARD]})),
+            },
+            federation: Some(crate::client::Federation::Referrals),
+            page_size: Some(10),
+        };
         assert_eq!(
-            serde_json::to_string(&crate::client::Federation::Referrals).unwrap(),
-            "\"referrals\""
+            serde_json::to_value(request).unwrap(),
+            json!({
+                "query": {"text": "weather", "filter": {"type": [
+                    "application/mcp-server+json", "application/a2a-agent-card+json"
+                ]}},
+                "federation": "referrals",
+                "pageSize": 10
+            })
         );
-    }
-
-    #[test]
-    fn unknown_media_type_constants() {
-        assert_eq!(MEDIA_TYPE_MCP_SERVER, "application/mcp-server+json");
-        assert_eq!(MEDIA_TYPE_A2A_AGENT_CARD, "application/a2a-agent-card+json");
     }
 }

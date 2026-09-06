@@ -122,7 +122,8 @@ primary root keeps the same layout and relative-path behavior:
 `everruns_core::WorkspaceRootSet` is the shared root-set contract for embedders.
 It canonicalizes roots at construction, rejects duplicates and overlapping host
 directories, parses model-facing VFS paths, and exposes host-scope helpers for
-host-side tools. Embedders that need host paths MUST use this resolver instead
+host-side tools. Rejected root reconfiguration leaves the previously registered
+roots intact so subsequent operations cannot be redirected by a failed update. Embedders that need host paths MUST use this resolver instead
 of copying `/workspace` stripping or containment logic locally.
 
 `MountFs` is the only path authority. It normalizes input against the cwd,

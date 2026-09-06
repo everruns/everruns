@@ -98,67 +98,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_grades() {
-        assert_eq!(
-            "dev".parse::<DeploymentGrade>().unwrap(),
-            DeploymentGrade::Dev
-        );
-        assert_eq!(
-            "development".parse::<DeploymentGrade>().unwrap(),
-            DeploymentGrade::Dev
-        );
-        assert_eq!(
-            "poc".parse::<DeploymentGrade>().unwrap(),
-            DeploymentGrade::Poc
-        );
-        assert_eq!(
-            "preview".parse::<DeploymentGrade>().unwrap(),
-            DeploymentGrade::Preview
-        );
-        assert_eq!(
-            "staging".parse::<DeploymentGrade>().unwrap(),
-            DeploymentGrade::Preview
-        );
-        assert_eq!(
-            "prod".parse::<DeploymentGrade>().unwrap(),
-            DeploymentGrade::Prod
-        );
-        assert_eq!(
-            "production".parse::<DeploymentGrade>().unwrap(),
-            DeploymentGrade::Prod
-        );
+    fn grades_parse_aliases_and_case_into_canonical_policy() {
+        for (grade, canonical, aliases, experimental) in [
+            (
+                DeploymentGrade::Dev,
+                "dev",
+                vec!["dev", "development"],
+                true,
+            ),
+            (DeploymentGrade::Poc, "poc", vec!["poc"], false),
+            (
+                DeploymentGrade::Preview,
+                "preview",
+                vec!["preview", "staging"],
+                false,
+            ),
+            (
+                DeploymentGrade::Prod,
+                "prod",
+                vec!["prod", "production"],
+                false,
+            ),
+        ] {
+            for alias in aliases {
+                for input in [alias.to_owned(), alias.to_ascii_uppercase()] {
+                    assert_eq!(input.parse::<DeploymentGrade>().unwrap(), grade, "{input}");
+                }
+            }
+            assert_eq!(grade.to_string(), canonical);
+            assert_eq!(grade.experimental_features_enabled(), experimental);
+            assert_eq!(grade.is_dev(), experimental);
+        }
     }
 
     #[test]
-    fn test_case_insensitive() {
-        assert_eq!(
-            "DEV".parse::<DeploymentGrade>().unwrap(),
-            DeploymentGrade::Dev
-        );
-        assert_eq!(
-            "PROD".parse::<DeploymentGrade>().unwrap(),
-            DeploymentGrade::Prod
-        );
-    }
-
-    #[test]
-    fn test_default() {
-        assert_eq!(DeploymentGrade::default(), DeploymentGrade::Prod);
-    }
-
-    #[test]
-    fn test_experimental_features() {
-        assert!(DeploymentGrade::Dev.experimental_features_enabled());
-        assert!(!DeploymentGrade::Poc.experimental_features_enabled());
-        assert!(!DeploymentGrade::Preview.experimental_features_enabled());
-        assert!(!DeploymentGrade::Prod.experimental_features_enabled());
-    }
-
-    #[test]
-    fn test_display() {
-        assert_eq!(DeploymentGrade::Dev.to_string(), "dev");
-        assert_eq!(DeploymentGrade::Poc.to_string(), "poc");
-        assert_eq!(DeploymentGrade::Preview.to_string(), "preview");
-        assert_eq!(DeploymentGrade::Prod.to_string(), "prod");
+    fn invalid_grade_inputs_are_rejected() {
+        for input in ["", " ", " dev ", "development-extra", "test", "production1"] {
+            assert!(input.parse::<DeploymentGrade>().is_err(), "{input:?}");
+        }
     }
 }

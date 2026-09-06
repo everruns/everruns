@@ -240,331 +240,305 @@ impl From<&ExecutionSession> for AgentConfigOverlay {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capability_types::AgentCapabilityConfig;
-    use crate::mcp_server::ScopedMcpServer;
-    use crate::network_access::NetworkAccessList;
-    use crate::session_file::InitialFile;
+    use crate::mcp_server::{McpServerAuthMode, ScopedMcpServer};
+    use crate::tool_types::{BuiltinTool, ToolHints, ToolPolicy};
+    use serde_json::json;
 
-    fn make_file(path: &str, content: &str) -> InitialFile {
+    fn file(path: &str, content: &str, readonly: bool) -> InitialFile {
         InitialFile {
-            path: path.to_string(),
-            content: content.to_string(),
-            encoding: "text".to_string(),
-            is_readonly: false,
+            path: path.into(),
+            content: content.into(),
+            encoding: "text".into(),
+            is_readonly: readonly,
+        }
+    }
+
+    fn tool(name: &str, description: &str) -> ToolDefinition {
+        ToolDefinition::Builtin(BuiltinTool {
+            name: name.into(),
+            description: description.into(),
+            display_name: Some("Display".into()),
+            parameters: json!({"type":"object","properties":{"path":{"type":"string"}}}),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: Default::default(),
+            hints: ToolHints::default(),
+            full_parameters: None,
+        })
+    }
+
+    fn server(url: &str, marker: &str) -> ScopedMcpServer {
+        ScopedMcpServer {
+            url: url.into(),
+            headers: [("X-Test".into(), marker.into())].into(),
+            auth_mode: McpServerAuthMode::OAuth,
+            oauth_provider_id: Some(marker.into()),
+            tool_discovery: false,
+            ..Default::default()
+        }
+    }
+
+    fn sample_overlay() -> AgentConfigOverlay {
+        AgentConfigOverlay {
+            system_prompt: Some("Base prompt.".into()),
+            capabilities: vec![AgentCapabilityConfig::with_config(
+                "web_fetch",
+                json!({"download":false}),
+            )],
+            initial_files: vec![file("/config.txt", "config", true)],
+            network_access: Some(NetworkAccessList::allow_only(["api.example.com"])),
+            default_model_id: Some(ModelId::from_uuid(uuid::Uuid::from_u128(7))),
+            tools: vec![tool("inspect", "Inspect the workspace")],
+            max_iterations: Some(17),
+            parallel_tool_calls: Some(false),
+            mcp_servers: [(
+                "docs".into(),
+                server("https://docs.example.com/mcp", "docs-provider"),
+            )]
+            .into(),
+        }
+    }
+
+    fn assert_overlay(actual: AgentConfigOverlay, expected: AgentConfigOverlay) {
+        assert_eq!(actual.system_prompt, expected.system_prompt);
+        assert_eq!(actual.capabilities, expected.capabilities);
+        assert_eq!(actual.initial_files, expected.initial_files);
+        assert_eq!(actual.network_access, expected.network_access);
+        assert_eq!(actual.default_model_id, expected.default_model_id);
+        assert_eq!(
+            serde_json::to_value(actual.tools).unwrap(),
+            serde_json::to_value(expected.tools).unwrap()
+        );
+        assert_eq!(actual.max_iterations, expected.max_iterations);
+        assert_eq!(actual.parallel_tool_calls, expected.parallel_tool_calls);
+        assert_eq!(actual.mcp_servers, expected.mcp_servers);
+    }
+
+    #[test]
+    fn merge_prompts_trims_omits_empty_and_preserves_layer_order() {
+        for (base, overlay, expected) in [
+            (None, None, None),
+            (Some(" \n"), Some("\t"), None),
+            (Some(" Base. "), None, Some("Base.")),
+            (None, Some(" Overlay.\n"), Some("Overlay.")),
+            (Some("Base."), Some(" \t"), Some("Base.")),
+            (Some(" \t"), Some("Overlay."), Some("Overlay.")),
+            (
+                Some(" Base. "),
+                Some(" Overlay. "),
+                Some("Base.\n\nOverlay."),
+            ),
+        ] {
+            let result = AgentConfigOverlay {
+                system_prompt: base.map(str::to_owned),
+                ..Default::default()
+            }
+            .merge(AgentConfigOverlay {
+                system_prompt: overlay.map(str::to_owned),
+                ..Default::default()
+            });
+            assert_eq!(
+                result.system_prompt.as_deref(),
+                expected,
+                "{base:?} + {overlay:?}"
+            );
         }
     }
 
     #[test]
-    fn merge_system_prompts_concatenates() {
-        let base = AgentConfigOverlay {
-            system_prompt: Some("Base prompt.".into()),
-            ..Default::default()
-        };
-        let overlay = AgentConfigOverlay {
-            system_prompt: Some("Overlay prompt.".into()),
-            ..Default::default()
-        };
-        let merged = base.merge(overlay);
-        assert_eq!(
-            merged.system_prompt.as_deref(),
-            Some("Base prompt.\n\nOverlay prompt.")
-        );
-    }
-
-    #[test]
-    fn merge_system_prompts_base_only() {
-        let base = AgentConfigOverlay {
-            system_prompt: Some("Base.".into()),
-            ..Default::default()
-        };
-        let overlay = AgentConfigOverlay::default();
-        let merged = base.merge(overlay);
-        assert_eq!(merged.system_prompt.as_deref(), Some("Base."));
-    }
-
-    #[test]
-    fn merge_system_prompts_overlay_only() {
-        let base = AgentConfigOverlay::default();
-        let overlay = AgentConfigOverlay {
-            system_prompt: Some("Overlay.".into()),
-            ..Default::default()
-        };
-        let merged = base.merge(overlay);
-        assert_eq!(merged.system_prompt.as_deref(), Some("Overlay."));
-    }
-
-    #[test]
-    fn merge_system_prompts_both_empty() {
-        let merged = AgentConfigOverlay::default().merge(AgentConfigOverlay::default());
-        assert!(merged.system_prompt.is_none());
-    }
-
-    #[test]
-    fn merge_capabilities_override_by_id() {
-        let base = AgentConfigOverlay {
-            capabilities: vec![
-                AgentCapabilityConfig::new("session_file_system"),
-                AgentCapabilityConfig::with_config(
-                    "web_fetch",
-                    serde_json::json!({"enable_file_download": true}),
-                ),
-            ],
-            ..Default::default()
-        };
-        let overlay = AgentConfigOverlay {
-            capabilities: vec![
-                AgentCapabilityConfig::with_config(
-                    "web_fetch",
-                    serde_json::json!({"enable_file_download": false}),
-                ),
-                AgentCapabilityConfig::new("current_time"),
-            ],
-            ..Default::default()
-        };
-        let merged = base.merge(overlay);
-
-        assert_eq!(merged.capabilities.len(), 3);
-        assert_eq!(
-            merged.capabilities[0].capability_id(),
-            "session_file_system"
-        );
-        assert_eq!(merged.capabilities[1].capability_id(), "web_fetch");
-        assert_eq!(
-            merged.capabilities[1],
-            AgentCapabilityConfig::with_config(
-                "web_fetch",
-                serde_json::json!({"enable_file_download": false})
-            )
-        );
-        assert_eq!(merged.capabilities[2].capability_id(), "current_time");
-    }
-
-    #[test]
-    fn merge_initial_files_override_by_path() {
-        let base = AgentConfigOverlay {
-            initial_files: vec![
-                make_file("/workspace/README.md", "parent"),
-                make_file("/workspace/config.txt", "parent-config"),
-            ],
-            ..Default::default()
-        };
-        let overlay = AgentConfigOverlay {
-            initial_files: vec![
-                make_file("README.md", "child"),
-                make_file("/notes.txt", "notes"),
-            ],
-            ..Default::default()
-        };
-        let merged = base.merge(overlay);
-
-        assert_eq!(merged.initial_files.len(), 3);
-        assert_eq!(merged.initial_files[0].content, "child"); // overridden
-        assert_eq!(merged.initial_files[1].content, "parent-config"); // kept
-        assert_eq!(merged.initial_files[2].content, "notes"); // added
-    }
-
-    #[test]
-    fn merge_network_access_narrows() {
-        let base = AgentConfigOverlay {
-            network_access: Some(NetworkAccessList::allow_only([
-                "*.example.com",
-                "*.github.com",
-            ])),
-            ..Default::default()
-        };
-        let overlay = AgentConfigOverlay {
-            network_access: Some(NetworkAccessList::allow_only(["api.example.com"])),
-            ..Default::default()
-        };
-        let merged = base.merge(overlay);
-
-        let na = merged.network_access.unwrap();
-        assert_eq!(na.allowed, vec!["api.example.com".to_string()]);
-    }
-
-    #[test]
-    fn merge_model_overlay_wins() {
-        let base = AgentConfigOverlay {
-            default_model_id: Some(ModelId::from_uuid(uuid::Uuid::from_u128(1))),
-            ..Default::default()
-        };
-        let overlay = AgentConfigOverlay {
-            default_model_id: Some(ModelId::from_uuid(uuid::Uuid::from_u128(2))),
-            ..Default::default()
-        };
-        let merged = base.merge(overlay);
-        assert_eq!(
-            merged.default_model_id,
-            Some(ModelId::from_uuid(uuid::Uuid::from_u128(2)))
-        );
-    }
-
-    #[test]
-    fn merge_model_inherits_base() {
-        let base = AgentConfigOverlay {
-            default_model_id: Some(ModelId::from_uuid(uuid::Uuid::from_u128(1))),
-            ..Default::default()
-        };
-        let overlay = AgentConfigOverlay::default();
-        let merged = base.merge(overlay);
-        assert_eq!(
-            merged.default_model_id,
-            Some(ModelId::from_uuid(uuid::Uuid::from_u128(1)))
-        );
-    }
-
-    #[test]
-    fn merge_max_iterations_overlay_wins() {
-        let base = AgentConfigOverlay {
-            max_iterations: Some(100),
-            ..Default::default()
-        };
-        let overlay = AgentConfigOverlay {
-            max_iterations: Some(50),
-            ..Default::default()
-        };
-        let merged = base.merge(overlay);
-        assert_eq!(merged.max_iterations, Some(50));
-    }
-
-    #[test]
-    fn merge_max_iterations_inherits_base() {
-        let base = AgentConfigOverlay {
-            max_iterations: Some(100),
-            ..Default::default()
-        };
-        let overlay = AgentConfigOverlay::default();
-        let merged = base.merge(overlay);
-        assert_eq!(merged.max_iterations, Some(100));
-    }
-
-    #[test]
-    fn merge_parallel_tool_calls_overlay_wins() {
-        // EVE-598: overlay wins when set, even when it flips the base value.
-        let base = AgentConfigOverlay {
-            parallel_tool_calls: Some(true),
-            ..Default::default()
-        };
-        let overlay = AgentConfigOverlay {
-            parallel_tool_calls: Some(false),
-            ..Default::default()
-        };
-        assert_eq!(base.merge(overlay).parallel_tool_calls, Some(false));
-    }
-
-    #[test]
-    fn merge_parallel_tool_calls_inherits_base() {
-        // EVE-598: an unset overlay inherits the base preference; an all-unset
-        // fold leaves it None (provider default preserved).
-        let base = AgentConfigOverlay {
-            parallel_tool_calls: Some(true),
-            ..Default::default()
-        };
-        let merged = base.merge(AgentConfigOverlay::default());
-        assert_eq!(merged.parallel_tool_calls, Some(true));
-
-        let none_fold = AgentConfigOverlay::default().merge(AgentConfigOverlay::default());
-        assert_eq!(none_fold.parallel_tool_calls, None);
-    }
-
-    #[test]
-    fn merge_tools_additive() {
-        use crate::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
-
-        let make_tool = |name: &str| {
-            ToolDefinition::Builtin(BuiltinTool {
-                name: name.to_string(),
-                display_name: None,
-                description: format!("{name} tool"),
-                parameters: serde_json::json!({}),
-                policy: ToolPolicy::Auto,
-                category: None,
-                deferrable: Default::default(),
-                hints: crate::tool_types::ToolHints::default(),
-                full_parameters: None,
-            })
-        };
-
-        let base = AgentConfigOverlay {
-            tools: vec![make_tool("tool_a")],
-            ..Default::default()
-        };
-        let overlay = AgentConfigOverlay {
-            tools: vec![make_tool("tool_b")],
-            ..Default::default()
-        };
-        let merged = base.merge(overlay);
-        assert_eq!(merged.tools.len(), 2);
-        assert_eq!(merged.tools[0].name(), "tool_a");
-        assert_eq!(merged.tools[1].name(), "tool_b");
-    }
-
-    #[test]
-    fn merge_mcp_servers_overlay_wins_by_name() {
-        let mut base_servers = ScopedMcpServers::default();
-        base_servers.insert(
-            "docs".to_string(),
-            ScopedMcpServer {
-                url: "https://base.example.com/mcp".to_string(),
-                ..Default::default()
-            },
-        );
-
-        let mut overlay_servers = ScopedMcpServers::default();
-        overlay_servers.insert(
-            "docs".to_string(),
-            ScopedMcpServer {
-                url: "https://overlay.example.com/mcp".to_string(),
-                ..Default::default()
-            },
-        );
-        overlay_servers.insert(
-            "search".to_string(),
-            ScopedMcpServer {
-                url: "https://search.example.com/mcp".to_string(),
-                ..Default::default()
-            },
-        );
-
-        let merged = AgentConfigOverlay {
-            mcp_servers: base_servers,
+    fn merge_capabilities_replaces_full_config_and_preserves_unrelated_order() {
+        let retained =
+            AgentCapabilityConfig::with_config("session_file_system", json!({"readonly":true}));
+        let old = AgentCapabilityConfig::with_config("web_fetch", json!({"old":true}));
+        let replacement =
+            AgentCapabilityConfig::with_config("web_fetch", json!({"download":false}));
+        let added = AgentCapabilityConfig::with_config("current_time", json!({"zone":"UTC"}));
+        let result = AgentConfigOverlay {
+            capabilities: vec![retained.clone(), old],
             ..Default::default()
         }
         .merge(AgentConfigOverlay {
-            mcp_servers: overlay_servers,
+            capabilities: vec![
+                AgentCapabilityConfig::new("web_fetch"),
+                added.clone(),
+                replacement.clone(),
+            ],
             ..Default::default()
         });
+        assert_eq!(result.capabilities, vec![retained, replacement, added]);
+    }
 
-        assert_eq!(merged.mcp_servers.len(), 2);
+    #[test]
+    fn merge_initial_files_replaces_full_file_by_normalized_path() {
+        let retained = file("/workspace/config.txt", "parent-config", true);
+        let replacement = InitialFile {
+            path: "README.md".into(),
+            content: "Y2hpbGQ=".into(),
+            encoding: "base64".into(),
+            is_readonly: true,
+        };
+        let added = file("/notes.txt", "notes", false);
+        let result = AgentConfigOverlay {
+            initial_files: vec![
+                file("/workspace/README.md", "parent", false),
+                retained.clone(),
+            ],
+            ..Default::default()
+        }
+        .merge(AgentConfigOverlay {
+            initial_files: vec![replacement.clone(), added.clone()],
+            ..Default::default()
+        });
+        assert_eq!(result.initial_files, vec![replacement, retained, added]);
+    }
+
+    #[test]
+    fn merge_network_access_keeps_intersection_and_both_block_lists() {
+        let result = AgentConfigOverlay {
+            network_access: Some(NetworkAccessList {
+                allowed: vec!["*.example.com".into(), "*.github.com".into()],
+                blocked: vec!["private.example.com".into()],
+            }),
+            ..Default::default()
+        }
+        .merge(AgentConfigOverlay {
+            network_access: Some(NetworkAccessList {
+                allowed: vec![
+                    "api.example.com".into(),
+                    "private.example.com".into(),
+                    "child.example.com".into(),
+                    "outside.net".into(),
+                ],
+                blocked: vec!["child.example.com".into(), "private.example.com".into()],
+            }),
+            ..Default::default()
+        });
+        let policy = result.network_access.unwrap();
         assert_eq!(
-            merged
-                .mcp_servers
-                .get("docs")
-                .map(|server| server.url.as_str()),
-            Some("https://overlay.example.com/mcp")
+            policy,
+            NetworkAccessList {
+                allowed: vec![
+                    "api.example.com".into(),
+                    "private.example.com".into(),
+                    "child.example.com".into()
+                ],
+                blocked: vec!["private.example.com".into(), "child.example.com".into()],
+            }
         );
+        assert!(policy.is_url_allowed("https://api.example.com/data"));
+        for url in [
+            "https://private.example.com",
+            "https://child.example.com",
+            "https://outside.net",
+            "https://github.com",
+        ] {
+            assert!(!policy.is_url_allowed(url), "{url}");
+        }
+    }
+
+    #[test]
+    fn merge_scalar_options_inherits_missing_and_keeps_explicit_zero_or_false() {
+        // Each tuple is base, overlay, expected. Distinct values expose reversed precedence.
+        for (base, overlay, expected, base_parallel, overlay_parallel, expected_parallel) in [
+            (None, None, None, None, None, None),
+            (Some(7), None, Some(7), Some(true), None, Some(true)),
+            (None, Some(9), Some(9), None, Some(false), Some(false)),
+            (
+                Some(7),
+                Some(0),
+                Some(0),
+                Some(true),
+                Some(false),
+                Some(false),
+            ),
+            (Some(7), None, Some(7), Some(false), None, Some(false)),
+        ] {
+            let model = |n: u128| ModelId::from_uuid(uuid::Uuid::from_u128(n));
+            let result = AgentConfigOverlay {
+                default_model_id: base.map(model),
+                max_iterations: base.map(|n| n as usize),
+                parallel_tool_calls: base_parallel,
+                ..Default::default()
+            }
+            .merge(AgentConfigOverlay {
+                default_model_id: overlay.map(model),
+                max_iterations: overlay.map(|n| n as usize),
+                parallel_tool_calls: overlay_parallel,
+                ..Default::default()
+            });
+            assert_eq!(result.default_model_id, expected.map(model));
+            assert_eq!(result.max_iterations, expected.map(|n| n as usize));
+            assert_eq!(result.parallel_tool_calls, expected_parallel);
+        }
+    }
+
+    #[test]
+    fn merge_tools_preserves_full_definitions_and_defers_deduplication() {
+        let base = tool("inspect", "base schema owner");
+        let overlay = tool("inspect", "overlay schema owner");
+        let added = tool("search", "new tool");
+        let expected =
+            serde_json::to_value([base.clone(), overlay.clone(), added.clone()]).unwrap();
+        let result = AgentConfigOverlay {
+            tools: vec![base],
+            ..Default::default()
+        }
+        .merge(AgentConfigOverlay {
+            tools: vec![overlay, added],
+            ..Default::default()
+        });
+        assert_eq!(serde_json::to_value(result.tools).unwrap(), expected);
+    }
+
+    #[test]
+    fn merge_mcp_servers_replaces_credentials_and_keeps_unrelated_entries() {
+        let retained = server("https://retained.example.com/mcp", "retained");
+        let replacement = server("https://overlay.example.com/mcp", "new-provider");
+        let added = server("https://search.example.com/mcp", "search-provider");
+        let result = AgentConfigOverlay {
+            mcp_servers: [
+                (
+                    "docs".into(),
+                    server("https://base.example.com/mcp", "old-provider"),
+                ),
+                ("retained".into(), retained.clone()),
+            ]
+            .into(),
+            ..Default::default()
+        }
+        .merge(AgentConfigOverlay {
+            mcp_servers: [
+                ("docs".into(), replacement.clone()),
+                ("search".into(), added.clone()),
+            ]
+            .into(),
+            ..Default::default()
+        });
         assert_eq!(
-            merged
-                .mcp_servers
-                .get("search")
-                .map(|server| server.url.as_str()),
-            Some("https://search.example.com/mcp")
+            result.mcp_servers,
+            [
+                ("docs".into(), replacement),
+                ("search".into(), added),
+                ("retained".into(), retained)
+            ]
+            .into()
         );
     }
 
     #[test]
-    fn fold_three_layers() {
-        let harness = AgentConfigOverlay {
-            system_prompt: Some("Harness prompt.".into()),
-            capabilities: vec![AgentCapabilityConfig::new("session_file_system")],
-            initial_files: vec![make_file("/config.txt", "harness")],
-            max_iterations: None,
-            ..Default::default()
-        };
+    fn fold_three_layers_preserves_every_overlay_field() {
+        let harness = sample_overlay();
+        let mut expected = sample_overlay();
+        expected.system_prompt = Some("Base prompt.\n\nAgent prompt.\n\nSession prompt.".into());
+        let extra_capability =
+            AgentCapabilityConfig::with_config("current_time", json!({"zone":"UTC"}));
+        expected.capabilities.push(extra_capability.clone());
+        expected.initial_files = vec![file("config.txt", "agent", false)];
+        expected.max_iterations = Some(50);
         let agent = AgentConfigOverlay {
             system_prompt: Some("Agent prompt.".into()),
-            capabilities: vec![AgentCapabilityConfig::new("current_time")],
-            initial_files: vec![make_file("/config.txt", "agent")],
+            capabilities: vec![extra_capability],
+            initial_files: vec![file("config.txt", "agent", false)],
             max_iterations: Some(200),
             ..Default::default()
         };
@@ -573,27 +547,98 @@ mod tests {
             max_iterations: Some(50),
             ..Default::default()
         };
-
-        let effective = AgentConfigOverlay::fold([harness, agent, session]);
-
-        assert_eq!(
-            effective.system_prompt.as_deref(),
-            Some("Harness prompt.\n\nAgent prompt.\n\nSession prompt.")
+        assert_overlay(
+            AgentConfigOverlay::fold([harness, agent, session]),
+            expected,
         );
-        assert_eq!(effective.capabilities.len(), 2);
-        assert_eq!(effective.initial_files.len(), 1);
-        assert_eq!(effective.initial_files[0].content, "agent");
-        assert_eq!(effective.max_iterations, Some(50));
+        assert_overlay(AgentConfigOverlay::fold([]), AgentConfigOverlay::default());
     }
 
     #[test]
-    fn normalize_workspace_prefix() {
-        assert_eq!(
-            normalize_initial_file_path("/workspace/README.md"),
-            "/README.md"
-        );
-        assert_eq!(normalize_initial_file_path("/workspace"), "/");
-        assert_eq!(normalize_initial_file_path("README.md"), "/README.md");
-        assert_eq!(normalize_initial_file_path("/README.md"), "/README.md");
+    fn normalize_workspace_prefix_preserves_other_namespaces() {
+        for (input, expected) in [
+            ("/workspace/README.md", "/README.md"),
+            ("/workspace", "/"),
+            ("README.md", "/README.md"),
+            ("/README.md", "/README.md"),
+            ("/workspace//nested/file", "/nested/file"),
+            ("/workspace/", "/"),
+            ("/workspace-other/file", "/workspace-other/file"),
+            ("", "/"),
+        ] {
+            assert_eq!(normalize_initial_file_path(input), expected, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn harness_projection_preserves_all_supported_overlay_fields() {
+        let mut expected = sample_overlay();
+        expected.tools.clear();
+        expected.max_iterations = None;
+        let harness = HarnessDefinition {
+            name: "harness".into(),
+            system_prompt: expected.system_prompt.clone(),
+            capabilities: expected.capabilities.clone(),
+            initial_files: expected.initial_files.clone(),
+            network_access: expected.network_access.clone(),
+            default_model_id: expected.default_model_id,
+            parallel_tool_calls: expected.parallel_tool_calls,
+            mcp_servers: expected.mcp_servers.clone(),
+            ..Default::default()
+        };
+        assert_overlay(AgentConfigOverlay::from(&harness), expected);
+    }
+
+    #[test]
+    fn agent_projection_preserves_all_overlay_fields() {
+        let expected = sample_overlay();
+        let mut agent =
+            AgentDefinition::new(crate::typed_id::AgentId::new(), "agent", "Base prompt.");
+        agent.capabilities = expected.capabilities.clone();
+        agent.initial_files = expected.initial_files.clone();
+        agent.network_access = expected.network_access.clone();
+        agent.default_model_id = expected.default_model_id;
+        agent.tools = expected.tools.clone();
+        agent.max_iterations = expected.max_iterations;
+        agent.parallel_tool_calls = expected.parallel_tool_calls;
+        agent.mcp_servers = expected.mcp_servers.clone();
+        assert_overlay(AgentConfigOverlay::from(&agent), expected);
+    }
+
+    #[test]
+    fn session_projection_preserves_fields_and_appends_only_nonempty_goal() {
+        for (prompt, goal, expected_prompt) in [
+            (
+                Some(" Session prompt. "),
+                Some(" goal text \n"),
+                Some("Session prompt.\n\n<session-goal>\ngoal text\n</session-goal>"),
+            ),
+            (
+                None,
+                Some("goal"),
+                Some("<session-goal>\ngoal\n</session-goal>"),
+            ),
+            (Some("prompt"), Some(" \t"), Some("prompt")),
+            (None, None, None),
+        ] {
+            let mut expected = sample_overlay();
+            expected.system_prompt = expected_prompt.map(str::to_owned);
+            let mut session = ExecutionSession::new(
+                crate::typed_id::SessionId::new(),
+                crate::typed_id::WorkspaceId::new(),
+                crate::typed_id::HarnessId::new(),
+            );
+            session.system_prompt = prompt.map(str::to_owned);
+            session.goal = goal.map(str::to_owned);
+            session.capabilities = expected.capabilities.clone();
+            session.initial_files = expected.initial_files.clone();
+            session.network_access = expected.network_access.clone();
+            session.model_id = expected.default_model_id;
+            session.tools = expected.tools.clone();
+            session.max_iterations = expected.max_iterations;
+            session.parallel_tool_calls = expected.parallel_tool_calls;
+            session.mcp_servers = expected.mcp_servers.clone();
+            assert_overlay(AgentConfigOverlay::from(&session), expected);
+        }
     }
 }

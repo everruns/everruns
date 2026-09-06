@@ -37,6 +37,30 @@ matching capability reference to the agent, and retain the documented role,
 network-access, and runtime feature gates. In particular, Bashkit, web fetch,
 and Lua remain high-risk capabilities in the hosted product.
 
+## Provider integrations
+
+Integration packages can expose typed values through `IntoCapability`. Brave
+Search supports the ordinary Framework builder:
+
+```rust
+use everruns::{Agent, Model};
+use everruns_integrations_brave_search::BraveSearch;
+
+let agent = Agent::builder()
+    .instructions("Search and cite primary sources.")
+    .model(Model::simulated("Ready."))
+    .capability(BraveSearch::from_env()?)
+    .build()?;
+```
+
+Depend on `everruns-integrations-brave-search` with `default-features = false`
+to omit Platform connector registration. The Framework adapter reads
+`BRAVE_SEARCH_API_KEY` at construction; `BraveSearch::new` accepts an explicit
+application-owned key. Keys are retained privately by the client, never placed
+in capability JSON. Hosted execution continues to resolve connections and
+session secrets at tool execution time. Both paths use the same search schema
+and operation. Framework calls use the application's direct HTTP client.
+
 ## Advanced host composition
 
 Advanced embedders select integrations on `everruns-host` and build the

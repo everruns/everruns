@@ -548,6 +548,7 @@ mod tests {
             .unwrap();
 
         assert!(policy.permits_write("/src/generated.rs"));
+        assert!(policy.permits_write("/src/vendorish/generated.rs"));
         assert!(!policy.permits_write("/src/vendor/generated.rs"));
         assert!(!policy.permits_write("/VENDOR/generated.rs"));
     }
@@ -580,6 +581,7 @@ mod tests {
         assert!(!policy.permits_read("/workspace/src"));
         assert!(policy.permits_read("/workspace/src/generated/file.rs"));
         assert!(!policy.permits_read("/workspace/tests/test.rs"));
+        assert!(!policy.permits_read_traversal("/workspace/tests"));
     }
 
     #[test]
@@ -614,31 +616,67 @@ mod tests {
         assert!(!policy.permits_read("/.ssh"));
         assert!(policy.permits_read("/.ssh/id_ed25519"));
         assert!(!policy.permits_read("/.ssh/config"));
+        assert!(!policy.permits_read_traversal("/.ssh/config"));
     }
 
     #[test]
     fn composition_can_only_restrict() {
-        let application = WorkspacePolicy::read_write();
+        let application = WorkspacePolicy::builder()
+            .allow_read("/")
+            .allow_write("/")
+            .deny_read("src/private")
+            .deny_write("src/generated/locked")
+            .allow_recursive_delete(true)
+            .build()
+            .unwrap();
         let library = WorkspacePolicy::builder()
             .allow_read("src")
             .allow_write("src/generated")
             .build()
             .unwrap();
-        let policy = application.compose(library);
-
-        assert!(policy.permits_read("src/lib.rs"));
-        assert!(!policy.permits_read("Cargo.toml"));
-        assert!(policy.permits_write("src/generated/mod.rs"));
-        assert!(!policy.permits_write("src/lib.rs"));
+        for policy in [
+            application.clone().compose(library.clone()),
+            library.compose(application),
+        ] {
+            assert!(policy.permits_read("src/lib.rs"));
+            assert!(!policy.permits_read("Cargo.toml"));
+            assert!(!policy.permits_read("src/private/secret.rs"));
+            assert!(policy.permits_write("src/generated/mod.rs"));
+            assert!(!policy.permits_write("src/lib.rs"));
+            assert!(!policy.permits_write("src/generated/locked/mod.rs"));
+            assert!(!policy.permits_recursive_delete());
+        }
+        let recursive = WorkspacePolicy::builder()
+            .allow_recursive_delete(true)
+            .build()
+            .unwrap();
+        assert!(
+            recursive
+                .clone()
+                .compose(recursive)
+                .permits_recursive_delete()
+        );
     }
 
     #[test]
     fn traversal_nul_and_platform_separators_fail_closed() {
         let policy = WorkspacePolicy::read_write();
-        assert!(!policy.permits_read("src/../.env"));
-        assert!(!policy.permits_write("../outside"));
-        assert!(!policy.permits_read("src\\..\\secret"));
-        assert!(!policy.permits_read("bad\0path"));
+        assert!(policy.permits_read("src/ordinary.txt"));
+        assert!(policy.permits_write("src/ordinary.txt"));
+        assert!(policy.check_read("src/ordinary.txt").is_ok());
+        assert!(policy.check_write("src/ordinary.txt").is_ok());
+        for path in [
+            "src/../ordinary.txt",
+            "../outside",
+            "src\\..\\ordinary.txt",
+            "bad\0path",
+        ] {
+            assert!(!policy.permits_read(path), "read: {path:?}");
+            assert!(!policy.permits_write(path), "write: {path:?}");
+            assert!(!policy.permits_read_traversal(path), "traverse: {path:?}");
+            assert!(policy.check_read(path).is_err(), "check_read: {path:?}");
+            assert!(policy.check_write(path).is_err(), "check_write: {path:?}");
+        }
     }
 
     #[test]
@@ -661,6 +699,7 @@ mod tests {
             .deny_read("private")
             .build()
             .unwrap();
+        assert!(policy.permits_read("//workspace//public//readme.txt"));
         assert!(!policy.permits_read("//workspace//private//secret.txt"));
     }
 
@@ -668,13 +707,19 @@ mod tests {
     fn alternate_ascii_case_cannot_bypass_a_deny_or_sensitive_path() {
         let policy = WorkspacePolicy::builder()
             .allow_read("/")
+            .allow_write("/")
+            .allow_hidden("/")
             .deny_read("Private")
+            .deny_write("Private")
             .build()
             .unwrap();
 
-        assert!(!policy.permits_read("/private/secret.txt"));
-        assert!(!policy.permits_read("/.ENV"));
-        assert!(!policy.permits_read("/.Git/config"));
+        assert!(policy.permits_read("/.ordinary"));
+        assert!(policy.permits_write("/.ordinary"));
+        for path in ["/private/secret.txt", "/.ENV", "/.Git/config"] {
+            assert!(!policy.permits_read(path), "read: {path}");
+            assert!(!policy.permits_write(path), "write: {path}");
+        }
     }
 
     #[test]

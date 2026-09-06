@@ -38,28 +38,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn unique_resource_name_appends_lowercase_alphanumeric_suffix() {
-        let name = unique_resource_name("sandbox-name");
-        let suffix = name
-            .canonical_name
-            .strip_prefix("sandbox-name-")
-            .expect("suffix should be appended");
-
-        assert_eq!(name.requested_name, "sandbox-name");
-        assert_eq!(suffix.len(), 6);
-        assert!(
-            suffix
-                .chars()
-                .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit())
-        );
-    }
-
-    #[test]
-    fn unique_resource_name_trims_input_and_trailing_dash() {
-        let name = unique_resource_name("  sandbox-name-  ");
-
-        assert_eq!(name.requested_name, "sandbox-name-");
-        assert!(name.canonical_name.starts_with("sandbox-name-"));
-        assert!(!name.canonical_name.starts_with("sandbox-name--"));
+    fn unique_resource_name_preserves_title_and_appends_safe_suffix() {
+        for (input, requested, prefix) in [
+            ("sandbox-name", "sandbox-name", "sandbox-name-"),
+            ("  sandbox-name-  ", "sandbox-name-", "sandbox-name-"),
+            ("sandbox-name---", "sandbox-name---", "sandbox-name-"),
+            ("  ", "", ""),
+            ("---", "---", ""),
+        ] {
+            let name = unique_resource_name(input);
+            assert_eq!(name.requested_name, requested);
+            let suffix = name
+                .canonical_name
+                .strip_prefix(prefix)
+                .expect("canonical base");
+            assert_eq!(suffix.len(), 6, "{input:?}");
+            assert!(
+                suffix
+                    .chars()
+                    .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit()),
+                "{input:?}: {suffix}"
+            );
+        }
     }
 }

@@ -281,16 +281,30 @@ fn build_session(
     harness: &'static HarnessProfile,
     config: &'static ConfigProfile,
 ) -> Result<EvalSession, String> {
+    build_session_with_provider(sample, target, harness, config, provider(target)?)
+}
+
+fn build_session_with_provider(
+    sample: &Sample,
+    target: &Target,
+    harness: &'static HarnessProfile,
+    config: &'static ConfigProfile,
+    provider: Provider,
+) -> Result<EvalSession, String> {
     let workspace = tempfile::tempdir().map_err(|error| error.to_string())?;
     let mut builder = Agent::builder()
         .name(format!("generic-eval-{}", sample.id))
         .instructions(harness.system_prompt)
-        .provider(provider(target)?)
+        .provider(provider)
         .model(target.model.clone())
         .max_iterations(config.max_iterations);
 
     for capability in harness.capabilities {
-        builder = builder.capability(CapabilityRef::new(*capability));
+        // workspace() installs session_file_system with the contained policy.
+        // Adding it explicitly as well makes Agent::build reject the profile.
+        if *capability != "session_file_system" {
+            builder = builder.capability(CapabilityRef::new(*capability));
+        }
     }
     if harness.capabilities.contains(&"session_file_system") {
         builder = builder
@@ -324,8 +338,8 @@ fn workspace_path(root: &Path, model_path: &str) -> Result<PathBuf, String> {
     let path = Path::new(relative);
     if path.as_os_str().is_empty()
         || path
-        .components()
-        .any(|component| !matches!(component, Component::Normal(_)))
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
     {
         return Err(format!("invalid workspace path {model_path:?}"));
     }
@@ -338,17 +352,20 @@ fn provider(target: &Target) -> Result<Provider, String> {
     let provider = match target.provider.as_str() {
         "anthropic" => {
             let key_name = "ANTHROPIC_API_KEY";
-            let key = std::env::var(key_name).map_err(|_| format!("missing API key: {key_name}"))?;
+            let key =
+                std::env::var(key_name).map_err(|_| format!("missing API key: {key_name}"))?;
             everruns_anthropic::provider("anthropic", key)
         }
         "openai" => {
             let key_name = "OPENAI_API_KEY";
-            let key = std::env::var(key_name).map_err(|_| format!("missing API key: {key_name}"))?;
+            let key =
+                std::env::var(key_name).map_err(|_| format!("missing API key: {key_name}"))?;
             everruns_openai::provider("openai", key)
         }
         "openrouter" => {
             let key_name = "OPENROUTER_API_KEY";
-            let key = std::env::var(key_name).map_err(|_| format!("missing API key: {key_name}"))?;
+            let key =
+                std::env::var(key_name).map_err(|_| format!("missing API key: {key_name}"))?;
             everruns_openrouter::provider("openrouter", key)
         }
         other => {
@@ -426,6 +443,119 @@ mod tests {
     // contacted, so tests can use a real-shaped target without a key.
     fn cx() -> RunCx {
         RunCx::new(Target::new("anthropic/test", "anthropic", "test-model"))
+    }
+
+    #[tokio::test]
+    async fn behavior_profiles_smoke_tools_workspace_and_scoring_offline() {
+        use everruns::ToolCall;
+        use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
+        use serde_json::json;
+
+        for name in ["behavior-baseline", "behavior-tuned"] {
+            let mut sample = Sample::new(
+                "offline-smoke",
+                "Activate the editor skill and fix title.txt",
+            )
+            .meta(
+                "expect_files",
+                json!([{"path": "title.txt", "contains": "Welcome aboard"}]),
+            )
+            .meta("max_tool_calls", 3);
+            sample
+                .files
+                .insert("title.txt".into(), "Welcom aboard".into());
+            sample
+                .files
+                .insert("AGENTS.md".into(), "Preserve the meaning of text.".into());
+            sample.files.insert(".agents/skills/editor/SKILL.md".into(),
+                "---\nname: editor\ndescription: Fix spelling.\n---\nCorrect spelling without changing meaning.".into());
+            let config = LlmSimConfig::fixed("Updated title.txt.")
+                .with_tool_call_sequence(vec![
+                    vec![ToolCall { id: "skill".into(), name: "activate_skill".into(),
+                        arguments: json!({"name": "editor"}) }],
+                    vec![ToolCall { id: "edit".into(), name: "bash".into(),
+                        arguments: json!({"commands": "printf 'Welcome aboard' > /workspace/title.txt"}) }],
+                    vec![ToolCall { id: "verify".into(), name: "read_file".into(),
+                        arguments: json!({"path": "/workspace/title.txt"}) }],
+                    vec![],
+                ]);
+            let handle = build_session_with_provider(
+                &sample,
+                &Target::new("offline", "offline", "test-model"),
+                profiles::harness_profile(name).unwrap(),
+                profiles::config_profile("default").unwrap(),
+                Provider::new("offline", LlmSimDriver::new(config)),
+            )
+            .unwrap();
+            let mut events = handle.session.events();
+            let result = handle.session.run(sample.input[0].clone()).await.unwrap();
+            assert!(result.success, "{name}: {:?}", result.error);
+            let mut transcript = Transcript {
+                final_response: result.response,
+                ..Default::default()
+            };
+            while let Some(event) = events.try_recv().unwrap() {
+                transcript.events.push(event_value(event));
+            }
+            transcript.tool_calls = extract_tool_calls(&transcript.events);
+            transcript.tool_calls_count = transcript.tool_calls.len();
+            assert_eq!(
+                transcript.tool_calls,
+                ["activate_skill", "bash", "read_file"]
+            );
+            for event in &transcript.events {
+                if event["type"] == "tool.completed" {
+                    assert_eq!(event["data"]["success"], true, "{event}");
+                }
+            }
+            let content = read_workspace_file(handle.workspace.path(), "title.txt").unwrap();
+            transcript.files.insert("title.txt".into(), content);
+            assert!(
+                crate::scorers::file_expectations()
+                    .score(&sample, &transcript)
+                    .await
+                    .pass
+            );
+            assert!(
+                crate::scorers::tool_call_budget()
+                    .score(&sample, &transcript)
+                    .await
+                    .pass
+            );
+            // Prove the same recorder/scorers reject missing work and excess checks.
+            transcript.files.clear();
+            transcript.tool_calls_count = 4;
+            assert!(
+                !crate::scorers::file_expectations()
+                    .score(&sample, &transcript)
+                    .await
+                    .pass
+            );
+            assert!(
+                !crate::scorers::tool_call_budget()
+                    .score(&sample, &transcript)
+                    .await
+                    .pass
+            );
+        }
+    }
+
+    #[test]
+    fn declared_profiles_build_with_registered_capabilities() {
+        // Build the real subject setup without making any provider requests.
+        // Catches missing integration features and duplicate workspace capabilities.
+        let target = Target::new("openai/test", "openai", "test-model");
+        let sample = Sample::new("setup", "hello");
+        for harness in profiles::HARNESS_PROFILES {
+            let session = build_session_with_provider(
+                &sample,
+                &target,
+                harness,
+                profiles::config_profile("default").unwrap(),
+                everruns_openai::provider("openai", "test-key"),
+            );
+            assert!(session.is_ok(), "{}: {:?}", harness.name, session.err());
+        }
     }
 
     #[tokio::test]

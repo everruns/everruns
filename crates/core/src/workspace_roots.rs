@@ -194,8 +194,12 @@ impl WorkspaceRootSet {
     }
 
     pub fn set_primary_host_root(&mut self, path: PathBuf) -> Result<()> {
-        self.primary.path = canonicalize_root(path)?;
-        self.reject_overlaps()
+        // A rejected reconfiguration must leave the registered roots usable.
+        let mut updated = self.clone();
+        updated.primary.path = canonicalize_root(path)?;
+        updated.reject_overlaps()?;
+        *self = updated;
+        Ok(())
     }
 
     pub fn spawn_cwd(&self) -> Result<PathBuf> {
@@ -335,9 +339,19 @@ mod tests {
         let nested = primary.path().join("nested");
         std::fs::create_dir(&nested).unwrap();
 
-        let err =
-            WorkspaceRootSet::new(primary.path(), [("nested".to_string(), nested)]).unwrap_err();
-        assert!(err.to_string().contains("must not overlap"));
+        for (first, second) in [
+            (primary.path(), nested.as_path()),
+            (nested.as_path(), primary.path()),
+            (primary.path(), primary.path()),
+        ] {
+            let err = WorkspaceRootSet::new(first, [("other".to_string(), second)]).unwrap_err();
+            assert!(err.to_string().contains("must not overlap"));
+        }
+        let canonical = WorkspaceRootSet::from_primary(primary.path().join("nested/..")).unwrap();
+        assert_eq!(
+            canonical.primary.path,
+            std::fs::canonicalize(primary.path()).unwrap()
+        );
     }
 
     #[test]
@@ -407,6 +421,18 @@ mod tests {
                 .unwrap()
                 .join("Cargo.toml")
         );
+    }
+
+    #[test]
+    fn rejected_primary_repoint_preserves_registered_roots() {
+        let (mut set, _primary, backend) = roots();
+        let original = set.clone();
+        let error = set
+            .set_primary_host_root(backend.path().to_path_buf())
+            .unwrap_err();
+        assert!(error.to_string().contains("must not overlap"));
+        assert_eq!(set, original);
+        assert_eq!(set.spawn_cwd().unwrap(), original.primary.path);
     }
 
     #[cfg(unix)]

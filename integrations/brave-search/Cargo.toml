@@ -19,12 +19,13 @@ categories = ["api-bindings", "development-tools"]
 documentation = "https://docs.rs/everruns-integrations-brave-search"
 
 [dependencies]
+everruns-capability = { workspace = true, features = ["definition"] }
 everruns-core.workspace = true
 everruns-provider.workspace = true
 # Connector catalog (EVE-879): connectors register into the hosted connector
 # plugin system, which lives in the platform crate.
-everruns-platform.workspace = true
-inventory.workspace = true
+everruns-platform = { workspace = true, optional = true }
+inventory = { workspace = true, optional = true }
 
 # HTTP client for Brave Search API
 reqwest.workspace = true
@@ -40,8 +41,12 @@ chrono.workspace = true
 tracing.workspace = true
 
 [features]
+default = ["hosted"]
+hosted = ["dep:everruns-platform", "dep:inventory"]
 integration = [] # Gate real-API tests; CI passes --features integration
 
 [dev-dependencies]
+everruns = { path = "../../crates/everruns" }
+everruns-llmsim = { path = "../../crates/drivers/llmsim" }
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"

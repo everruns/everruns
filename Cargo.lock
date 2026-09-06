@@ -2436,6 +2436,7 @@ version = "0.1.0"
 dependencies = [
  "everruns",
  "everruns-anthropic",
+ "reqwest 0.13.4",
  "tokio",
 ]
 
@@ -2502,6 +2503,7 @@ version = "0.1.0"
 dependencies = [
  "everruns",
  "everruns-meta",
+ "tempfile",
  "tokio",
 ]
 
@@ -2531,7 +2533,10 @@ version = "0.18.2"
 dependencies = [
  "async-trait",
  "chrono",
+ "everruns",
+ "everruns-capability",
  "everruns-core",
+ "everruns-llmsim",
  "everruns-platform",
  "everruns-provider",
  "inventory",
@@ -2596,6 +2601,7 @@ dependencies = [
  "reqwest 0.13.4",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "urlencoding",
@@ -3079,10 +3085,8 @@ name = "everruns-research-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
+ "everruns-integrations-brave-search",
  "everruns-openrouter",
- "reqwest 0.13.4",
- "serde",
- "serde_json",
  "tokio",
 ]
 

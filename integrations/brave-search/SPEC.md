@@ -1,171 +1,56 @@
 # Brave Search Capability Specification
 
-## Abstract
+## Intent
 
-The Brave Search capability integrates [Brave Search](https://brave.com/search/api/) web search as an agent tool. Agents can search the web and get relevant results including titles, URLs, and descriptions. Stateless, no per-resource state management needed.
+Brave Search supplies current web-search evidence to agents in both Framework
+and hosted execution. It is stateless apart from credentials. Hosted catalog
+discovery remains experimental and restricted to development deployments;
+Framework applications explicitly select the capability.
 
-**Status**: Experimental (Dev only)
+## Execution across contexts
 
-## Architecture
+The [Framework adapter](src/framework.rs) implements the neutral capability-author
+contract and captures an application-owned client. The [hosted adapter](src/tools.rs)
+resolves credentials from the current session. Both share the [tool protocol and
+search operation](src/search.rs) and [HTTP client](src/client.rs), so requests and
+result mapping cannot evolve independently.
 
-### Single API
+Application credentials are read at construction and never serialized into
+capability configuration or metadata. Hosted credentials resolve lazily through
+user connections, with session-secret fallback. User connections are preferred
+because they can be refreshed and reused across authorized sessions. Missing
+credentials produce an explicit failure rather than an unauthenticated request.
 
-Brave Search exposes one API layer:
+The hosted feature separates connector UI and inventory discovery from the
+Framework dependency graph. The [crate manifest](Cargo.toml) owns feature
+selection; [registration](src/lib.rs) owns deployment discovery. The
+[connector](src/connection.rs) owns hosted credential entry and validation.
+Neither adapter requires per-search resource provisioning or cleanup.
 
-1. **Web Search API** (`https://api.search.brave.com/res/v1/web/search`), query the web. Auth: `X-Subscription-Token: <API_KEY>`.
+## Security and errors
 
-```
-┌────────────────────────────────────────────┐
-│              Agent Session                  │
-│                                             │
-│  Tool Call (brave_web_search)              │
-│         ↓                                   │
-│  Resolve API key:                          │
-│    1. User connections (brave_search)       │
-│    2. Session secret (BRAVE_SEARCH_API_KEY) │
-│         ↓                                   │
-│  ┌─────────────────────────────────────┐   │
-│  │ BraveSearchClient                   │   │
-│  │  - Web Search API                   │   │
-│  └─────────────────────────────────────┘   │
-│         ↓                                   │
-│  Return results to agent                   │
-└────────────────────────────────────────────┘
-```
+Both adapters use the same direct HTTP client. Framework calls carry the
+application's network authority and do not acquire hosted tenant or connection
+authority. Keys remain private client state and are excluded from diagnostic
+capability values. Upstream error bodies are omitted because they may echo
+request credentials; HTTP status remains available for actionable errors.
 
-### API Key Resolution
+Search results are untrusted tool output. Search queries are disclosed to Brave;
+applications are responsible for deciding which information may be sent. See the
+[Brave threat assessment](../../knowledge/security/threat-model.md#20-brave-search-tm-llm).
 
-The API key is resolved lazily at tool execution time:
+## Acceptance evidence
 
-1. **User connections** (preferred): `connection_resolver.get_connection_token(session_id, "brave_search")`. User stores their API key via `PUT /v1/user/connections/api-key/brave_search`.
-2. **Session secret** (fallback): `storage_store.get_secret(session_id, "BRAVE_SEARCH_API_KEY")`.
-3. **Error**: Guidance to configure in Settings > Connections or via session secret.
+- [Framework acceptance tests](tests/framework.rs) cover public Engine execution
+  against mock HTTP, protocol parity, result persistence, and credential separation.
+- [Hosted tool tests](src/tools.rs) cover connection precedence, secret fallback,
+  missing credentials, and argument handling.
+- [Client tests](src/client.rs) cover response parsing, empty results, HTTP errors,
+  and malformed responses.
+- [Registration tests](tests/plugin_registration.rs) cover hosted discovery and
+  development/production gating.
+- [Live API tests](tests/smoke_real_api.rs) exercise Brave with explicit credentials;
+  the [integration workflow](../../.github/workflows/brave-search-integration.yml)
+  owns secret-safe PR and main-branch execution.
 
-## Tools
-
-### brave_web_search
-
-Search the web using Brave Search API.
-
-- **Parameters**:
-  - `query`: string (required), search query
-  - `count`: integer (optional, 1-20, default: 10), number of results
-  - `offset`: integer (optional), pagination offset
-  - `freshness`: string (optional), time filter: `pd` (past day), `pw` (past week), `pm` (past month), `py` (past year)
-- **Returns**: `{ query, results: [{title, url, description, age?}], count }`
-
-## Security
-
-- **API Key**: Resolved via user connections (encrypted at rest) or session secrets (encrypted at rest)
-- **No secrets in tool results**: API key never appears in tool results or message history
-- **Rate limiting**: Deferred to Brave Search API (returns 429 on rate limit)
-
-## Error Handling
-
-| Scenario | Result Type | Message |
-|----------|-------------|---------|
-| Missing query param | `ToolError` | "Missing required parameter: query" |
-| API key not configured | `ToolError` | "Brave Search API key not configured..." |
-| HTTP 401 | `ToolError` | "Brave Search API error (401): ..." |
-| HTTP 429 | `ToolError` | "Brave Search API error (429): ..." |
-| No context | `ToolError` | "brave_web_search requires context." |
-
-## User Connection
-
-### PUT /v1/user/connections/api-key/brave_search
-
-Store a Brave Search API key as an encrypted user connection.
-
-**Request:**
-```json
-{
-  "api_key": "BSA..."
-}
-```
-
-**Response:** `204 No Content`
-
-The API key is encrypted using envelope encryption (AES-256-GCM) before storage.
-
-### DELETE /v1/user/connections/brave_search
-
-Disconnect. Removes the stored API key.
-
-**Response:** `204 No Content`
-
-## Design Decisions
-
-### API key in user connections (not just session secrets)
-
-User connections are persistent across sessions and user-scoped. Session secrets are per-session and lost when the session ends. User connections are the preferred storage for long-lived API keys.
-
-### Stateless (no per-resource state)
-
-Unlike Daytona (which manages sandbox lifecycle), Brave Search is stateless. Each search is independent. No sandbox state, no session state beyond the API key.
-
-### No dependencies
-
-Unlike Daytona (which depends on `session_storage`), Brave Search has no capability dependencies. The API key resolution uses the connection resolver and storage store from ToolContext directly.
-
-## Testing
-
-### Unit & mock tests
-
-Run without flags, no API key needed:
-
-```bash
-cargo test -p everruns-integrations-brave-search
-```
-
-Uses `wiremock` for HTTP-level assertions (auth headers, query params, error codes).
-
-### Integration tests (real API)
-
-Gated behind the `integration` Cargo feature so they never compile in normal `cargo test` runs:
-
-```bash
-BRAVE_SEARCH_API_KEY=<key> cargo test -p everruns-integrations-brave-search --features integration
-```
-
-Tests: `smoke_basic_search`, `smoke_freshness_filter`, `smoke_pagination` in `tests/smoke_real_api.rs`.
-
-Tests use a `require_api_key!` macro that panics when `BRAVE_SEARCH_API_KEY` is unset or empty, preventing silent failures in CI.
-
-### CI
-
-Dedicated workflow `.github/workflows/brave-search-integration.yml`:
-
-- **Path-filtered**: only triggers when `integrations/brave-search/**` changes.
-- Runs on both `pull_request` and `push` because the coverage is cheap enough for PRs.
-- Fetches `BRAVE_SEARCH_API_KEY` from Doppler via `DOPPLER_TOKEN` GitHub Actions secret.
-- Fails if `DOPPLER_TOKEN` is not set (required, not optional).
-- Passes `--features integration` to compile and run the real-API tests.
-- `.github/workflows/integration-live-sweep.yml` reruns the same job weekly and on demand without path filters to catch shared regressions outside `integrations/brave-search/**`.
-
-Adding a new API-key-gated integration crate should follow this pattern: feature-gate the tests, use a panic macro for missing keys, add a path-filtered workflow, fetch the key from Doppler.
-
-## Crate Structure
-
-`integrations/brave-search/` → `everruns-integrations-brave-search`
-
-External integration crate, auto-registered via `inventory::submit!` plugin system.
-
-**Force-link required**: Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must contain `extern crate everruns_integrations_brave_search;`.
-
-| File | Purpose |
-|------|---------|
-| `src/lib.rs` | Plugin registration (capability + connection provider), constants, `BraveSearchCapability` impl |
-| `src/client.rs` | `BraveSearchClient` HTTP client, API response types |
-| `src/connection.rs` | `BraveSearchConnectionProvider`, form schema, validation |
-| `src/tools.rs` | `BraveWebSearchTool` implementation, API key resolution |
-| `tests/plugin_registration.rs` | Integration tests for inventory registration and dev/prod gating |
-| `tests/smoke_real_api.rs` | Real-API smoke tests (behind `integration` feature) |
-
-## Capability Registration
-
-- **ID**: `brave_search`
-- **Name**: `[Experimental] Brave Search`
-- **Status**: Available (Dev only)
-- **Icon**: `search`
-- **Category**: `Network`
-- **Dependencies**: none
+Application setup and commands live in the [README](README.md).

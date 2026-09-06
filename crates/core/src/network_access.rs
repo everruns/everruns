@@ -169,24 +169,29 @@ fn matches_any_pattern(url: &str, patterns: &[String]) -> bool {
     false
 }
 
+/// Whether a pattern names an HTTP URL prefix rather than a domain.
+fn is_http_prefix(pattern: &str) -> bool {
+    pattern.split_once("://").is_some_and(|(scheme, _)| {
+        scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")
+    })
+}
+
 /// Check if a single pattern matches a URL.
 fn pattern_matches_url(pattern: &str, parsed: &url::Url, host: &str) -> bool {
-    // URL prefix pattern (starts with http:// or https://)
-    // Parse the pattern to normalize scheme+host (url::Url lowercases these).
-    if pattern.starts_with("http://") || pattern.starts_with("https://") {
-        if let Ok(pattern_url) = url::Url::parse(pattern) {
-            return parsed.as_str().starts_with(pattern_url.as_str());
-        }
-        return parsed.as_str().starts_with(pattern);
+    if is_http_prefix(pattern) {
+        // Invalid prefixes must not become scheme-wide grants (e.g. https://).
+        return url::Url::parse(pattern)
+            .is_ok_and(|prefix| parsed.as_str().starts_with(prefix.as_str()));
     }
+    domain_pattern_matches_host(pattern, host)
+}
 
-    // Wildcard domain pattern: *.example.com
+/// Match a domain pattern against an already-normalized host, never a whole URL.
+fn domain_pattern_matches_host(pattern: &str, host: &str) -> bool {
     if let Some(suffix) = pattern.strip_prefix("*.") {
         let suffix_lower = suffix.to_lowercase();
         return host == suffix_lower || host.ends_with(&format!(".{suffix_lower}"));
     }
-
-    // Exact domain match
     host == pattern.to_lowercase()
 }
 
@@ -194,30 +199,33 @@ fn pattern_matches_url(pattern: &str, parsed: &url::Url, host: &str) -> bool {
 ///
 /// Used during merge to determine if a child's allowed entry is permitted by the parent.
 fn pattern_is_subset(child: &str, parent: &str) -> bool {
-    // URL prefix: child must start with parent prefix
-    if parent.starts_with("http://") || parent.starts_with("https://") {
-        if child.starts_with("http://") || child.starts_with("https://") {
-            return child.starts_with(parent);
+    // THREAT[TM-AGENT-018]: narrowing must use the same URL normalization as
+    // enforcement. Raw dot segments and domain-looking paths are not authority.
+    if is_http_prefix(parent) {
+        if !is_http_prefix(child) {
+            return false;
         }
-        // Domain child vs URL parent: domain could match broader — be conservative, allow
-        return false;
+        let (Ok(child), Ok(parent)) = (url::Url::parse(child), url::Url::parse(parent)) else {
+            return false;
+        };
+        return child.as_str().starts_with(parent.as_str());
     }
 
-    // Wildcard parent *.example.com
-    if let Some(parent_suffix) = parent.strip_prefix("*.") {
-        let parent_lower = parent_suffix.to_lowercase();
-        if let Some(child_suffix) = child.strip_prefix("*.") {
-            // *.sub.example.com is subset of *.example.com
-            let child_lower = child_suffix.to_lowercase();
-            return child_lower == parent_lower
-                || child_lower.ends_with(&format!(".{parent_lower}"));
-        }
-        // exact child domain: api.example.com is subset of *.example.com
-        let child_lower = child.to_lowercase();
-        return child_lower == parent_lower || child_lower.ends_with(&format!(".{parent_lower}"));
+    if is_http_prefix(child) {
+        let Ok(child) = url::Url::parse(child) else {
+            return false;
+        };
+        return child
+            .host_str()
+            .is_some_and(|host| domain_pattern_matches_host(parent, &host.to_lowercase()));
     }
 
-    // Exact parent domain: only exact match is a subset
+    if parent.starts_with("*.") {
+        let child_host = child.strip_prefix("*.").unwrap_or(child).to_lowercase();
+        return domain_pattern_matches_host(parent, &child_host);
+    }
+
+    // An exact domain parent cannot grant a child's subdomain wildcard.
     child.to_lowercase() == parent.to_lowercase()
 }
 
@@ -227,8 +235,16 @@ mod tests {
 
     #[test]
     fn test_exact_domain_match() {
-        let acl = NetworkAccessList::allow_only(["example.com"]);
+        let acl = NetworkAccessList::allow_only(["Example.COM"]);
+        assert!(acl.is_url_allowed("https://EXAMPLE.COM:8443/path"));
         assert!(acl.is_url_allowed("https://example.com/path"));
+        for url in [
+            "https://example.com@outside.test",
+            "https://example.com.evil.test",
+            "https://notexample.com",
+        ] {
+            assert!(!acl.is_url_allowed(url), "{url}");
+        }
         assert!(acl.is_url_allowed("http://example.com"));
         assert!(!acl.is_url_allowed("https://other.com"));
         assert!(!acl.is_url_allowed("https://sub.example.com"));
@@ -240,13 +256,23 @@ mod tests {
         assert!(acl.is_url_allowed("https://api.example.com/v1"));
         assert!(acl.is_url_allowed("https://example.com/path"));
         assert!(acl.is_url_allowed("https://deep.sub.example.com"));
-        assert!(!acl.is_url_allowed("https://other.com"));
+        for url in [
+            "https://other.com",
+            "https://notexample.com",
+            "https://example.com.evil.test",
+            "https://api.example.com@outside.test",
+        ] {
+            assert!(!acl.is_url_allowed(url), "{url}");
+        }
     }
 
     #[test]
     fn test_url_prefix_match() {
         let acl = NetworkAccessList::allow_only(["https://api.example.com/v1/"]);
         assert!(acl.is_url_allowed("https://api.example.com/v1/users"));
+        assert!(acl.is_url_allowed("HTTPS://API.EXAMPLE.COM:443/v1/users"));
+        assert!(!acl.is_url_allowed("https://api.example.com/V1/users"));
+        assert!(!acl.is_url_allowed("https://api.example.com:8443/v1/users"));
         assert!(!acl.is_url_allowed("https://api.example.com/v2/users"));
         assert!(!acl.is_url_allowed("http://api.example.com/v1/users"));
     }
@@ -275,32 +301,29 @@ mod tests {
     }
 
     #[test]
-    fn test_merge_none_none() {
-        assert_eq!(merge_network_access(None, None), None);
-    }
-
-    #[test]
-    fn test_merge_parent_only() {
-        let parent = NetworkAccessList::allow_only(["example.com"]);
-        let result = merge_network_access(Some(&parent), None);
-        assert_eq!(result, Some(parent));
-    }
-
-    #[test]
-    fn test_merge_child_only() {
-        let child = NetworkAccessList::allow_only(["example.com"]);
-        let result = merge_network_access(None, Some(&child));
-        assert_eq!(result, Some(child));
+    fn merge_absent_layers_preserves_complete_policy() {
+        let policy = NetworkAccessList {
+            allowed: vec!["*.example.com".into()],
+            blocked: vec!["private.example.com".into()],
+        };
+        for (parent, child, expected) in [
+            (None, None, None),
+            (Some(&policy), None, Some(policy.clone())),
+            (None, Some(&policy), Some(policy.clone())),
+        ] {
+            assert_eq!(merge_network_access(parent, child), expected);
+        }
     }
 
     #[test]
     fn test_merge_blocked_union() {
         let parent = NetworkAccessList::block(["evil.com"]);
-        let child = NetworkAccessList::block(["bad.com"]);
+        let child = NetworkAccessList::block(["bad.com", "evil.com"]);
         let result = merge_network_access(Some(&parent), Some(&child)).unwrap();
-        assert_eq!(result.blocked.len(), 2);
-        assert!(result.blocked.contains(&"evil.com".to_string()));
-        assert!(result.blocked.contains(&"bad.com".to_string()));
+        assert_eq!(result.blocked, ["evil.com", "bad.com"]);
+        assert!(!result.is_url_allowed("https://evil.com"));
+        assert!(!result.is_url_allowed("https://bad.com"));
+        assert!(result.is_url_allowed("https://good.com"));
     }
 
     #[test]
@@ -320,7 +343,16 @@ mod tests {
         let parent = NetworkAccessList::allow_only(["parent.com"]);
         let child = NetworkAccessList::allow_only(["child.com"]);
         let result = merge_network_access(Some(&parent), Some(&child)).unwrap();
-        // Result has a sentinel pattern that never matches real URLs
+        for next in [NetworkAccessList::default(), parent.clone(), child.clone()] {
+            let next = merge_network_access(Some(&result), Some(&next)).unwrap();
+            for url in [
+                "https://parent.com",
+                "https://child.com",
+                "https://anything.com",
+            ] {
+                assert!(!next.is_url_allowed(url), "later layer reopened {url}");
+            }
+        }
         assert!(!result.is_url_allowed("https://parent.com"));
         assert!(!result.is_url_allowed("https://child.com"));
         assert!(!result.is_url_allowed("https://anything.com"));
@@ -336,33 +368,115 @@ mod tests {
     }
 
     #[test]
-    fn test_case_insensitive_matching() {
-        let acl = NetworkAccessList::allow_only(["Example.COM"]);
-        assert!(acl.is_url_allowed("https://example.com/path"));
-        assert!(acl.is_url_allowed("https://EXAMPLE.COM/path"));
-    }
-
-    #[test]
-    fn test_serialization_roundtrip() {
-        let acl = NetworkAccessList {
-            allowed: vec!["*.example.com".to_string()],
-            blocked: vec!["evil.com".to_string()],
-        };
-        let json = serde_json::to_string(&acl).unwrap();
-        let parsed: NetworkAccessList = serde_json::from_str(&json).unwrap();
-        assert_eq!(acl, parsed);
-    }
-
-    #[test]
-    fn test_empty_serialization() {
-        let acl = NetworkAccessList::default();
-        let json = serde_json::to_string(&acl).unwrap();
-        assert_eq!(json, "{}");
+    fn serialization_uses_public_fields_and_omits_empty_lists() {
+        let wire = serde_json::json!({
+            "allowed": ["*.example.com"], "blocked": ["evil.com"]
+        });
+        let policy: NetworkAccessList = serde_json::from_value(wire.clone()).unwrap();
+        assert!(policy.is_url_allowed("https://api.example.com"));
+        assert!(!policy.is_url_allowed("https://evil.com"));
+        assert_eq!(serde_json::to_value(&policy).unwrap(), wire);
+        let open: NetworkAccessList = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert!(open.is_url_allowed("https://outside.test"));
+        assert_eq!(serde_json::to_value(open).unwrap(), serde_json::json!({}));
     }
 
     #[test]
     fn test_invalid_url_denied() {
         let acl = NetworkAccessList::allow_only(["example.com"]);
-        assert!(!acl.is_url_allowed("not-a-url"));
+        for url in [
+            "not-a-url",
+            "https://",
+            "data:text/plain,example.com",
+            "mailto:me@example.com",
+        ] {
+            assert!(!acl.is_url_allowed(url), "{url}");
+        }
+    }
+    #[test]
+    fn merged_url_prefix_cannot_escape_parent_domain_via_path_or_query() {
+        let parent = NetworkAccessList::allow_only(["*.example.com"]);
+        for child_pattern in [
+            "https://outside.test/path.example.com",
+            "https://outside.test/?next=.example.com",
+        ] {
+            let child = NetworkAccessList::allow_only([child_pattern]);
+            let merged = merge_network_access(Some(&parent), Some(&child)).unwrap();
+            assert!(!parent.is_url_allowed(child_pattern));
+            assert!(
+                !merged.is_url_allowed(child_pattern),
+                "escaped parent domain: {child_pattern}"
+            );
+        }
+    }
+
+    #[test]
+    fn merged_url_prefix_cannot_escape_parent_path_after_normalization() {
+        let parent = NetworkAccessList::allow_only(["https://api.example.com/v1/"]);
+        for path in ["../admin", "%2e%2e/admin", ".%2e/admin"] {
+            let child =
+                NetworkAccessList::allow_only([format!("https://api.example.com/v1/{path}")]);
+            let merged = merge_network_access(Some(&parent), Some(&child)).unwrap();
+            assert!(!parent.is_url_allowed("https://api.example.com/admin"));
+            assert!(
+                !merged.is_url_allowed("https://api.example.com/admin"),
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_url_allow_prefixes_do_not_grant_scheme_wide_access() {
+        for pattern in ["https://", "http://", "https:///"] {
+            let policy = NetworkAccessList::allow_only([pattern]);
+            assert!(
+                !policy.is_url_allowed("https://outside.test/data"),
+                "{pattern}"
+            );
+            assert!(
+                !policy.is_url_allowed("http://outside.test/data"),
+                "{pattern}"
+            );
+        }
+    }
+    #[test]
+    fn legitimate_narrowing_preserves_access_and_rejects_siblings() {
+        for (parent, child, allowed, denied) in [
+            (
+                "*.example.com",
+                "https://api.example.com/v1/",
+                "https://api.example.com/v1/users",
+                "https://other.example.com/v1/users",
+            ),
+            (
+                "API.EXAMPLE.COM",
+                "https://api.example.com/v1/",
+                "https://api.example.com/v1/users",
+                "https://api.example.com/v2/users",
+            ),
+            (
+                "HTTPS://API.EXAMPLE.COM:443/v1/",
+                "https://api.example.com/v1/./users/",
+                "https://api.example.com/v1/users/42",
+                "https://api.example.com/v1/admin",
+            ),
+            (
+                "*.example.com",
+                "*.sub.example.com",
+                "https://deep.sub.example.com",
+                "https://other.example.com",
+            ),
+        ] {
+            let parent = NetworkAccessList::allow_only([parent]);
+            let child = NetworkAccessList::allow_only([child]);
+            let merged = merge_network_access(Some(&parent), Some(&child)).unwrap();
+            assert!(parent.is_url_allowed(allowed), "{allowed}");
+            assert!(merged.is_url_allowed(allowed), "{allowed}");
+            assert!(!merged.is_url_allowed(denied), "{denied}");
+        }
+        let parent = NetworkAccessList::allow_only(["example.com"]);
+        let child = NetworkAccessList::allow_only(["*.example.com"]);
+        let merged = merge_network_access(Some(&parent), Some(&child)).unwrap();
+        assert!(!merged.is_url_allowed("https://sub.example.com"));
     }
 }

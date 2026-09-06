@@ -284,6 +284,17 @@ mod tests {
         let snapshot =
             ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
         assert_eq!(snapshot.default_model_id, Some(ModelId::from_seed(3)));
+        session.model_id = None;
+        session.agent_id = None;
+        let snapshot = ResolvedExecutionSnapshot::project(&harness, None, &session).unwrap();
+        assert_eq!(snapshot.default_model_id, Some(ModelId::from_seed(1)));
+        harness.default_model_id = None;
+        assert_eq!(
+            ResolvedExecutionSnapshot::project(&harness, None, &session)
+                .unwrap()
+                .default_model_id,
+            None
+        );
     }
 
     #[test]
@@ -295,7 +306,10 @@ mod tests {
             serde_json::json!({"enable_file_download": true}),
         )];
         let mut agent = agent(agent_id, harness_id);
-        agent.capabilities = vec![AgentCapabilityConfig::new("current_time")];
+        agent.capabilities = vec![AgentCapabilityConfig::with_config(
+            "current_time",
+            serde_json::json!({"zone":"UTC"}),
+        )];
         let mut session = session(session_id, harness_id, Some(agent_id));
         session.capabilities = vec![AgentCapabilityConfig::with_config(
             "web_fetch",
@@ -312,7 +326,10 @@ mod tests {
                 serde_json::json!({"enable_file_download": false})
             )
         );
-        assert_eq!(snapshot.capabilities[1].capability_id(), "current_time");
+        assert_eq!(
+            snapshot.capabilities[1],
+            AgentCapabilityConfig::with_config("current_time", serde_json::json!({"zone":"UTC"}))
+        );
     }
 
     #[test]
@@ -343,7 +360,7 @@ mod tests {
         let session = session(session_id, harness_id, Some(agent_id));
         let snapshot =
             ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
-        assert_eq!(snapshot.capabilities[0], framework_ref);
+        assert_eq!(snapshot.capabilities, vec![framework_ref.clone()]);
         assert_eq!(
             serde_json::to_value(&snapshot.capabilities[0]).unwrap(),
             serde_json::to_value(&framework_ref).unwrap()
@@ -351,7 +368,7 @@ mod tests {
     }
 
     #[test]
-    fn persisted_capability_config_debug_redacts_values() {
+    fn snapshot_debug_redacts_capability_config_values() {
         // Attachment rows flow through logs and error contexts; their Debug
         // output must never leak config payloads (which may carry handles or
         // misplaced credentials).
@@ -359,7 +376,16 @@ mod tests {
             "vendor.search",
             serde_json::json!({"api_key": "sk-super-secret"}),
         );
-        let debug = format!("{attachment:?}");
+        let (harness_id, _, session_id) = ids();
+        let mut harness = harness();
+        harness.capabilities = vec![attachment];
+        let snapshot = ResolvedExecutionSnapshot::project(
+            &harness,
+            None,
+            &session(session_id, harness_id, None),
+        )
+        .unwrap();
+        let debug = format!("{snapshot:?}");
         assert!(debug.contains("vendor.search"));
         assert!(!debug.contains("sk-super-secret"));
         assert!(!debug.contains("api_key"));
@@ -372,13 +398,20 @@ mod tests {
         harness.initial_files = vec![file("/config.txt", "harness"), file("/keep.txt", "keep")];
         let mut agent = agent(agent_id, harness_id);
         agent.initial_files = vec![file("config.txt", "agent")];
+        agent.initial_files[0].is_readonly = true;
+        agent.initial_files[0].encoding = "base64".into();
+        agent.initial_files[0].content = "YWdlbnQ=".into();
         let session = session(session_id, harness_id, Some(agent_id));
 
         let snapshot =
             ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
-        assert_eq!(snapshot.initial_files.len(), 2);
-        assert_eq!(snapshot.initial_files[0].content, "agent");
-        assert_eq!(snapshot.initial_files[1].content, "keep");
+        assert_eq!(
+            snapshot.initial_files,
+            vec![
+                agent.initial_files[0].clone(),
+                harness.initial_files[1].clone()
+            ]
+        );
     }
 
     #[test]
@@ -392,13 +425,26 @@ mod tests {
                 ..Default::default()
             },
         );
+        harness
+            .mcp_servers
+            .insert("retained".into(), ScopedMcpServer::default());
         let agent = agent(agent_id, harness_id);
         let mut session = session(session_id, harness_id, Some(agent_id));
         session.mcp_servers.insert(
             "docs".into(),
             ScopedMcpServer {
                 url: "https://session.example.com/mcp".into(),
+                transport_type: McpServerTransportType::Stdio,
+                headers: [
+                    ("Z-Header".into(), "z-value".into()),
+                    ("A-Header".into(), "a-value".into()),
+                ]
+                .into(),
+                env: [("Z_ENV".into(), "z".into()), ("A_ENV".into(), "a".into())].into(),
                 auth_mode: McpServerAuthMode::OAuth,
+                protocol_mode: McpProtocolMode::V2025June,
+                oauth_provider_id: Some("session-provider".into()),
+                tool_discovery: false,
                 ..Default::default()
             },
         );
@@ -406,8 +452,33 @@ mod tests {
         let snapshot =
             ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
         assert_eq!(
-            snapshot.mcp_servers.get("docs").map(|s| &s.auth_mode),
-            Some(&McpServerAuthMode::OAuth)
+            snapshot.mcp_servers,
+            BTreeMap::from([
+                (
+                    "docs".into(),
+                    SnapshotMcpServer {
+                        transport_type: McpServerTransportType::Stdio,
+                        header_names: vec!["A-Header".into(), "Z-Header".into()],
+                        env_names: vec!["A_ENV".into(), "Z_ENV".into()],
+                        auth_mode: McpServerAuthMode::OAuth,
+                        protocol_mode: McpProtocolMode::V2025June,
+                        oauth_provider_id: Some("session-provider".into()),
+                        tool_discovery: false,
+                    }
+                ),
+                (
+                    "retained".into(),
+                    SnapshotMcpServer {
+                        transport_type: McpServerTransportType::Http,
+                        header_names: vec![],
+                        env_names: vec![],
+                        auth_mode: McpServerAuthMode::None,
+                        protocol_mode: McpProtocolMode::Auto,
+                        oauth_provider_id: None,
+                        tool_discovery: true,
+                    }
+                ),
+            ])
         );
     }
 
@@ -419,14 +490,31 @@ mod tests {
             "*.example.com",
             "api.github.com",
         ]));
+        harness
+            .network_access
+            .as_mut()
+            .unwrap()
+            .blocked
+            .push("private.example.com".into());
         let agent = agent(agent_id, harness_id);
         let mut session = session(session_id, harness_id, Some(agent_id));
-        session.network_access = Some(NetworkAccessList::allow_only(["api.example.com"]));
+        session.network_access = Some(NetworkAccessList {
+            allowed: vec!["api.example.com".into(), "outside.net".into()],
+            blocked: vec!["blocked.example.com".into()],
+        });
 
         let snapshot =
             ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
         let acl = snapshot.network_access.unwrap();
-        assert_eq!(acl.allowed, vec!["api.example.com".to_string()]);
+        assert_eq!(
+            acl,
+            NetworkAccessList {
+                allowed: vec!["api.example.com".into()],
+                blocked: vec!["private.example.com".into(), "blocked.example.com".into()]
+            }
+        );
+        assert!(acl.is_url_allowed("https://api.example.com"));
+        assert!(!acl.is_url_allowed("https://outside.net"));
     }
 
     #[test]
@@ -437,21 +525,35 @@ mod tests {
         agent.max_iterations = Some(40);
         agent.parallel_tool_calls = Some(true);
         let mut session = session(session_id, harness_id, Some(agent_id));
-        session.max_iterations = Some(5);
+        session.max_iterations = Some(0);
         session.parallel_tool_calls = Some(false);
 
         let snapshot =
             ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
-        assert_eq!(snapshot.max_iterations, Some(5));
+        assert_eq!(snapshot.max_iterations, Some(0));
         assert_eq!(snapshot.parallel_tool_calls, Some(false));
     }
 
     #[test]
     fn correlation_values_are_copied() {
         let (harness_id, agent_id, session_id) = ids();
-        let harness = harness();
+        let mut harness = harness();
+        harness.embedder_metadata = [("embedder".into(), "fixture-host".into())].into();
         let agent = agent(agent_id, harness_id);
-        let session = session(session_id, harness_id, Some(agent_id));
+        let mut session = session(session_id, harness_id, Some(agent_id));
+        session.workspace_id = WorkspaceId::from_seed(71);
+        session.organization_id = "org_00000000000000000000000000000042".into();
+        session.blueprint_id = Some("review-blueprint".into());
+        session.blueprint_config = Some(serde_json::json!({"region":"eu","enabled":false}));
+        session.usage = Some(crate::events::TokenUsage {
+            input_tokens: 13,
+            output_tokens: 29,
+            cache_read_tokens: Some(7),
+            cache_creation_tokens: Some(3),
+            actual_cost_usd: Some(0.25),
+            estimated_cost_usd: Some(0.5),
+            effective_cost_usd: Some(0.75),
+        });
 
         let snapshot =
             ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
@@ -462,6 +564,16 @@ mod tests {
         assert_eq!(snapshot.organization_id, session.organization_id);
         assert_eq!(snapshot.locale.as_deref(), Some("en-US"));
         assert_eq!(snapshot.tags, vec!["tag-a".to_string()]);
+        assert_eq!(snapshot.blueprint_id, session.blueprint_id);
+        assert_eq!(snapshot.blueprint_config, session.blueprint_config);
+        assert_eq!(
+            serde_json::to_value(snapshot.cumulative_usage).unwrap(),
+            serde_json::to_value(session.usage).unwrap()
+        );
+        assert_eq!(
+            snapshot.embedder_metadata,
+            BTreeMap::from([("embedder".into(), "fixture-host".into())])
+        );
     }
 
     // --- Projection failures ---
@@ -476,7 +588,9 @@ mod tests {
         let (harness_id, agent_id, session_id) = ids();
         let harness = harness();
         let session = session(session_id, harness_id, Some(agent_id));
-        assert!(ResolvedExecutionSnapshot::project(&harness, None, &session).is_err());
+        assert!(
+            matches!(ResolvedExecutionSnapshot::project(&harness, None, &session), Err(AgentLoopError::AgentNotFound(id)) if id == agent_id)
+        );
     }
 
     #[test]
@@ -485,18 +599,26 @@ mod tests {
         let harness = harness();
         let other_agent = agent(AgentId::from_seed(99), harness_id);
         let session = session(session_id, harness_id, Some(agent_id));
-        assert!(
-            ResolvedExecutionSnapshot::project(&harness, Some(&other_agent), &session).is_err()
-        );
+        match ResolvedExecutionSnapshot::project(&harness, Some(&other_agent), &session)
+            .unwrap_err()
+        {
+            AgentLoopError::Configuration(message) => assert_eq!(
+                message,
+                format!(
+                    "session {session_id} references agent {agent_id} but agent {} was provided",
+                    other_agent.id
+                )
+            ),
+            other => panic!("wrong projection error: {other:?}"),
+        }
     }
-
-    // --- Secret-free, deterministic Debug/serialization ---
 
     #[test]
     fn snapshot_excludes_platform_metadata_and_credential_values() {
         let (harness_id, agent_id, session_id) = ids();
         let harness = harness();
-        let agent = agent(agent_id, harness_id);
+        let mut agent = agent(agent_id, harness_id);
+        agent.description = Some("UI-PREVIEW-MARKER".into());
         let mut session = session(session_id, harness_id, Some(agent_id));
         session.mcp_servers.insert(
             "docs".into(),
@@ -529,7 +651,7 @@ mod tests {
             assert!(!surface.contains("SECRET-URL-MARKER"), "{surface}");
             assert!(!surface.contains("SECRET-COMMAND-MARKER"), "{surface}");
             assert!(!surface.contains("SECRET-ARG-MARKER"), "{surface}");
-            // UI/platform-only session metadata never appears.
+            // UI/platform-only metadata never appears.
             assert!(!surface.contains("UI-TITLE-MARKER"), "{surface}");
             assert!(!surface.contains("UI-PREVIEW-MARKER"), "{surface}");
         }
@@ -552,7 +674,12 @@ mod tests {
         let session = session(session_id, harness_id, Some(agent_id));
 
         let first = ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
-        let second = ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
+        // Rebuild independent input maps in opposite insertion order, not the
+        // same HashMap twice (whose iteration order stays stable).
+        let mut reversed = harness.clone();
+        reversed.embedder_metadata =
+            HashMap::from([("alpha".into(), "a".into()), ("zeta".into(), "z".into())]);
+        let second = ResolvedExecutionSnapshot::project(&reversed, Some(&agent), &session).unwrap();
 
         let first_json = serde_json::to_string(&first).unwrap();
         let second_json = serde_json::to_string(&second).unwrap();
@@ -565,5 +692,19 @@ mod tests {
         let alpha = first_json.find("alpha").unwrap();
         let zeta = first_json.find("zeta").unwrap();
         assert!(alpha < zeta);
+    }
+    #[test]
+    fn unreferenced_agent_cannot_contribute_configuration() {
+        let (harness_id, agent_id, session_id) = ids();
+        let harness = harness();
+        let agent = agent(agent_id, harness_id);
+        let session = session(session_id, harness_id, None);
+        let without = ResolvedExecutionSnapshot::project(&harness, None, &session).unwrap();
+        let with_unreferenced =
+            ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
+        assert_eq!(
+            serde_json::to_value(with_unreferenced).unwrap(),
+            serde_json::to_value(without).unwrap()
+        );
     }
 }

@@ -9,3 +9,6 @@ publish = false
 everruns = { path = "../../crates/everruns" }
 everruns-meta = { path = "../../crates/drivers/meta" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[dev-dependencies]
+tempfile.workspace = true

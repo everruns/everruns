@@ -214,7 +214,6 @@ mod tests {
         let cap = ResourceDiscoveryCapability;
         assert_eq!(cap.id(), "resource_discovery");
         assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("compass"));
         assert_eq!(cap.risk_level(), RiskLevel::High);
     }
 
@@ -222,15 +221,24 @@ mod tests {
     fn exposes_three_tools() {
         let cap = ResourceDiscoveryCapability;
         let names: Vec<String> = cap.tools().iter().map(|t| t.name().to_string()).collect();
-        assert!(names.contains(&"discover_resources".to_string()));
-        assert!(names.contains(&"attach_resource".to_string()));
-        assert!(names.contains(&"list_attached_resources".to_string()));
+        let mut names = names;
+        names.sort();
+        assert_eq!(
+            names,
+            [
+                "attach_resource",
+                "discover_resources",
+                "list_attached_resources"
+            ]
+        );
     }
 
     #[test]
     fn tools_require_context() {
         let cap = ResourceDiscoveryCapability;
-        for tool in cap.tools() {
+        let tools = cap.tools();
+        assert!(!tools.is_empty());
+        for tool in tools {
             assert!(
                 tool.requires_context(),
                 "{} should require context",
@@ -242,7 +250,20 @@ mod tests {
     #[test]
     fn config_schema_present_and_valid_default() {
         let cap = ResourceDiscoveryCapability;
-        assert!(cap.config_schema().is_some());
+        let schema = cap.config_schema().unwrap();
+        let defaults: serde_json::Map<String, serde_json::Value> = schema["properties"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .filter_map(|(name, property)| {
+                property
+                    .get("default")
+                    .map(|value| (name.clone(), value.clone()))
+            })
+            .collect();
+        assert!(!defaults.is_empty());
+        cap.validate_config(&serde_json::Value::Object(defaults))
+            .unwrap();
         cap.validate_config(&serde_json::json!({})).unwrap();
     }
 

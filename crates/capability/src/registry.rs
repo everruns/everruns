@@ -145,6 +145,14 @@ mod tests {
         // Registering a canonical id that shadows an alias is also rejected.
         let err = index.insert("virtual_bash", &[]).unwrap_err();
         assert!(err.is_duplicate());
+        let err = index
+            .insert("other", &["fresh_alias", "bashkit_shell"])
+            .unwrap_err();
+        assert_eq!(err.id(), "bashkit_shell");
+        assert!(err.is_duplicate());
+        assert!(!index.contains("other"));
+        assert!(!index.contains("fresh_alias"));
+        assert_eq!(index.canonical_of("virtual_bash"), Some("bashkit_shell"));
     }
 
     #[test]
@@ -160,6 +168,7 @@ mod tests {
     fn replace_and_remove() {
         let mut index = CapabilityIdIndex::new();
         index.insert("cap", &["old_cap"]).unwrap();
+        index.insert("other", &["other_alias"]).unwrap();
         index.insert_or_replace("cap", &["older_cap"]);
         assert_eq!(index.canonical_of("older_cap"), Some("cap"));
         assert_eq!(index.canonical_of("old_cap"), None);
@@ -167,6 +176,9 @@ mod tests {
         assert_eq!(index.remove("older_cap"), Some("cap".to_string()));
         assert!(!index.contains("cap"));
         assert!(!index.contains("older_cap"));
+        assert_eq!(index.canonical_of("other_alias"), Some("other"));
+        assert_eq!(index.canonical_ids().collect::<Vec<_>>(), ["other"]);
+        assert_eq!(index.remove("missing"), None);
     }
 
     #[test]
@@ -176,5 +188,9 @@ mod tests {
         let err = set.activate("current_time").unwrap_err();
         assert_eq!(err.id(), "current_time");
         assert!(err.is_duplicate());
+        assert!(set.contains("current_time"));
+        assert!(!set.contains("web_fetch"));
+        set.activate("web_fetch").unwrap();
+        assert!(set.contains("web_fetch"));
     }
 }

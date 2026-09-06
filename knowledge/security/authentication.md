@@ -126,7 +126,7 @@ The login page accepts exactly one public query parameter for auth resume:
 
 **Rules:**
 
-- `return_to` is always a **relative path** on the frontend origin (starts with `/`, never `//`, never a scheme). Absolute URLs are rejected.
+- `return_to` is always a **relative path** on the frontend origin (starts with `/`, never `//`, never a scheme). Absolute URLs and ASCII control characters are rejected; browser removal of tabs or newlines must not turn an accepted path into a protocol-relative destination.
 - No other resume/redirect parameter is accepted. Historic names like `redirect_to` are not part of the contract and MUST NOT be emitted by any caller.
 - Backend-facing paths are valid `return_to` values, the login page triggers a full-page navigation so the reverse proxy / frontend root forwards them to the backend route. Concrete prefixes the UI treats as backend-facing:
   - `/oauth/...`, MCP OAuth handlers mounted at the server root.

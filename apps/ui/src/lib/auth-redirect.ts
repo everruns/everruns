@@ -83,6 +83,10 @@ export function navigateToLogin(
  */
 export function sanitizeReturnTo(value: string | null | undefined): string | null {
   if (!value) return null;
+  // THREAT[TM-WEB-008]: browsers strip tabs/newlines before parsing URLs.
+  // Reject controls before checking slashes so /\n/host cannot become //host.
+  // eslint-disable-next-line no-control-regex -- Explicitly reject URL control characters.
+  if (/[\u0000-\u001f\u007f]/.test(value)) return null;
   if (!value.startsWith("/")) return null;
   if (value.startsWith("//")) return null;
   if (value.startsWith("/\\")) return null;

@@ -424,19 +424,41 @@ async fn multi_root_secondary_mount_path_identity() {
     let session = SessionId::from_seed(7505);
     let primary = TempDir::new().unwrap();
     let secondary = TempDir::new().unwrap();
-    let roots = WorkspaceRootSet::new(
+    let mut roots = WorkspaceRootSet::new(
         primary.path(),
         [("backend".to_string(), secondary.path().to_path_buf())],
     )
     .unwrap();
+    assert!(
+        roots
+            .set_primary_host_root(secondary.path().to_path_buf())
+            .is_err()
+    );
     let store = multi_root_file_system(&roots).unwrap();
     let expectations = PathIdentityExpectations::for_store(store.as_ref());
     let ctx = production_context_direct(session, Arc::new(store.clone()));
 
+    // A rejected reconfiguration must not redirect ordinary workspace writes.
+    expect_success(
+        WriteFileTool
+            .execute_with_context(
+                json!({ "path": "/workspace/primary.log", "content": "primary" }),
+                &ctx,
+            )
+            .await,
+    );
+    assert_eq!(
+        std::fs::read_to_string(primary.path().join("primary.log")).unwrap(),
+        "primary"
+    );
+    assert!(!secondary.path().join("primary.log").exists());
+
     let secondary_path = "/workspace/roots/backend/run.log";
-    WriteFileTool
-        .execute_with_context(json!({ "path": secondary_path, "content": "log" }), &ctx)
-        .await;
+    expect_success(
+        WriteFileTool
+            .execute_with_context(json!({ "path": secondary_path, "content": "log" }), &ctx)
+            .await,
+    );
 
     let read = ReadFileTool
         .execute_with_context(json!({ "path": secondary_path }), &ctx)
