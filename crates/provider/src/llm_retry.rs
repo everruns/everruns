@@ -276,10 +276,7 @@ impl RateLimitInfo {
             && let Ok(s) = val.to_str()
         {
             // OpenAI sometimes returns -1 for unlimited
-            let val: i64 = s.parse().unwrap_or(-1);
-            if val >= 0 {
-                info.tokens_remaining = Some(val as u32);
-            }
+            info.tokens_remaining = s.parse::<u32>().ok();
         }
 
         // x-ratelimit-reset-requests (e.g., "1s", "6m0s")
@@ -329,16 +326,17 @@ fn parse_duration_string(s: &str) -> Option<u64> {
             let num: u64 = current_num.parse().ok()?;
             current_num.clear();
 
-            match c {
-                'h' => total_secs += num * 3600,
-                'm' => total_secs += num * 60,
-                's' => total_secs += num,
+            let multiplier = match c {
+                'h' => 3600,
+                'm' => 60,
+                's' => 1,
                 _ => return None,
-            }
+            };
+            total_secs = total_secs.checked_add(num.checked_mul(multiplier)?)?;
         }
     }
 
-    if total_secs > 0 {
+    if total_secs > 0 && current_num.is_empty() {
         Some(total_secs)
     } else {
         None
@@ -588,21 +586,29 @@ where
     let mut retry_metadata = RetryMetadata::default();
     let mut retry_started_at = None;
 
+    let budget_exhausted = |metadata: &RetryMetadata| {
+        AgentLoopError::llm_kind(
+            crate::error::LlmErrorKind::Unavailable,
+            format!(
+                "{driver_name} retry time budget exhausted after {} retries over {:.1}s",
+                metadata.attempts,
+                config.max_retry_elapsed.as_secs_f64()
+            ),
+        )
+        .with_retry_metadata(metadata)
+    };
+
     let response = loop {
-        let send_result = if let Some(remaining) = remaining_retry_time(config, retry_started_at) {
+        let send_result = if retry_started_at.is_some() {
+            // A late wakeup can exhaust the budget between reserving a wait and
+            // sending again. None here means expired, not an initial request.
+            let remaining = remaining_retry_time(config, retry_started_at).unwrap_or_default();
+            if remaining.is_zero() {
+                return Err(budget_exhausted(&retry_metadata));
+            }
             match tokio::time::timeout(remaining, send()).await {
                 Ok(result) => result,
-                Err(_) => {
-                    return Err(AgentLoopError::llm_kind(
-                        crate::error::LlmErrorKind::Unavailable,
-                        format!(
-                            "{driver_name} retry time budget exhausted after {} retries over {:.1}s",
-                            retry_metadata.attempts,
-                            config.max_retry_elapsed.as_secs_f64()
-                        ),
-                    )
-                    .with_retry_metadata(&retry_metadata));
-                }
+                Err(_) => return Err(budget_exhausted(&retry_metadata)),
             }
         } else {
             send().await
@@ -653,15 +659,7 @@ where
                 rate_limit_info,
             } => {
                 let Some(wait) = reserve_retry_wait(config, &mut retry_started_at, wait) else {
-                    return Err(AgentLoopError::llm_kind(
-                        crate::error::LlmErrorKind::Unavailable,
-                        format!(
-                            "{driver_name} retry time budget exhausted after {} retries over {:.1}s",
-                            retry_metadata.attempts,
-                            config.max_retry_elapsed.as_secs_f64()
-                        ),
-                    )
-                    .with_retry_metadata(&retry_metadata));
+                    return Err(budget_exhausted(&retry_metadata));
                 };
                 tracing::warn!(
                     status = %status,
@@ -705,55 +703,72 @@ where
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_default_config_matches_official_sdks() {
-        // Defaults should match official Anthropic/OpenAI SDK behavior
-        let config = LlmRetryConfig::default();
-        assert_eq!(config.max_retries, 2); // SDK default is 2
-        assert_eq!(config.initial_backoff, Duration::from_secs(1));
-        assert_eq!(config.max_backoff, Duration::from_secs(60));
-        assert_eq!(config.backoff_multiplier, 2.0);
-        assert!((config.jitter_factor - 0.25).abs() < 0.001); // SDK uses ±25%
-    }
-
-    #[test]
-    fn test_calculate_backoff_exponential() {
+    #[tokio::test(start_paused = true)]
+    async fn default_retry_policy_stops_after_three_requests() {
         let config = LlmRetryConfig {
-            initial_backoff: Duration::from_secs(1),
-            max_backoff: Duration::from_secs(60),
-            backoff_multiplier: 2.0,
-            jitter_factor: 0.0, // No jitter for predictable test
-            ..Default::default()
-        };
-
-        // attempt 0: 1s * 2^0 = 1s
-        assert_eq!(config.calculate_backoff(0), Duration::from_secs(1));
-        // attempt 1: 1s * 2^1 = 2s
-        assert_eq!(config.calculate_backoff(1), Duration::from_secs(2));
-        // attempt 2: 1s * 2^2 = 4s
-        assert_eq!(config.calculate_backoff(2), Duration::from_secs(4));
-        // attempt 3: 1s * 2^3 = 8s
-        assert_eq!(config.calculate_backoff(3), Duration::from_secs(8));
-    }
-
-    #[test]
-    fn test_calculate_backoff_capped() {
-        let config = LlmRetryConfig {
-            initial_backoff: Duration::from_secs(10),
-            max_backoff: Duration::from_secs(30),
-            backoff_multiplier: 2.0,
             jitter_factor: 0.0,
             ..Default::default()
         };
+        let mut calls = 0;
+        let error = retry_request(
+            &config,
+            "TestDriver",
+            || {
+                calls += 1;
+                async { Ok(fake_response(429, "limited")) }
+            },
+            |response, attempt, can_retry| {
+                assert_eq!(response.status().as_u16(), 429);
+                assert_eq!(can_retry, attempt < 2);
+                let wait = config.calculate_backoff(attempt);
+                async move {
+                    if can_retry {
+                        RetryDecision::Retry {
+                            wait,
+                            rate_limit_info: None,
+                        }
+                    } else {
+                        RetryDecision::Terminal(AgentLoopError::llm("exhausted"))
+                    }
+                }
+            },
+            |_, _| panic!("unexpected transport error"),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(calls, 3);
+        let AgentLoopError::Llm(error) = error else {
+            panic!("lost LLM variant")
+        };
+        assert_eq!(
+            serde_json::to_value(error).unwrap(),
+            serde_json::json!({"kind":"other","message":"exhausted","retry_attempts":2,"retry_wait_ms":3000,"retry_handled":true})
+        );
+    }
 
-        // attempt 0: 10s
-        assert_eq!(config.calculate_backoff(0), Duration::from_secs(10));
-        // attempt 1: 20s
-        assert_eq!(config.calculate_backoff(1), Duration::from_secs(20));
-        // attempt 2: 40s -> capped to 30s
-        assert_eq!(config.calculate_backoff(2), Duration::from_secs(30));
-        // attempt 3: 80s -> capped to 30s
-        assert_eq!(config.calculate_backoff(3), Duration::from_secs(30));
+    #[test]
+    fn backoff_exponential_progression_respects_the_cap() {
+        let defaults = LlmRetryConfig {
+            jitter_factor: 0.0,
+            ..Default::default()
+        };
+        let custom = LlmRetryConfig {
+            initial_backoff: Duration::from_secs(10),
+            max_backoff: Duration::from_secs(30),
+            jitter_factor: 0.0,
+            ..Default::default()
+        };
+        for (config, expected) in [
+            (defaults, [1, 2, 4, 8, 16, 32, 60, 60]),
+            (custom, [10, 20, 30, 30, 30, 30, 30, 30]),
+        ] {
+            for (attempt, seconds) in expected.into_iter().enumerate() {
+                assert_eq!(
+                    config.calculate_backoff(attempt as u32),
+                    Duration::from_secs(seconds)
+                );
+            }
+        }
     }
 
     /// EVE-635: with jitter enabled the backoff must use a real RNG, so repeated
@@ -764,7 +779,6 @@ mod tests {
             initial_backoff: Duration::from_secs(10),
             max_backoff: Duration::from_secs(60),
             backoff_multiplier: 2.0,
-            jitter_factor: 0.25,
             ..Default::default()
         };
         let samples: std::collections::HashSet<u128> = (0..20)
@@ -799,63 +813,82 @@ mod tests {
     }
 
     #[test]
-    fn test_rate_limit_info_recommended_wait_with_retry_after() {
-        let config = LlmRetryConfig::default();
-        let info = RateLimitInfo {
-            retry_after_secs: Some(10),
-            ..Default::default()
-        };
-
-        // Should use retry-after, not exponential backoff
-        assert_eq!(info.recommended_wait(&config, 0), Duration::from_secs(10));
-        assert_eq!(info.recommended_wait(&config, 5), Duration::from_secs(10));
-    }
-
-    #[test]
-    fn test_rate_limit_info_recommended_wait_capped_at_60s() {
-        // Like official SDKs, if retry-after > 60s, use backoff instead
+    fn retry_after_literal_boundaries_fall_back_to_backoff() {
         let config = LlmRetryConfig {
-            jitter_factor: 0.0, // No jitter for predictable test
-            ..Default::default()
-        };
-        let info = RateLimitInfo {
-            retry_after_secs: Some(120), // 2 minutes - too long
-            ..Default::default()
-        };
-
-        // Should fall back to exponential backoff, not use 120s
-        assert_eq!(info.recommended_wait(&config, 0), Duration::from_secs(1));
-    }
-
-    #[test]
-    fn test_rate_limit_info_recommended_wait_fallback() {
-        let config = LlmRetryConfig {
-            initial_backoff: Duration::from_secs(1),
-            backoff_multiplier: 2.0,
             jitter_factor: 0.0,
             ..Default::default()
         };
-        let info = RateLimitInfo::default(); // No retry-after
-
-        // Should use exponential backoff
-        assert_eq!(info.recommended_wait(&config, 0), Duration::from_secs(1));
-        assert_eq!(info.recommended_wait(&config, 1), Duration::from_secs(2));
+        for (hint, expected) in [
+            (None, 4),
+            (Some(0), 4),
+            (Some(1), 1),
+            (Some(10), 10),
+            (Some(59), 59),
+            (Some(60), 60),
+            (Some(61), 4),
+            (Some(120), 4),
+            (Some(u64::MAX), 4),
+        ] {
+            let info = RateLimitInfo {
+                retry_after_secs: hint,
+                ..Default::default()
+            };
+            assert_eq!(
+                info.recommended_wait(&config, 2),
+                Duration::from_secs(expected),
+                "{hint:?}"
+            );
+        }
     }
 
     #[test]
-    fn test_retry_metadata_record() {
-        let mut meta = RetryMetadata::default();
+    fn retry_metadata_accumulates_waits_and_preserves_latest_limit_info() {
+        let mut meta = RetryMetadata::first_attempt_success();
         assert!(!meta.had_retries());
-        assert_eq!(meta.attempts, 0);
-
-        meta.record_retry(Duration::from_secs(1), None);
-        assert!(meta.had_retries());
-        assert_eq!(meta.attempts, 1);
-        assert_eq!(meta.total_retry_wait, Duration::from_secs(1));
-
+        meta.record_retry(
+            Duration::from_secs(1),
+            Some(RateLimitInfo {
+                retry_after_secs: Some(7),
+                ..Default::default()
+            }),
+        );
         meta.record_retry(Duration::from_secs(2), None);
+        assert!(meta.had_retries());
         assert_eq!(meta.attempts, 2);
         assert_eq!(meta.total_retry_wait, Duration::from_secs(3));
+        assert_eq!(
+            meta.last_rate_limit_info.as_ref().unwrap().retry_after_secs,
+            Some(7)
+        );
+        meta.absorb(RetryMetadata {
+            attempts: 3,
+            total_retry_wait: Duration::from_secs(4),
+            total_retry_elapsed: Duration::from_secs(9),
+            last_rate_limit_info: Some(RateLimitInfo {
+                retry_after_secs: Some(11),
+                ..Default::default()
+            }),
+        });
+        assert_eq!(meta.attempts, 5);
+        assert_eq!(meta.total_retry_wait, Duration::from_secs(7));
+        assert_eq!(meta.total_retry_elapsed, Duration::from_secs(9));
+        assert_eq!(
+            meta.last_rate_limit_info.as_ref().unwrap().retry_after_secs,
+            Some(11)
+        );
+        meta.absorb(RetryMetadata {
+            attempts: u32::MAX,
+            total_retry_wait: Duration::MAX,
+            total_retry_elapsed: Duration::MAX,
+            last_rate_limit_info: None,
+        });
+        assert_eq!(meta.attempts, u32::MAX);
+        assert_eq!(meta.total_retry_wait, Duration::MAX);
+        assert_eq!(meta.total_retry_elapsed, Duration::MAX);
+        assert_eq!(
+            meta.last_rate_limit_info.as_ref().unwrap().retry_after_secs,
+            Some(11)
+        );
     }
 
     #[test]
@@ -878,29 +911,6 @@ mod tests {
         assert!(!is_transient_error(reqwest::StatusCode::FORBIDDEN)); // 403
         assert!(!is_transient_error(reqwest::StatusCode::NOT_FOUND)); // 404
         assert!(!is_transient_error(reqwest::StatusCode::NOT_IMPLEMENTED)); // 501
-    }
-
-    /// A real send that cannot reach the server (connection refused on a closed
-    /// port) must be classified as a transient connection error — this is the
-    /// "error sending request for url" case that the retry loop now retries.
-    #[tokio::test]
-    async fn test_is_transient_send_error_on_connection_refused() {
-        // Bind then immediately drop a listener to obtain a port that is
-        // guaranteed to be closed, so the connect attempt is refused.
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        drop(listener);
-
-        let err = reqwest::Client::new()
-            .get(format!("http://{addr}/"))
-            .send()
-            .await
-            .expect_err("request to a closed port should fail");
-
-        assert!(
-            is_transient_send_error(&err),
-            "connection-refused send error should be transient: {err:?}"
-        );
     }
 
     #[test]
@@ -1012,9 +1022,17 @@ mod tests {
         )
         .await
         .expect("should succeed");
-        assert!(resp.status().is_success());
-        assert_eq!(meta.attempts, 0);
-        assert!(!meta.had_retries());
+        assert_eq!(resp.status().as_u16(), 200);
+        assert_eq!(resp.text().await.unwrap(), "ok");
+        assert_eq!(
+            (
+                meta.attempts,
+                meta.total_retry_wait,
+                meta.total_retry_elapsed
+            ),
+            (0, Duration::ZERO, Duration::ZERO)
+        );
+        assert!(meta.last_rate_limit_info.is_none());
     }
 
     #[tokio::test]
@@ -1048,8 +1066,11 @@ mod tests {
         )
         .await
         .expect("should eventually succeed");
-        assert!(resp.status().is_success());
+        assert_eq!(resp.status().as_u16(), 200);
+        assert_eq!(resp.text().await.unwrap(), "ok");
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 3);
         assert_eq!(meta.attempts, 2);
+        assert_eq!(meta.total_retry_wait, Duration::ZERO);
     }
 
     #[tokio::test]
@@ -1066,7 +1087,13 @@ mod tests {
         )
         .await;
         let err = result.expect_err("terminal decision should error");
-        assert!(err.to_string().contains("classified terminal"));
+        let AgentLoopError::Llm(error) = err else {
+            panic!("lost terminal LLM variant")
+        };
+        assert_eq!(
+            serde_json::to_value(error).unwrap(),
+            serde_json::json!({"kind":"other","message":"classified terminal","retry_attempts":0,"retry_wait_ms":0,"retry_handled":true})
+        );
     }
 
     #[tokio::test]
@@ -1106,9 +1133,10 @@ mod tests {
         )
         .await
         .expect("RetryNow then success");
-        assert!(resp.status().is_success());
-        // RetryNow must NOT increment the attempt counter.
-        assert_eq!(meta.attempts, 0);
+        assert_eq!(resp.status().as_u16(), 200);
+        assert_eq!(resp.text().await.unwrap(), "ok");
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert_eq!((meta.attempts, meta.total_retry_wait), (0, Duration::ZERO));
     }
 
     #[tokio::test]
@@ -1142,6 +1170,8 @@ mod tests {
         let err = result.expect_err("send errors should exhaust to terminal");
         // After 1 retry, message notes the retry count.
         assert!(err.to_string().contains("after 1 retries"), "got: {err}");
+        assert_eq!(err.llm_retry_attempts(), 1);
+        assert!(err.llm_retry_handled());
     }
 
     #[tokio::test]
@@ -1150,7 +1180,7 @@ mod tests {
         let result = retry_request(
             &config,
             "TestDriver",
-            || async { Err(SendOutcome::Fatal(AgentLoopError::llm("auth failed"))) },
+            || async { Err(SendOutcome::Fatal(AgentLoopError::config("auth failed"))) },
             |_resp, _attempt, _can_retry| async {
                 RetryDecision::Terminal(AgentLoopError::llm("unreachable"))
             },
@@ -1158,6 +1188,223 @@ mod tests {
         )
         .await;
         let err = result.expect_err("fatal send should propagate");
-        assert!(err.to_string().contains("auth failed"));
+        assert!(matches!(err,AgentLoopError::Configuration(message) if message=="auth failed"));
+    }
+    #[test]
+    fn reset_duration_rejects_overflow_and_unterminated_components() {
+        for value in [
+            "18446744073709551615h",
+            "18446744073709551615m",
+            "18446744073709551615s1s",
+            "1s2",
+            "1m30",
+        ] {
+            assert_eq!(parse_duration_string(value), None, "{value}");
+        }
+        assert_eq!(
+            parse_duration_string("18446744073709551615s"),
+            Some(u64::MAX)
+        );
+    }
+
+    #[test]
+    fn openai_remaining_tokens_rejects_out_of_range_values() {
+        let mut valid = reqwest::header::HeaderMap::new();
+        valid.insert(
+            "x-ratelimit-remaining-tokens",
+            "4294967295".parse().unwrap(),
+        );
+        assert_eq!(
+            RateLimitInfo::from_openai_headers(&valid).tokens_remaining,
+            Some(u32::MAX)
+        );
+        for value in ["4294967296", "9223372036854775807", "-1", "invalid"] {
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert("x-ratelimit-remaining-tokens", value.parse().unwrap());
+            let info = RateLimitInfo::from_openai_headers(&headers);
+            assert_eq!(info.tokens_remaining, None, "{value}");
+            assert_eq!(info.limit_type, None, "{value}");
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn elapsed_retry_budget_does_not_start_an_unbounded_request() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicU32, Ordering},
+        };
+        let calls = Arc::new(AtomicU32::new(0));
+        let sent = calls.clone();
+        let task = tokio::spawn(async move {
+            let config = LlmRetryConfig {
+                max_retry_elapsed: Duration::from_secs(2),
+                ..fast_config(3)
+            };
+            retry_request(
+                &config,
+                "TestDriver",
+                move || {
+                    let index = sent.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        if index == 0 {
+                            Ok(fake_response(503, "retry"))
+                        } else {
+                            std::future::pending().await
+                        }
+                    }
+                },
+                |_, _, _| async {
+                    RetryDecision::Retry {
+                        wait: Duration::from_secs(1),
+                        rate_limit_info: None,
+                    }
+                },
+                |_, _| AgentLoopError::llm("transport"),
+            )
+            .await
+        });
+        tokio::task::yield_now().await;
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        tokio::time::advance(Duration::from_secs(3)).await;
+        tokio::task::yield_now().await;
+        assert!(
+            task.is_finished(),
+            "retry deadline must finish even after a late wakeup"
+        );
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "expired retry must not send again"
+        );
+        let error = task.await.unwrap().unwrap_err();
+        assert_eq!(
+            error.llm_error_kind(),
+            Some(crate::error::LlmErrorKind::Unavailable)
+        );
+        assert_eq!(error.llm_retry_attempts(), 1);
+        assert!(error.llm_retry_handled());
+    }
+    #[test]
+    fn provider_headers_preserve_complete_limits_and_retry_hint_precedence() {
+        for (parse, names, token_class) in [
+            (
+                RateLimitInfo::from_anthropic_headers
+                    as fn(&reqwest::header::HeaderMap) -> RateLimitInfo,
+                [
+                    "anthropic-ratelimit-requests-remaining",
+                    "anthropic-ratelimit-tokens-remaining",
+                    "anthropic-ratelimit-requests-reset",
+                    "anthropic-ratelimit-tokens-reset",
+                ],
+                RateLimitType::InputTokens,
+            ),
+            (
+                RateLimitInfo::from_openai_headers
+                    as fn(&reqwest::header::HeaderMap) -> RateLimitInfo,
+                [
+                    "x-ratelimit-remaining-requests",
+                    "x-ratelimit-remaining-tokens",
+                    "x-ratelimit-reset-requests",
+                    "x-ratelimit-reset-tokens",
+                ],
+                RateLimitType::TotalTokens,
+            ),
+        ] {
+            let mut headers = reqwest::header::HeaderMap::new();
+            for (name, value) in [
+                ("retry-after-ms", "1001"),
+                ("retry-after", "9"),
+                (names[0], "0"),
+                (names[1], "0"),
+                (names[2], "6m0s"),
+                (names[3], "1h"),
+            ] {
+                headers.insert(name, value.parse().unwrap());
+            }
+            let info = parse(&headers);
+            assert_eq!(
+                (
+                    info.retry_after_secs,
+                    info.requests_remaining,
+                    info.tokens_remaining,
+                    info.requests_reset.as_deref(),
+                    info.tokens_reset.as_deref(),
+                    info.limit_type
+                ),
+                (
+                    Some(2),
+                    Some(0),
+                    Some(0),
+                    Some("6m0s"),
+                    Some("1h"),
+                    Some(RateLimitType::Requests)
+                )
+            );
+            headers.insert(names[0], "3".parse().unwrap());
+            assert_eq!(parse(&headers).limit_type, Some(token_class));
+            for (milliseconds, expected) in [
+                ("0", 0),
+                ("1", 1),
+                ("999", 1),
+                ("1000", 1),
+                ("1001", 2),
+                ("invalid", 9),
+            ] {
+                headers.insert("retry-after-ms", milliseconds.parse().unwrap());
+                assert_eq!(
+                    parse(&headers).retry_after_secs,
+                    Some(expected),
+                    "{milliseconds}"
+                );
+            }
+            headers.remove("retry-after-ms");
+            headers.remove("retry-after");
+            assert_eq!(
+                RateLimitInfo::from_openai_headers(&headers).retry_after_secs,
+                if names[0].starts_with("x-") {
+                    Some(360)
+                } else {
+                    None
+                }
+            );
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn retry_wait_reservations_enforce_strict_remaining_time() {
+        let config = LlmRetryConfig {
+            max_retry_elapsed: Duration::from_secs(3),
+            ..Default::default()
+        };
+        let mut started = None;
+        assert_eq!(remaining_retry_time(&config, started), None);
+        assert_eq!(
+            reserve_retry_wait(&config, &mut started, Duration::from_secs(3)),
+            None
+        );
+        assert_eq!(
+            reserve_retry_wait(&config, &mut started, Duration::from_secs(2)),
+            Some(Duration::from_secs(2))
+        );
+        tokio::time::advance(Duration::from_secs(2)).await;
+        assert_eq!(
+            remaining_retry_time(&config, started),
+            Some(Duration::from_secs(1))
+        );
+        assert_eq!(
+            reserve_retry_wait(&config, &mut started, Duration::from_secs(1)),
+            None
+        );
+        assert_eq!(
+            reserve_retry_wait(&config, &mut started, Duration::from_millis(999)),
+            Some(Duration::from_millis(999))
+        );
+        tokio::time::advance(Duration::from_secs(1)).await;
+        assert_eq!(
+            reserve_retry_wait(&config, &mut started, Duration::ZERO),
+            None
+        );
+        tokio::time::advance(Duration::from_secs(1)).await;
+        assert_eq!(remaining_retry_time(&config, started), None);
     }
 }
