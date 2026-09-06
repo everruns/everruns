@@ -3181,7 +3181,7 @@ mod tests {
         }
     }
 
-    /// Built-in registry plus the local fixture stand-ins above.
+    /// Registry of local contribution fixtures.
     fn fixture_registry() -> CapabilityRegistry {
         let mut registry = CapabilityRegistry::new();
         registry.register(NoopFixture);
@@ -3220,13 +3220,6 @@ mod tests {
     }
 
     #[test]
-    fn capability_metadata_is_an_opt_in_host_hatch() {
-        let metadata = HostAnnotatedCapability.metadata().expect("metadata");
-        assert_eq!(metadata["icon"], "sparkles");
-        assert_eq!(metadata["group"], "host");
-    }
-
-    #[test]
     fn test_capability_registry_get() {
         let mut registry = CapabilityRegistry::new();
         registry.register(NoopFixture);
@@ -3242,8 +3235,8 @@ mod tests {
         assert!(CapabilityRegistryBuilder::default().build().is_empty());
     }
 
-    #[test]
-    fn test_capability_registry_blueprint_with_capability() {
+    #[tokio::test]
+    async fn test_capability_registry_blueprint_with_capability() {
         struct BlueprintProviderCapability;
 
         impl Capability for BlueprintProviderCapability {
@@ -3261,11 +3254,13 @@ mod tests {
                     id: "test_blueprint",
                     name: "Test Blueprint",
                     description: "Blueprint for capability registry tests",
-                    model: BlueprintModel::Inherit,
+                    model: BlueprintModel::Fixed("specialist-model".into()),
                     system_prompt: "Test prompt",
-                    tools: vec![],
-                    max_turns: None,
-                    config_schema: None,
+                    tools: vec![Box::new(FixtureTool("private_lookup"))],
+                    max_turns: Some(7),
+                    config_schema: Some(
+                        serde_json::json!({"type":"object", "required":["repository"]}),
+                    ),
                 }]
             }
         }
@@ -3278,6 +3273,41 @@ mod tests {
             .expect("blueprint should resolve with capability id");
         assert_eq!(capability_id, "blueprint_provider");
         assert_eq!(blueprint.id, "test_blueprint");
+        assert_eq!(blueprint.name, "Test Blueprint");
+        assert_eq!(
+            blueprint.description,
+            "Blueprint for capability registry tests"
+        );
+        assert_eq!(blueprint.system_prompt, "Test prompt");
+        assert!(
+            matches!(&blueprint.model, BlueprintModel::Fixed(model) if model == "specialist-model")
+        );
+        assert_eq!(blueprint.max_turns, Some(7));
+        assert_eq!(
+            blueprint.config_schema,
+            Some(serde_json::json!({"type":"object", "required":["repository"]}))
+        );
+        let definitions = blueprint.tool_definitions();
+        assert_eq!(definitions.len(), 1);
+        assert_eq!(definitions[0].name(), "private_lookup");
+        assert_eq!(
+            registry.blueprint("test_blueprint").unwrap().tools[0].name(),
+            "private_lookup"
+        );
+        assert_eq!(
+            registry
+                .all_blueprints()
+                .iter()
+                .map(|b| b.id)
+                .collect::<Vec<_>>(),
+            ["test_blueprint"]
+        );
+        assert!(registry.blueprint_with_capability("missing").is_none());
+        assert!(registry.blueprint("missing").is_none());
+        let host =
+            collect_capabilities(&["blueprint_provider".into()], &registry, &test_ctx()).await;
+        assert!(host.tools.is_empty());
+        assert!(host.tool_definitions.is_empty());
     }
 
     #[test]
@@ -3288,12 +3318,6 @@ mod tests {
 
         assert!(registry.has("noop"));
         assert_eq!(registry.len(), 1);
-    }
-
-    #[test]
-    fn test_capability_icons_and_categories_default_none() {
-        assert!(NoopFixture.icon().is_none());
-        assert!(NoopFixture.category().is_none());
     }
 
     #[test]
@@ -3319,7 +3343,7 @@ mod tests {
         let cap = StaticPromptCapability;
         assert_eq!(
             cap.system_prompt_preview().as_deref(),
-            cap.system_prompt_addition()
+            Some("Use the static prompt.")
         );
 
         // current_time has no system_prompt_addition — preview should be None
@@ -3327,17 +3351,6 @@ mod tests {
         let current_time = registry.get("current_time").unwrap();
         assert!(current_time.system_prompt_preview().is_none());
         assert!(current_time.system_prompt_addition().is_none());
-    }
-
-    #[test]
-    fn test_system_prompt_preview_dynamic_capability() {
-        let registry = fixture_registry();
-        let cap = registry.get("agent_instructions").unwrap();
-
-        // No static addition, but preview exists
-        assert!(cap.system_prompt_addition().is_none());
-        assert!(cap.system_prompt_preview().is_some());
-        assert!(cap.system_prompt_preview().unwrap().contains("AGENTS.md"));
     }
 
     // =========================================================================
@@ -3363,8 +3376,12 @@ mod tests {
     #[tokio::test]
     async fn test_apply_capabilities_noop() {
         let registry = fixture_registry();
-        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
+        let mut base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
+        base_runtime_agent.max_iterations = 13;
+        base_runtime_agent.temperature = Some(0.25);
+        base_runtime_agent.max_tokens = Some(1234);
+        base_runtime_agent.parallel_tool_calls = Some(false);
         let applied = apply_capabilities(
             base_runtime_agent.clone(),
             &["noop".to_string()],
@@ -3380,6 +3397,14 @@ mod tests {
         );
         assert!(applied.tool_registry.is_empty());
         assert_eq!(applied.applied_ids, vec!["noop"]);
+        assert_eq!(
+            serde_json::to_value(&applied.runtime_agent).unwrap(),
+            serde_json::to_value(&base_runtime_agent).unwrap()
+        );
+        let collected = collect_capabilities(&["noop".into()], &registry, &test_ctx()).await;
+        assert!(collected.mounts.is_empty());
+        assert!(collected.message_filter_providers.is_empty());
+        assert!(compute_features(&["noop".into()], &registry).is_empty());
     }
 
     #[tokio::test]
@@ -3457,23 +3482,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_apply_capabilities_multiple() {
-        let registry = fixture_registry();
-        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
-
-        let applied = apply_capabilities(
-            base_runtime_agent.clone(),
-            &["noop".to_string(), "current_time".to_string()],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-
-        assert!(applied.tool_registry.has("get_current_time"));
-        assert_eq!(applied.applied_ids, vec!["noop", "current_time"]);
-    }
-
-    #[tokio::test]
     async fn test_apply_capabilities_preserves_order() {
         let registry = fixture_registry();
         let base_runtime_agent = RuntimeAgent::new("Base prompt.", "gpt-5.2");
@@ -3488,239 +3496,17 @@ mod tests {
         .await;
 
         assert_eq!(applied.applied_ids, vec!["current_time", "noop"]);
-    }
-
-    #[tokio::test]
-    async fn test_apply_capabilities_test_math() {
-        let registry = fixture_registry();
-        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
-
-        let applied = apply_capabilities(
-            base_runtime_agent.clone(),
-            &["test_math".to_string()],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-
-        // TestMath has no system prompt addition (tool defs are sufficient)
-        assert!(
-            !applied
-                .runtime_agent
-                .system_prompt
-                .contains("<capability id=\"test_math\">")
-        );
-        // No capability prompt prefix, so base prompt is used as-is (no XML wrapping)
-        assert!(
-            applied
-                .runtime_agent
-                .system_prompt
-                .contains("You are a helpful assistant.")
-        );
-        assert!(applied.tool_registry.has("add"));
-        assert!(applied.tool_registry.has("subtract"));
-        assert!(applied.tool_registry.has("multiply"));
-        assert!(applied.tool_registry.has("divide"));
-        assert_eq!(applied.tool_registry.len(), 4);
-    }
-
-    #[tokio::test]
-    async fn test_apply_capabilities_test_weather() {
-        let registry = fixture_registry();
-        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
-
-        let applied = apply_capabilities(
-            base_runtime_agent.clone(),
-            &["test_weather".to_string()],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-
-        // TestWeather has no system prompt addition (tool defs are sufficient)
-        assert!(
-            !applied
-                .runtime_agent
-                .system_prompt
-                .contains("<capability id=\"test_weather\">")
-        );
-        assert!(applied.tool_registry.has("get_weather"));
-        assert!(applied.tool_registry.has("get_forecast"));
-        assert_eq!(applied.tool_registry.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn test_apply_capabilities_test_math_and_test_weather() {
-        let registry = fixture_registry();
-        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
-
-        let applied = apply_capabilities(
-            base_runtime_agent.clone(),
-            &["test_math".to_string(), "test_weather".to_string()],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-
-        // Should have both sets of tools
-        assert_eq!(applied.tool_registry.len(), 6); // 4 math + 2 weather
-        assert!(applied.tool_registry.has("add"));
-        assert!(applied.tool_registry.has("get_weather"));
-    }
-
-    #[tokio::test]
-    async fn test_apply_capabilities_prompt_tool_fixture() {
-        let registry = fixture_registry();
-        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
-
-        let applied = apply_capabilities(
-            base_runtime_agent.clone(),
-            &["prompt_tool_fixture".to_string()],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-
-        // The fixture has a system prompt addition and one tool.
-        assert!(
-            applied
-                .runtime_agent
-                .system_prompt
-                .contains("Task Management")
-        );
-        assert!(applied.runtime_agent.system_prompt.contains("write_todos"));
-        assert!(applied.tool_registry.has("write_todos"));
         assert_eq!(applied.tool_registry.len(), 1);
+        assert!(applied.tool_registry.has("get_current_time"));
     }
 
     // =========================================================================
     // XML prompt formatting tests
     // =========================================================================
 
-    #[tokio::test]
-    async fn test_xml_tags_wrap_capability_prompts() {
-        let registry = fixture_registry();
-        let collected =
-            collect_capabilities(&["prompt_tool_fixture".to_string()], &registry, &test_ctx())
-                .await;
-
-        assert_eq!(collected.system_prompt_parts.len(), 1);
-        let part = &collected.system_prompt_parts[0];
-        assert!(part.starts_with("<capability id=\"prompt_tool_fixture\">"));
-        assert!(part.ends_with("</capability>"));
-        assert!(part.contains("Task Management"));
-    }
-
-    #[tokio::test]
-    async fn test_xml_tags_multiple_capabilities() {
-        let registry = fixture_registry();
-        let collected = collect_capabilities(
-            &[
-                "prompt_tool_fixture".to_string(),
-                "second_prompt_fixture".to_string(),
-            ],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-
-        assert_eq!(collected.system_prompt_parts.len(), 2);
-        assert!(
-            collected.system_prompt_parts[0].starts_with("<capability id=\"prompt_tool_fixture\">")
-        );
-        assert!(
-            collected.system_prompt_parts[1]
-                .starts_with("<capability id=\"second_prompt_fixture\">")
-        );
-
-        let prefix = collected.system_prompt_prefix().unwrap();
-        // Both capability sections separated by double newline
-        assert!(prefix.contains("</capability>\n\n<capability"));
-    }
-
-    #[tokio::test]
-    async fn test_xml_tags_system_prompt_wrapping() {
-        let registry = fixture_registry();
-        let base = RuntimeAgent::new("You are helpful.", "gpt-5.2");
-
-        let applied = apply_capabilities(
-            base,
-            &["prompt_tool_fixture".to_string()],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-
-        let prompt = &applied.runtime_agent.system_prompt;
-        assert!(prompt.starts_with("<system-prompt>\nYou are helpful.\n</system-prompt>"));
-        // Capability wrapped
-        assert!(prompt.contains("<capability id=\"prompt_tool_fixture\">"));
-        assert!(prompt.contains("</capability>"));
-        // Base prompt wrapped
-        assert!(prompt.contains("<system-prompt>\nYou are helpful.\n</system-prompt>"));
-    }
-
-    #[tokio::test]
-    async fn test_no_xml_wrapping_without_capabilities() {
-        let registry = CapabilityRegistry::new();
-        let base = RuntimeAgent::new("You are helpful.", "gpt-5.2");
-
-        let applied = apply_capabilities(base, &[], &registry, &test_ctx()).await;
-
-        // No capabilities = no XML wrapping (plain base prompt)
-        assert_eq!(applied.runtime_agent.system_prompt, "You are helpful.");
-        assert!(
-            !applied
-                .runtime_agent
-                .system_prompt
-                .contains("<system-prompt>")
-        );
-    }
-
-    #[tokio::test]
-    async fn test_no_xml_wrapping_for_noop_capability() {
-        let registry = fixture_registry();
-        let base = RuntimeAgent::new("You are helpful.", "gpt-5.2");
-
-        // Noop has no system_prompt_addition, so no XML wrapping should occur
-        let applied = apply_capabilities(base, &["noop".to_string()], &registry, &test_ctx()).await;
-
-        assert_eq!(applied.runtime_agent.system_prompt, "You are helpful.");
-        assert!(
-            !applied
-                .runtime_agent
-                .system_prompt
-                .contains("<system-prompt>")
-        );
-    }
-
     // =========================================================================
     // Mount collection tests
     // =========================================================================
-
-    #[tokio::test]
-    async fn test_collect_capabilities_includes_mounts() {
-        let registry = fixture_registry();
-
-        let collected =
-            collect_capabilities(&["sample_data".to_string()], &registry, &test_ctx()).await;
-
-        assert!(!collected.mounts.is_empty());
-        assert_eq!(collected.mounts.len(), 1);
-        assert_eq!(collected.mounts[0].path, "/samples");
-        assert!(collected.mounts[0].is_readonly());
-    }
-
-    #[tokio::test]
-    async fn test_collect_capabilities_empty_mounts_by_default() {
-        let registry = fixture_registry();
-
-        // Most capabilities don't have mounts
-        let collected =
-            collect_capabilities(&["current_time".to_string()], &registry, &test_ctx()).await;
-
-        assert!(collected.mounts.is_empty());
-    }
 
     #[tokio::test]
     async fn test_dynamic_facts_add_note_without_static_block() {
@@ -3788,49 +3574,61 @@ mod tests {
         );
         assert_eq!(facts.len(), 1);
         assert_eq!(facts[0].key, "current_time");
+        assert_eq!(facts[0].value, "fixture-now");
         assert_eq!(facts[0].volatility, Volatility::Dynamic);
     }
 
     #[tokio::test]
     async fn test_collect_capabilities_combines_mounts() {
-        let registry = fixture_registry();
-
-        // Collect from multiple capabilities - only sample_data has mounts.
-        // sample_data depends on session_file_system, which is auto-resolved.
+        struct Notes;
+        impl Capability for Notes {
+            fn id(&self) -> &str {
+                "notes"
+            }
+            fn name(&self) -> &str {
+                "Notes"
+            }
+            fn description(&self) -> &str {
+                "Writable notes"
+            }
+            fn mounts(&self) -> Vec<MountPoint> {
+                vec![MountPoint::readwrite(
+                    "/notes.txt",
+                    MountSource::text_file("Note α"),
+                    "notes",
+                )]
+            }
+        }
+        let mut registry = fixture_registry();
+        registry.register(Notes);
         let collected = collect_capabilities(
-            &["sample_data".to_string(), "current_time".to_string()],
+            &["sample_data".into(), "notes".into(), "current_time".into()],
             &registry,
             &test_ctx(),
         )
         .await;
-
-        assert_eq!(collected.mounts.len(), 1);
-        // Verify expected capabilities were applied (including auto-resolved dependency)
-        assert!(
-            collected
-                .applied_ids
-                .iter()
-                .any(|id| id == "session_file_system")
+        assert_eq!(
+            collected.applied_ids,
+            [
+                "session_file_system",
+                "sample_data",
+                "notes",
+                "current_time"
+            ]
         );
-        assert!(collected.applied_ids.iter().any(|id| id == "sample_data"));
-        assert!(collected.applied_ids.iter().any(|id| id == "current_time"));
-    }
-
-    #[test]
-    fn test_sample_data_capability() {
-        let registry = fixture_registry();
-        let cap = registry.get("sample_data").unwrap();
-
-        assert_eq!(cap.id(), "sample_data");
-        assert_eq!(cap.name(), "Sample Data");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-
-        // Has system prompt but no tools
-        assert!(cap.system_prompt_addition().is_some());
-        assert!(cap.tools().is_empty());
-
-        // Has mounts
-        assert!(!cap.mounts().is_empty());
+        assert_eq!(
+            collected.mounts,
+            vec![
+                MountPoint::readonly(
+                    "/samples",
+                    MountDirectoryBuilder::new()
+                        .file("users.json", "[]")
+                        .build(),
+                    "sample_data"
+                ),
+                MountPoint::readwrite("/notes.txt", MountSource::text_file("Note α"), "notes"),
+            ]
+        );
     }
 
     // =========================================================================
@@ -3861,27 +3659,13 @@ mod tests {
 
     #[test]
     fn test_resolve_dependencies_with_deps() {
-        let registry = fixture_registry();
-
-        // SampleData depends on FileSystem
-        let resolved = resolve_dependencies(&["sample_data".to_string()], &registry).unwrap();
-
-        // FileSystem should be resolved before SampleData
-        assert_eq!(resolved.resolved_ids.len(), 2);
-        let fs_pos = resolved
-            .resolved_ids
-            .iter()
-            .position(|id| id == "session_file_system")
-            .unwrap();
-        let sd_pos = resolved
-            .resolved_ids
-            .iter()
-            .position(|id| id == "sample_data")
-            .unwrap();
-        assert!(fs_pos < sd_pos, "FileSystem should come before SampleData");
-
-        // FileSystem was added as a dependency
-        assert_eq!(resolved.added_as_dependencies, vec!["session_file_system"]);
+        let resolved = resolve_dependencies(&["sample_data".into()], &fixture_registry()).unwrap();
+        assert_eq!(
+            resolved.resolved_ids,
+            ["session_file_system", "sample_data"]
+        );
+        assert_eq!(resolved.added_as_dependencies, ["session_file_system"]);
+        assert_eq!(resolved.user_selected, ["sample_data"]);
     }
 
     #[test]
@@ -3938,24 +3722,6 @@ mod tests {
         // Unknown capability
         let deps = get_dependencies("unknown", &registry);
         assert!(deps.is_empty());
-    }
-
-    #[test]
-    fn test_sample_data_has_dependency() {
-        let registry = fixture_registry();
-        let cap = registry.get("sample_data").unwrap();
-
-        let deps = cap.dependencies();
-        assert_eq!(deps.len(), 1);
-        assert_eq!(deps[0], "session_file_system");
-    }
-
-    #[test]
-    fn test_noop_has_no_dependencies() {
-        let registry = fixture_registry();
-        let cap = registry.get("noop").unwrap();
-
-        assert!(cap.dependencies().is_empty());
     }
 
     // Test for circular dependency detection
@@ -4074,82 +3840,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_collect_capabilities_with_configs_with_filter_provider() {
-        let mut registry = CapabilityRegistry::new();
-        registry.register(FilterTestCapability { priority: 0 });
-
-        let configs = vec![AgentCapabilityConfig::with_config(
-            CapabilityId::new("filter_test"),
-            serde_json::json!({ "search": "hello" }),
-        )];
-
-        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-
-        assert_eq!(collected.message_filter_providers.len(), 1);
-        assert!(collected.has_message_filters());
-    }
-
-    #[tokio::test]
-    async fn test_collect_capabilities_with_configs_filter_priority_order() {
-        // Create capabilities with different priorities
-        struct HighPriorityCapability;
-        struct LowPriorityCapability;
-
-        impl Capability for HighPriorityCapability {
-            fn id(&self) -> &str {
-                "high_priority"
-            }
-            fn name(&self) -> &str {
-                "High Priority"
-            }
-            fn description(&self) -> &str {
-                "Test"
-            }
-            fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
-                Some(Arc::new(FilterTestProvider { priority: 10 }))
-            }
-        }
-
-        impl Capability for LowPriorityCapability {
-            fn id(&self) -> &str {
-                "low_priority"
-            }
-            fn name(&self) -> &str {
-                "Low Priority"
-            }
-            fn description(&self) -> &str {
-                "Test"
-            }
-            fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
-                Some(Arc::new(FilterTestProvider { priority: -5 }))
-            }
-        }
-
-        let mut registry = CapabilityRegistry::new();
-        registry.register(HighPriorityCapability);
-        registry.register(LowPriorityCapability);
-
-        // Add in order: high priority first, low priority second
-        let configs = vec![
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new("high_priority"),
-                serde_json::json!({}),
-            ),
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new("low_priority"),
-                serde_json::json!({}),
-            ),
-        ];
-
-        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-
-        // Should be sorted by priority (lower first)
-        assert_eq!(collected.message_filter_providers.len(), 2);
-        assert_eq!(collected.message_filter_providers[0].0.priority(), -5);
-        assert_eq!(collected.message_filter_providers[1].0.priority(), 10);
-    }
-
-    #[tokio::test]
     async fn test_collected_capabilities_apply_message_filters() {
         let mut registry = CapabilityRegistry::new();
         registry.register(FilterTestCapability { priority: 0 });
@@ -4160,6 +3850,8 @@ mod tests {
         )];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+
+        assert!(collected.has_message_filters());
 
         // Apply filters to a query
         let session_id: SessionId = Uuid::now_v7().into();
@@ -4250,17 +3942,6 @@ mod tests {
         assert!(matches!(&query.filters[0], MessageFilter::Search(s) if s == "beta"));
         assert!(matches!(&query.filters[1], MessageFilter::Search(s) if s == "alpha"));
         assert!(matches!(&query.filters[2], MessageFilter::Search(s) if s == "gamma"));
-    }
-
-    #[test]
-    fn test_capability_without_message_filter_returns_none() {
-        let registry = fixture_registry();
-
-        let noop = registry.get("noop").unwrap();
-        assert!(noop.message_filter_provider().is_none());
-
-        let current_time = registry.get("current_time").unwrap();
-        assert!(current_time.message_filter_provider().is_none());
     }
 
     #[tokio::test]
@@ -4464,6 +4145,12 @@ mod tests {
         fn id(&self) -> &str {
             "inner_filter"
         }
+        fn tools(&self) -> Vec<Box<dyn Tool>> {
+            panic!("fast-path collection must not instantiate tools")
+        }
+        fn system_prompt_addition(&self) -> Option<&str> {
+            panic!("fast-path collection must not collect prompts")
+        }
         fn name(&self) -> &str {
             "Inner Filter"
         }
@@ -4476,7 +4163,9 @@ mod tests {
     }
     struct SentinelFilter;
     impl MessageFilterProvider for SentinelFilter {
-        fn apply_filters(&self, _query: &mut MessageQuery, _config: &serde_json::Value) {}
+        fn apply_filters(&self, query: &mut MessageQuery, config: &serde_json::Value) {
+            query.limit = config["limit"].as_i64();
+        }
     }
     impl Capability for DelegatingFilterCap {
         fn id(&self) -> &str {
@@ -4509,7 +4198,7 @@ mod tests {
 
         let configs = vec![AgentCapabilityConfig::with_config(
             CapabilityId::new("delegating_filter"),
-            serde_json::json!({}),
+            serde_json::json!({"limit": 17}),
         )];
 
         // Outer has no message_filter_provider; inner does. resolve_for_model
@@ -4520,6 +4209,9 @@ mod tests {
             1,
             "provider from resolved inner capability must be collected"
         );
+        let mut query = MessageQuery::default();
+        collected.apply_message_filters(&mut query);
+        assert_eq!(query.limit, Some(17));
     }
 
     struct DelegatingMvpCap {
@@ -4532,6 +4224,12 @@ mod tests {
         fn id(&self) -> &str {
             "inner_mvp"
         }
+        fn tools(&self) -> Vec<Box<dyn Tool>> {
+            panic!("fast-path collection must not instantiate tools")
+        }
+        fn system_prompt_addition(&self) -> Option<&str> {
+            panic!("fast-path collection must not collect prompts")
+        }
         fn name(&self) -> &str {
             "Inner MVP"
         }
@@ -4541,19 +4239,24 @@ mod tests {
         fn model_view_provider(
             &self,
         ) -> Option<std::sync::Arc<dyn crate::capabilities::ModelViewProvider>> {
-            // Return a no-op provider to prove delegation reached here.
-            struct NoopMvp;
-            impl crate::capabilities::ModelViewProvider for NoopMvp {
+            // Retain the input and expose the forwarded config and context.
+            struct AppendingMvp;
+            impl crate::capabilities::ModelViewProvider for AppendingMvp {
                 fn apply_model_view(
                     &self,
-                    messages: Vec<Message>,
-                    _config: &serde_json::Value,
-                    _context: &ModelViewContext<'_>,
+                    mut messages: Vec<Message>,
+                    config: &serde_json::Value,
+                    context: &ModelViewContext<'_>,
                 ) -> Vec<Message> {
+                    messages.push(Message::user(format!(
+                        "{}:{}",
+                        config["suffix"].as_str().unwrap(),
+                        context.session_id
+                    )));
                     messages
                 }
             }
-            Some(std::sync::Arc::new(NoopMvp))
+            Some(std::sync::Arc::new(AppendingMvp))
         }
     }
     impl Capability for DelegatingMvpCap {
@@ -4571,8 +4274,8 @@ mod tests {
         ) -> Option<std::sync::Arc<dyn crate::capabilities::ModelViewProvider>> {
             None // outer provides nothing
         }
-        fn resolve_for_model(&self, _model: Option<&str>) -> Option<&dyn Capability> {
-            Some(&*self.inner)
+        fn resolve_for_model(&self, model: Option<&str>) -> Option<&dyn Capability> {
+            (model == Some("selected-model")).then_some(&*self.inner as &dyn Capability)
         }
     }
 
@@ -4589,139 +4292,42 @@ mod tests {
 
         let configs = vec![AgentCapabilityConfig::with_config(
             CapabilityId::new("delegating_mvp"),
-            serde_json::json!({}),
+            serde_json::json!({"suffix": "delegated"}),
         )];
 
         // Outer has no model_view_provider; inner does. resolve_for_model
         // delegates to inner so the provider should be collected.
-        let collected = collect_model_view_providers(&configs, &registry, None);
+        let collected = collect_model_view_providers(&configs, &registry, Some("selected-model"));
         assert_eq!(
             collected.model_view_providers.len(),
             1,
             "provider from resolved inner capability must be collected"
         );
+        assert!(
+            collect_model_view_providers(&configs, &registry, Some("other-model"))
+                .model_view_providers
+                .is_empty()
+        );
+        let session_id = SessionId::from_seed(42);
+        let output = collected.apply_model_view(
+            vec![Message::user("original")],
+            &ModelViewContext {
+                session_id,
+                prior_usage: None,
+            },
+        );
+        assert_eq!(
+            output.iter().map(Message::text).collect::<Vec<_>>(),
+            [
+                Some("original"),
+                Some(format!("delegated:{session_id}").as_str())
+            ]
+        );
     }
 
     // =========================================================================
-    // Harness capability tool registration tests
-    //
-    // Regression tests for the "Tool not found: bash" bug where harness
-    // capabilities were not used for tool registration when agent_id was absent.
-    // These tests verify that capability-provided tools (especially bash) are
-    // correctly produced by collect_capabilities.
+    // Default selection and alias resolution
     // =========================================================================
-
-    #[tokio::test]
-    async fn test_bashkit_shell_capability_produces_bash_tool() {
-        let registry = fixture_registry();
-        let collected =
-            collect_capabilities(&["bashkit_shell".to_string()], &registry, &test_ctx()).await;
-
-        let tool_names: Vec<&str> = collected
-            .tool_definitions
-            .iter()
-            .map(|t| t.name())
-            .collect();
-        assert!(
-            tool_names.contains(&"bash"),
-            "bashkit_shell capability must produce 'bash' tool, got: {:?}",
-            tool_names
-        );
-        assert!(
-            !collected.tools.is_empty(),
-            "bashkit_shell must provide tool implementations"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_generic_harness_capability_set_produces_bash_tool() {
-        // These are the exact capability IDs from the Generic Harness seed data.
-        // If any are renamed or removed, this test catches the regression.
-        let generic_harness_caps = vec![
-            "session_file_system".to_string(),
-            "bashkit_shell".to_string(),
-            "web_fetch".to_string(),
-            "session_storage".to_string(),
-            "session".to_string(),
-            "agent_instructions".to_string(),
-            "skills".to_string(),
-            "infinity_context".to_string(),
-            "auto_tool_search".to_string(),
-        ];
-
-        let registry = fixture_registry();
-        let collected = collect_capabilities(&generic_harness_caps, &registry, &test_ctx()).await;
-
-        let tool_names: Vec<&str> = collected
-            .tool_definitions
-            .iter()
-            .map(|t| t.name())
-            .collect();
-        assert!(
-            tool_names.contains(&"bash"),
-            "Generic Harness capabilities must produce 'bash' tool, got: {:?}",
-            tool_names
-        );
-    }
-
-    #[tokio::test]
-    async fn test_collect_capabilities_tool_count_matches_definitions() {
-        // Ensure collected tools (implementations) match tool_definitions count.
-        // A mismatch means some tools won't be executable at runtime.
-        let registry = fixture_registry();
-        let collected =
-            collect_capabilities(&["bashkit_shell".to_string()], &registry, &test_ctx()).await;
-
-        assert_eq!(
-            collected.tools.len(),
-            collected.tool_definitions.len(),
-            "tool implementations ({}) must match tool definitions ({})",
-            collected.tools.len(),
-            collected.tool_definitions.len(),
-        );
-    }
-
-    /// Regression test for EVE-189: collect_capabilities must resolve dependencies
-    /// so that transitive capabilities register their tools even when not explicitly
-    /// listed. Uses sample_data (depends on session_file_system) as the test case.
-    #[tokio::test]
-    async fn test_collect_capabilities_resolves_dependencies() {
-        // sample_data depends on session_file_system
-        // Passing only sample_data should still include session_file_system tools
-        let registry = fixture_registry();
-        let collected =
-            collect_capabilities(&["sample_data".to_string()], &registry, &test_ctx()).await;
-
-        // Verify the transitive dependency capability itself was applied
-        assert!(
-            collected
-                .applied_ids
-                .iter()
-                .any(|id| id == "session_file_system"),
-            "collect_capabilities must apply session_file_system as a dependency; applied_ids: {:?}",
-            collected.applied_ids
-        );
-
-        let tool_names: Vec<&str> = collected
-            .tool_definitions
-            .iter()
-            .map(|t| t.name())
-            .collect();
-
-        // session_file_system provides these tools; both should be present
-        assert!(
-            tool_names.contains(&"read_file") && tool_names.contains(&"write_file"),
-            "collect_capabilities must resolve dependencies and include dependency tools, got: {:?}",
-            tool_names
-        );
-
-        // Also verify tool implementations match definitions (dependency tools are executable)
-        assert_eq!(
-            collected.tools.len(),
-            collected.tool_definitions.len(),
-            "dependency-added tools must have implementations, not just definitions"
-        );
-    }
 
     #[test]
     fn test_defaults_do_not_include_bash() {
@@ -4737,34 +4343,6 @@ mod tests {
     // =========================================================================
     // Feature tests
     // =========================================================================
-
-    #[test]
-    fn test_capability_features_default_empty() {
-        let registry = fixture_registry();
-
-        // Most capabilities have no features
-        let noop = registry.get("noop").unwrap();
-        assert!(noop.features().is_empty());
-
-        let current_time = registry.get("current_time").unwrap();
-        assert!(current_time.features().is_empty());
-    }
-
-    #[test]
-    fn test_file_system_capability_features() {
-        let registry = fixture_registry();
-
-        let fs = registry.get("session_file_system").unwrap();
-        assert_eq!(fs.features(), vec!["file_system"]);
-    }
-
-    #[test]
-    fn test_bashkit_shell_capability_features() {
-        let registry = fixture_registry();
-
-        let bash = registry.get("bashkit_shell").unwrap();
-        assert_eq!(bash.features(), vec!["file_system"]);
-    }
 
     #[test]
     fn test_alias_resolves_to_canonical_capability() {
@@ -4836,110 +4414,11 @@ mod tests {
     }
 
     #[test]
-    fn kernel_capability_features_are_declared_on_the_capability() {
-        let registry = fixture_registry();
-
-        // `session_storage`/`session_sql_database` moved to the product crate
-        // (EVE-886); their feature declarations are covered there. What core
-        // owns is the mechanism: a registered capability's `features()` is what
-        // `compute_features` reports.
-        let capability = registry
-            .get("feature_fixture")
-            .expect("feature fixture must be registered");
-        assert_eq!(
-            compute_features(&["feature_fixture".to_string()], &registry),
-            capability.features()
-        );
-    }
-
-    #[test]
-    fn test_sample_data_capability_features() {
-        let registry = fixture_registry();
-
-        let sample = registry.get("sample_data").unwrap();
-        assert_eq!(sample.features(), vec!["file_system"]);
-    }
-
-    #[test]
     fn test_compute_features_empty() {
         let registry = CapabilityRegistry::new();
 
         let features = compute_features(&[], &registry);
         assert!(features.is_empty());
-    }
-
-    #[test]
-    fn test_compute_features_single_capability() {
-        let registry = fixture_registry();
-
-        let features = compute_features(&["feature_fixture".to_string()], &registry);
-        assert_eq!(
-            features,
-            registry
-                .get("feature_fixture")
-                .expect("feature fixture must be registered")
-                .features()
-        );
-    }
-
-    #[test]
-    fn test_compute_features_multiple_capabilities() {
-        let registry = fixture_registry();
-
-        let features = compute_features(
-            &[
-                "session_file_system".to_string(),
-                "session_storage".to_string(),
-            ],
-            &registry,
-        );
-        assert!(features.contains(&"file_system".to_string()));
-        assert!(features.contains(&"secrets".to_string()));
-        assert!(features.contains(&"key_value".to_string()));
-    }
-
-    #[test]
-    fn test_compute_features_deduplicates() {
-        let registry = fixture_registry();
-
-        // Both session_file_system and bashkit_shell contribute "file_system"
-        let features = compute_features(
-            &[
-                "session_file_system".to_string(),
-                "bashkit_shell".to_string(),
-            ],
-            &registry,
-        );
-        let file_system_count = features.iter().filter(|f| *f == "file_system").count();
-        assert_eq!(file_system_count, 1, "file_system should appear only once");
-    }
-
-    #[test]
-    fn test_compute_features_includes_dependency_features() {
-        let registry = fixture_registry();
-
-        // bashkit_shell depends on session_file_system; both contribute "file_system"
-        let features = compute_features(&["bashkit_shell".to_string()], &registry);
-        assert!(features.contains(&"file_system".to_string()));
-    }
-
-    #[test]
-    fn test_compute_features_generic_harness_set() {
-        let registry = fixture_registry();
-
-        // Typical Generic Harness capabilities
-        let features = compute_features(
-            &[
-                "session_file_system".to_string(),
-                "bashkit_shell".to_string(),
-                "session_storage".to_string(),
-                "session".to_string(),
-            ],
-            &registry,
-        );
-        assert!(features.contains(&"file_system".to_string()));
-        assert!(features.contains(&"secrets".to_string()));
-        assert!(features.contains(&"key_value".to_string()));
     }
 
     #[test]
@@ -4961,28 +4440,15 @@ mod tests {
 
     #[test]
     fn test_risk_level_serde_roundtrip() {
-        let high = RiskLevel::High;
-        let json = serde_json::to_string(&high).unwrap();
-        assert_eq!(json, "\"high\"");
-        let back: RiskLevel = serde_json::from_str(&json).unwrap();
-        assert_eq!(back, RiskLevel::High);
-    }
-
-    #[test]
-    fn test_capability_risk_levels() {
-        let registry = fixture_registry();
-
-        // bashkit_shell is High (code execution requires admin gating)
-        let bash = registry.get("bashkit_shell").unwrap();
-        assert_eq!(bash.risk_level(), RiskLevel::High);
-
-        // web_fetch is High (network access requires admin gating)
-        let fetch = registry.get("web_fetch").unwrap();
-        assert_eq!(fetch.risk_level(), RiskLevel::High);
-
-        // Default capabilities should be Low
-        let noop = registry.get("noop").unwrap();
-        assert_eq!(noop.risk_level(), RiskLevel::Low);
+        for (level, wire) in [
+            (RiskLevel::Low, "\"low\""),
+            (RiskLevel::Medium, "\"medium\""),
+            (RiskLevel::High, "\"high\""),
+        ] {
+            assert_eq!(serde_json::to_string(&level).unwrap(), wire);
+            assert_eq!(serde_json::from_str::<RiskLevel>(wire).unwrap(), level);
+        }
+        assert!(serde_json::from_str::<RiskLevel>("\"critical\"").is_err());
     }
 
     // ========================================================================
@@ -5057,6 +4523,8 @@ mod tests {
                 assert!(entries.contains_key("scripts/a.sh"));
                 let parsed = crate::skill::parse_skill_md(skill_md_from_entries(entries)).unwrap();
                 assert_eq!(parsed.name, "alpha-skill");
+                assert_eq!(parsed.description, "Alpha skill desc");
+                assert_eq!(parsed.instructions, "# Alpha\nDo alpha.");
                 assert!(parsed.user_invocable);
             }
             _ => panic!("Expected InlineDirectory"),
@@ -5070,6 +4538,8 @@ mod tests {
             MountSource::InlineDirectory { entries } => {
                 let parsed = crate::skill::parse_skill_md(skill_md_from_entries(entries)).unwrap();
                 assert!(!parsed.user_invocable);
+                assert_eq!(parsed.name, "beta-skill");
+                assert_eq!(parsed.instructions, "# Beta\nDo beta.");
             }
             _ => panic!("Expected InlineDirectory"),
         }
@@ -5118,6 +4588,13 @@ mod tests {
                     config_overlay: None,
                 },
                 CapabilityLocalization {
+                    locale: "uk-UA",
+                    name: Some("Регіональна"),
+                    description: None,
+                    config_description: None,
+                    config_overlay: None,
+                },
+                CapabilityLocalization {
                     locale: "uk",
                     name: Some("Локалізована"),
                     description: Some("Український опис"),
@@ -5131,11 +4608,14 @@ mod tests {
     #[test]
     fn localized_name_falls_back_exact_language_then_base() {
         let cap = LocalizedCapability;
-        // Region tag resolves through the language family.
-        assert_eq!(cap.localized_name(Some("uk-UA")), "Локалізована");
+        // Exact region wins; an absent regional field still falls back by language.
+        assert_eq!(cap.localized_name(Some("uk-UA")), "Регіональна");
         assert_eq!(cap.localized_name(Some("uk")), "Локалізована");
+        assert_eq!(cap.localized_name(Some("uk-CA")), "Локалізована");
+        assert_eq!(cap.localized_name(Some(" UK_ua ")), "Регіональна");
+        assert_eq!(cap.localized_description(Some("uk-UA")), "Український опис");
         // Underscore-separated tags are normalized.
-        assert_eq!(cap.localized_name(Some("uk_UA")), "Локалізована");
+        assert_eq!(cap.localized_name(Some("uk_UA")), "Регіональна");
         // Unsupported locales and None fall back to the base name.
         assert_eq!(cap.localized_name(Some("fr-FR")), "Localized");
         assert_eq!(cap.localized_name(None), "Localized");
@@ -5161,5 +4641,203 @@ mod tests {
         );
         // Capabilities without localizations have no config description.
         assert_eq!(HostAnnotatedCapability.describe_schema(Some("uk")), None);
+    }
+
+    #[tokio::test]
+    async fn collection_preserves_exact_tool_identity_schema_and_attribution() {
+        let registry = fixture_registry();
+        for (ids, expected) in [
+            (
+                vec!["test_math"],
+                vec![
+                    ("add", "test_math", "Test Math"),
+                    ("subtract", "test_math", "Test Math"),
+                    ("multiply", "test_math", "Test Math"),
+                    ("divide", "test_math", "Test Math"),
+                ],
+            ),
+            (
+                vec!["test_weather"],
+                vec![
+                    ("get_weather", "test_weather", "Test Weather"),
+                    ("get_forecast", "test_weather", "Test Weather"),
+                ],
+            ),
+            (
+                vec!["sample_data"],
+                vec![
+                    ("read_file", "session_file_system", "Fixture Filesystem"),
+                    ("write_file", "session_file_system", "Fixture Filesystem"),
+                ],
+            ),
+            (
+                vec!["bashkit_shell", "test_weather"],
+                vec![
+                    ("read_file", "session_file_system", "Fixture Filesystem"),
+                    ("write_file", "session_file_system", "Fixture Filesystem"),
+                    ("bash", "bashkit_shell", "Fixture Bash"),
+                    ("get_weather", "test_weather", "Test Weather"),
+                    ("get_forecast", "test_weather", "Test Weather"),
+                ],
+            ),
+        ] {
+            let ids: Vec<_> = ids.into_iter().map(String::from).collect();
+            let collected = collect_capabilities(&ids, &registry, &test_ctx()).await;
+            assert_eq!(
+                collected.tools.iter().map(|t| t.name()).collect::<Vec<_>>(),
+                expected.iter().map(|(n, _, _)| *n).collect::<Vec<_>>()
+            );
+            assert_eq!(collected.tool_definitions.len(), expected.len());
+            for (definition, (name, id, label)) in collected.tool_definitions.iter().zip(expected) {
+                assert_eq!(definition.name(), name);
+                let hints = definition.hints();
+                assert_eq!(hints.capability_id.as_deref(), Some(id));
+                assert_eq!(hints.capability_name.as_deref(), Some(label));
+                let ToolDefinition::Builtin(tool) = definition else {
+                    panic!("expected builtin")
+                };
+                let schema = if name == "bash" {
+                    serde_json::json!({"type":"object"})
+                } else {
+                    serde_json::json!({"type":"object","properties":{},"additionalProperties":false})
+                };
+                assert_eq!(tool.parameters, schema);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn prompt_collection_preserves_exact_sections_attribution_and_base_order() {
+        let registry = fixture_registry();
+        let ids = vec!["prompt_tool_fixture".into(), "second_prompt_fixture".into()];
+        let collected = collect_capabilities(&ids, &registry, &test_ctx()).await;
+        let first = "<capability id=\"prompt_tool_fixture\">\nTask Management uses the write_todos tool.\n</capability>";
+        let second = "<capability id=\"second_prompt_fixture\">\nA second capability prompt contribution.\n</capability>";
+        assert_eq!(collected.system_prompt_parts, vec![first, second]);
+        assert_eq!(
+            collected.system_prompt_attributions,
+            vec![
+                SystemPromptAttribution {
+                    capability_id: ids[0].clone(),
+                    content: first.into()
+                },
+                SystemPromptAttribution {
+                    capability_id: ids[1].clone(),
+                    content: second.into()
+                }
+            ]
+        );
+        assert_eq!(
+            collected.system_prompt_prefix(),
+            Some(format!("{first}\n\n{second}"))
+        );
+        let applied = apply_capabilities(
+            RuntimeAgent::new("Base.", "fixture-model"),
+            &ids,
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+        assert_eq!(
+            applied.runtime_agent.system_prompt,
+            format!("<system-prompt>\nBase.\n</system-prompt>\n\n{first}\n\n{second}")
+        );
+        assert!(applied.tool_registry.has("write_todos"));
+        assert_eq!(applied.tool_registry.len(), 1);
+        for (base, addition, expected) in [
+            ("Base.", None, "Base."),
+            ("Base.", Some(""), "Base."),
+            ("", Some("Extra."), "Extra."),
+            (
+                "<system-prompt>Base.</system-prompt>",
+                Some("Extra."),
+                "<system-prompt>Base.</system-prompt>\n\nExtra.",
+            ),
+        ] {
+            assert_eq!(compose_system_prompt(base, addition), expected);
+        }
+    }
+
+    struct DependencyFixture {
+        id: String,
+        deps: Vec<&'static str>,
+        features: Vec<&'static str>,
+    }
+    impl Capability for DependencyFixture {
+        fn id(&self) -> &str {
+            &self.id
+        }
+        fn name(&self) -> &str {
+            &self.id
+        }
+        fn description(&self) -> &str {
+            "Dependency fixture"
+        }
+        fn dependencies(&self) -> Vec<&'static str> {
+            self.deps.clone()
+        }
+        fn features(&self) -> Vec<&'static str> {
+            self.features.clone()
+        }
+    }
+
+    #[test]
+    fn feature_projection_preserves_order_and_distinct_dependency_features() {
+        let mut registry = CapabilityRegistry::new();
+        registry.register(DependencyFixture {
+            id: "base".into(),
+            deps: vec![],
+            features: vec!["base-only", "shared"],
+        });
+        registry.register(DependencyFixture {
+            id: "parent".into(),
+            deps: vec!["base"],
+            features: vec!["parent-only", "shared"],
+        });
+        registry.register(DependencyFixture {
+            id: "other".into(),
+            deps: vec![],
+            features: vec!["other-only"],
+        });
+        assert_eq!(
+            compute_features(&["parent".into()], &registry),
+            vec!["base-only", "shared", "parent-only"]
+        );
+        assert_eq!(
+            compute_features(
+                &[
+                    "other".into(),
+                    "parent".into(),
+                    "base".into(),
+                    "parent".into()
+                ],
+                &registry
+            ),
+            vec!["other-only", "base-only", "shared", "parent-only"]
+        );
+    }
+
+    #[test]
+    fn dependency_limit_accepts_one_hundred_and_rejects_one_hundred_one() {
+        let mut registry = CapabilityRegistry::new();
+        let ids: Vec<_> = (0..101).map(|i| format!("cap-{i}")).collect();
+        for id in &ids {
+            registry.register(DependencyFixture {
+                id: id.clone(),
+                deps: vec![],
+                features: vec![],
+            });
+        }
+        let resolved = resolve_dependencies(&ids[..100], &registry).unwrap();
+        assert_eq!(resolved.resolved_ids, ids[..100]);
+        assert_eq!(resolved.user_selected, ids[..100]);
+        assert!(resolved.added_as_dependencies.is_empty());
+        assert_eq!(
+            resolve_dependencies(&ids, &registry).unwrap_err(),
+            DependencyError::TooManyCapabilities {
+                count: 101,
+                max: 100
+            }
+        );
     }
 }
