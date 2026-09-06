@@ -154,17 +154,38 @@ impl ProviderEndpoint {
             if path.is_empty() {
                 return base.to_string();
             }
-            let suffix = format!("/{}", path.trim_start_matches('/'));
             if let Ok(mut url) = url::Url::parse(base) {
+                // Operations can carry protocol query parameters (Gemini's
+                // alt=sse). Keep them out of set_path, which escapes ? and #.
+                let (path, fragment) = path
+                    .split_once('#')
+                    .map_or((path, None), |(p, f)| (p, Some(f)));
+                let (path, query) = path
+                    .split_once('?')
+                    .map_or((path, None), |(p, q)| (p, Some(q)));
+                let suffix = format!("/{}", path.trim_start_matches('/'));
                 // Match actual path segments, never a hostname or suffix of
                 // another segment; preserve query parameters while appending.
                 let existing = url.path().trim_end_matches('/');
                 if !existing.ends_with(&suffix) {
                     url.set_path(&format!("{existing}{suffix}"));
                 }
+                if let Some(query) = query {
+                    let combined = match url.query() {
+                        Some(existing) if !existing.is_empty() && !query.is_empty() => {
+                            format!("{existing}&{query}")
+                        }
+                        Some(existing) if query.is_empty() => existing.to_string(),
+                        _ => query.to_string(),
+                    };
+                    url.set_query(Some(&combined));
+                }
+                if let Some(fragment) = fragment {
+                    url.set_fragment(Some(fragment));
+                }
                 url.to_string()
             } else {
-                format!("{base}{suffix}")
+                format!("{base}/{}", path.trim_start_matches('/'))
             }
         })
     }
@@ -538,6 +559,21 @@ mod tests {
                 "https://service.example/v1/notchat/chat",
             ),
             ("https://chat", "chat", "https://chat/chat"),
+            (
+                "https://service.example/v1beta",
+                "models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+                "https://service.example/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+            ),
+            (
+                "https://service.example/v1?token=a%2Fb#base",
+                "chat?alt=sse#operation",
+                "https://service.example/v1/chat?token=a%2Fb&alt=sse#operation",
+            ),
+            (
+                "https://service.example/v1/chat?token=x",
+                "chat?alt=sse",
+                "https://service.example/v1/chat?token=x&alt=sse",
+            ),
             (
                 "https://service.example/v1?token=x",
                 "chat",
