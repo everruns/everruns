@@ -609,7 +609,9 @@ impl SessionFileSystem for MountFs {
         match path_pattern {
             Some(pp) => {
                 let matcher = crate::session_path::GrepPathPattern::new(pp)?;
-                if matcher.is_glob() && (!pp.starts_with('/') || pp.starts_with(WORKSPACE_MOUNT)) {
+                if matcher.is_glob()
+                    && (!pp.starts_with('/') || mount_suffix(WORKSPACE_MOUNT, pp).is_some())
+                {
                     let mut matches = Vec::new();
                     for resolved in self.grep_mounts() {
                         matches.extend(
@@ -670,7 +672,7 @@ impl SessionFileSystem for MountFs {
     ) -> Result<GrepSearchResult> {
         if let Some(path_pattern) = options.path_pattern.as_deref()
             && path_pattern.starts_with('/')
-            && !path_pattern.starts_with(WORKSPACE_MOUNT)
+            && mount_suffix(WORKSPACE_MOUNT, path_pattern).is_none()
         {
             let resolved = self.resolve(path_pattern)?;
             let mut backend_options = options.clone();
@@ -686,15 +688,12 @@ impl SessionFileSystem for MountFs {
         if mounts.len() == 1 {
             let resolved = &mounts[0];
             let mut backend_options = options.clone();
-            backend_options.path_pattern = options.path_pattern.as_ref().map(|path| {
-                if path.starts_with(WORKSPACE_MOUNT) {
-                    path.strip_prefix(WORKSPACE_MOUNT)
-                        .unwrap_or(path)
-                        .to_string()
-                } else {
-                    path.clone()
-                }
-            });
+            // Only a complete mount segment is an alias; /workspacefoo is a
+            // distinct backend path and must not broaden the search to foo.
+            backend_options.path_pattern = options
+                .path_pattern
+                .as_ref()
+                .map(|path| mount_suffix(WORKSPACE_MOUNT, path).unwrap_or_else(|| path.clone()));
             return resolved
                 .backend
                 .grep_files_with_options(session_id, pattern, &backend_options)
@@ -918,76 +917,51 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn workspace_and_root_address_the_same_file() {
+    async fn primary_path_spellings_share_backend_keys_and_session() {
         let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
-        let fs = MountFs::new(backend);
-
-        // Write via the /workspace view; read back via the backend-native path.
-        fs.write_file(sid(), "/workspace/src/lib.rs", "X", "text")
-            .await
-            .unwrap();
-        let via_root = fs.read_file(sid(), "/src/lib.rs").await.unwrap().unwrap();
-        assert_eq!(via_root.content.as_deref(), Some("X"));
-        // The backend keyed it at /src/lib.rs (no /workspace in the keyspace).
-        assert_eq!(via_root.path, "/src/lib.rs");
-    }
-
-    #[tokio::test]
-    async fn relative_paths_resolve_against_cwd() {
-        let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
-        let fs = MountFs::new(backend);
+        let fs = MountFs::new(backend.clone());
         assert_eq!(fs.cwd(), "/workspace");
+        for (input, canonical, read_path) in [
+            ("/workspace/src/lib.rs", "/src/lib.rs", "/src/lib.rs"),
+            ("notes.md", "/notes.md", "/workspace/notes.md"),
+            (
+                "/outputs/call.stdout",
+                "/outputs/call.stdout",
+                "/workspace/outputs/call.stdout",
+            ),
+            ("./src/../other.txt", "/other.txt", "other.txt"),
+        ] {
+            let written = fs.write_file(sid(), input, input, "text").await.unwrap();
+            assert_eq!(written.path, canonical);
+            assert_eq!(written.session_id, sid().uuid());
+            let actual = fs.read_file(sid(), read_path).await.unwrap().unwrap();
+            assert_eq!(actual.path, canonical);
+            assert_eq!(actual.content.as_deref(), Some(input));
+            let stored = backend.read_file(sid(), canonical).await.unwrap().unwrap();
+            assert_eq!(stored.content.as_deref(), Some(input));
+        }
+    }
 
-        fs.write_file(sid(), "notes.md", "hi", "text")
-            .await
-            .unwrap();
-        // cwd is /workspace, so the relative write landed at backend /notes.md.
-        let read = fs.read_file(sid(), "/notes.md").await.unwrap().unwrap();
-        assert_eq!(read.content.as_deref(), Some("hi"));
+    #[test]
+    fn default_display_hides_host_identity_and_preserves_workspace_alias() {
+        for host_root in [None, Some("/host/root".to_string())] {
+            let fs = MountFs::new(Arc::new(FlatStore {
+                host_root,
+                ..Default::default()
+            }));
+            assert_eq!(fs.display_root(), "/workspace");
+            assert_eq!(fs.display_path("/src/lib.rs"), "/workspace/src/lib.rs");
+            assert_eq!(fs.display_path("/"), "/workspace");
+            assert_eq!(fs.resolve_path("src/lib.rs"), "/workspace/src/lib.rs");
+            assert_eq!(
+                fs.resolve_path("/workspace/src/lib.rs"),
+                "/workspace/src/lib.rs"
+            );
+        }
     }
 
     #[tokio::test]
-    async fn legacy_subtree_paths_pass_through_root_mount() {
-        let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
-        let fs = MountFs::new(backend);
-        // Internal callers write /outputs/... and /AGENTS.md directly.
-        fs.write_file(sid(), "/outputs/call.stdout", "out", "text")
-            .await
-            .unwrap();
-        let read = fs
-            .read_file(sid(), "/workspace/outputs/call.stdout")
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(read.content.as_deref(), Some("out"));
-    }
-
-    #[test]
-    fn display_uses_workspace_alias_for_primary() {
-        let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
-        let fs = MountFs::new(backend);
-        assert_eq!(fs.display_root(), "/workspace");
-        assert_eq!(fs.display_path("/src/lib.rs"), "/workspace/src/lib.rs");
-        assert_eq!(fs.display_path("/"), "/workspace");
-        assert_eq!(fs.resolve_path("src/lib.rs"), "/workspace/src/lib.rs");
-    }
-
-    #[test]
-    fn workspace_alias_is_the_default_even_over_a_host_backend() {
-        // The server-safe default: a real-disk-style backend's host identity is
-        // hidden behind /workspace unless the embedder opts in (#2776, TM-FS).
-        let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore {
-            host_root: Some("/host/root".to_string()),
-            ..Default::default()
-        });
-        let fs = MountFs::new(backend);
-        assert_eq!(fs.display_root(), "/workspace");
-        assert_eq!(fs.display_path("/src/lib.rs"), "/workspace/src/lib.rs");
-        assert_eq!(fs.resolve_path("src/lib.rs"), "/workspace/src/lib.rs");
-    }
-
-    #[test]
-    fn backend_display_exposes_host_paths_while_routing_is_unchanged() {
+    async fn backend_display_exposes_host_paths_while_routing_is_unchanged() {
         // The local-embedder opt-in (yolop / #258): presentation delegates to the
         // backend's real host path, but routing still treats /workspace as cwd and
         // resolves to the same backend key.
@@ -995,7 +969,7 @@ mod tests {
             host_root: Some("/host/root".to_string()),
             ..Default::default()
         });
-        let fs = MountFs::new(backend).with_backend_display();
+        let fs = MountFs::new(backend.clone()).with_backend_display();
 
         assert_eq!(fs.display_root(), "/host/root");
         assert_eq!(fs.display_path("/src/lib.rs"), "/host/root/src/lib.rs");
@@ -1007,10 +981,26 @@ mod tests {
             fs.resolve_path("/workspace/src/lib.rs"),
             "/host/root/src/lib.rs"
         );
+        fs.write_file(sid(), "src/lib.rs", "source", "text")
+            .await
+            .unwrap();
+        for input in ["src/lib.rs", "/workspace/src/lib.rs", "/src/lib.rs"] {
+            let file = fs.read_file(sid(), input).await.unwrap().unwrap();
+            assert_eq!(file.path, "/src/lib.rs");
+            assert_eq!(file.content.as_deref(), Some("source"));
+            assert_eq!(file.session_id, sid().uuid());
+        }
+        assert!(
+            backend
+                .read_file(sid(), "/host/root/src/lib.rs")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
-    #[test]
-    fn scoped_prompt_file_store_preserves_backend_native_policy() {
+    #[tokio::test]
+    async fn scoped_prompt_file_store_preserves_backend_native_policy() {
         // The regression guard for #258: when the embedder hands in a MountFs
         // that already opted into backend-native display, the shared prompt-store
         // wrapper must NOT bury it under a fresh `/workspace`-alias resolver.
@@ -1022,7 +1012,7 @@ mod tests {
             Arc::new(MountFs::new(backend).with_backend_display());
 
         let prompt_store =
-            scoped_prompt_file_store(embedder_store, crate::typed_id::WorkspaceId::from_seed(1));
+            scoped_prompt_file_store(embedder_store, crate::typed_id::WorkspaceId::from_seed(91));
 
         // Host path survives all the way to what the system prompt would render.
         assert_eq!(prompt_store.display_root(), "/host/root");
@@ -1035,10 +1025,26 @@ mod tests {
             prompt_store.resolve_path("/workspace/src/lib.rs"),
             "/host/root/src/lib.rs"
         );
+        let written = prompt_store
+            .write_file(sid(), "pin.txt", "scoped", "text")
+            .await
+            .unwrap();
+        assert_eq!(
+            written.session_id,
+            crate::typed_id::WorkspaceId::from_seed(91).uuid()
+        );
+        assert_ne!(written.session_id, sid().uuid());
+        let read = prompt_store
+            .read_file(SessionId::from_seed(999), "/workspace/pin.txt")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(read.session_id, written.session_id);
+        assert_eq!(read.content.as_deref(), Some("scoped"));
     }
 
-    #[test]
-    fn scoped_prompt_file_store_defaults_plain_backend_to_workspace_alias() {
+    #[tokio::test]
+    async fn scoped_prompt_file_store_defaults_plain_backend_to_workspace_alias() {
         // A multi-tenant/server store is not a mount resolver, so the wrapper
         // still mounts it under the host-agnostic `/workspace` alias — host paths
         // must never leak into model-visible output (#2776, TM-FS).
@@ -1048,14 +1054,33 @@ mod tests {
         });
 
         let prompt_store =
-            scoped_prompt_file_store(backend, crate::typed_id::WorkspaceId::from_seed(2));
+            scoped_prompt_file_store(backend, crate::typed_id::WorkspaceId::from_seed(92));
 
-        assert_eq!(prompt_store.display_root(), WORKSPACE_MOUNT);
-        assert!(
-            !prompt_store
-                .display_path("/src/lib.rs")
-                .contains("/host/root")
+        assert_eq!(prompt_store.display_root(), "/workspace");
+        assert_eq!(
+            prompt_store.display_path("/src/lib.rs"),
+            "/workspace/src/lib.rs"
         );
+        assert_eq!(
+            prompt_store.resolve_path("src/lib.rs"),
+            "/workspace/src/lib.rs"
+        );
+        let written = prompt_store
+            .write_file(sid(), "pin.txt", "scoped", "text")
+            .await
+            .unwrap();
+        assert_eq!(
+            written.session_id,
+            crate::typed_id::WorkspaceId::from_seed(92).uuid()
+        );
+        assert_ne!(written.session_id, sid().uuid());
+        let read = prompt_store
+            .read_file(SessionId::from_seed(999), "/workspace/pin.txt")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(read.session_id, written.session_id);
+        assert_eq!(read.content.as_deref(), Some("scoped"));
     }
 
     #[tokio::test]
@@ -1084,28 +1109,45 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn additional_mount_routes_to_its_backend() {
+    async fn additional_mount_selects_longest_segment_and_maps_backend_root() {
         let workspace: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
         let volume: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
-        let fs = MountFs::new(workspace).with_mount("/data", volume.clone(), "/");
-
-        fs.write_file(sid(), "/data/report.csv", "1,2,3", "text")
-            .await
-            .unwrap();
-        // It went to the volume backend at /report.csv, not the workspace.
-        let from_volume = volume
-            .read_file(sid(), "/report.csv")
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(from_volume.content.as_deref(), Some("1,2,3"));
+        let nested: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let fs = MountFs::new(workspace.clone())
+            .with_mount("/data/deep", nested.clone(), "/nested")
+            .with_mount("//data/./", volume.clone(), "/prefix/./");
+        for (input, owner, key) in [
+            ("/data/report.csv", &volume, "/prefix/report.csv"),
+            ("/data", &volume, "/prefix"),
+            ("/data/deep/file.txt", &nested, "/nested/file.txt"),
+            ("/data/deeper.txt", &volume, "/prefix/deeper.txt"),
+            ("/database/file.txt", &workspace, "/database/file.txt"),
+            ("/data/../primary.txt", &workspace, "/primary.txt"),
+        ] {
+            fs.write_file(sid(), input, input, "text").await.unwrap();
+            let actual = owner.read_file(sid(), key).await.unwrap().unwrap();
+            assert_eq!(actual.content.as_deref(), Some(input));
+            assert_eq!(actual.session_id, sid().uuid());
+            for other in [&workspace, &volume, &nested] {
+                if !Arc::ptr_eq(other, owner) {
+                    assert!(other.read_file(sid(), key).await.unwrap().is_none());
+                }
+            }
+        }
     }
 
     #[tokio::test]
     async fn additional_mount_outputs_use_virtual_paths() {
         let workspace: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
-        let volume: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
-        let fs = MountFs::new(workspace).with_mount("/workspace/roots/backend", volume, "/");
+        let volume: Arc<dyn SessionFileSystem> = Arc::new(FlatStore {
+            host_root: Some("/private/volume".into()),
+            ..Default::default()
+        });
+        let fs = MountFs::new(workspace).with_backend_display().with_mount(
+            "/workspace/roots/backend",
+            volume.clone(),
+            "/checkout",
+        );
 
         let written = fs
             .write_file(
@@ -1132,6 +1174,28 @@ mod tests {
             fs.resolve_path("/workspace/roots/backend/Cargo.toml"),
             "/workspace/roots/backend/Cargo.toml"
         );
+        assert_eq!(written.name, "Cargo.toml");
+        assert_eq!(stat.name, "Cargo.toml");
+        let read = fs
+            .read_file(sid(), "/workspace/roots/backend/Cargo.toml")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(read.path, written.path);
+        assert_eq!(read.content.as_deref(), Some("name = \"backend\""));
+        let stored = volume
+            .read_file(sid(), "/checkout/Cargo.toml")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.content, read.content);
+        let directory = fs
+            .create_directory(sid(), "/workspace/roots/backend/src")
+            .await
+            .unwrap();
+        assert_eq!(directory.path, "/workspace/roots/backend/src");
+        assert_eq!(directory.name, "src");
+        assert!(directory.is_directory);
     }
 
     #[tokio::test]
@@ -1153,12 +1217,15 @@ mod tests {
         .unwrap();
 
         let matches = fs.grep_files(sid(), "needle", None).await.unwrap();
-        let paths: Vec<_> = matches.into_iter().map(|m| m.path).collect();
+        let hits: Vec<_> = matches
+            .iter()
+            .map(|hit| (hit.path.as_str(), hit.line_number, hit.line.as_str()))
+            .collect();
         assert_eq!(
-            paths,
-            vec![
-                "/README.md".to_string(),
-                "/workspace/roots/backend/Cargo.toml".to_string()
+            hits,
+            [
+                ("/README.md", 1, "needle primary"),
+                ("/workspace/roots/backend/Cargo.toml", 1, "needle backend")
             ]
         );
     }
@@ -1179,8 +1246,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].path, "/src/lib.rs");
+        let hits: Vec<_> = matches
+            .iter()
+            .map(|hit| (hit.path.as_str(), hit.line_number, hit.line.as_str()))
+            .collect();
+        assert_eq!(hits, [("/src/lib.rs", 1, "needle")]);
     }
 
     #[tokio::test]
@@ -1200,18 +1270,27 @@ mod tests {
         .await
         .unwrap();
 
-        let paths: Vec<_> = fs
+        fs.write_file(
+            sid(),
+            "/workspace/roots/backend/decoy.md",
+            "needle decoy",
+            "text",
+        )
+        .await
+        .unwrap();
+        let matches = fs
             .grep_files(sid(), "needle", Some("**/*.toml"))
             .await
-            .unwrap()
-            .into_iter()
-            .map(|hit| hit.path)
+            .unwrap();
+        let hits: Vec<_> = matches
+            .iter()
+            .map(|hit| (hit.path.as_str(), hit.line_number, hit.line.as_str()))
             .collect();
         assert_eq!(
-            paths,
-            vec![
-                "/Cargo.toml".to_string(),
-                "/workspace/roots/backend/Cargo.toml".to_string()
+            hits,
+            [
+                ("/Cargo.toml", 1, "needle"),
+                ("/workspace/roots/backend/Cargo.toml", 1, "needle")
             ]
         );
     }
@@ -1223,5 +1302,44 @@ mod tests {
         assert!(fs.is_mount_resolver());
         let again = MountFs::wrap_if_needed(fs.clone());
         assert!(Arc::ptr_eq(&fs, &again));
+    }
+
+    #[tokio::test]
+    async fn grep_options_preserve_workspace_prefix_lookalike_paths() {
+        let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        backend
+            .write_file(sid(), "/workspacefoo/target.txt", "needle target", "text")
+            .await
+            .unwrap();
+        backend
+            .write_file(sid(), "/foo/decoy.txt", "needle decoy", "text")
+            .await
+            .unwrap();
+        let fs = MountFs::new(backend);
+        for (path, expected) in [
+            ("/workspacefoo", "/workspacefoo/target.txt"),
+            ("/workspacefoo/*.txt", "/workspacefoo/target.txt"),
+            ("/workspace/foo/*.txt", "/foo/decoy.txt"),
+        ] {
+            let result = fs
+                .grep_files_with_options(
+                    sid(),
+                    "needle",
+                    &GrepOptions {
+                        path_pattern: Some(path.into()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+            let paths: Vec<_> = result.matches.iter().map(|hit| hit.path.as_str()).collect();
+            assert_eq!(paths, [expected], "filter {path}");
+            let flat = fs.grep_files(sid(), "needle", Some(path)).await.unwrap();
+            assert_eq!(
+                flat.iter().map(|hit| hit.path.as_str()).collect::<Vec<_>>(),
+                [expected],
+                "flat filter {path}"
+            );
+        }
     }
 }
