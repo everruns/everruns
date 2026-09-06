@@ -3590,8 +3590,6 @@ mod tests {
         }
     }
 
-    // Inspect actual registry members so new models cannot silently escape the
-    // invariant checks through a second, manually maintained model list.
     #[test]
     fn cache_write_pricing_uses_disjoint_buckets_and_context_tier() {
         for (model, input) in [
@@ -3618,6 +3616,8 @@ mod tests {
         );
     }
 
+    // Inspect actual registry members so new models cannot silently escape the
+    // invariant checks through a second, manually maintained model list.
     #[test]
     fn registered_model_profiles_are_structurally_consistent() {
         assert!(!REGISTRY.is_empty());
