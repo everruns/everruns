@@ -1334,6 +1334,7 @@ mod tests {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
             LlmMessage {
                 role: LlmMessageRole::User,
@@ -1342,6 +1343,7 @@ mod tests {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
         ];
 
@@ -1720,6 +1722,7 @@ mod tests {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -1728,6 +1731,7 @@ mod tests {
                 tool_call_id: Some("get_weather".to_string()),
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
         ];
 
@@ -1746,6 +1750,7 @@ mod tests {
             tool_call_id: Some("get_weather".to_string()),
             phase: None,
             reasoning: Vec::new(),
+            configuration_update: None,
         }];
 
         let (_, contents) = GeminiChatDriver::convert_messages(&messages);

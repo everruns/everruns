@@ -240,6 +240,7 @@ impl JudgeClient for LlmJudgeClient {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            reasoning_state: None,
         };
 
         let response = driver
