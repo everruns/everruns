@@ -480,14 +480,15 @@ impl OpenResponsesProtocolChatDriver {
     /// marks them as deferred, and appends a `tool_search` entry.
     fn convert_tools_with_search(tools: &[ToolDefinition], threshold: usize) -> Vec<ResponsesTool> {
         use crate::tool_types::DeferrablePolicy;
-        use std::collections::HashMap;
+        use std::collections::BTreeMap;
 
         // Below threshold: fall back to standard conversion
         if tools.len() < threshold {
             return Self::convert_tools(tools);
         }
 
-        let mut namespaces: HashMap<String, Vec<ResponsesTool>> = HashMap::new();
+        // Stable namespace order also keeps the serialized prompt-cache fingerprint stable.
+        let mut namespaces: BTreeMap<String, Vec<ResponsesTool>> = BTreeMap::new();
         let mut ungrouped = vec![];
         let mut never_defer = vec![];
 
@@ -2314,206 +2315,6 @@ mod tests {
 
         let json = serde_json::to_value(make(Some("high"))).unwrap();
         assert_eq!(json["text"]["verbosity"], "high");
-    }
-
-    #[test]
-    fn test_build_prompt_cache_key_when_enabled() {
-        let mut metadata = std::collections::HashMap::new();
-        metadata.insert("session_id".to_string(), "session_abc123".to_string());
-        let config = LlmCallConfig {
-            speed: None,
-            verbosity: None,
-            model: "gpt-5.4".to_string(),
-            temperature: None,
-            max_tokens: None,
-            tools: vec![],
-            reasoning_effort: None,
-            metadata,
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: Some(crate::driver_registry::PromptCacheConfig {
-                enabled: true,
-                strategy: crate::driver_registry::PromptCacheStrategy::Auto,
-                gemini_cached_content: None,
-            }),
-            openrouter_routing: None,
-            parallel_tool_calls: None,
-            volatile_suffix_len: 0,
-            extra_headers: Vec::new(),
-            cache_diagnostics: None,
-        };
-        let input = vec![ResponsesInputItem::Message {
-            r#type: "message".to_string(),
-            role: "user".to_string(),
-            content: ResponsesContent::Text("Hello".to_string()),
-            phase: None,
-        }];
-
-        let key = OpenResponsesProtocolChatDriver::build_prompt_cache_key(
-            &config,
-            &input,
-            &Some("You are helpful".to_string()),
-            &None,
-        );
-
-        assert!(key.is_some());
-        assert!(key.unwrap().starts_with("everruns:"));
-    }
-
-    #[test]
-    fn test_build_prompt_cache_key_ignores_changing_input() {
-        let mut metadata = std::collections::HashMap::new();
-        metadata.insert("session_id".to_string(), "session_abc123".to_string());
-        let config = LlmCallConfig {
-            speed: None,
-            verbosity: None,
-            model: "gpt-5.4".to_string(),
-            temperature: None,
-            max_tokens: None,
-            tools: vec![],
-            reasoning_effort: None,
-            metadata,
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: Some(crate::driver_registry::PromptCacheConfig {
-                enabled: true,
-                strategy: crate::driver_registry::PromptCacheStrategy::Auto,
-                gemini_cached_content: None,
-            }),
-            openrouter_routing: None,
-            parallel_tool_calls: None,
-            volatile_suffix_len: 0,
-            extra_headers: Vec::new(),
-            cache_diagnostics: None,
-        };
-        let first_input = vec![ResponsesInputItem::Message {
-            r#type: "message".to_string(),
-            role: "user".to_string(),
-            content: ResponsesContent::Text("first turn".to_string()),
-            phase: None,
-        }];
-        let second_input = vec![ResponsesInputItem::Message {
-            r#type: "message".to_string(),
-            role: "user".to_string(),
-            content: ResponsesContent::Text("second turn with different text".to_string()),
-            phase: None,
-        }];
-
-        let first = OpenResponsesProtocolChatDriver::build_prompt_cache_key(
-            &config,
-            &first_input,
-            &Some("You are helpful".to_string()),
-            &None,
-        );
-        let second = OpenResponsesProtocolChatDriver::build_prompt_cache_key(
-            &config,
-            &second_input,
-            &Some("You are helpful".to_string()),
-            &None,
-        );
-
-        assert_eq!(first, second);
-    }
-
-    #[test]
-    fn test_build_prompt_cache_key_changes_with_cache_family() {
-        let mut first_metadata = std::collections::HashMap::new();
-        first_metadata.insert("session_id".to_string(), "session_abc123".to_string());
-        let mut second_metadata = std::collections::HashMap::new();
-        second_metadata.insert("session_id".to_string(), "session_xyz789".to_string());
-        let make_config = |metadata| LlmCallConfig {
-            speed: None,
-            verbosity: None,
-            model: "gpt-5.4".to_string(),
-            temperature: None,
-            max_tokens: None,
-            tools: vec![],
-            reasoning_effort: None,
-            metadata,
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: Some(crate::driver_registry::PromptCacheConfig {
-                enabled: true,
-                strategy: crate::driver_registry::PromptCacheStrategy::Auto,
-                gemini_cached_content: None,
-            }),
-            openrouter_routing: None,
-            parallel_tool_calls: None,
-            volatile_suffix_len: 0,
-            extra_headers: Vec::new(),
-            cache_diagnostics: None,
-        };
-        let input = vec![ResponsesInputItem::Message {
-            r#type: "message".to_string(),
-            role: "user".to_string(),
-            content: ResponsesContent::Text("same turn".to_string()),
-            phase: None,
-        }];
-
-        let first = OpenResponsesProtocolChatDriver::build_prompt_cache_key(
-            &make_config(first_metadata),
-            &input,
-            &Some("You are helpful".to_string()),
-            &None,
-        );
-        let second = OpenResponsesProtocolChatDriver::build_prompt_cache_key(
-            &make_config(second_metadata),
-            &input,
-            &Some("You are helpful".to_string()),
-            &None,
-        );
-
-        assert_ne!(first, second);
-    }
-
-    #[test]
-    fn test_build_prompt_cache_key_stays_within_openai_limit() {
-        let config = LlmCallConfig {
-            speed: None,
-            verbosity: None,
-            model: "gpt-5.5".to_string(),
-            temperature: None,
-            max_tokens: None,
-            tools: vec![],
-            reasoning_effort: None,
-            metadata: std::collections::HashMap::new(),
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: Some(crate::driver_registry::PromptCacheConfig {
-                enabled: true,
-                strategy: crate::driver_registry::PromptCacheStrategy::Auto,
-                gemini_cached_content: None,
-            }),
-            openrouter_routing: None,
-            parallel_tool_calls: None,
-            volatile_suffix_len: 0,
-            extra_headers: Vec::new(),
-            cache_diagnostics: None,
-        };
-        let input = vec![ResponsesInputItem::Message {
-            r#type: "message".to_string(),
-            role: "user".to_string(),
-            content: ResponsesContent::Text("fetch chalyi.name for me".to_string()),
-            phase: None,
-        }];
-
-        let key = OpenResponsesProtocolChatDriver::build_prompt_cache_key(
-            &config,
-            &input,
-            &Some("You are helpful".to_string()),
-            &None,
-        )
-        .unwrap();
-
-        assert!(
-            key.len() <= 64,
-            "OpenAI prompt_cache_key limit is 64 characters, got {}",
-            key.len()
-        );
     }
 
     #[test]
@@ -4838,245 +4639,6 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_tools_with_search_below_threshold_falls_back() {
-        use crate::tool_types::DeferrablePolicy;
-
-        let tools: Vec<ToolDefinition> = (0..5)
-            .map(|i| {
-                make_tool(
-                    &format!("tool_{i}"),
-                    Some("cat"),
-                    DeferrablePolicy::Automatic,
-                )
-            })
-            .collect();
-
-        // threshold=15, only 5 tools → should fall back to standard convert_tools
-        let result = OpenResponsesProtocolChatDriver::convert_tools_with_search(&tools, 15);
-        assert_eq!(result.len(), 5);
-        // No ToolSearch entry, no namespaces
-        let json = serde_json::to_value(&result).unwrap();
-        for item in json.as_array().unwrap() {
-            assert_eq!(item["type"], "function");
-            assert!(item.get("defer_loading").is_none() || item["defer_loading"].is_null());
-        }
-    }
-
-    #[test]
-    fn test_convert_tools_with_search_groups_by_category() {
-        use crate::tool_types::DeferrablePolicy;
-
-        let mut tools = vec![];
-        // 10 "FileSystem" tools + 6 "Weather" tools = 16, threshold=15
-        for i in 0..10 {
-            tools.push(make_tool(
-                &format!("fs_tool_{i}"),
-                Some("FileSystem"),
-                DeferrablePolicy::Automatic,
-            ));
-        }
-        for i in 0..6 {
-            tools.push(make_tool(
-                &format!("weather_tool_{i}"),
-                Some("Weather"),
-                DeferrablePolicy::Automatic,
-            ));
-        }
-
-        let result = OpenResponsesProtocolChatDriver::convert_tools_with_search(&tools, 15);
-        let json = serde_json::to_value(&result).unwrap();
-        let arr = json.as_array().unwrap();
-
-        // Should have: 2 namespace entries + 1 tool_search entry = 3
-        assert_eq!(arr.len(), 3);
-
-        // Last entry should be tool_search
-        assert_eq!(arr.last().unwrap()["type"], "tool_search");
-
-        // The two namespace entries
-        let ns: Vec<&Value> = arr.iter().filter(|v| v["type"] == "namespace").collect();
-        assert_eq!(ns.len(), 2);
-
-        let ns_names: Vec<&str> = ns.iter().map(|v| v["name"].as_str().unwrap()).collect();
-        assert!(ns_names.contains(&"FileSystem"));
-        assert!(ns_names.contains(&"Weather"));
-
-        // Check tool counts inside namespaces
-        for n in &ns {
-            let inner_tools = n["tools"].as_array().unwrap();
-            match n["name"].as_str().unwrap() {
-                "FileSystem" => assert_eq!(inner_tools.len(), 10),
-                "Weather" => assert_eq!(inner_tools.len(), 6),
-                other => panic!("Unexpected namespace: {other}"),
-            }
-            // All inner tools should have defer_loading: true
-            for t in inner_tools {
-                assert_eq!(t["defer_loading"], true);
-            }
-        }
-    }
-
-    #[test]
-    fn test_convert_tools_with_search_never_defer_stays_top_level() {
-        use crate::tool_types::DeferrablePolicy;
-
-        let mut tools = vec![];
-        // 2 Never-defer tools
-        tools.push(make_tool(
-            "write_todos",
-            Some("Productivity"),
-            DeferrablePolicy::Never,
-        ));
-        tools.push(make_tool(
-            "get_session_info",
-            Some("Session"),
-            DeferrablePolicy::Never,
-        ));
-        // 14 Automatic tools in "FileSystem" category
-        for i in 0..14 {
-            tools.push(make_tool(
-                &format!("fs_tool_{i}"),
-                Some("FileSystem"),
-                DeferrablePolicy::Automatic,
-            ));
-        }
-
-        let result = OpenResponsesProtocolChatDriver::convert_tools_with_search(&tools, 15);
-        let json = serde_json::to_value(&result).unwrap();
-        let arr = json.as_array().unwrap();
-
-        // 2 never-defer functions + 1 FileSystem namespace + 1 tool_search = 4
-        assert_eq!(arr.len(), 4);
-
-        // First two should be non-deferred functions
-        let funcs: Vec<&Value> = arr.iter().filter(|v| v["type"] == "function").collect();
-        assert_eq!(funcs.len(), 2);
-        for f in &funcs {
-            // No defer_loading on never-defer tools
-            assert!(f.get("defer_loading").is_none() || f["defer_loading"].is_null());
-        }
-
-        // Namespace
-        let ns: Vec<&Value> = arr.iter().filter(|v| v["type"] == "namespace").collect();
-        assert_eq!(ns.len(), 1);
-        assert_eq!(ns[0]["name"], "FileSystem");
-        assert_eq!(ns[0]["tools"].as_array().unwrap().len(), 14);
-    }
-
-    #[test]
-    fn test_convert_tools_with_search_ungrouped_tools() {
-        use crate::tool_types::DeferrablePolicy;
-
-        let mut tools = vec![];
-        // 10 categorized tools
-        for i in 0..10 {
-            tools.push(make_tool(
-                &format!("cat_tool_{i}"),
-                Some("Cat"),
-                DeferrablePolicy::Automatic,
-            ));
-        }
-        // 6 uncategorized tools (no category → ungrouped)
-        for i in 0..6 {
-            tools.push(make_tool(
-                &format!("misc_tool_{i}"),
-                None,
-                DeferrablePolicy::Automatic,
-            ));
-        }
-
-        let result = OpenResponsesProtocolChatDriver::convert_tools_with_search(&tools, 15);
-        let json = serde_json::to_value(&result).unwrap();
-        let arr = json.as_array().unwrap();
-
-        // 1 namespace + 6 ungrouped functions + 1 tool_search = 8
-        assert_eq!(arr.len(), 8);
-
-        let ns: Vec<&Value> = arr.iter().filter(|v| v["type"] == "namespace").collect();
-        assert_eq!(ns.len(), 1);
-        assert_eq!(ns[0]["tools"].as_array().unwrap().len(), 10);
-
-        let funcs: Vec<&Value> = arr.iter().filter(|v| v["type"] == "function").collect();
-        assert_eq!(funcs.len(), 6);
-        // These ungrouped tools should still have defer_loading: true
-        for f in &funcs {
-            assert_eq!(f["defer_loading"], true);
-        }
-
-        assert_eq!(arr.last().unwrap()["type"], "tool_search");
-    }
-
-    #[test]
-    fn test_convert_tools_with_search_always_policy() {
-        use crate::tool_types::DeferrablePolicy;
-
-        let mut tools = vec![];
-        // 14 Automatic tools
-        for i in 0..14 {
-            tools.push(make_tool(
-                &format!("tool_{i}"),
-                Some("General"),
-                DeferrablePolicy::Automatic,
-            ));
-        }
-        // 1 Always tool (should be deferred even if only at threshold)
-        tools.push(make_tool(
-            "always_tool",
-            Some("General"),
-            DeferrablePolicy::Always,
-        ));
-
-        // Exactly at threshold (15 tools, threshold=15)
-        let result = OpenResponsesProtocolChatDriver::convert_tools_with_search(&tools, 15);
-        let json = serde_json::to_value(&result).unwrap();
-        let arr = json.as_array().unwrap();
-
-        // 1 namespace (General) + 1 tool_search = 2
-        assert_eq!(arr.len(), 2);
-
-        let ns = &arr[0];
-        assert_eq!(ns["type"], "namespace");
-        let inner = ns["tools"].as_array().unwrap();
-        assert_eq!(inner.len(), 15);
-        // All should have defer_loading: true
-        for t in inner {
-            assert_eq!(t["defer_loading"], true);
-        }
-    }
-
-    #[test]
-    fn test_tool_search_serialization_format() {
-        // Verify the ToolSearch entry serializes correctly
-        let ts = ResponsesTool::ToolSearch {
-            r#type: "tool_search".to_string(),
-        };
-        let json = serde_json::to_value(&ts).unwrap();
-        assert_eq!(json, json!({"type": "tool_search"}));
-    }
-
-    #[test]
-    fn test_namespace_serialization_format() {
-        let ns = ResponsesTool::Namespace {
-            r#type: "namespace".to_string(),
-            name: "FileSystem".to_string(),
-            description: "Tools for FileSystem".to_string(),
-            tools: vec![ResponsesTool::Function {
-                r#type: "function".to_string(),
-                name: "read_file".to_string(),
-                description: "Read a file".to_string(),
-                parameters: json!({}),
-                strict: None,
-                defer_loading: Some(true),
-            }],
-        };
-        let json = serde_json::to_value(&ns).unwrap();
-        assert_eq!(json["type"], "namespace");
-        assert_eq!(json["name"], "FileSystem");
-        assert_eq!(json["tools"][0]["name"], "read_file");
-        assert_eq!(json["tools"][0]["defer_loading"], true);
-    }
-
-    #[test]
     fn test_hosted_tool_search_completed_event_preserves_response_id() {
         let event_json = r#"{
             "type": "response.completed",
@@ -5601,5 +5163,228 @@ mod tests {
         .unwrap();
         assert!(serialized.get("strict").is_none());
         assert!(serialized["parameters"].get("allOf").is_some());
+    }
+    fn cache_config() -> LlmCallConfig {
+        let mut config = auth_test_config();
+        config
+            .metadata
+            .insert("session_id".into(), "session-one".into());
+        config.prompt_cache = Some(crate::driver_registry::PromptCacheConfig {
+            enabled: true,
+            strategy: crate::driver_registry::PromptCacheStrategy::Auto,
+            gemini_cached_content: None,
+        });
+        config
+    }
+
+    #[test]
+    fn cache_key_tracks_stable_prefix_and_family_but_not_turn_input() {
+        let base = cache_config();
+        let instructions = Some("stable system prompt".into());
+        let key = |config: &LlmCallConfig,
+                   instructions: &Option<String>,
+                   tools: &Option<Vec<ResponsesTool>>,
+                   input: &[ResponsesInputItem]| {
+            OpenResponsesProtocolChatDriver::build_prompt_cache_key(
+                config,
+                input,
+                instructions,
+                tools,
+            )
+        };
+        let expected = key(&base, &instructions, &None, &[]).unwrap();
+        assert_eq!(expected.len(), 64);
+        assert!(expected.starts_with("everruns:"));
+        assert!(expected[9..].bytes().all(|byte| byte.is_ascii_hexdigit()));
+        let (_, changed_input) = OpenResponsesProtocolChatDriver::build_input(
+            &[LlmMessage::text(LlmMessageRole::User, "different turn")],
+            false,
+        );
+        assert_eq!(
+            key(&base, &instructions, &None, &changed_input),
+            Some(expected.clone())
+        );
+        let mut disabled = base.clone();
+        disabled.prompt_cache.as_mut().unwrap().enabled = false;
+        assert_eq!(key(&disabled, &instructions, &None, &[]), None);
+        disabled.prompt_cache = None;
+        assert_eq!(key(&disabled, &instructions, &None, &[]), None);
+        for field in ["session_id", "model", "instructions", "tools"] {
+            let mut config = base.clone();
+            let mut prompt = instructions.clone();
+            let mut tools = None;
+            match field {
+                "session_id" => {
+                    config
+                        .metadata
+                        .insert("session_id".into(), "session-two".into());
+                }
+                "model" => config.model = "other-model".into(),
+                "instructions" => prompt = Some("different system prompt".into()),
+                "tools" => {
+                    tools = Some(OpenResponsesProtocolChatDriver::convert_tools(&[
+                        make_tool("lookup", None, crate::tool_types::DeferrablePolicy::Never),
+                    ]))
+                }
+                _ => unreachable!(),
+            }
+            assert_ne!(
+                key(&config, &prompt, &tools, &[]).unwrap(),
+                expected,
+                "{field}"
+            );
+        }
+        // More specific scopes take precedence; unrelated metadata is not part of the prefix.
+        let mut scoped = base.clone();
+        scoped.metadata.extend([
+            ("agent_id".into(), "agent".into()),
+            ("harness_id".into(), "harness".into()),
+            ("org_id".into(), "org".into()),
+            ("trace_id".into(), "trace".into()),
+        ]);
+        assert_eq!(
+            key(&scoped, &instructions, &None, &[]),
+            Some(expected.clone())
+        );
+        let mut previous = Some(expected);
+        for scope in ["session_id", "agent_id", "harness_id", "org_id"] {
+            scoped.metadata.remove(scope);
+            let current = key(&scoped, &instructions, &None, &[]).unwrap();
+            if let Some(previous) = previous {
+                assert_ne!(current, previous);
+            }
+            previous = Some(current);
+        }
+    }
+
+    fn search_tools() -> Vec<ToolDefinition> {
+        use crate::tool_types::DeferrablePolicy::{Always, Automatic, Never};
+        vec![
+            make_tool("z", Some("Zeta"), Automatic),
+            make_tool("first", Some("HiddenCategory"), Never),
+            make_tool("a", Some("Alpha"), Always),
+            make_tool("loose", None, Automatic),
+            make_tool("second", None, Never),
+            make_tool("b", Some("Alpha"), Automatic),
+        ]
+    }
+
+    fn expected_search_tools() -> Value {
+        // Independent literal wire contract; only repeated fixture names are parameterized.
+        let function = |name: &str, deferred: bool| {
+            let mut value = json!({"type":"function","name":name,"description":format!("{name} description"),"parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true});
+            if deferred {
+                value["defer_loading"] = json!(true);
+            }
+            value
+        };
+        json!([
+            function("first", false), function("second", false),
+            {"type":"namespace","name":"Alpha","description":"Tools for Alpha","tools":[function("a", true),function("b", true)]},
+            {"type":"namespace","name":"Zeta","description":"Tools for Zeta","tools":[function("z", true)]},
+            function("loose", true), {"type":"tool_search"}
+        ])
+    }
+
+    #[test]
+    fn tool_search_has_complete_stable_wire_order_and_threshold_boundary() {
+        let tools = search_tools();
+        let expected = expected_search_tools();
+        let generated: Vec<_> = (0..32)
+            .map(|_| OpenResponsesProtocolChatDriver::convert_tools_with_search(&tools, 6))
+            .collect();
+        let keys: HashSet<_> = generated
+            .iter()
+            .map(|tools| {
+                OpenResponsesProtocolChatDriver::build_prompt_cache_key(
+                    &cache_config(),
+                    &[],
+                    &None,
+                    &Some(tools.clone()),
+                )
+                .unwrap()
+            })
+            .collect();
+        assert_eq!(
+            keys.len(),
+            1,
+            "identical tool sets must produce one cache key"
+        );
+        for actual in generated {
+            assert_eq!(serde_json::to_value(actual).unwrap(), expected);
+        }
+        let fallback = OpenResponsesProtocolChatDriver::convert_tools_with_search(&tools, 7);
+        let expected_fallback: Vec<Value> = ["z", "first", "a", "loose", "second", "b"].into_iter().map(|name| json!({"type":"function","name":name,"description":format!("{name} description"),"parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true})).collect();
+        assert_eq!(
+            serde_json::to_value(fallback).unwrap(),
+            json!(expected_fallback)
+        );
+        assert_eq!(
+            serde_json::to_value(OpenResponsesProtocolChatDriver::convert_tools_with_search(
+                &[],
+                1
+            ))
+            .unwrap(),
+            json!([])
+        );
+    }
+
+    #[tokio::test]
+    async fn equivalent_search_requests_keep_cache_key_and_complete_tool_payload() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).respond_with(ResponseTemplate::new(200).insert_header("content-type", "text/event-stream").set_body_string("data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp-cache\",\"status\":\"completed\",\"output\":[]}}\n\n")).expect(2).mount(&server).await;
+        let provider = crate::runtime_provider::RuntimeProvider::new(
+            "cache-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url(server.uri());
+        let driver = OpenResponsesProtocolChatDriver::new()
+            .with_native_features(false, true)
+            .with_retry_config(LlmRetryConfig::no_retry());
+        let mut config = cache_config();
+        config.tools = search_tools();
+        config.tool_search = Some(crate::driver_registry::ToolSearchConfig {
+            enabled: true,
+            threshold: 6,
+        });
+        for input in ["first turn", "second turn"] {
+            let mut stream = driver
+                .chat_completion_stream(
+                    provider.endpoint(),
+                    vec![
+                        LlmMessage::text(LlmMessageRole::System, "stable system prompt"),
+                        LlmMessage::text(LlmMessageRole::User, input),
+                    ],
+                    &config,
+                )
+                .await
+                .unwrap();
+            let mut completions = 0;
+            while let Some(event) = stream.next().await {
+                match event.unwrap() {
+                    LlmStreamEvent::Done(metadata) => {
+                        assert_eq!(metadata.finish_reason.as_deref(), Some("stop"));
+                        completions += 1;
+                    }
+                    other => panic!("unexpected event: {other:?}"),
+                }
+            }
+            assert_eq!(completions, 1);
+        }
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 2);
+        let bodies: Vec<Value> = requests
+            .iter()
+            .map(|request| serde_json::from_slice(&request.body).unwrap())
+            .collect();
+        for body in &bodies {
+            assert_eq!(body["tools"], expected_search_tools());
+            assert_eq!(body["instructions"], "stable system prompt");
+            assert_eq!(body["prompt_cache_key"].as_str().unwrap().len(), 64);
+        }
+        assert_ne!(bodies[0]["input"], bodies[1]["input"]);
+        assert_eq!(bodies[0]["prompt_cache_key"], bodies[1]["prompt_cache_key"]);
     }
 }
