@@ -56,10 +56,7 @@ fn provider(server: &MockServer) -> Provider {
 #[derive(Debug, PartialEq)]
 enum Golden {
     Text(String),
-    ToolCall {
-        name: String,
-        args: String,
-    },
+    ToolCalls(serde_json::Value),
     Done {
         total: Option<u32>,
         prompt: Option<u32>,
@@ -79,13 +76,7 @@ enum Golden {
 fn golden(event: LlmStreamEvent) -> Golden {
     match event {
         LlmStreamEvent::TextDelta(t) => Golden::Text(t),
-        LlmStreamEvent::ToolCalls(calls) => {
-            let tc = &calls[0];
-            Golden::ToolCall {
-                name: tc.name.clone(),
-                args: tc.arguments.to_string(),
-            }
-        }
+        LlmStreamEvent::ToolCalls(calls) => Golden::ToolCalls(serde_json::to_value(calls).unwrap()),
         LlmStreamEvent::Done(meta) => {
             let LlmCompletionMetadata {
                 total_tokens,
@@ -147,7 +138,7 @@ async fn mount_sse(server: &MockServer, body: String) {
 async fn text_stream_golden_events() {
     let server = MockServer::start().await;
     let body = [
-        r#"data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}]}"#,
+        r#"data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]},"finishReason":"FINISH_REASON_UNSPECIFIED"}]}"#,
         "",
         r#"data: {"candidates":[{"content":{"parts":[{"text":", world"}]}}]}"#,
         "",
@@ -223,10 +214,9 @@ async fn function_call_stream_golden_events() {
     assert_eq!(
         events,
         vec![
-            Golden::ToolCall {
-                name: "get_weather".into(),
-                args: r#"{"city":"Paris"}"#.into(),
-            },
+            Golden::ToolCalls(
+                serde_json::json!([{"id":"call_0","name":"get_weather","arguments":{"city":"Paris"}}])
+            ),
             Golden::Done {
                 total: Some(26), // prompt(20) + completion(6)
                 prompt: Some(20),
@@ -308,27 +298,23 @@ async fn thought_parts_become_reasoning_with_signature() {
 
     let events = drain_golden(stream).await;
 
-    assert!(
-        events.iter().any(|g| matches!(
-            g,
-            Golden::ReasoningItem { text: Some(t), signature: Some(s), .. }
-                if t == "weighing the options" && s == "sig-thought-1"
-        )),
-        "thought part must yield a signed reasoning artifact, got: {events:?}"
-    );
-
-    // The thought must not also be served as the answer.
-    assert!(
-        !events
-            .iter()
-            .any(|g| matches!(g, Golden::Text(t) if t.contains("weighing"))),
-        "thought text leaked into the answer: {events:?}"
-    );
-    assert!(
-        events
-            .iter()
-            .any(|g| matches!(g, Golden::Text(t) if t == "The answer.")),
-        "the actual answer should still stream as text: {events:?}"
+    assert_eq!(
+        events,
+        vec![
+            Golden::ReasoningItem {
+                text: Some("weighing the options".into()),
+                signature: Some("sig-thought-1".into()),
+                bound_tool_call_id: None
+            },
+            Golden::Text("The answer.".into()),
+            Golden::Done {
+                total: Some(14),
+                prompt: Some(10),
+                completion: Some(4),
+                cache_read: None,
+                finish: Some("stop".into())
+            }
+        ]
     );
 }
 
@@ -361,22 +347,137 @@ async fn function_call_thought_signature_binds_to_its_call() {
 
     let events = drain_golden(stream).await;
 
-    let tool_call_id = events.iter().find_map(|g| match g {
-        Golden::ToolCall { name, .. } if name == "get_weather" => Some(name.clone()),
-        _ => None,
-    });
-    assert!(
-        tool_call_id.is_some(),
-        "the function call should still be emitted: {events:?}"
+    assert_eq!(
+        events,
+        vec![
+            Golden::ReasoningItem {
+                text: None,
+                signature: Some("sig-call-1".into()),
+                bound_tool_call_id: Some("call_0".into())
+            },
+            Golden::ToolCalls(
+                serde_json::json!([{"id":"call_0","name":"get_weather","arguments":{"city":"Paris"}}])
+            ),
+            Golden::Done {
+                total: Some(15),
+                prompt: Some(12),
+                completion: Some(3),
+                cache_read: None,
+                finish: Some("stop".into())
+            }
+        ]
     );
+}
 
-    assert!(
-        events.iter().any(|g| matches!(
-            g,
-            Golden::ReasoningItem { signature: Some(s), bound_tool_call_id: Some(_), .. }
-                if s == "sig-call-1"
-        )),
-        "a function-call signature must bind to its tool call so it can be \
-         replayed in place, got: {events:?}"
+#[tokio::test]
+async fn tool_results_replay_function_names_and_object_payloads_on_wire() {
+    let server = MockServer::start().await;
+    mount_sse(&server, "data: {\"candidates\":[{\"content\":{\"parts\":[]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":2,\"candidatesTokenCount\":0}}\n\n".into()).await;
+    let mut call = LlmMessage::text(LlmMessageRole::Assistant, "");
+    call.tool_calls = Some(vec![everruns_provider::tool_types::ToolCall {
+        id: "call_17".into(),
+        name: "get_weather".into(),
+        arguments: serde_json::json!({"city":"Paris"}),
+    }]);
+    let mut result = LlmMessage::text(LlmMessageRole::Tool, "[18,20]");
+    result.tool_call_id = Some("call_17".into());
+    let stream = provider(&server)
+        .chat_completion_stream(vec![call, result], &config("gemini-2.5-flash"))
+        .await
+        .unwrap();
+    assert_eq!(
+        drain_golden(stream).await,
+        vec![Golden::Done {
+            total: Some(2),
+            prompt: Some(2),
+            completion: Some(0),
+            cache_read: None,
+            finish: Some("stop".into())
+        }]
     );
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 1);
+    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    assert_eq!(
+        body["contents"],
+        serde_json::json!([
+            {"role":"model","parts":[{"functionCall":{"name":"get_weather","args":{"city":"Paris"}}}]},
+            {"role":"user","parts":[{"functionResponse":{"name":"get_weather","response":{"result":[18,20]}}}]}
+        ])
+    );
+}
+
+#[tokio::test]
+async fn one_frame_preserves_all_parts_calls_signatures_and_terminal_usage() {
+    let server = MockServer::start().await;
+    let frame = serde_json::json!({"candidates":[{"content":{"parts":[
+        {"text":"hello"},{"text":" world"},
+        {"text":"checked","thought":true,"thoughtSignature":"sig-thought"},
+        {"functionCall":{"name":"weather","args":{"city":"Paris"}},"thoughtSignature":"sig-call"},
+        {"functionCall":{"name":"clock","args":{"zone":"UTC"}}}
+    ]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":4,"cachedContentTokenCount":3}});
+    let late = serde_json::json!({"candidates":[{"content":{"parts":[{"text":"must not reopen the answer"}]}}],"usageMetadata":{"promptTokenCount":20,"candidatesTokenCount":5,"cachedContentTokenCount":4}});
+    mount_sse(&server, format!("data: {frame}\n\ndata: {late}\n\n")).await;
+    let stream = provider(&server)
+        .chat_completion_stream(
+            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            &config("gemini-2.5-flash"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        drain_golden(stream).await,
+        vec![
+            Golden::Text("hello".into()),
+            Golden::Text(" world".into()),
+            Golden::ReasoningItem {
+                text: Some("checked".into()),
+                signature: Some("sig-thought".into()),
+                bound_tool_call_id: None
+            },
+            Golden::ReasoningItem {
+                text: None,
+                signature: Some("sig-call".into()),
+                bound_tool_call_id: Some("call_0".into())
+            },
+            Golden::ToolCalls(serde_json::json!([
+                {"id":"call_0","name":"weather","arguments":{"city":"Paris"}},
+                {"id":"call_1","name":"clock","arguments":{"zone":"UTC"}}
+            ])),
+            Golden::Done {
+                total: Some(25),
+                prompt: Some(16),
+                completion: Some(5),
+                cache_read: Some(4),
+                finish: Some("stop".into())
+            }
+        ]
+    );
+}
+
+#[tokio::test]
+async fn rejected_terminal_frame_never_releases_pending_tool_calls() {
+    for (reason, expected) in [("MAX_TOKENS", "length"), ("SAFETY", "content_filter")] {
+        let server = MockServer::start().await;
+        let frame = serde_json::json!({"candidates":[{"content":{"parts":[{"functionCall":{"name":"delete_file","args":{"path":"/important"}}}]},"finishReason":reason}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":2}});
+        mount_sse(&server, format!("data: {frame}\n\n")).await;
+        let stream = provider(&server)
+            .chat_completion_stream(
+                vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+                &config("gemini-2.5-flash"),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            drain_golden(stream).await,
+            vec![Golden::Done {
+                total: Some(7),
+                prompt: Some(5),
+                completion: Some(2),
+                cache_read: None,
+                finish: Some(expected.into())
+            }],
+            "{reason}"
+        );
+    }
 }
