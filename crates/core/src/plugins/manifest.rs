@@ -244,47 +244,79 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_basic_manifest() {
-        let json = r#"{
-            "name": "microsoft-docs",
-            "displayName": "Microsoft Docs",
-            "version": "0.1.0",
-            "description": "Search official Microsoft docs.",
-            "license": "MIT"
-        }"#;
-        let manifest: PluginManifest = serde_json::from_str(json).unwrap();
+    fn legacy_manifest_preserves_known_unknown_and_component_fields() {
+        let input = serde_json::json!({
+            "name":"microsoft-docs","displayName":"Microsoft Docs","version":"0.1.0",
+            "description":"Search official Microsoft docs.","license":"MIT",
+            "author":{"name":"Docs team","email":"docs@example.com","url":"https://example.com"},
+            "homepage":"https://example.com","repository":"https://example.com/repo",
+            "keywords":["docs","search"],"icon":"./assets/icon.svg",
+            "interface":{"displayName":"Test","category":"Dev"},
+            "skills":["./skills/","./extra/"],"commands":"./commands/","agents":["./agents/"],
+            "mcpServers":{"docs":{"url":"https://example.com/mcp"}}
+        });
+        let manifest: PluginManifest = serde_json::from_value(input.clone()).unwrap();
         assert_eq!(manifest.name, "microsoft-docs");
-        assert_eq!(manifest.display_name.as_deref(), Some("Microsoft Docs"));
-        assert_eq!(manifest.version.as_deref(), Some("0.1.0"));
-        assert_eq!(manifest.license.as_deref(), Some("MIT"));
-        assert!(manifest.extra.is_empty());
+        assert_eq!(
+            manifest.description.as_deref(),
+            Some("Search official Microsoft docs.")
+        );
+        assert_eq!(
+            manifest.skills.as_ref().unwrap().to_vec(),
+            ["./skills/", "./extra/"]
+        );
+        assert_eq!(
+            manifest.commands.as_ref().unwrap().to_vec(),
+            ["./commands/"]
+        );
+        assert_eq!(manifest.agents.as_ref().unwrap().to_vec(), ["./agents/"]);
+        assert_eq!(
+            manifest.extra,
+            HashMap::from([(
+                "interface".into(),
+                serde_json::json!({"displayName":"Test","category":"Dev"})
+            )])
+        );
+        assert!(
+            matches!(&manifest.mcp_servers,Some(McpServersField::Inline(map)) if map.get("docs")==Some(&serde_json::json!({"url":"https://example.com/mcp"})))
+        );
+        assert_eq!(serde_json::to_value(manifest).unwrap(), input);
+        let minimal: PluginManifest = serde_json::from_str(r#"{"name":"minimal"}"#).unwrap();
+        assert_eq!(
+            serde_json::to_value(minimal).unwrap(),
+            serde_json::json!({"name":"minimal"})
+        );
     }
 
     #[test]
-    fn unrecognized_fields_land_in_extra() {
-        let json = r#"{
-            "name": "test-plugin",
-            "description": "A test plugin.",
-            "interface": {"displayName": "Test", "category": "Dev"}
-        }"#;
-        let manifest: PluginManifest = serde_json::from_str(json).unwrap();
-        assert!(manifest.extra.contains_key("interface"));
-    }
-
-    #[test]
-    fn mcp_servers_path_string() {
-        let json = r#"{"name": "x", "description": "y", "mcpServers": "./.mcp.json"}"#;
-        let manifest: PluginManifest = serde_json::from_str(json).unwrap();
-        assert!(matches!(
-            manifest.mcp_servers,
-            Some(McpServersField::Path(_))
-        ));
-    }
-
-    #[test]
-    fn skills_string_or_array() {
-        let json = r#"{"name": "x", "description": "y", "skills": "./skills/"}"#;
-        let manifest: PluginManifest = serde_json::from_str(json).unwrap();
-        assert!(matches!(manifest.skills, Some(StringOrArray::Single(_))));
+    fn component_unions_preserve_values_and_reject_wrong_shapes() {
+        for (input, expected) in [
+            (serde_json::json!("./skills/"), vec!["./skills/"]),
+            (
+                serde_json::json!(["./skills/", "./extra/"]),
+                vec!["./skills/", "./extra/"],
+            ),
+            (serde_json::json!([]), vec![]),
+        ] {
+            let field: StringOrArray = serde_json::from_value(input.clone()).unwrap();
+            assert_eq!(field.to_vec(), expected);
+            assert_eq!(serde_json::to_value(field).unwrap(), input);
+        }
+        let path: McpServersField =
+            serde_json::from_value(serde_json::json!("./.mcp.json")).unwrap();
+        assert!(matches!(path,McpServersField::Path(value) if value=="./.mcp.json"));
+        let paths: McpServersField =
+            serde_json::from_value(serde_json::json!(["./a.json", "./b.json"])).unwrap();
+        assert!(matches!(paths,McpServersField::Paths(value) if value==["./a.json","./b.json"]));
+        for value in [
+            serde_json::json!(42),
+            serde_json::json!(true),
+            serde_json::json!(["ok", 42]),
+        ] {
+            assert!(serde_json::from_value::<StringOrArray>(value.clone()).is_err());
+            assert!(serde_json::from_value::<McpServersField>(value).is_err());
+        }
+        assert!(serde_json::from_str::<PluginManifest>(r#"{"description":"no name"}"#).is_err());
+        assert!(serde_json::from_str::<PluginManifest>(r#"{"name":42}"#).is_err());
     }
 }
