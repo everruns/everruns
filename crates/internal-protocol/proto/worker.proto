@@ -2235,6 +2235,8 @@ message SessionTaskUpdateProto {
     optional Timestamp heartbeat_at = 11;
     optional int32 expected_attempt = 12;
     bool increment_attempt = 13;
+    // Append under the registry update lock, independently of list replacement.
+    optional TaskArtifactProto append_artifact = 14;
 }
 
 // Wrapper so an absent artifacts update is distinguishable from an empty list.
