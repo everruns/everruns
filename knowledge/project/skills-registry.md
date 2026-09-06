@@ -232,7 +232,7 @@ because every activation mounts them into the session VFS.
 
 When `activate_skill` runs, the SKILL.md body is transformed through a fixed pipeline before being returned to the model. All steps are applied to the body only, frontmatter is parsed separately and never substituted.
 
-1. **Argument expansion** (`$ARGUMENTS`, `$ARGUMENTS[N]`, `$N`), synchronous, always runs.
+1. **Argument expansion** (`$ARGUMENTS`, `$ARGUMENTS[N]`, `$N`), synchronous, always runs. Placeholders are matched in the original body; inserted argument values remain literal within this step. Quoted empty arguments retain their positional slots.
 2. **Environment substitution** (`${SESSION_ID}`, `${SKILL_DIR}`), synchronous, always runs.
 3. **Command injection** (`` !`cmd` ``), asynchronous shell execution inside the session sandbox (bashkit shell / VFS). Runs ONLY for trusted sources. The dormant default executor still targets the worker host; see the trust-gate section below.
 
