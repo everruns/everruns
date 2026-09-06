@@ -9,6 +9,7 @@
 // exponential backoff. Retry metadata is included in the response for observability.
 
 use async_trait::async_trait;
+use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -33,7 +34,7 @@ use everruns_provider::llm_retry::{
 };
 use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use everruns_provider::stream_accumulator::StreamToolCallAccumulator;
-use everruns_provider::stream_reconnect::connect_bytes_with_reconnect;
+use everruns_provider::stream_reconnect::{ByteStream, connect_bytes_with_reconnect};
 use everruns_provider::tool_types::ToolDefinition;
 
 const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
@@ -251,35 +252,45 @@ impl GeminiChatDriver {
     ///
     /// Gemini's function-calling API uses an OpenAPI 3.0 subset that rejects
     /// `additionalProperties`. The field can appear at any depth — inside
-    /// `properties`, `items`, `anyOf`, etc. — so we walk the entire value
-    /// instead of only the top level.
+    /// `properties`, `items`, `anyOf`, etc. — so we visit schema-valued keywords recursively
+    /// while preserving literal annotation and extension data.
     fn clean_schema(mut value: Value) -> Value {
         Self::strip_unsupported(&mut value);
         value
     }
 
+    // THREAT[TM-TOOL-038]: only schema nodes may be rewritten; literal payloads stay intact.
     fn strip_unsupported(value: &mut Value) {
         match value {
             Value::Object(obj) => {
                 obj.remove("additionalProperties");
-                for (key, v) in obj.iter_mut() {
-                    // Schema-composition keywords whose value is a map of
-                    // arbitrary name -> schema. The keys are caller-supplied
-                    // names, so we must not treat the map itself as a schema
-                    // (otherwise a property literally named
-                    // `additionalProperties` would be dropped). Recurse into
-                    // each value instead.
-                    if matches!(
-                        key.as_str(),
+                // Literal defaults, enums, examples and extensions are data, not schemas.
+                for (key, value) in obj.iter_mut() {
+                    match key.as_str() {
                         "properties" | "patternProperties" | "definitions" | "$defs"
-                    ) {
-                        if let Value::Object(map) = v {
-                            for sub in map.values_mut() {
-                                Self::strip_unsupported(sub);
+                        | "dependentSchemas" | "dependencies" => {
+                            if let Some(schemas) = value.as_object_mut() {
+                                for schema in schemas.values_mut() {
+                                    Self::strip_unsupported(schema);
+                                }
                             }
                         }
-                    } else {
-                        Self::strip_unsupported(v);
+                        "items"
+                        | "additionalItems"
+                        | "contains"
+                        | "propertyNames"
+                        | "not"
+                        | "if"
+                        | "then"
+                        | "else"
+                        | "unevaluatedProperties"
+                        | "unevaluatedItems"
+                        | "contentSchema"
+                        | "allOf"
+                        | "anyOf"
+                        | "oneOf"
+                        | "prefixItems" => Self::strip_unsupported(value),
+                        _ => {}
                     }
                 }
             }
@@ -508,46 +519,7 @@ impl ChatDriver for GeminiChatDriver {
             retry_metadata: retry_metadata.had_retries().then_some(retry_metadata),
             ..Default::default()
         };
-        // A wire frame may produce several events. Queue every part before
-        // yielding so the rest of the frame and its terminal reason survive.
-        let converted_stream: LlmResponseStream = Box::pin(futures::stream::unfold(
-            (byte_stream, String::new(), state),
-            |(mut stream, mut buffer, mut state)| async move {
-                loop {
-                    if let Some(event) = state.pending.pop_front() {
-                        return Some((Ok(event), (stream, buffer, state)));
-                    }
-                    if state.done {
-                        return None;
-                    }
-                    if let Some(event) = extract_sse_event(&mut buffer) {
-                        if event == "[DONE]" {
-                            state.finish();
-                        } else {
-                            match serde_json::from_str::<GeminiStreamResponse>(&event) {
-                                Ok(response) => state.response(response),
-                                Err(error) => {
-                                    tracing::debug!(%error, "GeminiDriver: failed to parse SSE event")
-                                }
-                            }
-                        }
-                        continue;
-                    }
-                    match stream.next().await {
-                        Some(Ok(bytes)) => buffer.push_str(&String::from_utf8_lossy(&bytes)),
-                        Some(Err(error)) => {
-                            state.pending.push_back(LlmStreamEvent::Error(
-                                format!("Stream error: {error}").into(),
-                            ));
-                            state.done = true;
-                        }
-                        None => state.finish(),
-                    }
-                }
-            },
-        ));
-
-        Ok(converted_stream)
+        Ok(convert_gemini_stream(byte_stream, state))
     }
 
     async fn list_models(
@@ -656,6 +628,43 @@ impl Default for GeminiChatDriver {
 // ============================================================================
 // SSE Parsing
 // ============================================================================
+
+fn convert_gemini_stream(byte_stream: ByteStream, state: GeminiStreamState) -> LlmResponseStream {
+    // THREAT[TM-TOOL-038]: decode UTF-8 and SSE framing before parsing provider JSON. Transport chunks
+    // may split a character, line or event anywhere.
+    let event_stream = byte_stream.eventsource();
+    Box::pin(futures::stream::unfold(
+        (event_stream, state),
+        |(mut stream, mut state)| async move {
+            loop {
+                if let Some(event) = state.pending.pop_front() {
+                    return Some((Ok(event), (stream, state)));
+                }
+                if state.done {
+                    return None;
+                }
+                match stream.next().await {
+                    Some(Ok(event)) if event.data == "[DONE]" => state.finish(),
+                    Some(Ok(event)) => {
+                        match serde_json::from_str::<GeminiStreamResponse>(&event.data) {
+                            Ok(response) => state.response(response),
+                            Err(error) => {
+                                tracing::debug!(%error, "GeminiDriver: failed to parse SSE event")
+                            }
+                        }
+                    }
+                    Some(Err(error)) => {
+                        state.pending.push_back(LlmStreamEvent::Error(
+                            format!("Stream error: {error}").into(),
+                        ));
+                        state.done = true;
+                    }
+                    None => state.finish(),
+                }
+            }
+        },
+    ))
+}
 
 #[derive(Default)]
 struct GeminiStreamState {
@@ -781,32 +790,6 @@ impl GeminiStreamState {
                 cache_diagnostics: None,
             })));
         self.done = true;
-    }
-}
-
-/// Extract a complete SSE event from the buffer, returning the data payload
-fn extract_sse_event(buffer: &mut String) -> Option<String> {
-    // Look for "data: " followed by a complete JSON object or "[DONE]"
-    loop {
-        let data_prefix = "data: ";
-        let start = buffer.find(data_prefix)?;
-        let data_start = start + data_prefix.len();
-
-        // Find the end of this data line (next newline)
-        let remaining = &buffer[data_start..];
-        let end = remaining.find('\n')?;
-
-        let data = remaining[..end].trim().to_string();
-
-        // Remove consumed portion from buffer
-        buffer.drain(..data_start + end + 1);
-
-        // Skip empty data lines
-        if data.is_empty() {
-            continue;
-        }
-
-        return Some(data);
     }
 }
 
@@ -1065,417 +1048,10 @@ mod tests {
     use everruns_provider::driver_registry::ChatDriver;
     use everruns_provider::tool_types::ToolCall;
 
-    #[test]
-    fn supports_parallel_tool_calls_is_false() {
-        // Gemini has no request control; the preference is honored only by the
-        // local tool scheduler.
-        let driver = GeminiChatDriver::new();
-        assert!(!driver.supports_parallel_tool_calls("gemini-2.5-pro"));
-    }
-
-    #[test]
-    fn test_convert_tools() {
-        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
-        let tools = vec![ToolDefinition::Builtin(BuiltinTool {
-            name: "get_weather".to_string(),
-            display_name: None,
-            description: "Get the weather for a city".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "city": {"type": "string"}
-                },
-                "required": ["city"]
-            }),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: everruns_provider::tool_types::ToolHints::default(),
-            full_parameters: None,
-        })];
-
-        let gemini_tools = GeminiChatDriver::convert_tools(&tools);
-        assert!(gemini_tools.is_some());
-        let tools = gemini_tools.unwrap();
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].function_declarations.len(), 1);
-        assert_eq!(tools[0].function_declarations[0].name, "get_weather");
-    }
-
-    #[test]
-    fn test_convert_tools_strips_additional_properties() {
-        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
-        let tools = vec![ToolDefinition::Builtin(BuiltinTool {
-            name: "search".to_string(),
-            display_name: None,
-            description: "Search".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "additionalProperties": false}
-                },
-                "required": ["query"],
-                "additionalProperties": false
-            }),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: everruns_provider::tool_types::ToolHints::default(),
-            full_parameters: None,
-        })];
-
-        let gemini_tools = GeminiChatDriver::convert_tools(&tools).unwrap();
-        let params = &gemini_tools[0].function_declarations[0].parameters;
-        assert!(params.get("additionalProperties").is_none());
-        assert!(
-            params["properties"]["query"]
-                .get("additionalProperties")
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn test_convert_tools_strips_additional_properties_nested() {
-        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
-        let tools = vec![ToolDefinition::Builtin(BuiltinTool {
-            name: "complex".to_string(),
-            display_name: None,
-            description: "Complex schema".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "items": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "nested": {
-                                    "type": "object",
-                                    "additionalProperties": false,
-                                    "properties": {
-                                        "deep": {
-                                            "type": "object",
-                                            "additionalProperties": true
-                                        }
-                                    }
-                                }
-                            },
-                            "additionalProperties": false
-                        }
-                    },
-                    "variant": {
-                        "anyOf": [
-                            {"type": "string"},
-                            {"type": "object", "additionalProperties": false}
-                        ]
-                    }
-                },
-                "additionalProperties": false
-            }),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: everruns_provider::tool_types::ToolHints::default(),
-            full_parameters: None,
-        })];
-
-        let gemini_tools = GeminiChatDriver::convert_tools(&tools).unwrap();
-        let params = &gemini_tools[0].function_declarations[0].parameters;
-
-        fn assert_no_additional_properties(v: &Value) {
-            match v {
-                Value::Object(obj) => {
-                    assert!(
-                        !obj.contains_key("additionalProperties"),
-                        "additionalProperties still present in {obj:?}"
-                    );
-                    for child in obj.values() {
-                        assert_no_additional_properties(child);
-                    }
-                }
-                Value::Array(arr) => {
-                    for child in arr {
-                        assert_no_additional_properties(child);
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        assert_no_additional_properties(params);
-    }
-
-    #[test]
-    fn test_convert_tools_preserves_property_named_additional_properties() {
-        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
-        let tools = vec![ToolDefinition::Builtin(BuiltinTool {
-            name: "configure".to_string(),
-            display_name: None,
-            description: "Configure allowing extras".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "additionalProperties": {
-                        "type": "boolean",
-                        "description": "Allow extras in the request"
-                    }
-                },
-                "required": ["additionalProperties"],
-                "additionalProperties": false
-            }),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: everruns_provider::tool_types::ToolHints::default(),
-            full_parameters: None,
-        })];
-
-        let gemini_tools = GeminiChatDriver::convert_tools(&tools).unwrap();
-        let params = &gemini_tools[0].function_declarations[0].parameters;
-
-        assert!(params.get("additionalProperties").is_none());
-        let properties = params
-            .get("properties")
-            .and_then(|p| p.as_object())
-            .unwrap();
-        let prop = properties
-            .get("additionalProperties")
-            .expect("property named additionalProperties must be preserved");
-        assert_eq!(prop["type"], "boolean");
-    }
-
-    /// Builds filesystem-style tool definitions mirroring the schema shapes the
-    /// session filesystem capability produces (nested `additionalProperties`
-    /// inside array items and sub-objects). Kept as an in-crate fixture so this
-    /// wire-protocol crate stays decoupled from capability implementations
-    /// (EVE-874); capability identity/authoring lives in `everruns-capability`.
-    fn filesystem_style_tools() -> Vec<ToolDefinition> {
-        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
-
-        let builtin = |name: &str, parameters: Value| {
-            ToolDefinition::Builtin(BuiltinTool {
-                name: name.to_string(),
-                display_name: None,
-                description: format!("{name} tool"),
-                parameters,
-                policy: ToolPolicy::Auto,
-                category: None,
-                deferrable: DeferrablePolicy::default(),
-                hints: ToolHints::default(),
-                full_parameters: None,
-            })
-        };
-
-        vec![
-            builtin(
-                "read_file",
-                json!({
-                    "type": "object",
-                    "properties": {
-                        "path": { "type": "string" },
-                        "offset": { "type": "integer", "default": 0, "minimum": 0 },
-                        "limit": { "type": "integer", "default": 2000, "minimum": 1 }
-                    },
-                    "required": ["path"],
-                    "additionalProperties": false
-                }),
-            ),
-            builtin(
-                "edit_file",
-                json!({
-                    "type": "object",
-                    "properties": {
-                        "path": { "type": "string" },
-                        "expected_hash": { "type": "string" },
-                        "edits": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "old_text": { "type": "string" },
-                                    "new_text": { "type": "string" }
-                                },
-                                "required": ["old_text", "new_text"],
-                                "additionalProperties": false
-                            }
-                        }
-                    },
-                    "required": ["path", "expected_hash", "edits"],
-                    "additionalProperties": false
-                }),
-            ),
-            builtin(
-                "grep_files",
-                json!({
-                    "type": "object",
-                    "properties": {
-                        "pattern": { "type": "string" },
-                        "options": {
-                            "type": "object",
-                            "properties": {
-                                "case_insensitive": { "type": "boolean" }
-                            },
-                            "additionalProperties": false
-                        }
-                    },
-                    "required": ["pattern"],
-                    "additionalProperties": false
-                }),
-            ),
-        ]
-    }
-
-    #[test]
-    fn test_convert_filesystem_style_tools_strips_nested_additional_properties() {
-        let tools = filesystem_style_tools();
-        let gemini_tools = GeminiChatDriver::convert_tools(&tools).unwrap();
-
-        fn assert_no_additional_properties(v: &Value) {
-            match v {
-                Value::Object(obj) => {
-                    assert!(
-                        !obj.contains_key("additionalProperties"),
-                        "additionalProperties still present in {obj:?}"
-                    );
-                    for child in obj.values() {
-                        assert_no_additional_properties(child);
-                    }
-                }
-                Value::Array(arr) => {
-                    for child in arr {
-                        assert_no_additional_properties(child);
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        for tool in &gemini_tools[0].function_declarations {
-            assert_no_additional_properties(&tool.parameters);
-        }
-    }
-
-    #[test]
-    fn test_convert_tools_empty() {
-        let tools: Vec<ToolDefinition> = vec![];
-        let gemini_tools = GeminiChatDriver::convert_tools(&tools);
-        assert!(gemini_tools.is_none());
-    }
-
-    #[test]
-    fn test_is_gemini_request_too_large_413() {
-        assert!(is_gemini_request_too_large(
-            reqwest::StatusCode::PAYLOAD_TOO_LARGE,
-            "Request too large"
-        ));
-    }
-
-    #[test]
-    fn test_is_gemini_request_too_large_payload_size() {
-        assert!(is_gemini_request_too_large(
-            reqwest::StatusCode::BAD_REQUEST,
-            "Request payload size exceeds the limit"
-        ));
-    }
-
-    #[test]
-    fn test_is_gemini_request_too_large_false_for_auth() {
-        assert!(!is_gemini_request_too_large(
-            reqwest::StatusCode::UNAUTHORIZED,
-            "Invalid API key"
-        ));
-    }
-
-    #[test]
-    fn test_extract_sse_event() {
-        let mut buffer = "data: {\"candidates\": []}\n\n".to_string();
-        let event = extract_sse_event(&mut buffer);
-        assert_eq!(event, Some("{\"candidates\": []}".to_string()));
-    }
-
-    #[test]
-    fn test_extract_sse_event_incomplete() {
-        let mut buffer = "data: {\"cand".to_string();
-        let event = extract_sse_event(&mut buffer);
-        assert!(event.is_none());
-    }
-
-    #[test]
-    fn test_request_serialization_with_cached_content() {
-        let request = GeminiRequest {
-            contents: vec![GeminiContent {
-                role: Some("user".to_string()),
-                parts: vec![GeminiPart::text("Summarize this")],
-            }],
-            system_instruction: None,
-            tools: None,
-            generation_config: Some(GeminiGenerationConfig {
-                temperature: None,
-                max_output_tokens: Some(256),
-                thinking_config: None,
-            }),
-            cached_content: Some("cachedContents/demo-cache".to_string()),
-        };
-
-        let json = serde_json::to_value(&request).unwrap();
-        assert_eq!(json["cachedContent"], "cachedContents/demo-cache");
-    }
-
     // ========================================================================
     // Model-not-found detection tests
     // ========================================================================
 
-    #[test]
-    fn test_is_gemini_model_not_found_404_not_found() {
-        let error = r#"{"error":{"code":404,"message":"models/gemini-nonexistent is not found","status":"NOT_FOUND"}}"#;
-        assert!(is_gemini_model_not_found(
-            reqwest::StatusCode::NOT_FOUND,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_gemini_model_not_found_model_keyword() {
-        let error = r#"{"error":{"code":404,"message":"Model does not exist"}}"#;
-        assert!(is_gemini_model_not_found(
-            reqwest::StatusCode::NOT_FOUND,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_gemini_model_not_found_false_for_non_404() {
-        let error = r#"{"error":{"code":400,"status":"NOT_FOUND"}}"#;
-        assert!(!is_gemini_model_not_found(
-            reqwest::StatusCode::BAD_REQUEST,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_default_max_tokens_from_known_model() {
-        // Known Gemini models should resolve max_tokens from profile
-        let profile = everruns_provider::get_model_profile(
-            &everruns_provider::DriverId::Gemini,
-            "gemini-3.1-pro-preview",
-        );
-        assert!(
-            profile.is_some(),
-            "gemini-3.1-pro-preview should have a profile"
-        );
-        let limits = profile.unwrap().limits.expect("profile should have limits");
-        assert!(limits.output > 0, "output limit should be positive");
-    }
-
-    #[test]
-    fn test_default_max_tokens_unknown_model_falls_back() {
-        // Unknown model should return None (triggering the 8192 fallback)
-        let profile = everruns_provider::get_model_profile(
-            &everruns_provider::DriverId::Gemini,
-            "nonexistent-model-xyz",
-        );
-        assert!(profile.is_none(), "unknown model should not have a profile");
-    }
     fn call_message(id: &str, name: &str, arguments: Value) -> LlmMessage {
         let mut message = LlmMessage::text(LlmMessageRole::Assistant, "");
         message.tool_calls = Some(vec![ToolCall {
@@ -1587,5 +1163,221 @@ mod tests {
             .unwrap(),
             json!([])
         );
+    }
+    async fn collect_wire_chunks(chunks: Vec<Vec<u8>>) -> Vec<Value> {
+        let bytes: ByteStream = Box::pin(futures::stream::iter(
+            chunks.into_iter().map(|chunk| Ok(chunk.into())),
+        ));
+        let mut stream = convert_gemini_stream(
+            bytes,
+            GeminiStreamState {
+                model: "model".into(),
+                ..Default::default()
+            },
+        );
+        let mut events = Vec::new();
+        while let Some(event) = stream.next().await {
+            events.push(match event.unwrap() {
+                LlmStreamEvent::TextDelta(text) => json!({"text":text}),
+                LlmStreamEvent::ToolCalls(calls) => json!({"calls":calls}),
+                LlmStreamEvent::Done(metadata) => json!({"done":{"model":metadata.model,"reason":metadata.finish_reason,"input":metadata.prompt_tokens,"output":metadata.completion_tokens,"total":metadata.total_tokens}}),
+                other => panic!("unexpected event: {other:?}"),
+            });
+        }
+        events
+    }
+
+    fn expected_unicode_events() -> Vec<Value> {
+        vec![
+            json!({"text":"hé🙂"}),
+            json!({"calls":[{"id":"call_0","name":"lookup","arguments":{"path":"café/🙂"}}]}),
+            json!({"done":{"model":"model","reason":"stop","input":3,"output":1,"total":4}}),
+        ]
+    }
+
+    #[tokio::test]
+    async fn stream_preserves_unicode_at_every_transport_boundary() {
+        let wire = "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hé🙂\"},{\"functionCall\":{\"name\":\"lookup\",\"args\":{\"path\":\"café/🙂\"}}}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":1}}\n\ndata: [DONE]\n\n".as_bytes();
+        for split in 0..=wire.len() {
+            assert_eq!(
+                collect_wire_chunks(vec![wire[..split].to_vec(), wire[split..].to_vec()]).await,
+                expected_unicode_events(),
+                "byte split {split}"
+            );
+        }
+        assert_eq!(
+            collect_wire_chunks(wire.iter().map(|byte| vec![*byte]).collect()).await,
+            expected_unicode_events()
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_accepts_multiline_sse_data_and_optional_space() {
+        let wire = ": heartbeat\r\nevent: message\r\nid: frame-one\r\ndata:{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hé🙂\"},{\"functionCall\":{\"name\":\"lookup\",\"args\":{\"path\":\"café/🙂\"}}}]},\"finishReason\":\"STOP\"}],\r\ndata: \"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":1}}\r\n\r\ndata:[DONE]\r\n\r\n".as_bytes();
+        assert_eq!(
+            collect_wire_chunks(wire.iter().map(|byte| vec![*byte]).collect()).await,
+            expected_unicode_events()
+        );
+    }
+
+    #[test]
+    fn tool_schema_cleanup_preserves_complete_contract_and_literal_payloads() {
+        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
+        let parameters = json!({
+            "type":"object","additionalProperties":false,"required":["items"],
+            "properties":{
+                "additionalProperties":{"type":"boolean","description":"user property"},
+                "items":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"path":{"type":"string"},"offset":{"type":"integer","minimum":0,"default":0}},"required":["path"]}},
+                "variant":{"anyOf":[{"type":"string"},{"type":"object","additionalProperties":true}]}
+            },
+            "default":{"additionalProperties":"default data"},
+            "examples":[{"additionalProperties":false}],
+            "enum":[{"additionalProperties":"enum data"}],
+            "const":{"additionalProperties":"constant data"},
+            "x-extension":{"additionalProperties":"extension data"}
+        });
+        let tools = vec![ToolDefinition::Builtin(BuiltinTool {
+            name: "inspect".into(),
+            display_name: None,
+            description: "Inspect paths".into(),
+            parameters,
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
+            full_parameters: None,
+        })];
+        assert_eq!(
+            serde_json::to_value(GeminiChatDriver::convert_tools(&tools).unwrap()).unwrap(),
+            json!([{"functionDeclarations":[{"name":"inspect","description":"Inspect paths","parameters":{
+                "type":"object","required":["items"],
+                "properties":{
+                    "additionalProperties":{"type":"boolean","description":"user property"},
+                    "items":{"type":"array","items":{"type":"object","properties":{"path":{"type":"string"},"offset":{"type":"integer","minimum":0,"default":0}},"required":["path"]}},
+                    "variant":{"anyOf":[{"type":"string"},{"type":"object"}]}
+                },
+                "default":{"additionalProperties":"default data"},"examples":[{"additionalProperties":false}],"enum":[{"additionalProperties":"enum data"}],"const":{"additionalProperties":"constant data"},"x-extension":{"additionalProperties":"extension data"}
+            }}]}])
+        );
+        assert!(GeminiChatDriver::convert_tools(&[]).is_none());
+    }
+    #[test]
+    fn size_classification_requires_status_and_provider_or_context_evidence() {
+        for (status, message, expected) in [
+            (413, "", true),
+            (400, "Request payload size exceeds the limit", true),
+            (400, "content too large", true),
+            (400, "TOKEN LIMIT EXCEEDED", true),
+            (400, "input is too long", true),
+            (400, "request exceeds the maximum context", true),
+            (400, "rate limit exceeded", false),
+            (401, "Invalid API key", false),
+            (500, "token limit exceeded", false),
+            (200, "content too large", false),
+        ] {
+            assert_eq!(
+                is_gemini_request_too_large(
+                    reqwest::StatusCode::from_u16(status).unwrap(),
+                    message
+                ),
+                expected,
+                "{status}: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_model_classification_requires_404_and_gemini_evidence() {
+        for (status, message, expected) in [
+            (404, r#"{"error":{"status":"NOT_FOUND"}}"#, true),
+            (404, "Model does not exist", true),
+            (404, "Endpoint not found", false),
+            (400, r#"{"error":{"status":"NOT_FOUND"}}"#, false),
+            (401, "model not found", false),
+            (500, "Model does not exist", false),
+        ] {
+            assert_eq!(
+                is_gemini_model_not_found(reqwest::StatusCode::from_u16(status).unwrap(), message),
+                expected,
+                "{status}: {message}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn request_limits_cache_gate_and_parallel_preference_reach_wire_contract() {
+        use wiremock::matchers::{header, method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        for (model, limit, cache, parallel, expected_limit, expected_cache) in [
+            (
+                "gemini-3.1-pro-preview",
+                None,
+                Some((false, Some("cachedContents/disabled"))),
+                Some(false),
+                65536,
+                None,
+            ),
+            (
+                "unknown-model",
+                None,
+                Some((true, None)),
+                Some(true),
+                8192,
+                None,
+            ),
+            (
+                "gemini-3.1-pro-preview",
+                Some(7),
+                Some((true, Some("cachedContents/active"))),
+                None,
+                7,
+                Some("cachedContents/active"),
+            ),
+            ("unknown-model", Some(9), None, Some(false), 9, None),
+        ] {
+            let server = MockServer::builder().start().await;
+            Mock::given(method("POST")).and(path(format!("/v1beta/models/{model}:streamGenerateContent"))).and(query_param("alt", "sse")).and(header("x-goog-api-key", "synthetic-key")).respond_with(ResponseTemplate::new(200).insert_header("content-type", "text/event-stream").set_body_string("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"}]},\"finishReason\":\"STOP\"}]}\n\n")).expect(1).mount(&server).await;
+            let service =
+                provider("test", "synthetic-key").base_url(format!("{}/v1beta", server.uri()));
+            let config = LlmCallConfig {
+                model: model.into(),
+                temperature: Some(0.25),
+                max_tokens: limit,
+                tools: vec![],
+                reasoning_effort: None,
+                speed: None,
+                verbosity: None,
+                metadata: Default::default(),
+                previous_response_id: None,
+                provider_opaque_context: None,
+                tool_search: None,
+                prompt_cache: cache.map(|(enabled, handle)| {
+                    everruns_provider::driver_registry::PromptCacheConfig {
+                        enabled,
+                        strategy: Default::default(),
+                        gemini_cached_content: handle.map(str::to_string),
+                    }
+                }),
+                openrouter_routing: None,
+                parallel_tool_calls: parallel,
+                volatile_suffix_len: 0,
+                extra_headers: vec![],
+                cache_diagnostics: None,
+            };
+            let response = service
+                .chat_completion(vec![LlmMessage::text(LlmMessageRole::User, "hi")], &config)
+                .await
+                .unwrap();
+            assert_eq!(response.text, "ok");
+            assert_eq!(response.metadata.finish_reason.as_deref(), Some("stop"));
+            assert!(!GeminiChatDriver::new().supports_parallel_tool_calls(model));
+            let requests = server.received_requests().await.unwrap();
+            assert_eq!(requests.len(), 1);
+            let mut expected = json!({"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"temperature":0.25,"maxOutputTokens":expected_limit}});
+            if let Some(handle) = expected_cache {
+                expected["cachedContent"] = json!(handle);
+            }
+            assert_eq!(requests[0].body_json::<Value>().unwrap(), expected);
+        }
     }
 }
