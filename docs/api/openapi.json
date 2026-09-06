@@ -42028,49 +42028,49 @@
       "agentId": {
         "type": "string",
         "description": "Prefixed identifier with 'agent' prefix",
-        "example": "agent_01933b5a00007000800000000000001",
+        "example": "agent_01933b5a000070008000000000000001",
         "pattern": "^agent_[0-9a-f]{32}$"
       },
       "agentverId": {
         "type": "string",
         "description": "Prefixed identifier with 'agentver' prefix",
-        "example": "agentver_01933b5a00007000800000000000001",
+        "example": "agentver_01933b5a000070008000000000000001",
         "pattern": "^agentver_[0-9a-f]{32}$"
       },
       "eventId": {
         "type": "string",
         "description": "Prefixed identifier with 'event' prefix",
-        "example": "event_01933b5a00007000800000000000001",
+        "example": "event_01933b5a000070008000000000000001",
         "pattern": "^event_[0-9a-f]{32}$"
       },
       "harnessId": {
         "type": "string",
         "description": "Prefixed identifier with 'harness' prefix",
-        "example": "harness_01933b5a00007000800000000000001",
+        "example": "harness_01933b5a000070008000000000000001",
         "pattern": "^harness_[0-9a-f]{32}$"
       },
       "payacctId": {
         "type": "string",
         "description": "Prefixed identifier with 'payacct' prefix",
-        "example": "payacct_01933b5a00007000800000000000001",
+        "example": "payacct_01933b5a000070008000000000000001",
         "pattern": "^payacct_[0-9a-f]{32}$"
       },
       "payattId": {
         "type": "string",
         "description": "Prefixed identifier with 'payatt' prefix",
-        "example": "payatt_01933b5a00007000800000000000001",
+        "example": "payatt_01933b5a000070008000000000000001",
         "pattern": "^payatt_[0-9a-f]{32}$"
       },
       "paypolId": {
         "type": "string",
         "description": "Prefixed identifier with 'paypol' prefix",
-        "example": "paypol_01933b5a00007000800000000000001",
+        "example": "paypol_01933b5a000070008000000000000001",
         "pattern": "^paypol_[0-9a-f]{32}$"
       },
       "sessionId": {
         "type": "string",
         "description": "Prefixed identifier with 'session' prefix",
-        "example": "session_01933b5a00007000800000000000001",
+        "example": "session_01933b5a000070008000000000000001",
         "pattern": "^session_[0-9a-f]{32}$"
       }
     }
