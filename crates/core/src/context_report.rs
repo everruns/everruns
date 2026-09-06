@@ -157,6 +157,8 @@ fn add_system_prompt_breakdown(builder: &mut ContextReportBuilder, prompt: &str)
             );
         }
 
+        // The prefix is already counted, even if the following block is malformed.
+        cursor = start;
         let id_start = start + "<capability id=\"".len();
         let Some(relative_id_end) = prompt[id_start..].find('"') else {
             break;
@@ -526,52 +528,15 @@ mod tests {
         assert_eq!(classify_capability_prompt("skill:abc"), "skills");
         assert_eq!(classify_capability_prompt("mcp:abc"), "mcp");
         assert_eq!(classify_capability_prompt("subagents"), "subagents");
-    }
-
-    #[test]
-    fn classifies_mcp_and_delegation_tools() {
-        let mcp = ToolDefinition::Builtin(BuiltinTool {
-            name: "mcp_docs__search".into(),
-            display_name: None,
-            description: "Search docs".into(),
-            parameters: json!({"type": "object"}),
-            policy: Default::default(),
-            category: None,
-            deferrable: Default::default(),
-            hints: Default::default(),
-            full_parameters: None,
-        });
-        let delegation = ToolDefinition::Builtin(BuiltinTool {
-            name: "spawn_agent".into(),
-            display_name: None,
-            description: "Spawn".into(),
-            parameters: json!({"type": "object"}),
-            policy: Default::default(),
-            category: None,
-            deferrable: Default::default(),
-            hints: Default::default(),
-            full_parameters: None,
-        });
-
-        assert_eq!(classify_tool(&mcp), "mcp");
-        assert_eq!(classify_tool(&delegation), "subagents");
-    }
-
-    #[test]
-    fn classifies_skill_tools() {
-        let skill = ToolDefinition::Builtin(BuiltinTool {
-            name: "activate_skill".into(),
-            display_name: None,
-            description: "Activate".into(),
-            parameters: json!({"type": "object"}),
-            policy: Default::default(),
-            category: None,
-            deferrable: Default::default(),
-            hints: Default::default(),
-            full_parameters: None,
-        });
-
-        assert_eq!(classify_tool(&skill), "skills");
+        for id in [
+            "",
+            "skills-extra",
+            "mcp-extra",
+            "agent_instructions_extra",
+            "custom",
+        ] {
+            assert_eq!(classify_capability_prompt(id), "tools", "{id}");
+        }
     }
 
     #[test]
@@ -580,6 +545,8 @@ mod tests {
         assert_eq!(estimate_text_tokens("abc"), 1);
         assert_eq!(estimate_text_tokens("abcd"), 1);
         assert_eq!(estimate_text_tokens("abcde"), 2);
+        assert_eq!(estimate_text_tokens("α😀βγ"), 1);
+        assert_eq!(estimate_text_tokens("α😀βγδ"), 2);
     }
 
     #[test]
@@ -600,13 +567,31 @@ mod tests {
 
         let report =
             build_session_context_report_from_generation("session_test", &data, None, None);
-        assert!(report.sections.iter().any(|section| section.key == "rules"));
-        assert!(
+        assert_eq!(report.session_id, "session_test");
+        assert_eq!(report.model, "gpt-test");
+        assert_eq!(report.context_window_tokens, None);
+        assert!(report.cumulative_usage.is_none());
+        assert_eq!(
+            report
+                .sections
+                .iter()
+                .map(|s| (s.key.as_str(), s.label.as_str(), s.items))
+                .collect::<Vec<_>>(),
+            [("system_prompt", "System prompt", 1), ("rules", "Rules", 1)]
+        );
+        assert_eq!(
             report
                 .contributions
                 .iter()
-                .any(|contribution| contribution.source_id == "agent_instructions")
+                .map(|c| (
+                    c.section_key.as_str(),
+                    c.source_id.as_str(),
+                    c.label.as_str()
+                ))
+                .collect::<Vec<_>>(),
+            [("rules", "agent_instructions", "agent_instructions")]
         );
+        assert!(report.estimated_input_tokens > 0);
     }
 
     #[test]
@@ -650,14 +635,22 @@ mod tests {
 
         let report =
             build_session_context_report_from_generation("session_test", &data, None, None);
-        assert!(report.contributions.iter().any(|contribution| {
-            contribution.section_key == "mcp" && contribution.source_id == "mcp:docs"
-        }));
-        assert!(report.contributions.iter().any(|contribution| {
-            contribution.section_key == "skills"
-                && contribution.source_id == "skills"
-                && contribution.label == "Agent Skills"
-        }));
+        assert_eq!(
+            report
+                .contributions
+                .iter()
+                .map(|c| (
+                    c.section_key.as_str(),
+                    c.source_id.as_str(),
+                    c.label.as_str()
+                ))
+                .collect::<Vec<_>>(),
+            [
+                ("mcp", "mcp:docs", "docs"),
+                ("skills", "skills", "Agent Skills")
+            ]
+        );
+        assert!(report.contributions.iter().all(|c| c.tokens > 0));
     }
 
     #[test]
@@ -693,11 +686,19 @@ mod tests {
 
         let report =
             build_session_context_report_from_generation("session_test", &data, None, None);
-        assert!(report.contributions.iter().any(|contribution| {
-            contribution.section_key == "skills"
-                && contribution.source_id == "skill:pdf-tool"
-                && contribution.label == "/pdf-tool"
-        }));
+        assert_eq!(
+            report
+                .contributions
+                .iter()
+                .map(|c| (
+                    c.section_key.as_str(),
+                    c.source_id.as_str(),
+                    c.label.as_str()
+                ))
+                .collect::<Vec<_>>(),
+            [("skills", "skill:pdf-tool", "/pdf-tool")]
+        );
+        assert!(report.contributions.iter().all(|c| c.tokens > 0));
     }
 
     #[test]
@@ -738,11 +739,19 @@ mod tests {
 
         let report =
             build_session_context_report_from_generation("session_test", &data, None, None);
-        assert!(report.contributions.iter().any(|contribution| {
-            contribution.section_key == "subagents"
-                && contribution.source_id == "subagent:Scout"
-                && contribution.label == "Scout"
-        }));
+        assert_eq!(
+            report
+                .contributions
+                .iter()
+                .map(|c| (
+                    c.section_key.as_str(),
+                    c.source_id.as_str(),
+                    c.label.as_str()
+                ))
+                .collect::<Vec<_>>(),
+            [("subagents", "subagent:Scout", "Scout")]
+        );
+        assert!(report.contributions.iter().all(|c| c.tokens > 0));
     }
 
     #[test]
@@ -750,5 +759,99 @@ mod tests {
         let mut builder = ContextReportBuilder::default();
         add_system_prompt_breakdown(&mut builder, "");
         assert!(builder.sections().is_empty());
+    }
+    #[test]
+    fn malformed_capability_blocks_count_their_prefix_only_once() {
+        for (suffix, tokens) in [
+            ("<capability id=\"broken", 8),
+            ("<capability id=\"broken\">content", 10),
+        ] {
+            let mut builder = ContextReportBuilder::default();
+            add_system_prompt_breakdown(&mut builder, &format!("12345678{suffix}"));
+            assert_eq!(
+                serde_json::to_value(builder.sections()).unwrap(),
+                json!([{"key":"system_prompt","label":"System prompt","tokens":tokens,"items":2}])
+            );
+            assert!(builder.contributions.is_empty());
+        }
+    }
+    #[test]
+    fn full_definitions_and_summaries_classify_names_categories_and_attribution_consistently() {
+        for (name, category, capability, expected) in [
+            ("mcp_docs__search", None, None, "mcp"),
+            ("plain", Some("MCP Servers"), None, "mcp"),
+            ("plain", Some("mCp"), None, "mcp"),
+            ("plain", None, Some("mcp:docs"), "mcp"),
+            ("spawn_agent", Some("Skills"), None, "subagents"),
+            ("spawn_agent", Some("MCP"), None, "mcp"),
+            ("list_skills", None, None, "skills"),
+            ("activate_skill", None, None, "skills"),
+            ("plain", Some("sKiLlS"), None, "skills"),
+            ("plain", None, Some("skills"), "skills"),
+            ("plain", None, Some("skill:one"), "skills"),
+            ("plain", Some("Plugin"), None, "plugins"),
+            ("plain", Some("PLUGINS"), None, "plugins"),
+            ("plain", Some("Skills-extra"), Some("skills-extra"), "tools"),
+            ("plain", None, None, "tools"),
+        ] {
+            let mut tool = ToolDefinition::Builtin(BuiltinTool {
+                name: name.into(),
+                display_name: None,
+                description: "Description".into(),
+                parameters: json!({"type":"object"}),
+                policy: Default::default(),
+                category: category.map(str::to_string),
+                deferrable: Default::default(),
+                hints: Default::default(),
+                full_parameters: None,
+            });
+            if let Some(id) = capability {
+                tool = tool.with_capability_attribution(id, Some("Capability"));
+            }
+            let summary = ToolDefinitionSummary {
+                name: name.into(),
+                display_name: None,
+                description: "Description".into(),
+                category: category.map(str::to_string),
+                capability_id: capability.map(str::to_string),
+                capability_name: None,
+            };
+            assert_eq!(
+                classify_tool(&tool),
+                expected,
+                "{name}, {category:?}, {capability:?}"
+            );
+            assert_eq!(
+                classify_tool_summary(&summary),
+                expected,
+                "{name}, {category:?}, {capability:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn builder_aggregates_by_section_and_source_and_orders_sections() {
+        let mut builder = ContextReportBuilder::default();
+        builder.add_contribution("skills", "shared".into(), "Skill A".into(), 3, 1);
+        builder.add_contribution("mcp", "shared".into(), "MCP A".into(), 5, 2);
+        builder.add_contribution("skills", "shared".into(), "Later label".into(), 7, 3);
+        builder.add("conversation", "Conversation", 2, 1);
+        builder.add("system_prompt", "System prompt", 1, 1);
+        assert_eq!(
+            serde_json::to_value(builder.sections()).unwrap(),
+            json!([
+                {"key":"system_prompt","label":"System prompt","tokens":1,"items":1},
+                {"key":"skills","label":"Skills","tokens":10,"items":4},
+                {"key":"mcp","label":"MCP","tokens":5,"items":2},
+                {"key":"conversation","label":"Conversation","tokens":2,"items":1},
+            ])
+        );
+        assert_eq!(
+            serde_json::to_value(builder.contributions).unwrap(),
+            json!([
+                {"section_key":"skills","source_id":"shared","label":"Skill A","tokens":10},
+                {"section_key":"mcp","source_id":"shared","label":"MCP A","tokens":5},
+            ])
+        );
     }
 }

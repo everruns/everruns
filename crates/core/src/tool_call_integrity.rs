@@ -183,41 +183,143 @@ mod tests {
         }
     }
 
+    fn assert_text_messages(actual: &[LlmMessage], expected: &[LlmMessage]) {
+        assert_eq!(actual.len(), expected.len());
+        for (actual, expected) in actual.iter().zip(expected) {
+            assert_eq!(actual.role, expected.role);
+            match (&actual.content, &expected.content) {
+                (LlmMessageContent::Text(actual), LlmMessageContent::Text(expected)) => {
+                    assert_eq!(actual, expected);
+                }
+                _ => panic!("expected text messages"),
+            }
+            assert_eq!(
+                serde_json::to_value(&actual.tool_calls).unwrap(),
+                serde_json::to_value(&expected.tool_calls).unwrap()
+            );
+            assert_eq!(actual.tool_call_id, expected.tool_call_id);
+            assert_eq!(actual.phase, expected.phase);
+            assert_eq!(actual.reasoning, expected.reasoning);
+        }
+    }
+
     #[test]
     fn llm_reduction_prunes_only_the_unmatched_parallel_call() {
-        let reduced =
-            retain_complete_llm_tool_exchanges(vec![assistant_batch(), tool_result("call_skill")]);
-
-        let calls = reduced[0].tool_calls.as_ref().unwrap();
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].id, "call_skill");
-        assert_eq!(reduced[1].tool_call_id.as_deref(), Some("call_skill"));
+        let mut batch = assistant_batch();
+        batch.content = LlmMessageContent::Text("Keep this text".into());
+        batch.phase = Some(everruns_provider::execution_phase::ExecutionPhase::Commentary);
+        batch
+            .reasoning
+            .push(everruns_provider::reasoning::ReasoningContentPart::opaque(
+                "test-provider",
+            ));
+        batch.tool_calls.as_mut().unwrap()[0].arguments = json!({"name":"ops"});
+        let result = tool_result("call_skill");
+        let reduced = retain_complete_llm_tool_exchanges(vec![
+            batch.clone(),
+            result.clone(),
+            tool_result("orphan"),
+        ]);
+        batch.tool_calls.as_mut().unwrap().truncate(1);
+        assert_text_messages(&reduced, &[batch, result]);
     }
 
     #[test]
-    fn llm_reduction_drops_a_result_without_a_visible_call() {
-        let reduced = retain_complete_llm_tool_exchanges(vec![tool_result("call_bash")]);
-        assert!(reduced.is_empty());
+    fn stateless_and_stateful_llm_reduction_handle_orphans_without_inventing_calls() {
+        let result = tool_result("call_bash");
+        assert!(retain_complete_llm_tool_exchanges(vec![result.clone()]).is_empty());
+        assert_text_messages(
+            &retain_complete_llm_tool_exchanges_for_request(vec![result.clone()], true),
+            &[result],
+        );
+        for allow in [false, true] {
+            let mut invalid = tool_result("ignored");
+            invalid.tool_call_id = None;
+            assert!(
+                retain_complete_llm_tool_exchanges_for_request(vec![invalid], allow).is_empty()
+            );
+            assert!(
+                retain_complete_llm_tool_exchanges_for_request(vec![assistant_batch()], allow)
+                    .is_empty()
+            );
+        }
     }
 
     #[test]
-    fn stateful_llm_request_keeps_a_result_delta_without_reintroducing_calls() {
-        let reduced =
-            retain_complete_llm_tool_exchanges_for_request(vec![tool_result("call_bash")], true);
-        assert_eq!(reduced.len(), 1);
-        assert_eq!(reduced[0].tool_call_id.as_deref(), Some("call_bash"));
+    fn removing_all_llm_calls_preserves_independent_visible_text() {
+        let mut batch = assistant_batch();
+        batch.content = LlmMessageContent::Text("Keep α".into());
+        let mut expected = batch.clone();
+        expected.tool_calls = None;
+        assert_text_messages(
+            &retain_complete_llm_tool_exchanges(vec![batch]),
+            &[expected],
+        );
     }
 
     #[test]
     fn message_reduction_allows_stateful_result_deltas_only_when_requested() {
-        let result = Message::tool_result("call_bash", Some(json!("done")), None);
-
+        let result = Message::tool_result(
+            "call_bash",
+            Some(json!({"output":"done","exit_code":0})),
+            None,
+        );
+        let before = serde_json::to_value(&result).unwrap();
         assert!(
             retain_complete_message_tool_exchanges(std::slice::from_ref(&result), false).is_empty()
         );
         assert_eq!(
-            retain_complete_message_tool_exchanges(&[result], true).len(),
-            1
+            serde_json::to_value(retain_complete_message_tool_exchanges(
+                std::slice::from_ref(&result),
+                true
+            ))
+            .unwrap(),
+            json!([before])
         );
+        assert_eq!(serde_json::to_value(&result).unwrap(), before);
+    }
+
+    #[test]
+    fn message_reduction_preserves_matched_parts_and_does_not_mutate_source_history() {
+        let calls = assistant_batch().tool_calls.unwrap();
+        let batch = Message::assistant_with_tools("Visible α", calls);
+        let matched = Message::tool_result(
+            "call_skill",
+            Some(json!({"skill":"ops","instructions":"Body"})),
+            None,
+        );
+        let orphan = Message::tool_result("orphan", Some(json!("orphan result")), None);
+        let source = vec![
+            Message::user("Question"),
+            batch.clone(),
+            matched.clone(),
+            orphan.clone(),
+        ];
+        let before = serde_json::to_value(&source).unwrap();
+        let mut expected_batch = batch;
+        expected_batch
+            .content
+            .retain(|part| !matches!(part,ContentPart::ToolCall(call) if call.id=="call_bash"));
+        for allow in [false, true] {
+            let mut expected = vec![source[0].clone(), expected_batch.clone(), matched.clone()];
+            if allow {
+                expected.push(orphan.clone());
+            }
+            assert_eq!(
+                serde_json::to_value(retain_complete_message_tool_exchanges(&source, allow))
+                    .unwrap(),
+                serde_json::to_value(expected).unwrap()
+            );
+        }
+        assert_eq!(serde_json::to_value(&source).unwrap(), before);
+        let orphan_call = Message::assistant_with_tools(
+            "",
+            vec![ToolCall {
+                id: "missing".into(),
+                name: "run".into(),
+                arguments: json!({}),
+            }],
+        );
+        assert!(retain_complete_message_tool_exchanges(&[orphan_call], true).is_empty());
     }
 }
