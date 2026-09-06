@@ -507,3 +507,23 @@ async fn server_tools_are_appended_to_tools_array() {
     // Tools without parameters omit the field entirely.
     assert!(datetime.get("parameters").is_none());
 }
+
+#[tokio::test]
+async fn max_price_preset_reaches_provider_in_usd_per_million() {
+    use everruns_provider::driver_registry::OpenRouterRoutingPreset;
+    let mut config = base_config("openai/gpt-5-mini");
+    config.openrouter_routing = Some(OpenRouterRoutingConfig {
+        presets: vec![OpenRouterRoutingPreset::MaxPrice {
+            prompt_usd_per_million: Some(5.0),
+            completion_usd_per_million: Some(15.0),
+        }],
+        ..Default::default()
+    });
+    let body = capture_request_body(&config).await;
+    assert_eq!(
+        body["provider"],
+        json!({"max_price":{"prompt":5.0,"completion":15.0}})
+    );
+    assert!(body.get("presets").is_none());
+    assert!(body.get("capacity_strategy").is_none());
+}
