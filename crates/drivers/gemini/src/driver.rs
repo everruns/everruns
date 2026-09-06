@@ -13,7 +13,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use everruns_provider::credential_schema::CredentialFormSchema;
@@ -137,7 +137,9 @@ impl GeminiChatDriver {
             parts: vec![GeminiPart::text(text)],
         });
         let mut contents = Vec::new();
-        let visible_function_call_ids = visible_tool_call_ids(messages);
+        // IDs may be reused on later turns; resolve each result against calls
+        // already seen at its position in the transcript.
+        let mut function_names = HashMap::new();
 
         for msg in messages {
             match msg.role {
@@ -148,21 +150,28 @@ impl GeminiChatDriver {
                 LlmMessageRole::Tool => {
                     // Tool results in Gemini use functionResponse parts
                     if let Some(tool_call_id) = &msg.tool_call_id {
-                        // Gemini rejects functionResponse parts unless the matching
+                        // THREAT[TM-TOOL-005]: Gemini rejects functionResponse parts unless the matching
                         // functionCall is present in the visible request after trimming.
-                        if !visible_function_call_ids.contains(tool_call_id.as_str()) {
+                        let Some(name) = function_names.get(tool_call_id.as_str()) else {
                             continue;
-                        }
+                        };
 
-                        // Try to parse as JSON, fall back to wrapping in object
-                        let response_value = serde_json::from_str::<Value>(&msg.content.to_text())
-                            .unwrap_or_else(|_| json!({"result": msg.content.to_text()}));
+                        // Gemini requires an object response even when the tool
+                        // returns a scalar or an array.
+                        let text = msg.content.to_text();
+                        let response_value =
+                            serde_json::from_str::<Value>(&text).unwrap_or(Value::String(text));
+                        let response_value = if response_value.is_object() {
+                            response_value
+                        } else {
+                            json!({"result": response_value})
+                        };
 
                         contents.push(GeminiContent {
                             role: Some("user".to_string()),
                             parts: vec![GeminiPart::FunctionResponse {
                                 function_response: GeminiFunctionResponse {
-                                    name: tool_call_id.clone(),
+                                    name: String::from(*name),
                                     response: response_value,
                                 },
                             }],
@@ -189,6 +198,7 @@ impl GeminiChatDriver {
                     // Add function call parts if present
                     if let Some(tool_calls) = &msg.tool_calls {
                         for tc in tool_calls {
+                            function_names.insert(tc.id.as_str(), tc.name.as_str());
                             let args = if tc.arguments.is_object() {
                                 tc.arguments.clone()
                             } else if let Some(s) = tc.arguments.as_str() {
@@ -1000,15 +1010,6 @@ impl Default for GeminiChatDriver {
 // SSE Parsing
 // ============================================================================
 
-fn visible_tool_call_ids(messages: &[LlmMessage]) -> HashSet<&str> {
-    messages
-        .iter()
-        .filter(|msg| msg.role == LlmMessageRole::Assistant)
-        .flat_map(|msg| msg.tool_calls.iter().flatten())
-        .map(|tool_call| tool_call.id.as_str())
-        .collect()
-}
-
 /// Extract a complete SSE event from the buffer, returning the data payload
 fn extract_sse_event(buffer: &mut String) -> Option<String> {
     // Look for "data: " followed by a complete JSON object or "[DONE]"
@@ -1308,75 +1309,6 @@ mod tests {
         // local tool scheduler.
         let driver = GeminiChatDriver::new();
         assert!(!driver.supports_parallel_tool_calls("gemini-2.5-pro"));
-    }
-
-    #[test]
-    fn test_convert_content_text() {
-        let content = LlmMessageContent::Text("Hello, world!".to_string());
-        let parts = GeminiChatDriver::convert_content(&content);
-        assert_eq!(parts.len(), 1);
-    }
-
-    #[test]
-    fn test_convert_content_empty_text() {
-        let content = LlmMessageContent::Text(String::new());
-        let parts = GeminiChatDriver::convert_content(&content);
-        assert!(parts.is_empty());
-    }
-
-    #[test]
-    fn test_convert_messages_system_prompt() {
-        let messages = vec![
-            LlmMessage {
-                role: LlmMessageRole::System,
-                content: LlmMessageContent::Text("You are helpful".to_string()),
-                tool_calls: None,
-                tool_call_id: None,
-                phase: None,
-                reasoning: Vec::new(),
-            },
-            LlmMessage {
-                role: LlmMessageRole::User,
-                content: LlmMessageContent::Text("Hello".to_string()),
-                tool_calls: None,
-                tool_call_id: None,
-                phase: None,
-                reasoning: Vec::new(),
-            },
-        ];
-
-        let (system, contents) = GeminiChatDriver::convert_messages(&messages);
-
-        assert!(system.is_some());
-        assert_eq!(contents.len(), 1); // Only user message
-    }
-
-    #[test]
-    fn test_convert_messages_accumulates_multiple_system_messages() {
-        // The agent system prompt plus a later notice/summary System message
-        // (infinity_context / compaction) must both land in `system_instruction`,
-        // in order — the later one must not overwrite the agent system prompt.
-        // No System-role content may leak into `contents`.
-        let messages = vec![
-            LlmMessage::text(LlmMessageRole::System, "A"),
-            LlmMessage::text(LlmMessageRole::User, "hi"),
-            LlmMessage::text(LlmMessageRole::System, "B"),
-        ];
-
-        let (system, contents) = GeminiChatDriver::convert_messages(&messages);
-
-        let system = system.expect("system_instruction present");
-        let text = system
-            .parts
-            .iter()
-            .filter_map(|p| match p {
-                GeminiPart::Text { text, .. } => Some(text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("");
-        assert_eq!(text, "A\n\nB");
-        assert_eq!(contents.len(), 1); // Only the user message
     }
 
     #[test]
@@ -1707,53 +1639,6 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_messages_tool_result() {
-        let messages = vec![
-            LlmMessage {
-                role: LlmMessageRole::Assistant,
-                content: LlmMessageContent::Text(String::new()),
-                tool_calls: Some(vec![ToolCall {
-                    id: "get_weather".to_string(),
-                    name: "get_weather".to_string(),
-                    arguments: json!({"city": "London"}),
-                }]),
-                tool_call_id: None,
-                phase: None,
-                reasoning: Vec::new(),
-            },
-            LlmMessage {
-                role: LlmMessageRole::Tool,
-                content: LlmMessageContent::Text("{\"temp\": 20}".to_string()),
-                tool_calls: None,
-                tool_call_id: Some("get_weather".to_string()),
-                phase: None,
-                reasoning: Vec::new(),
-            },
-        ];
-
-        let (_, contents) = GeminiChatDriver::convert_messages(&messages);
-
-        assert_eq!(contents.len(), 2);
-        assert_eq!(contents[1].role.as_deref(), Some("user"));
-    }
-
-    #[test]
-    fn test_convert_messages_drops_orphan_tool_result() {
-        let messages = vec![LlmMessage {
-            role: LlmMessageRole::Tool,
-            content: LlmMessageContent::Text("{\"temp\": 20}".to_string()),
-            tool_calls: None,
-            tool_call_id: Some("get_weather".to_string()),
-            phase: None,
-            reasoning: Vec::new(),
-        }];
-
-        let (_, contents) = GeminiChatDriver::convert_messages(&messages);
-
-        assert!(contents.is_empty());
-    }
-
-    #[test]
     fn test_request_serialization_with_cached_content() {
         let request = GeminiRequest {
             contents: vec![GeminiContent {
@@ -1828,5 +1713,117 @@ mod tests {
             "nonexistent-model-xyz",
         );
         assert!(profile.is_none(), "unknown model should not have a profile");
+    }
+    fn call_message(id: &str, name: &str, arguments: Value) -> LlmMessage {
+        let mut message = LlmMessage::text(LlmMessageRole::Assistant, "");
+        message.tool_calls = Some(vec![ToolCall {
+            id: id.into(),
+            name: name.into(),
+            arguments,
+        }]);
+        message
+    }
+
+    fn result_message(id: Option<&str>, text: &str) -> LlmMessage {
+        let mut message = LlmMessage::text(LlmMessageRole::Tool, text);
+        message.tool_call_id = id.map(str::to_string);
+        message
+    }
+
+    #[test]
+    fn transcript_preserves_system_order_and_resolves_tool_names_per_turn() {
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "A"),
+            result_message(Some("call_0"), "future orphan"),
+            LlmMessage::text(LlmMessageRole::User, "hi"),
+            call_message("call_0", "get_weather", json!({"city":"Paris"})),
+            result_message(Some("call_0"), r#"{"temp":20}"#),
+            LlmMessage::text(LlmMessageRole::System, "B"),
+            call_message("call_0", "get_time", json!({"zone":"UTC"})),
+            result_message(Some("call_0"), "12:00"),
+            result_message(Some("missing"), "orphan"),
+            result_message(None, "missing id"),
+        ];
+        let (system, contents) = GeminiChatDriver::convert_messages(&messages);
+        assert_eq!(
+            serde_json::to_value(system).unwrap(),
+            json!({"parts":[{"text":"A\n\nB"}]})
+        );
+        assert_eq!(
+            serde_json::to_value(contents).unwrap(),
+            json!([
+                {"role":"user","parts":[{"text":"hi"}]},
+                {"role":"model","parts":[{"functionCall":{"name":"get_weather","args":{"city":"Paris"}}}]},
+                {"role":"user","parts":[{"functionResponse":{"name":"get_weather","response":{"temp":20}}}]},
+                {"role":"model","parts":[{"functionCall":{"name":"get_time","args":{"zone":"UTC"}}}]},
+                {"role":"user","parts":[{"functionResponse":{"name":"get_time","response":{"result":"12:00"}}}]}
+            ])
+        );
+        let (system, contents) = GeminiChatDriver::convert_messages(&[
+            LlmMessage::text(LlmMessageRole::User, ""),
+            result_message(Some("missing"), "orphan"),
+        ]);
+        assert!(system.is_none());
+        assert!(contents.is_empty());
+    }
+
+    #[test]
+    fn function_response_payloads_are_objects_without_losing_scalar_values() {
+        for (text, expected) in [
+            (r#"{"value":3}"#, json!({"value":3})),
+            ("plain result", json!({"result":"plain result"})),
+            ("[1,2]", json!({"result":[1,2]})),
+            ("null", json!({"result":null})),
+            ("true", json!({"result":true})),
+            ("42", json!({"result":42})),
+            (r#""quoted""#, json!({"result":"quoted"})),
+        ] {
+            let (_, contents) = GeminiChatDriver::convert_messages(&[
+                call_message("call_7", "lookup", json!({})),
+                result_message(Some("call_7"), text),
+            ]);
+            assert_eq!(
+                serde_json::to_value(&contents[1]).unwrap(),
+                json!({"role":"user","parts":[{"functionResponse":{"name":"lookup","response":expected}}]}),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn content_conversion_preserves_text_and_media_order_while_omitting_empty_parts() {
+        let parts = LlmMessageContent::Parts(vec![
+            LlmContentPart::text(""),
+            LlmContentPart::text("before"),
+            LlmContentPart::image("data:image/png;base64,aGVsbG8="),
+            LlmContentPart::image("data:malformed"),
+            LlmContentPart::image("https://images.example/photo.jpg"),
+            LlmContentPart::Audio {
+                url: "data:audio/wav;base64,YQ==".into(),
+            },
+            LlmContentPart::text("after"),
+        ]);
+        assert_eq!(
+            serde_json::to_value(GeminiChatDriver::convert_content(&parts)).unwrap(),
+            json!([
+                {"text":"before"}, {"inlineData":{"mimeType":"image/png","data":"aGVsbG8="}},
+                {"fileData":{"mimeType":"image/jpeg","fileUri":"https://images.example/photo.jpg"}},
+                {"text":"[Audio content not supported]"}, {"text":"after"}
+            ])
+        );
+        assert_eq!(
+            serde_json::to_value(GeminiChatDriver::convert_content(&LlmMessageContent::Text(
+                "hello".into()
+            )))
+            .unwrap(),
+            json!([{"text":"hello"}])
+        );
+        assert_eq!(
+            serde_json::to_value(GeminiChatDriver::convert_content(&LlmMessageContent::Text(
+                String::new()
+            )))
+            .unwrap(),
+            json!([])
+        );
     }
 }

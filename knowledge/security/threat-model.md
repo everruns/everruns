@@ -498,7 +498,7 @@ fn authorizer(action: AuthAction) -> Authorization {
 | TM-TOOL-002 | MCP server response poisoning | Medium | Responses parsed defensively; errors converted to `{"error": "..."}` in tool result | MITIGATED |
 | TM-TOOL-003 | MCP tool name confusion | Medium | Double-underscore separator (`mcp_server__tool_name`) plus shared server-name validation prevent ambiguous prefixes; configuration rejects invalid names and runtime publication/invocation paths exclude existing invalid configurations | MITIGATED |
 | TM-TOOL-004 | MCP server timeout abuse | Medium | Timeout capped; exponential backoff with max retry-after of 60s | MITIGATED |
-| TM-TOOL-005 | Tool result prompt injection | Medium | Results returned as `tool_result` role, not injected into system prompt | MITIGATED |
+| TM-TOOL-005 | Tool result prompt injection | Medium | Results retain the provider protocol's tool-result boundary rather than entering system instructions. Gemini replay resolves each result to a preceding call's function name at that transcript position, drops unmatched results, and wraps non-object values in the required function-response object. Literal transcript and HTTP fixtures cover reused call IDs and malformed result shapes in `crates/drivers/gemini/`. | MITIGATED |
 | TM-TOOL-006 | Disabled MCP server still callable | Medium | Server `status` flag checked before execution; disabled servers rejected | MITIGATED |
 | TM-TOOL-007 | MCP API key exposure | High | API keys encrypted at rest via envelope encryption; decrypted only at runtime | MITIGATED |
 | TM-TOOL-008 | Tool policy bypass | Low | `requires_approval` policy planned but not yet enforced (all tools auto-execute) | **OPEN** |

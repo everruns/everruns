@@ -380,3 +380,41 @@ async fn function_call_thought_signature_binds_to_its_call() {
          replayed in place, got: {events:?}"
     );
 }
+
+#[tokio::test]
+async fn tool_results_replay_function_names_and_object_payloads_on_wire() {
+    let server = MockServer::start().await;
+    mount_sse(&server, "data: {\"candidates\":[{\"content\":{\"parts\":[]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":2,\"candidatesTokenCount\":0}}\n\n".into()).await;
+    let mut call = LlmMessage::text(LlmMessageRole::Assistant, "");
+    call.tool_calls = Some(vec![everruns_provider::tool_types::ToolCall {
+        id: "call_17".into(),
+        name: "get_weather".into(),
+        arguments: serde_json::json!({"city":"Paris"}),
+    }]);
+    let mut result = LlmMessage::text(LlmMessageRole::Tool, "[18,20]");
+    result.tool_call_id = Some("call_17".into());
+    let stream = provider(&server)
+        .chat_completion_stream(vec![call, result], &config("gemini-2.5-flash"))
+        .await
+        .unwrap();
+    assert_eq!(
+        drain_golden(stream).await,
+        vec![Golden::Done {
+            total: Some(2),
+            prompt: Some(2),
+            completion: Some(0),
+            cache_read: None,
+            finish: Some("stop".into())
+        }]
+    );
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 1);
+    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    assert_eq!(
+        body["contents"],
+        serde_json::json!([
+            {"role":"model","parts":[{"functionCall":{"name":"get_weather","args":{"city":"Paris"}}}]},
+            {"role":"user","parts":[{"functionResponse":{"name":"get_weather","response":{"result":[18,20]}}}]}
+        ])
+    );
+}
