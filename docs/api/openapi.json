@@ -28837,7 +28837,7 @@
         "enum": [
           "none",
           "api_key",
-          "o_auth"
+          "oauth"
         ],
         "example": "api_key"
       },
