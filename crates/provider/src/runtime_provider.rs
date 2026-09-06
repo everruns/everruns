@@ -151,10 +151,20 @@ impl ProviderEndpoint {
     pub fn url(&self, path: &str) -> Option<String> {
         self.base_url.as_ref().map(|base| {
             let base = base.trim_end_matches('/');
-            if path.is_empty() || base.ends_with(path) {
-                base.to_string()
+            if path.is_empty() {
+                return base.to_string();
+            }
+            let suffix = format!("/{}", path.trim_start_matches('/'));
+            if let Ok(mut url) = url::Url::parse(base) {
+                // Match actual path segments, never a hostname or suffix of
+                // another segment; preserve query parameters while appending.
+                let existing = url.path().trim_end_matches('/');
+                if !existing.ends_with(&suffix) {
+                    url.set_path(&format!("{existing}{suffix}"));
+                }
+                url.to_string()
             } else {
-                format!("{base}/{}", path.trim_start_matches('/'))
+                format!("{base}{suffix}")
             }
         })
     }
@@ -496,6 +506,72 @@ impl fmt::Debug for RuntimeProviderRegistry {
 mod tests {
     use super::*;
 
+    struct Noop;
+    #[async_trait]
+    impl ChatDriver for Noop {
+        async fn chat_completion_stream(
+            &self,
+            _endpoint: &ProviderEndpoint,
+            _messages: Vec<crate::LlmMessage>,
+            _config: &crate::LlmCallConfig,
+        ) -> Result<crate::LlmResponseStream> {
+            unreachable!("configuration-only fixture must not execute")
+        }
+    }
+
+    #[test]
+    fn endpoint_deduplicates_only_complete_path_segments() {
+        for (base, path, expected) in [
+            (
+                "https://service.example/v1/",
+                "chat",
+                "https://service.example/v1/chat",
+            ),
+            (
+                "https://service.example/v1/chat",
+                "/chat",
+                "https://service.example/v1/chat",
+            ),
+            (
+                "https://service.example/v1/notchat",
+                "chat",
+                "https://service.example/v1/notchat/chat",
+            ),
+            ("https://chat", "chat", "https://chat/chat"),
+            (
+                "https://service.example/v1?token=x",
+                "chat",
+                "https://service.example/v1/chat?token=x",
+            ),
+            (
+                "https://service.example/v1/chat?token=x",
+                "chat",
+                "https://service.example/v1/chat?token=x",
+            ),
+            (
+                "https://service.example/v1/notchat/completions",
+                "chat/completions",
+                "https://service.example/v1/notchat/completions/chat/completions",
+            ),
+            (
+                "https://service.example/v1/chat/",
+                "",
+                "https://service.example/v1/chat",
+            ),
+        ] {
+            let endpoint = ProviderEndpoint {
+                base_url: Some(base.into()),
+                ..Default::default()
+            };
+            assert_eq!(
+                endpoint.url(path).as_deref(),
+                Some(expected),
+                "{base} + {path}"
+            );
+        }
+        assert_eq!(ProviderEndpoint::default().url("chat"), None);
+    }
+
     #[test]
     fn provider_key_deserialization_is_canonical() {
         let key: ProviderKey = serde_json::from_str(r#"" Gateway-PROD ""#).unwrap();
@@ -503,21 +579,8 @@ mod tests {
         assert_eq!(serde_json::to_string(&key).unwrap(), r#""gateway-prod""#);
     }
 
-    #[test]
-    fn debug_redacts_auth_and_header_values() {
-        struct Noop;
-        #[async_trait]
-        impl ChatDriver for Noop {
-            async fn chat_completion_stream(
-                &self,
-                _endpoint: &ProviderEndpoint,
-                _messages: Vec<crate::driver_registry::LlmMessage>,
-                _config: &crate::driver_registry::LlmCallConfig,
-            ) -> Result<crate::driver_registry::LlmResponseStream> {
-                unreachable!()
-            }
-        }
-
+    #[tokio::test]
+    async fn debug_redacts_auth_and_header_values() {
         let provider = RuntimeProvider::new("Gateway", Noop)
             .base_url("https://example.test/")
             .header("x-secret", "hidden-service-value")
@@ -527,43 +590,63 @@ mod tests {
         assert!(debug.contains("x-secret"));
         assert!(!debug.contains("hidden-service-value"));
         assert!(!debug.contains("hidden-key"));
+        let request = provider
+            .endpoint()
+            .resolve(
+                "POST",
+                "https://user:password@example.test/chat?token=query-secret#fragment-secret",
+                b"{}",
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            format!("{request:?}"),
+            "ResolvedProviderRequest { url: \"https://example.test/chat\", headers: [\"x-secret\", \"authorization\"] }"
+        );
     }
 
     #[test]
     fn duplicate_registration_is_explicit() {
-        struct Noop;
-        #[async_trait]
-        impl ChatDriver for Noop {
-            async fn chat_completion_stream(
-                &self,
-                _endpoint: &ProviderEndpoint,
-                _messages: Vec<crate::driver_registry::LlmMessage>,
-                _config: &crate::driver_registry::LlmCallConfig,
-            ) -> Result<crate::driver_registry::LlmResponseStream> {
-                unreachable!()
-            }
-        }
         let mut registry = RuntimeProviderRegistry::new();
         registry.register(RuntimeProvider::new("a", Noop)).unwrap();
-        assert!(registry.register(RuntimeProvider::new("A", Noop)).is_err());
+        let error = registry
+            .register(RuntimeProvider::new("A", Noop).base_url("https://rejected.example"))
+            .unwrap_err();
+        let crate::AgentLoopError::Configuration(message) = error else {
+            panic!("duplicate must be a configuration error")
+        };
+        assert_eq!(
+            message,
+            "provider 'a' is already registered; use replace() to overwrite intentionally"
+        );
         assert_eq!(registry.ids(), vec!["a"]);
+        let original = registry.get(&ProviderKey::new(" A ")).unwrap();
+        assert!(
+            original.endpoint().base_url().is_none(),
+            "rejected duplicate must not replace original"
+        );
+        let old = registry
+            .replace(RuntimeProvider::new("a", Noop).base_url("https://replacement.example"));
+        assert!(Arc::ptr_eq(&old.unwrap(), &original));
+        assert_eq!(
+            registry
+                .get(&ProviderKey::new("a"))
+                .unwrap()
+                .endpoint()
+                .base_url(),
+            Some("https://replacement.example")
+        );
+        assert!(
+            original.endpoint().base_url().is_none(),
+            "existing handle retains old provider"
+        );
+        assert!(registry.get(&ProviderKey::new("missing")).is_none());
+        assert!(registry.replace(RuntimeProvider::new("z", Noop)).is_none());
+        assert_eq!(registry.ids(), ["a", "z"]);
     }
 
     #[tokio::test]
     async fn one_protocol_serves_distinct_provider_identities() {
-        struct Noop;
-        #[async_trait]
-        impl ChatDriver for Noop {
-            async fn chat_completion_stream(
-                &self,
-                _endpoint: &ProviderEndpoint,
-                _messages: Vec<crate::driver_registry::LlmMessage>,
-                _config: &crate::driver_registry::LlmCallConfig,
-            ) -> Result<crate::driver_registry::LlmResponseStream> {
-                unreachable!()
-            }
-        }
-
         let protocol: Arc<dyn ChatDriver> = Arc::new(Noop);
         let first = Provider::from_driver("first", protocol.clone())
             .base_url("https://first.example/v1")
@@ -585,8 +668,22 @@ mod tests {
             .resolve("POST", second.endpoint().url("chat").unwrap(), b"{}")
             .await
             .unwrap();
-        assert_ne!(first_request.url, second_request.url);
-        assert_ne!(first_request.headers, second_request.headers);
+        assert_eq!(first_request.url, "https://first.example/v1/chat");
+        assert_eq!(second_request.url, "https://second.example/v1/chat");
+        assert_eq!(
+            first_request.headers,
+            [
+                ("x-service".into(), "first".into()),
+                ("authorization".into(), "Bearer first-key".into())
+            ]
+        );
+        assert_eq!(
+            second_request.headers,
+            [
+                ("x-service".into(), "second".into()),
+                ("authorization".into(), "Bearer second-key".into())
+            ]
+        );
     }
 
     #[tokio::test]
@@ -598,6 +695,15 @@ mod tests {
                 &self,
                 request: ProviderAuthRequest<'_>,
             ) -> Result<Vec<(String, String)>> {
+                assert_eq!(request.method, "POST");
+                assert_eq!(request.url, "https://service.example/chat");
+                assert_eq!(
+                    request.headers,
+                    [
+                        ("AUTHORIZATION".into(), "stale".into()),
+                        ("x-static".into(), "preserve".into())
+                    ]
+                );
                 let token = self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
                 Ok(vec![
                     ("authorization".into(), format!("Bearer token-{token}")),
@@ -614,7 +720,10 @@ mod tests {
 
         let endpoint = ProviderEndpoint {
             base_url: Some("https://service.example".into()),
-            headers: Vec::new(),
+            headers: vec![
+                ("AUTHORIZATION".into(), "stale".into()),
+                ("x-static".into(), "preserve".into()),
+            ],
             auth: Some(Arc::new(Rotating(std::sync::atomic::AtomicUsize::new(0)))),
         };
         let first = endpoint
@@ -625,10 +734,22 @@ mod tests {
             .resolve("POST", "https://service.example/chat", b"two")
             .await
             .unwrap();
-        assert_eq!(first.headers[0].1, "Bearer token-1");
-        assert_eq!(second.headers[0].1, "Bearer token-2");
-        assert_eq!(first.headers[1].1, "one");
-        assert_eq!(second.headers[1].1, "two");
+        assert_eq!(
+            first.headers,
+            [
+                ("x-static".into(), "preserve".into()),
+                ("authorization".into(), "Bearer token-1".into()),
+                ("x-signed-body".into(), "one".into())
+            ]
+        );
+        assert_eq!(
+            second.headers,
+            [
+                ("x-static".into(), "preserve".into()),
+                ("authorization".into(), "Bearer token-2".into()),
+                ("x-signed-body".into(), "two".into())
+            ]
+        );
     }
 
     #[tokio::test]
@@ -682,7 +803,10 @@ mod tests {
             Ok(_) => panic!("the test driver should fail before returning a stream"),
             Err(error) => error,
         };
-        assert!(error.to_string().contains("provider 'customer-gateway'"));
+        let crate::AgentLoopError::Llm(error) = error else {
+            panic!("LLM error variant must survive")
+        };
+        assert_eq!(error.message, "provider 'customer-gateway': request failed");
 
         let stream = Provider::new(
             "customer-gateway",
@@ -698,6 +822,9 @@ mod tests {
             .await
             .unwrap()
             .unwrap_err();
-        assert!(error.to_string().contains("provider 'customer-gateway'"));
+        let crate::AgentLoopError::Llm(error) = error else {
+            panic!("LLM error variant must survive")
+        };
+        assert_eq!(error.message, "provider 'customer-gateway': stream failed");
     }
 }
