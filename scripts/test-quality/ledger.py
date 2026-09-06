@@ -109,7 +109,8 @@ def inventory():
     files = subprocess.check_output(['git', 'ls-files', '-z'], cwd=ROOT, text=True).split('\0')[:-1]
     rows, sources = [], {}
     js_files = []
-    for path in files:
+    # Unmerged paths appear once per index stage; inspect each working file once.
+    for path in sorted(set(files)):
         if path.endswith('.rs'):
             text = (ROOT/path).read_text()
             sources[path] = text
