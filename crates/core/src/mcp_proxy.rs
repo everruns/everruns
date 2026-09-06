@@ -269,193 +269,180 @@ mod tests {
         }
     }
 
-    #[test]
-    fn build_proxies_only_for_mcp_tools() {
-        let defs = vec![
-            mcp_def("mcp_docs__search"),
-            ToolDefinition::Builtin(BuiltinTool {
-                name: "read_file".to_string(),
-                display_name: None,
-                description: "read".to_string(),
-                parameters: serde_json::json!({}),
-                policy: ToolPolicy::Auto,
-                category: None,
-                deferrable: DeferrablePolicy::Automatic,
-                hints: ToolHints::default(),
-                full_parameters: None,
-            }),
+    #[tokio::test]
+    async fn registry_preserves_complete_mcp_definition_and_executes_context() {
+        let mut definition = builtin_def("mcp_docs__search");
+        definition.display_name = Some("Search docs".into());
+        definition.full_parameters = Some(
+            serde_json::json!({"type":"object","properties":{"q":{"type":"string","description":"query"}}}),
+        );
+        definition.deferrable = DeferrablePolicy::Always;
+        let expected = ToolDefinition::Builtin(definition.clone());
+        let definitions = [
+            expected.clone(),
+            mcp_def("read_file"),
+            client_side_mcp_def("mcp_secret__capture"),
         ];
         let invoker = Arc::new(RecordingInvoker {
             calls: Mutex::new(vec![]),
-            result: ok_result(serde_json::json!({})),
+            result: ok_result(serde_json::json!({"answer":42,"nested":[true,null]})),
         });
-        let tools = build_mcp_proxy_tools(&defs, invoker);
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "mcp_docs__search");
-        // Schema is preserved for search/introspection.
-        assert!(tools[0].parameters_schema()["properties"]["q"].is_object());
-    }
-
-    #[tokio::test]
-    async fn proxy_delegates_to_invoker_and_maps_success() {
-        let invoker = Arc::new(RecordingInvoker {
-            calls: Mutex::new(vec![]),
-            result: ok_result(serde_json::json!({ "answer": 42 })),
-        });
-        let tool = McpProxyTool::new(builtin_def("mcp_docs__search"), invoker.clone());
-
-        let mut ctx = ToolContext::new(uuid::Uuid::new_v4().into());
-        ctx.tool_call_id = Some("call_1".to_string());
-        let result = tool
-            .execute_with_context(serde_json::json!({ "q": "hi" }), &ctx)
-            .await;
-
-        match result {
-            ToolExecutionResult::Success(v) => assert_eq!(v["answer"], 42),
-            other => panic!("expected success, got {other:?}"),
+        let mut registry = crate::tools::ToolRegistry::new();
+        for tool in build_mcp_proxy_tools(&definitions, invoker.clone()) {
+            registry.register_boxed(tool);
         }
-        let calls = invoker.calls.lock().unwrap();
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "mcp_docs__search");
-        assert_eq!(calls[0].id, "call_1");
-        assert_eq!(calls[0].arguments["q"], "hi");
+        assert_eq!(registry.len(), 1);
+        assert_eq!(
+            serde_json::to_value(registry.tool_definitions()).unwrap(),
+            serde_json::json!([expected])
+        );
+        let tool = registry.get("mcp_docs__search").unwrap();
+        assert_eq!(tool.display_name(), Some("Search docs"));
+        assert_eq!(tool.description(), "an mcp tool");
+        assert_eq!(tool.parameters_schema(), definition.parameters);
+        assert_eq!(tool.hints(), definition.hints);
+        assert!(tool.requires_context());
+        let mut context = ToolContext::new(crate::typed_id::SessionId::from_seed(1));
+        context.tool_call_id = Some("call-1".into());
+        let arguments = serde_json::json!({"q":"query","nested":{"exact":true}});
+        for result in [
+            tool.execute_with_context(arguments.clone(), &context).await,
+            tool.execute(arguments.clone()).await,
+        ] {
+            match result {
+                ToolExecutionResult::Success(value) => {
+                    assert_eq!(value, serde_json::json!({"answer":42,"nested":[true,null]}))
+                }
+                other => panic!("{other:?}"),
+            }
+        }
+        assert_eq!(
+            serde_json::to_value(&*invoker.calls.lock().unwrap()).unwrap(),
+            serde_json::json!([
+                {"id":"call-1","name":"mcp_docs__search","arguments":arguments},
+                {"id":"","name":"mcp_docs__search","arguments":arguments}
+            ])
+        );
     }
 
     #[tokio::test]
-    async fn proxy_maps_tool_error() {
-        let invoker = Arc::new(RecordingInvoker {
-            calls: Mutex::new(vec![]),
-            result: ToolResult {
-                tool_call_id: String::new(),
-                result: Some(serde_json::json!({ "error": "boom" })),
-                images: None,
-                error: Some("boom".to_string()),
-                connection_required: None,
-                raw_output: None,
-            },
-        });
-        let tool = McpProxyTool::new(builtin_def("mcp_docs__search"), invoker);
-        let result = tool.execute(serde_json::json!({})).await;
-        assert!(matches!(result, ToolExecutionResult::ToolError(ref m) if m == "boom"));
+    async fn proxy_result_mapping_preserves_images_and_connection_error_precedence() {
+        let image = crate::tool_types::ToolResultImage {
+            media_type: "image/png".into(),
+            base64: "YWJj+/==".into(),
+        };
+        for (connection, error, images, expected) in [
+            (
+                Some("github"),
+                Some("boom"),
+                Some(vec![image.clone()]),
+                "connection",
+            ),
+            (None, Some("boom"), Some(vec![image.clone()]), "error"),
+            (None, None, Some(vec![image.clone()]), "images"),
+            (None, None, Some(vec![]), "success"),
+            (None, None, None, "success"),
+        ] {
+            let mut raw = ok_result(serde_json::Value::Null);
+            raw.result = None;
+            raw.connection_required = connection.map(str::to_string);
+            raw.error = error.map(str::to_string);
+            raw.images = images;
+            let tool = McpProxyTool::new(
+                builtin_def("mcp_docs__search"),
+                Arc::new(RecordingInvoker {
+                    calls: Mutex::new(vec![]),
+                    result: raw,
+                }),
+            );
+            match (expected, tool.execute(serde_json::json!({})).await) {
+                ("connection", ToolExecutionResult::ConnectionRequired { provider }) => {
+                    assert_eq!(provider, "github")
+                }
+                ("error", ToolExecutionResult::ToolError(message)) => assert_eq!(message, "boom"),
+                ("images", ToolExecutionResult::SuccessWithImages { result, images }) => {
+                    assert_eq!(result, serde_json::Value::Null);
+                    assert_eq!(
+                        serde_json::to_value(images).unwrap(),
+                        serde_json::json!([{"media_type":"image/png","base64":"YWJj+/=="}])
+                    );
+                }
+                ("success", ToolExecutionResult::Success(value)) => {
+                    assert_eq!(value, serde_json::Value::Null)
+                }
+                other => panic!("unexpected mapping: {other:?}"),
+            }
+        }
     }
 
     #[tokio::test]
     async fn proxy_maps_invoker_error_to_tool_error() {
-        // Connection/transport failures must reach the model as an actionable
-        // tool error (not a generic internal error), matching prior routing.
         struct FailingInvoker;
         #[async_trait]
         impl McpToolInvoker for FailingInvoker {
-            async fn invoke(&self, _tool_call: &ToolCall) -> Result<ToolResult> {
-                Err(crate::error::AgentLoopError::tool(
+            async fn invoke(&self, _call: &ToolCall) -> Result<ToolResult> {
+                Err(crate::AgentLoopError::tool(
                     "MCP server not found for prefix: docs",
                 ))
             }
         }
         let tool = McpProxyTool::new(builtin_def("mcp_docs__search"), Arc::new(FailingInvoker));
-        let result = tool.execute(serde_json::json!({})).await;
-        match result {
-            ToolExecutionResult::ToolError(m) => assert!(m.contains("MCP server not found")),
-            other => panic!("expected ToolError, got {other:?}"),
+        match tool.execute(serde_json::json!({})).await {
+            ToolExecutionResult::ToolError(message) => assert_eq!(
+                message,
+                "Tool execution error: MCP server not found for prefix: docs"
+            ),
+            other => panic!("{other:?}"),
         }
     }
 
     #[tokio::test]
-    async fn scoped_invoker_allows_only_current_turn_mcp_tools() {
+    async fn scoped_invoker_rejects_unlisted_non_mcp_and_client_side_tools_before_backend() {
+        let expected = ok_result(serde_json::json!({"ok":true,"data":[1,2]}));
         let inner = Arc::new(RecordingInvoker {
             calls: Mutex::new(vec![]),
-            result: ok_result(serde_json::json!({ "ok": true })),
-        });
-        let scoped = ScopedMcpToolInvoker::new(&[mcp_def("mcp_docs__search")], inner.clone());
-
-        let allowed = ToolCall {
-            id: "call_1".to_string(),
-            name: "mcp_docs__search".to_string(),
-            arguments: serde_json::json!({ "q": "hello" }),
-        };
-        let result = scoped.invoke(&allowed).await.expect("allowed MCP tool");
-        assert_eq!(result.result, Some(serde_json::json!({ "ok": true })));
-
-        let denied = ToolCall {
-            id: "call_2".to_string(),
-            name: "mcp_secret__capture".to_string(),
-            arguments: serde_json::json!({ "content": "sensitive" }),
-        };
-        let error = scoped
-            .invoke(&denied)
-            .await
-            .expect_err("unlisted MCP tool must be denied");
-        assert!(
-            error
-                .to_string()
-                .contains("MCP tool 'mcp_secret__capture' is not allowed"),
-            "unexpected error: {error}"
-        );
-
-        let calls = inner.calls.lock().unwrap();
-        assert_eq!(calls.len(), 1, "denied call must not reach backend");
-        assert_eq!(calls[0].name, "mcp_docs__search");
-    }
-
-    #[tokio::test]
-    async fn scoped_invoker_rejects_client_side_mcp_names() {
-        let inner = Arc::new(RecordingInvoker {
-            calls: Mutex::new(vec![]),
-            result: ok_result(serde_json::json!({ "ok": true })),
+            result: expected.clone(),
         });
         let scoped = ScopedMcpToolInvoker::new(
             &[
                 mcp_def("mcp_docs__search"),
+                mcp_def("read_file"),
                 client_side_mcp_def("mcp_secret__capture"),
             ],
             inner.clone(),
         );
-
-        let spoofed_client_side = ToolCall {
-            id: "call_1".to_string(),
-            name: "mcp_secret__capture".to_string(),
-            arguments: serde_json::json!({ "content": "sensitive" }),
-        };
-        let error = scoped
-            .invoke(&spoofed_client_side)
-            .await
-            .expect_err("client-side MCP-prefixed tool must not authorize backend calls");
-        assert!(
-            error
-                .to_string()
-                .contains("MCP tool 'mcp_secret__capture' is not allowed"),
-            "unexpected error: {error}"
-        );
-
-        let calls = inner.calls.lock().unwrap();
-        assert!(calls.is_empty(), "denied call must not reach backend");
-    }
-
-    #[test]
-    fn mcp_tool_is_first_class_in_registry() {
-        // The whole point: once registered, an MCP tool is indistinguishable
-        // from any other tool to registry introspection (what tool_search,
-        // spawn_background, and openai_tool_search namespacing read).
-        use crate::tools::ToolRegistry;
-
-        let invoker = Arc::new(RecordingInvoker {
-            calls: Mutex::new(vec![]),
-            result: ok_result(serde_json::json!({})),
-        });
-        let defs = vec![mcp_def("mcp_docs__search")];
-
-        let mut registry = ToolRegistry::new();
-        for tool in build_mcp_proxy_tools(&defs, invoker) {
-            registry.register_boxed(tool);
+        for name in [
+            "mcp_other__search",
+            "read_file",
+            "mcp_secret__capture",
+            "mcp_docs__search_extra",
+        ] {
+            let call = ToolCall {
+                id: "denied".into(),
+                name: name.into(),
+                arguments: serde_json::json!({"q":"private"}),
+            };
+            assert_eq!(
+                scoped.invoke(&call).await.unwrap_err().to_string(),
+                format!(
+                    "Tool execution error: MCP tool '{name}' is not allowed in the current tool scope"
+                )
+            );
         }
-
-        assert!(registry.has("mcp_docs__search"));
-        let registry_defs = registry.tool_definitions();
-        let found = registry_defs
-            .iter()
-            .find(|d| d.name() == "mcp_docs__search")
-            .expect("MCP tool visible via registry introspection");
-        // Full parameter schema is exposed (so tool_search can return it).
-        assert!(found.parameters()["properties"]["q"].is_object());
+        assert!(inner.calls.lock().unwrap().is_empty());
+        let allowed = ToolCall {
+            id: "allowed".into(),
+            name: "mcp_docs__search".into(),
+            arguments: serde_json::json!({"q":"exact","nested":[true]}),
+        };
+        let result = scoped.invoke(&allowed).await.unwrap();
+        assert_eq!(
+            serde_json::to_value(result).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&*inner.calls.lock().unwrap()).unwrap(),
+            serde_json::json!([allowed])
+        );
     }
 }
