@@ -34,12 +34,19 @@ pub fn provider(
 }
 
 fn mai_api_base_url(base_url: String) -> String {
-    let base_url = base_url.trim_end_matches('/');
-    if base_url.ends_with("/openai/v1") {
-        base_url.to_string()
+    let Ok(mut url) = reqwest::Url::parse(&base_url) else {
+        return base_url;
+    };
+    // Only normalize the path; query parameters may carry required API routing/version values.
+    let path = url.path().trim_end_matches('/');
+    let path = path.strip_suffix("/chat/completions").unwrap_or(path);
+    let path = if path.ends_with("/openai/v1") {
+        path.to_string()
     } else {
-        format!("{base_url}/openai/v1")
-    }
+        format!("{path}/openai/v1")
+    };
+    url.set_path(&path);
+    url.to_string()
 }
 
 /// Microsoft MAI chat driver (Azure AI Foundry, OpenAI-compatible).
@@ -306,160 +313,254 @@ impl Default for MaiChatDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::driver_registry::{ProviderConfig, ProviderMetadata, ServiceKind};
-    use wiremock::matchers::{header, method, path};
+    use everruns_provider::driver_registry::{
+        LlmMessageRole, ProviderConfig, ProviderMetadata, ServiceKind,
+    };
+    use serde_json::{Value, json};
+    use wiremock::matchers::{header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    #[test]
-    fn chat_model_filter_keeps_chat_excludes_embeddings_and_media() {
-        let chat = |id: &str| FoundryModelInfo {
-            id: id.to_string(),
-            created: None,
-            owned_by: None,
-        };
-        assert!(chat("mai-code-1-flash").is_chat_model());
-        assert!(chat("mai-1-preview").is_chat_model());
-        assert!(chat("Phi-4").is_chat_model());
-        assert!(!chat("text-embedding-3-large").is_chat_model());
-        assert!(!chat("whisper-large").is_chat_model());
-        assert!(!chat("tts-1").is_chat_model());
-        assert!(!chat("dall-e-3").is_chat_model());
-        assert!(!chat("cohere-rerank-v3").is_chat_model());
+    fn config() -> LlmCallConfig {
+        LlmCallConfig {
+            model: "mai-code-1-flash".into(),
+            temperature: Some(0.25),
+            max_tokens: Some(64),
+            tools: vec![],
+            reasoning_effort: None,
+            speed: None,
+            verbosity: None,
+            metadata: Default::default(),
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: None,
+            parallel_tool_calls: Some(false),
+            volatile_suffix_len: 0,
+            extra_headers: vec![],
+            cache_diagnostics: None,
+        }
     }
 
     #[tokio::test]
-    async fn list_models_skips_non_azure_hosts() {
-        // A custom/proxy (non-Foundry) host must not be probed for discovery.
-        let service = provider(
-            "proxy",
-            "https://proxy.example.com",
-            MaiAuth::ApiKey("k".into()),
+    async fn direct_and_registered_chat_preserve_endpoint_components_and_auth() {
+        let mut registry = DriverRegistry::new();
+        register_driver(&mut registry);
+        let descriptor = registry.descriptor(&DriverId::Mai).unwrap();
+        assert_eq!(descriptor.display_name, "Microsoft MAI");
+        assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
+        assert_eq!(
+            provider(
+                "mai",
+                "https://res.services.ai.azure.com/openai/v1",
+                MaiAuth::ApiKey("key".into())
+            )
+            .endpoint()
+            .url("chat/completions")
+            .as_deref(),
+            Some("https://res.services.ai.azure.com/openai/v1/chat/completions")
         );
-        let driver = MaiChatDriver::new();
+        for suffix in [
+            "/project",
+            "/project/openai/v1/",
+            "/project/openai/v1/chat/completions",
+        ] {
+            for registered in [false, true] {
+                let server = MockServer::builder().start().await;
+                Mock::given(method("POST")).and(path("/project/openai/v1/chat/completions")).and(query_param("api-version","preview")).and(query_param("route","a b")).and(header("api-key","synthetic-key")).respond_with(ResponseTemplate::new(200).insert_header("content-type","text/event-stream").set_body_string("data: {\"id\":\"mai-response\",\"choices\":[{\"delta\":{\"content\":\"answer\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2}}\n\ndata: [DONE]\n\n")).expect(1).mount(&server).await;
+                let url = format!("{}{suffix}?api-version=preview&route=a%20b", server.uri());
+                let messages = vec![
+                    LlmMessage::text(LlmMessageRole::System, "rules"),
+                    LlmMessage::text(LlmMessageRole::User, "question"),
+                ];
+                let response = if registered {
+                    registry
+                        .create_chat_driver(
+                            &ProviderConfig::new(DriverId::Mai)
+                                .with_api_key("synthetic-key")
+                                .with_base_url(url),
+                        )
+                        .unwrap()
+                        .chat_completion(&ProviderEndpoint::default(), messages, &config())
+                        .await
+                } else {
+                    provider("direct", url, MaiAuth::ApiKey("synthetic-key".into()))
+                        .chat_completion(messages, &config())
+                        .await
+                }
+                .unwrap();
+                assert_eq!(response.text, "answer");
+                assert!(response.tool_calls.is_none());
+                assert!(response.reasoning.is_empty());
+                assert_eq!(
+                    response.metadata.response_id.as_deref(),
+                    Some("mai-response")
+                );
+                assert_eq!(response.metadata.finish_reason.as_deref(), Some("stop"));
+                assert_eq!(
+                    (
+                        response.metadata.prompt_tokens,
+                        response.metadata.completion_tokens,
+                        response.metadata.total_tokens
+                    ),
+                    (Some(10), Some(2), Some(12))
+                );
+                let requests = server.received_requests().await.unwrap();
+                assert_eq!(requests.len(), 1);
+                assert!(requests[0].headers.get("authorization").is_none());
+                assert_eq!(
+                    requests[0].body_json::<Value>().unwrap(),
+                    json!({"model":"mai-code-1-flash","messages":[{"role":"system","content":"rules"},{"role":"user","content":"question"}],"temperature":0.25,"max_tokens":64,"parallel_tool_calls":false,"stream":true,"stream_options":{"include_usage":true}})
+                );
+            }
+        }
+        let server = MockServer::builder().start().await;
+        for (config, expected) in [
+            (
+                ProviderConfig::new(DriverId::Mai),
+                "Provider credentials are required",
+            ),
+            (
+                ProviderConfig::new(DriverId::Mai)
+                    .with_api_key("fallback-key")
+                    .with_metadata(ProviderMetadata {
+                        extra: Some(json!({"tenant_id":"tenant","client_id":"client"})),
+                        ..Default::default()
+                    }),
+                "Client secret (Microsoft Entra ID OAuth) is required",
+            ),
+        ] {
+            let driver = registry
+                .create_chat_driver(&config.with_base_url(server.uri()))
+                .unwrap();
+            let error = driver
+                .chat_completion(&ProviderEndpoint::default(), vec![], &self::config())
+                .await
+                .unwrap_err();
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+        let oauth = registry.create_chat_driver(
+            &ProviderConfig::new(DriverId::Mai).with_base_url(server.uri()).with_metadata(ProviderMetadata {
+                extra: Some(json!({"tenant_id":"tenant","client_id":"client","client_secret":"secret"})),
+                ..Default::default()
+            })
+        ).unwrap();
+        // A valid OAuth-only configuration passes the credential gate for unsupported discovery without minting a token.
         assert!(
-            driver
-                .list_models(service.endpoint())
+            oauth
+                .list_models(&ProviderEndpoint::default())
                 .await
                 .unwrap()
                 .is_none()
         );
+        assert!(server.received_requests().await.unwrap().is_empty());
     }
-
     #[tokio::test]
-    async fn discovery_fetch_authenticates_filters_and_maps() {
-        // `list_foundry_models` is exercised directly so the Azure-host gate (which
-        // a wiremock 127.0.0.1 host cannot satisfy) does not block the HTTP path.
-        let server = MockServer::start().await;
+    async fn discovery_rejects_non_azure_and_lookalike_hosts_before_auth() {
+        use everruns_provider::runtime_provider::{ProviderAuth, ProviderAuthRequest};
+        struct ForbiddenAuth;
+        #[async_trait]
+        impl ProviderAuth for ForbiddenAuth {
+            async fn headers(&self, _: ProviderAuthRequest<'_>) -> Result<Vec<(String, String)>> {
+                panic!("disallowed discovery accessed credentials")
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+        for url in [
+            None,
+            Some("https://proxy.example"),
+            Some("https://res.services.ai.azure.com.evil.example"),
+            Some("https://res.openai.azure.com@evil.example"),
+            Some("https://evil.example/res.openai.azure.com"),
+            Some("not a URL"),
+        ] {
+            let service = Provider::new("gate", MaiChatDriver::new()).auth(ForbiddenAuth);
+            let service = if let Some(url) = url {
+                service.base_url(url)
+            } else {
+                service
+            };
+            assert!(service.list_models().await.unwrap().is_none(), "{url:?}");
+        }
+    }
+    #[tokio::test]
+    async fn discovery_filters_full_catalog_and_preserves_optional_metadata() {
+        let server = MockServer::builder().start().await;
+        let mut data = vec![
+            json!({"id":"mai-code-1-flash","created":0,"owned_by":"microsoft"}),
+            json!({"id":"mai-1-preview","created":9223372036854775807_i64}),
+            json!({"id":"Phi-4"}),
+        ];
+        data.extend(
+            [
+                "text-embedding-3-large",
+                "WHISPER-large",
+                "tts-1",
+                "voice-tts",
+                "text-to-speech",
+                "speech-model",
+                "dall-e-3",
+                "model-image",
+                "image-model",
+                "cohere-rerank-v3",
+            ]
+            .map(|id| json!({"id":id})),
+        );
         Mock::given(method("GET"))
             .and(path("/openai/v1/models"))
-            .and(header("api-key", "foundry-secret"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "object": "list",
-                "data": [
-                    { "id": "mai-code-1-flash", "object": "model", "created": 1_700_000_000, "owned_by": "microsoft" },
-                    { "id": "text-embedding-3-large", "object": "model" },
-                ],
-            })))
+            .and(header("api-key", "synthetic-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data":data})))
+            .expect(1)
             .mount(&server)
             .await;
-
-        let service = provider(
-            "mai-test",
-            format!("{}/openai/v1", server.uri()),
-            MaiAuth::ApiKey("foundry-secret".into()),
-        );
-        let models_url = format!("{}/openai/v1/models", server.uri());
-        let discovered =
-            list_foundry_models(&reqwest::Client::new(), service.endpoint(), &models_url)
-                .await
-                .expect("discovery request should succeed")
-                .expect("discovery should return a model list");
-
-        // Embedding model filtered out; chat model retained with bare metadata
-        // (no discovered_profile — profiles come from the registry by id).
-        assert_eq!(discovered.len(), 1);
-        assert_eq!(discovered[0].model_id, "mai-code-1-flash");
-        assert_eq!(discovered[0].owned_by.as_deref(), Some("microsoft"));
-        assert!(discovered[0].discovered_profile.is_none());
-        assert!(discovered[0].created_at.is_some());
-    }
-
-    #[tokio::test]
-    async fn discovery_treats_missing_models_endpoint_as_unsupported() {
-        // Project-scoped Foundry endpoints 404 on /openai/v1/models while chat
-        // works; discovery must degrade to Ok(None), not a hard error, so model
-        // sync does not report a spurious failure. (Mirrors live behavior.)
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/openai/v1/models"))
-            .respond_with(ResponseTemplate::new(404))
-            .mount(&server)
-            .await;
-
-        let service = provider(
-            "mai-test",
-            format!("{}/openai/v1", server.uri()),
-            MaiAuth::ApiKey("k".into()),
-        );
-        let models_url = format!("{}/openai/v1/models", server.uri());
-        let result = list_foundry_models(&reqwest::Client::new(), service.endpoint(), &models_url)
-            .await
-            .expect("404 on /models should not be a hard error");
-        assert!(
-            result.is_none(),
-            "missing /models endpoint should be Ok(None)"
-        );
-    }
-
-    #[test]
-    fn ready_provider_exposes_protocol_url() {
-        let service = provider(
-            "mai",
-            "https://res.services.ai.azure.com/openai/v1",
-            MaiAuth::ApiKey("k".into()),
-        );
+        let service = provider("mai", server.uri(), MaiAuth::ApiKey("synthetic-key".into()));
+        let models = list_foundry_models(
+            &reqwest::Client::new(),
+            service.endpoint(),
+            &format!("{}/openai/v1/models", server.uri()),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let actual:Vec<_>=models.into_iter().map(|m|json!({"id":m.model_id,"name":m.display_name,"created":m.created_at.map(|t|t.to_rfc3339()),"owner":m.owned_by,"capabilities":m.capabilities,"profile":m.discovered_profile})).collect();
         assert_eq!(
-            service.endpoint().url("chat/completions").as_deref(),
-            Some("https://res.services.ai.azure.com/openai/v1/chat/completions")
+            actual,
+            vec![
+                json!({"id":"mai-code-1-flash","name":null,"created":"1970-01-01T00:00:00+00:00","owner":"microsoft","capabilities":["chat"],"profile":null}),
+                json!({"id":"mai-1-preview","name":null,"created":null,"owner":null,"capabilities":["chat"],"profile":null}),
+                json!({"id":"Phi-4","name":null,"created":null,"owner":null,"capabilities":["chat"],"profile":null})
+            ]
         );
     }
-
-    #[test]
-    fn register_driver_registers_mai() {
-        let mut registry = DriverRegistry::new();
-        assert!(!registry.has_driver(&DriverId::Mai));
-        register_driver(&mut registry);
-        assert!(registry.has_driver(&DriverId::Mai));
-
-        let descriptor = registry.descriptor(&DriverId::Mai).unwrap();
-        assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
-        assert_eq!(descriptor.display_name, "Microsoft MAI");
-
-        // A provider with an api key and endpoint builds a usable chat driver
-        // (Mai is exempt from the registry's mandatory-api-key check, so OAuth
-        // works too).
-        let config = ProviderConfig::new(DriverId::Mai)
-            .with_api_key("k")
-            .with_base_url("https://res.services.ai.azure.com");
-        assert!(registry.create_chat_driver(&config).is_ok());
-    }
-
-    #[test]
-    fn oauth_provider_builds_without_api_key() {
-        let mut registry = DriverRegistry::new();
-        register_driver(&mut registry);
-
-        let config = ProviderConfig::new(DriverId::Mai)
-            .with_base_url("https://res.services.ai.azure.com")
-            .with_metadata(ProviderMetadata {
-                extra: Some(serde_json::json!({
-                    "tenant_id": "t",
-                    "client_id": "c",
-                    "client_secret": "s",
-                })),
-                ..Default::default()
-            });
-        // No api_key, but OAuth metadata present — must construct successfully.
-        assert!(registry.create_chat_driver(&config).is_ok());
+    #[tokio::test]
+    async fn discovery_fallback_is_limited_to_missing_or_unimplemented_catalogs() {
+        for status in [404, 501, 401, 500] {
+            let server = MockServer::builder().start().await;
+            Mock::given(method("GET"))
+                .and(path("/openai/v1/models"))
+                .and(header("api-key", "synthetic-key"))
+                .respond_with(ResponseTemplate::new(status))
+                .expect(1)
+                .mount(&server)
+                .await;
+            let service = provider("mai", server.uri(), MaiAuth::ApiKey("synthetic-key".into()));
+            let result = list_foundry_models(
+                &reqwest::Client::new(),
+                service.endpoint(),
+                &format!("{}/openai/v1/models", server.uri()),
+            )
+            .await;
+            if matches!(status, 404 | 501) {
+                assert!(result.unwrap().is_none());
+            } else {
+                assert!(
+                    result
+                        .unwrap_err()
+                        .to_string()
+                        .contains(&status.to_string())
+                );
+            }
+        }
     }
 }
