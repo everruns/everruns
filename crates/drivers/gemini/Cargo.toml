@@ -24,6 +24,7 @@ async-trait.workspace = true
 # Async runtime
 tokio.workspace = true
 futures.workspace = true
+eventsource-stream.workspace = true
 
 # HTTP client
 reqwest.workspace = true
