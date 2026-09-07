@@ -103,32 +103,69 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_full_credential() {
-        let json = r#"{"access_key_id":"AKID","secret_access_key":"SECRET","session_token":"TOKEN","region":"eu-west-1"}"#;
-        let cred = BedrockCredential::from_driver_config(&config_from_document(json)).unwrap();
-        assert_eq!(cred.access_key_id, "AKID");
-        assert_eq!(cred.secret_access_key, "SECRET");
-        assert_eq!(cred.session_token.as_deref(), Some("TOKEN"));
-        assert_eq!(cred.region, "eu-west-1");
-        let debug = format!("{cred:?}");
-        assert!(!debug.contains("AKID"));
-        assert!(!debug.contains("SECRET"));
-        assert!(!debug.contains("TOKEN"));
+    fn typed_credentials_preserve_values_defaults_and_redacted_debug() {
+        for (document, region, token) in [
+            (
+                r#"{"access_key_id":"access-marker","secret_access_key":"secret-marker","session_token":"token-marker","region":"eu-west-1"}"#,
+                "eu-west-1",
+                Some("token-marker"),
+            ),
+            (
+                r#"{"access_key_id":"access-marker","secret_access_key":"secret-marker"}"#,
+                "us-east-1",
+                None,
+            ),
+            (
+                r#"{"access_key_id":"access-marker","secret_access_key":"secret-marker","session_token":"","region":""}"#,
+                "us-east-1",
+                None,
+            ),
+        ] {
+            let credential =
+                BedrockCredential::from_driver_config(&config_from_document(document)).unwrap();
+            assert_eq!(
+                (
+                    &*credential.access_key_id,
+                    &*credential.secret_access_key,
+                    credential.session_token.as_deref(),
+                    &*credential.region
+                ),
+                ("access-marker", "secret-marker", token, region)
+            );
+            let debug = format!("{credential:?}");
+            assert_eq!(
+                debug,
+                format!(
+                    "BedrockCredential {{ access_key_id: \"[REDACTED]\", secret_access_key: \"[REDACTED]\", session_token: {:?}, region: {region:?} }}",
+                    token.map(|_| "[REDACTED]")
+                )
+            );
+        }
     }
-
     #[test]
-    fn test_parse_minimal_credential_defaults_region() {
-        let json = r#"{"access_key_id":"AKID","secret_access_key":"SECRET"}"#;
-        let cred = BedrockCredential::from_driver_config(&config_from_document(json)).unwrap();
-        assert_eq!(cred.region, "us-east-1");
-        assert!(cred.session_token.is_none());
-    }
-
-    #[test]
-    fn test_missing_required_fields_returns_error() {
-        // A raw (non-JSON) credential parses to a lone `api_key` field, which is
-        // not a valid Bedrock credential.
-        assert!(BedrockCredential::from_driver_config(&config_from_document("not-json")).is_err());
-        assert!(BedrockCredential::from_driver_config(&config_from_document("{}")).is_err());
+    fn incomplete_typed_credentials_report_the_missing_field_without_secrets() {
+        for (document, field) in [
+            ("not-json", "access key ID"),
+            ("{}", "access key ID"),
+            (r#"{"secret_access_key":"secret-marker"}"#, "access key ID"),
+            (
+                r#"{"access_key_id":"","secret_access_key":"secret-marker"}"#,
+                "access key ID",
+            ),
+            (r#"{"access_key_id":"access-marker"}"#, "secret access key"),
+            (
+                r#"{"access_key_id":"access-marker","secret_access_key":""}"#,
+                "secret access key",
+            ),
+        ] {
+            let error =
+                BedrockCredential::from_driver_config(&config_from_document(document)).unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "LLM error: Bedrock provider is missing the AWS {field}. Configure access_key_id and secret_access_key in provider settings."
+                )
+            );
+        }
     }
 }
