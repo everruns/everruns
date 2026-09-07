@@ -648,6 +648,9 @@ fn json_to_document(value: Value) -> Document {
                 } else {
                     Document::Number(aws_smithy_types::Number::NegInt(i))
                 }
+            } else if let Some(u) = n.as_u64() {
+                // THREAT[TM-TOOL-039]: identifiers above i64::MAX must not round through f64.
+                Document::Number(aws_smithy_types::Number::PosInt(u))
             } else if let Some(f) = n.as_f64() {
                 Document::Number(aws_smithy_types::Number::Float(f))
             } else {
@@ -729,128 +732,199 @@ mod tests {
     }
 
     #[test]
-    fn test_json_to_document_types() {
-        assert!(matches!(json_to_document(Value::Null), Document::Null));
-        assert!(matches!(
-            json_to_document(Value::Bool(true)),
-            Document::Bool(true)
-        ));
-        assert!(matches!(
-            json_to_document(serde_json::json!(42)),
-            Document::Number(aws_smithy_types::Number::PosInt(42))
-        ));
-        assert!(matches!(
-            json_to_document(serde_json::json!(-1)),
-            Document::Number(aws_smithy_types::Number::NegInt(-1))
-        ));
-        assert!(matches!(
-            json_to_document(Value::String("hello".to_string())),
-            Document::String(s) if s == "hello"
-        ));
-    }
-
-    #[test]
-    fn test_merge_consecutive_same_role_combines_same_role() {
-        let make_msg = |role: ConversationRole, text: &str| {
-            Message::builder()
-                .role(role)
-                .content(ContentBlock::Text(text.to_string()))
-                .build()
-                .unwrap()
-        };
-        let messages = vec![
-            make_msg(ConversationRole::User, "hello"),
-            make_msg(ConversationRole::User, "world"),
-            make_msg(ConversationRole::Assistant, "ok"),
-        ];
-        let merged = merge_consecutive_same_role(messages);
-        assert_eq!(merged.len(), 2);
-        assert_eq!(merged[0].role, ConversationRole::User);
-        assert_eq!(merged[0].content.len(), 2);
-        assert_eq!(merged[1].role, ConversationRole::Assistant);
-    }
-
-    #[test]
-    fn test_merge_consecutive_same_role_preserves_alternating() {
-        let make_msg = |role: ConversationRole, text: &str| {
-            Message::builder()
-                .role(role)
-                .content(ContentBlock::Text(text.to_string()))
-                .build()
-                .unwrap()
-        };
-        let messages = vec![
-            make_msg(ConversationRole::User, "q"),
-            make_msg(ConversationRole::Assistant, "a"),
-            make_msg(ConversationRole::User, "q2"),
-        ];
-        let merged = merge_consecutive_same_role(messages);
-        assert_eq!(merged.len(), 3);
-    }
-
-    #[test]
-    fn test_build_messages_system_extracted() {
-        use everruns_provider::driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole};
-        let messages = vec![
-            LlmMessage {
-                role: LlmMessageRole::System,
-                content: LlmMessageContent::Text("be helpful".to_string()),
-                tool_calls: None,
-                tool_call_id: None,
-                phase: None,
-                reasoning: Vec::new(),
-            },
-            LlmMessage {
-                role: LlmMessageRole::User,
-                content: LlmMessageContent::Text("hi".to_string()),
-                tool_calls: None,
-                tool_call_id: None,
-                phase: None,
-                reasoning: Vec::new(),
-            },
-        ];
-        let (system_blocks, bedrock_msgs) = build_messages(&messages).unwrap();
-        assert_eq!(system_blocks.len(), 1);
-        assert_eq!(bedrock_msgs.len(), 1);
-        assert_eq!(bedrock_msgs[0].role, ConversationRole::User);
-    }
-
-    #[test]
-    fn test_build_messages_accumulates_multiple_system_messages() {
-        // The agent system prompt plus a later notice/summary System message
-        // (infinity_context / compaction) must both survive as system blocks, in
-        // order — the later one must not overwrite the agent system prompt. No
-        // System-role message may leak into the conversation messages.
-        use everruns_provider::driver_registry::{LlmMessage, LlmMessageRole};
-        let messages = vec![
+    fn messages_preserve_full_system_conversation_and_tool_result_order() {
+        let mut multipart = LlmMessage::text(LlmMessageRole::System, "");
+        multipart.content = LlmMessageContent::Parts(vec![
+            LlmContentPart::Text { text: "B".into() },
+            LlmContentPart::Text { text: "".into() },
+            LlmContentPart::Text { text: "C".into() },
+        ]);
+        let mut call = LlmMessage::text(LlmMessageRole::Assistant, "calling");
+        call.tool_calls = Some(vec![ToolCall {
+            id: "call-one".into(),
+            name: "inspect".into(),
+            arguments: serde_json::json!({"path":"a"}),
+        }]);
+        let mut result = LlmMessage::text(LlmMessageRole::Tool, "result-one");
+        result.tool_call_id = Some("call-one".into());
+        let mut next_result = LlmMessage::text(LlmMessageRole::Tool, "result-two");
+        next_result.tool_call_id = Some("call-two".into());
+        let mut blank_id = LlmMessage::text(LlmMessageRole::Tool, "discard-empty-id");
+        blank_id.tool_call_id = Some(String::new());
+        let input = vec![
             LlmMessage::text(LlmMessageRole::System, "A"),
-            LlmMessage::text(LlmMessageRole::User, "hi"),
-            LlmMessage::text(LlmMessageRole::System, "B"),
+            LlmMessage::text(LlmMessageRole::User, "hello"),
+            multipart,
+            LlmMessage::text(LlmMessageRole::User, "world"),
+            call,
+            result,
+            LlmMessage::text(LlmMessageRole::Tool, "discard-no-id"),
+            blank_id,
+            next_result,
+            LlmMessage::text(LlmMessageRole::User, "follow-up"),
+            LlmMessage::text(LlmMessageRole::Assistant, "done"),
+            LlmMessage::text(LlmMessageRole::User, "last"),
         ];
-        let (system_blocks, bedrock_msgs) = build_messages(&messages).unwrap();
-        let texts: Vec<&str> = system_blocks
-            .iter()
-            .filter_map(|b| match b {
-                SystemContentBlock::Text(t) => Some(t.as_str()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(texts, vec!["A", "B"]);
-        assert_eq!(bedrock_msgs.len(), 1); // Only the user message
-        assert_eq!(bedrock_msgs[0].role, ConversationRole::User);
-    }
-
-    #[test]
-    fn test_build_tool_result_block_missing_id_returns_none() {
-        use everruns_provider::driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole};
-        let msg = LlmMessage {
-            role: LlmMessageRole::Tool,
-            content: LlmMessageContent::Text("result".to_string()),
-            tool_calls: None,
-            tool_call_id: None,
-            phase: None,
-            reasoning: Vec::new(),
+        let (system, messages) = build_messages(&input).unwrap();
+        assert_eq!(
+            system,
+            vec![
+                SystemContentBlock::Text("A".into()),
+                SystemContentBlock::Text("B".into()),
+                SystemContentBlock::Text("C".into())
+            ]
+        );
+        let message = |role, content| {
+            Message::builder()
+                .role(role)
+                .set_content(Some(content))
+                .build()
+                .unwrap()
         };
-        assert!(build_tool_result_block(&msg).is_none());
+        assert_eq!(
+            messages,
+            vec![
+                message(
+                    ConversationRole::User,
+                    vec![
+                        ContentBlock::Text("hello".into()),
+                        ContentBlock::Text("world".into())
+                    ]
+                ),
+                message(
+                    ConversationRole::Assistant,
+                    vec![
+                        ContentBlock::Text("calling".into()),
+                        ContentBlock::ToolUse(
+                            ToolUseBlock::builder()
+                                .tool_use_id("call-one")
+                                .name("inspect")
+                                .input(Document::Object(HashMap::from([(
+                                    "path".into(),
+                                    Document::String("a".into())
+                                )])))
+                                .build()
+                                .unwrap()
+                        )
+                    ]
+                ),
+                message(
+                    ConversationRole::User,
+                    vec![
+                        ContentBlock::ToolResult(
+                            ToolResultBlock::builder()
+                                .tool_use_id("call-one")
+                                .content(ToolResultContentBlock::Text("result-one".into()))
+                                .build()
+                                .unwrap()
+                        ),
+                        ContentBlock::ToolResult(
+                            ToolResultBlock::builder()
+                                .tool_use_id("call-two")
+                                .content(ToolResultContentBlock::Text("result-two".into()))
+                                .build()
+                                .unwrap()
+                        ),
+                        ContentBlock::Text("follow-up".into())
+                    ]
+                ),
+                message(
+                    ConversationRole::Assistant,
+                    vec![ContentBlock::Text("done".into())]
+                ),
+                message(
+                    ConversationRole::User,
+                    vec![ContentBlock::Text("last".into())]
+                ),
+            ]
+        );
+        assert_eq!(build_messages(&[]).unwrap(), (vec![], vec![]));
+    }
+    #[tokio::test]
+    async fn tool_arguments_preserve_nested_documents_and_unsigned_integer_precision() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::builder().start().await;
+        Mock::given(method("POST"))
+            .and(path("/model/model/converse-stream"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/vnd.amazon.eventstream")
+                    .set_body_bytes(vec![]),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = Client::from_conf(
+            BedrockConfigBuilder::new()
+                .behavior_version(BehaviorVersion::latest())
+                .region(Region::new("us-east-1"))
+                .credentials_provider(Credentials::new(
+                    "synthetic-access",
+                    "synthetic-secret",
+                    Some("synthetic-session".into()),
+                    None,
+                    "test",
+                ))
+                .endpoint_url(server.uri())
+                .build(),
+        );
+        let service = everruns_provider::Provider::new("bedrock", BedrockChatDriver::new())
+            .auth(BedrockAuth { client });
+        let arguments = serde_json::json!({"values":[null,true,"hé🙂",42,-1,1.5,18446744073709551615_u64],"nested":{"id":9223372036854775809_u64}});
+        let mut message = LlmMessage::text(LlmMessageRole::Assistant, "");
+        message.tool_calls = Some(vec![ToolCall {
+            id: "exact-id".into(),
+            name: "inspect".into(),
+            arguments: arguments.clone(),
+        }]);
+        let config = LlmCallConfig {
+            model: "model".into(),
+            temperature: Some(0.25),
+            max_tokens: Some(32),
+            tools: vec![],
+            reasoning_effort: None,
+            speed: None,
+            verbosity: None,
+            metadata: Default::default(),
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: None,
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+            extra_headers: vec![],
+            cache_diagnostics: None,
+        };
+        let response = service
+            .chat_completion(vec![message], &config)
+            .await
+            .unwrap();
+        assert!(response.text.is_empty());
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(
+            requests[0]
+                .headers
+                .get("x-amz-security-token")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "synthetic-session"
+        );
+        assert!(
+            requests[0]
+                .headers
+                .get("authorization")
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with("AWS4-HMAC-SHA256 Credential=synthetic-access/")
+        );
+        assert_eq!(
+            requests[0].body_json::<Value>().unwrap(),
+            serde_json::json!({"messages":[{"role":"assistant","content":[{"toolUse":{"toolUseId":"exact-id","name":"inspect","input":arguments}}]}],"inferenceConfig":{"temperature":0.25,"maxTokens":32}})
+        );
     }
 }
