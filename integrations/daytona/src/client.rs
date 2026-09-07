@@ -455,10 +455,10 @@ impl DaytonaClient {
         let status_path = format!("/process/session/{HEARTBEAT_SESSION_ID}/command/{cmd_id}");
 
         // Poll for up to SESSION_HEARTBEAT_TIMEOUT.
-        let deadline =
-            std::time::Instant::now() + Duration::from_millis(crate::SESSION_HEARTBEAT_TIMEOUT_MS);
+        let deadline = tokio::time::Instant::now()
+            + Duration::from_millis(crate::SESSION_HEARTBEAT_TIMEOUT_MS);
 
-        while std::time::Instant::now() < deadline {
+        while tokio::time::Instant::now() < deadline {
             tokio::time::sleep(EXEC_POLL_INTERVAL).await;
             if let Ok(s) = self
                 .toolbox_request(reqwest::Method::GET, sandbox_id, &status_path, None)
@@ -554,7 +554,7 @@ impl DaytonaClient {
         // where there is no exitCode and no new output. After enough stale
         // polls we probe with a heartbeat command; if it also stalls, we
         // know the session is dead and reset it.
-        let deadline = std::time::Instant::now() + Duration::from_millis(timeout);
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout);
         let mut raw_bytes_emitted: usize = 0;
         let mut stale_polls: u32 = 0;
         let mut delta_parser = ExecDeltaParserState::new(ExecStream::Stdout);
@@ -562,7 +562,7 @@ impl DaytonaClient {
         let status_path = format!("/process/session/{EXEC_SESSION_ID}/command/{cmd_id}");
 
         loop {
-            if std::time::Instant::now() >= deadline {
+            if tokio::time::Instant::now() >= deadline {
                 return match self.reset_session(sandbox_id).await {
                     Ok(()) => Err(format!(
                         "Command timed out after {timeout}ms. \
@@ -648,7 +648,7 @@ impl DaytonaClient {
             // heartbeat. If the heartbeat doesn't complete quickly, the
             // session shell is dead. Skip the probe if remaining time is
             // less than the heartbeat timeout to avoid exceeding deadline.
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
             if stale_polls >= crate::SESSION_STALE_THRESHOLD
                 && remaining > Duration::from_millis(crate::SESSION_HEARTBEAT_TIMEOUT_MS)
             {
@@ -1225,11 +1225,11 @@ mod tests {
             .await;
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn test_client_exec_detects_dead_session() {
         use std::sync::atomic::{AtomicU32, Ordering};
 
-        let mock_server = MockServer::start().await;
+        let mock_server = MockServer::builder().start().await;
         let exec_call_count = std::sync::Arc::new(AtomicU32::new(0));
 
         // 1. Create session → 201
@@ -1331,20 +1331,27 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let client = DaytonaClient::with_base_urls(
+        let mut client = DaytonaClient::with_base_urls(
             "test_key".to_string(),
             mock_server.uri(),
             mock_server.uri(),
         );
+        // Idle-pool eviction is unrelated to polling and would auto-advance a paused clock during HTTP I/O.
+        client.http = reqwest::Client::builder()
+            .pool_idle_timeout(None)
+            .build()
+            .unwrap();
         // Timeout must exceed stale detection window + heartbeat so the
         // dead-session path fires before the exec timeout path.
         let detection_window_ms = (crate::SESSION_STALE_THRESHOLD as u64)
             * crate::EXEC_POLL_INTERVAL.as_millis() as u64
             + crate::SESSION_HEARTBEAT_TIMEOUT_MS
             + 5_000; // buffer
+        let start = tokio::time::Instant::now();
         let result = client
             .exec("sb_dead", "exit 1", None, Some(detection_window_ms), |_| {})
             .await;
+        assert_eq!(start.elapsed(), Duration::from_secs(45));
         assert!(result.is_err(), "Should detect dead session");
         let err = result.unwrap_err();
         assert!(
@@ -1360,11 +1367,21 @@ mod tests {
             1,
             "Expected exactly 1 exec call (the original command)"
         );
-        assert!(
-            hb_counter.load(Ordering::SeqCst) > 100,
-            "Expected at least 1 heartbeat probe on the heartbeat session, got {}",
-            hb_counter.load(Ordering::SeqCst) - 100
-        );
+        assert_eq!(hb_counter.load(Ordering::SeqCst), 101);
+        let requests = mock_server.received_requests().await.unwrap();
+        for (suffix, expected) in [
+            ("/everruns-exec/command/cmd_0", 30),
+            ("/everruns-heartbeat/command/hb_100", 15),
+        ] {
+            assert_eq!(
+                requests
+                    .iter()
+                    .filter(|r| r.url.path().ends_with(suffix))
+                    .count(),
+                expected,
+                "{suffix}"
+            );
+        }
     }
 
     #[tokio::test]
