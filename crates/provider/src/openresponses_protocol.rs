@@ -5326,21 +5326,40 @@ mod tests {
         }
     }
 
-    /// Static auth provider that records how many times it was awaited, so tests
-    /// can assert per-attempt resolution (refreshable providers).
-    struct CountingAuth {
-        header: (String, String),
-        calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    struct SignedRequest {
+        method: String,
+        url: String,
+        body: Vec<u8>,
+    }
+
+    struct RecordingAuth {
+        requests: Arc<Mutex<Vec<SignedRequest>>>,
+        fail_on: Option<usize>,
     }
 
     #[async_trait::async_trait]
-    impl crate::runtime_provider::ProviderAuth for CountingAuth {
+    impl crate::runtime_provider::ProviderAuth for RecordingAuth {
         async fn headers(
             &self,
-            _request: crate::runtime_provider::ProviderAuthRequest<'_>,
+            request: crate::runtime_provider::ProviderAuthRequest<'_>,
         ) -> Result<Vec<(String, String)>> {
-            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Ok(vec![self.header.clone()])
+            let mut requests = self.requests.lock().unwrap();
+            requests.push(SignedRequest {
+                method: request.method.into(),
+                url: request.url.into(),
+                body: request.body.to_vec(),
+            });
+            let attempt = requests.len();
+            if self.fail_on == Some(attempt) {
+                return Err(AgentLoopError::llm_kind(
+                    LlmErrorKind::Authentication,
+                    "token refresh refused",
+                ));
+            }
+            Ok(vec![(
+                "Authorization".into(),
+                format!("Bearer token-{attempt}"),
+            )])
         }
 
         fn as_any(&self) -> &dyn std::any::Any {
@@ -5348,21 +5367,19 @@ mod tests {
         }
     }
 
-    /// Extension that injects a non-auth header and (deliberately) a conflicting
-    /// `Authorization` header, to prove the auth seam wins on conflict.
     struct HeaderInjectingExtension;
 
     impl OpenResponsesRequestExtension for HeaderInjectingExtension {
-        fn decorate(&self, _body: &mut Value, _config: &LlmCallConfig) -> Result<()> {
+        fn decorate(&self, body: &mut Value, _config: &LlmCallConfig) -> Result<()> {
+            body["routing_marker"] = json!("decorated");
             Ok(())
         }
 
         fn decorate_headers(&self, headers: &mut HeaderMap, _config: &LlmCallConfig) -> Result<()> {
             headers.insert(
-                "x-openrouter-route",
+                "x-route",
                 reqwest::header::HeaderValue::from_static("fallback"),
             );
-            // Decoration must never override auth — the driver applies auth last.
             headers.insert(
                 "authorization",
                 reqwest::header::HeaderValue::from_static("Bearer decoration"),
@@ -5371,202 +5388,221 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn provider_resolves_bearer_auth() {
-        let provider = crate::runtime_provider::RuntimeProvider::new(
-            "openai-test",
-            OpenResponsesProtocolChatDriver::new(),
-        )
-        .base_url("https://api.openai.com/v1")
-        .auth(crate::runtime_provider::BearerAuth::new("secret-key"));
-        let resolved = provider
-            .endpoint()
-            .resolve("POST", "https://api.openai.com/v1/responses", b"{}")
-            .await
-            .expect("auth resolves");
-        assert_eq!(
-            resolved.headers,
-            vec![("authorization".into(), "Bearer secret-key".into())]
-        );
+    fn successful_auth_stream() -> wiremock::ResponseTemplate {
+        wiremock::ResponseTemplate::new(200)
+            .insert_header("content-type", "text/event-stream")
+            .set_body_string(concat!(
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"authenticated\"}\n\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp-auth\",\"status\":\"completed\",\"output\":[]}}\n\n"
+            ))
+    }
+
+    async fn assert_authenticated_stream(mut stream: LlmResponseStream) {
+        let mut text = String::new();
+        let mut finishes = Vec::new();
+        while let Some(event) = stream.next().await {
+            match event.expect("stream transport succeeds") {
+                LlmStreamEvent::TextDelta(delta) => text.push_str(&delta),
+                LlmStreamEvent::Done(metadata) => finishes.push(metadata.finish_reason),
+                other => panic!("unexpected auth response event: {other:?}"),
+            }
+        }
+        assert_eq!(text, "authenticated");
+        assert_eq!(finishes, vec![Some("stop".into())]);
     }
 
     #[tokio::test]
-    async fn provider_selects_auth_independently_of_host() {
-        let provider = crate::runtime_provider::RuntimeProvider::new(
-            "azure-test",
-            OpenResponsesProtocolChatDriver::new(),
-        )
-        .base_url("https://my-resource.openai.azure.com/openai/v1")
-        .auth(crate::runtime_provider::StaticHeaderAuth::new(
-            "api-key",
-            "secret-key",
-        ));
-        let resolved = provider
-            .endpoint()
-            .resolve(
-                "POST",
-                "https://my-resource.openai.azure.com/openai/v1/responses",
-                b"{}",
+    async fn auth_headers_reach_wire_with_explicit_precedence_and_successful_response() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer};
+        for (static_header, caller_override) in [(false, false), (true, false), (false, true)] {
+            let server = MockServer::builder().start().await;
+            Mock::given(method("POST"))
+                .and(path("/v1/responses"))
+                .respond_with(successful_auth_stream())
+                .expect(1)
+                .mount(&server)
+                .await;
+            let provider = crate::runtime_provider::RuntimeProvider::new(
+                "auth-test",
+                OpenResponsesProtocolChatDriver::new(),
             )
-            .await
-            .expect("auth resolves");
-        assert_eq!(
-            resolved.headers,
-            vec![("api-key".into(), "secret-key".into())]
-        );
+            .base_url(format!("{}/v1", server.uri()));
+            let provider = if static_header {
+                provider.auth(crate::runtime_provider::StaticHeaderAuth::new(
+                    "API-Key",
+                    "static-key",
+                ))
+            } else {
+                provider.auth(crate::runtime_provider::BearerAuth::new("wire-key"))
+            };
+            let mut config = auth_test_config();
+            if caller_override {
+                config.extra_headers = vec![
+                    ("AUTHORIZATION".into(), "Bearer caller".into()),
+                    ("X-Route".into(), "caller-route".into()),
+                ];
+            }
+            let driver = OpenResponsesProtocolChatDriver::new()
+                .with_retry_config(LlmRetryConfig::no_retry())
+                .with_request_extension(Arc::new(HeaderInjectingExtension));
+            let stream = driver
+                .chat_completion_stream(
+                    provider.endpoint(),
+                    vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+                    &config,
+                )
+                .await
+                .unwrap();
+            assert_authenticated_stream(stream).await;
+            let requests = server.received_requests().await.unwrap();
+            assert_eq!(requests.len(), 1);
+            let headers = &requests[0].headers;
+            let expected = if caller_override {
+                "Bearer caller"
+            } else if static_header {
+                "Bearer decoration"
+            } else {
+                "Bearer wire-key"
+            };
+            assert_eq!(
+                headers
+                    .get_all("authorization")
+                    .iter()
+                    .map(|h| h.to_str().unwrap())
+                    .collect::<Vec<_>>(),
+                vec![expected]
+            );
+            assert_eq!(
+                headers.get("api-key").map(|h| h.to_str().unwrap()),
+                static_header.then_some("static-key")
+            );
+            assert_eq!(
+                headers["x-route"],
+                if caller_override {
+                    "caller-route"
+                } else {
+                    "fallback"
+                }
+            );
+            assert_eq!(headers["content-type"], "application/json");
+            let body: Value = serde_json::from_slice(&requests[0].body).unwrap();
+            assert_eq!(body["routing_marker"], "decorated");
+            assert_eq!(body["model"], "gpt-5.4");
+        }
     }
 
-    #[tokio::test]
-    async fn refreshable_provider_auth_is_resolved() {
-        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let provider = crate::runtime_provider::RuntimeProvider::new(
-            "refreshable-test",
-            OpenResponsesProtocolChatDriver::new(),
-        )
-        .base_url("https://service.example/v1")
-        .auth_arc(std::sync::Arc::new(CountingAuth {
-            header: (
-                "Authorization".to_string(),
-                "Bearer minted-token".to_string(),
-            ),
-            calls: calls.clone(),
-        }));
-        let resolved = provider
-            .endpoint()
-            .resolve("POST", "https://service.example/v1/responses", b"{}")
-            .await
-            .expect("auth resolves");
-        assert_eq!(
-            resolved.headers,
-            vec![("authorization".into(), "Bearer minted-token".into())]
-        );
-        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
-    }
-
-    #[tokio::test]
-    async fn default_static_auth_applied_on_the_wire() {
-        use wiremock::matchers::{header, method};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let server = MockServer::builder().start().await;
-        Mock::given(method("POST"))
-            .and(header("authorization", "Bearer wire-key"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(""))
-            .mount(&server)
-            .await;
-
-        let endpoint = crate::runtime_provider::RuntimeProvider::new(
-            "wire-test",
-            OpenResponsesProtocolChatDriver::new(),
-        )
-        .base_url(format!("{}/v1", server.uri()))
-        .auth(crate::runtime_provider::BearerAuth::new("wire-key"));
-        let driver = OpenResponsesProtocolChatDriver::new();
-        let messages = vec![LlmMessage::text(LlmMessageRole::User, "hi")];
-        let _ = driver
-            .chat_completion_stream(endpoint.endpoint(), messages, &auth_test_config())
-            .await;
-
-        let requests = server.received_requests().await.unwrap();
-        assert_eq!(
-            requests.len(),
-            1,
-            "default static key must authenticate the request"
-        );
-    }
-
-    #[tokio::test]
-    async fn auth_provider_header_wins_over_extension_header() {
-        use wiremock::matchers::{header, method};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let server = MockServer::builder().start().await;
-        // The request only matches if the auth header is the minted token (not the
-        // extension's decoration value) AND the non-auth decoration is present.
-        Mock::given(method("POST"))
-            .and(header("authorization", "Bearer minted-token"))
-            .and(header("x-openrouter-route", "fallback"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(""))
-            .mount(&server)
-            .await;
-
-        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let endpoint = crate::runtime_provider::RuntimeProvider::new(
-            "auth-wins-test",
-            OpenResponsesProtocolChatDriver::new(),
-        )
-        .base_url(format!("{}/v1", server.uri()))
-        .auth_arc(std::sync::Arc::new(CountingAuth {
-            header: (
-                "Authorization".to_string(),
-                "Bearer minted-token".to_string(),
-            ),
-            calls: calls.clone(),
-        }));
-        let driver = OpenResponsesProtocolChatDriver::new()
-            .with_request_extension(std::sync::Arc::new(HeaderInjectingExtension));
-
-        let messages = vec![LlmMessage::text(LlmMessageRole::User, "hi")];
-        let _ = driver
-            .chat_completion_stream(endpoint.endpoint(), messages, &auth_test_config())
-            .await;
-
-        let requests = server.received_requests().await.unwrap();
-        assert_eq!(
-            requests.len(),
-            1,
-            "auth header must win over a conflicting decoration header"
-        );
-        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
-    }
-
-    #[tokio::test]
-    async fn auth_provider_awaited_on_each_retry_attempt() {
-        use wiremock::matchers::method;
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let server = MockServer::builder().start().await;
-        // Always 503 (transient): the driver exhausts its retries, awaiting auth
-        // before every attempt.
-        Mock::given(method("POST"))
-            .respond_with(ResponseTemplate::new(503).set_body_string("overloaded"))
-            .mount(&server)
-            .await;
-
-        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let fast_retry = LlmRetryConfig {
+    fn auth_retry_config() -> LlmRetryConfig {
+        LlmRetryConfig {
             max_retries: 1,
             initial_backoff: std::time::Duration::from_millis(1),
             max_backoff: std::time::Duration::from_millis(1),
             backoff_multiplier: 1.0,
             jitter_factor: 0.0,
             ..Default::default()
-        };
-        let endpoint = crate::runtime_provider::RuntimeProvider::new(
-            "retry-auth-test",
+        }
+    }
+
+    #[tokio::test]
+    async fn refreshed_tokens_and_signed_payload_reach_each_retry_attempt() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::builder().start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .and(header("authorization", "Bearer token-1"))
+            .respond_with(ResponseTemplate::new(503).set_body_string("overloaded"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .and(header("authorization", "Bearer token-2"))
+            .respond_with(successful_auth_stream())
+            .expect(1)
+            .mount(&server)
+            .await;
+        let signed = Arc::new(Mutex::new(Vec::new()));
+        let provider = crate::runtime_provider::RuntimeProvider::new(
+            "auth-test",
             OpenResponsesProtocolChatDriver::new(),
         )
         .base_url(format!("{}/v1", server.uri()))
-        .auth_arc(std::sync::Arc::new(CountingAuth {
-            header: (
-                "Authorization".to_string(),
-                "Bearer minted-token".to_string(),
-            ),
-            calls: calls.clone(),
-        }));
-        let driver = OpenResponsesProtocolChatDriver::new().with_retry_config(fast_retry);
+        .auth(RecordingAuth {
+            requests: signed.clone(),
+            fail_on: None,
+        });
+        let driver = OpenResponsesProtocolChatDriver::new()
+            .with_retry_config(auth_retry_config())
+            .with_request_extension(Arc::new(HeaderInjectingExtension));
+        let stream = driver
+            .chat_completion_stream(
+                provider.endpoint(),
+                vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+                &auth_test_config(),
+            )
+            .await
+            .unwrap();
+        assert_authenticated_stream(stream).await;
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].headers["authorization"], "Bearer token-1");
+        assert_eq!(requests[1].headers["authorization"], "Bearer token-2");
+        assert_eq!(requests[0].body, requests[1].body);
+        let signed = signed.lock().unwrap();
+        assert_eq!(signed.len(), 2);
+        for (attempt, request) in signed.iter().zip(&requests) {
+            assert_eq!(attempt.method, "POST");
+            assert_eq!(attempt.url, format!("{}/v1/responses", server.uri()));
+            assert_eq!(attempt.body, request.body);
+            let body: Value = serde_json::from_slice(&attempt.body).unwrap();
+            assert_eq!(body["routing_marker"], "decorated");
+        }
+    }
 
-        let messages = vec![LlmMessage::text(LlmMessageRole::User, "hi")];
-        let _ = driver
-            .chat_completion_stream(endpoint.endpoint(), messages, &auth_test_config())
-            .await;
-
-        // Initial attempt + one retry = two auth resolutions.
-        assert_eq!(
-            calls.load(std::sync::atomic::Ordering::SeqCst),
-            2,
-            "refreshable auth must be resolved per HTTP attempt, including retries"
-        );
+    #[tokio::test]
+    async fn auth_failure_aborts_before_sending_or_reusing_an_expired_token() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        for fail_on in [1, 2] {
+            let server = MockServer::builder().start().await;
+            Mock::given(method("POST"))
+                .respond_with(ResponseTemplate::new(503).set_body_string("overloaded"))
+                .expect((fail_on - 1) as u64)
+                .mount(&server)
+                .await;
+            let signed = Arc::new(Mutex::new(Vec::new()));
+            let provider = crate::runtime_provider::RuntimeProvider::new(
+                "auth-test",
+                OpenResponsesProtocolChatDriver::new(),
+            )
+            .base_url(format!("{}/v1", server.uri()))
+            .auth(RecordingAuth {
+                requests: signed.clone(),
+                fail_on: Some(fail_on),
+            });
+            let driver =
+                OpenResponsesProtocolChatDriver::new().with_retry_config(auth_retry_config());
+            let result = driver
+                .chat_completion_stream(
+                    provider.endpoint(),
+                    vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+                    &auth_test_config(),
+                )
+                .await;
+            let error = match result {
+                Err(error) => error,
+                Ok(_) => panic!("auth failure must abort"),
+            };
+            assert_eq!(error.llm_error_kind(), Some(LlmErrorKind::Authentication));
+            assert!(error.to_string().contains("token refresh refused"));
+            assert_eq!(signed.lock().unwrap().len(), fail_on);
+            let requests = server.received_requests().await.unwrap();
+            assert_eq!(requests.len(), fail_on - 1);
+            if fail_on == 2 {
+                assert_eq!(requests[0].headers["authorization"], "Bearer token-1");
+            }
+        }
     }
 
     #[test]
