@@ -361,6 +361,7 @@ mod tests {
 
     fn config() -> LlmCallConfig {
         LlmCallConfig {
+            reasoning_state: None,
             model: "accounts/fireworks/models/example".into(),
             temperature: Some(0.25),
             max_tokens: Some(64),

@@ -158,6 +158,7 @@ mod tests {
             format_version: COMPACTION_CHECKPOINT_FORMAT_VERSION,
             payload: CompactionCheckpointPayload::ProviderOpaque {
                 context: ProviderOpaqueContext::OpenResponsesCompact {
+                    reasoning_state: None,
                     output: vec![CompactOutputItem::Compaction {
                         encrypted_content: "provider-secret-blob".to_string(),
                     }],

@@ -879,6 +879,7 @@ mod tests {
             arguments: arguments.clone(),
         }]);
         let config = LlmCallConfig {
+            reasoning_state: None,
             model: "model".into(),
             temperature: Some(0.25),
             max_tokens: Some(32),

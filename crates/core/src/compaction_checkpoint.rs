@@ -242,6 +242,7 @@ mod tests {
             format_version: 1,
             payload: CompactionCheckpointPayload::ProviderOpaque {
                 context: ProviderOpaqueContext::OpenResponsesCompact {
+                    reasoning_state: None,
                     output: vec![CompactOutputItem::Compaction {
                         encrypted_content: format!("opaque-{source_sequence}"),
                     }],
