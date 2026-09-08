@@ -237,7 +237,7 @@ mod provider_tests {
     use serde_json::json;
     #[test]
     fn message_conversion_preserves_roles_empty_text_and_complete_tool_exchange() {
-        let messages = vec![
+        let messages = [
             ChatMessage {
                 role: MessageRole::System,
                 content: "rules".into(),
