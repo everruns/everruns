@@ -3081,108 +3081,100 @@ mod tests {
     // Request-too-large detection tests
     // ========================================================================
 
-    #[test]
-    fn test_is_anthropic_request_too_large_413() {
-        let error = r#"{"error":{"message":"Request too large"}}"#;
-        assert!(is_anthropic_request_too_large(
-            reqwest::StatusCode::PAYLOAD_TOO_LARGE,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_anthropic_request_too_large_prompt_too_long() {
-        let error = r#"{"error":{"message":"prompt is too long: 250000 tokens > 200000 maximum"}}"#;
-        assert!(is_anthropic_request_too_large(
-            reqwest::StatusCode::BAD_REQUEST,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_anthropic_request_too_large_request_size_exceeded() {
-        let error = r#"{"error":{"message":"request size exceeded maximum"}}"#;
-        assert!(is_anthropic_request_too_large(
-            reqwest::StatusCode::BAD_REQUEST,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_anthropic_request_too_large_too_many_tokens() {
-        let error = r#"{"error":{"message":"too many tokens in request"}}"#;
-        assert!(is_anthropic_request_too_large(
-            reqwest::StatusCode::BAD_REQUEST,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_anthropic_request_too_large_false_for_other_errors() {
-        // Authentication error
-        let error = r#"{"error":{"message":"Invalid API key"}}"#;
-        assert!(!is_anthropic_request_too_large(
-            reqwest::StatusCode::UNAUTHORIZED,
-            error
-        ));
-
-        // Rate limit (not token-related)
-        let error = r#"{"error":{"message":"Rate limit exceeded"}}"#;
-        assert!(!is_anthropic_request_too_large(
-            reqwest::StatusCode::TOO_MANY_REQUESTS,
-            error
-        ));
-
-        // Internal server error
-        let error = r#"{"error":{"message":"Internal server error"}}"#;
-        assert!(!is_anthropic_request_too_large(
-            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
-            error
-        ));
+    #[tokio::test]
+    async fn http_errors_preserve_semantic_classification_without_retrying() {
+        use everruns_provider::{Provider, StaticHeaderAuth};
+        use wiremock::matchers::{body_json, header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let config = LlmCallConfig {
+            model: "claude-test".into(),
+            temperature: None,
+            max_tokens: Some(32),
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: Default::default(),
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: None,
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+            extra_headers: vec![],
+            cache_diagnostics: None,
+            speed: None,
+            verbosity: None,
+        };
+        for (status, message, category) in [
+            (413, "Request too large", "size"),
+            (
+                400,
+                "prompt is too long: 250000 tokens > 200000 maximum",
+                "size",
+            ),
+            (400, "request size exceeded maximum", "size"),
+            (400, "too many tokens in request", "size"),
+            (401, "Invalid API key", "auth"),
+            (429, "Rate limit exceeded", "rate"),
+            (500, "Internal server error", "unavailable"),
+            (404, "not_found_error: model: claude-test", "model"),
+            (404, "Model not found", "model"),
+            (404, "Endpoint not found", "invalid"),
+            (400, "not_found_error: model: claude-test", "invalid"),
+            (500, "prompt is too long", "unavailable"),
+        ] {
+            let server = MockServer::start().await;
+            let body = json!({"error":{"message":message}});
+            Mock::given(method("POST")).and(path("/v1/messages"))
+                .and(header("x-api-key","synthetic-key"))
+                .and(header("anthropic-version","2023-06-01"))
+                .and(body_json(json!({"model":"claude-test","max_tokens":32,"stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]})))
+                .respond_with(ResponseTemplate::new(status).set_body_json(body.clone())).expect(1).mount(&server).await;
+            let provider = Provider::new(
+                "test",
+                AnthropicChatDriver::new().with_retry_config(LlmRetryConfig::no_retry()),
+            )
+            .base_url(format!("{}/v1", server.uri()))
+            .auth(StaticHeaderAuth::new("x-api-key", "synthetic-key"));
+            let error = match provider
+                .chat_completion_stream(
+                    vec![LlmMessage::text(LlmMessageRole::User, "hello")],
+                    &config,
+                )
+                .await
+            {
+                Ok(_) => panic!("expected HTTP error for {status}: {message}"),
+                Err(error) => error,
+            };
+            match category {
+                "size" => assert!(error.is_request_too_large(), "{error:?}"),
+                "model" => assert_eq!(error.model_not_available_id(), Some("claude-test")),
+                kind => {
+                    let expected = match kind {
+                        "auth" => LlmErrorKind::Authentication,
+                        "rate" => LlmErrorKind::RateLimited,
+                        "unavailable" => LlmErrorKind::Unavailable,
+                        _ => LlmErrorKind::InvalidRequest,
+                    };
+                    assert_eq!(
+                        error.llm_error_kind(),
+                        Some(expected),
+                        "{status}: {message}"
+                    );
+                    assert!(!error.is_request_too_large());
+                    assert!(!error.is_model_not_available());
+                }
+            }
+            if category != "model" {
+                assert!(error.to_string().contains(message), "{error:?}");
+            }
+            server.verify().await;
+        }
     }
 
     // ========================================================================
     // Model-not-found detection tests
     // ========================================================================
-
-    #[test]
-    fn test_is_anthropic_model_not_found_real_error() {
-        // Real Anthropic 404 response for nonexistent model
-        let error = r#"{"type":"error","error":{"type":"not_found_error","message":"model: claude-sonnet-4-6-20260217"},"request_id":"req_011CYJKSA1AvFr6TL2NYpYEa"}"#;
-        assert!(is_anthropic_model_not_found(
-            reqwest::StatusCode::NOT_FOUND,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_anthropic_model_not_found_generic_not_found() {
-        let error = r#"{"error":{"message":"Model not found"}}"#;
-        assert!(is_anthropic_model_not_found(
-            reqwest::StatusCode::NOT_FOUND,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_anthropic_model_not_found_false_for_other_404() {
-        // 404 without model-related message
-        let error = r#"{"error":{"message":"Endpoint not found"}}"#;
-        assert!(!is_anthropic_model_not_found(
-            reqwest::StatusCode::NOT_FOUND,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_anthropic_model_not_found_false_for_non_404() {
-        // not_found_error text but wrong status code
-        let error = r#"{"type":"error","error":{"type":"not_found_error","message":"model: x"}}"#;
-        assert!(!is_anthropic_model_not_found(
-            reqwest::StatusCode::BAD_REQUEST,
-            error
-        ));
-    }
 
     // ========================================================================
     // Model ID normalization tests
