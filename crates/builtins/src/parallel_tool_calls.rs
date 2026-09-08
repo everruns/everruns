@@ -191,98 +191,41 @@ impl Capability for ParallelToolCallsCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
-    fn parse_known_modes() {
-        assert_eq!(
-            ParallelToolCallsMode::parse("prefer"),
-            Some(ParallelToolCallsMode::Prefer)
-        );
-        assert_eq!(
-            ParallelToolCallsMode::parse("avoid"),
-            Some(ParallelToolCallsMode::Avoid)
-        );
-        assert_eq!(
-            ParallelToolCallsMode::parse("none"),
-            Some(ParallelToolCallsMode::None)
-        );
-        assert_eq!(ParallelToolCallsMode::parse("loud"), None);
-    }
-
-    #[test]
-    fn mode_to_preference() {
-        assert_eq!(ParallelToolCallsMode::Prefer.to_preference(), Some(true));
-        assert_eq!(ParallelToolCallsMode::Avoid.to_preference(), Some(false));
-        assert_eq!(ParallelToolCallsMode::None.to_preference(), None);
-    }
-
-    #[test]
-    fn from_config_defaults_to_prefer() {
-        // Capability present without explicit mode => prefer.
-        assert_eq!(
-            parallel_tool_calls_from_config(&serde_json::json!({})),
-            Some(true)
-        );
-        assert_eq!(
-            parallel_tool_calls_from_config(&serde_json::Value::Null),
-            Some(true)
-        );
-    }
-
-    #[test]
-    fn from_config_honors_mode() {
-        assert_eq!(
-            parallel_tool_calls_from_config(&serde_json::json!({"mode": "prefer"})),
-            Some(true)
-        );
-        assert_eq!(
-            parallel_tool_calls_from_config(&serde_json::json!({"mode": "avoid"})),
-            Some(false)
-        );
-        assert_eq!(
-            parallel_tool_calls_from_config(&serde_json::json!({"mode": "none"})),
-            None
-        );
-    }
-
-    #[test]
-    fn from_config_malformed_neutralizes() {
-        // Invalid/non-string mode and non-object configs do not silently enable
-        // parallel tool calls — they resolve to no preference.
-        assert_eq!(
-            parallel_tool_calls_from_config(&serde_json::json!({"mode": "loud"})),
-            None
-        );
-        assert_eq!(
-            parallel_tool_calls_from_config(&serde_json::json!({"mode": 5})),
-            None
-        );
-        assert_eq!(
-            parallel_tool_calls_from_config(&serde_json::json!([])),
-            None
-        );
-    }
-
-    #[test]
-    fn validate_config_accepts_known_modes_only() {
+    fn configuration_validation_and_runtime_preference_agree() {
         let cap = ParallelToolCallsCapability;
-        assert!(cap.validate_config(&serde_json::Value::Null).is_ok());
-        assert!(cap.validate_config(&serde_json::json!({})).is_ok());
-        assert!(
-            cap.validate_config(&serde_json::json!({"mode": "prefer"}))
-                .is_ok()
-        );
-        assert!(
-            cap.validate_config(&serde_json::json!({"mode": "avoid"}))
-                .is_ok()
-        );
-        assert!(
-            cap.validate_config(&serde_json::json!({"mode": "loud"}))
-                .is_err()
-        );
-        assert!(cap.validate_config(&serde_json::json!([])).is_err());
+        for (config, valid, preference) in [
+            (json!(null), true, Some(true)),
+            (json!({}), true, Some(true)),
+            (json!({"mode":"prefer"}), true, Some(true)),
+            (json!({"mode":"avoid"}), true, Some(false)),
+            (json!({"mode":"none"}), true, None),
+            (json!({"mode":"loud"}), false, None),
+            (json!({"mode":"PREFER"}), false, None),
+            (json!({"mode":""}), false, None),
+            (json!({"mode":null}), false, None),
+            (json!({"mode":true}), false, None),
+            (json!({"mode":5}), false, None),
+            (json!({"mode":{}}), false, None),
+            (json!({"mode":[]}), false, None),
+            (json!([]), false, None),
+            (json!(true), false, None),
+            (json!("prefer"), false, None),
+        ] {
+            assert_eq!(
+                cap.validate_config(&config).is_ok(),
+                valid,
+                "config={config}"
+            );
+            assert_eq!(
+                cap.parallel_tool_calls_preference(&config),
+                preference,
+                "config={config}"
+            );
+        }
     }
-
     #[test]
     fn localizations_resolve_uk() {
         let cap = ParallelToolCallsCapability;

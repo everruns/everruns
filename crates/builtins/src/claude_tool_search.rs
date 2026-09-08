@@ -131,23 +131,36 @@ impl Capability for ClaudeToolSearchCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
-
-    #[test]
-    fn test_default_threshold() {
-        let cap = ClaudeToolSearchCapability::new();
-        let config = cap.tool_search_config();
-        assert!(config.enabled);
-        assert_eq!(config.threshold, DEFAULT_TOOL_SEARCH_THRESHOLD);
-    }
+    use serde_json::json;
 
     #[test]
-    fn test_custom_threshold() {
-        let cap = ClaudeToolSearchCapability::with_threshold(5);
-        assert_eq!(cap.tool_search_config().threshold, 5);
+    fn runtime_threshold_overrides_constructor_with_safe_fallback() {
+        for (cap, fallback) in [
+            (
+                ClaudeToolSearchCapability::new(),
+                DEFAULT_TOOL_SEARCH_THRESHOLD,
+            ),
+            (ClaudeToolSearchCapability::with_threshold(7), 7),
+        ] {
+            for (config, threshold) in [
+                (json!(null), fallback),
+                (json!({}), fallback),
+                (json!({"threshold":2}), 2),
+                (json!({"threshold":0}), 0),
+                (json!({"threshold":-1}), fallback),
+                (json!({"threshold":"2"}), fallback),
+                (json!({"threshold":1.5}), fallback),
+            ] {
+                let actual =
+                    Capability::tool_search_config(&cap, &config).expect("hosted search config");
+                assert!(actual.enabled);
+                assert_eq!(
+                    actual.threshold, threshold,
+                    "config={config}, fallback={fallback}"
+                );
+            }
+        }
     }
-
     #[test]
     fn test_native_support_lookup() {
         // Claude 4-family models support hosted tool_search; retired pre-4
