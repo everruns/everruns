@@ -326,6 +326,7 @@ mod tests {
             max_tokens: Some(64),
             tools: vec![],
             reasoning_effort: None,
+            reasoning_state: None,
             speed: None,
             verbosity: None,
             metadata: Default::default(),
