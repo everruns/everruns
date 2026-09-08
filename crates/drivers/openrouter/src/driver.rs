@@ -197,81 +197,188 @@ mod tests {
     use super::*;
     use everruns_provider::driver_registry::{DriverId, ProviderConfig, ServiceKind};
 
-    #[test]
-    fn test_openrouter_driver_defaults_to_responses_api() {
-        let driver = OpenRouterChatDriver::new();
-        let service = provider("openrouter", "test-key");
-        assert!(format!("{:?}", driver).contains("OpenRouterChatDriver"));
-        assert_eq!(
-            service.endpoint().url("responses").as_deref(),
-            Some("https://openrouter.ai/api/v1/responses")
-        );
-    }
-
-    #[test]
-    fn test_openrouter_driver_with_base_url_marks_custom_url() {
-        let service =
-            provider("openrouter", "test-key").base_url("https://openrouter.ai/api/v1/responses");
-        assert_eq!(
-            service.endpoint().url("responses").as_deref(),
-            Some("https://openrouter.ai/api/v1/responses")
-        );
+    fn base_config(model: &str) -> LlmCallConfig {
+        LlmCallConfig {
+            speed: None,
+            verbosity: None,
+            model: model.to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            reasoning_state: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: None,
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
+        }
     }
 
     #[tokio::test]
-    async fn test_openrouter_custom_non_openrouter_host_skips_model_listing() {
-        let service = Provider::new("custom", OpenRouterChatDriver::new())
-            .base_url("https://custom.api.example/v1");
-        let driver = OpenRouterChatDriver::new();
-
-        let discovered = driver
-            .list_models(service.endpoint())
-            .await
-            .expect("custom non-OpenRouter discovery should be skipped");
-
-        assert!(discovered.is_none());
-    }
-
-    #[test]
-    fn recognizes_openrouter_host() {
-        // OpenRouter is reached via the Open Responses driver with a custom base
-        // URL; discovery must run so capability profiles (reasoning) are derived.
-        assert!(is_openrouter_api_url(
-            "https://openrouter.ai/api/v1/responses"
-        ));
-        assert!(!is_openrouter_api_url("https://example.com/v1/responses"));
-    }
-
-    #[test]
-    fn openrouter_models_url_is_derived_from_responses_url() {
-        assert_eq!(
-            models_url_for_api_url("https://openrouter.ai/api/v1/responses"),
-            "https://openrouter.ai/api/v1/models"
-        );
-    }
-
-    #[test]
-    fn test_register_driver() {
-        let mut registry = DriverRegistry::new();
-        assert!(!registry.has_driver(&DriverId::OpenRouter));
-
-        register_driver(&mut registry);
-
-        assert!(registry.has_driver(&DriverId::OpenRouter));
-
-        let openrouter_config = ProviderConfig::new(DriverId::OpenRouter).with_api_key("test-key");
-        let openrouter_driver = registry.create_chat_driver(&openrouter_config);
-        assert!(openrouter_driver.is_ok());
-    }
-
-    #[test]
-    fn registered_descriptor_declares_chat_service_and_credentials() {
+    async fn direct_and_registered_providers_send_complete_authenticated_requests() {
+        use everruns_provider::driver_registry::LlmMessageRole;
+        use serde_json::{Value, json};
+        use wiremock::matchers::{header, method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
         let mut registry = DriverRegistry::new();
         register_driver(&mut registry);
-
         let descriptor = registry.descriptor(&DriverId::OpenRouter).unwrap();
         assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
         assert_eq!(descriptor.credential_schema.fields[0].name, "api_key");
+        assert_eq!(
+            provider("default", "synthetic-key")
+                .endpoint()
+                .url("responses")
+                .as_deref(),
+            Some("https://openrouter.ai/api/v1/responses")
+        );
+        for suffix in ["/api/v1", "/api/v1/responses"] {
+            for registered in [false, true] {
+                let server = MockServer::builder().start().await;
+                Mock::given(method("POST")).and(path("/api/v1/responses")).and(query_param("route","custom")).and(header("authorization","Bearer synthetic-key"))
+                    .respond_with(ResponseTemplate::new(200).insert_header("content-type","text/event-stream").set_body_string("data: {\"type\":\"response.output_text.delta\",\"delta\":\"answer\"}\n\ndata: {\"type\":\"response.completed\",\"sequence_number\":2,\"response\":{\"id\":\"resp-router\",\"object\":\"response\",\"created_at\":0,\"model\":\"vendor/model\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":10,\"output_tokens\":2,\"total_tokens\":12}}}\n\n"))
+                    .expect(1).mount(&server).await;
+                let url = format!("{}{suffix}?route=custom", server.uri());
+                let mut config = base_config("vendor/model");
+                config.parallel_tool_calls = Some(false);
+                let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+                let response = if registered {
+                    registry
+                        .create_chat_driver(
+                            &ProviderConfig::new(DriverId::OpenRouter)
+                                .with_api_key("synthetic-key")
+                                .with_base_url(url),
+                        )
+                        .unwrap()
+                        .chat_completion(&ProviderEndpoint::default(), messages, &config)
+                        .await
+                } else {
+                    provider("direct", "synthetic-key")
+                        .base_url(url)
+                        .chat_completion(messages, &config)
+                        .await
+                }
+                .unwrap();
+                assert_eq!(response.text, "answer");
+                assert_eq!(
+                    response.metadata.response_id.as_deref(),
+                    Some("resp-router")
+                );
+                assert_eq!(
+                    (
+                        response.metadata.prompt_tokens,
+                        response.metadata.completion_tokens,
+                        response.metadata.total_tokens
+                    ),
+                    (Some(10), Some(2), Some(12))
+                );
+                assert!(response.tool_calls.is_none());
+                assert!(response.reasoning.is_empty());
+                let requests = server.received_requests().await.unwrap();
+                assert_eq!(requests.len(), 1);
+                assert_eq!(
+                    requests[0].body_json::<Value>().unwrap(),
+                    json!({"model":"vendor/model","input":[{"type":"message","role":"user","content":"hello"}],"stream":true,"parallel_tool_calls":false,"reasoning":{"exclude":true}})
+                );
+            }
+        }
+        let server = MockServer::builder().start().await;
+        let driver = registry
+            .create_chat_driver(
+                &ProviderConfig::new(DriverId::OpenRouter).with_base_url(server.uri()),
+            )
+            .unwrap();
+        let error = driver
+            .chat_completion(
+                &ProviderEndpoint::default(),
+                vec![],
+                &base_config("vendor/model"),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "LLM error: API key is required. Configure the API key in provider settings."
+        );
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn discovery_preserves_the_approved_origin_before_resolving_credentials() {
+        use everruns_provider::runtime_provider::{ProviderAuth, ProviderAuthRequest};
+        struct Probe(&'static str);
+        #[async_trait]
+        impl ProviderAuth for Probe {
+            async fn headers(
+                &self,
+                request: ProviderAuthRequest<'_>,
+            ) -> Result<Vec<(String, String)>> {
+                assert_eq!(request.method, "GET");
+                assert_eq!(
+                    request.url, self.0,
+                    "discovery must keep credentials on the approved origin"
+                );
+                Err(everruns_provider::error::AgentLoopError::config(
+                    "probe stops before network",
+                ))
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+        for base in [
+            None,
+            Some("not a URL"),
+            Some("https://custom.example/v1"),
+            Some("https://openrouter.ai.evil.example/api/v1"),
+            Some("https://openrouter.ai@evil.example/api/v1"),
+            Some("https://evil.example/openrouter.ai"),
+        ] {
+            let service = Provider::new("gate", OpenRouterChatDriver::new())
+                .auth(Probe("auth must not be accessed"));
+            let service = if let Some(base) = base {
+                service.base_url(base)
+            } else {
+                service
+            };
+            assert!(service.list_models().await.unwrap().is_none(), "{base:?}");
+        }
+        for (base, expected) in [
+            (
+                "https://openrouter.ai/api/v1",
+                "https://openrouter.ai/api/v1/models",
+            ),
+            (
+                "https://openrouter.ai/api/v1/responses",
+                "https://openrouter.ai/api/v1/models",
+            ),
+            (
+                "https://openrouter.ai/api/v1/responses?route=custom",
+                "https://openrouter.ai/api/v1/models?route=custom",
+            ),
+            (
+                "https://openrouter.ai/custom",
+                "https://openrouter.ai/custom/models",
+            ),
+        ] {
+            let service = Provider::new("probe", OpenRouterChatDriver::new())
+                .base_url(base)
+                .auth(Probe(expected));
+            assert!(
+                service
+                    .list_models()
+                    .await
+                    .unwrap_err()
+                    .to_string()
+                    .contains("probe stops before network")
+            );
+        }
     }
 
     #[test]
@@ -291,5 +398,43 @@ mod tests {
         );
         assert_eq!(oauth.authorize_url, "https://openrouter.ai/auth");
         assert_eq!(oauth.token_url, "https://openrouter.ai/api/v1/auth/keys");
+    }
+    #[tokio::test]
+    async fn catalog_fetch_preserves_query_auth_and_model_mapping() {
+        use serde_json::{Value, json};
+        use wiremock::matchers::{header, method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::builder().start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/models"))
+            .and(query_param("route", "custom"))
+            .and(header("authorization", "Bearer synthetic-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data":[
+                {"id":"vendor/chat","name":"Chat","created":0,"supported_parameters":["reasoning"]},
+                {"id":"minimal","created":9223372036854775807_i64},
+                {"id":"vendor/image","architecture":{"output_modalities":["image"]}}
+            ]})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let service = provider("catalog", "synthetic-key")
+            .base_url(format!("{}/api/v1?route=custom", server.uri()));
+        let url = models_url_for_api_url(&service.endpoint().url("responses").unwrap());
+        let models = list_openrouter_models(&reqwest::Client::new(), service.endpoint(), &url)
+            .await
+            .unwrap()
+            .unwrap();
+        let actual:Vec<Value>=models.into_iter().map(|m| {
+            let profile=m.discovered_profile.expect("catalog model has a derived profile");
+            json!({"id":m.model_id,"name":m.display_name,"owner":m.owned_by,"created":m.created_at.map(|t|t.to_rfc3339()),"capabilities":m.capabilities,"profile_name":profile.name,"profile_family":profile.family,"reasoning":profile.reasoning})
+        }).collect();
+        assert_eq!(
+            actual,
+            vec![
+                json!({"id":"vendor/chat","name":"Chat","owner":"vendor","created":"1970-01-01T00:00:00+00:00","capabilities":["chat"],"profile_name":"Chat","profile_family":"vendor/chat","reasoning":true}),
+                json!({"id":"minimal","name":null,"owner":"minimal","created":null,"capabilities":["chat"],"profile_name":"minimal","profile_family":"minimal","reasoning":false})
+            ]
+        );
+        assert_eq!(server.received_requests().await.unwrap().len(), 1);
     }
 }

@@ -64,8 +64,6 @@ pub fn is_openai_api_url(api_url: &str) -> bool {
 // map a non-success status into an error. They live in core so the provider
 // crates can reuse them without duplicating logic.
 
-const OPENAI_MODELS_URL: &str = "https://api.openai.com/v1/models";
-
 /// Whether `api_url`'s host equals `host` (case-insensitive), ignoring path/port.
 pub fn url_host_eq(api_url: &str, host: &str) -> bool {
     Url::parse(api_url)
@@ -87,22 +85,23 @@ pub fn normalize_api_url(base_url: &str, endpoint_suffix: &str) -> String {
 
 /// Derive the `/models` discovery URL from a chat/responses API URL.
 pub fn models_url_for_api_url(api_url: &str) -> String {
-    let trimmed = api_url.trim_end_matches('/');
-
-    if let Some(prefix) = trimmed.strip_suffix("/responses") {
-        return format!("{prefix}/models");
-    }
-    if let Some(prefix) = trimmed.strip_suffix("/chat/completions") {
-        return format!("{prefix}/models");
-    }
-    if trimmed.ends_with("/models") {
-        return trimmed.to_string();
-    }
-    if trimmed.ends_with("/v1") || trimmed.ends_with("/openai/v1") {
-        return format!("{trimmed}/models");
-    }
-
-    OPENAI_MODELS_URL.to_string()
+    let Ok(mut url) = Url::parse(api_url) else {
+        return api_url.to_owned();
+    };
+    // THREAT[TM-API-025]: discovery must never move provider credentials to a
+    // fallback origin when a URL contains a query or a custom path.
+    let path = url.path().trim_end_matches('/');
+    let models_path = if path.ends_with("/models") {
+        path.to_owned()
+    } else {
+        let base = path
+            .strip_suffix("/responses")
+            .or_else(|| path.strip_suffix("/chat/completions"))
+            .unwrap_or(path);
+        format!("{base}/models")
+    };
+    url.set_path(&models_path);
+    url.to_string()
 }
 
 /// Build the error returned when the `/models` endpoint responds with a
@@ -1801,5 +1800,42 @@ mod tests {
             .unwrap(),
             json!([{"role":"user","content":"hello"}])
         );
+    }
+    #[test]
+    fn discovery_urls_preserve_origin_queries_and_custom_paths() {
+        for (input, expected) in [
+            (
+                "https://api.openai.com/v1/responses",
+                "https://api.openai.com/v1/models",
+            ),
+            (
+                "https://openrouter.ai/api/v1/responses?route=a%20b#section",
+                "https://openrouter.ai/api/v1/models?route=a%20b#section",
+            ),
+            (
+                "https://api.fireworks.ai/inference/v1/chat/completions/",
+                "https://api.fireworks.ai/inference/v1/models",
+            ),
+            (
+                "https://api.meta.ai/v1/models?x=1",
+                "https://api.meta.ai/v1/models?x=1",
+            ),
+            (
+                "https://resource.openai.azure.com/custom?api-version=preview",
+                "https://resource.openai.azure.com/custom/models?api-version=preview",
+            ),
+            (
+                "https://resource.services.ai.azure.com/openai/v1/?api-version=preview",
+                "https://resource.services.ai.azure.com/openai/v1/models?api-version=preview",
+            ),
+            (
+                "https://proxy.example:8443/tenant%20one",
+                "https://proxy.example:8443/tenant%20one/models",
+            ),
+            ("https://proxy.example", "https://proxy.example/models"),
+            ("not a URL", "not a URL"),
+        ] {
+            assert_eq!(models_url_for_api_url(input), expected, "{input}");
+        }
     }
 }
