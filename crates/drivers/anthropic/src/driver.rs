@@ -2031,9 +2031,9 @@ impl AnthropicModelInfo {
         // Build token limits from API fields
         let limits = match (self.max_input_tokens, self.max_tokens) {
             (Some(input), Some(output)) => Some(ModelLimits {
-                context: input as i32,
+                context: i32::try_from(input).unwrap_or(i32::MAX),
                 input: None,
-                output: output as i32,
+                output: i32::try_from(output).unwrap_or(i32::MAX),
                 max_media: None,
             }),
             _ => None,
@@ -2205,11 +2205,16 @@ impl AnthropicModelInfo {
             return None;
         }
 
-        // Default: High for adaptive, Medium for budget-based
-        let default = if supports_adaptive {
+        // Prefer the usual default only when the catalog advertises it.
+        let preferred = if supports_adaptive {
             ReasoningEffort::High
         } else {
             ReasoningEffort::Medium
+        };
+        let default = if values.iter().any(|v| v.value == preferred) {
+            preferred
+        } else {
+            values[0].value
         };
 
         Some(ReasoningEffortConfig { values, default })
@@ -2224,7 +2229,6 @@ impl AnthropicModelInfo {
 mod tests {
     use super::*;
     use everruns_provider::driver_registry::ChatDriver;
-    use everruns_provider::model::Modality;
     use everruns_provider::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
 
     #[test]
@@ -2274,11 +2278,74 @@ mod tests {
     // Anthropic API error: "text content blocks must be non-empty"
 
     #[test]
-    fn test_convert_content_filters_empty_text() {
-        // Empty text content should produce empty vec
-        let content = LlmMessageContent::Text(String::new());
-        let blocks = AnthropicChatDriver::convert_content(&content);
-        assert!(blocks.is_empty(), "Empty text should be filtered out");
+    fn content_conversion_preserves_text_and_filters_only_empty_blocks() {
+        for text in ["", "Hello, world!", "   ", "\n\t", "héllo 世界"] {
+            let expected = if text.is_empty() {
+                json!([])
+            } else {
+                json!([{"type":"text","text":text}])
+            };
+            for content in [
+                LlmMessageContent::Text(text.into()),
+                LlmMessageContent::Parts(vec![
+                    LlmContentPart::Text {
+                        text: String::new(),
+                    },
+                    LlmContentPart::Text { text: text.into() },
+                    LlmContentPart::Text {
+                        text: String::new(),
+                    },
+                ]),
+            ] {
+                assert_eq!(
+                    serde_json::to_value(AnthropicChatDriver::convert_content(&content)).unwrap(),
+                    expected,
+                    "content={content:?}"
+                );
+            }
+        }
+        assert_eq!(
+            serde_json::to_value(AnthropicChatDriver::convert_content(
+                &LlmMessageContent::Parts(vec![])
+            ))
+            .unwrap(),
+            json!([])
+        );
+    }
+
+    #[test]
+    fn content_conversion_preserves_order_and_complete_media_payloads() {
+        let content = LlmMessageContent::Parts(vec![
+            LlmContentPart::Text {
+                text: String::new(),
+            },
+            LlmContentPart::Text {
+                text: "caption".into(),
+            },
+            LlmContentPart::Image {
+                url: "data:image/png;base64,iVBORw0KGgo=".into(),
+            },
+            LlmContentPart::Text {
+                text: String::new(),
+            },
+            LlmContentPart::Image {
+                url: "https://example.com/photo.jpg?size=large".into(),
+            },
+            LlmContentPart::Audio {
+                url: "data:audio/wav;base64,AAAA".into(),
+            },
+            LlmContentPart::Text { text: "  ".into() },
+        ]);
+        assert_eq!(
+            serde_json::to_value(AnthropicChatDriver::convert_content(&content)).unwrap(),
+            json!([
+                {"type":"text","text":"caption"},
+                {"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}},
+                {"type":"image","source":{"type":"url","url":"https://example.com/photo.jpg?size=large"}},
+                {"type":"text","text":"[Audio content not supported]"},
+                {"type":"text","text":"  "}
+            ])
+        );
     }
 
     /// EVE-598: `Some(false)` disables parallel tool use; `Some(true)` allows
@@ -2712,62 +2779,6 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_content_keeps_non_empty_text() {
-        // Non-empty text should be kept
-        let content = LlmMessageContent::Text("Hello, world!".to_string());
-        let blocks = AnthropicChatDriver::convert_content(&content);
-        assert_eq!(blocks.len(), 1, "Non-empty text should be kept");
-    }
-
-    #[test]
-    fn test_convert_content_filters_empty_text_in_parts() {
-        // Empty text parts should be filtered out
-        let content = LlmMessageContent::Parts(vec![
-            LlmContentPart::Text {
-                text: String::new(),
-            },
-            LlmContentPart::Text {
-                text: "Hello".to_string(),
-            },
-            LlmContentPart::Text {
-                text: String::new(),
-            },
-        ]);
-        let blocks = AnthropicChatDriver::convert_content(&content);
-        assert_eq!(blocks.len(), 1, "Only non-empty text should be kept");
-    }
-
-    #[test]
-    fn test_convert_content_keeps_images_with_empty_text() {
-        // Images should be kept even when text parts are empty
-        let content = LlmMessageContent::Parts(vec![
-            LlmContentPart::Text {
-                text: String::new(),
-            },
-            LlmContentPart::Image {
-                url: "https://example.com/image.png".to_string(),
-            },
-        ]);
-        let blocks = AnthropicChatDriver::convert_content(&content);
-        assert_eq!(blocks.len(), 1, "Image should be kept, empty text filtered");
-    }
-
-    #[test]
-    fn test_convert_content_all_empty_produces_empty_vec() {
-        // All empty content parts should produce empty vec
-        let content = LlmMessageContent::Parts(vec![
-            LlmContentPart::Text {
-                text: String::new(),
-            },
-            LlmContentPart::Text {
-                text: String::new(),
-            },
-        ]);
-        let blocks = AnthropicChatDriver::convert_content(&content);
-        assert!(blocks.is_empty(), "All empty text should produce empty vec");
-    }
-
-    #[test]
     fn test_convert_messages_assistant_with_empty_text_and_tool_calls() {
         // Assistant message with empty text but tool calls should work
         // This is the specific case that caused the bug
@@ -2793,68 +2804,6 @@ mod tests {
             1,
             "Should only have tool_use block"
         );
-    }
-
-    #[test]
-    fn test_convert_content_whitespace_is_kept() {
-        // Whitespace-only text is kept (not empty after is_empty() check)
-        let content = LlmMessageContent::Text("   ".to_string());
-        let blocks = AnthropicChatDriver::convert_content(&content);
-        assert_eq!(blocks.len(), 1, "Whitespace-only text is kept");
-    }
-
-    #[test]
-    fn test_convert_content_base64_image() {
-        // Base64 data URL should be parsed correctly
-        let content = LlmMessageContent::Parts(vec![LlmContentPart::Image {
-            url: "data:image/png;base64,iVBORw0KGgo=".to_string(),
-        }]);
-        let blocks = AnthropicChatDriver::convert_content(&content);
-        assert_eq!(blocks.len(), 1, "Base64 image should be converted");
-        match &blocks[0] {
-            AnthropicContentBlock::Image { source } => match source {
-                AnthropicImageSource::Base64 { media_type, .. } => {
-                    assert_eq!(media_type, "image/png");
-                }
-                _ => panic!("Expected Base64 source"),
-            },
-            _ => panic!("Expected Image block"),
-        }
-    }
-
-    #[test]
-    fn test_convert_content_http_image() {
-        // HTTP URL image should work
-        let content = LlmMessageContent::Parts(vec![LlmContentPart::Image {
-            url: "https://example.com/photo.jpg".to_string(),
-        }]);
-        let blocks = AnthropicChatDriver::convert_content(&content);
-        assert_eq!(blocks.len(), 1, "HTTP image should be converted");
-        match &blocks[0] {
-            AnthropicContentBlock::Image { source } => match source {
-                AnthropicImageSource::Url { url } => {
-                    assert_eq!(url, "https://example.com/photo.jpg");
-                }
-                _ => panic!("Expected Url source"),
-            },
-            _ => panic!("Expected Image block"),
-        }
-    }
-
-    #[test]
-    fn test_convert_content_audio_fallback() {
-        // Audio should fallback to text note (Anthropic doesn't support audio)
-        let content = LlmMessageContent::Parts(vec![LlmContentPart::Audio {
-            url: "data:audio/wav;base64,AAAA".to_string(),
-        }]);
-        let blocks = AnthropicChatDriver::convert_content(&content);
-        assert_eq!(blocks.len(), 1, "Audio should fallback to text note");
-        match &blocks[0] {
-            AnthropicContentBlock::Text { text, .. } => {
-                assert!(text.contains("not supported"));
-            }
-            _ => panic!("Expected Text block for audio fallback"),
-        }
     }
 
     #[test]
@@ -3279,88 +3228,149 @@ mod tests {
     }
 
     #[test]
-    fn test_to_discovered_profile_basic() {
-        let info = AnthropicModelInfo {
-            id: "claude-sonnet-4-6-20260217".into(),
-            display_name: "Claude Sonnet 4.6".into(),
-            created_at: Some("2026-02-17T00:00:00Z".into()),
-            max_input_tokens: Some(200_000),
-            max_tokens: Some(64_000),
-            capabilities: None,
-        };
-
-        let profile = info.to_discovered_profile();
-        assert_eq!(profile.name, "Claude Sonnet 4.6");
-        assert_eq!(profile.family, "claude-sonnet-4-6");
-        assert!(profile.limits.is_some());
-        let limits = profile.limits.unwrap();
-        assert_eq!(limits.context, 200_000);
-        assert_eq!(limits.output, 64_000);
-        assert!(profile.cost.is_none()); // Never from API
-    }
-
-    #[test]
-    fn test_to_discovered_profile_with_capabilities() {
-        let info = AnthropicModelInfo {
-            id: "claude-opus-4-7-20260416".into(),
-            display_name: "Claude Opus 4.7".into(),
-            created_at: None,
-            max_input_tokens: Some(1_000_000),
-            max_tokens: Some(128_000),
-            capabilities: Some(AnthropicModelCapabilities {
-                image_input: Some(CapabilitySupport { supported: true }),
-                pdf_input: Some(CapabilitySupport { supported: true }),
-                structured_outputs: Some(CapabilitySupport { supported: true }),
-                thinking: Some(ThinkingCapability {
-                    supported: true,
-                    types: Some(ThinkingTypes {
-                        enabled: Some(CapabilitySupport { supported: true }),
-                        adaptive: Some(CapabilitySupport { supported: true }),
-                    }),
-                }),
-                effort: Some(EffortCapability {
-                    supported: true,
-                    low: Some(CapabilitySupport { supported: true }),
-                    medium: Some(CapabilitySupport { supported: true }),
-                    high: Some(CapabilitySupport { supported: true }),
-                    max: Some(CapabilitySupport { supported: true }),
-                }),
-                ..Default::default()
-            }),
-        };
-
-        let profile = info.to_discovered_profile();
-        assert_eq!(profile.name, "Claude Opus 4.7");
-        assert_eq!(profile.family, "claude-opus-4-7");
-        assert!(profile.attachment); // image + PDF
-        assert!(profile.reasoning);
-        assert!(profile.structured_output);
+    fn discovered_profile_preserves_complete_catalog_metadata() {
+        let info: AnthropicModelInfo = serde_json::from_value(json!({
+            "id":"claude-sonnet-4-6-20260217", "display_name":"Claude Sonnet 4.6",
+            "created_at":"2026-02-17T00:00:00Z", "max_input_tokens":200000,
+            "max_tokens":64000
+        }))
+        .unwrap();
         assert_eq!(
-            profile.modalities.as_ref().map(|m| m.input.clone()),
-            Some(vec![Modality::Text, Modality::Image, Modality::Pdf])
+            serde_json::to_value(info.to_discovered_profile()).unwrap(),
+            json!({
+                "name":"Claude Sonnet 4.6", "family":"claude-sonnet-4-6", "release_date":"2026-02-17",
+                "attachment":false, "reasoning":false, "temperature":true, "tool_call":true,
+                "structured_output":false, "open_weights":false,
+                "limits":{"context":200000,"output":64000},
+                "modalities":{"input":["text"],"output":["text"]},
+                "tool_search":false, "supports_phases":false
+            })
         );
-        assert!(profile.reasoning_effort.is_some());
-        let effort = profile.reasoning_effort.unwrap();
-        assert_eq!(effort.values.len(), 4); // low, medium, high, max
     }
 
     #[test]
-    fn test_to_discovered_profile_pdf_only_is_attachment() {
-        let info = AnthropicModelInfo {
-            id: "claude-test".into(),
-            display_name: "Test".into(),
-            created_at: None,
-            max_input_tokens: None,
-            max_tokens: None,
-            capabilities: Some(AnthropicModelCapabilities {
-                image_input: Some(CapabilitySupport { supported: false }),
-                pdf_input: Some(CapabilitySupport { supported: true }),
-                ..Default::default()
-            }),
-        };
+    fn discovered_limits_do_not_wrap_and_require_both_bounds() {
+        for (input, output, expected) in [
+            (Some(0_u32), Some(0_u32), Some((0, 0))),
+            (Some(2147483647), Some(64000), Some((2147483647, 64000))),
+            (
+                Some(2147483648),
+                Some(u32::MAX),
+                Some((2147483647, 2147483647)),
+            ),
+            (Some(u32::MAX), Some(1), Some((2147483647, 1))),
+            (None, Some(64000), None),
+            (Some(200000), None, None),
+            (None, None, None),
+        ] {
+            let info: AnthropicModelInfo = serde_json::from_value(json!({
+                "id":"claude-test", "display_name":"Test", "max_input_tokens":input, "max_tokens":output
+            })).unwrap();
+            let profile = info.to_discovered_profile();
+            assert_eq!(
+                profile.limits.map(|l| (l.context, l.output)),
+                expected,
+                "input={input:?} output={output:?}"
+            );
+        }
+    }
 
-        let profile = info.to_discovered_profile();
-        assert!(profile.attachment, "PDF-only should still be attachment");
+    #[test]
+    fn discovered_capabilities_and_effort_defaults_match_supported_choices() {
+        for capabilities in [
+            json!({"thinking":{"supported":false},"effort":{"supported":true,"high":{"supported":true}}}),
+            json!({"thinking":{"supported":true},"effort":{"supported":true}}),
+            json!({"thinking":{"supported":true},"effort":{"supported":true,"low":{"supported":false}}}),
+        ] {
+            let info: AnthropicModelInfo = serde_json::from_value(json!({
+                "id":"claude-test","display_name":"Test","capabilities":capabilities
+            }))
+            .unwrap();
+            assert!(info.to_discovered_profile().reasoning_effort.is_none());
+        }
+        for effort in [
+            Value::Null,
+            json!({"supported":false,"high":{"supported":true}}),
+        ] {
+            let info: AnthropicModelInfo = serde_json::from_value(json!({
+                "id":"claude-test","display_name":"Test","capabilities":{
+                    "thinking":{"supported":true},"effort":effort
+                }
+            }))
+            .unwrap();
+            assert_eq!(
+                serde_json::to_value(info.to_discovered_profile().reasoning_effort).unwrap(),
+                json!({
+                    "values":[
+                        {"value":"low","name":"Low (1K tokens)"},
+                        {"value":"medium","name":"Medium (4K tokens)"},
+                        {"value":"high","name":"High (16K tokens)"},
+                        {"value":"xhigh","name":"Extra High (32K tokens)"}
+                    ],"default":"medium"
+                })
+            );
+        }
+        for (image, pdf, expected) in [
+            (false, false, json!(["text"])),
+            (true, false, json!(["text", "image"])),
+            (false, true, json!(["text", "pdf"])),
+            (true, true, json!(["text", "image", "pdf"])),
+        ] {
+            let info: AnthropicModelInfo = serde_json::from_value(json!({
+                "id":"claude-test", "display_name":"Test", "capabilities":{
+                    "image_input":{"supported":image},"pdf_input":{"supported":pdf},
+                    "structured_outputs":{"supported":true}
+                }
+            }))
+            .unwrap();
+            let profile = info.to_discovered_profile();
+            assert_eq!(profile.attachment, image || pdf);
+            assert!(profile.structured_output);
+            assert_eq!(
+                serde_json::to_value(profile.modalities).unwrap(),
+                json!({"input":expected,"output":["text"]})
+            );
+            assert!(!profile.reasoning);
+            assert!(profile.reasoning_effort.is_none());
+        }
+        for adaptive in [false, true] {
+            for (levels, default) in [
+                (vec!["low"], "low"),
+                (vec!["medium"], "medium"),
+                (vec!["high"], "high"),
+                (vec!["max"], "xhigh"),
+                (
+                    vec!["low", "medium", "high", "max"],
+                    if adaptive { "high" } else { "medium" },
+                ),
+            ] {
+                let mut effort = json!({"supported":true});
+                for level in &levels {
+                    effort[*level] = json!({"supported":true});
+                }
+                let info: AnthropicModelInfo = serde_json::from_value(json!({
+                    "id":"claude-test", "display_name":"Test", "capabilities":{
+                        "thinking":{"supported":true,"types":{"adaptive":{"supported":adaptive}}},
+                        "effort":effort
+                    }
+                }))
+                .unwrap();
+                let profile = info.to_discovered_profile();
+                assert!(profile.reasoning);
+                let expected:Vec<Value>=levels.iter().map(|level|json!({
+                    "value":if *level=="max" {"xhigh"} else {level},
+                    "name":match (*level,adaptive) {
+                        ("low",true)=>"Low",("medium",true)=>"Medium",("high",true)=>"High",("max",true)=>"Max",
+                        ("low",false)=>"Low (1K tokens)",("medium",false)=>"Medium (4K tokens)",("high",false)=>"High (16K tokens)",_=>"Extra High (32K tokens)"
+                    }
+                })).collect();
+                assert_eq!(
+                    serde_json::to_value(profile.reasoning_effort).unwrap(),
+                    json!({"values":expected,"default":default}),
+                    "adaptive={adaptive} levels={levels:?}"
+                );
+            }
+        }
     }
 
     #[test]
