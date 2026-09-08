@@ -2231,47 +2231,368 @@ mod tests {
     use everruns_provider::driver_registry::ChatDriver;
     use everruns_provider::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
 
-    #[test]
-    fn supports_parallel_tool_calls_is_true() {
-        let driver = AnthropicChatDriver::new();
-        assert!(driver.supports_parallel_tool_calls("claude-opus-4-8"));
+    fn contract_config(model: &str, max_tokens: Option<u32>) -> LlmCallConfig {
+        LlmCallConfig {
+            model: model.into(),
+            temperature: None,
+            max_tokens,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: Default::default(),
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: None,
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+            extra_headers: vec![],
+            cache_diagnostics: None,
+            speed: None,
+            verbosity: None,
+        }
     }
 
-    /// EVE-636: streamed tool-call arguments accumulate as a raw string across
-    /// many small deltas (parsed zero times during streaming) and are parsed
-    /// exactly once at finalize into the structured value.
-    #[test]
-    fn test_tool_input_accumulates_linearly_and_parses_once() {
-        let payload = r#"{"path":"src/main.rs","contents":"fn main() { println!(\"hello, world — a deliberately long argument payload to exceed one hundred streamed characters\"); }","count":1234567}"#;
-        assert!(
-            payload.chars().count() > 100,
-            "test needs >100 fragments to exercise the accumulation path"
-        );
+    fn contract_tool(name: &str, deferrable: DeferrablePolicy) -> ToolDefinition {
+        ToolDefinition::Builtin(BuiltinTool {
+            name: name.into(),
+            display_name: None,
+            description: "Search records".into(),
+            parameters: json!({"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable,
+            hints: ToolHints::default(),
+            full_parameters: None,
+        })
+    }
 
-        let mut tc = ToolCall {
-            id: "tool_1".to_string(),
-            name: "write_file".to_string(),
+    async fn assert_contract_request(config: LlmCallConfig, registered: bool, expected: Value) {
+        use everruns_provider::{Provider, StaticHeaderAuth};
+        use wiremock::matchers::{body_json, header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::builder().start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .and(header("x-api-key", "synthetic-key"))
+            .and(header("anthropic-version", "2023-06-01"))
+            .and(body_json(expected))
+            .respond_with(
+                ResponseTemplate::new(400)
+                    .set_body_json(json!({"error":{"message":"request captured"}})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let base = format!("{}/v1", server.uri());
+        let driver = if registered {
+            let mut registry = DriverRegistry::new();
+            register_driver(&mut registry);
+            registry
+                .create_chat_driver(
+                    &everruns_provider::driver_registry::ProviderConfig::new(DriverId::Anthropic)
+                        .with_api_key("synthetic-key")
+                        .with_base_url(base),
+                )
+                .unwrap()
+        } else {
+            Provider::new("test", AnthropicChatDriver::new())
+                .base_url(base)
+                .auth(StaticHeaderAuth::new("x-api-key", "synthetic-key"))
+                .into_boxed_driver()
+        };
+        let error = match driver
+            .chat_completion_stream(
+                &everruns_provider::ProviderEndpoint::default(),
+                vec![LlmMessage::text(LlmMessageRole::User, "hello")],
+                &config,
+            )
+            .await
+        {
+            Ok(_) => panic!("expected capture response"),
+            Err(error) => error,
+        };
+        assert_eq!(error.llm_error_kind(), Some(LlmErrorKind::InvalidRequest));
+        assert!(error.to_string().contains("request captured"), "{error}");
+        server.verify().await;
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        assert!(!requests[0].headers.contains_key("authorization"));
+    }
+
+    #[tokio::test]
+    async fn registered_and_direct_requests_apply_parallel_preferences_only_with_tools() {
+        for registered in [false, true] {
+            for tools in [false, true] {
+                for preference in [None, Some(true), Some(false)] {
+                    let mut config = contract_config("claude-test", Some(32));
+                    config.parallel_tool_calls = preference;
+                    let mut expected = json!({"model":"claude-test","max_tokens":32,"stream":true,
+                        "messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]});
+                    if tools {
+                        config
+                            .tools
+                            .push(contract_tool("lookup", DeferrablePolicy::Never));
+                        expected["tools"] = json!([{"name":"lookup","description":"Search records","input_schema":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}}]);
+                        if let Some(allow) = preference {
+                            expected["tool_choice"] =
+                                json!({"type":"auto","disable_parallel_tool_use":!allow});
+                        }
+                    }
+                    assert_contract_request(config, registered, expected).await;
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn requests_resolve_model_limits_and_complete_reasoning_policies() {
+        for (model, requested, expected_limit) in [
+            ("claude-sonnet-4-5-20250514", None, 64000),
+            ("claude-test", None, 16384),
+            ("claude-sonnet-4-5", Some(99), 99),
+            ("claude-test", Some(99), 99),
+        ] {
+            assert_contract_request(
+                contract_config(model, requested),
+                false,
+                json!({"model":model,"max_tokens":expected_limit,"stream":true,
+                "messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}),
+            )
+            .await;
+        }
+        for (effort, budget, adaptive) in [
+            (ReasoningEffort::None, None, None),
+            (ReasoningEffort::Minimal, Some(1024), Some("low")),
+            (ReasoningEffort::Low, Some(1024), Some("low")),
+            (ReasoningEffort::Medium, Some(4096), Some("medium")),
+            (ReasoningEffort::High, Some(16384), Some("high")),
+            (ReasoningEffort::Xhigh, Some(32768), Some("max")),
+            (ReasoningEffort::Max, Some(32768), Some("max")),
+        ] {
+            for model in ["claude-sonnet-4-5", "claude-opus-4-8"] {
+                let mut config = contract_config(model, Some(1));
+                config.reasoning_effort = Some(effort);
+                let mut expected = json!({"model":model,"max_tokens":1,"stream":true,
+                    "messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]});
+                if model == "claude-sonnet-4-5" {
+                    if let Some(budget) = budget {
+                        expected["max_tokens"] = json!(budget + 1024);
+                        expected["thinking"] = json!({"type":"enabled","budget_tokens":budget});
+                    }
+                } else if let Some(level) = adaptive {
+                    expected["thinking"] = json!({"type":"adaptive","display":"summarized"});
+                    expected["output_config"] = json!({"effort":level});
+                }
+                assert_contract_request(config, false, expected).await;
+            }
+        }
+    }
+
+    #[test]
+    fn cache_markers_preserve_system_text_and_target_stable_message_blocks() {
+        for (text, enabled, expected) in [
+            (None, true, Value::Null),
+            (Some(""), true, json!("")),
+            (Some("prompt"), false, json!("prompt")),
+            (
+                Some("prompt"),
+                true,
+                json!([{"type":"text","text":"prompt","cache_control":{"type":"ephemeral"}}]),
+            ),
+        ] {
+            assert_eq!(
+                serde_json::to_value(AnthropicChatDriver::system_prompt_for_request(
+                    text.map(str::to_owned),
+                    enabled
+                ))
+                .unwrap(),
+                expected
+            );
+        }
+        let mut first = LlmMessage::text(LlmMessageRole::User, "");
+        first.content = LlmMessageContent::Parts(vec![
+            LlmContentPart::Text {
+                text: "first".into(),
+            },
+            LlmContentPart::Text {
+                text: "last".into(),
+            },
+            LlmContentPart::Image {
+                url: "https://example.com/a.png".into(),
+            },
+        ]);
+        let messages = [
+            first,
+            LlmMessage::text(LlmMessageRole::Assistant, "reply"),
+            LlmMessage::text(LlmMessageRole::User, "question"),
+            LlmMessage::text(LlmMessageRole::Assistant, "volatile"),
+        ];
+        for (enabled, volatile, positions) in [
+            (false, 0, vec![]),
+            (true, 0, vec![(2, 0), (3, 0)]),
+            (true, 1, vec![(1, 0), (2, 0)]),
+            (true, 2, vec![(0, 1), (1, 0)]),
+            (true, 3, vec![(0, 1)]),
+            (true, 4, vec![]),
+            (true, usize::MAX, vec![]),
+        ] {
+            let mut expected = json!([
+                {"role":"user","content":[{"type":"text","text":"first"},{"type":"text","text":"last"},{"type":"image","source":{"type":"url","url":"https://example.com/a.png"}}]},
+                {"role":"assistant","content":[{"type":"text","text":"reply"}]},
+                {"role":"user","content":[{"type":"text","text":"question"}]},
+                {"role":"assistant","content":[{"type":"text","text":"volatile"}]}
+            ]);
+            for (message, block) in positions {
+                expected[message]["content"][block]["cache_control"] = json!({"type":"ephemeral"});
+            }
+            let (_, actual) = AnthropicChatDriver::convert_messages(&messages, enabled, volatile);
+            assert_eq!(
+                serde_json::to_value(actual).unwrap(),
+                expected,
+                "enabled={enabled} volatile={volatile}"
+            );
+        }
+        let (_, empty) = AnthropicChatDriver::convert_messages(&[], true, 0);
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn tool_search_preserves_complete_schemas_and_cache_thresholds() {
+        let tools = [
+            contract_tool("automatic", DeferrablePolicy::Automatic),
+            contract_tool("always", DeferrablePolicy::Always),
+            contract_tool("never", DeferrablePolicy::Never),
+        ];
+        for enabled in [false, true] {
+            assert!(AnthropicChatDriver::convert_tools(&[], enabled).is_empty());
+            for threshold in [2, 3, 4] {
+                let mut expected = json!([
+                    {"name":"automatic","description":"Search records","input_schema":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}},
+                    {"name":"always","description":"Search records","input_schema":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}},
+                    {"name":"never","description":"Search records","input_schema":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}}
+                ]);
+                if threshold <= 3 {
+                    expected[0]["defer_loading"] = json!(true);
+                    expected[1]["defer_loading"] = json!(true);
+                    expected.as_array_mut().unwrap().insert(0,json!({"type":"tool_search_tool_bm25_20251119","name":"tool_search_tool_bm25"}));
+                } else if enabled {
+                    expected[2]["cache_control"] = json!({"type":"ephemeral"});
+                }
+                assert_eq!(
+                    serde_json::to_value(AnthropicChatDriver::convert_tools_with_search(
+                        &tools, threshold, enabled
+                    ))
+                    .unwrap(),
+                    expected,
+                    "threshold={threshold} cache={enabled}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn message_conversion_folds_system_text_without_losing_the_transcript() {
+        for with_system in [false, true] {
+            let mut messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+            if with_system {
+                messages.insert(
+                    0,
+                    LlmMessage::text(LlmMessageRole::System, "first instruction"),
+                );
+                messages.push(LlmMessage::text(LlmMessageRole::System, "later summary"));
+            }
+            messages.push(LlmMessage::text(LlmMessageRole::Assistant, "reply"));
+            let (system, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
+            assert_eq!(
+                system.as_deref(),
+                with_system.then_some("first instruction\n\nlater summary")
+            );
+            assert_eq!(
+                serde_json::to_value(converted).unwrap(),
+                json!([
+                    {"role":"user","content":[{"type":"text","text":"hello"}]},
+                    {"role":"assistant","content":[{"type":"text","text":"reply"}]}
+                ])
+            );
+        }
+    }
+
+    #[test]
+    fn tool_exchanges_preserve_identity_and_filter_only_orphan_results() {
+        let mut assistant = LlmMessage::text(LlmMessageRole::Assistant, "");
+        assistant.tool_calls = Some(vec![ToolCall {
+            id: "call_123".into(),
+            name: "get_weather".into(),
+            arguments: json!({"city":"London"}),
+        }]);
+        let mut valid = LlmMessage::text(LlmMessageRole::Tool, "{\"temp\":20}");
+        valid.tool_call_id = Some("call_123".into());
+        let mut orphan = LlmMessage::text(LlmMessageRole::Tool, "orphan result");
+        orphan.tool_call_id = Some("trimmed_call".into());
+        let missing_id = LlmMessage::text(LlmMessageRole::Tool, "missing ID");
+        let (system, converted) = AnthropicChatDriver::convert_messages(
+            &[orphan, assistant, missing_id, valid],
+            false,
+            0,
+        );
+        assert!(system.is_none());
+        assert_eq!(
+            serde_json::to_value(converted).unwrap(),
+            json!([
+                {"role":"assistant","content":[{"type":"tool_use","id":"call_123","name":"get_weather","input":{"city":"London"}}]},
+                {"role":"user","content":[{"type":"tool_result","tool_use_id":"call_123","content":"{\"temp\":20}"}]}
+            ])
+        );
+    }
+
+    #[test]
+    fn model_family_normalization_requires_a_nonempty_base_and_eight_ascii_digits() {
+        for (input, expected) in [
+            ("claude-opus-4-5-20251101", "claude-opus-4-5"),
+            ("claude-sonnet-4-6-20260217", "claude-sonnet-4-6"),
+            ("claude-opus-4-5", "claude-opus-4-5"),
+            ("claude-sonnet-4-6", "claude-sonnet-4-6"),
+            ("claudé-opus-20251101", "claudé-opus"),
+            ("claudé-opus-experimental", "claudé-opus-experimental"),
+            ("", ""),
+            ("-20251101", "-20251101"),
+            ("claude-2025110", "claude-2025110"),
+            ("claude-202511011", "claude-202511011"),
+            ("claude-2025x101", "claude-2025x101"),
+            ("claude-２０２５１１０１", "claude-２０２５１１０１"),
+        ] {
+            assert_eq!(normalize_anthropic_id(input), expected, "{input}");
+        }
+    }
+
+    #[test]
+    fn fragmented_tool_arguments_preserve_payloads_and_handle_incomplete_json() {
+        let payload = r#"{"path":"src/main.rs","contents":"fn main() { println!(\"hello — 世界\"); }","count":1234567}"#;
+        let mut call = ToolCall {
+            id: "call".into(),
+            name: "write_file".into(),
             arguments: json!(""),
         };
-
-        // One character per delta => well over 100 deltas.
-        let mut expected = String::new();
-        for ch in payload.chars() {
-            let frag = ch.to_string();
-            append_tool_input_delta(&mut tc, &frag);
-            expected.push_str(&frag);
+        for (offset, ch) in payload.char_indices() {
+            append_tool_input_delta(&mut call, &ch.to_string());
+            assert_eq!(
+                call.arguments.as_str(),
+                Some(&payload[..offset + ch.len_utf8()])
+            );
         }
-
-        // Still a Value::String holding the exact concatenation (no per-delta
-        // parse/re-box happened).
-        assert_eq!(tc.arguments.as_str(), Some(expected.as_str()));
-
-        // Parsed exactly once at finalize.
-        finalize_tool_arguments(&mut tc);
+        finalize_tool_arguments(&mut call);
         assert_eq!(
-            tc.arguments,
-            serde_json::from_str::<serde_json::Value>(payload).unwrap()
+            serde_json::to_value(&call).unwrap(),
+            json!({
+                "id":"call","name":"write_file","arguments":{"path":"src/main.rs","contents":"fn main() { println!(\"hello — 世界\"); }","count":1234567}
+            })
         );
+        for incomplete in ["", "{", r#"{"x":"unterminated"#] {
+            call.arguments = json!(incomplete);
+            finalize_tool_arguments(&mut call);
+            assert_eq!(call.arguments, json!({}), "{incomplete}");
+        }
     }
 
     // These tests verify that empty text blocks are filtered out to avoid
@@ -2348,58 +2669,6 @@ mod tests {
         );
     }
 
-    /// EVE-598: `Some(false)` disables parallel tool use; `Some(true)` allows
-    /// it; `None` sends no `tool_choice` at all (provider default preserved).
-    #[test]
-    fn test_tool_choice_from_parallel_preference() {
-        // None → no tool_choice object.
-        assert!(AnthropicToolChoice::from_parallel_preference(None).is_none());
-
-        // Some(false) → disable_parallel_tool_use = true.
-        let choice = AnthropicToolChoice::from_parallel_preference(Some(false)).unwrap();
-        let json = serde_json::to_value(&choice).unwrap();
-        assert_eq!(json["type"], "auto");
-        assert_eq!(json["disable_parallel_tool_use"], true);
-
-        // Some(true) → disable_parallel_tool_use = false (explicitly allow).
-        let choice = AnthropicToolChoice::from_parallel_preference(Some(true)).unwrap();
-        let json = serde_json::to_value(&choice).unwrap();
-        assert_eq!(json["type"], "auto");
-        assert_eq!(json["disable_parallel_tool_use"], false);
-    }
-
-    /// EVE-598: the serialized Anthropic request omits `tool_choice` unless a
-    /// parallel preference is set, and maps `Some(false)` to
-    /// `disable_parallel_tool_use = true`.
-    #[test]
-    fn test_anthropic_request_serializes_tool_choice() {
-        let base = |tool_choice: Option<AnthropicToolChoice>| AnthropicRequest {
-            model: "claude-opus-4-8".to_string(),
-            messages: vec![],
-            max_tokens: 1024,
-            temperature: None,
-            system: None,
-            stream: true,
-            tools: None,
-            tool_choice,
-            thinking: None,
-            output_config: None,
-            diagnostics: None,
-        };
-
-        // No preference → tool_choice omitted.
-        let json = serde_json::to_value(base(None)).unwrap();
-        assert!(json.get("tool_choice").is_none());
-
-        // Some(false) → disable_parallel_tool_use = true on the wire.
-        let json = serde_json::to_value(base(AnthropicToolChoice::from_parallel_preference(Some(
-            false,
-        ))))
-        .unwrap();
-        assert_eq!(json["tool_choice"]["type"], "auto");
-        assert_eq!(json["tool_choice"]["disable_parallel_tool_use"], true);
-    }
-
     #[test]
     fn test_uses_adaptive_thinking_by_family() {
         // Adaptive-only / adaptive-recommended families, with and without
@@ -2437,206 +2706,6 @@ mod tests {
         })
         .unwrap();
         assert_eq!(enabled, json!({"type": "enabled", "budget_tokens": 4096}));
-    }
-
-    /// Anthropic's adaptive scale has no `minimal` and tops out at `max`.
-    ///
-    /// `minimal` previously fell through the string match to `None`, disabling
-    /// thinking entirely — so the lowest non-zero effort behaved identically to
-    /// "none". It maps to the lowest real setting instead. Case handling and an
-    /// "unknown effort" case are gone because the enum makes both unrepresentable.
-    #[test]
-    fn test_adaptive_effort_level_mapping() {
-        assert_eq!(adaptive_effort_level(ReasoningEffort::Minimal), Some("low"));
-        assert_eq!(adaptive_effort_level(ReasoningEffort::Low), Some("low"));
-        assert_eq!(
-            adaptive_effort_level(ReasoningEffort::Medium),
-            Some("medium")
-        );
-        assert_eq!(adaptive_effort_level(ReasoningEffort::High), Some("high"));
-        assert_eq!(adaptive_effort_level(ReasoningEffort::Xhigh), Some("max"));
-        assert_eq!(adaptive_effort_level(ReasoningEffort::None), None);
-    }
-
-    /// The budget path had the same `minimal` hole.
-    #[test]
-    fn test_thinking_budget_covers_minimal() {
-        use everruns_provider::driver_helpers::thinking_budget;
-        assert_eq!(
-            thinking_budget::from_effort(ReasoningEffort::Minimal),
-            Some(thinking_budget::MINIMAL)
-        );
-        assert_eq!(thinking_budget::from_effort(ReasoningEffort::None), None);
-    }
-
-    #[test]
-    fn test_convert_messages_bounds_cache_control_breakpoints() {
-        let content = LlmMessageContent::Text("Hello".to_string());
-        let messages = vec![
-            LlmMessage {
-                role: LlmMessageRole::User,
-                content: content.clone(),
-                tool_calls: None,
-                tool_call_id: None,
-                phase: None,
-                reasoning: Vec::new(),
-            },
-            LlmMessage {
-                role: LlmMessageRole::Assistant,
-                content,
-                tool_calls: None,
-                tool_call_id: None,
-                phase: None,
-                reasoning: Vec::new(),
-            },
-        ];
-
-        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, true, 0);
-        let json = serde_json::to_value(&converted).unwrap();
-        let cache_controls = json.to_string().matches("cache_control").count();
-
-        // Two message-level breakpoints, one per message — never two inside the
-        // same message, and never more than the transcript's share of
-        // Anthropic's four-breakpoint budget.
-        assert_eq!(cache_controls, MESSAGE_CACHE_BREAKPOINTS);
-        assert_eq!(json[0]["content"][0]["cache_control"]["type"], "ephemeral");
-        assert_eq!(json[1]["content"][0]["cache_control"]["type"], "ephemeral");
-    }
-
-    #[test]
-    fn test_cache_breakpoints_trail_the_conversation_incrementally() {
-        // Each turn writes a breakpoint at its own tail and leaves one at a
-        // position the previous turn already wrote, so the next request reads
-        // the cache instead of re-paying for the transcript.
-        let msg = |role: LlmMessageRole, s: &str| LlmMessage {
-            role,
-            content: LlmMessageContent::Text(s.to_string()),
-            tool_calls: None,
-            tool_call_id: None,
-            phase: None,
-            reasoning: Vec::new(),
-        };
-        let messages = vec![
-            msg(LlmMessageRole::User, "turn 1"),
-            msg(LlmMessageRole::Assistant, "reply 1"),
-            msg(LlmMessageRole::User, "turn 2"),
-            msg(LlmMessageRole::Assistant, "reply 2"),
-        ];
-
-        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, true, 0);
-        let json = serde_json::to_value(&converted).unwrap();
-
-        assert_eq!(
-            json.to_string().matches("cache_control").count(),
-            MESSAGE_CACHE_BREAKPOINTS
-        );
-        // The two most recent messages carry them; older history rides inside
-        // the cached prefix.
-        assert!(json[0]["content"][0].get("cache_control").is_none());
-        assert!(json[1]["content"][0].get("cache_control").is_none());
-        assert_eq!(json[2]["content"][0]["cache_control"]["type"], "ephemeral");
-        assert_eq!(json[3]["content"][0]["cache_control"]["type"], "ephemeral");
-    }
-
-    #[test]
-    fn test_cache_breakpoints_are_capped_by_available_messages() {
-        // A single-message request cannot spend two breakpoints.
-        let messages = vec![LlmMessage {
-            role: LlmMessageRole::User,
-            content: LlmMessageContent::Text("only message".to_string()),
-            tool_calls: None,
-            tool_call_id: None,
-            phase: None,
-            reasoning: Vec::new(),
-        }];
-
-        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, true, 0);
-        let json = serde_json::to_value(&converted).unwrap();
-
-        assert_eq!(json.to_string().matches("cache_control").count(), 1);
-    }
-
-    #[test]
-    fn test_cache_anchor_skips_volatile_suffix() {
-        let msg = |role: LlmMessageRole, s: &str| LlmMessage {
-            role,
-            content: LlmMessageContent::Text(s.to_string()),
-            tool_calls: None,
-            tool_call_id: None,
-            phase: None,
-            reasoning: Vec::new(),
-        };
-        // A live `<facts>` block trails the last stable (assistant) message.
-        let messages = vec![
-            msg(LlmMessageRole::User, "stable user"),
-            msg(LlmMessageRole::Assistant, "stable reply"),
-            msg(LlmMessageRole::User, "<facts>\n- current_time: X\n</facts>"),
-        ];
-
-        // With no volatile suffix, the newest breakpoint anchors on the last
-        // message.
-        let (_, base) = AnthropicChatDriver::convert_messages(&messages, true, 0);
-        let base_json = serde_json::to_value(&base).unwrap();
-        assert_eq!(
-            base_json[2]["content"][0]["cache_control"]["type"],
-            "ephemeral"
-        );
-
-        // Marking the facts message volatile moves the breakpoint back to the
-        // last stable message; the volatile tail stays uncached. This is what
-        // keeps the conversation-history cache from being evicted every turn.
-        let (_, anchored) = AnthropicChatDriver::convert_messages(&messages, true, 1);
-        let json = serde_json::to_value(&anchored).unwrap();
-        assert!(
-            json[2]["content"][0].get("cache_control").is_none(),
-            "volatile tail must not be cache-anchored"
-        );
-        assert_eq!(json[1]["content"][0]["cache_control"]["type"], "ephemeral");
-        // The second breakpoint falls back onto the stable history behind it,
-        // never onto the volatile tail.
-        assert_eq!(json[0]["content"][0]["cache_control"]["type"], "ephemeral");
-        assert_eq!(
-            json.to_string().matches("cache_control").count(),
-            MESSAGE_CACHE_BREAKPOINTS
-        );
-    }
-
-    #[test]
-    fn test_system_prompt_uses_cacheable_block_when_enabled() {
-        let system =
-            AnthropicChatDriver::system_prompt_for_request(Some("System prompt".to_string()), true)
-                .unwrap();
-        let json = serde_json::to_value(&system).unwrap();
-
-        assert_eq!(json[0]["type"], "text");
-        assert_eq!(json[0]["cache_control"]["type"], "ephemeral");
-    }
-
-    #[test]
-    fn test_convert_tools_marks_only_last_tool_for_cache() {
-        let make_tool = |name: &str| {
-            ToolDefinition::Builtin(BuiltinTool {
-                name: name.to_string(),
-                display_name: None,
-                description: "test tool".to_string(),
-                parameters: json!({}),
-                policy: ToolPolicy::Auto,
-                category: None,
-                deferrable: DeferrablePolicy::default(),
-                hints: ToolHints::default(),
-                full_parameters: None,
-            })
-        };
-        let tools = vec![make_tool("first"), make_tool("second"), make_tool("third")];
-
-        let converted = AnthropicChatDriver::convert_tools(&tools, true);
-        let json = serde_json::to_value(&converted).unwrap();
-        let cache_controls = json.to_string().matches("cache_control").count();
-
-        assert_eq!(cache_controls, 1);
-        assert!(json[0].get("cache_control").is_none());
-        assert!(json[1].get("cache_control").is_none());
-        assert_eq!(json[2]["cache_control"]["type"], "ephemeral");
     }
 
     #[test]
@@ -2693,229 +2762,6 @@ mod tests {
         let bare = &json[1]["input_schema"];
         assert!(bare.get("anyOf").is_none());
         assert_eq!(bare["type"], "object");
-    }
-
-    #[test]
-    fn test_convert_tools_with_search_defers_and_adds_search_tool() {
-        let make_tool = |name: &str, deferrable: DeferrablePolicy| {
-            ToolDefinition::Builtin(BuiltinTool {
-                name: name.to_string(),
-                display_name: None,
-                description: "test tool".to_string(),
-                parameters: json!({"type": "object", "properties": {}}),
-                policy: ToolPolicy::Auto,
-                category: None,
-                deferrable,
-                hints: ToolHints::default(),
-                full_parameters: None,
-            })
-        };
-        // 3 deferrable tools + 1 hot-path (Never) tool, threshold 3 → active.
-        let tools = vec![
-            make_tool("alpha", DeferrablePolicy::Automatic),
-            make_tool("bravo", DeferrablePolicy::Automatic),
-            make_tool("charlie", DeferrablePolicy::Automatic),
-            make_tool("write_todos", DeferrablePolicy::Never),
-        ];
-
-        let converted = AnthropicChatDriver::convert_tools_with_search(&tools, 3, false);
-        let json = serde_json::to_value(&converted).unwrap();
-        let arr = json.as_array().unwrap();
-
-        // First entry is the hosted BM25 search tool (no input_schema).
-        assert_eq!(arr[0]["type"], "tool_search_tool_bm25_20251119");
-        assert_eq!(arr[0]["name"], "tool_search_tool_bm25");
-        assert!(arr[0].get("input_schema").is_none());
-
-        let by_name = |name: &str| {
-            arr.iter()
-                .find(|e| e["name"] == name)
-                .unwrap_or_else(|| panic!("missing {name}"))
-        };
-        // Deferrable tools carry defer_loading: true.
-        assert_eq!(by_name("alpha")["defer_loading"], json!(true));
-        assert_eq!(by_name("charlie")["defer_loading"], json!(true));
-        // The Never tool stays non-deferred (no defer_loading field).
-        assert!(by_name("write_todos").get("defer_loading").is_none());
-    }
-
-    #[test]
-    fn test_convert_tools_with_search_below_threshold_sends_full_schemas() {
-        let make_tool = |name: &str| {
-            ToolDefinition::Builtin(BuiltinTool {
-                name: name.to_string(),
-                display_name: None,
-                description: "test tool".to_string(),
-                parameters: json!({"type": "object", "properties": {}}),
-                policy: ToolPolicy::Auto,
-                category: None,
-                deferrable: DeferrablePolicy::Automatic,
-                hints: ToolHints::default(),
-                full_parameters: None,
-            })
-        };
-        let tools = vec![make_tool("one"), make_tool("two")];
-        let converted = AnthropicChatDriver::convert_tools_with_search(&tools, 3, false);
-        let json = serde_json::to_value(&converted).unwrap();
-        let arr = json.as_array().unwrap();
-        // Below threshold: no search tool, no deferral.
-        assert_eq!(arr.len(), 2);
-        assert!(arr.iter().all(|e| e.get("defer_loading").is_none()));
-        assert!(
-            arr.iter()
-                .all(|e| e["type"] != "tool_search_tool_bm25_20251119")
-        );
-
-        // Below threshold must preserve the standard prompt-cache behavior:
-        // `prompt_cache_enabled` is threaded through, so the last tool still gets
-        // a cache breakpoint (regression guard for the dropped-marker bug).
-        let cached = AnthropicChatDriver::convert_tools_with_search(
-            &tools, 3, /* prompt_cache_enabled */ true,
-        );
-        let cached_json = serde_json::to_value(&cached).unwrap();
-        let cached_arr = cached_json.as_array().unwrap();
-        assert!(cached_arr[0].get("cache_control").is_none());
-        assert_eq!(cached_arr[1]["cache_control"]["type"], "ephemeral");
-    }
-
-    #[test]
-    fn test_convert_messages_assistant_with_empty_text_and_tool_calls() {
-        // Assistant message with empty text but tool calls should work
-        // This is the specific case that caused the bug
-        let messages = vec![LlmMessage {
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text(String::new()),
-            tool_calls: Some(vec![everruns_provider::tool_types::ToolCall {
-                id: "call_123".to_string(),
-                name: "get_weather".to_string(),
-                arguments: serde_json::json!({"city": "London"}),
-            }]),
-            tool_call_id: None,
-            phase: None,
-            reasoning: Vec::new(),
-        }];
-
-        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
-
-        assert_eq!(converted.len(), 1);
-        // Content should have tool_use block but no empty text block
-        assert_eq!(
-            converted[0].content.len(),
-            1,
-            "Should only have tool_use block"
-        );
-    }
-
-    #[test]
-    fn test_convert_messages_system_prompt() {
-        // System message should be extracted as system prompt
-        let messages = vec![
-            LlmMessage {
-                role: LlmMessageRole::System,
-                content: LlmMessageContent::Text("You are helpful".to_string()),
-                tool_calls: None,
-                tool_call_id: None,
-                phase: None,
-                reasoning: Vec::new(),
-            },
-            LlmMessage {
-                role: LlmMessageRole::User,
-                content: LlmMessageContent::Text("Hello".to_string()),
-                tool_calls: None,
-                tool_call_id: None,
-                phase: None,
-                reasoning: Vec::new(),
-            },
-        ];
-
-        let (system, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
-
-        assert_eq!(system, Some("You are helpful".to_string()));
-        assert_eq!(converted.len(), 1); // Only user message
-    }
-
-    #[test]
-    fn test_convert_messages_accumulates_multiple_system_messages() {
-        // The agent system prompt plus a later notice/summary System message
-        // (infinity_context / compaction) must both land in the top-level
-        // `system` field, in order — the later one must not overwrite the agent
-        // system prompt. No System-role entry may leak into `messages`.
-        let messages = vec![
-            LlmMessage::text(LlmMessageRole::System, "A"),
-            LlmMessage::text(LlmMessageRole::User, "hi"),
-            LlmMessage::text(LlmMessageRole::System, "B"),
-        ];
-
-        let (system, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
-
-        assert_eq!(system, Some("A\n\nB".to_string()));
-        assert_eq!(converted.len(), 1); // Only the user message
-        assert!(converted.iter().all(|m| m.role == "user"));
-    }
-
-    #[test]
-    fn test_convert_messages_tool_result() {
-        // Tool result should be converted to user message with tool_result block
-        let messages = vec![
-            LlmMessage {
-                role: LlmMessageRole::Assistant,
-                content: LlmMessageContent::Text(String::new()),
-                tool_calls: Some(vec![ToolCall {
-                    id: "call_123".to_string(),
-                    name: "get_weather".to_string(),
-                    arguments: json!({"city": "London"}),
-                }]),
-                tool_call_id: None,
-                phase: None,
-                reasoning: Vec::new(),
-            },
-            LlmMessage {
-                role: LlmMessageRole::Tool,
-                content: LlmMessageContent::Text("{\"temp\": 20}".to_string()),
-                tool_calls: None,
-                tool_call_id: Some("call_123".to_string()),
-                phase: None,
-                reasoning: Vec::new(),
-            },
-        ];
-
-        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
-
-        assert_eq!(converted.len(), 2);
-        assert_eq!(converted[1].role, "user");
-        assert_eq!(converted[1].content.len(), 1);
-        match &converted[1].content[0] {
-            AnthropicContentBlock::ToolResult {
-                tool_use_id,
-                content,
-                ..
-            } => {
-                assert_eq!(tool_use_id, "call_123");
-                match content {
-                    AnthropicToolResultContent::Text(text) => {
-                        assert_eq!(text, "{\"temp\": 20}");
-                    }
-                    _ => panic!("Expected text content in tool result"),
-                }
-            }
-            _ => panic!("Expected ToolResult block"),
-        }
-    }
-
-    #[test]
-    fn test_convert_messages_drops_orphan_tool_result() {
-        let messages = vec![LlmMessage {
-            role: LlmMessageRole::Tool,
-            content: LlmMessageContent::Text("orphan result".to_string()),
-            tool_calls: None,
-            tool_call_id: Some("trimmed_call".to_string()),
-            phase: None,
-            reasoning: Vec::new(),
-        }];
-
-        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
-
-        assert!(converted.is_empty());
     }
 
     #[test]
@@ -2989,45 +2835,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_tool_result_text_only_stays_simple() {
-        // Tool result with text-only content should use simple Text form
-        let msg = LlmMessage {
-            role: LlmMessageRole::Tool,
-            content: LlmMessageContent::Text("result text".to_string()),
-            tool_calls: None,
-            tool_call_id: Some("call_txt".to_string()),
-            phase: None,
-            reasoning: Vec::new(),
-        };
-
-        let assistant = LlmMessage {
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text(String::new()),
-            tool_calls: Some(vec![ToolCall {
-                id: "call_txt".to_string(),
-                name: "read".to_string(),
-                arguments: json!({}),
-            }]),
-            tool_call_id: None,
-            phase: None,
-            reasoning: Vec::new(),
-        };
-        let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant, msg], false, 0);
-
-        match &converted[1].content[0] {
-            AnthropicContentBlock::ToolResult { content, .. } => match content {
-                AnthropicToolResultContent::Text(text) => {
-                    assert_eq!(text, "result text");
-                }
-                _ => panic!("Expected simple Text content for text-only tool result"),
-            },
-            _ => panic!("Expected ToolResult block"),
-        }
-    }
-
     // ========================================================================
-    // Request-too-large detection tests
+    // HTTP error classification
     // ========================================================================
 
     #[tokio::test]
@@ -3072,7 +2881,7 @@ mod tests {
             (400, "not_found_error: model: claude-test", "invalid"),
             (500, "prompt is too long", "unavailable"),
         ] {
-            let server = MockServer::start().await;
+            let server = MockServer::builder().start().await;
             let body = json!({"error":{"message":message}});
             Mock::given(method("POST")).and(path("/v1/messages"))
                 .and(header("x-api-key","synthetic-key"))
@@ -3119,47 +2928,6 @@ mod tests {
             }
             server.verify().await;
         }
-    }
-
-    // ========================================================================
-    // Model-not-found detection tests
-    // ========================================================================
-
-    // ========================================================================
-    // Model ID normalization tests
-    // ========================================================================
-
-    #[test]
-    fn test_normalize_anthropic_id_strips_date_suffix() {
-        assert_eq!(
-            normalize_anthropic_id("claude-opus-4-5-20251101"),
-            "claude-opus-4-5"
-        );
-        assert_eq!(
-            normalize_anthropic_id("claude-sonnet-4-6-20260217"),
-            "claude-sonnet-4-6"
-        );
-    }
-
-    #[test]
-    fn test_normalize_anthropic_id_preserves_base_ids() {
-        assert_eq!(normalize_anthropic_id("claude-opus-4-5"), "claude-opus-4-5");
-        assert_eq!(
-            normalize_anthropic_id("claude-sonnet-4-6"),
-            "claude-sonnet-4-6"
-        );
-    }
-
-    #[test]
-    fn test_normalize_anthropic_id_handles_non_ascii_ids() {
-        assert_eq!(
-            normalize_anthropic_id("claudé-opus-20251101"),
-            "claudé-opus"
-        );
-        assert_eq!(
-            normalize_anthropic_id("claudé-opus-experimental"),
-            "claudé-opus-experimental"
-        );
     }
 
     // ========================================================================
@@ -3363,33 +3131,5 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn test_default_max_tokens_from_known_model() {
-        // Known Anthropic models should resolve max_tokens from profile
-        let profile = everruns_provider::get_model_profile(
-            &everruns_provider::DriverId::Anthropic,
-            "claude-sonnet-4-5-20250514",
-        );
-        assert!(profile.is_some(), "claude-sonnet-4-5 should have a profile");
-        let limits = profile.unwrap().limits.expect("profile should have limits");
-        assert!(limits.output > 0, "output limit should be positive");
-        // Sonnet 4.5 should have a much higher limit than the old 4096 default
-        assert!(
-            limits.output > 4096,
-            "model output limit ({}) should exceed old hardcoded 4096",
-            limits.output
-        );
-    }
-
-    #[test]
-    fn test_default_max_tokens_unknown_model_falls_back() {
-        // Unknown model should return None (triggering the 16384 fallback)
-        let profile = everruns_provider::get_model_profile(
-            &everruns_provider::DriverId::Anthropic,
-            "nonexistent-model-xyz",
-        );
-        assert!(profile.is_none(), "unknown model should not have a profile");
     }
 }
