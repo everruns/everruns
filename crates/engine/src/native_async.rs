@@ -243,7 +243,27 @@ impl NativeAsyncCoordinator {
             return Ok(());
         }
         self.save().await?;
+        // Only explicit async calls may run before the response is accepted.
+        if self.checkpoint.response_in_flight && !call.is_async() {
+            return Ok(());
+        }
         self.launch(call, policy).await
+    }
+
+    async fn launch_synchronous_calls(&mut self) -> Result<()> {
+        let queued: Vec<_> = self
+            .checkpoint
+            .order
+            .iter()
+            .filter_map(|id| self.checkpoint.calls.get(id))
+            .filter(|pending| !pending.call.is_async() && pending.state == PendingCallState::Queued)
+            .map(|pending| pending.call.clone())
+            .collect();
+        for call in queued {
+            let policy = self.executor.authorize(&call).await?;
+            self.launch(call, policy).await?;
+        }
+        Ok(())
     }
 
     async fn settle(&mut self, id: String, result: Result<String>) -> Result<()> {
@@ -343,10 +363,11 @@ impl NativeAsyncCoordinator {
                         },
                         LlmStreamEvent::Done(metadata) => {
                             let id = metadata.response_id.clone().ok_or_else(|| AgentLoopError::llm("native response omitted response ID"))?;
+                            if metadata.finish_reason.as_deref().is_some_and(|reason| !matches!(reason, "stop" | "tool_calls" | "end_turn")) { return Err(AgentLoopError::llm("native response did not finish successfully")); }
                             if self.checkpoint.delivery.is_some() { self.checkpoint.acknowledge_delivery(id)?; } else { self.checkpoint.response_completed(id)?; }
                             self.checkpoint.response_in_flight = false;
                             self.save().await?;
-                            if metadata.finish_reason.as_deref().is_some_and(|reason| !matches!(reason, "stop" | "tool_calls" | "end_turn")) { return Err(AgentLoopError::llm("native response did not finish successfully")); }
+                            self.launch_synchronous_calls().await?;
                         }
                         LlmStreamEvent::Error(error) => return Err(AgentLoopError::llm(error.to_string())),
                         _ => {}
@@ -589,6 +610,52 @@ mod tests {
     }
     fn stream(events: Vec<LlmStreamEvent>) -> LlmResponseStream {
         Box::pin(futures::stream::iter(events.into_iter().map(Ok)))
+    }
+
+    #[tokio::test]
+    async fn synchronous_calls_wait_for_successful_response_completion() {
+        for rejected in [false, true] {
+            let executor = Arc::new(Executor::default());
+            let mut coordinator = NativeAsyncCoordinator::open(
+                Box::new(MemoryJournal::default()),
+                executor.clone(),
+                2,
+                true,
+            )
+            .await
+            .unwrap();
+            coordinator.begin_response().await.unwrap();
+            let mut terminal = done("response");
+            if rejected && let LlmStreamEvent::Done(metadata) = &mut terminal {
+                metadata.finish_reason = Some("length".into());
+            }
+            let mut response = stream(vec![
+                LlmStreamEvent::NativeToolCall(call("sync", false)),
+                terminal,
+            ]);
+            coordinator
+                .next_response_event(&mut response)
+                .await
+                .unwrap();
+            assert_eq!(
+                coordinator.checkpoint().calls["sync"].state,
+                PendingCallState::Queued,
+                "synchronous calls must not gain early execution from native opt-in"
+            );
+            let result = coordinator.next_response_event(&mut response).await;
+            if rejected {
+                assert!(result.is_err());
+                assert!(
+                    coordinator.checkpoint().clone().recover().is_err(),
+                    "recovery must not execute rejected calls"
+                );
+                assert_eq!(executor.started.load(Ordering::SeqCst), 0);
+            } else {
+                result.unwrap();
+                assert!(coordinator.wait_next().await.unwrap());
+                assert_eq!(executor.started.load(Ordering::SeqCst), 1);
+            }
+        }
     }
 
     #[tokio::test]

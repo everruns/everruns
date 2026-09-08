@@ -40,7 +40,8 @@ journal with the lower-level coordinator API.
   a conflict class. Read-only hints are not authorization; the runtime executor
   still runs the ordinary Act pipeline, including execution hooks and scoping.
 - All accepted calls, including synchronous calls mixed into an async response,
-  are journaled before execution. A shared concurrency cap covers all jobs.
+  are journaled before execution. Synchronous calls wait for successful response
+  completion; a rejected or truncated response cannot release them. A shared concurrency cap covers all jobs.
   Conflict classes serialize their members; disabling parallel tool calls
   serializes the entire job set.
 - Response consumption and tool execution progress together. Independent response
