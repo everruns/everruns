@@ -124,7 +124,7 @@ pub struct CompactResponse {
 }
 
 /// Output item returned by native conversation compaction.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "type")]
 pub enum CompactOutputItem {
     /// User message preserved verbatim.
@@ -145,6 +145,53 @@ pub enum CompactOutputItem {
     /// any retained native items, instead of dropping unknown semantic state.
     #[serde(untagged)]
     ProviderItem(serde_json::Value),
+}
+
+impl<'de> Deserialize<'de> for CompactOutputItem {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let kind = value
+            .get("type")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| D::Error::custom("compact output requires a string type"))?;
+        match kind {
+            "compaction" => {
+                let encrypted_content = value
+                    .get("encrypted_content")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or_else(|| D::Error::custom("compaction requires encrypted_content"))?;
+                Ok(Self::Compaction {
+                    encrypted_content: encrypted_content.to_owned(),
+                })
+            }
+            "message" => {
+                let role = value
+                    .get("role")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or_else(|| D::Error::custom("compact message requires role"))?;
+                let content = value
+                    .get("content")
+                    .filter(|content| content.is_string() || content.is_array())
+                    .ok_or_else(|| {
+                        D::Error::custom("compact message requires text or multipart content")
+                    })?;
+                // The standalone shape is intentionally narrow. Native Responses
+                // messages may carry phase, identity and output-only content;
+                // checkpoint reload must preserve that complete provider item.
+                if value.as_object().is_some_and(|object| object.len() == 3)
+                    && let Ok(content) = serde_json::from_value::<CompactContent>(content.clone())
+                {
+                    return Ok(Self::Message {
+                        role: role.to_owned(),
+                        content,
+                    });
+                }
+                Ok(Self::ProviderItem(value))
+            }
+            _ => Ok(Self::ProviderItem(value)),
+        }
+    }
 }
 
 /// Provider-reported accounting for one compact request.
@@ -297,4 +344,187 @@ pub fn messages_to_compact_input(messages: &[LlmMessage]) -> Vec<CompactInputIte
         .iter()
         .flat_map(CompactInputItem::from_llm_message)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn request_wire_covers_every_item_and_omits_absent_continuation_fields() {
+        let request = CompactRequest {
+            reasoning_state: None,
+            model: "model".into(),
+            input: vec![
+                CompactInputItem::Message {
+                    role: "user".into(),
+                    content: CompactContent::Text("hello".into()),
+                },
+                CompactInputItem::Message {
+                    role: "assistant".into(),
+                    content: CompactContent::Parts(vec![
+                        CompactContentPart::InputText {
+                            text: "image".into(),
+                        },
+                        CompactContentPart::InputImage {
+                            image_url: "data:image/png;base64,abc".into(),
+                        },
+                    ]),
+                },
+                CompactInputItem::FunctionCall {
+                    call_id: "call-1".into(),
+                    name: "lookup".into(),
+                    arguments: r#"{"city":"NYC"}"#.into(),
+                },
+                CompactInputItem::FunctionCallOutput {
+                    call_id: "call-1".into(),
+                    output: "result".into(),
+                },
+                CompactInputItem::Compaction {
+                    encrypted_content: "opaque".into(),
+                },
+            ],
+            previous_response_id: None,
+            instructions: Some("rules".into()),
+        };
+        assert_eq!(
+            serde_json::to_value(request).unwrap(),
+            json!({"model":"model","instructions":"rules","input":[
+                {"type":"message","role":"user","content":"hello"},
+                {"type":"message","role":"assistant","content":[{"type":"input_text","text":"image"},{"type":"input_image","image_url":"data:image/png;base64,abc"}]},
+                {"type":"function_call","call_id":"call-1","name":"lookup","arguments":"{\"city\":\"NYC\"}"},
+                {"type":"function_call_output","call_id":"call-1","output":"result"},
+                {"type":"compaction","encrypted_content":"opaque"}
+            ]})
+        );
+        assert_eq!(
+            serde_json::to_value(CompactRequest {
+                reasoning_state: None,
+                model: "model".into(),
+                input: vec![],
+                previous_response_id: Some("resp-previous".into()),
+                instructions: None
+            })
+            .unwrap(),
+            json!({"model":"model","previous_response_id":"resp-previous"})
+        );
+    }
+
+    #[test]
+    fn response_decoding_preserves_opaque_and_multipart_replay_with_optional_usage() {
+        let output = json!([
+            {"type":"message","role":"user","content":"hello"},
+            {"type":"message","role":"user","content":[{"type":"input_text","text":"see"},{"type":"input_image","image_url":"https://images.example/a.png"}]},
+            {"type":"compaction","encrypted_content":"opaque-secret"}
+        ]);
+        let response: CompactResponse = serde_json::from_value(json!({"output":output,"usage":{"input_tokens":100,"output_tokens":50,"total_tokens":150,"cost":0.04}})).unwrap();
+        assert_eq!(serde_json::to_value(&response.output).unwrap(), output);
+        let replay: Vec<_> = response.output.iter().map(CompactInputItem::from).collect();
+        assert_eq!(serde_json::to_value(replay).unwrap(), output);
+        let usage = response.usage.unwrap();
+        assert_eq!(
+            (
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.total_tokens,
+                usage.cost
+            ),
+            (Some(100), Some(50), Some(150), Some(0.04))
+        );
+        // Native Responses output must survive checkpoint JSON without losing
+        // phase/identity fields or unfamiliar provider-owned semantic items.
+        for native in [
+            json!({"type":"message","role":"assistant","content":[],"phase":"final_answer","id":"msg-1"}),
+            json!({"type":"reasoning","encrypted_content":"opaque-reasoning","id":"rs-1"}),
+            json!({"type":"unknown","encrypted_content":"opaque-future"}),
+        ] {
+            let decoded: CompactOutputItem = serde_json::from_value(native.clone()).unwrap();
+            assert_eq!(serde_json::to_value(decoded).unwrap(), native);
+        }
+        let minimal: CompactResponse = serde_json::from_value(json!({"output":[]})).unwrap();
+        assert!(minimal.output.is_empty());
+        assert!(minimal.usage.is_none());
+        let sparse: CompactResponse =
+            serde_json::from_value(json!({"output":[],"usage":{"input_tokens":9}})).unwrap();
+        let usage = sparse.usage.unwrap();
+        assert_eq!(
+            (
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.total_tokens,
+                usage.cost
+            ),
+            (Some(9), None, None, None)
+        );
+        for invalid in [
+            json!({"type":"compaction"}),
+            json!({"encrypted_content":"x"}),
+            json!({"type":"message","role":"user"}),
+        ] {
+            assert!(
+                serde_json::from_value::<CompactOutputItem>(invalid.clone()).is_err(),
+                "{invalid}"
+            );
+        }
+    }
+
+    #[test]
+    fn message_conversion_keeps_roles_call_order_and_supported_content() {
+        let mut assistant = LlmMessage::text(LlmMessageRole::Assistant, "checking");
+        assistant.tool_calls = Some(vec![crate::tool_types::ToolCall {
+            id: "call-1".into(),
+            name: "lookup".into(),
+            arguments: json!({"q":1}),
+        }]);
+        let mut result = LlmMessage::parts(
+            LlmMessageRole::Tool,
+            vec![
+                LlmContentPart::text("do"),
+                LlmContentPart::image("https://images.example/ignored.png"),
+                LlmContentPart::text("ne"),
+            ],
+        );
+        result.tool_call_id = Some("call-1".into());
+        let input = messages_to_compact_input(&[
+            LlmMessage::text(LlmMessageRole::System, "rules"),
+            LlmMessage::parts(
+                LlmMessageRole::User,
+                vec![
+                    LlmContentPart::text("see"),
+                    LlmContentPart::image("https://images.example/a.png"),
+                    LlmContentPart::Audio {
+                        url: "data:audio/wav;base64,aA==".into(),
+                    },
+                ],
+            ),
+            assistant,
+            result,
+            LlmMessage::parts(
+                LlmMessageRole::User,
+                vec![LlmContentPart::text("only text")],
+            ),
+        ]);
+        assert_eq!(
+            serde_json::to_value(input).unwrap(),
+            json!([
+                {"type":"message","role":"developer","content":"rules"},
+                {"type":"message","role":"user","content":[{"type":"input_text","text":"see"},{"type":"input_image","image_url":"https://images.example/a.png"}]},
+                {"type":"message","role":"assistant","content":"checking"},
+                {"type":"function_call","call_id":"call-1","name":"lookup","arguments":"{\"q\":1}"},
+                {"type":"function_call_output","call_id":"call-1","output":"done"},
+                {"type":"message","role":"user","content":"only text"}
+            ])
+        );
+        let mut calls_only = LlmMessage::text(LlmMessageRole::Assistant, "");
+        calls_only.tool_calls = Some(vec![crate::tool_types::ToolCall {
+            id: "call-2".into(),
+            name: "clock".into(),
+            arguments: json!({}),
+        }]);
+        assert_eq!(
+            serde_json::to_value(CompactInputItem::from_llm_message(&calls_only)).unwrap(),
+            json!([{"type":"function_call","call_id":"call-2","name":"clock","arguments":"{}"}])
+        );
+    }
 }
