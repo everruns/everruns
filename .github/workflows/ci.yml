@@ -643,10 +643,8 @@ jobs:
       - name: Check existing migrations are immutable
         run: bash scripts/lib/check-migration-immutability.sh
 
-  # Guards against the silent-skip bug class: CI enumerates server integration
-  # tests by name, so a new crates/server/tests/*.rs file is never run until
-  # someone adds a `--test` line. This check fails if any server test file is
-  # neither wired into a CI job nor explicitly allowlisted (EVE-664).
+  # Hand-enumerated cargo commands must cover nested driver libraries and
+  # each crate's integration targets, with explicit reasons for exclusions.
   test-enumeration:
     name: Test Enumeration
     runs-on: ubuntu-latest
@@ -688,7 +686,7 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
   # Fast unit tests - no external dependencies (PostgreSQL, LLM APIs)
-  # Runs in ~30s, provides quick feedback on logic errors
+  # Keeps server compilation in the integration job that already builds it.
   unit-test:
     name: Unit Tests (Pure)
     runs-on: ubuntu-latest
@@ -721,9 +719,11 @@ jobs:
 
       - name: Run pure unit tests
         run: |
-          # Provider crates: --lib only. Their integration tests are live (network)
-          # and run in dedicated credentialed jobs, so the default suite stays --lib.
-          cargo test -p everruns-anthropic -p everruns-openai -p everruns-gemini -p everruns-internal-protocol --lib --all-features
+          # Driver suites include local HTTP contracts. Credentialed live cases
+          # are explicitly ignored; ordinary cargo test never executes them.
+          cargo test -p everruns-anthropic -p everruns-openai -p everruns-gemini \
+            -p everruns-bedrock -p everruns-fireworks -p everruns-mai \
+            -p everruns-meta -p everruns-openrouter -p everruns-internal-protocol --all-features
           # Core and the local embedder: run the WHOLE suite (lib + integration +
           # doctests), not just --lib, so integration tests aren't silently skipped.
           # Both are pure (llmsim-based, no credentials or network).
@@ -1068,6 +1068,11 @@ jobs:
 
       - name: Run server integration tests (API + repository)
         run: cargo test -p everruns-server --test api_integration_test --test repository_integration_test --test repository_conformance_test -- --test-threads=1
+
+      # These contracts use in-memory TestServer instances, but share the server
+      # compilation above instead of rebuilding it in the pure-test job.
+      - name: Run in-memory server API contracts
+        run: cargo test -p everruns-server --test mcp_url_consent_test --test mcp_url_elicitation_test --test sse_replay_test
 
       # Blob-offload suite against the in-memory object_store backend (no S3
       # container). Exercises the same offload code paths the S3 job covers,
