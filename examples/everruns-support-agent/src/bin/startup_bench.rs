@@ -67,10 +67,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let main_entry = monotonic();
     let started = Instant::now();
 
+    // `--current-thread` measures the single-threaded runtime; the default
+    // matches `#[tokio::main]`, which starts one worker thread per core.
+    let current_thread = std::env::args().any(|arg| arg == "--current-thread");
     let step = Instant::now();
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?;
+    let runtime = if current_thread {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?
+    } else {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?
+    };
     let runtime_built = step.elapsed();
 
     if std::env::args().any(|arg| arg == "--warm") {
