@@ -746,4 +746,52 @@ async fn postgres_native_async_lease_recovery_and_tenant_fencing() {
         ..lease
     };
     assert_eq!(store.acquire(next).await.unwrap(), recovered);
+
+    // Rotation must address exactly one checkpoint even when a session has many turns.
+    let sibling = NativeAsyncLease {
+        turn_id: TurnId::new(),
+        ..next
+    };
+    store.acquire(sibling).await.unwrap();
+    let column = everruns_server::storage::ENCRYPTED_COLUMNS
+        .iter()
+        .find(|column| column.table == "native_async_checkpoints")
+        .expect("native journal participates in secret rotation");
+    // Identifiers come only from the static rotation registry.
+    let select_sql = format!(
+        "SELECT {}, {} FROM {} WHERE session_id=$1 AND turn_id=$2",
+        column.id_column, column.column, column.table
+    );
+    let (id, ciphertext): (Uuid, Vec<u8>) =
+        sqlx::query_as(sqlx::AssertSqlSafe(select_sql.as_str()))
+            .bind(session.id)
+            .bind(next.turn_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let rotated = Arc::new(
+        EncryptionService::new(
+            "rotated:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+            &["test:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="],
+        )
+        .unwrap(),
+    );
+    let replacement = rotated.reencrypt(&ciphertext).unwrap().unwrap();
+    let update_sql = format!(
+        "UPDATE {} SET {}=$1 WHERE {}=$2",
+        column.table, column.column, column.id_column
+    );
+    let result = sqlx::query(sqlx::AssertSqlSafe(update_sql.as_str()))
+        .bind(replacement)
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(result.rows_affected(), 1);
+    let rotated_store = PgNativeAsyncStore::new(pool.clone(), rotated);
+    assert_eq!(rotated_store.load(next).await.unwrap(), recovered);
+    assert_eq!(
+        store.load(sibling).await.unwrap(),
+        NativeAsyncCheckpoint::default()
+    );
 }
