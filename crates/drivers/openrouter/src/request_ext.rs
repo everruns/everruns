@@ -327,140 +327,202 @@ fn plugins_to_wire(config: &OpenRouterPluginConfig) -> Option<Vec<Value>> {
 mod tests {
     use super::*;
     use everruns_provider::driver_registry::{OpenRouterFilePlugin, OpenRouterWebSearchPlugin};
-
-    #[test]
-    fn empty_plugin_config_serializes_to_none() {
-        let cfg = OpenRouterPluginConfig::default();
-        assert!(plugins_to_wire(&cfg).is_none());
+    fn base_config(model: &str) -> LlmCallConfig {
+        LlmCallConfig {
+            speed: None,
+            verbosity: None,
+            model: model.to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: None,
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
+        }
     }
 
     #[test]
-    fn web_plugin_serializes_with_options() {
-        let cfg = OpenRouterPluginConfig {
-            web: Some(OpenRouterWebSearchPlugin {
-                max_results: Some(3),
-                search_prompt: Some("find docs".to_string()),
-            }),
-            ..Default::default()
+    fn decoration_preserves_the_request_and_complete_plugin_contract() {
+        let web = |max_results, search_prompt: Option<&str>| OpenRouterWebSearchPlugin {
+            max_results,
+            search_prompt: search_prompt.map(str::to_owned),
         };
-        let wire = plugins_to_wire(&cfg).expect("plugins present");
-        assert_eq!(
-            wire,
-            vec![json!({
-                "id": "web",
-                "max_results": 3,
-                "search_prompt": "find docs",
-            })]
-        );
+        for (plugins, expected_plugins) in [
+            (None, None),
+            (Some(OpenRouterPluginConfig::default()), None),
+            (
+                Some(OpenRouterPluginConfig {
+                    web: Some(web(None, None)),
+                    file: None,
+                }),
+                Some(json!([{"id":"web"}])),
+            ),
+            (
+                Some(OpenRouterPluginConfig {
+                    web: Some(web(Some(3), Some("find docs"))),
+                    file: None,
+                }),
+                Some(json!([{"id":"web","max_results":3,"search_prompt":"find docs"}])),
+            ),
+            (
+                Some(OpenRouterPluginConfig {
+                    web: None,
+                    file: Some(OpenRouterFilePlugin {}),
+                }),
+                Some(json!([{"id":"file"}])),
+            ),
+            (
+                Some(OpenRouterPluginConfig {
+                    web: Some(web(Some(1), None)),
+                    file: Some(OpenRouterFilePlugin {}),
+                }),
+                Some(json!([{"id":"web","max_results":1},{"id":"file"}])),
+            ),
+        ] {
+            let mut config = base_config("vendor/model");
+            config.openrouter_routing = Some(OpenRouterRoutingConfig {
+                plugins,
+                ..Default::default()
+            });
+            let mut body = json!({"model":"vendor/model","input":[{"role":"user","content":"hello"}],"tools":[{"type":"function","name":"lookup"}],"stream":true});
+            OpenRouterRequestExtension
+                .decorate(&mut body, &config)
+                .unwrap();
+            let mut expected = json!({"model":"vendor/model","input":[{"role":"user","content":"hello"}],"tools":[{"type":"function","name":"lookup"}],"stream":true,"reasoning":{"exclude":true}});
+            if let Some(plugins) = expected_plugins {
+                expected["plugins"] = plugins;
+            }
+            assert_eq!(body, expected);
+        }
     }
 
     #[test]
-    fn web_plugin_omits_absent_options() {
-        let cfg = OpenRouterPluginConfig {
-            web: Some(OpenRouterWebSearchPlugin {
-                max_results: None,
-                search_prompt: None,
-            }),
-            ..Default::default()
-        };
-        let wire = plugins_to_wire(&cfg).expect("plugins present");
-        assert_eq!(wire, vec![json!({ "id": "web" })]);
+    fn reset_wait_handles_seconds_milliseconds_rounding_and_expiry() {
+        for (reset, now, expected) in [
+            (0, 1_700_000_000, None),
+            (1_699_999_999, 1_700_000_000, None),
+            (1_700_000_000, 1_700_000_000, None),
+            (1_700_000_001, 1_700_000_000, Some(1)),
+            (1_700_000_060, 1_700_000_000, Some(60)),
+            (1_700_000_000_000, 1_700_000_000, None),
+            (1_700_000_000_001, 1_700_000_000, Some(1)),
+            (1_700_000_000_999, 1_700_000_000, Some(1)),
+            (1_700_000_060_000, 1_700_000_000, Some(60)),
+            (999_999_999_999, 999_999_999, Some(999_000_000_000)),
+            (1_000_000_000_000, 999_999_999, Some(1)),
+            (u64::MAX, 0, Some(18_446_744_073_709_552)),
+        ] {
+            assert_eq!(
+                reset_wait_secs(reset, now),
+                expected,
+                "reset={reset}, now={now}"
+            );
+        }
     }
 
     #[test]
-    fn file_plugin_serializes_as_id_only() {
-        let cfg = OpenRouterPluginConfig {
-            file: Some(OpenRouterFilePlugin {}),
-            ..Default::default()
-        };
-        let wire = plugins_to_wire(&cfg).expect("plugins present");
-        assert_eq!(wire, vec![json!({ "id": "file" })]);
+    fn rate_limit_sources_obey_precedence_and_preserve_existing_retry_budget() {
+        let body = r#"{"error":{"metadata":{"headers":{"X-RateLimit-Remaining":" 0 ","X-RateLimit-Reset":" 1 "}}}}"#;
+        for transport in [None, Some(" "), Some("7")] {
+            let mut headers = HeaderMap::new();
+            if let Some(value) = transport {
+                headers.insert(
+                    X_RATE_LIMIT_REMAINING_HEADER,
+                    HeaderValue::from_str(value).unwrap(),
+                );
+                headers.insert(X_RATE_LIMIT_RESET_HEADER, HeaderValue::from_static(" "));
+            }
+            let mut info = RateLimitInfo {
+                retry_after_secs: Some(9),
+                tokens_remaining: Some(32),
+                tokens_reset: Some("10s".into()),
+                limit_type: Some(RateLimitType::InputTokens),
+                ..Default::default()
+            };
+            OpenRouterRequestExtension.update_rate_limit_info(&mut info, &headers, body);
+            assert_eq!(
+                info.requests_remaining,
+                Some(if transport == Some("7") { 7 } else { 0 })
+            );
+            assert_eq!(info.requests_reset.as_deref(), Some("1"));
+            assert_eq!(info.retry_after_secs, Some(9));
+            assert_eq!(info.tokens_remaining, Some(32));
+            assert_eq!(info.tokens_reset.as_deref(), Some("10s"));
+            assert_eq!(
+                info.limit_type,
+                Some(if transport == Some("7") {
+                    RateLimitType::InputTokens
+                } else {
+                    RateLimitType::Requests
+                })
+            );
+        }
+        // Both supported timestamp encodings must reach the retry policy through either source.
+        for millis in [false, true] {
+            for in_body in [false, true] {
+                let before = unix_epoch_secs().unwrap();
+                let reset = if millis {
+                    (before + 60) * 1000
+                } else {
+                    before + 60
+                };
+                let value = reset.to_string();
+                let mut headers = HeaderMap::new();
+                let body = if in_body {
+                    json!({"error":{"metadata":{"headers":{"x-RaTeLiMiT-remaining":"0","x-RaTeLiMiT-reset":value}}}}).to_string()
+                } else {
+                    headers.insert(X_RATE_LIMIT_REMAINING_HEADER, HeaderValue::from_static("0"));
+                    headers.insert(
+                        X_RATE_LIMIT_RESET_HEADER,
+                        HeaderValue::from_str(&value).unwrap(),
+                    );
+                    String::new()
+                };
+                let mut info = RateLimitInfo::default();
+                OpenRouterRequestExtension.update_rate_limit_info(&mut info, &headers, &body);
+                let after = unix_epoch_secs().unwrap();
+                let wait = info
+                    .retry_after_secs
+                    .expect("future reset reaches retry policy");
+                assert!(((before + 60).saturating_sub(after)..=60).contains(&wait));
+                assert_eq!(info.requests_remaining, Some(0));
+                assert_eq!(info.requests_reset, Some(value));
+                assert_eq!(info.limit_type, Some(RateLimitType::Requests));
+                assert_eq!(info.tokens_remaining, None);
+                assert_eq!(info.tokens_reset, None);
+            }
+        }
     }
 
     #[test]
-    fn web_and_file_plugins_serialize_together() {
-        let cfg = OpenRouterPluginConfig {
-            web: Some(OpenRouterWebSearchPlugin {
-                max_results: Some(1),
-                search_prompt: None,
-            }),
-            file: Some(OpenRouterFilePlugin {}),
-        };
-        let wire = plugins_to_wire(&cfg).expect("plugins present");
-        assert_eq!(
-            wire,
-            vec![
-                json!({ "id": "web", "max_results": 1 }),
-                json!({ "id": "file" })
-            ]
-        );
-    }
-
-    #[test]
-    fn reset_wait_secs_accepts_openrouter_epoch_millis() {
-        assert_eq!(reset_wait_secs(1_781_650_680_000, 1_781_650_620), Some(60));
-    }
-
-    #[test]
-    fn update_rate_limit_info_uses_openrouter_headers() {
-        let reset = unix_epoch_secs().expect("system clock") + 45;
-        let mut headers = HeaderMap::new();
-        headers.insert(X_RATE_LIMIT_REMAINING_HEADER, HeaderValue::from_static("0"));
-        headers.insert(
-            X_RATE_LIMIT_RESET_HEADER,
-            HeaderValue::from_str(&reset.to_string()).expect("valid header"),
-        );
-        let mut info = RateLimitInfo::default();
-
-        OpenRouterRequestExtension.update_rate_limit_info(&mut info, &headers, "");
-
-        assert_eq!(info.requests_remaining, Some(0));
-        assert_eq!(info.requests_reset, Some(reset.to_string()));
-        let retry_after = info.retry_after_secs.expect("retry wait");
-        assert!((44..=45).contains(&retry_after));
-        assert_eq!(info.limit_type, Some(RateLimitType::Requests));
-    }
-
-    #[test]
-    fn update_rate_limit_info_ignores_blank_openrouter_headers() {
-        let mut headers = HeaderMap::new();
-        headers.insert(X_RATE_LIMIT_REMAINING_HEADER, HeaderValue::from_static(" "));
-        headers.insert(X_RATE_LIMIT_RESET_HEADER, HeaderValue::from_static("\t"));
-        let mut info = RateLimitInfo::default();
-
-        OpenRouterRequestExtension.update_rate_limit_info(&mut info, &headers, "");
-
-        assert_eq!(info.requests_remaining, None);
-        assert_eq!(info.requests_reset, None);
-        assert_eq!(info.retry_after_secs, None);
-        assert_eq!(info.limit_type, None);
-    }
-
-    #[test]
-    fn update_rate_limit_info_uses_openrouter_error_body_headers() {
-        let reset_ms = (unix_epoch_secs().expect("system clock") + 45) * 1000;
-        let body = format!(
-            r#"{{
-                "error": {{
-                    "message": "Rate limit exceeded: free-models-per-min.",
-                    "metadata": {{
-                        "headers": {{
-                            "X-RateLimit-Limit": "16",
-                            "X-RateLimit-Remaining": "0",
-                            "X-RateLimit-Reset": "{reset_ms}"
-                        }}
-                    }}
-                }}
-            }}"#
-        );
-        let mut info = RateLimitInfo::default();
-
-        OpenRouterRequestExtension.update_rate_limit_info(&mut info, &HeaderMap::new(), &body);
-
-        assert_eq!(info.requests_remaining, Some(0));
-        assert_eq!(info.requests_reset, Some(reset_ms.to_string()));
-        let retry_after = info.retry_after_secs.expect("retry wait");
-        assert!((44..=45).contains(&retry_after));
-        assert_eq!(info.limit_type, Some(RateLimitType::Requests));
+    fn absent_blank_or_malformed_rate_metadata_cannot_invent_a_retry() {
+        for body in [
+            "",
+            "not JSON",
+            "null",
+            r#"{"error":{}}"#,
+            r#"{"error":{"metadata":{"headers":{"X-RateLimit-Remaining":0,"X-RateLimit-Reset":1}}}}"#,
+            r#"{"error":{"metadata":{"headers":{"X-RateLimit-Remaining":" ","X-RateLimit-Reset":"\t"}}}}"#,
+        ] {
+            let mut headers = HeaderMap::new();
+            headers.insert(X_RATE_LIMIT_REMAINING_HEADER, HeaderValue::from_static(" "));
+            headers.insert(X_RATE_LIMIT_RESET_HEADER, HeaderValue::from_static("\t"));
+            let mut info = RateLimitInfo::default();
+            OpenRouterRequestExtension.update_rate_limit_info(&mut info, &headers, body);
+            assert_eq!(info.requests_remaining, None);
+            assert_eq!(info.requests_reset, None);
+            assert_eq!(info.retry_after_secs, None);
+            assert_eq!(info.limit_type, None);
+            assert_eq!(info.tokens_remaining, None);
+            assert_eq!(info.tokens_reset, None);
+        }
     }
 }
