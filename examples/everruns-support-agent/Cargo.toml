@@ -9,4 +9,5 @@ publish = false
 reqwest.workspace = true
 everruns = { path = "../../crates/everruns" }
 everruns-anthropic = { path = "../../crates/drivers/anthropic" }
+libc = "0.2"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
