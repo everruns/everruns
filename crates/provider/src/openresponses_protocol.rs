@@ -108,7 +108,6 @@ pub trait OpenResponsesRequestExtension: Send + Sync {
 
 #[derive(Clone)]
 pub struct OpenResponsesProtocolChatDriver {
-    client: Client,
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
     /// Optional provider-specific request-body decorator (see
@@ -128,7 +127,6 @@ impl OpenResponsesProtocolChatDriver {
             // resolver). The api_url is org-configurable, so a bare
             // `Client::new()` would leave this provider open to DNS-rebind /
             // redirect SSRF (TM-API-013, EVE-623).
-            client: crate::driver_helpers::shared_streaming_http_client(),
             retry_config: LlmRetryConfig::default(),
             request_extension: None,
             stateful_responses: None,
@@ -250,7 +248,7 @@ impl OpenResponsesProtocolChatDriver {
                     headers.insert(name, value);
                 }
 
-                self.client
+                self.client()
                     .post(&resolved.url)
                     .headers(headers)
                     .header("Content-Type", "application/json")
@@ -344,9 +342,15 @@ impl OpenResponsesProtocolChatDriver {
         .await
     }
 
-    /// Get the HTTP client (for subclass access)
-    pub fn client(&self) -> &Client {
-        &self.client
+    /// The process-wide streaming HTTP client, resolved per request rather than
+    /// held as a field. Building it loads the platform trust store (~1.3 ms),
+    /// which would otherwise land on the agent startup path; after the first
+    /// request this is a `OnceLock` read and an `Arc` clone.
+    ///
+    /// Returned by value for subclass access; a `reqwest::Client` is an `Arc`
+    /// handle, so cloning it shares the same connection pool.
+    pub fn client(&self) -> Client {
+        crate::driver_helpers::shared_streaming_http_client()
     }
 
     fn convert_role(role: &LlmMessageRole) -> &'static str {
@@ -673,7 +677,7 @@ impl OpenResponsesProtocolChatDriver {
                     .resolve("POST", &compact_url, &body)
                     .await
                     .map_err(SendOutcome::Fatal)?;
-                let mut builder = self.client.post(&resolved.url);
+                let mut builder = self.client().post(&resolved.url);
                 for (name, value) in resolved.headers {
                     builder = builder.header(name, value);
                 }

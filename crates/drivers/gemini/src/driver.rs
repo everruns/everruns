@@ -58,7 +58,6 @@ pub fn provider(
 /// Supports streaming responses and tool calls.
 #[derive(Clone)]
 pub struct GeminiChatDriver {
-    client: Client,
     retry_config: LlmRetryConfig,
 }
 
@@ -66,9 +65,16 @@ impl GeminiChatDriver {
     /// Create a new driver with the given API key
     pub fn new() -> Self {
         Self {
-            client: everruns_provider::driver_helpers::shared_streaming_http_client(),
             retry_config: LlmRetryConfig::default(),
         }
+    }
+
+    /// The process-wide streaming HTTP client, resolved per request rather than
+    /// held as a field. Building it loads the platform trust store (~1.3 ms),
+    /// which would otherwise land on the agent startup path; after the first
+    /// request this is a `OnceLock` read and an `Arc` clone.
+    fn client(&self) -> Client {
+        everruns_provider::driver_helpers::shared_streaming_http_client()
     }
 
     fn convert_role(role: &LlmMessageRole) -> &'static str {
@@ -359,7 +365,7 @@ impl GeminiChatDriver {
                     .resolve("POST", url, &body)
                     .await
                     .map_err(SendOutcome::Fatal)?;
-                let mut builder = self.client.post(&resolved.url);
+                let mut builder = self.client().post(&resolved.url);
                 let mut headers = resolved.headers;
                 headers.push(("Content-Type".to_string(), "application/json".to_string()));
                 for (name, value) in
@@ -534,7 +540,7 @@ impl ChatDriver for GeminiChatDriver {
             .url("models")
             .ok_or_else(|| AgentLoopError::config("Gemini provider has no base URL"))?;
         let resolved = endpoint.resolve("GET", url, &[]).await?;
-        let mut request = self.client.get(&resolved.url);
+        let mut request = self.client().get(&resolved.url);
         for (name, value) in resolved.headers {
             request = request.header(name, value);
         }

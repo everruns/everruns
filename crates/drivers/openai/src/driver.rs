@@ -156,7 +156,7 @@ impl ChatDriver for OpenAIChatDriver {
         }
 
         let models_url = models_url_for_api_url(&api_url);
-        list_openai_models(self.inner.client(), endpoint, &models_url).await
+        list_openai_models(&self.inner.client(), endpoint, &models_url).await
     }
 
     fn supports_compact(&self) -> bool {
@@ -250,7 +250,7 @@ impl ChatDriver for OpenAICompletionsChatDriver {
         }
 
         let models_url = models_url_for_api_url(&api_url);
-        list_openai_models(self.inner.client(), endpoint, &models_url).await
+        list_openai_models(&self.inner.client(), endpoint, &models_url).await
     }
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {

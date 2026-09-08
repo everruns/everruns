@@ -38,7 +38,6 @@ const DISTANCE_METRIC: &str = "cosine_distance";
 /// Cheap to clone is unnecessary; construct once and share behind an `Arc` (as
 /// the platform definition does).
 pub struct TurbopufferVectorStore {
-    http: reqwest::Client,
     /// Regional base URL, e.g. `https://gcp-us-central1.turbopuffer.com`. No
     /// trailing slash.
     base_url: String,
@@ -50,12 +49,20 @@ impl TurbopufferVectorStore {
     /// (any trailing slash is trimmed); `api_key` authenticates every request.
     pub fn new(base_url: impl Into<String>, api_key: impl Into<String>) -> Self {
         Self {
-            // EVE-635: shared client with connect + overall request timeouts so
-            // a hung vector-store read cannot block indefinitely.
-            http: everruns_provider::driver_helpers::shared_request_http_client(),
             base_url: base_url.into().trim_end_matches('/').to_string(),
             api_key: api_key.into(),
         }
+    }
+
+    /// The process-wide request HTTP client, resolved per request rather than
+    /// held as a field. Building it loads the platform trust store (~1.3 ms),
+    /// which would otherwise land in `new`; after the first request this is a
+    /// `OnceLock` read and an `Arc` clone.
+    ///
+    /// EVE-635: the shared client carries connect + overall request timeouts so
+    /// a hung vector-store read cannot block indefinitely.
+    fn http(&self) -> reqwest::Client {
+        everruns_provider::driver_helpers::shared_request_http_client()
     }
 
     fn namespace_url(&self, namespace: &str) -> String {
@@ -65,7 +72,7 @@ impl TurbopufferVectorStore {
     /// POST a JSON body to the namespace write endpoint and require a 2xx.
     async fn post_write(&self, namespace: &str, body: Value, op: &str) -> Result<()> {
         let resp = self
-            .http
+            .http()
             .post(self.namespace_url(namespace))
             .bearer_auth(&self.api_key)
             .json(&body)
@@ -165,7 +172,7 @@ impl VectorStore for TurbopufferVectorStore {
         };
 
         let resp = self
-            .http
+            .http()
             .post(format!("{}/query", self.namespace_url(namespace)))
             .bearer_auth(&self.api_key)
             .json(&body)
@@ -210,7 +217,7 @@ impl VectorStore for TurbopufferVectorStore {
 
     async fn delete_namespace(&self, namespace: &str) -> Result<()> {
         let resp = self
-            .http
+            .http()
             .delete(self.namespace_url(namespace))
             .bearer_auth(&self.api_key)
             .send()
