@@ -386,9 +386,8 @@ impl SessionFileSaver {
 #[async_trait]
 impl FileSaver for SessionFileSaver {
     async fn save(&self, path: &str, bytes: &[u8]) -> Result<SaveResult, FileSaveError> {
-        // Revisit after upgrading fetchkit beyond 0.4.1: confirm upstream calls
-        // validate_path before network I/O. Keep this save-time check as defense
-        // in depth unless the FileSaver contract guarantees the path is unchanged.
+        // Repeat upstream's preflight validation at save time so a changed
+        // destination cannot bypass the filesystem's path policy.
         let path = self.resolve_destination(path).await?;
         let (content, encoding) = match std::str::from_utf8(bytes) {
             Ok(text) => (text.to_string(), "text"),
@@ -516,19 +515,15 @@ impl WebFetchTool {
             }
         };
 
-        let method = arguments
-            .get("method")
-            .and_then(|v| v.as_str())
-            .map(|s| match s.to_uppercase().as_str() {
-                "GET" => Some(fetchkit::HttpMethod::Get),
-                "HEAD" => Some(fetchkit::HttpMethod::Head),
-                _ => None,
-            })
-            .unwrap_or(Some(fetchkit::HttpMethod::Get));
-
-        let method = match method {
-            Some(m) => m,
-            None => {
+        let method = match arguments.get("method") {
+            None | Some(Value::Null) => fetchkit::HttpMethod::Get,
+            Some(Value::String(method)) if method.eq_ignore_ascii_case("GET") => {
+                fetchkit::HttpMethod::Get
+            }
+            Some(Value::String(method)) if method.eq_ignore_ascii_case("HEAD") => {
+                fetchkit::HttpMethod::Head
+            }
+            _ => {
                 return Err(ToolExecutionResult::tool_error(
                     "Invalid method: must be GET or HEAD",
                 ));
@@ -776,34 +771,6 @@ impl Tool for WebFetchTool {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn system_prompt_variants_stay_within_budget() {
-        let cap = WebFetchCapability::new(None);
-        let ctx = SystemPromptContext::without_file_store(SessionId::new());
-
-        let disabled = cap
-            .system_prompt_contribution_with_config(&ctx, &serde_json::json!({}))
-            .await
-            .expect("web fetch contributes a prompt");
-        assert!(
-            disabled.len() <= 250,
-            "web fetch prompt without downloads grew to {} bytes",
-            disabled.len()
-        );
-
-        let enabled = cap
-            .system_prompt_contribution_with_config(
-                &ctx,
-                &serde_json::json!({"enable_file_download": true}),
-            )
-            .await
-            .expect("web fetch contributes a download prompt");
-        assert!(
-            enabled.len() <= 350,
-            "web fetch download prompt grew to {} bytes",
-            enabled.len()
-        );
-    }
     use crate::typed_id::SessionId;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -885,1008 +852,6 @@ mod tests {
             "operator-level system policy error should take precedence, got: {result:?}"
         );
     }
-
-    #[test]
-    fn test_derive_bot_auth_public_key() {
-        // 32 bytes of 'A' (0x41), base64url-encoded
-        let seed = "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE";
-        let pk = super::derive_bot_auth_public_key(seed).unwrap();
-
-        // JWK has correct structure
-        assert_eq!(pk.jwk["kty"], "OKP");
-        assert_eq!(pk.jwk["crv"], "Ed25519");
-        assert!(pk.jwk["x"].is_string());
-
-        // key_id matches fetchkit's BotAuthConfig::keyid()
-        let fetchkit_config = fetchkit::BotAuthConfig::from_base64_seed(seed).unwrap();
-        assert_eq!(pk.key_id, fetchkit_config.keyid());
-    }
-
-    #[test]
-    fn test_derive_bot_auth_public_key_invalid_seed() {
-        assert!(super::derive_bot_auth_public_key("tooshort").is_none());
-        assert!(super::derive_bot_auth_public_key("!!!invalid!!!").is_none());
-    }
-
-    #[test]
-    fn test_web_fetch_tool_parameters() {
-        let tool = WebFetchTool::default();
-        let schema = tool.parameters_schema();
-
-        assert_eq!(schema["type"], "object");
-        assert!(schema["properties"]["url"].is_object());
-        assert!(schema["properties"]["method"].is_object());
-        assert!(schema["properties"]["as_markdown"].is_object());
-        assert!(schema["properties"]["as_text"].is_object());
-        assert!(schema["properties"]["content_focus"].is_object());
-        assert!(schema["properties"]["crawl"].is_object());
-        assert!(schema["properties"]["max_pages"].is_object());
-        // Rendering is not compiled in, so the tool must not advertise it.
-        assert!(schema["properties"]["render"].is_null());
-        assert_eq!(schema["required"], serde_json::json!(["url"]));
-    }
-
-    #[test]
-    fn test_web_fetch_capability_metadata() {
-        let cap = WebFetchCapability::new(None);
-
-        assert_eq!(cap.id(), "web_fetch");
-        assert_eq!(cap.name(), "Web Fetch");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.risk_level(), RiskLevel::High);
-        assert_eq!(cap.icon(), Some("globe"));
-        assert_eq!(cap.category(), Some("Network"));
-        // System prompt comes from fetchkit ToolBuilder via system_prompt_contribution_with_config
-        assert!(cap.system_prompt_addition().is_none());
-        // Preview shows full features for UI
-        let preview = cap.system_prompt_preview().unwrap();
-        assert!(preview.contains("web_fetch"));
-    }
-
-    #[test]
-    fn test_web_fetch_capability_has_tool() {
-        let cap = WebFetchCapability::new(None);
-        let tools = cap.tools();
-
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "web_fetch");
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_missing_url() {
-        let tool = WebFetchTool::default();
-        let result = tool.execute(serde_json::json!({})).await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("url"));
-        } else {
-            panic!("Expected tool error for missing URL");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_invalid_url() {
-        let tool = WebFetchTool::default();
-        let result = tool
-            .execute(serde_json::json!({"url": "not-a-valid-url"}))
-            .await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("Invalid URL"));
-        } else {
-            panic!("Expected tool error for invalid URL");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_invalid_method() {
-        let tool = WebFetchTool::default();
-        let result = tool
-            .execute(serde_json::json!({"url": "https://example.com", "method": "POST"}))
-            .await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("Invalid method"));
-        } else {
-            panic!("Expected tool error for invalid method");
-        }
-    }
-
-    // Integration tests using wiremock
-    #[tokio::test]
-    async fn test_web_fetch_real_request() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .and(path("/html"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string("<html><body><p>Herman Melville - Moby Dick</p></body></html>")
-                    .insert_header("content-type", "text/html"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/html", mock_server.uri()),
-                "as_text": true
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 200);
-            assert!(
-                value["content"]
-                    .as_str()
-                    .unwrap()
-                    .contains("Herman Melville")
-            );
-        } else {
-            panic!("Expected successful response");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_head_request() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("HEAD"))
-            .and(path("/html"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .insert_header("content-type", "text/html")
-                    .insert_header("content-length", "100"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/html", mock_server.uri()),
-                "method": "HEAD"
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 200);
-            assert_eq!(value["method"], "HEAD");
-            // HEAD requests should not have content
-            assert!(value.get("content").is_none() || value["content"].is_null());
-        } else {
-            panic!("Expected successful response");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_response_includes_size() {
-        let mock_server = MockServer::start().await;
-        let body = "<html><body>Test content</body></html>";
-
-        Mock::given(method("GET"))
-            .and(path("/html"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(body)
-                    .insert_header("content-type", "text/html"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/html", mock_server.uri())
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 200);
-            // Size should be present and > 0
-            assert!(value["size"].as_u64().unwrap() > 0);
-        } else {
-            panic!("Expected successful response");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_binary_returns_metadata() {
-        let mock_server = MockServer::start().await;
-
-        // Simulate a PNG image response
-        Mock::given(method("GET"))
-            .and(path("/image/png"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_bytes(vec![0x89, 0x50, 0x4E, 0x47]) // PNG magic bytes
-                    .insert_header("content-type", "image/png")
-                    .insert_header("content-length", "4"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/image/png", mock_server.uri())
-            }))
-            .await;
-
-        // Binary content should return success with error message and metadata
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 200);
-            assert!(
-                value["content_type"]
-                    .as_str()
-                    .unwrap()
-                    .contains("image/png")
-            );
-            assert!(
-                value["error"].as_str().unwrap().contains("Binary content")
-                    || value["error"].as_str().unwrap().contains("binary")
-            );
-            // Should have size metadata if available
-            assert!(value.get("size").is_some() || value["size"].is_null());
-        } else {
-            panic!("Expected success response with metadata for binary content");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_truncated_field() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .and(path("/html"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string("<html><body>Short content</body></html>")
-                    .insert_header("content-type", "text/html"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        // Normal response should have truncated: false
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/html", mock_server.uri())
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            // truncated should be false or null for non-truncated content
-            assert!(
-                value["truncated"].is_null()
-                    || value["truncated"] == false
-                    || value.get("truncated").is_none()
-            );
-        } else {
-            panic!("Expected successful response");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_timeout_unreachable_host() {
-        // Use TEST-NET-1 (192.0.2.0/24, RFC 5737) which is non-routable and will timeout.
-        // Note: fetchkit v0.1.2 blocks RFC1918 private IPs, but TEST-NET ranges
-        // are also blocked by DNS policy. Use a wiremock server with a delay instead.
-        let mock_server = MockServer::start().await;
-
-        // Mount a mock that takes 5 seconds to respond (exceeds 1s first-byte timeout)
-        Mock::given(method("GET"))
-            .and(path("/slow"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string("slow response")
-                    .set_delay(std::time::Duration::from_secs(5)),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/slow", mock_server.uri())
-            }))
-            .await;
-
-        match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(
-                    msg.contains("timed out") || msg.contains("connect") || msg.contains("failed"),
-                    "Expected timeout or connection error, got: {}",
-                    msg
-                );
-            }
-            _ => {
-                // Some environments may handle timeouts differently
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_response_has_all_expected_fields() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .and(path("/html"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string("<html><body>Test</body></html>")
-                    .insert_header("content-type", "text/html"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/html", mock_server.uri())
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            // Verify all expected fields are present
-            assert!(value.get("url").is_some(), "Missing 'url' field");
-            assert!(
-                value.get("status_code").is_some(),
-                "Missing 'status_code' field"
-            );
-            assert!(
-                value.get("content_type").is_some(),
-                "Missing 'content_type' field"
-            );
-            assert!(value.get("size").is_some(), "Missing 'size' field");
-            // format, content may or may not be present depending on response type
-        } else {
-            panic!("Expected successful response");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_head_response_structure() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("HEAD"))
-            .and(path("/html"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .insert_header("content-type", "text/html")
-                    .insert_header("content-length", "100"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/html", mock_server.uri()),
-                "method": "HEAD"
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            // HEAD response should have metadata but not content
-            assert!(value.get("url").is_some());
-            assert!(value.get("status_code").is_some());
-            assert!(value.get("method").is_some());
-            assert_eq!(value["method"], "HEAD");
-            // Should NOT have content for HEAD
-            assert!(value.get("content").is_none() || value["content"].is_null());
-        } else {
-            panic!("Expected successful response");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_html_returns_markdown_by_default() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .and(path("/html"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(
-                        "<!DOCTYPE html><html><body><h1>Title</h1><p>Content</p></body></html>",
-                    )
-                    .insert_header("content-type", "text/html"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        // No as_markdown needed - fetchkit returns markdown by default for HTML
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/html", mock_server.uri())
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 200);
-            // Content should be present
-            let content = value["content"].as_str().unwrap();
-            assert!(content.contains("Title") || content.contains("Content"));
-            // Format should be "markdown" or "raw" depending on fetchkit's detection
-            let format = value["format"].as_str().unwrap_or("raw");
-            assert!(format == "markdown" || format == "raw");
-        } else {
-            panic!("Expected successful response");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_as_text_strips_html() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .and(path("/html"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string("<!DOCTYPE html><html><body><b>Test</b> content</body></html>")
-                    .insert_header("content-type", "text/html"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/html", mock_server.uri()),
-                "as_text": true
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 200);
-            // Content should be present
-            let content = value["content"].as_str().unwrap();
-            assert!(content.contains("Test") || content.contains("content"));
-            // Format should be "text" or "raw" depending on fetchkit's detection
-            let format = value["format"].as_str().unwrap_or("raw");
-            assert!(format == "text" || format == "raw");
-        } else {
-            panic!("Expected successful response");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_raw_format_for_non_html() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .and(path("/json"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string("{\"key\": \"value\"}")
-                    .insert_header("content-type", "application/json"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/json", mock_server.uri())
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            // JSON content should return "raw" format
-            assert_eq!(value["format"], "raw");
-        } else {
-            panic!("Expected successful response");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_404_returns_success_with_status() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .and(path("/status/404"))
-            .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/status/404", mock_server.uri())
-            }))
-            .await;
-
-        // 404 should still be a "success" from tool perspective - it got a response
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 404);
-        } else {
-            panic!("Expected successful response even for 404");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_500_returns_success_with_status() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .and(path("/status/500"))
-            .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/status/500", mock_server.uri())
-            }))
-            .await;
-
-        // 500 should still be a "success" from tool perspective
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 500);
-        } else {
-            panic!("Expected successful response even for 500");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_dns_failure() {
-        let tool = WebFetchTool::default();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": "https://this-domain-definitely-does-not-exist-12345.com/test"
-            }))
-            .await;
-
-        // DNS failure returns a tool error. With fetchkit v0.1.2's resolve-then-check,
-        // DNS resolution failures may surface as "blocked by policy" since the hostname
-        // cannot be validated against the DNS policy.
-        if let ToolExecutionResult::ToolError(msg) = result {
-            let msg_lower = msg.to_lowercase();
-            assert!(
-                msg_lower.contains("failed")
-                    || msg_lower.contains("error")
-                    || msg_lower.contains("timed out")
-                    || msg_lower.contains("connect")
-                    || msg_lower.contains("blocked"),
-                "Expected error message about failure, got: {}",
-                msg
-            );
-        } else {
-            // Some environments might timeout instead of DNS failure
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_rejects_ftp_url() {
-        let tool = WebFetchTool::default();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": "ftp://example.com/file.txt"
-            }))
-            .await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("Invalid URL"));
-        } else {
-            panic!("Expected tool error for FTP URL");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_rejects_file_url() {
-        let tool = WebFetchTool::default();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": "file:///etc/passwd"
-            }))
-            .await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("Invalid URL"));
-        } else {
-            panic!("Expected tool error for file:// URL");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_accepts_http_url() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .and(path("/get"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string("{\"url\": \"http://localhost/get\"}")
-                    .insert_header("content-type", "application/json"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        // Note: mock_server.uri() returns http:// URL
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/get", mock_server.uri())
-            }))
-            .await;
-
-        // HTTP (not HTTPS) should work
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 200);
-        } else {
-            panic!("Expected successful response for HTTP URL");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_filters_excessive_newlines() {
-        let mock_server = MockServer::start().await;
-
-        // Response with many consecutive newlines
-        Mock::given(method("GET"))
-            .and(path("/newlines"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string("line1\n\n\n\n\n\n\n\nline2")
-                    .insert_header("content-type", "text/plain"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/newlines", mock_server.uri())
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            let content = value["content"].as_str().unwrap();
-            // Should have at most 2 consecutive newlines
-            assert!(
-                !content.contains("\n\n\n"),
-                "Content should not have more than 2 consecutive newlines"
-            );
-        } else {
-            panic!("Expected successful response");
-        }
-    }
-
-    // ========================================================================
-    // SSRF security tests (TM-API-008 through TM-API-012)
-    //
-    // fetchkit v0.1.2 blocks private/internal IPs by default via
-    // resolve-then-check with DNS pinning. These tests verify that
-    // private/internal URLs are blocked by policy.
-    //
-    // Run with: cargo test -p everruns-core --lib -- web_fetch::tests::test_ssrf
-    // ========================================================================
-
-    // Helper: asserts that a private/internal URL IS blocked by fetchkit's
-    // DNS policy (SSRF protection). The tool should return a ToolError
-    // containing "blocked".
-    async fn assert_blocked_by_policy(url: &str) {
-        let tool = WebFetchTool::default();
-        let result = tool.execute(serde_json::json!({"url": url})).await;
-        assert!(
-            matches!(&result, ToolExecutionResult::ToolError(msg) if msg.contains("blocked")),
-            "Expected URL {url} to be blocked by policy, got: {:?}",
-            result
-        );
-    }
-
-    /// THREAT[TM-API-009]: Cloud metadata endpoint blocked by fetchkit DNS policy.
-    #[tokio::test]
-    async fn test_ssrf_cloud_metadata_blocked() {
-        assert_blocked_by_policy("http://169.254.169.254/latest/meta-data/").await;
-    }
-
-    /// THREAT[TM-API-008]: Localhost blocked by fetchkit DNS policy.
-    #[tokio::test]
-    async fn test_ssrf_localhost_blocked() {
-        assert_blocked_by_policy("http://127.0.0.1:1/").await;
-    }
-
-    /// THREAT[TM-API-008]: RFC1918 10.x.x.x blocked by fetchkit DNS policy.
-    #[tokio::test]
-    async fn test_ssrf_private_10_blocked() {
-        assert_blocked_by_policy("http://10.0.0.1:1/").await;
-    }
-
-    /// THREAT[TM-API-008]: RFC1918 172.16.x.x blocked by fetchkit DNS policy.
-    #[tokio::test]
-    async fn test_ssrf_private_172_blocked() {
-        assert_blocked_by_policy("http://172.16.0.1:1/").await;
-    }
-
-    /// THREAT[TM-API-008]: RFC1918 192.168.x.x blocked by fetchkit DNS policy.
-    #[tokio::test]
-    async fn test_ssrf_private_192_blocked() {
-        assert_blocked_by_policy("http://192.168.0.1:1/").await;
-    }
-
-    /// THREAT[TM-API-008]: IPv6 localhost blocked by fetchkit DNS policy.
-    #[tokio::test]
-    async fn test_ssrf_ipv6_localhost_blocked() {
-        assert_blocked_by_policy("http://[::1]:1/").await;
-    }
-
-    /// THREAT[TM-API-008]: 0.0.0.0 blocked by fetchkit DNS policy.
-    #[tokio::test]
-    async fn test_ssrf_unspecified_blocked() {
-        assert_blocked_by_policy("http://0.0.0.0:1/").await;
-    }
-
-    /// Verify file://, ftp://, gopher:// schemes are blocked (existing protection).
-    #[tokio::test]
-    async fn test_ssrf_non_http_schemes_blocked() {
-        let tool = WebFetchTool::default();
-
-        for (scheme, url) in [
-            ("file://", "file:///etc/passwd"),
-            ("ftp://", "ftp://internal-server/data"),
-            ("gopher://", "gopher://internal-server/"),
-        ] {
-            let result = tool.execute(serde_json::json!({"url": url})).await;
-            assert!(
-                matches!(&result, ToolExecutionResult::ToolError(msg) if msg.contains("Invalid URL")),
-                "{scheme} should be rejected"
-            );
-        }
-    }
-
-    // ========================================================================
-    // Integration tests using wiremock (no network access needed)
-    // ========================================================================
-
-    #[tokio::test]
-    async fn test_fetch_html_page() {
-        let mock_server = MockServer::start().await;
-        let html = r#"<html><head><title>Wasmtime Docs</title></head>
-        <body><h1>Wasmtime</h1><p>A fast and secure runtime for WebAssembly.</p>
-        <p>Wasmtime is a standalone runtime for WebAssembly that can be used
-        as a CLI tool or embedded into other systems.</p></body></html>"#;
-
-        Mock::given(method("GET"))
-            .and(path("/"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(html)
-                    .insert_header("content-type", "text/html; charset=utf-8"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/", mock_server.uri())
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 200);
-            let content = value["content"].as_str().unwrap();
-            assert!(
-                content.contains("Wasmtime") || content.contains("wasmtime"),
-                "Content should mention Wasmtime"
-            );
-            assert!(
-                value["size"].as_u64().unwrap() > 100,
-                "Page should have substantial content"
-            );
-        } else {
-            panic!("Expected successful response, got: {:?}", result);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_fetch_html_as_text() {
-        let mock_server = MockServer::start().await;
-        let html = r#"<html><head><title>Wasmtime Docs</title></head>
-        <body><h1>Wasmtime</h1><p>A fast and secure runtime.</p></body></html>"#;
-
-        Mock::given(method("GET"))
-            .and(path("/"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(html)
-                    .insert_header("content-type", "text/html"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/", mock_server.uri()),
-                "as_text": true
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 200);
-            let content = value["content"].as_str().unwrap();
-            assert!(
-                content.contains("Wasmtime") || content.contains("wasmtime"),
-                "Text should contain Wasmtime reference"
-            );
-            let format = value["format"].as_str().unwrap_or("raw");
-            assert!(
-                format == "text" || format == "raw",
-                "Format should be text or raw, got: {}",
-                format
-            );
-        } else {
-            panic!(
-                "Expected successful response with text conversion, got: {:?}",
-                result
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn test_fetch_head_request() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("HEAD"))
-            .and(path("/"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .insert_header("content-type", "text/html; charset=utf-8")
-                    .insert_header("content-length", "5000"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/", mock_server.uri()),
-                "method": "HEAD"
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 200);
-            assert_eq!(value["method"], "HEAD");
-            assert!(
-                value["content"].is_null()
-                    || value["content"].as_str().is_none_or(|s| s.is_empty()),
-                "HEAD request should not return content body"
-            );
-            assert!(value["content_type"].as_str().is_some());
-        } else {
-            panic!("Expected successful HEAD response, got: {:?}", result);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_fetch_subpage() {
-        let mock_server = MockServer::start().await;
-        // Build a page with >500 chars of content
-        let body = format!(
-            "<html><body><h1>Introduction</h1><p>{}</p></body></html>",
-            "WebAssembly is a portable binary instruction format. ".repeat(20)
-        );
-
-        Mock::given(method("GET"))
-            .and(path("/introduction.html"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(&body)
-                    .insert_header("content-type", "text/html"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/introduction.html", mock_server.uri())
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 200);
-            let content = value["content"].as_str().unwrap();
-            assert!(
-                content.len() > 500,
-                "Subpage should have substantial content, got {} bytes",
-                content.len()
-            );
-        } else {
-            panic!(
-                "Expected successful response from subpage, got: {:?}",
-                result
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn test_fetch_repo_page() {
-        let mock_server = MockServer::start().await;
-        let html = r#"<html><body>
-        <h1>wasm3/wasm3</h1>
-        <p>The fastest WebAssembly interpreter (and target for wasm3).</p>
-        <div class="readme"><h2>README</h2><p>wasm3 is a high performance
-        WebAssembly interpreter written in C.</p></div>
-        </body></html>"#;
-
-        Mock::given(method("GET"))
-            .and(path("/wasm3/wasm3"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(html)
-                    .insert_header("content-type", "text/html; charset=utf-8"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/wasm3/wasm3", mock_server.uri())
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 200);
-            let content = value["content"].as_str().unwrap();
-            assert!(
-                content.to_lowercase().contains("wasm3"),
-                "Content should mention wasm3"
-            );
-        } else {
-            panic!("Expected successful response, got: {:?}", result);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_fetch_repo_page_as_text() {
-        let mock_server = MockServer::start().await;
-        let html = r#"<html><body>
-        <h1>wasm3/wasm3</h1>
-        <p>The fastest WebAssembly interpreter written in C.</p>
-        </body></html>"#;
-
-        Mock::given(method("GET"))
-            .and(path("/wasm3/wasm3"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(html)
-                    .insert_header("content-type", "text/html; charset=utf-8"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let result = tool
-            .execute(serde_json::json!({
-                "url": format!("{}/wasm3/wasm3", mock_server.uri()),
-                "as_text": true
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 200);
-            let content = value["content"].as_str().unwrap();
-            assert!(
-                content.to_lowercase().contains("wasm3"),
-                "Content should mention wasm3"
-            );
-        } else {
-            panic!("Expected successful response, got: {:?}", result);
-        }
-    }
-
-    // ========================================================================
-    // File download tests (save_to_file via SessionFileSaver)
-    // ========================================================================
 
     /// In-memory SessionFileSystem for testing file downloads
     struct MockFileStore {
@@ -2034,71 +999,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_web_fetch_tool_schema_save_to_file_gated_by_config() {
-        // Default (no file download): save_to_file NOT in schema
-        let tool = WebFetchTool::new(false, None);
-        let schema = tool.parameters_schema();
-        assert!(
-            !schema["properties"]["save_to_file"].is_object(),
-            "Schema should NOT include save_to_file when disabled"
-        );
-
-        // With file download enabled: save_to_file in schema
-        let tool = WebFetchTool::new(true, None);
-        let schema = tool.parameters_schema();
-        assert!(
-            schema["properties"]["save_to_file"].is_object(),
-            "Schema should include save_to_file when enabled"
-        );
-    }
-
-    #[test]
-    fn test_web_fetch_tool_requires_context() {
-        let tool = WebFetchTool::default();
-        assert!(tool.requires_context());
-    }
-
-    #[test]
-    fn test_save_to_file_is_trimmed_and_blank_is_absent() {
-        let blank = WebFetchTool::parse_request(&serde_json::json!({
-            "url": "https://example.com",
-            "save_to_file": "  \n\t "
-        }))
-        .unwrap();
-        assert_eq!(blank.save_to_file, None);
-
-        let path = WebFetchTool::parse_request(&serde_json::json!({
-            "url": "https://example.com",
-            "save_to_file": "  /downloads/file.txt  "
-        }))
-        .unwrap();
-        assert_eq!(path.save_to_file.as_deref(), Some("/downloads/file.txt"));
-    }
-
-    #[test]
-    fn test_fetchkit_request_fields_are_forwarded() {
-        let request = WebFetchTool::parse_request(&serde_json::json!({
-            "url": "https://example.com/docs",
-            "method": "get",
-            "content_focus": "agent",
-            "crawl": true,
-            "max_pages": 3,
-            "if_none_match": "\"abc123\"",
-            "if_modified_since": "Wed, 15 Jul 2026 12:00:00 GMT"
-        }))
-        .unwrap();
-
-        assert_eq!(request.content_focus.as_deref(), Some("agent"));
-        assert_eq!(request.crawl, Some(true));
-        assert_eq!(request.max_pages, Some(3));
-        assert_eq!(request.if_none_match.as_deref(), Some("\"abc123\""));
-        assert_eq!(
-            request.if_modified_since.as_deref(),
-            Some("Wed, 15 Jul 2026 12:00:00 GMT")
-        );
-    }
-
     #[tokio::test]
     async fn crawl_with_network_policy_requires_egress_service() {
         let tool = WebFetchTool::default();
@@ -2128,7 +1028,7 @@ mod tests {
     async fn test_blank_save_to_file_fetches_inline_without_file_store() {
         let tool = WebFetchTool::new(false, None);
         let mut context = ToolContext::new(SessionId::new());
-        context.egress_service = Some(Arc::new(CannedEgress));
+        context.egress_service = Some(Arc::new(CannedEgress::default()));
 
         let result = tool
             .execute_with_context(
@@ -2159,115 +1059,33 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_web_fetch_tools_with_config_enables_file_download() {
-        let cap = WebFetchCapability::new(None);
-
-        // Without config: no save_to_file in schema
-        let tools = cap.tools_with_config(&serde_json::json!({}));
-        assert_eq!(tools.len(), 1);
-        let schema = tools[0].parameters_schema();
-        assert!(!schema["properties"]["save_to_file"].is_object());
-
-        // With enable_file_download: save_to_file in schema
-        let tools = cap.tools_with_config(&serde_json::json!({"enable_file_download": true}));
-        assert_eq!(tools.len(), 1);
-        let schema = tools[0].parameters_schema();
-        assert!(schema["properties"]["save_to_file"].is_object());
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_system_prompt_adapts_to_config() {
-        let cap = WebFetchCapability::new(None);
-        let ctx = SystemPromptContext::without_file_store(SessionId::new());
-
-        // Without file download: no save_to_file mention in prompt
-        let prompt = cap
-            .system_prompt_contribution_with_config(&ctx, &serde_json::json!({}))
-            .await
-            .unwrap();
-        assert!(!prompt.contains("save_to_file"));
-
-        // With file download: save_to_file documented in prompt
-        let prompt = cap
-            .system_prompt_contribution_with_config(
-                &ctx,
-                &serde_json::json!({"enable_file_download": true}),
-            )
-            .await
-            .unwrap();
-        assert!(prompt.contains("save_to_file"));
-    }
-
-    #[tokio::test]
-    async fn test_save_to_file_text_content() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .and(path("/data.json"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string("{\"key\": \"value\"}")
-                    .insert_header("content-type", "application/json"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let file_store = Arc::new(MockFileStore::new());
-        let session_id = SessionId::new();
-        let context = ToolContext::with_file_store(session_id, file_store.clone());
-
-        let result = tool
-            .execute_with_context(
-                serde_json::json!({
-                    "url": format!("{}/data.json", mock_server.uri()),
-                    "save_to_file": "/downloads/data.json"
-                }),
-                &context,
-            )
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 200);
-            assert!(value["saved_path"].as_str().is_some());
-            assert!(value["bytes_written"].as_u64().unwrap() > 0);
-            // Content should NOT be inline when saving to file
-            assert!(
-                value.get("content").is_none() || value["content"].is_null(),
-                "Content should not be inline when saving to file"
-            );
-
-            // Verify file was written to the store
-            let (content, encoding) = file_store
-                .get_file(session_id, "/downloads/data.json")
-                .await
-                .expect("File should have been written");
-            assert_eq!(encoding, "text");
-            assert!(content.contains("value"));
-        } else {
-            panic!("Expected successful response, got: {:?}", result);
-        }
-    }
-
     #[tokio::test]
     async fn test_session_file_saver_rejects_workspace_roots_and_directories() {
         let file_store = Arc::new(MockFileStore::new());
         let session_id = SessionId::new();
         file_store.add_directory(session_id, "/downloads").await;
         let saver = SessionFileSaver {
-            file_store,
+            file_store: file_store.clone(),
             session_id,
         };
 
         for path in ["", "   ", "/", "/workspace", "/workspace/"] {
             let error = saver.validate_path(path).await.unwrap_err();
+            assert!(matches!(
+                saver.save(path, b"must not write").await,
+                Err(FileSaveError::PathNotAllowed(_))
+            ));
             assert!(
                 matches!(error, FileSaveError::PathNotAllowed(_)),
                 "root destination {path:?} should be a path error: {error}"
             );
         }
 
+        assert!(matches!(
+            saver.save("/downloads", b"must not write").await,
+            Err(FileSaveError::PathNotAllowed(_))
+        ));
+        assert!(file_store.files.lock().await.is_empty());
         let error = saver.validate_path("/downloads").await.unwrap_err();
         assert!(
             matches!(error, FileSaveError::PathNotAllowed(ref message) if message.contains("directory")),
@@ -2299,141 +1117,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_save_to_file_binary_content() {
-        let mock_server = MockServer::start().await;
-
-        // Serve a PNG image (binary content)
-        let png_bytes = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0xFF, 0xFE];
-        Mock::given(method("GET"))
-            .and(path("/image.png"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_bytes(png_bytes.clone())
-                    .insert_header("content-type", "image/png"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        let file_store = Arc::new(MockFileStore::new());
-        let session_id = SessionId::new();
-        let context = ToolContext::with_file_store(session_id, file_store.clone());
-
-        let result = tool
-            .execute_with_context(
-                serde_json::json!({
-                    "url": format!("{}/image.png", mock_server.uri()),
-                    "save_to_file": "/downloads/image.png"
-                }),
-                &context,
-            )
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["status_code"], 200);
-            assert!(value["saved_path"].as_str().is_some());
-            assert_eq!(
-                value["bytes_written"].as_u64().unwrap(),
-                png_bytes.len() as u64
-            );
-
-            // Verify file was written as base64 (binary content)
-            let (content, encoding) = file_store
-                .get_file(session_id, "/downloads/image.png")
-                .await
-                .expect("File should have been written");
-            assert_eq!(encoding, "base64");
-
-            // Decode and verify
-            let decoded = base64::engine::general_purpose::STANDARD
-                .decode(&content)
-                .expect("Should be valid base64");
-            assert_eq!(decoded, png_bytes);
-        } else {
-            panic!("Expected successful response, got: {:?}", result);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_save_to_file_no_file_store_returns_error() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .and(path("/file.txt"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("content"))
-            .mount(&mock_server)
-            .await;
-
-        let tool = tool_for_wiremock();
-        // Context without file_store
-        let context = ToolContext::new(SessionId::new());
-
-        let result = tool
-            .execute_with_context(
-                serde_json::json!({
-                    "url": format!("{}/file.txt", mock_server.uri()),
-                    "save_to_file": "/downloads/file.txt"
-                }),
-                &context,
-            )
-            .await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(
-                msg.contains("not available"),
-                "Expected file system not available error, got: {}",
-                msg
-            );
-        } else {
-            panic!("Expected tool error, got: {:?}", result);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_save_to_file_disabled_by_config_returns_error() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .and(path("/file.txt"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("content"))
-            .mount(&mock_server)
-            .await;
-
-        let tool = WebFetchTool::new(false, None);
-        let file_store = Arc::new(MockFileStore::new());
-        let session_id = SessionId::new();
-        let context = ToolContext::with_file_store(session_id, file_store.clone());
-
-        let result = tool
-            .execute_with_context(
-                serde_json::json!({
-                    "url": format!("{}/file.txt", mock_server.uri()),
-                    "save_to_file": "/downloads/file.txt"
-                }),
-                &context,
-            )
-            .await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(
-                msg.contains("disabled"),
-                "Expected file download disabled error, got: {}",
-                msg
-            );
-        } else {
-            panic!("Expected tool error, got: {:?}", result);
-        }
-
-        assert!(
-            file_store
-                .get_file(session_id, "/downloads/file.txt")
-                .await
-                .is_none(),
-            "File should not be written when save_to_file is disabled",
-        );
-    }
-
-    #[tokio::test]
     async fn test_save_to_file_without_context_strips_save() {
         // When execute() is called (no context), save_to_file should be ignored
         let mock_server = MockServer::start().await;
@@ -2459,7 +1142,7 @@ mod tests {
         // Should succeed with inline content (save_to_file stripped)
         if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value["status_code"], 200);
-            assert!(value["content"].as_str().is_some());
+            assert_eq!(value["content"], "hello");
             assert!(value.get("saved_path").is_none() || value["saved_path"].is_null());
         } else {
             panic!("Expected successful response, got: {:?}", result);
@@ -2474,14 +1157,18 @@ mod tests {
     // ========================================================================
 
     /// Canned egress service: always returns 200 text/plain "pong from egress".
-    struct CannedEgress;
+    #[derive(Default)]
+    struct CannedEgress {
+        requests: std::sync::Mutex<Vec<String>>,
+    }
 
     #[async_trait]
     impl crate::egress::EgressService for CannedEgress {
         async fn send(
             &self,
-            _request: crate::egress::EgressRequest,
+            request: crate::egress::EgressRequest,
         ) -> crate::egress::EgressResult<crate::egress::EgressResponse> {
+            self.requests.lock().unwrap().push(request.url);
             Ok(crate::egress::EgressResponse {
                 status: 200,
                 headers: [("content-type".to_string(), "text/plain".to_string())]
@@ -2564,7 +1251,8 @@ mod tests {
     async fn test_execute_with_context_routes_through_egress() {
         let tool = WebFetchTool::default();
         let mut context = ToolContext::new(SessionId::new());
-        context.egress_service = Some(Arc::new(CannedEgress));
+        let egress = Arc::new(CannedEgress::default());
+        context.egress_service = Some(egress.clone());
 
         let result = tool
             .execute_with_context(
@@ -2579,6 +1267,10 @@ mod tests {
         } else {
             panic!("Expected successful egress-path response, got: {result:?}");
         }
+        assert_eq!(
+            *egress.requests.lock().unwrap(),
+            vec!["http://93.184.216.34/ping".to_string()]
+        );
     }
 
     #[tokio::test]
@@ -2621,7 +1313,8 @@ mod tests {
     async fn test_egress_path_denies_url_outside_network_access_list() {
         let tool = WebFetchTool::default();
         let mut context = ToolContext::new(SessionId::new());
-        context.egress_service = Some(Arc::new(CannedEgress));
+        let egress = Arc::new(CannedEgress::default());
+        context.egress_service = Some(egress.clone());
         context.network_access = Some(crate::network_access::NetworkAccessList::allow_only([
             "allowed.example.com",
         ]));
@@ -2640,13 +1333,15 @@ mod tests {
             ),
             "expected network access denial, got: {result:?}"
         );
+        assert_eq!(*egress.requests.lock().unwrap(), Vec::<String>::new());
     }
 
     #[tokio::test]
     async fn test_egress_path_blocks_private_address_before_sending() {
         let tool = WebFetchTool::default();
         let mut context = ToolContext::new(SessionId::new());
-        context.egress_service = Some(Arc::new(CannedEgress));
+        let egress = Arc::new(CannedEgress::default());
+        context.egress_service = Some(egress.clone());
 
         let result = tool
             .execute_with_context(
@@ -2662,6 +1357,7 @@ mod tests {
             ),
             "expected SSRF block on egress path, got: {result:?}"
         );
+        assert_eq!(*egress.requests.lock().unwrap(), Vec::<String>::new());
     }
 
     #[tokio::test]
@@ -2670,7 +1366,8 @@ mod tests {
         let file_store = Arc::new(MockFileStore::new());
         let session_id = SessionId::new();
         let mut context = ToolContext::with_file_store(session_id, file_store.clone());
-        context.egress_service = Some(Arc::new(CannedEgress));
+        let egress = Arc::new(CannedEgress::default());
+        context.egress_service = Some(egress.clone());
 
         let result = tool
             .execute_with_context(
@@ -2684,6 +1381,8 @@ mod tests {
 
         if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value["saved_path"], "/downloads/file.txt");
+            assert_eq!(value["bytes_written"], 16);
+            assert!(value.get("content").is_none());
             let (content, encoding) = file_store
                 .get_file(session_id, "/downloads/file.txt")
                 .await
@@ -2692,6 +1391,590 @@ mod tests {
             assert_eq!(content, "pong from egress");
         } else {
             panic!("Expected successful response, got: {result:?}");
+        }
+        assert_eq!(
+            *egress.requests.lock().unwrap(),
+            vec!["http://93.184.216.34/file.txt".to_string()]
+        );
+    }
+    fn successful(result: ToolExecutionResult) -> Value {
+        match result {
+            ToolExecutionResult::Success(value) => value,
+            other => panic!("expected a successful HTTP response, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn http_conversions_preserve_complete_content_and_response_metadata() {
+        let server = MockServer::builder().start().await;
+        let html = "<html><body><h1>Title</h1><p>Body</p></body></html>";
+        let cases = [
+            (
+                "/",
+                html,
+                "text/html; charset=utf-8",
+                serde_json::json!({}),
+                "raw",
+                html,
+            ),
+            (
+                "/nested/document.html",
+                html,
+                "text/html",
+                serde_json::json!({"as_text":true}),
+                "text",
+                "Title\n\nBody",
+            ),
+            (
+                "/repository/readme",
+                html,
+                "text/html",
+                serde_json::json!({"as_markdown":true}),
+                "markdown",
+                "# Title\n\nBody",
+            ),
+            (
+                "/data.json",
+                "{\"key\":\"value\"}",
+                "application/json",
+                serde_json::json!({}),
+                "raw",
+                "{\"key\":\"value\"}",
+            ),
+            (
+                "/newlines",
+                "line1\n\n\n\n\nline2",
+                "text/plain",
+                serde_json::json!({}),
+                "raw",
+                "line1\n\nline2",
+            ),
+        ];
+        let tool = tool_for_wiremock();
+        for (route, body, content_type, mut arguments, format, content) in cases {
+            Mock::given(method("GET"))
+                .and(path(route))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_raw(body, content_type)
+                        .insert_header("etag", "\"fixture-v1\"")
+                        .insert_header("last-modified", "Wed, 15 Jul 2026 12:00:00 GMT"),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+            let url = format!("{}{route}", server.uri());
+            arguments["url"] = serde_json::json!(url);
+            let value = successful(tool.execute(arguments).await);
+            assert_eq!(value["url"], url);
+            assert_eq!(value["status_code"], 200);
+            assert_eq!(value["content_type"], content_type);
+            assert_eq!(value["size"], body.len());
+            assert_eq!(value["format"], format);
+            assert_eq!(value["content"], content, "route {route}");
+            assert_eq!(value["etag"], "\"fixture-v1\"");
+            assert_eq!(value["last_modified"], "Wed, 15 Jul 2026 12:00:00 GMT");
+            for absent in [
+                "truncated",
+                "method",
+                "error",
+                "saved_path",
+                "bytes_written",
+            ] {
+                assert!(value.get(absent).is_none(), "unexpected {absent}: {value}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn head_and_binary_responses_preserve_metadata_without_inline_content() {
+        let server = MockServer::builder().start().await;
+        let tool = tool_for_wiremock();
+        for (verb, route, content_type, size) in [
+            ("HEAD", "/head", "text/html", 5000),
+            ("GET", "/image.png", "image/png", 4),
+        ] {
+            let response = ResponseTemplate::new(200)
+                .insert_header("content-type", content_type)
+                .insert_header("content-length", size.to_string())
+                .insert_header("etag", "\"v2\"");
+            let response = if verb == "GET" {
+                response.set_body_bytes(vec![0x89, 0x50, 0x4e, 0x47])
+            } else {
+                response
+            };
+            Mock::given(method(verb))
+                .and(path(route))
+                .respond_with(response)
+                .expect(1)
+                .mount(&server)
+                .await;
+            let url = format!("{}{route}", server.uri());
+            let value = successful(
+                tool.execute(serde_json::json!({"url":url,"method":verb}))
+                    .await,
+            );
+            assert_eq!(value["url"], url);
+            assert_eq!(value["status_code"], 200);
+            assert_eq!(value["content_type"], content_type);
+            assert_eq!(value["size"], size);
+            assert_eq!(value["etag"], "\"v2\"");
+            for absent in ["content", "format", "saved_path", "bytes_written"] {
+                assert!(value.get(absent).is_none(), "unexpected {absent}: {value}");
+            }
+            if verb == "HEAD" {
+                assert_eq!(value["method"], "HEAD");
+                assert!(value.get("error").is_none());
+            } else {
+                assert!(value.get("method").is_none());
+                assert_eq!(
+                    value["error"],
+                    "Binary content is not supported. Only textual content (HTML, text, JSON, etc.) can be fetched."
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn http_error_statuses_preserve_the_response_body() {
+        let server = MockServer::builder().start().await;
+        let tool = tool_for_wiremock();
+        for (status, body) in [(404, "Not Found"), (500, "Internal Server Error")] {
+            let route = format!("/status/{status}");
+            Mock::given(method("GET"))
+                .and(path(&route))
+                .respond_with(
+                    ResponseTemplate::new(status)
+                        .set_body_string(body)
+                        .insert_header("content-type", "text/plain"),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+            let url = format!("{}{route}", server.uri());
+            let value = successful(tool.execute(serde_json::json!({"url":url})).await);
+            assert_eq!(value["url"], url);
+            assert_eq!(value["status_code"], status);
+            assert_eq!(value["content"], body);
+            assert_eq!(value["size"], body.len());
+            assert_eq!(value["format"], "raw");
+        }
+    }
+
+    struct FailedTransport {
+        kind: u8,
+        requests: std::sync::Mutex<Vec<String>>,
+    }
+    #[async_trait]
+    impl fetchkit::HttpTransport for FailedTransport {
+        async fn execute(
+            &self,
+            request: fetchkit::TransportRequest,
+        ) -> Result<fetchkit::TransportResponse, fetchkit::TransportError> {
+            self.requests.lock().unwrap().push(request.url.to_string());
+            Err(match self.kind {
+                0 => fetchkit::TransportError::Timeout,
+                1 => fetchkit::TransportError::Connect,
+                2 => fetchkit::TransportError::Request("connection reset".to_string()),
+                _ => fetchkit::TransportError::Other("transport unavailable".to_string()),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn transport_failures_are_errors_on_both_execution_paths() {
+        // Exercise the complete tool/FetchKit/error mapping without DNS or wall-clock waits.
+        let url = "http://93.184.216.34/failure";
+        for (kind, expected) in [
+            (
+                0,
+                "Request timed out: server did not respond within 1 second",
+            ),
+            (1, "Request failed: failed to connect to server"),
+            (2, "Request failed: connection reset"),
+            (3, "Request failed: transport unavailable"),
+        ] {
+            let transport = Arc::new(FailedTransport {
+                kind,
+                requests: std::sync::Mutex::new(Vec::new()),
+            });
+            let builder = fetchkit::Tool::builder().transport(transport.clone());
+            let tool = WebFetchTool {
+                fetchkit_tool: builder.build(),
+                builder,
+                description: String::new(),
+                enable_save_to_file: false,
+                system_allowlist: None,
+            };
+            for with_context in [false, true] {
+                let args = serde_json::json!({"url":url});
+                let result = if with_context {
+                    tool.execute_with_context(args, &ToolContext::new(SessionId::new()))
+                        .await
+                } else {
+                    tool.execute(args).await
+                };
+                assert!(
+                    matches!(&result,ToolExecutionResult::ToolError(message) if message==expected),
+                    "kind {kind}, context {with_context}: {result:?}"
+                );
+            }
+            assert_eq!(
+                *transport.requests.lock().unwrap(),
+                vec![url.to_string(), url.to_string()]
+            );
+        }
+    }
+    #[tokio::test]
+    async fn invalid_arguments_and_schemes_fail_before_network_io() {
+        let server = MockServer::builder().start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("unexpected request"))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let tool = tool_for_wiremock();
+        let mut cases = vec![
+            (serde_json::json!({}), "Missing required parameter: url"),
+            (
+                serde_json::json!({"url":false}),
+                "Missing required parameter: url",
+            ),
+            (
+                serde_json::json!({"url":"not-a-valid-url"}),
+                "Invalid URL: must start with http:// or https://",
+            ),
+        ];
+        for url in [
+            "file:///etc/passwd",
+            "ftp://example.com/file.txt",
+            "gopher://internal-server/",
+        ] {
+            cases.push((
+                serde_json::json!({"url":url}),
+                "Invalid URL: must start with http:// or https://",
+            ));
+        }
+        for method in [
+            serde_json::json!("POST"),
+            serde_json::json!(""),
+            serde_json::json!(true),
+            serde_json::json!(7),
+            serde_json::json!([]),
+            serde_json::json!({}),
+        ] {
+            cases.push((
+                serde_json::json!({"url":server.uri(),"method":method}),
+                "Invalid method: must be GET or HEAD",
+            ));
+        }
+        for (args, expected) in cases {
+            for with_context in [false, true] {
+                let result = if with_context {
+                    tool.execute_with_context(args.clone(), &ToolContext::new(SessionId::new()))
+                        .await
+                } else {
+                    tool.execute(args.clone()).await
+                };
+                assert!(
+                    matches!(&result,ToolExecutionResult::ToolError(message) if message==expected),
+                    "arguments {args}, context {with_context}: {result:?}"
+                );
+            }
+        }
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[test]
+    fn request_normalization_preserves_all_supported_fields() {
+        let input = serde_json::json!({
+            "url":"https://example.com/docs?a=1","method":"hEaD","as_markdown":true,"as_text":false,
+            "save_to_file":"  /downloads/file.txt \n", "content_focus":"agent","crawl":true,"max_pages":3,
+            "if_none_match":"\"abc123\"","if_modified_since":"Wed, 15 Jul 2026 12:00:00 GMT"
+        });
+        let expected = serde_json::json!({
+            "url":"https://example.com/docs?a=1","method":"HEAD","as_markdown":true,"as_text":false,
+            "save_to_file":"/downloads/file.txt", "content_focus":"agent","crawl":true,"max_pages":3,
+            "if_none_match":"\"abc123\"","if_modified_since":"Wed, 15 Jul 2026 12:00:00 GMT"
+        });
+        assert_eq!(
+            serde_json::to_value(WebFetchTool::parse_request(&input).unwrap()).unwrap(),
+            expected
+        );
+        for arguments in [
+            serde_json::json!({"url":"https://example.com"}),
+            serde_json::json!({"url":"https://example.com","method":null}),
+            serde_json::json!({"url":"https://example.com","method":"get","save_to_file":" \n\t "}),
+        ] {
+            assert_eq!(
+                serde_json::to_value(WebFetchTool::parse_request(&arguments).unwrap()).unwrap(),
+                serde_json::json!({"url":"https://example.com","method":"GET"})
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn private_address_families_are_blocked_on_both_execution_paths() {
+        // Literal addresses do not require external DNS. A policy failure must
+        // never be accepted as a connection failure or successful empty response.
+        let tool = WebFetchTool::default();
+        for url in [
+            "http://169.254.169.254/latest/meta-data/",
+            "http://127.0.0.1:1/",
+            "http://10.0.0.1:1/",
+            "http://172.16.0.1:1/",
+            "http://192.168.0.1:1/",
+            "http://[::1]:1/",
+            "http://0.0.0.0:1/",
+        ] {
+            for with_context in [false, true] {
+                let args = serde_json::json!({"url":url});
+                let result = if with_context {
+                    tool.execute_with_context(args, &ToolContext::new(SessionId::new()))
+                        .await
+                } else {
+                    tool.execute(args).await
+                };
+                assert!(
+                    matches!(&result,ToolExecutionResult::ToolError(message) if message=="URL is blocked by policy"),
+                    "{url}, context {with_context}: {result:?}"
+                );
+            }
+        }
+    }
+    #[tokio::test]
+    async fn downloads_store_exact_bytes_only_in_the_requested_session() {
+        let server = MockServer::builder().start().await;
+        let tool = tool_for_wiremock();
+        let store = Arc::new(MockFileStore::new());
+        let session = SessionId::new();
+        let other_session = SessionId::new();
+        let context = ToolContext::with_file_store(session, store.clone());
+        for (route, content_type, bytes, encoding) in [
+            (
+                "/data.json",
+                "application/json",
+                b"{\"key\":\"value\"}".to_vec(),
+                "text",
+            ),
+            (
+                "/image.png",
+                "image/png",
+                vec![0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xfe],
+                "base64",
+            ),
+        ] {
+            Mock::given(method("GET"))
+                .and(path(route))
+                .respond_with(ResponseTemplate::new(200).set_body_raw(bytes.clone(), content_type))
+                .expect(1)
+                .mount(&server)
+                .await;
+            let destination = format!("/downloads{route}");
+            let url = format!("{}{route}", server.uri());
+            let value = successful(
+                tool.execute_with_context(
+                    serde_json::json!({"url":url,"save_to_file":destination}),
+                    &context,
+                )
+                .await,
+            );
+            assert_eq!(value["url"], url);
+            assert_eq!(value["status_code"], 200);
+            assert_eq!(value["saved_path"], destination);
+            assert_eq!(value["bytes_written"], bytes.len());
+            assert!(value.get("content").is_none());
+            assert!(value.get("error").is_none());
+            let (stored, stored_encoding) = store
+                .get_file(session, &destination)
+                .await
+                .expect("saved file");
+            assert_eq!(stored_encoding, encoding);
+            let actual = if encoding == "base64" {
+                base64::engine::general_purpose::STANDARD
+                    .decode(stored)
+                    .unwrap()
+            } else {
+                stored.into_bytes()
+            };
+            assert_eq!(actual, bytes);
+            assert!(store.get_file(other_session, &destination).await.is_none());
+        }
+        assert_eq!(store.files.lock().await.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn download_gates_reject_before_network_or_file_writes() {
+        let server = MockServer::builder().start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("must not fetch"))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let store = Arc::new(MockFileStore::new());
+        let session = SessionId::new();
+        for (enabled, with_store, expected) in [
+            (false, true, "File download is disabled for this capability"),
+            (true, false, "File system not available in this context"),
+        ] {
+            let mut tool = tool_for_wiremock();
+            tool.enable_save_to_file = enabled;
+            let context = if with_store {
+                ToolContext::with_file_store(session, store.clone())
+            } else {
+                ToolContext::new(session)
+            };
+            let result = tool
+                .execute_with_context(
+                    serde_json::json!({"url":server.uri(),"save_to_file":"/downloads/file.txt"}),
+                    &context,
+                )
+                .await;
+            assert!(
+                matches!(&result,ToolExecutionResult::ToolError(message) if message==expected),
+                "{result:?}"
+            );
+        }
+        store.add_directory(session, "/downloads").await;
+        let context = ToolContext::with_file_store(session, store.clone());
+        for (destination, diagnostic) in [
+            ("/", "workspace root"),
+            ("/workspace", "workspace root"),
+            ("/downloads", "existing directory"),
+        ] {
+            let result = tool_for_wiremock()
+                .execute_with_context(
+                    serde_json::json!({"url":server.uri(),"save_to_file":destination}),
+                    &context,
+                )
+                .await;
+            assert!(
+                matches!(&result, ToolExecutionResult::ToolError(message) if message.starts_with("Failed to save file:") && message.contains(diagnostic)),
+                "{destination}: {result:?}"
+            );
+        }
+        assert!(server.received_requests().await.unwrap().is_empty());
+        assert!(store.files.lock().await.is_empty());
+    }
+    #[test]
+    fn bot_auth_jwk_matches_the_known_ed25519_vector_and_fetchkit_identity() {
+        // RFC 8032 section 7.1, test 1; thumbprint uses RFC 7638 canonical JWK.
+        let seed = "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A";
+        let key = derive_bot_auth_public_key(seed).unwrap();
+        assert_eq!(
+            key.jwk,
+            serde_json::json!({"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"})
+        );
+        assert_eq!(key.key_id, "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k");
+        assert_eq!(
+            key.key_id,
+            BotAuthConfig::from_base64_seed(seed).unwrap().keyid()
+        );
+        for invalid in [
+            "!!!invalid!!!".to_string(),
+            "tooshort".to_string(),
+            format!("{seed}="),
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([0u8; 31]),
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([0u8; 33]),
+        ] {
+            assert!(derive_bot_auth_public_key(&invalid).is_none(), "{invalid}");
+        }
+    }
+
+    #[tokio::test]
+    async fn capability_configuration_aligns_schema_prompt_and_download_behavior() {
+        let capability = WebFetchCapability::new(None);
+        assert_eq!(capability.id(), "web_fetch");
+        assert_eq!(capability.risk_level(), RiskLevel::High);
+        assert!(capability.system_prompt_addition().is_none());
+        assert!(
+            capability
+                .system_prompt_preview()
+                .unwrap()
+                .contains("save_to_file")
+        );
+        let config_schema = capability.config_schema().unwrap();
+        assert_eq!(
+            config_schema["properties"]["enable_file_download"]["type"],
+            "boolean"
+        );
+        assert_eq!(
+            config_schema["properties"]["enable_file_download"]["default"],
+            false
+        );
+        for invalid in [
+            serde_json::json!([]),
+            serde_json::json!(true),
+            serde_json::json!("true"),
+            serde_json::json!({"enable_file_download":null}),
+            serde_json::json!({"enable_file_download":"true"}),
+        ] {
+            assert!(capability.validate_config(&invalid).is_err(), "{invalid}");
+        }
+        for (config, enabled) in [
+            (serde_json::Value::Null, false),
+            (serde_json::json!({}), false),
+            (serde_json::json!({"enable_file_download":false}), false),
+            (serde_json::json!({"enable_file_download":true}), true),
+        ] {
+            capability.validate_config(&config).unwrap();
+            let tools = capability.tools_with_config(&config);
+            assert_eq!(tools.len(), 1);
+            let tool = &tools[0];
+            assert_eq!(tool.name(), "web_fetch");
+            assert!(tool.requires_context());
+            let schema = tool.parameters_schema();
+            assert_eq!(schema["type"], "object");
+            assert_eq!(schema["required"], serde_json::json!(["url"]));
+            assert_eq!(
+                schema["properties"]["method"],
+                serde_json::json!({"type":"string","enum":["GET","HEAD"],"default":"GET"})
+            );
+            for (name, kind) in [
+                ("url", "string"),
+                ("as_markdown", "boolean"),
+                ("as_text", "boolean"),
+                ("content_focus", "string"),
+                ("crawl", "boolean"),
+                ("max_pages", "integer"),
+            ] {
+                assert_eq!(schema["properties"][name]["type"], kind, "{name}");
+            }
+            assert_eq!(schema["properties"].get("save_to_file").is_some(), enabled);
+            assert!(schema["properties"].get("render").is_none());
+            if !enabled {
+                let defaults = capability.tools();
+                assert_eq!(defaults.len(), 1);
+                assert_eq!(defaults[0].parameters_schema(), schema);
+            }
+            let session = SessionId::new();
+            let prompt = capability
+                .system_prompt_contribution_with_config(
+                    &SystemPromptContext::without_file_store(session),
+                    &config,
+                )
+                .await
+                .unwrap();
+            assert_eq!(prompt.contains("save_to_file"), enabled);
+            assert!(prompt.len() <= if enabled { 350 } else { 250 });
+            assert!(prompt.contains("GET/HEAD"));
+            assert!(prompt.contains("not a search engine"));
+            let store = Arc::new(MockFileStore::new());
+            let mut context = ToolContext::with_file_store(session, store.clone());
+            context.egress_service = Some(Arc::new(CannedEgress::default()));
+            let result=tool.execute_with_context(serde_json::json!({"url":"http://93.184.216.34/config","save_to_file":"/config.txt"}),&context).await;
+            if enabled {
+                assert_eq!(successful(result)["saved_path"], "/config.txt");
+                assert_eq!(
+                    store.get_file(session, "/config.txt").await,
+                    Some(("pong from egress".to_string(), "text".to_string()))
+                );
+            } else {
+                assert!(
+                    matches!(result,ToolExecutionResult::ToolError(message) if message=="File download is disabled for this capability")
+                );
+                assert!(store.files.lock().await.is_empty());
+            }
         }
     }
 }
