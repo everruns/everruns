@@ -55,6 +55,8 @@ journal with the lower-level coordinator API.
   outputs before that tool's status.
 - Early dispatch cannot run under hooks that require finalized output or finalized
   tool calls. Those combinations fail configuration before any call executes.
+- Pending Astra reasoning-effort updates precede original-call outputs on native
+  continuations; historical updates stay in the existing provider response.
 - Native call metadata and raw custom input persist in the assistant transcript.
   Tool results may be recorded while the assistant still streams; model replay
   orders early results after their original calls without inventing failures.

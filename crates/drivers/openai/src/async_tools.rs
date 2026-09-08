@@ -113,7 +113,21 @@ impl OpenResponsesRequestExtension for NativeAsyncTools {
                 ));
             }
             body["previous_response_id"] = json!(delivery.previous_response_id);
-            body["input"] = json!(delivery.input);
+            let mut input = delivery.input.clone();
+            // Replacing transcript input must retain the current effort transition.
+            // Historical transitions already belong to previous_response_id.
+            if everruns_provider::reasoning_updates::supports_configuration_updates(&config.model)
+                && let Some(effort) = config
+                    .reasoning_state
+                    .as_ref()
+                    .and_then(|state| state.pending)
+            {
+                input.insert(
+                    0,
+                    json!({"type":"configuration_update","reasoning":{"effort":effort}}),
+                );
+            }
+            body["input"] = json!(input);
         }
         Ok(())
     }
@@ -132,6 +146,7 @@ mod tests {
             max_tokens: None,
             tools: vec![],
             reasoning_effort: None,
+            reasoning_state: None,
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
             provider_opaque_context: None,
@@ -184,6 +199,40 @@ mod tests {
         config.previous_response_id = Some("stale".into());
         assert!(options.decorate(&mut body, &config).is_err());
     }
+    #[test]
+    fn continuation_keeps_pending_effort_before_original_call_outputs() {
+        use everruns_provider::{ReasoningEffort, reasoning_updates::ReasoningState};
+        let mut config = config("gpt-6-astra");
+        config.tools = vec![tool("web_fetch")];
+        config.previous_response_id = Some("latest".into());
+        config.reasoning_state = Some(ReasoningState {
+            epoch: "epoch".into(),
+            baseline: Some(ReasoningEffort::Low),
+            effective: Some(ReasoningEffort::High),
+            pending: Some(ReasoningEffort::High),
+        });
+        let output = json!({"type":"function_call_output","call_id":"original","output":"result"});
+        let options = NativeAsyncTools::default()
+            .function("web_fetch")
+            .continuation(Delivery {
+                previous_response_id: "latest".into(),
+                input: vec![output.clone()],
+                call_ids: vec!["original".into()],
+            });
+        let mut body = json!({"tools":[{"type":"function","name":"web_fetch"}], "input":[{"type":"message","role":"user","content":"stale transcript"}]});
+        options.decorate(&mut body, &config).unwrap();
+        assert_eq!(
+            body["input"],
+            json!([
+                {"type":"configuration_update","reasoning":{"effort":"high"}},
+                output
+            ])
+        );
+        config.reasoning_state.as_mut().unwrap().pending = None;
+        options.decorate(&mut body, &config).unwrap();
+        assert_eq!(body["input"], json!([output]));
+    }
+
     #[test]
     fn unsupported_models_fall_back_and_unauthorized_tools_fail() {
         let mut config = config("gpt-5.5");
