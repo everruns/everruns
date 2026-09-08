@@ -69,6 +69,7 @@ mod compaction;
 mod error_policy;
 mod observability;
 mod output_hooks;
+mod reasoning_updates;
 mod request_controls;
 mod stream_state;
 mod transcript;
@@ -889,6 +890,13 @@ impl ReasonAtom {
             previous_response_id.is_some() && chat_driver.supports_stateful_responses();
         let mut restored_checkpoint: Option<crate::CompactionCheckpoint> = None;
         let mut checkpoint_suffix_message_count = 0usize;
+        let native_reasoning_compaction = compaction_policy.as_ref().is_none_or(|policy| {
+            matches!(
+                policy.settings().strategy,
+                crate::compaction_policy::CompactionStrategy::Native
+                    | crate::compaction_policy::CompactionStrategy::Auto
+            ) && chat_driver.supports_compact()
+        });
 
         if compaction_policy.is_some()
             && let Some(store) = self.compaction_checkpoint_store.as_ref()
@@ -903,6 +911,16 @@ impl ReasonAtom {
                 model_with_provider.provider_type.as_str(),
                 &model_with_provider.model,
             )
+            // Local summary/trim cannot interpret an Astra native checkpoint.
+            // Rebuild from lossless events when the builder changes strategy.
+            && (native_reasoning_compaction || !matches!(
+                &checkpoint.payload,
+                crate::CompactionCheckpointPayload::ProviderOpaque {
+                    context: crate::ProviderOpaqueContext::OpenResponsesCompact {
+                        reasoning_state: Some(_), ..
+                    }
+                }
+            ))
         {
             let filters = crate::capabilities::collect_message_filters_only(
                 &resolved_capability_configs,
@@ -936,6 +954,29 @@ impl ReasonAtom {
         let reasoning_effort = controls.reasoning_effort;
         let speed = controls.speed;
         let verbosity = controls.verbosity;
+        let checkpoint_reasoning =
+            restored_checkpoint
+                .as_ref()
+                .and_then(|checkpoint| match &checkpoint.payload {
+                    crate::CompactionCheckpointPayload::ProviderOpaque {
+                        context:
+                            crate::ProviderOpaqueContext::OpenResponsesCompact {
+                                reasoning_state, ..
+                            },
+                    } => reasoning_state.as_ref(),
+                    _ => None,
+                });
+        let mut reasoning_replay = reasoning_updates::prepare(
+            &messages,
+            model_with_provider.provider_type.as_str(),
+            &model_with_provider.model,
+            reasoning_effort,
+            self.reasoning_effort_handle
+                .as_ref()
+                .and_then(crate::tool_context::ReasoningEffortHandle::get),
+            checkpoint_reasoning,
+        )
+        .filter(|_| native_reasoning_compaction);
 
         // 9. Check for an in-flight partial assistant stream from a previous worker (EVE-532).
         // If found, apply the ContinuePartial recovery policy: finalize from accumulated
@@ -956,7 +997,15 @@ impl ReasonAtom {
                         )
                         .await;
                 }
-                Ok(Some(_)) => {
+                Ok(Some(partial)) => {
+                    if let (Some(replay), Some(mut saved)) =
+                        (reasoning_replay.as_mut(), partial.reasoning_state)
+                    {
+                        // The old worker persisted the effective live override
+                        // before sending. Its process-local handle is gone.
+                        saved.pending = saved.effective;
+                        replay.state = saved;
+                    }
                     // Empty accumulated: restart clean — fall through to normal LLM call.
                     // Emit reason.recovered { mode: Restart } for observability.
                     let recovery_ctx = EventContext::from_execution_context(context);
@@ -980,6 +1029,9 @@ impl ReasonAtom {
                 }
                 Ok(None) => {} // No partial; normal first-run execution.
                 Err(e) => {
+                    if reasoning_replay.is_some() {
+                        return Err(e);
+                    }
                     // Best-effort: log and continue with normal execution.
                     tracing::warn!(
                         session_id = %session_id,
@@ -1067,6 +1119,7 @@ impl ReasonAtom {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             });
         }
 
@@ -1092,6 +1145,9 @@ impl ReasonAtom {
             }
             let mut llm_msg =
                 crate::llm_conversions::llm_message_from_message_with_images(msg, &resolved_images);
+            llm_msg.configuration_update = reasoning_replay
+                .as_ref()
+                .and_then(|replay| replay.transitions.get(&msg.id).copied());
             if msg.role == MessageRole::User
                 && let Some(ref actor) = msg.external_actor
             {
@@ -1156,6 +1212,25 @@ impl ReasonAtom {
             .previous_response_id(previous_response_id.clone())
             .volatile_suffix_len(volatile_suffix_len)
             .build();
+        if let Some(replay) = &reasoning_replay {
+            llm_config.reasoning_effort = replay.state.baseline;
+            llm_config.reasoning_state = Some(replay.state.clone());
+            if replay.reset_continuation {
+                llm_config.previous_response_id = None;
+            }
+        } else if messages
+            .iter()
+            .rev()
+            .find(|message| {
+                message.role == MessageRole::Agent && !is_error_placeholder_message(message)
+            })
+            .and_then(|message| message.metadata.as_ref())
+            .is_some_and(|metadata| metadata.contains_key(reasoning_updates::STATE_KEY))
+        {
+            // Leaving Astra's configuration-update mode starts a fresh provider
+            // chain. Never inherit its updates in another model or protocol.
+            llm_config.previous_response_id = None;
+        }
         if let Some(checkpoint) = restored_checkpoint.as_ref()
             && let crate::CompactionCheckpointPayload::ProviderOpaque { context } =
                 &checkpoint.payload
@@ -1217,6 +1292,7 @@ impl ReasonAtom {
                 session_id,
                 streaming_event_context.clone(),
                 OutputMessageStartedData {
+                    reasoning_state: llm_config.reasoning_state.clone(),
                     turn_id: context.turn_id,
                     message_id: output_message_id,
                     model: Some(runtime_agent.model.clone()),
@@ -1228,6 +1304,9 @@ impl ReasonAtom {
             ))
             .await
         {
+            if llm_config.reasoning_state.is_some() {
+                return Err(e);
+            }
             tracing::warn!(
                 session_id = %session_id,
                 error = %e,
@@ -2282,7 +2361,18 @@ impl ReasonAtom {
             "model".to_string(),
             serde_json::Value::String(runtime_agent.model.clone()),
         );
-        if let Some(effort) = reasoning_effort {
+        if let Some(state) = &llm_config.reasoning_state {
+            metadata.insert(
+                reasoning_updates::STATE_KEY.to_string(),
+                serde_json::json!(state),
+            );
+        }
+        if let Some(effort) = llm_config
+            .reasoning_state
+            .as_ref()
+            .and_then(|state| state.effective)
+            .or(reasoning_effort)
+        {
             metadata.insert(
                 "reasoning_effort".to_string(),
                 serde_json::Value::String(effort.as_str().to_string()),
@@ -2446,6 +2536,7 @@ impl ReasonAtom {
                 session_id,
                 event_context.clone(),
                 OutputMessageStartedData {
+                    reasoning_state: partial.reasoning_state.clone(),
                     turn_id,
                     message_id,
                     model: None,
@@ -2464,7 +2555,21 @@ impl ReasonAtom {
             resolved_capability_configs,
             partial.accumulated,
         );
-        let assistant_message = Message::assistant(&accumulated).with_id(message_id);
+        let mut assistant_message = Message::assistant(&accumulated).with_id(message_id);
+        if let Some(state) = partial.reasoning_state {
+            assistant_message.metadata = Some(HashMap::from([
+                ("model".into(), serde_json::json!("gpt-6-astra")),
+                ("provider".into(), serde_json::json!("openai")),
+                (
+                    reasoning_updates::STATE_KEY.into(),
+                    serde_json::json!(state),
+                ),
+                (
+                    "reasoning_effort".into(),
+                    serde_json::json!(state.effective),
+                ),
+            ]));
+        }
         let output_message_id = message_id;
         self.event_emitter
             .emit(EventRequest::new(

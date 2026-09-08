@@ -1340,6 +1340,7 @@ mod tests {
             let service =
                 provider("test", "synthetic-key").base_url(format!("{}/v1beta", server.uri()));
             let config = LlmCallConfig {
+                reasoning_state: None,
                 model: model.into(),
                 temperature: Some(0.25),
                 max_tokens: limit,

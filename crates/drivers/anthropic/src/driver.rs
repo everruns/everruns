@@ -2238,6 +2238,7 @@ mod tests {
             max_tokens,
             tools: vec![],
             reasoning_effort: None,
+            reasoning_state: None,
             metadata: Default::default(),
             previous_response_id: None,
             provider_opaque_context: None,
@@ -2781,6 +2782,7 @@ mod tests {
             tool_call_id: Some("call_img".to_string()),
             phase: None,
             reasoning: Vec::new(),
+            configuration_update: None,
         };
 
         let assistant = LlmMessage {
@@ -2794,6 +2796,7 @@ mod tests {
             tool_call_id: None,
             phase: None,
             reasoning: Vec::new(),
+            configuration_update: None,
         };
         let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant, msg], false, 0);
 
@@ -2850,6 +2853,7 @@ mod tests {
             max_tokens: Some(32),
             tools: vec![],
             reasoning_effort: None,
+            reasoning_state: None,
             metadata: Default::default(),
             previous_response_id: None,
             provider_opaque_context: None,
