@@ -1406,6 +1406,7 @@ mod tests {
     }
     fn call_config() -> LlmCallConfig {
         LlmCallConfig {
+            reasoning_state: None,
             model: "model".to_string(),
             temperature: None,
             max_tokens: None,

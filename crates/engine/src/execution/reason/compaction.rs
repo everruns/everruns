@@ -23,7 +23,7 @@ pub(super) fn proactive_source_fingerprint(
     messages: &[LlmMessage],
 ) -> [u8; 32] {
     let mut input = match provider_opaque_context {
-        Some(crate::ProviderOpaqueContext::OpenResponsesCompact { output }) => {
+        Some(crate::ProviderOpaqueContext::OpenResponsesCompact { output, .. }) => {
             output.iter().map(crate::CompactInputItem::from).collect()
         }
         None => Vec::new(),
@@ -36,7 +36,6 @@ pub(super) fn proactive_source_fingerprint(
 #[derive(Debug)]
 pub(super) struct AppliedNativeCompaction {
     pub(super) checkpoint_id: Option<String>,
-    pub(super) input_items_before: usize,
     pub(super) output_items_after: usize,
     pub(super) tokens_before: Option<u64>,
     pub(super) tokens_after: Option<u64>,
@@ -81,23 +80,69 @@ pub(super) async fn try_apply_native_compaction(
     };
     let (mut standalone_input, has_prior_opaque_context) =
         match llm_config.provider_opaque_context.as_ref() {
-            Some(crate::ProviderOpaqueContext::OpenResponsesCompact { output }) => (
+            Some(crate::ProviderOpaqueContext::OpenResponsesCompact { output, .. }) => (
                 output.iter().map(crate::CompactInputItem::from).collect(),
                 true,
             ),
             None => (Vec::new(), false),
         };
+    if llm_config.reasoning_state.is_some()
+        && let Some(crate::ProviderOpaqueContext::OpenResponsesCompact {
+            reasoning_state, ..
+        }) = &llm_config.provider_opaque_context
+        && let Some(effort) = reasoning_state.as_ref().and_then(|state| state.effective)
+    {
+        standalone_input.push(crate::CompactInputItem::ConfigurationUpdate {
+            reasoning: everruns_provider::compact::ConfigurationReasoning { effort },
+        });
+    }
+    let prefix_len = standalone_input.len();
     standalone_input.extend(messages_to_compact_input(messages_to_compact));
-    let input_items_before = standalone_input.len();
+    if let Some(effort) = llm_config
+        .reasoning_state
+        .as_ref()
+        .and_then(|state| state.pending)
+    {
+        // The pending update belongs before fresh input, just as in normal
+        // generation. Historical updates already travel with their messages.
+        let boundary = prefix_len
+            + standalone_input[prefix_len..]
+                .iter()
+                .rposition(crate::CompactInputItem::is_assistant_item)
+                .map_or(0, |index| index + 1);
+        standalone_input.insert(
+            boundary,
+            crate::CompactInputItem::ConfigurationUpdate {
+                reasoning: everruns_provider::compact::ConfigurationReasoning { effort },
+            },
+        );
+    }
+    // Coalesce only adjacent updates (possible at an empty checkpoint suffix).
+    // Never move updates across a semantic item.
+    let mut input: Vec<crate::CompactInputItem> = Vec::new();
+    for item in standalone_input {
+        if matches!(item, crate::CompactInputItem::ConfigurationUpdate { .. })
+            && matches!(
+                input.last(),
+                Some(crate::CompactInputItem::ConfigurationUpdate { .. })
+            )
+        {
+            input.pop();
+        }
+        input.push(item);
+    }
+    let standalone_input = input;
     let local_tokens_before = (!stateful_response_continuation && !has_prior_opaque_context)
         .then(|| compaction_policy.estimate_total_tokens(messages_to_compact) as u64);
-    let bytes_before = (!stateful_response_continuation || has_prior_opaque_context)
-        .then(|| {
-            serde_json::to_vec(&standalone_input)
-                .ok()
-                .map(|value| value.len() as u64)
-        })
-        .flatten();
+    let bytes_before = (!stateful_response_continuation
+        || has_prior_opaque_context
+        || llm_config.reasoning_state.is_some())
+    .then(|| {
+        serde_json::to_vec(&standalone_input)
+            .ok()
+            .map(|value| value.len() as u64)
+    })
+    .flatten();
     // Reconstruct standalone input even for a stateful continuation. Compacting
     // only the previous response handle would omit the fresh request delta, then
     // clearing that handle for the retry would make the omission permanent.
@@ -107,6 +152,7 @@ pub(super) async fn try_apply_native_compaction(
         .compact(
             &crate::ProviderEndpoint::default(),
             CompactRequest {
+                reasoning_state: llm_config.reasoning_state.clone(),
                 model: model.to_string(),
                 input,
                 previous_response_id: compact_previous_response_id,
@@ -164,6 +210,7 @@ pub(super) async fn try_apply_native_compaction(
     let output_items_after = compact_response.output.len();
     let opaque_context = crate::driver_registry::ProviderOpaqueContext::OpenResponsesCompact {
         output: compact_response.output,
+        reasoning_state: llm_config.reasoning_state.clone(),
     };
     let checkpoint_id =
         if let (Some(store), Some(source_sequence)) = (checkpoint_store, source_sequence) {
@@ -196,10 +243,14 @@ pub(super) async fn try_apply_native_compaction(
     llm_config.previous_response_id = None;
     llm_config.provider_opaque_context = Some(opaque_context);
     llm_messages.retain(|message| message.role == LlmMessageRole::System);
+    if let Some(state) = llm_config.reasoning_state.as_mut() {
+        // Explicit compaction resets configuration updates. Reassert the
+        // effective effort even when it equals the original baseline.
+        state.pending = state.effective;
+    }
 
     Ok(Some(AppliedNativeCompaction {
         checkpoint_id,
-        input_items_before,
         output_items_after,
         tokens_before,
         tokens_after,
@@ -303,7 +354,10 @@ pub(super) async fn apply_proactive_compaction(
         context.raw_tool_result_bytes,
         context.prior_usage,
     );
-    let local_pressure = !context.stateful_response_continuation
+    // Astra explicit compaction reconstructs the complete durable input even
+    // when generation uses a response handle; it must still compact proactively.
+    let local_pressure = (!context.stateful_response_continuation
+        || config.reasoning_state.is_some())
         && checkpoint_rearmed
         && (window_pressure || cost_pressure);
     let should_attempt = native_strategy
@@ -430,7 +484,9 @@ pub(super) async fn apply_proactive_compaction(
 
     Ok(applied.map(|applied| {
         LlmCompactionInfo::new(
-            Some(applied.input_items_before as u32),
+            applied
+                .tokens_before
+                .and_then(|value| u32::try_from(value).ok()),
             applied
                 .tokens_after
                 .and_then(|value| u32::try_from(value).ok()),
@@ -568,7 +624,9 @@ pub(super) async fn apply_reactive_compaction(
         .await?
     {
         generation_info = Some(LlmCompactionInfo::new(
-            Some(applied.input_items_before as u32),
+            applied
+                .tokens_before
+                .and_then(|value| u32::try_from(value).ok()),
             applied
                 .tokens_after
                 .and_then(|value| u32::try_from(value).ok()),
@@ -588,6 +646,14 @@ pub(super) async fn apply_reactive_compaction(
         });
     }
 
+    if config.reasoning_state.is_some()
+        && !strategies_used.iter().any(|strategy| strategy == "native")
+    {
+        // Summary/trim would lose native configuration and opaque context. An
+        // unsuccessful explicit compaction must leave the canonical history
+        // intact and surface the context error, not silently discard it.
+        return Ok(None);
+    }
     if run_summarization && !strategies_used.iter().any(|strategy| strategy == "native") {
         let step_start = Instant::now();
         let conversation = if has_system_prompt {
@@ -608,6 +674,7 @@ pub(super) async fn apply_reactive_compaction(
                     tool_call_id: None,
                     phase: None,
                     reasoning: Vec::new(),
+                    configuration_update: None,
                 },
                 LlmMessage {
                     role: LlmMessageRole::User,
@@ -620,6 +687,7 @@ pub(super) async fn apply_reactive_compaction(
                     tool_call_id: None,
                     phase: None,
                     reasoning: Vec::new(),
+                    configuration_update: None,
                 },
             ];
             let summary_config = crate::driver_registry::LlmCallConfig {
@@ -643,6 +711,7 @@ pub(super) async fn apply_reactive_compaction(
                 volatile_suffix_len: 0,
                 extra_headers: Vec::new(),
                 cache_diagnostics: None,
+                reasoning_state: None,
             };
 
             match context
