@@ -6,6 +6,38 @@ user updates. Existing Everruns HTTP providers and default models are unchanged.
 The [architecture contract](../../knowledge/execution/openai-steering-prototype.md)
 explains ownership, recovery tradeoffs, and the bar for distributed integration.
 
+## Start with the Everruns Framework
+
+For an application using real `Agent`, `Engine`, and `Session` APIs, run the
+[Framework live-session example](../../crates/everruns/examples/live_session.rs):
+
+```sh
+# From the repository root. Offline and free; echoes the correction.
+cargo run -p everruns --example live_session
+
+# Real OpenAI model; requires OPENAI_API_KEY and API credits.
+cargo run -p everruns --features openai --example live_session -- --live \
+  'Plan a three-day trip from Paris to Amsterdam.' \
+  'Prefer trains and keep the budget under EUR 500.'
+```
+
+The Framework example uses `session.send()` for both the initial request and a
+correction, waits on the returned receipts, and prints the answer and retained
+user messages. Replace its second `send()` with your UI's message-submit handler.
+If the turn is still active, the correction joins it; if it finished, a follow-up
+turn starts. Acceptance is distinct from completion; wait on the latest receipt
+for the result that includes the correction.
+
+**These are two different mechanisms.** Framework steering currently queues user
+input for the next reasoning/tool boundary over ordinary HTTP. This Python
+experiment sends `response.steer` on an active OpenAI WebSocket. It is a prototype
+because the connection owner, recovery journal, and status projection are not
+integrated with Framework sessions or distributed workers. The Framework example
+does not claim that in-flight WebSocket capability or the Python journal's
+recovery guarantees; its session lives in memory.
+
+## Python WebSocket experiment
+
 Requires Python 3.11+ on macOS/Linux. SQLite and the ownership lock require a local
 filesystem; do not put the journal on NFS or share it between hosts.
 

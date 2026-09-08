@@ -49,6 +49,13 @@
   hundreds of commands had to forbid it. See
   [Command Tree](execution/command-tree.md).
 
+## 2026-09-08
+
+* The Framework live-session example now offers offline and live OpenAI modes,
+  configurable corrections, and transcript inspection. Its iteration-boundary
+  `Session::send` behavior remains distinct from the isolated WebSocket steering
+ experiment. See [the steering boundary](execution/openai-steering-prototype.md).
+
 ## 2026-09-05
 
 * Astra reasoning changes preserve the initial request effort, persist effective

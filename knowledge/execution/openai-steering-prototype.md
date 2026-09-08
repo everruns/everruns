@@ -24,6 +24,16 @@ production provider, alter default models, consume production session messages,
 or replace the normal HTTP path. This boundary allows testing the protocol and
 failure semantics before changing the distributed runtime contract.
 
+## Framework example boundary
+
+The [Framework live-session example](../../crates/everruns/examples/live_session.rs)
+provides the supported application path: both initial requests and corrections
+use `Session::send`, receipts distinguish active-turn steering from a follow-up,
+and history retains the user messages. It runs offline or against OpenAI.
+This is iteration-boundary steering over the existing provider transport, not a
+Framework implementation of `response.steer`. The in-memory session does not
+inherit this experiment's SQLite persistence or recovery contract.
+
 ## Ownership and delivery contract
 
 A single owner holds an OS lock for the journal's lifetime and owns one socket,
