@@ -30805,16 +30805,24 @@
             ],
             "properties": {
               "arguments": {
-                "type": "string"
+                "type": "string",
+                "description": "Complete JSON arguments, preserved exactly as received.",
+                "example": "{\"query\":\"weather in Paris\"}"
               },
               "async": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "Whether execution may start before response generation completes.",
+                "example": true
               },
               "call_id": {
-                "type": "string"
+                "type": "string",
+                "description": "Original provider call identity used when delivering the result.",
+                "example": "call_lookup_1"
               },
               "name": {
-                "type": "string"
+                "type": "string",
+                "description": "Registered function or custom tool name.",
+                "example": "lookup"
               },
               "type": {
                 "type": "string",
@@ -30834,16 +30842,24 @@
             ],
             "properties": {
               "async": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "Whether execution may start before response generation completes.",
+                "example": true
               },
               "call_id": {
-                "type": "string"
+                "type": "string",
+                "description": "Original provider call identity used when delivering the result.",
+                "example": "call_lookup_1"
               },
               "input": {
-                "type": "string"
+                "type": "string",
+                "description": "Raw custom-tool input, without JSON normalization.",
+                "example": "weather in Paris"
               },
               "name": {
-                "type": "string"
+                "type": "string",
+                "description": "Registered function or custom tool name.",
+                "example": "lookup"
               },
               "type": {
                 "type": "string",
@@ -30853,7 +30869,15 @@
               }
             }
           }
-        ]
+        ],
+        "description": "A complete provider-native call, retaining its original identity and payload.",
+        "example": {
+          "arguments": "{\"query\":\"weather in Paris\"}",
+          "async": true,
+          "call_id": "call_lookup_1",
+          "name": "lookup",
+          "type": "function_call"
+        }
       },
       "NetworkAccessList": {
         "type": "object",

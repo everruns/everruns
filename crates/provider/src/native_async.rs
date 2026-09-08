@@ -10,23 +10,44 @@ use std::collections::BTreeMap;
 
 use crate::error::{AgentLoopError, Result};
 
+/// A complete provider-native call, retaining its original identity and payload.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = json!({"type":"function_call","call_id":"call_lookup_1","name":"lookup","arguments":"{\"query\":\"weather in Paris\"}","async":true})))]
 #[serde(tag = "type")]
 pub enum NativeToolCall {
     #[serde(rename = "function_call")]
     Function {
+        /// Original provider call identity used when delivering the result.
+        #[cfg_attr(feature = "openapi", schema(example = "call_lookup_1"))]
         call_id: String,
+        /// Registered function or custom tool name.
+        #[cfg_attr(feature = "openapi", schema(example = "lookup"))]
         name: String,
+        /// Complete JSON arguments, preserved exactly as received.
+        #[cfg_attr(
+            feature = "openapi",
+            schema(example = r#"{"query":"weather in Paris"}"#)
+        )]
         arguments: String,
+        /// Whether execution may start before response generation completes.
+        #[cfg_attr(feature = "openapi", schema(example = true))]
         #[serde(rename = "async", default)]
         asynchronous: bool,
     },
     #[serde(rename = "custom_tool_call")]
     Custom {
+        /// Original provider call identity used when delivering the result.
+        #[cfg_attr(feature = "openapi", schema(example = "call_lookup_1"))]
         call_id: String,
+        /// Registered function or custom tool name.
+        #[cfg_attr(feature = "openapi", schema(example = "lookup"))]
         name: String,
+        /// Raw custom-tool input, without JSON normalization.
+        #[cfg_attr(feature = "openapi", schema(example = "weather in Paris"))]
         input: String,
+        /// Whether execution may start before response generation completes.
+        #[cfg_attr(feature = "openapi", schema(example = true))]
         #[serde(rename = "async", default)]
         asynchronous: bool,
     },
