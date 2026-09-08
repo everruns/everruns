@@ -202,6 +202,7 @@ mod tests {
             assert_eq!(actual.tool_call_id, expected.tool_call_id);
             assert_eq!(actual.phase, expected.phase);
             assert_eq!(actual.reasoning, expected.reasoning);
+            assert_eq!(actual.configuration_update, expected.configuration_update);
         }
     }
 
@@ -209,6 +210,7 @@ mod tests {
     fn llm_reduction_prunes_only_the_unmatched_parallel_call() {
         let mut batch = assistant_batch();
         batch.content = LlmMessageContent::Text("Keep this text".into());
+        batch.configuration_update = Some(everruns_provider::model::ReasoningEffort::High);
         batch.phase = Some(everruns_provider::execution_phase::ExecutionPhase::Commentary);
         batch
             .reasoning
@@ -251,6 +253,7 @@ mod tests {
     fn removing_all_llm_calls_preserves_independent_visible_text() {
         let mut batch = assistant_batch();
         batch.content = LlmMessageContent::Text("Keep α".into());
+        batch.configuration_update = Some(everruns_provider::model::ReasoningEffort::Low);
         let mut expected = batch.clone();
         expected.tool_calls = None;
         assert_text_messages(
