@@ -121,30 +121,32 @@ impl Tool for GetCurrentTimeTool {
             .and_then(|v| v.as_str())
             .unwrap_or("iso8601");
 
-        let _timezone = arguments
+        let timezone = arguments
             .get("timezone")
             .and_then(|v| v.as_str())
             .unwrap_or("UTC");
 
-        // Note: For simplicity, we're using UTC. Full timezone support would require
-        // the chrono-tz crate which adds significant dependencies.
-        let now = chrono::Utc::now();
+        let timezone: chrono_tz::Tz = match timezone.parse() {
+            Ok(timezone) => timezone,
+            Err(_) => return ToolExecutionResult::tool_error("Unknown IANA timezone"),
+        };
+        let now = chrono::Utc::now().with_timezone(&timezone);
 
         let result = match format {
             "unix" => serde_json::json!({
                 "timestamp": now.timestamp(),
                 "format": "unix",
-                "timezone": "UTC"
+                "timezone": timezone.name()
             }),
             "human" => serde_json::json!({
-                "datetime": now.format("%A, %B %d, %Y at %H:%M:%S UTC").to_string(),
+                "datetime": now.format("%A, %B %d, %Y at %H:%M:%S %Z").to_string(),
                 "format": "human",
-                "timezone": "UTC"
+                "timezone": timezone.name()
             }),
             _ => serde_json::json!({
                 "datetime": now.to_rfc3339(),
                 "format": "iso8601",
-                "timezone": "UTC"
+                "timezone": timezone.name()
             }),
         };
 
@@ -155,72 +157,100 @@ impl Tool for GetCurrentTimeTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
-
-    #[test]
-    fn test_capability_no_system_prompt() {
-        let cap = CurrentTimeCapability;
-        assert!(cap.system_prompt_addition().is_none());
-    }
+    use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
+    use serde_json::json;
 
     #[test]
-    fn test_contributes_dynamic_current_time_fact() {
-        use crate::capabilities::{FactsContext, Volatility};
+    fn dynamic_fact_is_a_current_utc_instant_without_cached_prompt_text() {
+        use crate::capabilities::Volatility;
         use crate::typed_id::SessionId;
-
-        let cap = CurrentTimeCapability;
-        let facts = cap.facts(
-            &serde_json::Value::Null,
-            &FactsContext::new(SessionId::new()),
-        );
+        let before = Utc::now().timestamp();
+        let facts = CurrentTimeCapability.facts(&Value::Null, &FactsContext::new(SessionId::new()));
+        let after = Utc::now().timestamp();
         assert_eq!(facts.len(), 1);
         assert_eq!(facts[0].key, "current_time");
         assert_eq!(facts[0].volatility, Volatility::Dynamic);
-        // RFC3339 UTC, e.g. 2026-07-04T12:00:00Z
-        assert!(facts[0].value.ends_with('Z'), "got: {}", facts[0].value);
-        assert!(facts[0].value.contains('T'));
+        let instant = DateTime::parse_from_rfc3339(&facts[0].value).unwrap();
+        assert_eq!(instant.offset().local_minus_utc(), 0);
+        assert!((before..=after).contains(&instant.timestamp()));
+        assert!(CurrentTimeCapability.system_prompt_addition().is_none());
     }
 
     #[tokio::test]
-    async fn test_get_current_time_iso8601() {
-        let tool = GetCurrentTimeTool;
-        let result = tool.execute(serde_json::json!({})).await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert!(value.get("datetime").is_some());
-            assert_eq!(value.get("format").unwrap().as_str().unwrap(), "iso8601");
-            assert_eq!(value.get("timezone").unwrap().as_str().unwrap(), "UTC");
-        } else {
-            panic!("Expected success");
+    async fn registered_time_tool_preserves_instant_across_formats_and_timezones() {
+        let tools = CurrentTimeCapability.tools();
+        assert_eq!(tools.len(), 1);
+        let tool = &tools[0];
+        for (zone, offset) in [
+            ("UTC", 0),
+            ("Asia/Kathmandu", 20700),
+            ("America/Phoenix", -25200),
+        ] {
+            for format in ["iso8601", "unix", "human"] {
+                let before = Utc::now().timestamp();
+                let ToolExecutionResult::Success(value) =
+                    tool.execute(json!({"timezone":zone,"format":format})).await
+                else {
+                    panic!("valid request failed")
+                };
+                let after = Utc::now().timestamp();
+                let timestamp = match format {
+                    "unix" => {
+                        assert_eq!(
+                            value,
+                            json!({"timestamp":value["timestamp"],"format":"unix","timezone":zone})
+                        );
+                        value["timestamp"].as_i64().unwrap()
+                    }
+                    "iso8601" => {
+                        let parsed =
+                            DateTime::parse_from_rfc3339(value["datetime"].as_str().unwrap())
+                                .unwrap();
+                        assert_eq!(parsed.offset().local_minus_utc(), offset);
+                        parsed.timestamp()
+                    }
+                    "human" => {
+                        let text = value["datetime"].as_str().unwrap();
+                        let parsed =
+                            NaiveDateTime::parse_from_str(text, "%A, %B %d, %Y at %H:%M:%S %Z")
+                                .unwrap();
+                        let local = zone
+                            .parse::<chrono_tz::Tz>()
+                            .unwrap()
+                            .from_local_datetime(&parsed)
+                            .single()
+                            .unwrap();
+                        assert_eq!(
+                            text,
+                            local.format("%A, %B %d, %Y at %H:%M:%S %Z").to_string()
+                        );
+                        local.timestamp()
+                    }
+                    _ => unreachable!(),
+                };
+                assert!(
+                    (before..=after).contains(&timestamp),
+                    "{format} {zone}: {value}"
+                );
+                if format != "unix" {
+                    assert_eq!(
+                        value,
+                        json!({"datetime":value["datetime"],"format":format,"timezone":zone})
+                    );
+                }
+            }
         }
-    }
-
-    #[tokio::test]
-    async fn test_get_current_time_unix() {
-        let tool = GetCurrentTimeTool;
-        let result = tool.execute(serde_json::json!({"format": "unix"})).await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert!(value.get("timestamp").is_some());
-            assert_eq!(value.get("format").unwrap().as_str().unwrap(), "unix");
-        } else {
-            panic!("Expected success");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_get_current_time_human() {
-        let tool = GetCurrentTimeTool;
-        let result = tool.execute(serde_json::json!({"format": "human"})).await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert!(value.get("datetime").is_some());
-            assert_eq!(value.get("format").unwrap().as_str().unwrap(), "human");
-            let datetime = value.get("datetime").unwrap().as_str().unwrap();
-            assert!(datetime.contains("at"));
-        } else {
-            panic!("Expected success");
-        }
+        let ToolExecutionResult::Success(default) = tool.execute(json!({})).await else {
+            panic!("default failed")
+        };
+        assert_eq!(default["format"], "iso8601");
+        assert_eq!(default["timezone"], "UTC");
+        assert!(DateTime::parse_from_rfc3339(default["datetime"].as_str().unwrap()).is_ok());
+        let ToolExecutionResult::ToolError(message) =
+            tool.execute(json!({"timezone":"not/a-timezone"})).await
+        else {
+            panic!("unknown timezone must be rejected")
+        };
+        assert_eq!(message, "Unknown IANA timezone");
     }
 }

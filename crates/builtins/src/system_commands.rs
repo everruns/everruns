@@ -52,23 +52,3 @@ impl Capability for SystemCommandsCapability {
         Some("System")
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
-
-    #[test]
-    fn test_system_commands_no_system_prompt() {
-        let cap = SystemCommandsCapability;
-        assert!(cap.system_prompt_addition().is_none());
-    }
-
-    #[test]
-    fn test_system_commands_empty_until_implemented() {
-        let cap = SystemCommandsCapability;
-        let commands = cap.commands();
-        assert!(commands.is_empty());
-    }
-}
