@@ -775,6 +775,7 @@ everruns_core::mcp_server::ScopedMcpServers	type_alias
 everruns_core::mcp_server::apply_mcp_secret_binding_schemas	function
 everruns_core::mcp_server::classify_mcp_execute_error	function
 everruns_core::mcp_server::is_mcp_tool	function
+everruns_core::mcp_server::is_valid_mcp_server_name	function
 everruns_core::mcp_server::mcp_oauth_provider_id_for_uuid	function
 everruns_core::mcp_server::mcp_oauth_session_secret_name	function
 everruns_core::mcp_server::mcp_tool_name	function

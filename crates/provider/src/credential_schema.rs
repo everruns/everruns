@@ -285,88 +285,124 @@ mod tests {
     fn map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
         pairs
             .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .map(|(key, value)| (key.to_string(), value.to_string()))
             .collect()
     }
 
     #[test]
-    fn assemble_lone_api_key_stays_raw() {
-        let doc = assemble_credential_document(&map(&[("api_key", "sk-123")]));
-        assert_eq!(doc.as_deref(), Some("sk-123"));
+    fn assembly_uses_literal_legacy_and_deterministic_json_formats() {
+        for (fields, expected) in [
+            (vec![], None),
+            (vec![("api_key", " \t\n"), ("region", "")], None),
+            (
+                vec![("api_key", " key with spaces "), ("region", " \n")],
+                Some(" key with spaces "),
+            ),
+            (
+                vec![
+                    ("secret_access_key", "SECRET"),
+                    ("region", ""),
+                    ("access_key_id", "AKID"),
+                ],
+                Some(r#"{"access_key_id":"AKID","secret_access_key":"SECRET"}"#),
+            ),
+            (vec![("tenant_id", "one")], Some(r#"{"tenant_id":"one"}"#)),
+            (
+                vec![("api_key", "quote\"slash\\line\n"), ("region", "west")],
+                Some(r#"{"api_key":"quote\"slash\\line\n","region":"west"}"#),
+            ),
+        ] {
+            assert_eq!(
+                assemble_credential_document(&map(&fields)).as_deref(),
+                expected,
+                "{fields:?}"
+            );
+        }
     }
 
     #[test]
-    fn assemble_multi_field_is_json_and_drops_empty() {
-        let doc = assemble_credential_document(&map(&[
-            ("access_key_id", "AKID"),
-            ("secret_access_key", "SECRET"),
-            ("region", ""),
-        ]))
-        .expect("doc");
-        let parsed: serde_json::Value = serde_json::from_str(&doc).unwrap();
-        assert_eq!(parsed["access_key_id"], "AKID");
-        assert_eq!(parsed["secret_access_key"], "SECRET");
-        assert!(parsed.get("region").is_none(), "empty fields dropped");
+    fn parsing_preserves_legacy_documents_and_opaque_fallback_exactly() {
+        assert_eq!(parse_credential_document(None), BTreeMap::new());
+        assert_eq!(
+            parse_credential_document(Some(
+                r#"{"tenant_id":"t","client_id":"c","client_secret":"s"}"#
+            )),
+            map(&[
+                ("tenant_id", "t"),
+                ("client_id", "c"),
+                ("client_secret", "s")
+            ])
+        );
+        assert_eq!(
+            parse_credential_document(Some(
+                r#"{"access_key_id":"AKID","secret_access_key":"SECRET","ignored":42,"empty":""}"#
+            )),
+            map(&[
+                ("access_key_id", "AKID"),
+                ("secret_access_key", "SECRET"),
+                ("empty", "")
+            ])
+        );
+        for opaque in [
+            "sk-raw-key",
+            "",
+            "  ",
+            "not { json",
+            "{}",
+            r#"{"number":42}"#,
+            "[1,2]",
+            "null",
+            r#""json string""#,
+        ] {
+            assert_eq!(
+                parse_credential_document(Some(opaque)),
+                map(&[("api_key", opaque)]),
+                "opaque {opaque:?}"
+            );
+        }
     }
 
     #[test]
-    fn assemble_nothing_is_none() {
-        assert!(assemble_credential_document(&map(&[("api_key", "  ")])).is_none());
-        assert!(assemble_credential_document(&BTreeMap::new()).is_none());
+    fn single_method_schema_requires_nonblank_key_but_accepts_unknown_optional_fields() {
+        let schema = CredentialFormSchema::api_key("Get a key");
+        assert_eq!(
+            serde_json::to_value(&schema).unwrap(),
+            serde_json::json!({
+                "fields": [{"name":"api_key","label":"API Key","field_type":"password","required":true}],
+                "instructions_markdown":"Get a key"
+            })
+        );
+        for fields in [
+            map(&[]),
+            map(&[("api_key", " \t\n")]),
+            map(&[("unknown", "value")]),
+        ] {
+            assert_eq!(schema.validate(&fields), ["API Key is required."]);
+        }
+        assert!(
+            schema
+                .validate(&map(&[("api_key", " key "), ("unknown", "value")]))
+                .is_empty()
+        );
+        assert!(
+            CredentialFormSchema::empty()
+                .validate(&map(&[("unknown", "value")]))
+                .is_empty()
+        );
     }
 
     #[test]
-    fn parse_round_trips_multi_field() {
-        let doc = assemble_credential_document(&map(&[
-            ("access_key_id", "AKID"),
-            ("secret_access_key", "SECRET"),
-        ]))
-        .unwrap();
-        let fields = parse_credential_document(Some(&doc));
-        assert_eq!(fields["access_key_id"], "AKID");
-        assert_eq!(fields["secret_access_key"], "SECRET");
-    }
-
-    #[test]
-    fn parse_raw_key_becomes_api_key_field() {
-        let fields = parse_credential_document(Some("sk-raw-key"));
-        assert_eq!(fields["api_key"], "sk-raw-key");
-    }
-
-    #[test]
-    fn parse_legacy_json_oauth_document() {
-        // Existing MAI rows stored OAuth as a JSON document; they must still
-        // parse into discrete fields after the migration to typed credentials.
-        let legacy = r#"{"tenant_id":"t","client_id":"c","client_secret":"s"}"#;
-        let fields = parse_credential_document(Some(legacy));
-        assert_eq!(fields["tenant_id"], "t");
-        assert_eq!(fields["client_secret"], "s");
-    }
-
-    #[test]
-    fn parse_none_is_empty() {
-        assert!(parse_credential_document(None).is_empty());
-    }
-
-    #[test]
-    fn validate_required_field_missing() {
-        let schema = CredentialFormSchema::api_key("");
-        let errors = schema.validate(&BTreeMap::new());
-        assert_eq!(errors.len(), 1);
-        assert!(errors[0].contains("API Key"));
-    }
-
-    #[test]
-    fn validate_grouped_either_or() {
-        // MAI-style schema: an API-key group OR an OAuth group.
+    fn grouped_validation_requires_complete_touched_methods_in_declaration_order() {
         let schema = CredentialFormSchema {
             fields: vec![
+                FormField::text("endpoint", "Endpoint").required(),
                 FormField::password("api_key", "API Key")
                     .required()
                     .in_group("API key"),
                 FormField::text("tenant_id", "Tenant ID")
                     .required()
                     .in_group("OAuth"),
+                FormField::text("scope", "Scope").in_group("OAuth"),
                 FormField::text("client_id", "Client ID")
                     .required()
                     .in_group("OAuth"),
@@ -376,24 +412,52 @@ mod tests {
             ],
             instructions_markdown: String::new(),
         };
-
-        // Neither group filled → error.
-        assert!(!schema.validate(&BTreeMap::new()).is_empty());
-        // API key alone → valid.
-        assert!(schema.validate(&map(&[("api_key", "k")])).is_empty());
-        // Full OAuth group → valid.
-        assert!(
-            schema
-                .validate(&map(&[
+        for (fields, expected) in [
+            (vec![], vec!["Endpoint is required."]),
+            (
+                vec![("endpoint", "url")],
+                vec!["Provide credentials for one of the available methods."],
+            ),
+            (vec![("endpoint", "url"), ("api_key", "k")], vec![]),
+            (vec![("api_key", "k")], vec!["Endpoint is required."]),
+            (
+                vec![
+                    ("endpoint", "url"),
                     ("tenant_id", "t"),
                     ("client_id", "c"),
                     ("client_secret", "s"),
-                ]))
-                .is_empty()
-        );
-        // Partial OAuth group → error naming the missing fields.
-        let errors = schema.validate(&map(&[("tenant_id", "t")]));
-        assert!(errors.iter().any(|e| e.contains("Client ID")));
-        assert!(errors.iter().any(|e| e.contains("Client Secret")));
+                ],
+                vec![],
+            ),
+            (
+                vec![("endpoint", "url"), ("tenant_id", "t")],
+                vec![
+                    "Client ID (OAuth) is required.",
+                    "Client Secret (OAuth) is required.",
+                ],
+            ),
+            (
+                vec![
+                    ("endpoint", "url"),
+                    ("api_key", "k"),
+                    ("tenant_id", "t"),
+                    ("client_id", " \n"),
+                ],
+                vec![
+                    "Client ID (OAuth) is required.",
+                    "Client Secret (OAuth) is required.",
+                ],
+            ),
+            (
+                vec![("endpoint", "url"), ("scope", "optional-but-touched")],
+                vec![
+                    "Tenant ID (OAuth) is required.",
+                    "Client ID (OAuth) is required.",
+                    "Client Secret (OAuth) is required.",
+                ],
+            ),
+        ] {
+            assert_eq!(schema.validate(&map(&fields)), expected, "{fields:?}");
+        }
     }
 }

@@ -683,23 +683,43 @@ pub fn from_json<T: DeserializeOwned + Default>(value: serde_json::Value) -> T {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
-    // EVE-645: classify_fs_error must prefer the typed FileSystemError and
-    // otherwise reproduce the exact substring routing the file tools used to
-    // inline. These cases pin both paths against the real producer messages.
     #[test]
-    fn classify_fs_error_prefers_typed_variant() {
-        let err = FileSystemError::ReadOnly("x".into());
-        assert_eq!(classify_fs_error(&err), FileSystemErrorClass::ReadOnly);
-        let err = FileSystemError::IsADirectory("x".into());
-        assert_eq!(classify_fs_error(&err), FileSystemErrorClass::IsADirectory);
+    fn filesystem_typed_errors_win_over_conflicting_messages_and_wrappers() {
+        for (error, expected) in [
+            (
+                FileSystemError::NotFound("readonly".into()),
+                FileSystemErrorClass::NotFound,
+            ),
+            (
+                FileSystemError::ReadOnly("not found".into()),
+                FileSystemErrorClass::ReadOnly,
+            ),
+            (
+                FileSystemError::IsADirectory("not empty".into()),
+                FileSystemErrorClass::IsADirectory,
+            ),
+            (
+                FileSystemError::NotADirectory("is a directory".into()),
+                FileSystemErrorClass::NotADirectory,
+            ),
+            (
+                FileSystemError::NotEmpty("not found".into()),
+                FileSystemErrorClass::NotEmpty,
+            ),
+        ] {
+            assert_eq!(classify_fs_error(&error), expected);
+            let wrapped = AgentLoopError::Internal(
+                anyhow::Error::new(error).context("readonly outer failure"),
+            );
+            assert_eq!(classify_fs_error(&wrapped), expected);
+        }
     }
 
     #[test]
-    fn classify_fs_error_substring_fallback_matches_real_producers() {
-        // Real producers raise these as `AgentLoopError::store(...)`, whose
-        // Display is "Message store error: <msg>" — the substrings still match.
-        let cases = [
+    fn filesystem_legacy_messages_preserve_routing_and_case_boundaries() {
+        for (message, expected) in [
             (
                 "Cannot modify readonly file: /a",
                 FileSystemErrorClass::ReadOnly,
@@ -733,398 +753,356 @@ mod tests {
                 "recursive delete failed for /a: io",
                 FileSystemErrorClass::NotEmpty,
             ),
+            ("readonly file not found", FileSystemErrorClass::ReadOnly),
+            ("file is read-only: /a", FileSystemErrorClass::Other),
+            ("NOT FOUND", FileSystemErrorClass::Other),
             ("disk full", FileSystemErrorClass::Other),
-        ];
-        for (msg, expected) in cases {
-            let err = AgentLoopError::store(msg);
-            assert_eq!(classify_fs_error(&err), expected, "msg: {msg}");
+        ] {
+            assert_eq!(
+                classify_fs_error(&AgentLoopError::store(message)),
+                expected,
+                "{message}"
+            );
         }
     }
 
-    // A typed FileSystemError returned directly (the seam an implementor opts
-    // into) is classified without touching the message text.
     #[test]
-    fn classify_fs_error_classifies_typed_directly() {
-        let err = FileSystemError::NotEmpty("anything at all".into());
-        assert_eq!(classify_fs_error(&err), FileSystemErrorClass::NotEmpty);
-    }
-
-    // The hyphenated "read-only" from real-disk backends did NOT match the
-    // legacy "readonly" check and must not now; preserve that exactly.
-    #[test]
-    fn classify_fs_error_does_not_match_hyphenated_read_only() {
-        let err = AgentLoopError::store("file is read-only: /a");
-        assert_eq!(classify_fs_error(&err), FileSystemErrorClass::Other);
-    }
-
-    #[test]
-    fn test_is_request_too_large_returns_true_for_typed_error() {
-        let err = AgentLoopError::request_too_large("context length exceeded");
-        assert!(err.is_request_too_large());
-    }
-
-    #[test]
-    fn test_is_request_too_large_returns_false_for_llm_error() {
-        let err = AgentLoopError::llm("OpenAI API error (500): Internal server error");
-        assert!(!err.is_request_too_large());
-    }
-
-    #[test]
-    fn test_is_request_too_large_returns_false_for_other_errors() {
-        let err = AgentLoopError::ToolExecution("some error".to_string());
-        assert!(!err.is_request_too_large());
-
-        let err = AgentLoopError::Cancelled;
-        assert!(!err.is_request_too_large());
-    }
-
-    #[test]
-    fn test_request_too_large_error_preserves_message() {
-        let original_msg = "OpenAI API error (429): Request too large for gpt-4";
-        let err = AgentLoopError::request_too_large(original_msg);
-        assert_eq!(
-            err.to_string(),
-            format!("Request too large: {}", original_msg)
-        );
-    }
-
-    #[test]
-    fn test_is_model_not_available_returns_true_for_typed_error() {
-        let err = AgentLoopError::model_not_available("claude-sonnet-4-6-20260217");
-        assert!(err.is_model_not_available());
-        assert_eq!(
-            err.model_not_available_id(),
-            Some("claude-sonnet-4-6-20260217")
-        );
-    }
-
-    #[test]
-    fn test_is_model_not_available_returns_false_for_llm_error() {
-        let err = AgentLoopError::llm("some error");
-        assert!(!err.is_model_not_available());
-        assert_eq!(err.model_not_available_id(), None);
-    }
-
-    #[test]
-    fn test_model_not_available_error_display() {
-        let err = AgentLoopError::model_not_available("gpt-99");
-        assert_eq!(err.to_string(), "Model not available: gpt-99");
-    }
-
-    #[test]
-    fn test_is_rate_limited_detects_429() {
-        let err = AgentLoopError::llm("Anthropic API error (429): rate limit exceeded");
-        assert!(err.is_rate_limited());
-    }
-
-    #[test]
-    fn test_is_rate_limited_detects_rate_limit_keyword() {
-        let err =
-            AgentLoopError::llm("Rate limit exceeded (after 2 retries, last error: too many)");
-        assert!(err.is_rate_limited());
-    }
-
-    #[test]
-    fn test_is_rate_limited_false_for_server_error() {
-        let err = AgentLoopError::llm("Anthropic API error (500): internal server error");
-        assert!(!err.is_rate_limited());
-    }
-
-    #[test]
-    fn test_is_auth_error_detects_401() {
-        let err = AgentLoopError::llm("Anthropic API error (401): invalid api key");
-        assert!(err.is_auth_error());
-    }
-
-    #[test]
-    fn test_is_auth_error_detects_403() {
-        let err = AgentLoopError::llm("OpenAI API error (403): forbidden");
-        assert!(err.is_auth_error());
-    }
-
-    #[test]
-    fn test_is_server_error_detects_500() {
-        let err = AgentLoopError::llm("Anthropic API error (500): internal server error");
-        assert!(err.is_server_error());
-    }
-
-    #[test]
-    fn test_is_server_error_detects_503() {
-        let err = AgentLoopError::llm("OpenAI API error (503): service unavailable");
-        assert!(err.is_server_error());
-    }
-
-    #[test]
-    fn test_user_facing_message_rate_limited() {
-        let err = AgentLoopError::llm("Anthropic API error (429): rate limit exceeded");
-        assert_eq!(
-            err.user_facing_message(),
-            "Rate limited by the AI provider. Please wait a moment."
-        );
-    }
-
-    #[test]
-    fn test_user_facing_message_auth_error() {
-        let err = AgentLoopError::llm("Anthropic API error (401): invalid api key");
-        assert_eq!(
-            err.user_facing_message(),
-            "There is a misconfiguration with the AI provider. Please contact support."
-        );
-    }
-
-    #[test]
-    fn test_user_facing_message_server_error() {
-        let err = AgentLoopError::llm("Anthropic API error (500): internal server error");
-        assert_eq!(
-            err.user_facing_message(),
-            "The AI provider is experiencing issues. Please try again shortly."
-        );
-    }
-
-    #[test]
-    fn test_user_facing_message_generic_fallback() {
-        let err = AgentLoopError::llm("Failed to send request: connection refused");
-        assert_eq!(
-            err.user_facing_message(),
-            "I encountered an error while processing your request. Please try again later."
-        );
-    }
-
-    #[test]
-    fn test_user_facing_message_model_not_available() {
-        let err = AgentLoopError::model_not_available("gpt-99");
-        assert!(err.user_facing_message().contains("gpt-99"));
-        assert!(err.user_facing_message().contains("not available"));
-    }
-
-    #[test]
-    fn model_not_configured_is_typed_terminal_and_actionable() {
-        let err = AgentLoopError::model_not_configured();
-
-        assert!(err.is_non_retryable());
-        assert_eq!(
-            err.user_facing_error(UserFacingErrorContext::default())
-                .code,
-            user_facing_error_codes::MODEL_NOT_CONFIGURED
-        );
-        assert!(err.user_facing_message().contains("Choose a model"));
-    }
-
-    #[test]
-    fn test_user_facing_message_request_too_large() {
-        let err = AgentLoopError::request_too_large("context length exceeded");
-        assert!(err.user_facing_message().contains("too long"));
-    }
-
-    #[test]
-    fn test_user_facing_error_model_not_available_includes_model_id() {
-        let err = AgentLoopError::model_not_available("gpt-99");
-        let user_error = err.user_facing_error(UserFacingErrorContext::default());
-
-        assert_eq!(user_error.code, user_facing_error_codes::MODEL_UNAVAILABLE);
-        assert_eq!(
-            user_error.fields.get("model_id"),
-            Some(&serde_json::Value::String("gpt-99".to_string()))
-        );
-    }
-
-    #[test]
-    fn test_user_facing_error_rate_limited_includes_provider_context() {
-        let err = AgentLoopError::llm("Anthropic API error (429): rate limit exceeded");
-        let user_error = err.user_facing_error(
+    fn typed_request_and_model_errors_preserve_identity_and_safe_user_payload() {
+        let context = || {
             UserFacingErrorContext::default()
-                .with_provider("anthropic")
-                .with_model_id("claude-sonnet-4-5")
-                .with_retry_after(12),
-        );
-
+                .with_provider("provider")
+                .with_model_id("context-model")
+                .with_retry_after(9)
+        };
+        let request = AgentLoopError::request_too_large("private payload");
+        assert_eq!(request.to_string(), "Request too large: private payload");
+        assert!(request.is_request_too_large());
+        assert!(!request.is_model_not_available());
+        assert_eq!(request.model_not_available_id(), None);
         assert_eq!(
-            user_error.code,
-            user_facing_error_codes::PROVIDER_RATE_LIMITED
-        );
-        assert_eq!(
-            user_error.fields.get("provider"),
-            Some(&serde_json::Value::String("anthropic".to_string()))
-        );
-        assert_eq!(
-            user_error.fields.get("model_id"),
-            Some(&serde_json::Value::String("claude-sonnet-4-5".to_string()))
+            serde_json::to_value(request.user_facing_error(context())).unwrap(),
+            json!({"code":"request_too_large","fields":{"provider":"provider","model_id":"context-model"}})
         );
         assert_eq!(
-            user_error.fields.get("retry_after"),
-            Some(&serde_json::json!(12))
+            request.user_facing_message(),
+            "The conversation has become too long for the model to process. Please start a new session or reduce the context size."
         );
+        let model = AgentLoopError::model_not_available("gpt-99");
+        assert!(!model.is_request_too_large());
+        assert!(model.is_model_not_available());
+        assert_eq!(model.model_not_available_id(), Some("gpt-99"));
+        assert_eq!(model.to_string(), "Model not available: gpt-99");
+        assert_eq!(
+            model.user_facing_message(),
+            "The model `gpt-99` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model."
+        );
+        assert_eq!(
+            serde_json::to_value(model.user_facing_error(context())).unwrap(),
+            json!({"code":"model_unavailable","fields":{"provider":"provider","model_id":"gpt-99"}})
+        );
+        for other in [
+            AgentLoopError::llm("Request too large: Model not available: gpt-99"),
+            AgentLoopError::tool("failed"),
+            AgentLoopError::Cancelled,
+        ] {
+            assert!(!other.is_request_too_large());
+            assert!(!other.is_model_not_available());
+            assert_eq!(other.model_not_available_id(), None);
+        }
     }
 
     #[test]
-    fn test_llm_error_kind_from_provider_status() {
-        assert_eq!(
-            LlmErrorKind::from_provider_status(401, "invalid x-api-key"),
-            LlmErrorKind::Authentication
-        );
-        assert_eq!(
-            LlmErrorKind::from_provider_status(403, "forbidden"),
-            LlmErrorKind::Authentication
-        );
-        assert_eq!(
-            LlmErrorKind::from_provider_status(429, "rate limit exceeded"),
-            LlmErrorKind::RateLimited
-        );
-        // Quota patterns win over the 429 status.
-        assert_eq!(
-            LlmErrorKind::from_provider_status(
-                429,
-                "{\"error\":{\"type\":\"insufficient_quota\"}}"
+    fn semantic_kinds_override_conflicting_text_for_predicates_and_payloads() {
+        for (kind, message, predicates, code) in [
+            (
+                LlmErrorKind::Authentication,
+                "(429) rate limit (503)",
+                (false, true, false, false),
+                "provider_misconfigured",
             ),
-            LlmErrorKind::QuotaExhausted
-        );
-        assert_eq!(
-            LlmErrorKind::from_provider_status(
-                429,
-                "{\"error\":{\"code\":\"credit_balance_exhausted\"}}"
+            (
+                LlmErrorKind::QuotaExhausted,
+                "(401) (429) rate limit (503)",
+                (false, false, false, false),
+                "provider_quota_exhausted",
             ),
-            LlmErrorKind::QuotaExhausted
-        );
-        assert_eq!(
-            LlmErrorKind::from_provider_status(
-                429,
-                "{\"error\":{\"type\":\"usage_limit_reached\"}}"
+            (
+                LlmErrorKind::RateLimited,
+                "(401) (503) insufficient_quota",
+                (true, false, false, true),
+                "provider_rate_limited",
             ),
-            LlmErrorKind::QuotaExhausted
-        );
-        // Anthropic reports exhausted billing as a 400.
-        assert_eq!(
-            LlmErrorKind::from_provider_status(
-                400,
-                "Your credit balance is too low to access the Anthropic API."
+            (
+                LlmErrorKind::Unavailable,
+                "(401) (429) insufficient_quota",
+                (false, false, true, true),
+                "provider_unavailable",
             ),
-            LlmErrorKind::QuotaExhausted
-        );
+            (
+                LlmErrorKind::InvalidRequest,
+                "opaque private failure",
+                (false, false, false, false),
+                "processing_error",
+            ),
+        ] {
+            let error = AgentLoopError::llm_kind(kind, message);
+            assert_eq!(error.llm_error_kind(), Some(kind));
+            assert_eq!(
+                (
+                    error.is_rate_limited(),
+                    error.is_auth_error(),
+                    error.is_server_error(),
+                    error.is_transient_llm_error()
+                ),
+                predicates,
+                "{kind:?}"
+            );
+            let mut fields = json!({"provider":"provider","model_id":"model"});
+            if kind == LlmErrorKind::RateLimited {
+                fields["retry_after"] = json!(12);
+            }
+            assert_eq!(
+                serde_json::to_value(
+                    error.user_facing_error(
+                        UserFacingErrorContext::default()
+                            .with_provider("provider")
+                            .with_model_id("model")
+                            .with_retry_after(12)
+                    )
+                )
+                .unwrap(),
+                json!({"code":code,"fields":fields})
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_predicates_and_user_copy_use_independent_literal_cases() {
+        for (message, expected, copy) in [
+            (
+                "Anthropic API error (429): rate limit exceeded",
+                (true, false, false),
+                "Rate limited by the AI provider. Please wait a moment.",
+            ),
+            (
+                "Rate limit exceeded (after 2 retries)",
+                (true, false, false),
+                "Rate limited by the AI provider. Please wait a moment.",
+            ),
+            (
+                "too many requests",
+                (true, false, false),
+                "Rate limited by the AI provider. Please wait a moment.",
+            ),
+            (
+                "Anthropic API error (401): invalid api key",
+                (false, true, false),
+                "There is a misconfiguration with the AI provider. Please contact support.",
+            ),
+            (
+                "OpenAI API error (403): forbidden",
+                (false, true, false),
+                "There is a misconfiguration with the AI provider. Please contact support.",
+            ),
+            (
+                "Anthropic API error (500): internal server error",
+                (false, false, true),
+                "The AI provider is experiencing issues. Please try again shortly.",
+            ),
+            (
+                "OpenAI API error (503): service unavailable",
+                (false, false, true),
+                "The AI provider is experiencing issues. Please try again shortly.",
+            ),
+            (
+                "Failed to send request: connection refused",
+                (false, false, false),
+                "I encountered an error while processing your request. Please try again later.",
+            ),
+        ] {
+            let error = AgentLoopError::llm(message);
+            assert_eq!(
+                (
+                    error.is_rate_limited(),
+                    error.is_auth_error(),
+                    error.is_server_error()
+                ),
+                expected,
+                "{message}"
+            );
+            assert_eq!(error.user_facing_message(), copy, "{message}");
+        }
+        for status in [502, 504, 529] {
+            assert!(AgentLoopError::llm(format!("error ({status})")).is_server_error());
+        }
+        let non_llm = AgentLoopError::tool("(401) (429) (503) rate limit");
         assert_eq!(
-            LlmErrorKind::from_provider_status(529, "overloaded"),
-            LlmErrorKind::Unavailable
-        );
-        assert_eq!(
-            LlmErrorKind::from_provider_status(503, "unavailable"),
-            LlmErrorKind::Unavailable
-        );
-        assert_eq!(
-            LlmErrorKind::from_provider_status(400, "bad request"),
-            LlmErrorKind::InvalidRequest
+            (
+                non_llm.is_rate_limited(),
+                non_llm.is_auth_error(),
+                non_llm.is_server_error(),
+                non_llm.is_transient_llm_error()
+            ),
+            (false, false, false, false)
         );
     }
 
     #[test]
-    fn test_llm_error_kind_from_error_text_bedrock() {
+    fn provider_status_classification_covers_boundaries_and_quota_precedence() {
+        for (status, expected) in [
+            (200, LlmErrorKind::Other),
+            (399, LlmErrorKind::Other),
+            (400, LlmErrorKind::InvalidRequest),
+            (401, LlmErrorKind::Authentication),
+            (403, LlmErrorKind::Authentication),
+            (404, LlmErrorKind::InvalidRequest),
+            (408, LlmErrorKind::Unavailable),
+            (409, LlmErrorKind::Unavailable),
+            (429, LlmErrorKind::RateLimited),
+            (499, LlmErrorKind::InvalidRequest),
+            (500, LlmErrorKind::Unavailable),
+            (501, LlmErrorKind::Other),
+            (502, LlmErrorKind::Unavailable),
+            (503, LlmErrorKind::Unavailable),
+            (529, LlmErrorKind::Unavailable),
+            (599, LlmErrorKind::Unavailable),
+            (600, LlmErrorKind::Other),
+        ] {
+            assert_eq!(
+                LlmErrorKind::from_provider_status(status, "opaque"),
+                expected,
+                "{status}"
+            );
+        }
+        for message in [
+            r#"{"error":{"type":"insufficient_quota"}}"#,
+            r#"{"error":{"code":"credit_balance_exhausted"}}"#,
+            r#"{"error":{"type":"usage_limit_reached"}}"#,
+            "Your credit balance is too low to access the Anthropic API.",
+        ] {
+            for status in [400, 401, 429, 503] {
+                assert_eq!(
+                    LlmErrorKind::from_provider_status(status, message),
+                    LlmErrorKind::QuotaExhausted,
+                    "{status}: {message}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn provider_text_classification_uses_independent_keywords_and_precedence() {
+        for (message, expected) in [
+            ("ThrottlingException", LlmErrorKind::RateLimited),
+            ("TooManyRequestsException", LlmErrorKind::RateLimited),
+            ("RATE LIMIT", LlmErrorKind::RateLimited),
+            ("too many requests", LlmErrorKind::RateLimited),
+            ("AccessDeniedException", LlmErrorKind::Authentication),
+            ("UnrecognizedClientException", LlmErrorKind::Authentication),
+            ("ExpiredTokenException", LlmErrorKind::Authentication),
+            ("InvalidSignatureException", LlmErrorKind::Authentication),
+            ("unauthorized", LlmErrorKind::Authentication),
+            ("ServiceUnavailableException", LlmErrorKind::Unavailable),
+            ("service unavailable", LlmErrorKind::Unavailable),
+            ("InternalServerException", LlmErrorKind::Unavailable),
+            ("ModelNotReadyException", LlmErrorKind::Unavailable),
+            (
+                "usage_limit_reached; resets_at=1783767823; throttlingexception",
+                LlmErrorKind::QuotaExhausted,
+            ),
+            ("something else entirely", LlmErrorKind::Other),
+        ] {
+            assert_eq!(
+                LlmErrorKind::from_error_text(message),
+                expected,
+                "{message}"
+            );
+        }
+    }
+
+    #[test]
+    fn provider_prefix_preserves_kind_and_retry_metadata_without_duplication() {
+        let metadata = crate::llm_retry::RetryMetadata {
+            attempts: 2,
+            total_retry_wait: std::time::Duration::from_millis(1234),
+            ..Default::default()
+        };
+        let error = AgentLoopError::llm_kind(LlmErrorKind::Unavailable, "network failure")
+            .with_retry_metadata(&metadata)
+            .with_provider("custom")
+            .with_provider("custom");
+        assert_eq!(error.llm_retry_attempts(), 2);
+        assert!(error.llm_retry_handled());
+        let AgentLoopError::Llm(error) = error else {
+            panic!("lost LLM variant")
+        };
         assert_eq!(
-            LlmErrorKind::from_error_text("ThrottlingException: Too many requests"),
-            LlmErrorKind::RateLimited
+            serde_json::to_value(error).unwrap(),
+            json!({"kind":"unavailable","message":"provider 'custom': network failure","retry_attempts":2,"retry_wait_ms":1234,"retry_handled":true})
+        );
+        let legacy: LlmError =
+            serde_json::from_value(json!({"kind":"other","message":"legacy"})).unwrap();
+        assert_eq!(
+            serde_json::to_value(legacy).unwrap(),
+            json!({"kind":"other","message":"legacy","retry_attempts":0,"retry_wait_ms":0,"retry_handled":false})
+        );
+        let non_llm = AgentLoopError::Cancelled
+            .with_retry_metadata(&metadata)
+            .with_provider("custom");
+        assert!(matches!(non_llm, AgentLoopError::Cancelled));
+        assert_eq!(non_llm.llm_retry_attempts(), 0);
+        assert!(!non_llm.llm_retry_handled());
+    }
+
+    #[test]
+    fn missing_model_and_iteration_limits_have_complete_safe_payloads() {
+        let missing = AgentLoopError::model_not_configured();
+        assert!(missing.is_non_retryable());
+        assert_eq!(
+            missing.user_facing_message(),
+            "No model is configured for this chat. Choose a model or configure a default model, then try again."
         );
         assert_eq!(
-            LlmErrorKind::from_error_text("AccessDeniedException: not authorized"),
-            LlmErrorKind::Authentication
+            serde_json::to_value(missing.user_facing_error(UserFacingErrorContext::default()))
+                .unwrap(),
+            json!({"code":"model_not_configured"})
         );
         assert_eq!(
-            LlmErrorKind::from_error_text("ServiceUnavailableException"),
-            LlmErrorKind::Unavailable
-        );
-        assert_eq!(
-            LlmErrorKind::from_error_text("usage_limit_reached; resets_at=1783767823"),
-            LlmErrorKind::QuotaExhausted
-        );
-        assert_eq!(
-            LlmErrorKind::from_error_text("something else entirely"),
-            LlmErrorKind::Other
+            serde_json::to_value(
+                AgentLoopError::MaxIterationsReached(7)
+                    .user_facing_error(UserFacingErrorContext::default())
+            )
+            .unwrap(),
+            json!({"code":"max_iterations","fields":{"max_iterations":7}})
         );
     }
 
     #[test]
-    fn test_user_facing_error_prefers_semantic_kind() {
-        // The message alone would string-classify as rate-limited ("429"),
-        // but the driver-assigned kind must win.
-        let err = AgentLoopError::llm_kind(
-            LlmErrorKind::QuotaExhausted,
-            "OpenAI API error (429): insufficient_quota",
-        );
-        let user_error =
-            err.user_facing_error(UserFacingErrorContext::default().with_provider("openai"));
-        assert_eq!(
-            user_error.code,
-            user_facing_error_codes::PROVIDER_QUOTA_EXHAUSTED
-        );
-        assert_eq!(
-            user_error.fields.get("provider"),
-            Some(&serde_json::Value::String("openai".to_string()))
-        );
-
-        let err = AgentLoopError::llm_kind(LlmErrorKind::Authentication, "bad key");
-        assert_eq!(
-            err.user_facing_error(UserFacingErrorContext::default())
-                .code,
-            user_facing_error_codes::PROVIDER_MISCONFIGURED
-        );
-
-        let err = AgentLoopError::llm_kind(LlmErrorKind::RateLimited, "slow down");
-        let user_error =
-            err.user_facing_error(UserFacingErrorContext::default().with_retry_after(5));
-        assert_eq!(
-            user_error.code,
-            user_facing_error_codes::PROVIDER_RATE_LIMITED
-        );
-        assert_eq!(user_error.fields.get("retry_after"), Some(&json_val(&5)));
-
-        let err = AgentLoopError::llm_kind(LlmErrorKind::Unavailable, "overloaded");
-        assert_eq!(
-            err.user_facing_error(UserFacingErrorContext::default())
-                .code,
-            user_facing_error_codes::PROVIDER_UNAVAILABLE
-        );
+    fn store_adapter_preserves_success_and_exact_error_variant_and_message() {
+        let success: std::result::Result<Vec<String>, String> =
+            Ok(vec!["first".into(), "second".into()]);
+        assert_eq!(success.store_err().unwrap(), ["first", "second"]);
+        let failure: std::result::Result<(), std::io::Error> =
+            Err(std::io::Error::other("db unavailable"));
+        let error = failure.store_err().unwrap_err();
+        assert_eq!(error.to_string(), "Message store error: db unavailable");
+        assert!(matches!(error,AgentLoopError::MessageStore(message) if message=="db unavailable"));
     }
 
     #[test]
-    fn test_semantic_kind_drives_predicates() {
-        assert!(AgentLoopError::llm_kind(LlmErrorKind::RateLimited, "x").is_rate_limited());
-        assert!(AgentLoopError::llm_kind(LlmErrorKind::Authentication, "x").is_auth_error());
-        assert!(AgentLoopError::llm_kind(LlmErrorKind::Unavailable, "x").is_server_error());
-        // Untyped errors keep the legacy string behavior.
-        assert!(AgentLoopError::llm("error (429)").is_rate_limited());
-        assert!(
-            !AgentLoopError::llm_kind(LlmErrorKind::Authentication, "error (429)")
-                .is_rate_limited()
-        );
-    }
-
-    #[test]
-    fn test_store_result_ext_ok() {
-        let result: std::result::Result<i32, String> = Ok(42);
-        assert_eq!(result.store_err().unwrap(), 42);
-    }
-
-    #[test]
-    fn test_store_result_ext_err() {
-        let result: std::result::Result<i32, String> = Err("db error".to_string());
-        let err = result.store_err().unwrap_err();
-        assert!(matches!(err, AgentLoopError::MessageStore(_)));
-        assert!(err.to_string().contains("db error"));
-    }
-
-    #[test]
-    fn test_json_val() {
-        let v = json_val(&vec![1, 2, 3]);
-        assert_eq!(v, serde_json::json!([1, 2, 3]));
-    }
-
-    #[test]
-    fn test_from_json() {
-        let v = serde_json::json!(["a", "b"]);
-        let result: Vec<String> = from_json(v);
-        assert_eq!(result, vec!["a", "b"]);
-    }
-
-    #[test]
-    fn test_from_json_default_on_mismatch() {
-        let v = serde_json::json!("not a number");
-        let result: i32 = from_json(v);
-        assert_eq!(result, 0);
+    fn json_helpers_preserve_structures_and_apply_documented_error_defaults() {
+        assert_eq!(json_val(&vec![1, 2, 3]), json!([1, 2, 3]));
+        assert_eq!(from_json::<Vec<String>>(json!(["a", "b"])), ["a", "b"]);
+        assert_eq!(from_json::<i32>(json!("not a number")), 0);
+        struct Fails;
+        impl Serialize for Fails {
+            fn serialize<S: serde::Serializer>(
+                &self,
+                _: S,
+            ) -> std::result::Result<S::Ok, S::Error> {
+                Err(serde::ser::Error::custom("synthetic serialization failure"))
+            }
+        }
+        assert_eq!(json_val(&Fails), serde_json::Value::Null);
     }
 }

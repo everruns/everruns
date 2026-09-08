@@ -179,89 +179,102 @@ fn parse_arguments(buffer: &str) -> Option<Value> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn indexed_delta_reassembles_fragmented_arguments() {
-        let mut acc = StreamToolCallAccumulator::new();
-        acc.apply_indexed_delta(0, Some("call_a"), Some("get_weather"), Some(""));
-        acc.apply_indexed_delta(0, None, None, Some("{\"city\":"));
-        acc.apply_indexed_delta(0, None, None, Some("\"Paris\"}"));
+    fn calls_json(calls: Vec<ToolCall>) -> Value {
+        serde_json::to_value(calls).unwrap()
+    }
 
-        let calls = acc.take_finalized();
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].id, "call_a");
-        assert_eq!(calls[0].name, "get_weather");
-        assert_eq!(calls[0].arguments, json!({"city": "Paris"}));
+    #[test]
+    fn interleaved_sparse_indexes_keep_first_seen_order_and_complete_payloads() {
+        let mut acc = StreamToolCallAccumulator::new();
+        acc.apply_indexed_delta(42, None, None, Some("{\"city\":"));
+        acc.apply_indexed_delta(2, Some("second"), Some("other"), Some("{\"n\":2}"));
+        acc.apply_indexed_delta(42, Some("first"), Some("weather"), Some("\"Paris 🦀\"}"));
+        assert_eq!(
+            calls_json(acc.take_finalized()),
+            json!([
+                {"id":"first","name":"weather","arguments":{"city":"Paris 🦀"}},
+                {"id":"second","name":"other","arguments":{"n":2}}
+            ])
+        );
+        assert!(acc.is_empty());
+        assert!(acc.take_finalized().is_empty());
+        acc.apply_indexed_delta(42, Some("fresh"), Some("again"), Some("null"));
+        assert_eq!(
+            calls_json(acc.take_finalized()),
+            json!([{"id":"fresh","name":"again","arguments":null}])
+        );
+    }
+
+    #[test]
+    fn finalization_modes_have_distinct_malformed_and_unnamed_contracts() {
+        for mode in ["normal", "strict", "named"] {
+            let mut acc = StreamToolCallAccumulator::new();
+            acc.apply_indexed_delta(0, Some("empty"), Some("noop"), None);
+            acc.apply_indexed_delta(1, Some("bad"), Some("broken"), Some("{bad"));
+            acc.apply_indexed_delta(2, Some("valid"), Some("good"), Some("{\"ok\":true}"));
+            acc.apply_indexed_delta(3, Some("unnamed"), None, Some("[]"));
+            let actual = match mode {
+                "normal" => acc.take_finalized(),
+                "strict" => acc.take_pending_strict(),
+                _ => acc.take_named(),
+            };
+            let expected = match mode {
+                "normal" => json!([
+                    {"id":"empty","name":"noop","arguments":{}}, {"id":"bad","name":"broken","arguments":{}},
+                    {"id":"valid","name":"good","arguments":{"ok":true}}, {"id":"unnamed","name":"","arguments":[]}
+                ]),
+                "strict" => json!([
+                    {"id":"empty","name":"noop","arguments":{}},
+                    {"id":"valid","name":"good","arguments":{"ok":true}}, {"id":"unnamed","name":"","arguments":[]}
+                ]),
+                _ => json!([
+                    {"id":"empty","name":"noop","arguments":{}}, {"id":"bad","name":"broken","arguments":{}},
+                    {"id":"valid","name":"good","arguments":{"ok":true}}
+                ]),
+            };
+            assert_eq!(calls_json(actual), expected, "{mode}");
+            assert!(acc.is_empty(), "{mode} must drain rejected entries too");
+            assert!(acc.take_finalized().is_empty());
+        }
+    }
+
+    #[test]
+    fn item_fragments_can_precede_metadata_without_losing_order_or_arguments() {
+        let mut acc = StreamToolCallAccumulator::new();
+        acc.append_arguments("late", "{\"city\":");
+        acc.set_item("second", "call_2", "second_tool");
+        acc.append_arguments("second", "{}");
+        acc.set_item("late", "call_1", "weather");
+        acc.append_arguments("late", "\"Paris\"}");
+        acc.append_arguments("orphan", "{}");
+        assert_eq!(
+            calls_json(acc.take_named()),
+            json!([
+                {"id":"call_1","name":"weather","arguments":{"city":"Paris"}},
+                {"id":"call_2","name":"second_tool","arguments":{}}
+            ])
+        );
         assert!(acc.is_empty());
     }
 
     #[test]
-    fn indexed_delta_grows_to_index_and_preserves_order() {
+    fn complete_calls_preserve_every_json_shape_and_distinct_empty_keys() {
         let mut acc = StreamToolCallAccumulator::new();
-        // Deltas can arrive for index 1 before index 0 has all fields, but the
-        // first-seen order is preserved.
-        acc.apply_indexed_delta(0, Some("c0"), Some("first"), Some("{}"));
-        acc.apply_indexed_delta(1, Some("c1"), Some("second"), Some("{}"));
-        let calls = acc.take_finalized();
-        assert_eq!(calls[0].name, "first");
-        assert_eq!(calls[1].name, "second");
-    }
-
-    #[test]
-    fn empty_arguments_finalize_to_empty_object() {
-        let mut acc = StreamToolCallAccumulator::new();
-        acc.apply_indexed_delta(0, Some("c"), Some("noop"), None);
-        let calls = acc.take_finalized();
-        assert_eq!(calls[0].arguments, json!({}));
-    }
-
-    #[test]
-    fn take_finalized_degrades_malformed_json_to_empty_object() {
-        let mut acc = StreamToolCallAccumulator::new();
-        acc.apply_indexed_delta(0, Some("c"), Some("bad"), Some("{not json"));
-        let calls = acc.take_finalized();
-        assert_eq!(calls[0].arguments, json!({}));
-    }
-
-    #[test]
-    fn take_pending_strict_drops_malformed_json() {
-        let mut acc = StreamToolCallAccumulator::new();
-        acc.apply_indexed_delta(0, Some("c"), Some("bad"), Some("{not json"));
-        acc.apply_indexed_delta(1, Some("d"), Some("good"), Some("{\"ok\":true}"));
-        let calls = acc.take_pending_strict();
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "good");
-    }
-
-    #[test]
-    fn item_keyed_flow_matches_open_responses() {
-        let mut acc = StreamToolCallAccumulator::new();
-        acc.set_item("fc_1", "call_1", "get_weather");
-        acc.append_arguments("fc_1", "{\"city\":");
-        acc.append_arguments("fc_1", "\"Paris\"}");
-        let calls = acc.take_named();
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].id, "call_1");
-        assert_eq!(calls[0].name, "get_weather");
-        assert_eq!(calls[0].arguments, json!({"city": "Paris"}));
-    }
-
-    #[test]
-    fn take_named_skips_unnamed_items() {
-        let mut acc = StreamToolCallAccumulator::new();
-        // An arguments delta arrived before the item was announced with a name.
-        acc.append_arguments("fc_orphan", "{}");
-        acc.set_item("fc_1", "call_1", "named");
-        acc.append_arguments("fc_1", "{}");
-        let calls = acc.take_named();
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "named");
-    }
-
-    #[test]
-    fn push_complete_serializes_and_reparses_identically() {
-        let mut acc = StreamToolCallAccumulator::new();
-        acc.push_complete("call_0".into(), "f".into(), json!({"a": 1, "b": "x"}));
-        let calls = acc.take_finalized();
-        assert_eq!(calls[0].arguments, json!({"a": 1, "b": "x"}));
+        acc.push_complete("a".into(), "first".into(), json!({"a":1,"b":"x"}));
+        acc.push_complete(
+            "b".into(),
+            "second".into(),
+            json!([null, true, 9007199254740993_u64, "🦀"]),
+        );
+        acc.push_complete("c".into(), "third".into(), Value::Null);
+        assert_eq!(
+            calls_json(acc.take_finalized()),
+            json!([
+                {"id":"a","name":"first","arguments":{"a":1,"b":"x"}},
+                {"id":"b","name":"second","arguments":[null,true,9007199254740993_u64,"🦀"]},
+                {"id":"c","name":"third","arguments":null}
+            ])
+        );
+        assert!(acc.is_empty());
     }
 }

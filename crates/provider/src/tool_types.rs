@@ -741,586 +741,334 @@ impl ToolResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    fn definition(kind: &str) -> ToolDefinition {
+        serde_json::from_value(json!({"type":kind,"name":"tool","description":"Description","parameters":{"type":"object","properties":{"input":{"type":"string"}},"required":["input"]}})).unwrap()
+    }
 
     #[test]
-    fn test_scheduling_hints_builders_and_accessors() {
-        // A read-only tool declares no class and is not cpu-bound: the scheduler
-        // treats it as freely parallelizable.
-        let reader = ToolDefinition::Builtin(BuiltinTool {
-            name: "read_file".to_string(),
-            display_name: None,
-            description: "read".to_string(),
-            parameters: serde_json::json!({}),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: ToolHints::default().with_readonly(true),
-            full_parameters: None,
-        });
-        assert_eq!(reader.concurrency_class(), None);
-        assert!(!reader.is_cpu_bound());
+    fn tool_variants_have_complete_literal_wire_defaults_and_effective_policies() {
+        for kind in ["builtin", "client_side"] {
+            let tool = definition(kind);
+            let mut expected = json!({"type":kind,"name":"tool","description":"Description","parameters":{"type":"object","properties":{"input":{"type":"string"}},"required":["input"]}});
+            if kind == "builtin" {
+                expected["policy"] = json!("auto");
+            }
+            assert_eq!(serde_json::to_value(&tool).unwrap(), expected);
+            assert_eq!(tool.name(), "tool");
+            assert_eq!(tool.description(), "Description");
+            assert_eq!(tool.display_name(), None);
+            assert_eq!(
+                tool.parameters(),
+                &json!({"type":"object","properties":{"input":{"type":"string"}},"required":["input"]})
+            );
+            assert_eq!(
+                tool.policy(),
+                if kind == "builtin" {
+                    &ToolPolicy::Auto
+                } else {
+                    &ToolPolicy::ClientSide
+                }
+            );
+            assert_eq!(tool.deferrable(), &DeferrablePolicy::Automatic);
+            assert!(tool.hints().is_empty());
+            assert_eq!(tool.concurrency_class(), None);
+            assert!(!tool.is_cpu_bound());
+            assert_eq!(tool.side_effect_class(), SideEffectClass::AtMostOnce);
+        }
+        let mixed:Vec<ToolDefinition>=serde_json::from_value(json!([
+            {"type":"builtin","name":"server","description":"Server","parameters":{},"policy":"requires_approval"},
+            {"type":"client_side","name":"client","description":"Client","parameters":{},"policy":"auto"}
+        ])).unwrap();
+        assert_eq!(
+            (
+                mixed[0].name(),
+                mixed[0].policy(),
+                mixed[1].name(),
+                mixed[1].policy()
+            ),
+            (
+                "server",
+                &ToolPolicy::RequiresApproval,
+                "client",
+                &ToolPolicy::ClientSide
+            )
+        );
+        assert!(matches!(&mixed[0], ToolDefinition::Builtin(_)));
+        assert!(matches!(&mixed[1], ToolDefinition::ClientSide(_)));
+        for (policy, wire) in [
+            (ToolPolicy::Auto, "auto"),
+            (ToolPolicy::RequiresApproval, "requires_approval"),
+            (ToolPolicy::ClientSide, "client_side"),
+        ] {
+            assert_eq!(serde_json::to_value(&policy).unwrap(), json!(wire));
+            assert_eq!(
+                serde_json::from_value::<ToolPolicy>(json!(wire)).unwrap(),
+                policy
+            );
+        }
+    }
 
-        // A mutating, CPU-bound tool surfaces both signals to the scheduler.
-        let bash = ToolDefinition::Builtin(BuiltinTool {
-            name: "bash".to_string(),
-            display_name: None,
-            description: "bash".to_string(),
-            parameters: serde_json::json!({}),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: ToolHints::default()
+    #[test]
+    fn hints_builders_preserve_false_values_metadata_and_scheduling_fields() {
+        for kind in ["builtin", "client_side"] {
+            let reader = definition(kind).with_hints(ToolHints::default().with_readonly(true));
+            assert_eq!(reader.concurrency_class(), None);
+            assert!(!reader.is_cpu_bound());
+            assert_eq!(reader.side_effect_class(), SideEffectClass::AtMostOnce);
+        }
+
+        for value in [false, true] {
+            let hints = ToolHints::default()
+                .with_readonly(value)
+                .with_destructive(value)
+                .with_idempotent(value)
+                .with_open_world(value)
+                .with_requires_secrets(value)
+                .with_long_running(value)
+                .with_supports_background(value)
+                .with_cpu_bound(value)
+                .with_persist_output(value)
                 .with_concurrency_class("session_workspace")
-                .with_cpu_bound(true),
-            full_parameters: None,
-        });
-        assert_eq!(bash.concurrency_class(), Some("session_workspace"));
-        assert!(bash.is_cpu_bound());
-
-        // The new hint fields round-trip through serde.
-        let json = serde_json::to_string(bash.hints()).unwrap();
-        let parsed: ToolHints = serde_json::from_str(&json).unwrap();
-        assert_eq!(
-            parsed.concurrency_class.as_deref(),
-            Some("session_workspace")
-        );
-        assert_eq!(parsed.cpu_bound, Some(true));
-    }
-
-    #[test]
-    fn test_builtin_tool_serialization() {
-        let json = r#"{
-            "type": "builtin",
-            "name": "fetch_data",
-            "description": "Fetch data from URL",
-            "parameters": {"type": "object"}
-        }"#;
-
-        let tool: ToolDefinition = serde_json::from_str(json).unwrap();
-        match tool {
-            ToolDefinition::Builtin(builtin) => {
-                assert_eq!(builtin.name, "fetch_data");
-                assert_eq!(builtin.policy, ToolPolicy::Auto);
+                .with_narration_noun("file")
+                .with_side_effect_class(SideEffectClass::Idempotent)
+                .with_capability_attribution("files", Some("Files"))
+                .with_metadata(json!({"risk_tier":"high","nested":[1,false,null]}));
+            let expected = json!({"readonly":value,"destructive":value,"idempotent":value,"open_world":value,"requires_secrets":value,"long_running":value,"supports_background":value,"cpu_bound":value,"persist_output":value,"concurrency_class":"session_workspace","narration_noun":"file","side_effect_class":"Idempotent","capability_id":"files","capability_name":"Files","metadata":{"risk_tier":"high","nested":[1,false,null]}});
+            assert_eq!(serde_json::to_value(&hints).unwrap(), expected);
+            assert_eq!(
+                serde_json::from_value::<ToolHints>(expected).unwrap(),
+                hints
+            );
+            for kind in ["builtin", "client_side"] {
+                let tool = definition(kind)
+                    .with_hints(hints.clone())
+                    .with_category("workspace")
+                    .with_capability_attribution("new-files", Some("New Files"));
+                assert_eq!(tool.category(), Some("workspace"));
+                assert_eq!(tool.concurrency_class(), Some("session_workspace"));
+                assert_eq!(tool.is_cpu_bound(), value);
+                assert_eq!(tool.side_effect_class(), SideEffectClass::Idempotent);
+                assert_eq!(
+                    tool.capability_attribution(),
+                    Some(("new-files", Some("New Files")))
+                );
+                let mut expected_hints = serde_json::to_value(&hints).unwrap();
+                expected_hints["capability_id"] = json!("new-files");
+                expected_hints["capability_name"] = json!("New Files");
+                assert_eq!(serde_json::to_value(tool.hints()).unwrap(), expected_hints);
             }
-            _ => panic!("expected Builtin variant"),
+        }
+        assert_eq!(
+            serde_json::to_value(ToolHints::default()).unwrap(),
+            json!({})
+        );
+        let metadata = ToolHints::default().with_metadata(json!({"any":"thing"}));
+        assert!(!metadata.is_empty());
+        assert_eq!(
+            serde_json::to_value(metadata).unwrap(),
+            json!({"metadata":{"any":"thing"}})
+        );
+        for class in [
+            SideEffectClass::Pure,
+            SideEffectClass::Idempotent,
+            SideEffectClass::AtMostOnce,
+        ] {
+            assert_eq!(
+                ToolHints::default()
+                    .with_side_effect_class(class.clone())
+                    .effective_side_effect_class(),
+                class
+            );
         }
     }
 
     #[test]
-    fn test_builtin_tool_requires_approval() {
-        let json = r#"{
-            "type": "builtin",
-            "name": "delete_file",
-            "description": "Delete a file",
-            "parameters": {"type": "object"},
-            "policy": "requires_approval"
-        }"#;
-
-        let tool: ToolDefinition = serde_json::from_str(json).unwrap();
-        match tool {
-            ToolDefinition::Builtin(builtin) => {
-                assert_eq!(builtin.policy, ToolPolicy::RequiresApproval);
+    fn tool_display_and_deferred_schemas_survive_both_wire_variants() {
+        for kind in ["builtin", "client_side"] {
+            for (deferrable, wire) in [
+                (DeferrablePolicy::Never, Some("never")),
+                (DeferrablePolicy::Automatic, None),
+                (DeferrablePolicy::Always, Some("always")),
+            ] {
+                let mut payload = json!({"type":kind,"name":"tool","display_name":"Display","description":"Description","parameters":{"type":"object"},"full_parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]},"category":"files"});
+                if let Some(wire) = wire {
+                    payload["deferrable"] = json!(wire);
+                }
+                let tool: ToolDefinition = serde_json::from_value(payload.clone()).unwrap();
+                assert_eq!(tool.display_name(), Some("Display"));
+                assert_eq!(tool.deferrable(), &deferrable);
+                assert_eq!(tool.parameters(), &json!({"type":"object"}));
+                assert_eq!(
+                    tool.full_parameters(),
+                    &json!({"type":"object","properties":{"path":{"type":"string"}},"required":["path"]})
+                );
+                if kind == "builtin" {
+                    payload["policy"] = json!("auto");
+                }
+                assert_eq!(serde_json::to_value(tool).unwrap(), payload);
             }
-            _ => panic!("expected Builtin variant"),
+            let tool = definition(kind);
+            assert_eq!(tool.full_parameters(), tool.parameters());
         }
     }
 
     #[test]
-    fn test_tool_call_serialization() {
-        let tool_call = ToolCall {
-            id: "call_123".to_string(),
-            name: "get_weather".to_string(),
-            arguments: serde_json::json!({"city": "New York"}),
-        };
-
-        let json = serde_json::to_string(&tool_call).unwrap();
-        let parsed: ToolCall = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(parsed.id, tool_call.id);
-        assert_eq!(parsed.name, tool_call.name);
-    }
-
-    #[test]
-    fn test_tool_result_serialization() {
-        let result = ToolResult {
-            tool_call_id: "call_123".to_string(),
-            result: Some(serde_json::json!({"temperature": 72})),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
-        };
-
-        let json = serde_json::to_string(&result).unwrap();
-        let parsed: ToolResult = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(parsed.tool_call_id, result.tool_call_id);
-        assert!(parsed.result.is_some());
-        assert!(parsed.error.is_none());
-    }
-
-    #[test]
-    fn test_tool_definition_accessor_methods() {
-        let tool = ToolDefinition::Builtin(BuiltinTool {
-            name: "test_tool".to_string(),
-            display_name: None,
-            description: "A test tool".to_string(),
-            parameters: serde_json::json!({"type": "object"}),
-            policy: ToolPolicy::RequiresApproval,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: ToolHints::default(),
-            full_parameters: None,
-        });
-
-        assert_eq!(tool.name(), "test_tool");
-        assert_eq!(tool.display_name(), None);
-        assert_eq!(tool.description(), "A test tool");
-        assert_eq!(tool.parameters(), &serde_json::json!({"type": "object"}));
-        assert_eq!(tool.policy(), &ToolPolicy::RequiresApproval);
-    }
-
-    #[test]
-    fn test_tool_definition_display_name_accessor() {
-        let builtin = ToolDefinition::Builtin(BuiltinTool {
-            name: "get_weather".to_string(),
-            display_name: Some("Get Weather".to_string()),
-            description: "Gets weather".to_string(),
-            parameters: serde_json::json!({}),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: ToolHints::default(),
-            full_parameters: None,
-        });
-        assert_eq!(builtin.display_name(), Some("Get Weather"));
-
-        let client = ToolDefinition::ClientSide(ClientSideTool {
-            name: "deploy".to_string(),
-            display_name: Some("Deploy".to_string()),
-            description: "Deploys".to_string(),
-            parameters: serde_json::json!({}),
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: ToolHints::default(),
-            full_parameters: None,
-        });
-        assert_eq!(client.display_name(), Some("Deploy"));
-    }
-
-    #[test]
-    fn test_display_name_serialization_skip_none() {
-        let tool = BuiltinTool {
-            name: "test".to_string(),
-            display_name: None,
-            description: "test".to_string(),
-            parameters: serde_json::json!({}),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: ToolHints::default(),
-            full_parameters: None,
-        };
-        let json = serde_json::to_string(&tool).unwrap();
-        assert!(!json.contains("display_name"));
-
-        let tool_with = BuiltinTool {
-            name: "test".to_string(),
-            display_name: Some("Test".to_string()),
-            description: "test".to_string(),
-            parameters: serde_json::json!({}),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: ToolHints::default(),
-            full_parameters: None,
-        };
-        let json = serde_json::to_string(&tool_with).unwrap();
-        assert!(json.contains("\"display_name\":\"Test\""));
-    }
-
-    #[test]
-    fn test_tool_call_to_openai_format() {
-        let tool_call = ToolCall {
-            id: "call_123".to_string(),
-            name: "get_weather".to_string(),
-            arguments: serde_json::json!({"location": "Tokyo", "units": "celsius"}),
-        };
-
-        let converted = tool_call.to_openai_format();
-
-        assert_eq!(converted["id"], "call_123");
-        assert_eq!(converted["type"], "function");
-        assert_eq!(converted["function"]["name"], "get_weather");
-        // Arguments should be stringified JSON
-        let args: serde_json::Value =
-            serde_json::from_str(converted["function"]["arguments"].as_str().unwrap()).unwrap();
-        assert_eq!(args["location"], "Tokyo");
-        assert_eq!(args["units"], "celsius");
-    }
-
-    #[test]
-    fn test_tool_call_to_openai_format_empty_arguments() {
-        let tool_call = ToolCall {
-            id: "call_456".to_string(),
-            name: "list_files".to_string(),
-            arguments: serde_json::json!({}),
-        };
-
-        let converted = tool_call.to_openai_format();
-
-        assert_eq!(converted["id"], "call_456");
-        assert_eq!(converted["function"]["name"], "list_files");
-        assert_eq!(converted["function"]["arguments"], "{}");
-    }
-
-    #[test]
-    fn test_client_side_tool_serialization() {
-        let json = r#"{
-            "type": "client_side",
-            "name": "browser_click",
-            "description": "Click an element in the browser",
-            "parameters": {"type": "object", "properties": {"selector": {"type": "string"}}}
-        }"#;
-
-        let tool: ToolDefinition = serde_json::from_str(json).unwrap();
-        match &tool {
-            ToolDefinition::ClientSide(client) => {
-                assert_eq!(client.name, "browser_click");
-                assert_eq!(client.description, "Click an element in the browser");
-            }
-            _ => panic!("expected ClientSide variant"),
+    fn tool_call_wire_and_openai_arguments_preserve_the_complete_payload() {
+        for (arguments, text) in [
+            (json!({"city":"New York"}), r#"{"city":"New York"}"#),
+            (json!({}), "{}"),
+            (
+                json!({"count":9007199254740993_u64,"text":"line\nquoted\""}),
+                r#"{"count":9007199254740993,"text":"line\nquoted\""}"#,
+            ),
+        ] {
+            let call = ToolCall {
+                id: "call_123".into(),
+                name: "get_weather".into(),
+                arguments: arguments.clone(),
+            };
+            assert_eq!(
+                serde_json::to_value(&call).unwrap(),
+                json!({"id":"call_123","name":"get_weather","arguments":arguments})
+            );
+            let parsed: ToolCall = serde_json::from_value(
+                json!({"id":"call_123","name":"get_weather","arguments":arguments}),
+            )
+            .unwrap();
+            assert_eq!(parsed.arguments, arguments);
+            assert_eq!(
+                call.to_openai_format(),
+                json!({"id":"call_123","type":"function","function":{"name":"get_weather","arguments":text}})
+            );
         }
-
-        assert_eq!(tool.name(), "browser_click");
-        assert_eq!(tool.policy(), &ToolPolicy::ClientSide);
     }
 
     #[test]
-    fn test_client_side_tool_roundtrip() {
-        let tool = ToolDefinition::ClientSide(ClientSideTool {
-            name: "run_test".to_string(),
-            display_name: None,
-            description: "Run a test suite".to_string(),
-            parameters: serde_json::json!({"type": "object"}),
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: ToolHints::default(),
-            full_parameters: None,
-        });
-
-        let json = serde_json::to_string(&tool).unwrap();
-        let parsed: ToolDefinition = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(parsed.name(), "run_test");
-        assert_eq!(parsed.description(), "Run a test suite");
-        assert_eq!(parsed.policy(), &ToolPolicy::ClientSide);
+    fn tool_result_wire_excludes_raw_output_but_preserves_images_errors_and_data() {
+        let expected = json!({"tool_call_id":"call_123","result":{"temperature":72},"images":[{"base64":"aGk=","media_type":"image/png"}],"error":"partial failure","connection_required":"provider"});
+        let mut injected = expected.clone();
+        injected["raw_output"] = json!("private-raw");
+        let mut result: ToolResult = serde_json::from_value(injected).unwrap();
+        assert!(result.raw_output.is_none());
+        result.raw_output = Some("private-raw".into());
+        assert_eq!(serde_json::to_value(result).unwrap(), expected);
+        assert_eq!(
+            serde_json::to_value(ToolResult::error("failed")).unwrap(),
+            json!({"tool_call_id":"","result":null,"error":"failed"})
+        );
+        let success: ToolResult = serde_json::from_value(
+            json!({"tool_call_id":"call_123","result":{"temperature":72},"error":null}),
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(success).unwrap(),
+            json!({"tool_call_id":"call_123","result":{"temperature":72},"error":null})
+        );
     }
 
     #[test]
-    fn test_client_side_tool_accessor_methods() {
-        let tool = ToolDefinition::ClientSide(ClientSideTool {
-            name: "deploy_app".to_string(),
-            display_name: None,
-            description: "Deploy application to staging".to_string(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "env": {"type": "string"}
-                },
-                "required": ["env"]
+    fn narration_schema_is_optional_idempotent_and_does_not_mutate_input_definitions() {
+        let original = vec![definition("builtin"), definition("client_side")];
+        let before = serde_json::to_value(&original).unwrap();
+        let augmented = add_human_intent_to_tool_definitions(&original);
+        assert_eq!(serde_json::to_value(&original).unwrap(), before);
+        let property = json!({"type":"string","description":"Short user-facing narration of what this tool call will do, written as an action phrase like \"Listing all harnesses\". Do not include hidden reasoning, private chain of thought, secrets, or credential values.","maxLength":120});
+        for tool in &augmented {
+            assert_eq!(
+                tool.parameters(),
+                &json!({"type":"object","properties":{"input":{"type":"string"},"human_intent":property},"required":["input"]})
+            );
+        }
+        assert_eq!(
+            serde_json::to_value(add_human_intent_to_tool_definitions(&augmented)).unwrap(),
+            serde_json::to_value(&augmented).unwrap()
+        );
+        let mut closed = json!({"properties":{"operation":{"type":"string","enum":["list"]}},"required":["operation"],"additionalProperties":false});
+        add_human_intent_to_schema(&mut closed);
+        assert_eq!(
+            closed,
+            json!({"type":"object","properties":{"operation":{"type":"string","enum":["list"]},"human_intent":property},"required":["operation"],"additionalProperties":false})
+        );
+        let mut empty = json!({});
+        add_human_intent_to_schema(&mut empty);
+        assert_eq!(
+            empty,
+            json!({"type":"object","properties":{"human_intent":property}})
+        );
+        for mut scalar in [json!(null), json!(false), json!([])] {
+            let before = scalar.clone();
+            add_human_intent_to_schema(&mut scalar);
+            assert_eq!(scalar, before);
+        }
+    }
+
+    #[test]
+    fn execution_strips_only_top_level_narration_and_trims_display_text() {
+        for (value, expected) in [
+            (
+                json!(" Listing all harnesses "),
+                Some("Listing all harnesses"),
+            ),
+            (json!(" \t"), None),
+            (json!(7), None),
+            (json!(null), None),
+        ] {
+            let arguments = json!({"operation":"list","human_intent":value,"nested":{"human_intent":"ordinary data"}});
+            let call = ToolCall {
+                id: "call".into(),
+                name: "manage_harnesses".into(),
+                arguments: arguments.clone(),
+            };
+            assert_eq!(human_intent(&call.arguments), expected);
+            assert_eq!(
+                call.execution_arguments(),
+                json!({"operation":"list","nested":{"human_intent":"ordinary data"}})
+            );
+            assert_eq!(call.arguments, arguments);
+        }
+        for value in [json!(null), json!([1, "text"]), json!({"operation":"list"})] {
+            assert_eq!(strip_human_intent_argument(&value), value);
+            assert_eq!(human_intent(&value), None);
+        }
+    }
+
+    #[test]
+    fn url_elicitation_requires_discriminator_and_complete_payload() {
+        let payload = json!({"code":"url_elicitation_required","error":"Waiting","url":"https://consent.example/path","url_host":"consent.example","url_is_punycode":false,"server":"server","tool":"tool","retry_tool":"mcp_server_tool","message":"Connect account","declined":false});
+        let mut result = ToolResult::error("unrelated");
+        result.result = Some(payload.clone());
+        assert_eq!(
+            serde_json::to_value(UrlElicitationRequired::from_tool_result(&result).unwrap())
+                .unwrap(),
+            payload
+        );
+        let mut declined = payload.clone();
+        declined["declined"] = json!(true);
+        result.result = Some(declined.clone());
+        assert_eq!(
+            serde_json::to_value(UrlElicitationRequired::from_tool_result(&result).unwrap())
+                .unwrap(),
+            declined
+        );
+        for malformed in [
+            None,
+            Some(json!(null)),
+            Some(json!({"code":"url_elicitation_required"})),
+            Some({
+                let mut value = payload.clone();
+                value["code"] = json!("connection_required");
+                value
             }),
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: ToolHints::default(),
-            full_parameters: None,
-        });
-
-        assert_eq!(tool.name(), "deploy_app");
-        assert_eq!(tool.description(), "Deploy application to staging");
-        assert_eq!(tool.policy(), &ToolPolicy::ClientSide);
-        assert!(tool.parameters().get("properties").is_some());
-    }
-
-    #[test]
-    fn test_client_side_tool_policy_always_client_side() {
-        // ClientSide variant always returns ClientSide policy regardless of content
-        let tool = ToolDefinition::ClientSide(ClientSideTool {
-            name: "any_tool".to_string(),
-            display_name: None,
-            description: "".to_string(),
-            parameters: serde_json::json!({}),
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: ToolHints::default(),
-            full_parameters: None,
-        });
-        assert_eq!(tool.policy(), &ToolPolicy::ClientSide);
-    }
-
-    #[test]
-    fn test_tool_policy_serialization() {
-        assert_eq!(
-            serde_json::to_string(&ToolPolicy::ClientSide).unwrap(),
-            r#""client_side""#
-        );
-        assert_eq!(
-            serde_json::to_string(&ToolPolicy::Auto).unwrap(),
-            r#""auto""#
-        );
-        assert_eq!(
-            serde_json::to_string(&ToolPolicy::RequiresApproval).unwrap(),
-            r#""requires_approval""#
-        );
-    }
-
-    #[test]
-    fn test_mixed_tool_definitions_in_vec() {
-        let tools = vec![
-            ToolDefinition::Builtin(BuiltinTool {
-                name: "server_tool".to_string(),
-                display_name: None,
-                description: "A server tool".to_string(),
-                parameters: serde_json::json!({"type": "object"}),
-                policy: ToolPolicy::Auto,
-                category: None,
-                deferrable: DeferrablePolicy::default(),
-                hints: ToolHints::default(),
-                full_parameters: None,
+            Some({
+                let mut value = payload.clone();
+                value["declined"] = json!("false");
+                value
             }),
-            ToolDefinition::ClientSide(ClientSideTool {
-                name: "client_tool".to_string(),
-                display_name: None,
-                description: "A client tool".to_string(),
-                parameters: serde_json::json!({"type": "object"}),
-                category: None,
-                deferrable: DeferrablePolicy::default(),
-                hints: ToolHints::default(),
-                full_parameters: None,
-            }),
-        ];
-
-        let json = serde_json::to_string(&tools).unwrap();
-        let parsed: Vec<ToolDefinition> = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(parsed.len(), 2);
-        assert!(matches!(&parsed[0], ToolDefinition::Builtin(_)));
-        assert!(matches!(&parsed[1], ToolDefinition::ClientSide(_)));
-        assert_eq!(parsed[0].policy(), &ToolPolicy::Auto);
-        assert_eq!(parsed[1].policy(), &ToolPolicy::ClientSide);
-    }
-
-    #[test]
-    fn test_tool_hints_default_is_empty() {
-        let hints = ToolHints::default();
-        assert!(hints.is_empty());
-        assert_eq!(hints.readonly, None);
-        assert_eq!(hints.destructive, None);
-        assert_eq!(hints.idempotent, None);
-        assert_eq!(hints.open_world, None);
-        assert_eq!(hints.requires_secrets, None);
-        assert_eq!(hints.long_running, None);
-    }
-
-    #[test]
-    fn test_tool_hints_builder() {
-        let hints = ToolHints::default()
-            .with_readonly(true)
-            .with_destructive(false)
-            .with_idempotent(true)
-            .with_open_world(true)
-            .with_requires_secrets(true)
-            .with_long_running(false);
-
-        assert!(!hints.is_empty());
-        assert_eq!(hints.readonly, Some(true));
-        assert_eq!(hints.destructive, Some(false));
-        assert_eq!(hints.idempotent, Some(true));
-        assert_eq!(hints.open_world, Some(true));
-        assert_eq!(hints.requires_secrets, Some(true));
-        assert_eq!(hints.long_running, Some(false));
-    }
-
-    #[test]
-    fn test_tool_hints_serialization_skip_empty() {
-        let tool = BuiltinTool {
-            name: "test".to_string(),
-            display_name: None,
-            description: "test".to_string(),
-            parameters: serde_json::json!({}),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: ToolHints::default(),
-            full_parameters: None,
-        };
-        let json = serde_json::to_string(&tool).unwrap();
-        assert!(!json.contains("hints"), "empty hints should be skipped");
-    }
-
-    #[test]
-    fn test_tool_hints_serialization_present() {
-        let tool = BuiltinTool {
-            name: "test".to_string(),
-            display_name: None,
-            description: "test".to_string(),
-            parameters: serde_json::json!({}),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: ToolHints::default()
-                .with_readonly(true)
-                .with_idempotent(true),
-            full_parameters: None,
-        };
-        let json = serde_json::to_string(&tool).unwrap();
-        assert!(json.contains("\"hints\""));
-        assert!(json.contains("\"readonly\":true"));
-        assert!(json.contains("\"idempotent\":true"));
-        // Unset hints should not appear
-        assert!(!json.contains("destructive"));
-        assert!(!json.contains("open_world"));
-    }
-
-    #[test]
-    fn test_tool_hints_deserialization_missing() {
-        let json = r#"{
-            "type": "builtin",
-            "name": "test",
-            "description": "test",
-            "parameters": {}
-        }"#;
-        let tool: ToolDefinition = serde_json::from_str(json).unwrap();
-        assert!(tool.hints().is_empty());
-    }
-
-    #[test]
-    fn test_tool_hints_deserialization_present() {
-        let json = r#"{
-            "type": "builtin",
-            "name": "test",
-            "description": "test",
-            "parameters": {},
-            "hints": {"readonly": true, "open_world": true, "requires_secrets": true}
-        }"#;
-        let tool: ToolDefinition = serde_json::from_str(json).unwrap();
-        let hints = tool.hints();
-        assert_eq!(hints.readonly, Some(true));
-        assert_eq!(hints.open_world, Some(true));
-        assert_eq!(hints.requires_secrets, Some(true));
-        assert_eq!(hints.destructive, None);
-        assert_eq!(hints.idempotent, None);
-        assert_eq!(hints.long_running, None);
-    }
-
-    #[test]
-    fn test_tool_definition_with_hints_builder() {
-        let tool = ToolDefinition::Builtin(BuiltinTool {
-            name: "test".to_string(),
-            display_name: None,
-            description: "test".to_string(),
-            parameters: serde_json::json!({}),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: ToolHints::default(),
-            full_parameters: None,
-        })
-        .with_hints(ToolHints::default().with_readonly(true));
-
-        assert_eq!(tool.hints().readonly, Some(true));
-    }
-
-    #[test]
-    fn test_with_human_intent_argument_adds_optional_schema_property() {
-        let tool = ToolDefinition::Builtin(BuiltinTool {
-            name: "manage_harnesses".to_string(),
-            display_name: Some("Manage Harnesses".to_string()),
-            description: "Manage harnesses".to_string(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "operation": { "type": "string", "enum": ["list"] }
-                },
-                "required": ["operation"],
-                "additionalProperties": false
-            }),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: ToolHints::default(),
-            full_parameters: None,
-        })
-        .with_human_intent_argument();
-
-        let params = tool.parameters();
-        assert_eq!(
-            params["properties"][HUMAN_INTENT_ARGUMENT]["type"],
-            "string"
-        );
-        assert!(
-            params["properties"][HUMAN_INTENT_ARGUMENT]["description"]
-                .as_str()
-                .unwrap()
-                .contains("Listing all harnesses")
-        );
-        assert!(
-            !params["required"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|item| item.as_str() == Some(HUMAN_INTENT_ARGUMENT))
-        );
-        assert_eq!(params["additionalProperties"], false);
-    }
-
-    #[test]
-    fn test_tool_call_execution_arguments_strip_human_intent() {
-        let tool_call = ToolCall {
-            id: "call_1".to_string(),
-            name: "manage_harnesses".to_string(),
-            arguments: serde_json::json!({
-                "operation": "list",
-                "human_intent": "Listing all harnesses"
-            }),
-        };
-
-        assert_eq!(
-            tool_call.execution_arguments(),
-            serde_json::json!({ "operation": "list" })
-        );
-        assert_eq!(
-            human_intent(&tool_call.arguments),
-            Some("Listing all harnesses")
-        );
-    }
-
-    #[test]
-    fn tool_hints_metadata_is_an_opaque_host_owned_hatch() {
-        let hints = ToolHints::default()
-            .with_readonly(true)
-            .with_metadata(serde_json::json!({"risk_tier": "high"}));
-
-        // Core does not interpret it, but it survives the definition's
-        // serialization so a consumer sees it at the point of decision.
-        let json = serde_json::to_value(&hints).unwrap();
-        assert_eq!(json["metadata"]["risk_tier"], "high");
-        let restored: ToolHints = serde_json::from_value(json).unwrap();
-        assert_eq!(restored, hints);
-
-        // Absent metadata stays off the wire, so existing payloads are byte-identical.
-        let bare = serde_json::to_value(ToolHints::default().with_readonly(true)).unwrap();
-        assert!(bare.get("metadata").is_none());
-    }
-
-    #[test]
-    fn tool_hints_with_only_metadata_are_not_empty() {
-        assert!(ToolHints::default().is_empty());
-        assert!(
-            !ToolHints::default()
-                .with_metadata(serde_json::json!({"any": "thing"}))
-                .is_empty(),
-            "metadata alone must keep the hints serialized"
-        );
+        ] {
+            result.result = malformed;
+            assert!(UrlElicitationRequired::from_tool_result(&result).is_none());
+        }
     }
 }

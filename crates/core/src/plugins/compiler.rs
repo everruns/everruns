@@ -777,12 +777,13 @@ fn validate_agent_plugins_remote_url(raw_url: &str) -> Result<(), String> {
         return Err("remote MCP URL cannot contain a fragment".to_string());
     }
     let host = url
-        .host_str()
+        .host()
         .ok_or_else(|| "remote MCP URL must contain a host".to_string())?;
-    let is_loopback = host.eq_ignore_ascii_case("localhost")
-        || host
-            .parse::<std::net::IpAddr>()
-            .is_ok_and(|address| address.is_loopback());
+    let is_loopback = match host {
+        url::Host::Domain(name) => name.eq_ignore_ascii_case("localhost"),
+        url::Host::Ipv4(address) => address.is_loopback(),
+        url::Host::Ipv6(address) => address.is_loopback(),
+    };
     match url.scheme() {
         "https" => Ok(()),
         "http" if is_loopback => Ok(()),
@@ -883,8 +884,6 @@ fn parse_simple_frontmatter(content: &str) -> (Option<String>, Option<String>, &
 mod tests {
     use super::*;
 
-    // ---- fixture integration test ----
-
     #[test]
     fn compile_microsoft_docs_fixture() {
         let fixture = std::path::Path::new(concat!(
@@ -956,10 +955,10 @@ mod tests {
 
     #[test]
     fn compile_first_party_portable_plugins() {
-        for (name, version) in [
-            ("everruns", "0.1.6"),
-            ("everruns-dev", "0.1.6"),
-            ("resend", "0.1.1"),
+        for (name, url) in [
+            ("everruns", "https://app.everruns.com/mcp"),
+            ("everruns-dev", "https://dev.everruns.com/mcp"),
+            ("resend", "https://mcp.resend.com/mcp"),
         ] {
             let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../plugins")
@@ -968,7 +967,7 @@ mod tests {
             let compiled = compile_plugin(&file_set).expect("compile first-party plugin");
 
             assert!(compiled.manifest.is_agent_plugins_v1());
-            assert_eq!(compiled.manifest.version.as_deref(), Some(version));
+            assert_eq!(compiled.definition.name, name);
             let server = compiled
                 .definition
                 .mcp_servers
@@ -976,27 +975,9 @@ mod tests {
                 .and_then(|servers| servers.get(name))
                 .expect("portable MCP server");
             assert_eq!(server.auth_mode, McpServerAuthMode::OAuth);
+            assert_eq!(server.url, url);
+            assert!(server.oauth_provider_id.is_none());
         }
-    }
-
-    #[test]
-    fn compiles_agent_plugins_v1_root_manifest_without_description() {
-        let mut files = std::collections::BTreeMap::new();
-        files.insert(
-            "plugin.json".to_string(),
-            serde_json::json!({
-                "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-                "name": "3.acme-tools"
-            })
-            .to_string()
-            .into_bytes(),
-        );
-        let file_set = PluginFileSet::from_map("ignored-directory-name", files).unwrap();
-
-        let compiled = compile_plugin(&file_set).expect("canonical plugin should compile");
-
-        assert_eq!(compiled.definition.name, "3.acme-tools");
-        assert_eq!(compiled.definition.description, "Agent plugin 3.acme-tools");
     }
 
     #[test]
@@ -1052,6 +1033,10 @@ mod tests {
         let remote = servers.get("remote").expect("remote server");
         assert_eq!(remote.url, "https://example.com/mcp");
         assert_eq!(remote.auth_mode, McpServerAuthMode::OAuth);
+        assert_eq!(
+            serde_json::to_value(remote).unwrap(),
+            serde_json::json!({"type":"http","url":"https://example.com/mcp","auth_mode":"oauth","headers":{"X-Tenant":"public"}})
+        );
         assert!(
             compiled
                 .warnings
@@ -1066,364 +1051,300 @@ mod tests {
         );
     }
 
-    #[test]
-    fn rejects_unsupported_agent_plugins_schema() {
-        let mut files = std::collections::BTreeMap::new();
-        files.insert(
-            "plugin.json".to_string(),
-            serde_json::json!({
-                "$schema": "https://agent-plugins.org/schemas/2.0.0/plugin.schema.json",
-                "name": "future-plugin"
-            })
-            .to_string()
-            .into_bytes(),
+    fn package(
+        canonical: bool,
+        manifest: serde_json::Value,
+        files: &[(&str, &[u8])],
+    ) -> PluginFileSet {
+        let mut contents: BTreeMap<String, Vec<u8>> = files
+            .iter()
+            .map(|(p, b)| (p.to_string(), b.to_vec()))
+            .collect();
+        contents.insert(
+            if canonical {
+                "plugin.json"
+            } else {
+                ".claude-plugin/plugin.json"
+            }
+            .into(),
+            serde_json::to_vec(&manifest).unwrap(),
         );
-        let file_set = PluginFileSet::from_map("future-plugin", files).unwrap();
+        PluginFileSet::from_map("ignored", contents).unwrap()
+    }
 
-        let error = compile_plugin(&file_set).unwrap_err();
-
-        assert!(
-            error.contains("unsupported Agent Plugins schema"),
-            "{error}"
-        );
+    fn portable_manifest() -> serde_json::Value {
+        serde_json::json!({"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"portable-tools"})
     }
 
     #[test]
-    fn invalid_agent_plugins_mcp_disables_only_mcp() {
-        let mut files = std::collections::BTreeMap::new();
-        files.insert(
-            "plugin.json".to_string(),
-            serde_json::json!({
-                "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-                "name": "portable-tools"
-            })
-            .to_string()
-            .into_bytes(),
-        );
-        files.insert("mcp.json".to_string(), br#"{"mcpServers":{}}"#.to_vec());
-        let file_set = PluginFileSet::from_map("portable-tools", files).unwrap();
-
-        let compiled = compile_plugin(&file_set).expect("plugin remains valid");
-
-        assert!(compiled.definition.mcp_servers.is_none());
-        assert!(
-            compiled
-                .warnings
-                .iter()
-                .any(|warning| warning.contains("mcp.json"))
-        );
-    }
-
-    // ---- targeted unit tests ----
-
-    #[test]
-    fn traversal_rejection() {
-        // The OS won't allow `..` in actual directory paths, so we test the
-        // name validation logic that rejects traversal-like plugin names and
-        // also verify the file_set traversal guard via file_set::tests.
-        // `../evil` fails at the first char check (not lowercase).
-        let err = sanitize_plugin_name("../evil").unwrap_err();
-        assert!(err.contains("must start with a lowercase letter"), "{err}");
-        // A name that starts with a letter but contains traversal separators.
-        let err2 = sanitize_plugin_name("a/b").unwrap_err();
-        assert!(err2.contains("only contain"), "{err2}");
-    }
-
-    fn icon_plugin(icon: Option<&str>, asset: Option<&str>) -> CompiledPlugin {
-        let mut files = BTreeMap::new();
-        files.insert(
-            ".claude-plugin/plugin.json".to_string(),
-            serde_json::json!({
-                "name": "icon-test",
-                "description": "Icon test plugin",
-                "icon": icon,
-            })
-            .to_string()
-            .into_bytes(),
-        );
-        if let Some(asset) = asset {
-            files.insert("assets/icon.svg".to_string(), asset.as_bytes().to_vec());
+    fn names_and_descriptions_follow_each_manifest_dialect() {
+        for name in ["3.acme-tools".to_string(), "a".repeat(64)] {
+            let mut manifest = portable_manifest();
+            manifest["name"] = name.clone().into();
+            let compiled = compile_plugin(&package(true, manifest, &[])).unwrap();
+            assert_eq!(compiled.definition.name, name);
+            assert_eq!(
+                compiled.definition.description,
+                format!("Agent plugin {name}")
+            );
         }
-        let file_set = PluginFileSet::from_map("icon-test", files).unwrap();
-        compile_plugin(&file_set).unwrap()
-    }
-
-    #[test]
-    fn bundled_safe_svg_icon_is_embedded() {
-        let compiled = icon_plugin(
-            Some("./assets/icon.svg"),
-            Some(r##"<svg viewBox="0 0 16 16"><path fill="#456" d="M0 0h16v16H0z"/></svg>"##),
-        );
-
-        assert!(
-            compiled
-                .definition
-                .icon
-                .as_deref()
+        for name in [
+            "a".repeat(65),
+            "bad_name".into(),
+            "bad..name".into(),
+            "bad--name".into(),
+            "Bad".into(),
+        ] {
+            let mut manifest = portable_manifest();
+            manifest["name"] = name.into();
+            assert!(compile_plugin(&package(true, manifest, &[])).is_err());
+        }
+        let legacy = |name: &str, description: serde_json::Value| {
+            package(
+                false,
+                serde_json::json!({"name":name,"description":description}),
+                &[],
+            )
+        };
+        let accepted = "a".repeat(38);
+        assert_eq!(
+            compile_plugin(&legacy(&accepted, "description".into()))
                 .unwrap()
-                .starts_with("data:image/svg+xml;base64,")
+                .definition
+                .name,
+            accepted
         );
-        assert!(compiled.warnings.is_empty());
+        for name in [
+            "a".repeat(39),
+            "a".repeat(44),
+            "../evil".into(),
+            "a/b".into(),
+            "a_".into(),
+            "A".into(),
+            "".into(),
+        ] {
+            assert!(
+                compile_plugin(&legacy(&name, "description".into())).is_err(),
+                "{name}"
+            );
+        }
+        for description in [serde_json::Value::Null, "".into(), "   ".into()] {
+            assert_eq!(
+                compile_plugin(&legacy("valid", description)).unwrap_err(),
+                "plugin manifest is missing a 'description' field"
+            );
+        }
+        let mut manifest = portable_manifest();
+        manifest["$schema"] = "https://agent-plugins.org/schemas/2.0.0/plugin.schema.json".into();
+        assert_eq!(
+            compile_plugin(&package(true, manifest, &[])).unwrap_err(),
+            "unsupported Agent Plugins schema 'https://agent-plugins.org/schemas/2.0.0/plugin.schema.json'; supported schema is https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
+        );
     }
 
     #[test]
-    fn missing_malformed_and_remote_icons_use_plugin_fallback() {
-        for (icon, asset) in [
-            (Some("assets/missing.svg"), None),
+    fn invalid_portable_mcp_keeps_valid_skill_content() {
+        for (mcp, warning) in [
+            ("{", "mcp.json is invalid JSON and was disabled:"),
+            (
+                "[]",
+                "mcp.json must contain a JSON object; MCP was disabled",
+            ),
+            (
+                r#"{"mcpServers":{}}"#,
+                "mcp.json uses an unsupported or mismatched schema; expected",
+            ),
+            (
+                r#"{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json"}"#,
+                "mcp.json is missing the required 'mcpServers' object",
+            ),
+        ] {
+            let fs=package(true,portable_manifest(), &[("mcp.json",mcp.as_bytes()),("skills/useful/SKILL.md",b"---\nname: useful\ndescription: useful skill\n---\nKeep this instruction.")]);
+            let compiled = compile_plugin(&fs).unwrap();
+            assert!(compiled.definition.mcp_servers.is_none());
+            assert_eq!(compiled.definition.skills.len(), 1);
+            assert_eq!(compiled.definition.skills[0].name, "useful");
+            assert_eq!(
+                compiled.definition.skills[0].instructions,
+                "Keep this instruction."
+            );
+            assert_eq!(compiled.warnings.len(), 1);
+            assert!(
+                compiled.warnings[0].starts_with(warning),
+                "{:?}",
+                compiled.warnings
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_mcp_preserves_public_config_and_rejects_provider_binding() {
+        let fs=package(false,serde_json::json!({"name":"legacy","description":"legacy plugin"}),&[(".mcp.json",br#"{"mcpServers":{
+            "oauth":{"url":"https://example.com/mcp","auth":"oauth","headers":{"X-Custom":"1","X-Bad":5},"oauth_provider_id":"github"},
+            "unsupported":{"url":"https://example.com/other","auth":"api_key"},
+            "alias":{"url":"https://example.com/alias","auth_mode":"OAUTH"},
+            "local":{"type":"stdio","command":"npx"}
+        }}"#)]);
+        let compiled = compile_plugin(&fs).unwrap();
+        assert_eq!(
+            serde_json::to_value(compiled.definition.mcp_servers).unwrap(),
+            serde_json::json!({
+                "oauth":{"type":"http","url":"https://example.com/mcp","auth_mode":"oauth","headers":{"X-Custom":"1"}},
+                "unsupported":{"type":"http","url":"https://example.com/other"},
+                "alias":{"type":"http","url":"https://example.com/alias","auth_mode":"oauth"}
+            })
+        );
+        assert_eq!(
+            compiled.warnings,
+            [
+                "MCP server 'local': stdio transport is not supported in v1 and will be skipped",
+                "MCP server 'oauth': header 'X-Bad' is not a string and will be ignored",
+                "MCP server 'oauth': 'oauth_provider_id' cannot be set by a plugin and will be ignored",
+                "MCP server 'unsupported': auth mode 'api_key' is not supported for plugin servers and will be ignored",
+            ]
+        );
+    }
+
+    #[test]
+    fn bundled_icons_preserve_bytes_and_unsafe_inputs_use_fallback() {
+        for (icon, asset, expected_warning) in [
+            (None, None, None),
+            (
+                Some("assets/missing.svg"),
+                None,
+                Some("missing or is not UTF-8"),
+            ),
+            (
+                Some("https://tracker.example/icon.svg"),
+                None,
+                Some("relative path"),
+            ),
+            (Some("../icon.svg"), None, Some("relative path")),
+            (Some("data:image/svg+xml,test"), None, Some("relative path")),
             (
                 Some("assets/icon.svg"),
-                Some(r#"<svg><script>alert(1)</script></svg>"#),
+                Some("not svg"),
+                Some("expected an SVG root"),
             ),
-            (Some("https://tracker.example/icon.svg"), None),
+            (
+                Some("assets/icon.svg"),
+                Some("<svg><script>alert(1)</script></svg>"),
+                Some("active or external content"),
+            ),
+            (
+                Some("assets/icon.svg"),
+                Some("<svg onload='run()'></svg>"),
+                Some("event handler"),
+            ),
+            (
+                Some("assets/icon.svg"),
+                Some("<svg><use href='#x'/></svg>"),
+                Some("active or external content"),
+            ),
         ] {
-            let compiled = icon_plugin(icon, asset);
+            let files = asset
+                .map(|s| vec![("assets/icon.svg", s.as_bytes())])
+                .unwrap_or_default();
+            let compiled = compile_plugin(&package(
+                false,
+                serde_json::json!({"name":"icons","description":"icons","icon":icon}),
+                &files,
+            ))
+            .unwrap();
             assert_eq!(compiled.definition.icon.as_deref(), Some("puzzle"));
-            assert!(
-                compiled
-                    .warnings
-                    .iter()
-                    .any(|warning| warning.contains("icon"))
-            );
+            match expected_warning {
+                Some(w) => {
+                    assert_eq!(compiled.warnings.len(), 1);
+                    assert!(compiled.warnings[0].contains(w), "{:?}", compiled.warnings);
+                }
+                None => assert!(compiled.warnings.is_empty()),
+            }
         }
-    }
-
-    #[test]
-    fn missing_icon_uses_plugin_fallback_without_warning() {
-        let compiled = icon_plugin(None, None);
-
-        assert_eq!(compiled.definition.icon.as_deref(), Some("puzzle"));
+        let compiled = compile_plugin(&package(
+            false,
+            serde_json::json!({"name":"icons","description":"icons","icon":"./assets/icon.svg"}),
+            &[("assets/icon.svg", b"<svg></svg>")],
+        ))
+        .unwrap();
+        assert_eq!(
+            compiled.definition.icon.as_deref(),
+            Some("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=")
+        );
         assert!(compiled.warnings.is_empty());
     }
 
     #[test]
-    fn stdio_mcp_produces_warning() {
-        let mut warnings = Vec::new();
-        let file_set_files = {
-            let mut f = std::collections::BTreeMap::new();
-            f.insert(
-                ".claude-plugin/plugin.json".to_string(),
-                serde_json::json!({
-                    "name": "test-plugin",
-                    "description": "A test plugin."
-                })
-                .to_string()
-                .into_bytes(),
-            );
-            f.insert(
-                ".mcp.json".to_string(),
-                serde_json::json!({
-                    "mcpServers": {
-                        "my-server": {
-                            "type": "stdio",
-                            "command": "npx",
-                            "args": ["-y", "@some/mcp-server"]
-                        }
-                    }
-                })
-                .to_string()
-                .into_bytes(),
-            );
-            f
-        };
-        let file_set = PluginFileSet {
-            files: file_set_files,
-            dir_name: "test-plugin".to_string(),
-        };
-        let manifest = PluginManifest {
-            schema: None,
-            name: "test-plugin".to_string(),
-            display_name: None,
-            version: None,
-            description: Some("test".to_string()),
-            author: None,
-            homepage: None,
-            repository: None,
-            license: None,
-            keywords: Vec::new(),
-            icon: None,
-            extensions: Default::default(),
-            skills: None,
-            commands: None,
-            agents: None,
-            mcp_servers: None,
-            extra: Default::default(),
-        };
-        let result = compile_mcp_servers(&file_set, &manifest, &mut warnings);
-        assert!(result.is_ok());
-        assert!(
-            warnings.iter().any(|w| w.contains("stdio")),
-            "expected stdio warning, got: {warnings:?}"
-        );
-        // No servers compiled since only one was stdio.
-        assert!(result.unwrap().is_none());
-    }
-
-    #[test]
-    fn oauth_mcp_server_preserves_auth_and_headers() {
-        let mut warnings = Vec::new();
-        let file_set = PluginFileSet {
-            files: {
-                let mut f = std::collections::BTreeMap::new();
-                f.insert(
-                    ".mcp.json".to_string(),
-                    serde_json::json!({
-                        "mcpServers": {
-                            "resend": {
-                                "type": "http",
-                                "url": "https://mcp.resend.com/mcp",
-                                "auth": "oauth",
-                                "headers": { "X-Custom": "1", "X-Bad": 5 },
-                                "oauth_provider_id": "github"
-                            }
-                        }
-                    })
-                    .to_string()
-                    .into_bytes(),
-                );
-                f
-            },
-            dir_name: "resend".to_string(),
-        };
-        let manifest = PluginManifest {
-            schema: None,
-            name: "resend".to_string(),
-            display_name: None,
-            version: None,
-            description: Some("test".to_string()),
-            author: None,
-            homepage: None,
-            repository: None,
-            license: None,
-            keywords: Vec::new(),
-            icon: None,
-            extensions: Default::default(),
-            skills: None,
-            commands: None,
-            agents: None,
-            mcp_servers: None,
-            extra: Default::default(),
-        };
-        let servers = compile_mcp_servers(&file_set, &manifest, &mut warnings)
-            .expect("compile")
-            .expect("servers");
-        let server = servers.get("resend").expect("resend server");
-        assert_eq!(server.auth_mode, McpServerAuthMode::OAuth);
-        // Plugin content must never bind a provider id; the host assigns it
-        // at install time.
-        assert!(server.oauth_provider_id.is_none());
+    fn component_overrides_preserve_prompts_commands_and_nested_skill_files() {
+        let fs=package(false,serde_json::json!({"name":"components","description":"components","agents":["./custom-agents/"],"commands":"./custom-commands/","skills":["./custom-skills/"]}),&[
+            ("custom-agents/b.md",b"Second agent."),
+            ("custom-agents/a.md",b"---\nname: A & B\ndescription: <quoted>\n---\n First agent. \n"),
+            ("custom-commands/run.md",b"---\nname: run\ndescription: Run a task\n---\nExecute $ARGUMENTS."),
+            ("custom-skills/useful/SKILL.md",b"---\nname: useful\ndescription: Useful skill\nuser-invocable: false\ndisable-model-invocation: true\n---\nInstructions."),
+            ("custom-skills/useful/nested/readme.txt",b"Reference bytes.\n"),
+            ("custom-skills/useful/binary.bin",&[0xff]),
+            ("agents/ignored.md",b"Ignored agent."),
+            ("commands/ignored.md",b"Ignored command."),
+        ]);
+        let compiled = compile_plugin(&fs).unwrap();
         assert_eq!(
-            server.headers.get("X-Custom").map(String::as_str),
-            Some("1")
+            compiled.definition.system_prompt.as_deref(),
+            Some(
+                "<agent name=\"A &amp; B\" description=\"&lt;quoted&gt;\">\nFirst agent.\n</agent>\n\n<agent name=\"b\">\nSecond agent.\n</agent>"
+            )
         );
-        assert!(!server.headers.contains_key("X-Bad"));
-        assert!(
-            warnings
-                .iter()
-                .any(|w| w.contains("oauth_provider_id") && w.contains("ignored")),
-            "expected oauth_provider_id warning, got: {warnings:?}"
-        );
-        assert!(
-            warnings.iter().any(|w| w.contains("X-Bad")),
-            "expected non-string header warning, got: {warnings:?}"
-        );
-    }
-
-    #[test]
-    fn unsupported_auth_mode_produces_warning() {
-        let mut warnings = Vec::new();
-        let file_set = PluginFileSet {
-            files: {
-                let mut f = std::collections::BTreeMap::new();
-                f.insert(
-                    ".mcp.json".to_string(),
-                    serde_json::json!({
-                        "mcpServers": {
-                            "svc": { "url": "https://example.com/mcp", "auth": "api_key" }
-                        }
-                    })
-                    .to_string()
-                    .into_bytes(),
-                );
-                f
-            },
-            dir_name: "svc".to_string(),
-        };
-        let manifest = PluginManifest {
-            schema: None,
-            name: "svc".to_string(),
-            display_name: None,
-            version: None,
-            description: Some("test".to_string()),
-            author: None,
-            homepage: None,
-            repository: None,
-            license: None,
-            keywords: Vec::new(),
-            icon: None,
-            extensions: Default::default(),
-            skills: None,
-            commands: None,
-            agents: None,
-            mcp_servers: None,
-            extra: Default::default(),
-        };
-        let servers = compile_mcp_servers(&file_set, &manifest, &mut warnings)
-            .expect("compile")
-            .expect("servers");
         assert_eq!(
-            servers.get("svc").expect("svc").auth_mode,
-            McpServerAuthMode::None
+            serde_json::to_value(&compiled.definition.skills).unwrap(),
+            serde_json::json!([
+                {"name":"useful","description":"Useful skill","instructions":"Instructions.","files":[{"path":"nested/readme.txt","content":"Reference bytes.\n"}],"user_invocable":false,"disable_model_invocation":true},
+                {"name":"run","description":"Run a task","instructions":"Execute $ARGUMENTS.","files":[],"user_invocable":true,"disable_model_invocation":false}
+            ])
         );
-        assert!(
-            warnings.iter().any(|w| w.contains("api_key")),
-            "expected auth warning, got: {warnings:?}"
+        assert_eq!(
+            compiled.warnings,
+            ["skill 'useful': binary file 'binary.bin' skipped (text only)"]
         );
     }
 
     #[test]
-    fn missing_description_is_error() {
-        let file_set_files = {
-            let mut f = std::collections::BTreeMap::new();
-            f.insert(
-                ".claude-plugin/plugin.json".to_string(),
-                serde_json::json!({
-                    "name": "nodesc-plugin"
-                })
-                .to_string()
-                .into_bytes(),
+    fn portable_remote_urls_allow_loopback_but_reject_insecure_or_credentialed_hosts() {
+        for (url, allowed) in [
+            ("http://[::1]:8080/mcp", true),
+            ("http://127.0.0.2/mcp", true),
+            ("http://localhost:8080/mcp", true),
+            ("https://example.com/mcp", true),
+            ("http://[2001:db8::1]/mcp", false),
+            ("http://example.com/mcp", false),
+            ("https://user:pass@example.com/mcp", false),
+            ("https://example.com/mcp#fragment", false),
+            ("ftp://example.com/mcp", false),
+        ] {
+            let mcp = serde_json::json!({"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"remote":{"type":"streamable-http","url":url}}});
+            let fs = package(
+                true,
+                portable_manifest(),
+                &[("mcp.json", mcp.to_string().as_bytes())],
             );
-            f
-        };
-        let file_set = PluginFileSet {
-            files: file_set_files,
-            dir_name: "nodesc-plugin".to_string(),
-        };
-        let err = compile_plugin(&file_set).unwrap_err();
-        assert!(err.contains("description"), "error was: {err}");
-    }
-
-    #[test]
-    fn oversized_name_is_error() {
-        // A name longer than MAX_PLUGIN_NAME_BYTES (43) should fail.
-        let long_name = "a".repeat(MAX_PLUGIN_NAME_BYTES + 1);
-        let file_set_files = {
-            let mut f = std::collections::BTreeMap::new();
-            f.insert(
-                ".claude-plugin/plugin.json".to_string(),
-                serde_json::json!({
-                    "name": long_name,
-                    "description": "test"
-                })
-                .to_string()
-                .into_bytes(),
-            );
-            f
-        };
-        let file_set = PluginFileSet {
-            files: file_set_files,
-            dir_name: "aaa".to_string(),
-        };
-        let err = compile_plugin(&file_set).unwrap_err();
-        assert!(err.contains("bytes"), "error was: {err}");
+            let compiled = compile_plugin(&fs).unwrap();
+            if allowed {
+                assert_eq!(
+                    serde_json::to_value(compiled.definition.mcp_servers).unwrap(),
+                    serde_json::json!({"remote":{"type":"http","url":url}}),
+                    "{url}"
+                );
+                assert!(
+                    compiled.warnings.is_empty(),
+                    "{url}: {:?}",
+                    compiled.warnings
+                );
+            } else {
+                assert!(compiled.definition.mcp_servers.is_none(), "{url}");
+                assert_eq!(compiled.warnings.len(), 1);
+                assert!(
+                    compiled.warnings[0].contains("remote"),
+                    "{:?}",
+                    compiled.warnings
+                );
+            }
+        }
     }
 }

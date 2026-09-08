@@ -246,30 +246,16 @@ fn extract_rust_item(node: tree_sitter::Node, source: &str, items: &mut Vec<Outl
             });
         }
         "impl_item" => {
-            let type_name = find_child_by_kind(node, "type_identifier")
+            let type_name = node
+                .child_by_field_name("type")
                 .map(|n| node_text(n, source).to_string())
                 .unwrap_or_default();
-
-            // Check if it's a trait impl
-            let trait_name = find_child_by_kind(node, "scoped_type_identifier")
-                .or_else(|| {
-                    // For `impl Trait for Type`, find the trait identifier
-                    let mut cursor = node.walk();
-                    node.children(&mut cursor).find(|c| {
-                        c.kind() == "type_identifier"
-                            && c.start_position().row == node.start_position().row
-                    })
-                })
+            let trait_name = node
+                .child_by_field_name("trait")
                 .map(|n| node_text(n, source).to_string());
-
-            let sig = if let Some(ref t) = trait_name {
-                if t != &type_name {
-                    format!("impl {t} for {type_name}")
-                } else {
-                    format!("impl {type_name}")
-                }
-            } else {
-                format!("impl {type_name}")
+            let sig = match trait_name {
+                Some(name) => format!("impl {name} for {type_name}"),
+                None => format!("impl {type_name}"),
             };
 
             let mut children = Vec::new();
@@ -563,167 +549,211 @@ fn python_fn_signature(node: tree_sitter::Node, source: &str) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_format_outline_empty() {
-        assert!(format_outline(&[], 1, 100, 100).is_none());
-    }
-
-    #[test]
-    fn test_format_outline_after_only() {
-        let items = vec![OutlineItem {
+    fn item(signature: &str, line: usize, children: Vec<OutlineItem>) -> OutlineItem {
+        OutlineItem {
             kind: "fn",
-            name: "process".to_string(),
-            signature: "fn process(input: &str) -> Result<()>".to_string(),
-            line: 150,
-            children: vec![],
-        }];
-        let result = format_outline(&items, 1, 100, 200).unwrap();
-        assert!(result.contains("Outline of lines 101-200"));
-        assert!(result.contains("L150"));
-        assert!(result.contains("fn process"));
+            name: "irrelevant".into(),
+            signature: signature.into(),
+            line,
+            children,
+        }
     }
 
     #[test]
-    fn test_format_outline_before_and_after() {
-        let items = vec![
-            OutlineItem {
-                kind: "struct",
-                name: "Config".to_string(),
-                signature: "struct Config".to_string(),
-                line: 5,
-                children: vec![],
-            },
-            OutlineItem {
-                kind: "fn",
-                name: "main".to_string(),
-                signature: "fn main()".to_string(),
-                line: 250,
-                children: vec![],
-            },
+    fn shown_window_is_inclusive_and_empty_outlines_are_omitted() {
+        assert!(format_outline(&[], 1, 100, 100).is_none());
+        let items = [
+            item("start", 50, vec![]),
+            item("inside", 60, vec![]),
+            item("end", 100, vec![]),
         ];
-        let result = format_outline(&items, 50, 200, 300).unwrap();
-        assert!(result.contains("Outline of lines 1-49"));
-        assert!(result.contains("struct Config"));
-        assert!(result.contains("Outline of lines 201-300"));
-        assert!(result.contains("fn main"));
+        assert!(format_outline(&items, 50, 100, 200).is_none());
     }
 
     #[test]
-    fn test_format_outline_with_children() {
-        let items = vec![OutlineItem {
-            kind: "impl",
-            name: "Config".to_string(),
-            signature: "impl Config".to_string(),
-            line: 150,
-            children: vec![OutlineItem {
-                kind: "fn",
-                name: "load".to_string(),
-                signature: "fn load(path: &str) -> Self".to_string(),
-                line: 155,
-                children: vec![],
-            }],
-        }];
-        let result = format_outline(&items, 1, 100, 200).unwrap();
-        assert!(result.contains("impl Config"));
-        assert!(result.contains("  // L155: fn load"));
+    fn unread_sections_have_exact_ranges_signatures_and_child_indentation() {
+        let items = [
+            item("struct Config", 49, vec![]),
+            item("hidden start", 50, vec![]),
+            item("hidden end", 100, vec![]),
+            item(
+                "impl Config",
+                101,
+                vec![item("fn load(path: &str) -> Self", 105, vec![])],
+            ),
+        ];
+        assert_eq!(
+            format_outline(&items, 50, 100, 200).unwrap(),
+            "\n--- Outline of lines 1-49 (not shown) ---\n// L49: struct Config { ... }\n\n--- Outline of lines 101-200 (not shown) ---\n// L101: impl Config { ... }\n  // L105: fn load(path: &str) -> Self { ... }\n"
+        );
+        assert_eq!(
+            format_outline(&items[3..], 1, 100, 200).unwrap(),
+            "\n--- Outline of lines 101-200 (not shown) ---\n// L101: impl Config { ... }\n  // L105: fn load(path: &str) -> Self { ... }\n"
+        );
+        assert_eq!(
+            format_outline(&items[..1], 50, 200, 200).unwrap(),
+            "\n--- Outline of lines 1-49 (not shown) ---\n// L49: struct Config { ... }\n"
+        );
+    }
+
+    #[cfg(feature = "tree-sitter-outlines")]
+    fn snapshot(items: &[OutlineItem]) -> serde_json::Value {
+        serde_json::Value::Array(
+            items
+                .iter()
+                .map(|i| {
+                    serde_json::json!([i.kind, i.name, i.signature, i.line, snapshot(&i.children)])
+                })
+                .collect(),
+        )
     }
 
     #[cfg(feature = "tree-sitter-outlines")]
     #[test]
-    fn test_generate_outline_rust() {
-        let source = r#"
-use std::io;
-
-struct Config {
-    name: String,
-}
-
-impl Config {
-    fn new(name: &str) -> Self {
-        Config { name: name.to_string() }
-    }
-
-    fn validate(&self) -> bool {
-        !self.name.is_empty()
-    }
-}
-
-fn main() {
-    let c = Config::new("test");
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-}
-"#;
-        let items = generate_outline(source, "test.rs");
-        assert!(!items.is_empty(), "Should produce outline items");
-
-        // Should find struct, impl with methods, fn main, and mod tests
-        let names: Vec<&str> = items.iter().map(|i| i.name.as_str()).collect();
-        assert!(names.contains(&"Config"), "Should find struct Config");
-        assert!(names.contains(&"main"), "Should find fn main");
-        assert!(names.contains(&"tests"), "Should find mod tests");
-
-        // impl should have children
-        let impl_item = items.iter().find(|i| i.kind == "impl").unwrap();
-        assert_eq!(impl_item.children.len(), 2, "impl should have 2 methods");
+    fn rust_outline_preserves_order_signatures_and_nested_methods() {
+        let source = "use std::io;\nstruct Config { name: String }\nimpl Config {\n fn new(name: &str) -> Self { todo!() }\n fn validate(&self) -> bool { true }\n}\nfn main() {}\nmod tests {}\nenum Mode { A }\ntrait Load {}\n";
+        let items = generate_outline(source, "TEST.RS");
+        assert_eq!(
+            snapshot(&items),
+            serde_json::json!([
+                ["struct", "Config", "struct Config", 2, []],
+                [
+                    "impl",
+                    "Config",
+                    "impl Config",
+                    3,
+                    [
+                        ["fn", "new", "fn new(name: &str) -> Self", 4, []],
+                        ["fn", "validate", "fn validate(&self) -> bool", 5, []]
+                    ]
+                ],
+                ["fn", "main", "fn main()", 7, []],
+                ["mod", "tests", "mod tests", 8, []],
+                ["enum", "Mode", "enum Mode", 9, []],
+                ["trait", "Load", "trait Load", 10, []]
+            ])
+        );
     }
 
     #[cfg(feature = "tree-sitter-outlines")]
     #[test]
-    fn test_generate_outline_python() {
-        let source = r#"
-class MyClass:
-    def __init__(self, name):
-        self.name = name
-
-    def greet(self):
-        print(f"Hello, {self.name}")
-
-def main():
-    c = MyClass("test")
-"#;
-        let items = generate_outline(source, "test.py");
-        assert!(!items.is_empty());
-        let names: Vec<&str> = items.iter().map(|i| i.name.as_str()).collect();
-        assert!(names.contains(&"MyClass"));
-        assert!(names.contains(&"main"));
+    fn rust_trait_impl_preserves_trait_and_implementing_type() {
+        for (source, name, signature) in [
+            (
+                "impl Display for Config { fn fmt(&self) {} }",
+                "Config",
+                "impl Display for Config",
+            ),
+            (
+                "impl std::fmt::Display for Config { fn fmt(&self) {} }",
+                "Config",
+                "impl std::fmt::Display for Config",
+            ),
+            (
+                "impl<T> Display for Config<T> { fn fmt(&self) {} }",
+                "Config<T>",
+                "impl Display for Config<T>",
+            ),
+        ] {
+            let items = generate_outline(source, "test.rs");
+            assert_eq!(
+                snapshot(&items),
+                serde_json::json!([[
+                    "impl",
+                    name,
+                    signature,
+                    1,
+                    [["fn", "fmt", "fn fmt(&self)", 1, []]]
+                ]])
+            );
+            assert_eq!(
+                format_outline(&items, 2, 2, 2).unwrap(),
+                format!(
+                    "\n--- Outline of lines 1-1 (not shown) ---\n// L1: {signature} {{ ... }}\n  // L1: fn fmt(&self) {{ ... }}\n"
+                )
+            );
+        }
     }
 
     #[cfg(feature = "tree-sitter-outlines")]
     #[test]
-    fn test_generate_outline_typescript() {
-        let source = r#"
-interface Config {
-    name: string;
-}
-
-class App {
-    constructor(private config: Config) {}
-
-    start(): void {
-        console.log(this.config.name);
-    }
-}
-
-export function main(): void {
-    const app = new App({ name: "test" });
-}
-"#;
-        let items = generate_outline(source, "test.ts");
-        assert!(!items.is_empty());
-        let names: Vec<&str> = items.iter().map(|i| i.name.as_str()).collect();
-        assert!(names.contains(&"Config"));
-        assert!(names.contains(&"App"));
-        assert!(names.contains(&"main"));
+    fn python_outline_preserves_classes_methods_and_decorated_functions() {
+        let source = "class MyClass:\n    def __init__(self, name):\n        self.name = name\n    def greet(self):\n        print(self.name)\n\n@decorator\ndef main():\n    return MyClass('test')\n";
+        assert_eq!(
+            snapshot(&generate_outline(source, "TEST.PY")),
+            serde_json::json!([
+                [
+                    "class",
+                    "MyClass",
+                    "class MyClass",
+                    1,
+                    [
+                        ["def", "__init__", "def __init__(self, name)", 2, []],
+                        ["def", "greet", "def greet(self)", 4, []]
+                    ]
+                ],
+                ["def", "main", "def main()", 8, []]
+            ])
+        );
     }
 
     #[cfg(feature = "tree-sitter-outlines")]
     #[test]
-    fn test_generate_outline_unsupported_lang() {
-        let items = generate_outline("some content", "file.go");
-        assert!(items.is_empty());
+    fn typescript_and_javascript_extensions_preserve_exported_and_nested_items() {
+        let source = "interface Config { name: string; }\nclass App {\n constructor(private config: Config) {}\n start(): void {}\n}\nexport function main(): void {}\ntype Mode = 'dev';\nconst run = () => {};\n";
+        for path in ["file.ts", "file.mts", "file.tsx", "FILE.TS"] {
+            assert_eq!(
+                snapshot(&generate_outline(source, path)),
+                serde_json::json!([
+                    ["interface", "Config", "interface Config", 1, []],
+                    [
+                        "class",
+                        "App",
+                        "class App",
+                        2,
+                        [
+                            [
+                                "method",
+                                "constructor",
+                                "constructor(private config: Config)",
+                                3,
+                                []
+                            ],
+                            ["method", "start", "start(): void", 4, []]
+                        ]
+                    ],
+                    ["function", "main", "function main(): void", 6, []],
+                    ["type", "Mode", "type Mode", 7, []],
+                    ["function", "run", "const run = () =>", 8, []]
+                ]),
+                "{path}"
+            );
+        }
+        for path in ["file.js", "file.jsx", "file.mjs", "file.cjs"] {
+            assert_eq!(
+                snapshot(&generate_outline("export function main() {}", path)),
+                serde_json::json!([["function", "main", "function main()", 1, []]]),
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn unsupported_paths_produce_no_outline() {
+        for path in ["file.go", "file.rs.txt", "README", ""] {
+            assert!(generate_outline("fn main() {}", path).is_empty(), "{path}");
+        }
+    }
+
+    #[cfg(not(feature = "tree-sitter-outlines"))]
+    #[test]
+    fn disabled_parser_produces_no_outline_for_supported_languages() {
+        for (source, path) in [
+            ("fn main() {}", "file.rs"),
+            ("def main(): pass", "file.py"),
+            ("function main() {}", "file.ts"),
+        ] {
+            assert!(generate_outline(source, path).is_empty());
+        }
     }
 }

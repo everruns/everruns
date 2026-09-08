@@ -9,11 +9,12 @@
 // exponential backoff. Retry metadata is included in the response for observability.
 
 use async_trait::async_trait;
+use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use everruns_provider::credential_schema::CredentialFormSchema;
@@ -33,8 +34,8 @@ use everruns_provider::llm_retry::{
 };
 use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use everruns_provider::stream_accumulator::StreamToolCallAccumulator;
-use everruns_provider::stream_reconnect::connect_bytes_with_reconnect;
-use everruns_provider::tool_types::{ToolCall, ToolDefinition};
+use everruns_provider::stream_reconnect::{ByteStream, connect_bytes_with_reconnect};
+use everruns_provider::tool_types::ToolDefinition;
 
 const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -137,7 +138,9 @@ impl GeminiChatDriver {
             parts: vec![GeminiPart::text(text)],
         });
         let mut contents = Vec::new();
-        let visible_function_call_ids = visible_tool_call_ids(messages);
+        // IDs may be reused on later turns; resolve each result against calls
+        // already seen at its position in the transcript.
+        let mut function_names = HashMap::new();
 
         for msg in messages {
             match msg.role {
@@ -148,21 +151,28 @@ impl GeminiChatDriver {
                 LlmMessageRole::Tool => {
                     // Tool results in Gemini use functionResponse parts
                     if let Some(tool_call_id) = &msg.tool_call_id {
-                        // Gemini rejects functionResponse parts unless the matching
+                        // THREAT[TM-TOOL-005]: Gemini rejects functionResponse parts unless the matching
                         // functionCall is present in the visible request after trimming.
-                        if !visible_function_call_ids.contains(tool_call_id.as_str()) {
+                        let Some(name) = function_names.get(tool_call_id.as_str()) else {
                             continue;
-                        }
+                        };
 
-                        // Try to parse as JSON, fall back to wrapping in object
-                        let response_value = serde_json::from_str::<Value>(&msg.content.to_text())
-                            .unwrap_or_else(|_| json!({"result": msg.content.to_text()}));
+                        // Gemini requires an object response even when the tool
+                        // returns a scalar or an array.
+                        let text = msg.content.to_text();
+                        let response_value =
+                            serde_json::from_str::<Value>(&text).unwrap_or(Value::String(text));
+                        let response_value = if response_value.is_object() {
+                            response_value
+                        } else {
+                            json!({"result": response_value})
+                        };
 
                         contents.push(GeminiContent {
                             role: Some("user".to_string()),
                             parts: vec![GeminiPart::FunctionResponse {
                                 function_response: GeminiFunctionResponse {
-                                    name: tool_call_id.clone(),
+                                    name: String::from(*name),
                                     response: response_value,
                                 },
                             }],
@@ -189,6 +199,7 @@ impl GeminiChatDriver {
                     // Add function call parts if present
                     if let Some(tool_calls) = &msg.tool_calls {
                         for tc in tool_calls {
+                            function_names.insert(tc.id.as_str(), tc.name.as_str());
                             let args = if tc.arguments.is_object() {
                                 tc.arguments.clone()
                             } else if let Some(s) = tc.arguments.as_str() {
@@ -241,35 +252,45 @@ impl GeminiChatDriver {
     ///
     /// Gemini's function-calling API uses an OpenAPI 3.0 subset that rejects
     /// `additionalProperties`. The field can appear at any depth — inside
-    /// `properties`, `items`, `anyOf`, etc. — so we walk the entire value
-    /// instead of only the top level.
+    /// `properties`, `items`, `anyOf`, etc. — so we visit schema-valued keywords recursively
+    /// while preserving literal annotation and extension data.
     fn clean_schema(mut value: Value) -> Value {
         Self::strip_unsupported(&mut value);
         value
     }
 
+    // THREAT[TM-TOOL-038]: only schema nodes may be rewritten; literal payloads stay intact.
     fn strip_unsupported(value: &mut Value) {
         match value {
             Value::Object(obj) => {
                 obj.remove("additionalProperties");
-                for (key, v) in obj.iter_mut() {
-                    // Schema-composition keywords whose value is a map of
-                    // arbitrary name -> schema. The keys are caller-supplied
-                    // names, so we must not treat the map itself as a schema
-                    // (otherwise a property literally named
-                    // `additionalProperties` would be dropped). Recurse into
-                    // each value instead.
-                    if matches!(
-                        key.as_str(),
+                // Literal defaults, enums, examples and extensions are data, not schemas.
+                for (key, value) in obj.iter_mut() {
+                    match key.as_str() {
                         "properties" | "patternProperties" | "definitions" | "$defs"
-                    ) {
-                        if let Value::Object(map) = v {
-                            for sub in map.values_mut() {
-                                Self::strip_unsupported(sub);
+                        | "dependentSchemas" | "dependencies" => {
+                            if let Some(schemas) = value.as_object_mut() {
+                                for schema in schemas.values_mut() {
+                                    Self::strip_unsupported(schema);
+                                }
                             }
                         }
-                    } else {
-                        Self::strip_unsupported(v);
+                        "items"
+                        | "additionalItems"
+                        | "contains"
+                        | "propertyNames"
+                        | "not"
+                        | "if"
+                        | "then"
+                        | "else"
+                        | "unevaluatedProperties"
+                        | "unevaluatedItems"
+                        | "contentSchema"
+                        | "allOf"
+                        | "anyOf"
+                        | "oneOf"
+                        | "prefixItems" => Self::strip_unsupported(value),
+                        _ => {}
                     }
                 }
             }
@@ -493,404 +514,12 @@ impl ChatDriver for GeminiChatDriver {
             })
             .await?;
 
-        // Gemini streams SSE events with JSON data, each containing a candidate
-        let model = config.model.clone();
-        let prompt_tokens = Arc::new(Mutex::new(0u32));
-        let completion_tokens = Arc::new(Mutex::new(0u32));
-        let cached_tokens = Arc::new(Mutex::new(Option::<u32>::None));
-        let accumulated_tool_calls = Arc::new(Mutex::new(StreamToolCallAccumulator::new()));
-        let tool_call_counter = Arc::new(Mutex::new(0u32));
-        let shared_retry_metadata = if retry_metadata.had_retries() {
-            Some(Arc::new(retry_metadata))
-        } else {
-            None
+        let state = GeminiStreamState {
+            model: config.model.clone(),
+            retry_metadata: retry_metadata.had_retries().then_some(retry_metadata),
+            ..Default::default()
         };
-
-        // Use a buffered approach to handle SSE events
-        let converted_stream: LlmResponseStream = Box::pin(futures::stream::unfold(
-            (
-                byte_stream,
-                String::new(), // buffer for partial SSE data
-                model,
-                prompt_tokens,
-                completion_tokens,
-                cached_tokens,
-                accumulated_tool_calls,
-                tool_call_counter,
-                shared_retry_metadata,
-                false, // done flag
-            ),
-            move |(
-                mut stream,
-                mut buffer,
-                model,
-                prompt_tokens,
-                completion_tokens,
-                cached_tokens,
-                accumulated_tool_calls,
-                tool_call_counter,
-                retry_metadata,
-                done,
-            )| async move {
-                if done {
-                    return None;
-                }
-
-                loop {
-                    // Try to extract complete SSE events from buffer
-                    if let Some(event) = extract_sse_event(&mut buffer) {
-                        if event == "[DONE]" {
-                            let in_tokens = *prompt_tokens.lock().unwrap();
-                            let out_tokens = *completion_tokens.lock().unwrap();
-                            let cached = *cached_tokens.lock().unwrap();
-
-                            let result =
-                                Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
-                                    // Gemini's promptTokenCount includes cached content;
-                                    // normalize to non-cached input (disjoint convention).
-                                    total_tokens: Some(in_tokens + out_tokens),
-                                    prompt_tokens: Some(disjoint_prompt_tokens(in_tokens, cached)),
-                                    completion_tokens: Some(out_tokens),
-                                    cache_read_tokens: cached,
-                                    cache_creation_tokens: None,
-                                    provider_cost_usd: None,
-                                    model: Some(model.clone()),
-                                    finish_reason: Some("stop".to_string()),
-                                    retry_metadata: retry_metadata
-                                        .as_ref()
-                                        .map(|arc| (**arc).clone()),
-                                    response_id: None,
-                                    phase: None,
-                                    cache_diagnostics: None,
-                                })));
-                            return Some((
-                                result,
-                                (
-                                    stream,
-                                    buffer,
-                                    model,
-                                    prompt_tokens,
-                                    completion_tokens,
-                                    cached_tokens,
-                                    accumulated_tool_calls,
-                                    tool_call_counter,
-                                    retry_metadata,
-                                    true,
-                                ),
-                            ));
-                        }
-
-                        // Parse the JSON data
-                        match serde_json::from_str::<GeminiStreamResponse>(&event) {
-                            Ok(response) => {
-                                // Update usage metadata
-                                if let Some(usage) = &response.usage_metadata {
-                                    if let Some(pt) = usage.prompt_token_count {
-                                        *prompt_tokens.lock().unwrap() = pt;
-                                    }
-                                    if let Some(ct) = usage.candidates_token_count {
-                                        *completion_tokens.lock().unwrap() = ct;
-                                    }
-                                    if let Some(cache) = usage.cached_content_token_count {
-                                        *cached_tokens.lock().unwrap() = Some(cache);
-                                    }
-                                }
-
-                                if let Some(candidates) = &response.candidates {
-                                    for candidate in candidates {
-                                        if let Some(content) = &candidate.content {
-                                            for part in &content.parts {
-                                                // One event per part. A thought
-                                                // part carrying a signature is
-                                                // emitted as a completed
-                                                // reasoning item so the
-                                                // signature stays paired with
-                                                // its text; unsigned thought
-                                                // text streams as a delta for
-                                                // display only.
-                                                let emitted = match part {
-                                                    GeminiResponsePart::Text {
-                                                        text,
-                                                        thought_signature,
-                                                        ..
-                                                    } if part.is_thought() => {
-                                                        match thought_signature {
-                                                            Some(signature) => {
-                                                                Some(LlmStreamEvent::ReasoningItem(
-                                                                    ReasoningContentPart::opaque(
-                                                                        "google",
-                                                                    )
-                                                                    .with_signature(
-                                                                        signature.clone(),
-                                                                    )
-                                                                    .with_text(
-                                                                        ReasoningText::Plain {
-                                                                            text: text.clone(),
-                                                                        },
-                                                                    ),
-                                                                ))
-                                                            }
-                                                            None => Some(
-                                                                LlmStreamEvent::ReasoningDelta {
-                                                                    delta: text.clone(),
-                                                                    summary: false,
-                                                                },
-                                                            ),
-                                                        }
-                                                    }
-                                                    GeminiResponsePart::Text { text, .. } => Some(
-                                                        LlmStreamEvent::TextDelta(text.clone()),
-                                                    ),
-                                                    GeminiResponsePart::FunctionCall {
-                                                        function_call,
-                                                        thought_signature,
-                                                    } => {
-                                                        let call_id = {
-                                                            let mut counter =
-                                                                tool_call_counter.lock().unwrap();
-                                                            let call_id =
-                                                                format!("call_{}", *counter);
-                                                            *counter += 1;
-                                                            call_id
-                                                        };
-
-                                                        accumulated_tool_calls
-                                                            .lock()
-                                                            .unwrap()
-                                                            .push_complete(
-                                                                call_id.clone(),
-                                                                function_call.name.clone(),
-                                                                function_call.args.clone(),
-                                                            );
-
-                                                        // Gemini scopes this
-                                                        // signature to one call;
-                                                        // bind it so replay can
-                                                        // put it back on that
-                                                        // call and nowhere else.
-                                                        thought_signature.as_ref().map(
-                                                            |signature| {
-                                                                LlmStreamEvent::ReasoningItem(
-                                                                    ReasoningContentPart::opaque(
-                                                                        "google",
-                                                                    )
-                                                                    .with_signature(
-                                                                        signature.clone(),
-                                                                    )
-                                                                    .with_bound_tool_call_id(
-                                                                        call_id,
-                                                                    ),
-                                                                )
-                                                            },
-                                                        )
-                                                    }
-                                                    _ => None,
-                                                };
-
-                                                if let Some(event) = emitted {
-                                                    return Some((
-                                                        Ok(event),
-                                                        (
-                                                            stream,
-                                                            buffer,
-                                                            model,
-                                                            prompt_tokens,
-                                                            completion_tokens,
-                                                            cached_tokens,
-                                                            accumulated_tool_calls,
-                                                            tool_call_counter,
-                                                            retry_metadata,
-                                                            false,
-                                                        ),
-                                                    ));
-                                                }
-                                            }
-                                        }
-
-                                        // Check finish reason
-                                        if let Some(reason) = &candidate.finish_reason
-                                            && (reason == "STOP" || reason == "MAX_TOKENS")
-                                        {
-                                            let tool_calls: Vec<ToolCall> = accumulated_tool_calls
-                                                .lock()
-                                                .unwrap()
-                                                .take_finalized();
-                                            if !tool_calls.is_empty() {
-                                                let result =
-                                                    Ok(LlmStreamEvent::ToolCalls(tool_calls));
-                                                return Some((
-                                                    result,
-                                                    (
-                                                        stream,
-                                                        buffer,
-                                                        model,
-                                                        prompt_tokens,
-                                                        completion_tokens,
-                                                        cached_tokens,
-                                                        accumulated_tool_calls,
-                                                        tool_call_counter,
-                                                        retry_metadata,
-                                                        false,
-                                                    ),
-                                                ));
-                                            }
-
-                                            // Emit Done event
-                                            let in_tokens = *prompt_tokens.lock().unwrap();
-                                            let out_tokens = *completion_tokens.lock().unwrap();
-                                            let cached = *cached_tokens.lock().unwrap();
-                                            let finish = match reason.as_str() {
-                                                "MAX_TOKENS" => "length",
-                                                _ => "stop",
-                                            };
-
-                                            let result = Ok(LlmStreamEvent::Done(Box::new(
-                                                LlmCompletionMetadata {
-                                                    // Gemini's promptTokenCount includes cached
-                                                    // content; normalize to non-cached input.
-                                                    total_tokens: Some(in_tokens + out_tokens),
-                                                    prompt_tokens: Some(disjoint_prompt_tokens(
-                                                        in_tokens, cached,
-                                                    )),
-                                                    completion_tokens: Some(out_tokens),
-                                                    cache_read_tokens: cached,
-                                                    cache_creation_tokens: None,
-                                                    provider_cost_usd: None,
-                                                    model: Some(model.clone()),
-                                                    finish_reason: Some(finish.to_string()),
-                                                    retry_metadata: retry_metadata
-                                                        .as_ref()
-                                                        .map(|arc| (**arc).clone()),
-                                                    response_id: None,
-                                                    phase: None,
-                                                    cache_diagnostics: None,
-                                                },
-                                            )));
-                                            return Some((
-                                                result,
-                                                (
-                                                    stream,
-                                                    buffer,
-                                                    model,
-                                                    prompt_tokens,
-                                                    completion_tokens,
-                                                    cached_tokens,
-                                                    accumulated_tool_calls,
-                                                    tool_call_counter,
-                                                    retry_metadata,
-                                                    true,
-                                                ),
-                                            ));
-                                        }
-                                    }
-                                }
-
-                                // No actionable content in this chunk, continue
-                                continue;
-                            }
-                            Err(e) => {
-                                tracing::debug!(
-                                    error = %e,
-                                    data = %event,
-                                    "GeminiDriver: failed to parse SSE event"
-                                );
-                                continue;
-                            }
-                        }
-                    }
-
-                    // Need more data from the stream
-                    match stream.next().await {
-                        Some(Ok(bytes)) => {
-                            buffer.push_str(&String::from_utf8_lossy(&bytes));
-                        }
-                        Some(Err(e)) => {
-                            let result =
-                                Ok(LlmStreamEvent::Error(format!("Stream error: {}", e).into()));
-                            return Some((
-                                result,
-                                (
-                                    stream,
-                                    buffer,
-                                    model,
-                                    prompt_tokens,
-                                    completion_tokens,
-                                    cached_tokens,
-                                    accumulated_tool_calls,
-                                    tool_call_counter,
-                                    retry_metadata,
-                                    true,
-                                ),
-                            ));
-                        }
-                        None => {
-                            // Stream ended - emit Done if we haven't already
-                            let tool_calls: Vec<ToolCall> =
-                                accumulated_tool_calls.lock().unwrap().take_finalized();
-                            if !tool_calls.is_empty() {
-                                let result = Ok(LlmStreamEvent::ToolCalls(tool_calls));
-                                return Some((
-                                    result,
-                                    (
-                                        stream,
-                                        buffer,
-                                        model,
-                                        prompt_tokens,
-                                        completion_tokens,
-                                        cached_tokens,
-                                        accumulated_tool_calls,
-                                        tool_call_counter,
-                                        retry_metadata,
-                                        false,
-                                    ),
-                                ));
-                            }
-
-                            let in_tokens = *prompt_tokens.lock().unwrap();
-                            let out_tokens = *completion_tokens.lock().unwrap();
-                            let cached = *cached_tokens.lock().unwrap();
-
-                            let result =
-                                Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
-                                    // Gemini's promptTokenCount includes cached content;
-                                    // normalize to non-cached input (disjoint convention).
-                                    total_tokens: Some(in_tokens + out_tokens),
-                                    prompt_tokens: Some(disjoint_prompt_tokens(in_tokens, cached)),
-                                    completion_tokens: Some(out_tokens),
-                                    cache_read_tokens: cached,
-                                    cache_creation_tokens: None,
-                                    provider_cost_usd: None,
-                                    model: Some(model.clone()),
-                                    finish_reason: Some("stop".to_string()),
-                                    retry_metadata: retry_metadata
-                                        .as_ref()
-                                        .map(|arc| (**arc).clone()),
-                                    response_id: None,
-                                    phase: None,
-                                    cache_diagnostics: None,
-                                })));
-                            return Some((
-                                result,
-                                (
-                                    stream,
-                                    buffer,
-                                    model,
-                                    prompt_tokens,
-                                    completion_tokens,
-                                    cached_tokens,
-                                    accumulated_tool_calls,
-                                    tool_call_counter,
-                                    retry_metadata,
-                                    true,
-                                ),
-                            ));
-                        }
-                    }
-                }
-            },
-        ));
-
-        Ok(converted_stream)
+        Ok(convert_gemini_stream(byte_stream, state))
     }
 
     async fn list_models(
@@ -1000,38 +629,167 @@ impl Default for GeminiChatDriver {
 // SSE Parsing
 // ============================================================================
 
-fn visible_tool_call_ids(messages: &[LlmMessage]) -> HashSet<&str> {
-    messages
-        .iter()
-        .filter(|msg| msg.role == LlmMessageRole::Assistant)
-        .flat_map(|msg| msg.tool_calls.iter().flatten())
-        .map(|tool_call| tool_call.id.as_str())
-        .collect()
+fn convert_gemini_stream(byte_stream: ByteStream, state: GeminiStreamState) -> LlmResponseStream {
+    // THREAT[TM-TOOL-038]: decode UTF-8 and SSE framing before parsing provider JSON. Transport chunks
+    // may split a character, line or event anywhere.
+    let event_stream = byte_stream.eventsource();
+    Box::pin(futures::stream::unfold(
+        (event_stream, state),
+        |(mut stream, mut state)| async move {
+            loop {
+                if let Some(event) = state.pending.pop_front() {
+                    return Some((Ok(event), (stream, state)));
+                }
+                if state.done {
+                    return None;
+                }
+                match stream.next().await {
+                    Some(Ok(event)) if event.data == "[DONE]" => state.finish(),
+                    Some(Ok(event)) => {
+                        match serde_json::from_str::<GeminiStreamResponse>(&event.data) {
+                            Ok(response) => state.response(response),
+                            Err(error) => {
+                                tracing::debug!(%error, "GeminiDriver: failed to parse SSE event")
+                            }
+                        }
+                    }
+                    Some(Err(error)) => {
+                        state.pending.push_back(LlmStreamEvent::Error(
+                            format!("Stream error: {error}").into(),
+                        ));
+                        state.done = true;
+                    }
+                    None => state.finish(),
+                }
+            }
+        },
+    ))
 }
 
-/// Extract a complete SSE event from the buffer, returning the data payload
-fn extract_sse_event(buffer: &mut String) -> Option<String> {
-    // Look for "data: " followed by a complete JSON object or "[DONE]"
-    loop {
-        let data_prefix = "data: ";
-        let start = buffer.find(data_prefix)?;
-        let data_start = start + data_prefix.len();
+#[derive(Default)]
+struct GeminiStreamState {
+    model: String,
+    input_tokens: u32,
+    output_tokens: u32,
+    cached_tokens: Option<u32>,
+    calls: StreamToolCallAccumulator,
+    call_counter: u32,
+    finish_reason: Option<String>,
+    retry_metadata: Option<RetryMetadata>,
+    pending: std::collections::VecDeque<LlmStreamEvent>,
+    done: bool,
+}
 
-        // Find the end of this data line (next newline)
-        let remaining = &buffer[data_start..];
-        let end = remaining.find('\n')?;
-
-        let data = remaining[..end].trim().to_string();
-
-        // Remove consumed portion from buffer
-        buffer.drain(..data_start + end + 1);
-
-        // Skip empty data lines
-        if data.is_empty() {
-            continue;
+impl GeminiStreamState {
+    fn response(&mut self, response: GeminiStreamResponse) {
+        if let Some(usage) = response.usage_metadata {
+            if let Some(tokens) = usage.prompt_token_count {
+                self.input_tokens = tokens;
+            }
+            if let Some(tokens) = usage.candidates_token_count {
+                self.output_tokens = tokens;
+            }
+            if let Some(tokens) = usage.cached_content_token_count {
+                self.cached_tokens = Some(tokens);
+            }
         }
+        // Usage can arrive after the terminal candidate, but no later content
+        // may reopen a completed or rejected generation.
+        if self.finish_reason.is_some() {
+            return;
+        }
+        for candidate in response.candidates.unwrap_or_default() {
+            if let Some(content) = candidate.content {
+                for part in content.parts {
+                    match part {
+                        GeminiResponsePart::Text {
+                            text,
+                            thought: Some(true),
+                            thought_signature,
+                        } => {
+                            self.pending.push_back(match thought_signature {
+                                Some(signature) => LlmStreamEvent::ReasoningItem(
+                                    ReasoningContentPart::opaque("google")
+                                        .with_signature(signature)
+                                        .with_text(ReasoningText::Plain { text }),
+                                ),
+                                None => LlmStreamEvent::ReasoningDelta {
+                                    delta: text,
+                                    summary: false,
+                                },
+                            });
+                        }
+                        GeminiResponsePart::Text { text, .. } => {
+                            self.pending.push_back(LlmStreamEvent::TextDelta(text))
+                        }
+                        GeminiResponsePart::FunctionCall {
+                            function_call,
+                            thought_signature,
+                        } => {
+                            let id = format!("call_{}", self.call_counter);
+                            self.call_counter += 1;
+                            self.calls.push_complete(
+                                id.clone(),
+                                function_call.name,
+                                function_call.args,
+                            );
+                            if let Some(signature) = thought_signature {
+                                self.pending.push_back(LlmStreamEvent::ReasoningItem(
+                                    ReasoningContentPart::opaque("google")
+                                        .with_signature(signature)
+                                        .with_bound_tool_call_id(id),
+                                ));
+                            }
+                        }
+                        GeminiResponsePart::Other(_) => {}
+                    }
+                }
+            }
+            if let Some(reason) = candidate
+                .finish_reason
+                .filter(|reason| reason != "FINISH_REASON_UNSPECIFIED")
+            {
+                self.finish_reason = Some(match reason.as_str() {
+                    "STOP" => "stop".into(),
+                    "MAX_TOKENS" => "length".into(),
+                    "SAFETY" => "content_filter".into(),
+                    _ => reason.to_ascii_lowercase(),
+                });
+                // THREAT[TM-TOOL-037]: only an accepted terminal candidate can release pending calls.
+                // The whole frame is processed before yielding any of its events.
+                let calls = self.calls.take_finalized();
+                if reason == "STOP" && !calls.is_empty() {
+                    self.pending.push_back(LlmStreamEvent::ToolCalls(calls));
+                }
+                break;
+            }
+        }
+    }
 
-        return Some(data);
+    fn finish(&mut self) {
+        let calls = self.calls.take_finalized();
+        if self.finish_reason.is_none() && !calls.is_empty() {
+            self.pending.push_back(LlmStreamEvent::ToolCalls(calls));
+        }
+        self.pending
+            .push_back(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
+                total_tokens: Some(self.input_tokens + self.output_tokens),
+                prompt_tokens: Some(disjoint_prompt_tokens(
+                    self.input_tokens,
+                    self.cached_tokens,
+                )),
+                completion_tokens: Some(self.output_tokens),
+                cache_read_tokens: self.cached_tokens,
+                cache_creation_tokens: None,
+                provider_cost_usd: None,
+                model: Some(self.model.clone()),
+                finish_reason: Some(self.finish_reason.take().unwrap_or_else(|| "stop".into())),
+                retry_metadata: self.retry_metadata.take(),
+                response_id: None,
+                phase: None,
+                cache_diagnostics: None,
+            })));
+        self.done = true;
     }
 }
 
@@ -1247,19 +1005,6 @@ impl GeminiPart {
     }
 }
 
-impl GeminiResponsePart {
-    /// Whether a text part carries reasoning rather than answer text.
-    fn is_thought(&self) -> bool {
-        matches!(
-            self,
-            Self::Text {
-                thought: Some(true),
-                ..
-            }
-        )
-    }
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GeminiUsageMetadata {
@@ -1301,537 +1046,339 @@ struct GeminiModelInfo {
 mod tests {
     use super::*;
     use everruns_provider::driver_registry::ChatDriver;
-
-    #[test]
-    fn supports_parallel_tool_calls_is_false() {
-        // Gemini has no request control; the preference is honored only by the
-        // local tool scheduler.
-        let driver = GeminiChatDriver::new();
-        assert!(!driver.supports_parallel_tool_calls("gemini-2.5-pro"));
-    }
-
-    #[test]
-    fn test_convert_content_text() {
-        let content = LlmMessageContent::Text("Hello, world!".to_string());
-        let parts = GeminiChatDriver::convert_content(&content);
-        assert_eq!(parts.len(), 1);
-    }
-
-    #[test]
-    fn test_convert_content_empty_text() {
-        let content = LlmMessageContent::Text(String::new());
-        let parts = GeminiChatDriver::convert_content(&content);
-        assert!(parts.is_empty());
-    }
-
-    #[test]
-    fn test_convert_messages_system_prompt() {
-        let messages = vec![
-            LlmMessage {
-                role: LlmMessageRole::System,
-                content: LlmMessageContent::Text("You are helpful".to_string()),
-                tool_calls: None,
-                tool_call_id: None,
-                phase: None,
-                reasoning: Vec::new(),
-                configuration_update: None,
-            },
-            LlmMessage {
-                role: LlmMessageRole::User,
-                content: LlmMessageContent::Text("Hello".to_string()),
-                tool_calls: None,
-                tool_call_id: None,
-                phase: None,
-                reasoning: Vec::new(),
-                configuration_update: None,
-            },
-        ];
-
-        let (system, contents) = GeminiChatDriver::convert_messages(&messages);
-
-        assert!(system.is_some());
-        assert_eq!(contents.len(), 1); // Only user message
-    }
-
-    #[test]
-    fn test_convert_messages_accumulates_multiple_system_messages() {
-        // The agent system prompt plus a later notice/summary System message
-        // (infinity_context / compaction) must both land in `system_instruction`,
-        // in order — the later one must not overwrite the agent system prompt.
-        // No System-role content may leak into `contents`.
-        let messages = vec![
-            LlmMessage::text(LlmMessageRole::System, "A"),
-            LlmMessage::text(LlmMessageRole::User, "hi"),
-            LlmMessage::text(LlmMessageRole::System, "B"),
-        ];
-
-        let (system, contents) = GeminiChatDriver::convert_messages(&messages);
-
-        let system = system.expect("system_instruction present");
-        let text = system
-            .parts
-            .iter()
-            .filter_map(|p| match p {
-                GeminiPart::Text { text, .. } => Some(text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("");
-        assert_eq!(text, "A\n\nB");
-        assert_eq!(contents.len(), 1); // Only the user message
-    }
-
-    #[test]
-    fn test_convert_tools() {
-        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
-        let tools = vec![ToolDefinition::Builtin(BuiltinTool {
-            name: "get_weather".to_string(),
-            display_name: None,
-            description: "Get the weather for a city".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "city": {"type": "string"}
-                },
-                "required": ["city"]
-            }),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: everruns_provider::tool_types::ToolHints::default(),
-            full_parameters: None,
-        })];
-
-        let gemini_tools = GeminiChatDriver::convert_tools(&tools);
-        assert!(gemini_tools.is_some());
-        let tools = gemini_tools.unwrap();
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].function_declarations.len(), 1);
-        assert_eq!(tools[0].function_declarations[0].name, "get_weather");
-    }
-
-    #[test]
-    fn test_convert_tools_strips_additional_properties() {
-        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
-        let tools = vec![ToolDefinition::Builtin(BuiltinTool {
-            name: "search".to_string(),
-            display_name: None,
-            description: "Search".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "additionalProperties": false}
-                },
-                "required": ["query"],
-                "additionalProperties": false
-            }),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: everruns_provider::tool_types::ToolHints::default(),
-            full_parameters: None,
-        })];
-
-        let gemini_tools = GeminiChatDriver::convert_tools(&tools).unwrap();
-        let params = &gemini_tools[0].function_declarations[0].parameters;
-        assert!(params.get("additionalProperties").is_none());
-        assert!(
-            params["properties"]["query"]
-                .get("additionalProperties")
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn test_convert_tools_strips_additional_properties_nested() {
-        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
-        let tools = vec![ToolDefinition::Builtin(BuiltinTool {
-            name: "complex".to_string(),
-            display_name: None,
-            description: "Complex schema".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "items": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "nested": {
-                                    "type": "object",
-                                    "additionalProperties": false,
-                                    "properties": {
-                                        "deep": {
-                                            "type": "object",
-                                            "additionalProperties": true
-                                        }
-                                    }
-                                }
-                            },
-                            "additionalProperties": false
-                        }
-                    },
-                    "variant": {
-                        "anyOf": [
-                            {"type": "string"},
-                            {"type": "object", "additionalProperties": false}
-                        ]
-                    }
-                },
-                "additionalProperties": false
-            }),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: everruns_provider::tool_types::ToolHints::default(),
-            full_parameters: None,
-        })];
-
-        let gemini_tools = GeminiChatDriver::convert_tools(&tools).unwrap();
-        let params = &gemini_tools[0].function_declarations[0].parameters;
-
-        fn assert_no_additional_properties(v: &Value) {
-            match v {
-                Value::Object(obj) => {
-                    assert!(
-                        !obj.contains_key("additionalProperties"),
-                        "additionalProperties still present in {obj:?}"
-                    );
-                    for child in obj.values() {
-                        assert_no_additional_properties(child);
-                    }
-                }
-                Value::Array(arr) => {
-                    for child in arr {
-                        assert_no_additional_properties(child);
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        assert_no_additional_properties(params);
-    }
-
-    #[test]
-    fn test_convert_tools_preserves_property_named_additional_properties() {
-        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
-        let tools = vec![ToolDefinition::Builtin(BuiltinTool {
-            name: "configure".to_string(),
-            display_name: None,
-            description: "Configure allowing extras".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "additionalProperties": {
-                        "type": "boolean",
-                        "description": "Allow extras in the request"
-                    }
-                },
-                "required": ["additionalProperties"],
-                "additionalProperties": false
-            }),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-            hints: everruns_provider::tool_types::ToolHints::default(),
-            full_parameters: None,
-        })];
-
-        let gemini_tools = GeminiChatDriver::convert_tools(&tools).unwrap();
-        let params = &gemini_tools[0].function_declarations[0].parameters;
-
-        assert!(params.get("additionalProperties").is_none());
-        let properties = params
-            .get("properties")
-            .and_then(|p| p.as_object())
-            .unwrap();
-        let prop = properties
-            .get("additionalProperties")
-            .expect("property named additionalProperties must be preserved");
-        assert_eq!(prop["type"], "boolean");
-    }
-
-    /// Builds filesystem-style tool definitions mirroring the schema shapes the
-    /// session filesystem capability produces (nested `additionalProperties`
-    /// inside array items and sub-objects). Kept as an in-crate fixture so this
-    /// wire-protocol crate stays decoupled from capability implementations
-    /// (EVE-874); capability identity/authoring lives in `everruns-capability`.
-    fn filesystem_style_tools() -> Vec<ToolDefinition> {
-        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
-
-        let builtin = |name: &str, parameters: Value| {
-            ToolDefinition::Builtin(BuiltinTool {
-                name: name.to_string(),
-                display_name: None,
-                description: format!("{name} tool"),
-                parameters,
-                policy: ToolPolicy::Auto,
-                category: None,
-                deferrable: DeferrablePolicy::default(),
-                hints: ToolHints::default(),
-                full_parameters: None,
-            })
-        };
-
-        vec![
-            builtin(
-                "read_file",
-                json!({
-                    "type": "object",
-                    "properties": {
-                        "path": { "type": "string" },
-                        "offset": { "type": "integer", "default": 0, "minimum": 0 },
-                        "limit": { "type": "integer", "default": 2000, "minimum": 1 }
-                    },
-                    "required": ["path"],
-                    "additionalProperties": false
-                }),
-            ),
-            builtin(
-                "edit_file",
-                json!({
-                    "type": "object",
-                    "properties": {
-                        "path": { "type": "string" },
-                        "expected_hash": { "type": "string" },
-                        "edits": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "old_text": { "type": "string" },
-                                    "new_text": { "type": "string" }
-                                },
-                                "required": ["old_text", "new_text"],
-                                "additionalProperties": false
-                            }
-                        }
-                    },
-                    "required": ["path", "expected_hash", "edits"],
-                    "additionalProperties": false
-                }),
-            ),
-            builtin(
-                "grep_files",
-                json!({
-                    "type": "object",
-                    "properties": {
-                        "pattern": { "type": "string" },
-                        "options": {
-                            "type": "object",
-                            "properties": {
-                                "case_insensitive": { "type": "boolean" }
-                            },
-                            "additionalProperties": false
-                        }
-                    },
-                    "required": ["pattern"],
-                    "additionalProperties": false
-                }),
-            ),
-        ]
-    }
-
-    #[test]
-    fn test_convert_filesystem_style_tools_strips_nested_additional_properties() {
-        let tools = filesystem_style_tools();
-        let gemini_tools = GeminiChatDriver::convert_tools(&tools).unwrap();
-
-        fn assert_no_additional_properties(v: &Value) {
-            match v {
-                Value::Object(obj) => {
-                    assert!(
-                        !obj.contains_key("additionalProperties"),
-                        "additionalProperties still present in {obj:?}"
-                    );
-                    for child in obj.values() {
-                        assert_no_additional_properties(child);
-                    }
-                }
-                Value::Array(arr) => {
-                    for child in arr {
-                        assert_no_additional_properties(child);
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        for tool in &gemini_tools[0].function_declarations {
-            assert_no_additional_properties(&tool.parameters);
-        }
-    }
-
-    #[test]
-    fn test_convert_tools_empty() {
-        let tools: Vec<ToolDefinition> = vec![];
-        let gemini_tools = GeminiChatDriver::convert_tools(&tools);
-        assert!(gemini_tools.is_none());
-    }
-
-    #[test]
-    fn test_is_gemini_request_too_large_413() {
-        assert!(is_gemini_request_too_large(
-            reqwest::StatusCode::PAYLOAD_TOO_LARGE,
-            "Request too large"
-        ));
-    }
-
-    #[test]
-    fn test_is_gemini_request_too_large_payload_size() {
-        assert!(is_gemini_request_too_large(
-            reqwest::StatusCode::BAD_REQUEST,
-            "Request payload size exceeds the limit"
-        ));
-    }
-
-    #[test]
-    fn test_is_gemini_request_too_large_false_for_auth() {
-        assert!(!is_gemini_request_too_large(
-            reqwest::StatusCode::UNAUTHORIZED,
-            "Invalid API key"
-        ));
-    }
-
-    #[test]
-    fn test_extract_sse_event() {
-        let mut buffer = "data: {\"candidates\": []}\n\n".to_string();
-        let event = extract_sse_event(&mut buffer);
-        assert_eq!(event, Some("{\"candidates\": []}".to_string()));
-    }
-
-    #[test]
-    fn test_extract_sse_event_incomplete() {
-        let mut buffer = "data: {\"cand".to_string();
-        let event = extract_sse_event(&mut buffer);
-        assert!(event.is_none());
-    }
-
-    #[test]
-    fn test_convert_messages_tool_result() {
-        let messages = vec![
-            LlmMessage {
-                role: LlmMessageRole::Assistant,
-                content: LlmMessageContent::Text(String::new()),
-                tool_calls: Some(vec![ToolCall {
-                    id: "get_weather".to_string(),
-                    name: "get_weather".to_string(),
-                    arguments: json!({"city": "London"}),
-                }]),
-                tool_call_id: None,
-                phase: None,
-                reasoning: Vec::new(),
-                configuration_update: None,
-            },
-            LlmMessage {
-                role: LlmMessageRole::Tool,
-                content: LlmMessageContent::Text("{\"temp\": 20}".to_string()),
-                tool_calls: None,
-                tool_call_id: Some("get_weather".to_string()),
-                phase: None,
-                reasoning: Vec::new(),
-                configuration_update: None,
-            },
-        ];
-
-        let (_, contents) = GeminiChatDriver::convert_messages(&messages);
-
-        assert_eq!(contents.len(), 2);
-        assert_eq!(contents[1].role.as_deref(), Some("user"));
-    }
-
-    #[test]
-    fn test_convert_messages_drops_orphan_tool_result() {
-        let messages = vec![LlmMessage {
-            role: LlmMessageRole::Tool,
-            content: LlmMessageContent::Text("{\"temp\": 20}".to_string()),
-            tool_calls: None,
-            tool_call_id: Some("get_weather".to_string()),
-            phase: None,
-            reasoning: Vec::new(),
-            configuration_update: None,
-        }];
-
-        let (_, contents) = GeminiChatDriver::convert_messages(&messages);
-
-        assert!(contents.is_empty());
-    }
-
-    #[test]
-    fn test_request_serialization_with_cached_content() {
-        let request = GeminiRequest {
-            contents: vec![GeminiContent {
-                role: Some("user".to_string()),
-                parts: vec![GeminiPart::text("Summarize this")],
-            }],
-            system_instruction: None,
-            tools: None,
-            generation_config: Some(GeminiGenerationConfig {
-                temperature: None,
-                max_output_tokens: Some(256),
-                thinking_config: None,
-            }),
-            cached_content: Some("cachedContents/demo-cache".to_string()),
-        };
-
-        let json = serde_json::to_value(&request).unwrap();
-        assert_eq!(json["cachedContent"], "cachedContents/demo-cache");
-    }
+    use everruns_provider::tool_types::ToolCall;
 
     // ========================================================================
     // Model-not-found detection tests
     // ========================================================================
 
-    #[test]
-    fn test_is_gemini_model_not_found_404_not_found() {
-        let error = r#"{"error":{"code":404,"message":"models/gemini-nonexistent is not found","status":"NOT_FOUND"}}"#;
-        assert!(is_gemini_model_not_found(
-            reqwest::StatusCode::NOT_FOUND,
-            error
-        ));
+    fn call_message(id: &str, name: &str, arguments: Value) -> LlmMessage {
+        let mut message = LlmMessage::text(LlmMessageRole::Assistant, "");
+        message.tool_calls = Some(vec![ToolCall {
+            id: id.into(),
+            name: name.into(),
+            arguments,
+        }]);
+        message
+    }
+
+    fn result_message(id: Option<&str>, text: &str) -> LlmMessage {
+        let mut message = LlmMessage::text(LlmMessageRole::Tool, text);
+        message.tool_call_id = id.map(str::to_string);
+        message
     }
 
     #[test]
-    fn test_is_gemini_model_not_found_model_keyword() {
-        let error = r#"{"error":{"code":404,"message":"Model does not exist"}}"#;
-        assert!(is_gemini_model_not_found(
-            reqwest::StatusCode::NOT_FOUND,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_is_gemini_model_not_found_false_for_non_404() {
-        let error = r#"{"error":{"code":400,"status":"NOT_FOUND"}}"#;
-        assert!(!is_gemini_model_not_found(
-            reqwest::StatusCode::BAD_REQUEST,
-            error
-        ));
-    }
-
-    #[test]
-    fn test_default_max_tokens_from_known_model() {
-        // Known Gemini models should resolve max_tokens from profile
-        let profile = everruns_provider::get_model_profile(
-            &everruns_provider::DriverId::Gemini,
-            "gemini-3.1-pro-preview",
+    fn transcript_preserves_system_order_and_resolves_tool_names_per_turn() {
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "A"),
+            result_message(Some("call_0"), "future orphan"),
+            LlmMessage::text(LlmMessageRole::User, "hi"),
+            call_message("call_0", "get_weather", json!({"city":"Paris"})),
+            result_message(Some("call_0"), r#"{"temp":20}"#),
+            LlmMessage::text(LlmMessageRole::System, "B"),
+            call_message("call_0", "get_time", json!({"zone":"UTC"})),
+            result_message(Some("call_0"), "12:00"),
+            result_message(Some("missing"), "orphan"),
+            result_message(None, "missing id"),
+        ];
+        let (system, contents) = GeminiChatDriver::convert_messages(&messages);
+        assert_eq!(
+            serde_json::to_value(system).unwrap(),
+            json!({"parts":[{"text":"A\n\nB"}]})
         );
-        assert!(
-            profile.is_some(),
-            "gemini-3.1-pro-preview should have a profile"
+        assert_eq!(
+            serde_json::to_value(contents).unwrap(),
+            json!([
+                {"role":"user","parts":[{"text":"hi"}]},
+                {"role":"model","parts":[{"functionCall":{"name":"get_weather","args":{"city":"Paris"}}}]},
+                {"role":"user","parts":[{"functionResponse":{"name":"get_weather","response":{"temp":20}}}]},
+                {"role":"model","parts":[{"functionCall":{"name":"get_time","args":{"zone":"UTC"}}}]},
+                {"role":"user","parts":[{"functionResponse":{"name":"get_time","response":{"result":"12:00"}}}]}
+            ])
         );
-        let limits = profile.unwrap().limits.expect("profile should have limits");
-        assert!(limits.output > 0, "output limit should be positive");
+        let (system, contents) = GeminiChatDriver::convert_messages(&[
+            LlmMessage::text(LlmMessageRole::User, ""),
+            result_message(Some("missing"), "orphan"),
+        ]);
+        assert!(system.is_none());
+        assert!(contents.is_empty());
     }
 
     #[test]
-    fn test_default_max_tokens_unknown_model_falls_back() {
-        // Unknown model should return None (triggering the 8192 fallback)
-        let profile = everruns_provider::get_model_profile(
-            &everruns_provider::DriverId::Gemini,
-            "nonexistent-model-xyz",
+    fn function_response_payloads_are_objects_without_losing_scalar_values() {
+        for (text, expected) in [
+            (r#"{"value":3}"#, json!({"value":3})),
+            ("plain result", json!({"result":"plain result"})),
+            ("[1,2]", json!({"result":[1,2]})),
+            ("null", json!({"result":null})),
+            ("true", json!({"result":true})),
+            ("42", json!({"result":42})),
+            (r#""quoted""#, json!({"result":"quoted"})),
+        ] {
+            let (_, contents) = GeminiChatDriver::convert_messages(&[
+                call_message("call_7", "lookup", json!({})),
+                result_message(Some("call_7"), text),
+            ]);
+            assert_eq!(
+                serde_json::to_value(&contents[1]).unwrap(),
+                json!({"role":"user","parts":[{"functionResponse":{"name":"lookup","response":expected}}]}),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn content_conversion_preserves_text_and_media_order_while_omitting_empty_parts() {
+        let parts = LlmMessageContent::Parts(vec![
+            LlmContentPart::text(""),
+            LlmContentPart::text("before"),
+            LlmContentPart::image("data:image/png;base64,aGVsbG8="),
+            LlmContentPart::image("data:malformed"),
+            LlmContentPart::image("https://images.example/photo.jpg"),
+            LlmContentPart::Audio {
+                url: "data:audio/wav;base64,YQ==".into(),
+            },
+            LlmContentPart::text("after"),
+        ]);
+        assert_eq!(
+            serde_json::to_value(GeminiChatDriver::convert_content(&parts)).unwrap(),
+            json!([
+                {"text":"before"}, {"inlineData":{"mimeType":"image/png","data":"aGVsbG8="}},
+                {"fileData":{"mimeType":"image/jpeg","fileUri":"https://images.example/photo.jpg"}},
+                {"text":"[Audio content not supported]"}, {"text":"after"}
+            ])
         );
-        assert!(profile.is_none(), "unknown model should not have a profile");
+        assert_eq!(
+            serde_json::to_value(GeminiChatDriver::convert_content(&LlmMessageContent::Text(
+                "hello".into()
+            )))
+            .unwrap(),
+            json!([{"text":"hello"}])
+        );
+        assert_eq!(
+            serde_json::to_value(GeminiChatDriver::convert_content(&LlmMessageContent::Text(
+                String::new()
+            )))
+            .unwrap(),
+            json!([])
+        );
+    }
+    async fn collect_wire_chunks(chunks: Vec<Vec<u8>>) -> Vec<Value> {
+        let bytes: ByteStream = Box::pin(futures::stream::iter(
+            chunks.into_iter().map(|chunk| Ok(chunk.into())),
+        ));
+        let mut stream = convert_gemini_stream(
+            bytes,
+            GeminiStreamState {
+                model: "model".into(),
+                ..Default::default()
+            },
+        );
+        let mut events = Vec::new();
+        while let Some(event) = stream.next().await {
+            events.push(match event.unwrap() {
+                LlmStreamEvent::TextDelta(text) => json!({"text":text}),
+                LlmStreamEvent::ToolCalls(calls) => json!({"calls":calls}),
+                LlmStreamEvent::Done(metadata) => json!({"done":{"model":metadata.model,"reason":metadata.finish_reason,"input":metadata.prompt_tokens,"output":metadata.completion_tokens,"total":metadata.total_tokens}}),
+                other => panic!("unexpected event: {other:?}"),
+            });
+        }
+        events
+    }
+
+    fn expected_unicode_events() -> Vec<Value> {
+        vec![
+            json!({"text":"hé🙂"}),
+            json!({"calls":[{"id":"call_0","name":"lookup","arguments":{"path":"café/🙂"}}]}),
+            json!({"done":{"model":"model","reason":"stop","input":3,"output":1,"total":4}}),
+        ]
+    }
+
+    #[tokio::test]
+    async fn stream_preserves_unicode_at_every_transport_boundary() {
+        let wire = "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hé🙂\"},{\"functionCall\":{\"name\":\"lookup\",\"args\":{\"path\":\"café/🙂\"}}}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":1}}\n\ndata: [DONE]\n\n".as_bytes();
+        for split in 0..=wire.len() {
+            assert_eq!(
+                collect_wire_chunks(vec![wire[..split].to_vec(), wire[split..].to_vec()]).await,
+                expected_unicode_events(),
+                "byte split {split}"
+            );
+        }
+        assert_eq!(
+            collect_wire_chunks(wire.iter().map(|byte| vec![*byte]).collect()).await,
+            expected_unicode_events()
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_accepts_multiline_sse_data_and_optional_space() {
+        let wire = ": heartbeat\r\nevent: message\r\nid: frame-one\r\ndata:{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hé🙂\"},{\"functionCall\":{\"name\":\"lookup\",\"args\":{\"path\":\"café/🙂\"}}}]},\"finishReason\":\"STOP\"}],\r\ndata: \"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":1}}\r\n\r\ndata:[DONE]\r\n\r\n".as_bytes();
+        assert_eq!(
+            collect_wire_chunks(wire.iter().map(|byte| vec![*byte]).collect()).await,
+            expected_unicode_events()
+        );
+    }
+
+    #[test]
+    fn tool_schema_cleanup_preserves_complete_contract_and_literal_payloads() {
+        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
+        let parameters = json!({
+            "type":"object","additionalProperties":false,"required":["items"],
+            "properties":{
+                "additionalProperties":{"type":"boolean","description":"user property"},
+                "items":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"path":{"type":"string"},"offset":{"type":"integer","minimum":0,"default":0}},"required":["path"]}},
+                "variant":{"anyOf":[{"type":"string"},{"type":"object","additionalProperties":true}]}
+            },
+            "default":{"additionalProperties":"default data"},
+            "examples":[{"additionalProperties":false}],
+            "enum":[{"additionalProperties":"enum data"}],
+            "const":{"additionalProperties":"constant data"},
+            "x-extension":{"additionalProperties":"extension data"}
+        });
+        let tools = vec![ToolDefinition::Builtin(BuiltinTool {
+            name: "inspect".into(),
+            display_name: None,
+            description: "Inspect paths".into(),
+            parameters,
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
+            full_parameters: None,
+        })];
+        assert_eq!(
+            serde_json::to_value(GeminiChatDriver::convert_tools(&tools).unwrap()).unwrap(),
+            json!([{"functionDeclarations":[{"name":"inspect","description":"Inspect paths","parameters":{
+                "type":"object","required":["items"],
+                "properties":{
+                    "additionalProperties":{"type":"boolean","description":"user property"},
+                    "items":{"type":"array","items":{"type":"object","properties":{"path":{"type":"string"},"offset":{"type":"integer","minimum":0,"default":0}},"required":["path"]}},
+                    "variant":{"anyOf":[{"type":"string"},{"type":"object"}]}
+                },
+                "default":{"additionalProperties":"default data"},"examples":[{"additionalProperties":false}],"enum":[{"additionalProperties":"enum data"}],"const":{"additionalProperties":"constant data"},"x-extension":{"additionalProperties":"extension data"}
+            }}]}])
+        );
+        assert!(GeminiChatDriver::convert_tools(&[]).is_none());
+    }
+    #[test]
+    fn size_classification_requires_status_and_provider_or_context_evidence() {
+        for (status, message, expected) in [
+            (413, "", true),
+            (400, "Request payload size exceeds the limit", true),
+            (400, "content too large", true),
+            (400, "TOKEN LIMIT EXCEEDED", true),
+            (400, "input is too long", true),
+            (400, "request exceeds the maximum context", true),
+            (400, "rate limit exceeded", false),
+            (401, "Invalid API key", false),
+            (500, "token limit exceeded", false),
+            (200, "content too large", false),
+        ] {
+            assert_eq!(
+                is_gemini_request_too_large(
+                    reqwest::StatusCode::from_u16(status).unwrap(),
+                    message
+                ),
+                expected,
+                "{status}: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_model_classification_requires_404_and_gemini_evidence() {
+        for (status, message, expected) in [
+            (404, r#"{"error":{"status":"NOT_FOUND"}}"#, true),
+            (404, "Model does not exist", true),
+            (404, "Endpoint not found", false),
+            (400, r#"{"error":{"status":"NOT_FOUND"}}"#, false),
+            (401, "model not found", false),
+            (500, "Model does not exist", false),
+        ] {
+            assert_eq!(
+                is_gemini_model_not_found(reqwest::StatusCode::from_u16(status).unwrap(), message),
+                expected,
+                "{status}: {message}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn request_limits_cache_gate_and_parallel_preference_reach_wire_contract() {
+        use wiremock::matchers::{header, method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        for (model, limit, cache, parallel, expected_limit, expected_cache) in [
+            (
+                "gemini-3.1-pro-preview",
+                None,
+                Some((false, Some("cachedContents/disabled"))),
+                Some(false),
+                65536,
+                None,
+            ),
+            (
+                "unknown-model",
+                None,
+                Some((true, None)),
+                Some(true),
+                8192,
+                None,
+            ),
+            (
+                "gemini-3.1-pro-preview",
+                Some(7),
+                Some((true, Some("cachedContents/active"))),
+                None,
+                7,
+                Some("cachedContents/active"),
+            ),
+            ("unknown-model", Some(9), None, Some(false), 9, None),
+        ] {
+            let server = MockServer::builder().start().await;
+            Mock::given(method("POST")).and(path(format!("/v1beta/models/{model}:streamGenerateContent"))).and(query_param("alt", "sse")).and(header("x-goog-api-key", "synthetic-key")).respond_with(ResponseTemplate::new(200).insert_header("content-type", "text/event-stream").set_body_string("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"}]},\"finishReason\":\"STOP\"}]}\n\n")).expect(1).mount(&server).await;
+            let service =
+                provider("test", "synthetic-key").base_url(format!("{}/v1beta", server.uri()));
+            let config = LlmCallConfig {
+                reasoning_state: None,
+                model: model.into(),
+                temperature: Some(0.25),
+                max_tokens: limit,
+                tools: vec![],
+                reasoning_effort: None,
+                speed: None,
+                verbosity: None,
+                metadata: Default::default(),
+                previous_response_id: None,
+                provider_opaque_context: None,
+                tool_search: None,
+                prompt_cache: cache.map(|(enabled, handle)| {
+                    everruns_provider::driver_registry::PromptCacheConfig {
+                        enabled,
+                        strategy: Default::default(),
+                        gemini_cached_content: handle.map(str::to_string),
+                    }
+                }),
+                openrouter_routing: None,
+                parallel_tool_calls: parallel,
+                volatile_suffix_len: 0,
+                extra_headers: vec![],
+                cache_diagnostics: None,
+            };
+            let response = service
+                .chat_completion(vec![LlmMessage::text(LlmMessageRole::User, "hi")], &config)
+                .await
+                .unwrap();
+            assert_eq!(response.text, "ok");
+            assert_eq!(response.metadata.finish_reason.as_deref(), Some("stop"));
+            assert!(!GeminiChatDriver::new().supports_parallel_tool_calls(model));
+            let requests = server.received_requests().await.unwrap();
+            assert_eq!(requests.len(), 1);
+            let mut expected = json!({"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"temperature":0.25,"maxOutputTokens":expected_limit}});
+            if let Some(handle) = expected_cache {
+                expected["cachedContent"] = json!(handle);
+            }
+            assert_eq!(requests[0].body_json::<Value>().unwrap(), expected);
+        }
     }
 }

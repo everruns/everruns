@@ -218,6 +218,8 @@ Contributed skills flow through the **same** discovery/activation path as other 
 2. When the built-in `skills` capability is active, its VFS scan finds these mounts alongside `AttachSkillCapability` mounts and filesystem-resident skills.
 3. `list_skills`, `activate_skill`, prompt listing, and `/slash` command visibility all go through the existing path, the frontmatter flags `user-invocable` and `disable-model-invocation` are honored the same way.
 
+Reconstruction preserves description text exactly, including YAML-sensitive quotes, backslashes and line breaks, so discovery and activation see the same metadata supplied by the contributor.
+
 The mount's `capability_id` is set to the contributing capability's ID so the VFS layer attributes the mounted files correctly and so users can see which capability a skill came from. There is no separate database row and no parallel prompt-injection path: if a capability wants a skill, it returns a `SkillContribution` and the rest is shared pipeline.
 
 ## Database Schema
@@ -232,7 +234,7 @@ because every activation mounts them into the session VFS.
 
 When `activate_skill` runs, the SKILL.md body is transformed through a fixed pipeline before being returned to the model. All steps are applied to the body only, frontmatter is parsed separately and never substituted.
 
-1. **Argument expansion** (`$ARGUMENTS`, `$ARGUMENTS[N]`, `$N`), synchronous, always runs.
+1. **Argument expansion** (`$ARGUMENTS`, `$ARGUMENTS[N]`, `$N`), synchronous, always runs. Placeholders are matched in the original body; inserted argument values remain literal within this step. Quoted empty arguments retain their positional slots.
 2. **Environment substitution** (`${SESSION_ID}`, `${SKILL_DIR}`), synchronous, always runs.
 3. **Command injection** (`` !`cmd` ``), asynchronous shell execution inside the session sandbox (bashkit shell / VFS). Runs ONLY for trusted sources. The dormant default executor still targets the worker host; see the trust-gate section below.
 

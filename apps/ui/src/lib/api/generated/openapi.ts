@@ -11282,7 +11282,7 @@ export interface components {
      * @example api_key
      * @enum {string}
      */
-    McpServerAuthMode: "none" | "api_key" | "o_auth";
+    McpServerAuthMode: "none" | "api_key" | "oauth";
     /**
      * @description MCP Server lifecycle status.
      *     - `active`: Server is available for use
@@ -18867,42 +18867,42 @@ export interface components {
     };
     /**
      * @description Prefixed identifier with 'agent' prefix
-     * @example agent_01933b5a00007000800000000000001
+     * @example agent_01933b5a000070008000000000000001
      */
     agentId: string;
     /**
      * @description Prefixed identifier with 'agentver' prefix
-     * @example agentver_01933b5a00007000800000000000001
+     * @example agentver_01933b5a000070008000000000000001
      */
     agentverId: string;
     /**
      * @description Prefixed identifier with 'event' prefix
-     * @example event_01933b5a00007000800000000000001
+     * @example event_01933b5a000070008000000000000001
      */
     eventId: string;
     /**
      * @description Prefixed identifier with 'harness' prefix
-     * @example harness_01933b5a00007000800000000000001
+     * @example harness_01933b5a000070008000000000000001
      */
     harnessId: string;
     /**
      * @description Prefixed identifier with 'payacct' prefix
-     * @example payacct_01933b5a00007000800000000000001
+     * @example payacct_01933b5a000070008000000000000001
      */
     payacctId: string;
     /**
      * @description Prefixed identifier with 'payatt' prefix
-     * @example payatt_01933b5a00007000800000000000001
+     * @example payatt_01933b5a000070008000000000000001
      */
     payattId: string;
     /**
      * @description Prefixed identifier with 'paypol' prefix
-     * @example paypol_01933b5a00007000800000000000001
+     * @example paypol_01933b5a000070008000000000000001
      */
     paypolId: string;
     /**
      * @description Prefixed identifier with 'session' prefix
-     * @example session_01933b5a00007000800000000000001
+     * @example session_01933b5a000070008000000000000001
      */
     sessionId: string;
   };

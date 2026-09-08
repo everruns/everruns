@@ -309,7 +309,7 @@ NATS_URL=nats://control:s3cret@nats:4222
   - **Task notifications**: `task.available.{activity_type}` subjects replace PG NOTIFY for push-based worker notification. Lower latency (~1ms vs ~30ms), supports multi-instance deployments.
 - When NATS event delivery is active, the server skips the legacy PostgreSQL event listener used only for SSE wakeups.
 - NATS JetStream must be enabled on the server (`--jetstream` flag)
-- Credentials embedded in the URL (`nats://user:password@host`) are sent as user/password auth; percent-encode reserved characters in the password
+- Credentials embedded in the URL (`nats://user:password@host`) are sent as user/password auth. Reserved characters in the password (`/`, `@`, `:`, `%`) are accepted as-is, so a generated secret can be pasted unmodified; percent-encoded passwords are decoded and also work
 - Fail-graceful: if NATS connection fails at startup, falls back to PG NOTIFY + in-memory delivery with a warning that includes the connection error
 - Only used by control-plane (server); workers communicate via gRPC and don't need NATS access
 - Default port: 4222 (or `PORT_PREFIX22` with `PORT_PREFIX`)

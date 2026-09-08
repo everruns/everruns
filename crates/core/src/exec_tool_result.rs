@@ -60,172 +60,130 @@ impl ExecToolResultPayload {
 #[cfg(test)]
 mod tests {
     use super::ExecToolResultPayload;
-    use crate::tool_output_sanitizer::{AUTO_SUCCESS_BUDGET, NORMAL_BUDGET};
 
     #[test]
-    fn preserves_full_raw_output_and_marks_truncation() {
-        let stdout = (0..400)
-            .map(|index| format!("line {index}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let payload = ExecToolResultPayload::new(&stdout, "warn\n", 17, "concise");
-
-        assert_eq!(payload.exit_code, 17);
-        assert!(!payload.success);
-        assert!(payload.truncated);
-        assert_eq!(payload.total_lines, 400);
-        assert!(payload.stdout.len() < stdout.len());
-        assert!(payload.raw_output.contains("line 0"));
-        assert!(payload.raw_output.contains("line 399"));
-        assert!(payload.raw_output.contains("--- stderr ---"));
+    fn complete_payload_cleans_streams_before_counting_and_preserving_raw_output() {
+        for mode in ["full", "auto", "concise"] {
+            assert_eq!(
+                ExecToolResultPayload::new(
+                    "\u{1b}[31malpha\u{1b}[0m\r\nbeta\n",
+                    "old\rwarning\n",
+                    17,
+                    mode
+                ),
+                ExecToolResultPayload {
+                    stdout: "alpha\nbeta\n".into(),
+                    stderr: "warning\n".into(),
+                    exit_code: 17,
+                    success: false,
+                    truncated: false,
+                    total_lines: 2,
+                    raw_output: "alpha\nbeta\n\n--- stderr ---\nwarning\n".into(),
+                }
+            );
+            assert_eq!(
+                ExecToolResultPayload::new("ok\n", "", 0, mode),
+                ExecToolResultPayload {
+                    stdout: "ok\n".into(),
+                    stderr: String::new(),
+                    exit_code: 0,
+                    success: true,
+                    truncated: false,
+                    total_lines: 1,
+                    raw_output: "ok\n".into(),
+                }
+            );
+        }
     }
 
     #[test]
-    fn full_mode_keeps_complete_output_inline() {
-        let payload = ExecToolResultPayload::new("alpha\nbeta\n", "", 0, "full");
-
-        assert_eq!(payload.stdout, "alpha\nbeta\n");
-        assert_eq!(payload.stderr, "");
-        assert!(!payload.truncated);
-        assert_eq!(payload.total_lines, 2);
-        assert_eq!(payload.raw_output, "alpha\nbeta\n");
+    fn literal_inline_budgets_accept_boundary_and_truncate_one_byte_over() {
+        for (mode, exit, budget) in [
+            ("silent", 0, 200),
+            ("concise", 0, 2048),
+            ("normal", 0, 8192),
+            ("verbose", 0, 16384),
+            ("auto", 0, 384),
+            ("auto", 1, 8192),
+            ("unknown", 0, 2048),
+        ] {
+            let exact = "x".repeat(budget);
+            let payload = ExecToolResultPayload::new(&exact, "", exit, mode);
+            assert_eq!(payload.stdout, exact, "{mode}/{exit}");
+            assert!(!payload.truncated);
+            let over = "x".repeat(budget + 1);
+            let payload = ExecToolResultPayload::new(&over, "", exit, mode);
+            assert!(payload.truncated, "{mode}/{exit}");
+            assert!(payload.stdout.len() <= budget, "{mode}/{exit}");
+            assert_eq!(payload.raw_output, over);
+            assert_eq!(payload.total_lines, 1);
+            assert_eq!(payload.success, exit == 0);
+        }
     }
 
-    // ====================================================================
-    // EVE-489: auto mode is persistence-first
-    // ====================================================================
+    #[test]
+    fn every_mode_preserves_complete_raw_streams_and_caps_stderr() {
+        let stdout = (0..1800)
+            .map(|i| format!("line {i:04}\n"))
+            .collect::<String>();
+        let stderr = (0..700)
+            .map(|i| format!("warning {i:03}\n"))
+            .collect::<String>();
+        let raw = format!("{stdout}\n--- stderr ---\n{stderr}");
+        for mode in ["auto", "silent", "concise", "normal", "verbose", "full"] {
+            for exit in [0, 17] {
+                let payload = ExecToolResultPayload::new(&stdout, &stderr, exit, mode);
+                assert_eq!(payload.raw_output, raw, "{mode}/{exit}");
+                assert_eq!(payload.total_lines, 1800);
+                assert_eq!(payload.exit_code, exit);
+                assert_eq!(payload.success, exit == 0);
+                if mode == "full" {
+                    assert_eq!(payload.stdout, stdout);
+                    assert_eq!(payload.stderr, stderr);
+                    assert!(!payload.truncated);
+                } else {
+                    assert!(payload.truncated);
+                    assert!(payload.stderr.len() <= 4096);
+                }
+            }
+        }
+    }
 
     #[test]
-    fn auto_success_produces_compact_inline_output() {
-        let stdout = (0..2000)
-            .map(|i| format!("success-line-{i}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let payload = ExecToolResultPayload::new(&stdout, "", 0, "auto");
-
-        assert!(payload.success);
-        assert!(
-            payload.stdout.len() <= AUTO_SUCCESS_BUDGET,
-            "auto+success stdout should fit in AUTO_SUCCESS_BUDGET ({}), got {} bytes",
-            AUTO_SUCCESS_BUDGET,
-            payload.stdout.len()
+    fn auto_failure_preserves_middle_diagnostics_with_normal_budget() {
+        let stdout = format!(
+            "{}error: failed to compile\n  --> src/main.rs:1:1\n{}",
+            "building module\n".repeat(300),
+            "trailing diagnostic line\n".repeat(600)
         );
-        // total_lines is computed from cleaned (untruncated) stdout
-        assert_eq!(payload.total_lines, 2000);
-        // raw_output still contains every line for the persistence hook
-        assert!(payload.raw_output.contains("success-line-0"));
-        assert!(payload.raw_output.contains("success-line-1999"));
-        assert!(payload.truncated);
-    }
-
-    #[test]
-    fn auto_failure_uses_normal_diagnostic_budget() {
-        // Build output large enough that NORMAL_BUDGET truncation kicks in
-        // but the result still has substantial diagnostic detail.
-        let mut lines = Vec::new();
-        for i in 0..200 {
-            lines.push(format!("building module {i}"));
-        }
-        lines.push("error: failed to compile".to_string());
-        lines.push("  --> src/main.rs:1:1".to_string());
-        for i in 0..2000 {
-            lines.push(format!("trailing diagnostic line {i}"));
-        }
-        let stdout = lines.join("\n");
-
         let payload = ExecToolResultPayload::new(&stdout, "stderr details\n", 1, "auto");
-
         assert!(!payload.success);
         assert_eq!(payload.exit_code, 1);
-        // Auto + failure should give a diagnostic window, not the tiny success budget.
+        assert!(payload.truncated);
+        assert!(payload.stdout.len() > 384 && payload.stdout.len() <= 8192);
         assert!(
-            payload.stdout.len() > AUTO_SUCCESS_BUDGET,
-            "auto+failure stdout should exceed AUTO_SUCCESS_BUDGET to fit diagnostics, got {} bytes",
-            payload.stdout.len()
+            payload
+                .stdout
+                .contains("error: failed to compile\n  --> src/main.rs:1:1")
         );
-        assert!(
-            payload.stdout.len() <= NORMAL_BUDGET,
-            "auto+failure stdout should be capped at NORMAL_BUDGET ({}), got {} bytes",
-            NORMAL_BUDGET,
-            payload.stdout.len()
+        assert_eq!(
+            payload.raw_output,
+            format!("{stdout}\n--- stderr ---\nstderr details\n")
         );
-        // Error region is preserved through priority-aware truncation.
-        assert!(
-            payload.stdout.contains("error: failed to compile"),
-            "error line must be preserved in failure diagnostic output"
-        );
-        // raw_output still has the full content for persistence.
-        assert!(payload.raw_output.contains("building module 0"));
-        assert!(payload.raw_output.contains("trailing diagnostic line 1999"));
-        assert!(payload.raw_output.contains("--- stderr ---"));
-    }
-
-    #[test]
-    fn auto_small_success_output_is_unchanged() {
-        let payload = ExecToolResultPayload::new("ok\n", "", 0, "auto");
-        assert!(payload.success);
-        assert_eq!(payload.stdout, "ok\n");
-        assert!(!payload.truncated);
-    }
-
-    #[test]
-    fn explicit_normal_still_uses_normal_budget_on_success() {
-        let stdout = (0..2000)
-            .map(|i| format!("line-{i}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let payload = ExecToolResultPayload::new(&stdout, "", 0, "normal");
-
-        assert!(payload.success);
-        // Normal on success returns NORMAL_BUDGET worth of inline output,
-        // not the auto-success compact summary.
-        assert!(
-            payload.stdout.len() > AUTO_SUCCESS_BUDGET,
-            "explicit normal mode should not compact to auto-success budget on success"
-        );
-        assert!(payload.stdout.len() <= NORMAL_BUDGET);
     }
 
     #[test]
     fn successful_source_search_preserves_leading_matches() {
-        let mut lines = vec![
-            "src/runtime.rs:10: first relevant match".to_string(),
-            "src/runtime.rs:11: second relevant match".to_string(),
-        ];
-        lines.extend((0..1200).map(|i| format!("src/module_{i}.rs: ordinary source line")));
-        lines.extend((0..300).map(|i| format!("src/errors_{i}.rs: struct ErrorContext{i}")));
-        let stdout = lines.join("\n");
-
+        let prefix =
+            "src/runtime.rs:10: first relevant match\nsrc/runtime.rs:11: second relevant match\n";
+        let stdout = format!(
+            "{prefix}{}{}",
+            "src/module.rs: ordinary source line\n".repeat(400),
+            "src/errors.rs: struct ErrorContext\n".repeat(100)
+        );
         let payload = ExecToolResultPayload::new(&stdout, "", 0, "normal");
-
         assert!(payload.truncated);
-        assert!(payload.stdout.contains("first relevant match"));
-        assert!(payload.stdout.contains("second relevant match"));
-    }
-
-    #[test]
-    fn raw_output_preserved_across_modes() {
-        let stdout = (0..5000)
-            .map(|i| format!("line-{i}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        for mode in ["auto", "silent", "concise", "normal", "verbose", "full"] {
-            for exit_code in [0, 1] {
-                let payload = ExecToolResultPayload::new(&stdout, "err\n", exit_code, mode);
-                assert!(
-                    payload.raw_output.contains("line-0"),
-                    "raw_output should contain head for mode={mode} exit={exit_code}"
-                );
-                assert!(
-                    payload.raw_output.contains("line-4999"),
-                    "raw_output should contain tail for mode={mode} exit={exit_code}"
-                );
-                assert!(
-                    payload.raw_output.contains("--- stderr ---"),
-                    "raw_output should contain stderr marker for mode={mode} exit={exit_code}"
-                );
-            }
-        }
+        assert!(payload.stdout.starts_with(prefix));
+        assert_eq!(payload.raw_output, stdout);
     }
 }

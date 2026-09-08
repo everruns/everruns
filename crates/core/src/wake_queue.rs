@@ -164,8 +164,8 @@ impl SessionWakeQueue {
     /// queue and can never be delivered again.
     pub fn drain(&self, session_id: SessionId) -> Vec<PendingWake> {
         let mut guard = self.queues.lock().expect("wake queue mutex poisoned");
-        match guard.get_mut(&session_id) {
-            Some(queue) => queue.drain(..).collect(),
+        match guard.remove(&session_id) {
+            Some(queue) => queue.into_iter().collect(),
             None => Vec::new(),
         }
     }
@@ -209,10 +209,10 @@ mod tests {
     };
 
     fn task_with_policy(policy: TaskWakePolicy) -> SessionTask {
-        let session_id = SessionId::new();
+        let session_id = SessionId::from_seed(1);
         let mut task = new_session_task(
             CreateSessionTask {
-                id: None,
+                id: Some("task_a".into()),
                 session_id,
                 kind: "subagent".into(),
                 display_name: "Test Runner".into(),
@@ -228,98 +228,200 @@ mod tests {
     }
 
     #[test]
-    fn silent_never_wakes() {
-        for transition in [
-            TaskTransition::Terminal,
-            TaskTransition::AwaitingInput,
-            TaskTransition::Message,
+    fn policy_matrix_controls_rendering_and_enqueueing() {
+        for (policy, allowed) in [
+            (TaskWakePolicy::Silent, [false, false, false]),
+            (TaskWakePolicy::OnTerminal, [true, false, false]),
+            (TaskWakePolicy::OnActivity, [true, true, true]),
         ] {
-            assert!(wake_text_for(&task_with_policy(TaskWakePolicy::Silent), transition).is_none());
+            for (index, transition) in [
+                TaskTransition::Terminal,
+                TaskTransition::AwaitingInput,
+                TaskTransition::Message,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let queue = SessionWakeQueue::new();
+                let task = task_with_policy(policy);
+                assert_eq!(wake_text_for(&task, transition).is_some(), allowed[index]);
+                assert_eq!(queue.note_transition(&task, transition), allowed[index]);
+                assert_eq!(queue.has_pending(task.session_id), allowed[index]);
+                assert_eq!(
+                    queue.pending_len(task.session_id),
+                    usize::from(allowed[index])
+                );
+            }
         }
     }
 
     #[test]
-    fn on_terminal_wakes_only_on_terminal() {
-        let task = task_with_policy(TaskWakePolicy::OnTerminal);
-        assert!(wake_text_for(&task, TaskTransition::Terminal).is_some());
-        assert!(wake_text_for(&task, TaskTransition::AwaitingInput).is_none());
-        assert!(wake_text_for(&task, TaskTransition::Message).is_none());
+    fn terminal_text_preserves_identity_status_and_optional_fields() {
+        let mut task = task_with_policy(TaskWakePolicy::OnTerminal);
+        assert_eq!(
+            wake_text_for(&task, TaskTransition::Terminal).as_deref(),
+            Some("Task \"Test Runner\" (task_a) finished: succeeded.")
+        );
+        task.summary = Some("all tests passed".into());
+        task.result_path = Some("/.tasks/task_a/result.json".into());
+        assert_eq!(
+            wake_text_for(&task, TaskTransition::Terminal).as_deref(),
+            Some(
+                "Task \"Test Runner\" (task_a) finished: succeeded.\n- summary: all tests passed\n- result_path: /.tasks/task_a/result.json"
+            )
+        );
+        task.state = SessionTaskState::Failed;
+        task.summary = None;
+        assert_eq!(
+            wake_text_for(&task, TaskTransition::Terminal).as_deref(),
+            Some(
+                "Task \"Test Runner\" (task_a) finished: failed.\n- result_path: /.tasks/task_a/result.json"
+            )
+        );
     }
 
     #[test]
-    fn on_activity_wakes_on_all_three() {
+    fn activity_text_uses_input_prompt_and_detail_label_fallbacks() {
         let mut task = task_with_policy(TaskWakePolicy::OnActivity);
-        task.state = SessionTaskState::AwaitingInput;
         task.input_request = Some(TaskInputRequest {
-            id: "ir_1".into(),
+            id: "input_1".into(),
             prompt: "pick a branch".into(),
             expected: None,
         });
-        let awaiting = wake_text_for(&task, TaskTransition::AwaitingInput).expect("awaiting wakes");
-        assert!(awaiting.contains("awaiting input"));
-        assert!(awaiting.contains("pick a branch"));
+        assert_eq!(
+            wake_text_for(&task, TaskTransition::AwaitingInput).as_deref(),
+            Some("Task \"Test Runner\" (task_a) is awaiting input: pick a branch")
+        );
+        task.input_request = None;
+        assert_eq!(
+            wake_text_for(&task, TaskTransition::AwaitingInput).as_deref(),
+            Some("Task \"Test Runner\" (task_a) is awaiting input: Task is awaiting input.")
+        );
+        for (detail, label, expected) in [
+            (Some("iteration 4/10"), Some("label"), "iteration 4/10"),
+            (Some(" \u{2003}"), Some("label"), "label"),
+            (None, Some("label"), "label"),
+            (None, None, "structured progress update"),
+        ] {
+            task.state_detail = detail.map(str::to_string);
+            task.progress = label.map(|label| crate::session_task::TaskProgress {
+                current: Some(4),
+                total: Some(10),
+                unit: Some("steps".into()),
+                label: Some(label.into()),
+            });
+            assert_eq!(
+                wake_text_for(&task, TaskTransition::Message).unwrap(),
+                format!("Task \"Test Runner\" (task_a) sent a message: {expected}")
+            );
+        }
+    }
 
-        task.state = SessionTaskState::Running;
-        task.state_detail = Some("iteration 4/10".into());
-        let message = wake_text_for(&task, TaskTransition::Message).expect("message wakes");
-        assert!(message.contains("iteration 4/10"));
-
-        task.state = SessionTaskState::Failed;
-        assert!(wake_text_for(&task, TaskTransition::Terminal).is_some());
+    #[tokio::test]
+    async fn observer_delivery_is_fifo_isolated_and_claimed_once() {
+        let queue = SessionWakeQueue::new();
+        let mut a = task_with_policy(TaskWakePolicy::OnActivity);
+        let mut b = a.clone();
+        b.id = "task_b".into();
+        b.session_id = SessionId::from_seed(2);
+        assert!(queue.drain(a.session_id).is_empty());
+        queue
+            .on_transition(&a, TaskTransition::Terminal)
+            .await
+            .unwrap();
+        a.id = "task_next".into();
+        queue
+            .on_transition(&a, TaskTransition::Message)
+            .await
+            .unwrap();
+        queue
+            .on_transition(&b, TaskTransition::Terminal)
+            .await
+            .unwrap();
+        assert_eq!(queue.pending_len(a.session_id), 2);
+        assert_eq!(
+            queue.pending_len(a.session_id),
+            2,
+            "inspection does not claim wakes"
+        );
+        let wakes = queue.drain(a.session_id);
+        assert_eq!(
+            wakes
+                .iter()
+                .map(|wake| (
+                    wake.task_id.as_str(),
+                    wake.session_id,
+                    wake.transition,
+                    wake.text.as_str()
+                ))
+                .collect::<Vec<_>>(),
+            [
+                (
+                    "task_a",
+                    SessionId::from_seed(1),
+                    TaskTransition::Terminal,
+                    "Task \"Test Runner\" (task_a) finished: succeeded."
+                ),
+                (
+                    "task_next",
+                    SessionId::from_seed(1),
+                    TaskTransition::Message,
+                    "Task \"Test Runner\" (task_next) sent a message: structured progress update"
+                ),
+            ]
+        );
+        assert!(queue.drain(a.session_id).is_empty());
+        assert!(!queue.has_pending(a.session_id));
+        assert_eq!(queue.pending_len(b.session_id), 1);
+        let other = queue.drain(b.session_id);
+        assert_eq!(other.len(), 1);
+        assert_eq!(other[0].task_id, "task_b");
+        assert_eq!(other[0].session_id, SessionId::from_seed(2));
     }
 
     #[test]
-    fn terminal_text_includes_summary_and_result_path() {
+    fn concurrent_drains_claim_each_wake_once() {
+        let queue = SessionWakeQueue::new();
         let mut task = task_with_policy(TaskWakePolicy::OnTerminal);
-        task.summary = Some("all tests passed".into());
-        task.result_path = Some("/.tasks/task_x/result.json".into());
-        let text = wake_text_for(&task, TaskTransition::Terminal).unwrap();
-        assert!(text.contains("finished: succeeded"));
-        assert!(text.contains("all tests passed"));
-        assert!(text.contains("/.tasks/task_x/result.json"));
+        for n in 0..32 {
+            task.id = format!("task_{n}");
+            queue.note_transition(&task, TaskTransition::Terminal);
+        }
+        let barrier = std::sync::Barrier::new(2);
+        let mut ids = std::thread::scope(|scope| {
+            let drain = || {
+                barrier.wait();
+                queue.drain(task.session_id)
+            };
+            let first = scope.spawn(drain);
+            let second = scope.spawn(drain);
+            first
+                .join()
+                .unwrap()
+                .into_iter()
+                .chain(second.join().unwrap())
+                .map(|wake| wake.task_id)
+                .collect::<Vec<_>>()
+        });
+        ids.sort();
+        let mut expected = (0..32).map(|n| format!("task_{n}")).collect::<Vec<_>>();
+        expected.sort();
+        assert_eq!(ids, expected);
+        assert!(!queue.has_pending(task.session_id));
     }
 
     #[test]
-    fn drain_is_exactly_once() {
+    fn draining_releases_per_session_storage_and_allows_reenqueue() {
         let queue = SessionWakeQueue::new();
         let task = task_with_policy(TaskWakePolicy::OnTerminal);
-        let session_id = task.session_id;
-
-        assert!(queue.note_transition(&task, TaskTransition::Terminal));
-        assert_eq!(queue.pending_len(session_id), 1);
-
-        let first = queue.drain(session_id);
-        assert_eq!(first.len(), 1, "first drain returns the wake");
-        assert_eq!(first[0].task_id, task.id);
-
-        let second = queue.drain(session_id);
+        queue.note_transition(&task, TaskTransition::Terminal);
+        assert_eq!(queue.drain(task.session_id).len(), 1);
         assert!(
-            second.is_empty(),
-            "second drain returns nothing — claimed once"
+            queue.queues.lock().unwrap().is_empty(),
+            "drained sessions must not accumulate in the queue"
         );
-        assert_eq!(queue.pending_len(session_id), 0);
-    }
-
-    #[test]
-    fn silent_transition_enqueues_nothing() {
-        let queue = SessionWakeQueue::new();
-        let task = task_with_policy(TaskWakePolicy::Silent);
-        assert!(!queue.note_transition(&task, TaskTransition::Terminal));
-        assert_eq!(queue.pending_len(task.session_id), 0);
-    }
-
-    #[test]
-    fn queues_are_isolated_per_session() {
-        let queue = SessionWakeQueue::new();
-        let a = task_with_policy(TaskWakePolicy::OnTerminal);
-        let b = task_with_policy(TaskWakePolicy::OnTerminal);
-        queue.note_transition(&a, TaskTransition::Terminal);
-        queue.note_transition(&b, TaskTransition::Terminal);
-        assert_eq!(queue.drain(a.session_id).len(), 1);
-        assert_eq!(
-            queue.pending_len(b.session_id),
-            1,
-            "draining A leaves B intact"
-        );
+        assert!(queue.note_transition(&task, TaskTransition::Terminal));
+        assert_eq!(queue.drain(task.session_id).len(), 1);
+        assert!(queue.queues.lock().unwrap().is_empty());
     }
 }

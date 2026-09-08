@@ -51,6 +51,10 @@ fn resolve_servers(servers: &ScopedMcpServers) -> Vec<ResolvedServer> {
     servers
         .iter()
         .filter_map(|(name, server)| {
+            if !everruns_core::mcp_server::is_valid_mcp_server_name(name) {
+                tracing::warn!(server = %name, "MCP server ignored: ambiguous tool prefix");
+                return None;
+            }
             let endpoint = endpoint_for(name, server)?;
             Some(ResolvedServer {
                 name: name.clone(),
@@ -203,19 +207,48 @@ mod tests {
 
     #[test]
     fn http_server_maps_to_http_endpoint() {
+        let headers = HashMap::from([("X-Trace".into(), "request-trace".into())]);
         let servers = servers_with(
             "docs",
             ScopedMcpServer {
                 url: "https://example.com/mcp".into(),
+                headers: headers.clone(),
+                auth_mode: everruns_core::McpServerAuthMode::OAuth,
+                protocol_mode: everruns_core::McpProtocolMode::V2025March,
+                oauth_provider_id: Some("docs-provider".into()),
+                tool_discovery: false,
                 ..Default::default()
             },
         );
         let resolved = resolve_servers(&servers);
         assert_eq!(resolved.len(), 1);
-        assert!(matches!(
-            resolved[0].connection.endpoint,
-            McpEndpoint::Http { .. }
-        ));
+        assert_eq!(resolved[0].name, "docs");
+        assert!(!resolved[0].tool_discovery);
+        let connection = &resolved[0].connection;
+        assert_eq!(connection.name, "docs");
+        assert_eq!(
+            connection.auth_mode,
+            everruns_core::McpServerAuthMode::OAuth
+        );
+        assert_eq!(
+            connection.protocol_mode,
+            everruns_core::McpProtocolMode::V2025March
+        );
+        assert_eq!(
+            connection.oauth_provider_id.as_deref(),
+            Some("docs-provider")
+        );
+        match &connection.endpoint {
+            McpEndpoint::Http {
+                url,
+                headers: actual_headers,
+            } => {
+                assert_eq!(url, "https://example.com/mcp");
+                assert_eq!(actual_headers, &headers);
+            }
+            #[cfg(feature = "mcp-stdio")]
+            other => panic!("expected HTTP, got {other:?}"),
+        }
     }
 
     #[cfg(feature = "mcp-stdio")]
@@ -227,15 +260,17 @@ mod tests {
                 transport_type: McpServerTransportType::Stdio,
                 command: Some("mcp-server-filesystem".into()),
                 args: vec!["/work".into()],
+                env: HashMap::from([("MODE".into(), "test".into())]),
                 ..Default::default()
             },
         );
         let resolved = resolve_servers(&servers);
         assert_eq!(resolved.len(), 1);
         match &resolved[0].connection.endpoint {
-            McpEndpoint::Stdio { command, args, .. } => {
+            McpEndpoint::Stdio { command, args, env } => {
                 assert_eq!(command, "mcp-server-filesystem");
                 assert_eq!(args, &["/work".to_string()]);
+                assert_eq!(env, &HashMap::from([("MODE".into(), "test".into())]));
             }
             other => panic!("expected stdio endpoint, got {other:?}"),
         }
@@ -267,5 +302,21 @@ mod tests {
             },
         );
         assert!(resolve_servers(&servers).is_empty());
+    }
+    #[test]
+    fn ambiguous_server_names_are_excluded_from_runtime_connections() {
+        let server = ScopedMcpServer {
+            url: "https://example.com/mcp".into(),
+            ..Default::default()
+        };
+        for name in ["docs_", "docs__private", "docs-", "_"] {
+            assert!(
+                resolve_servers(&servers_with(name, server.clone())).is_empty(),
+                "{name}"
+            );
+        }
+        let resolved = resolve_servers(&servers_with("docs_api", server));
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0].connection.name, "docs_api");
     }
 }

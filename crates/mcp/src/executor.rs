@@ -94,6 +94,10 @@ impl StaticConnectionResolver {
     }
 
     pub fn insert(&mut self, connection: McpConnection) {
+        if !everruns_core::mcp_server::is_valid_mcp_server_name(&connection.name) {
+            tracing::warn!(server = %connection.name, "MCP server ignored: ambiguous tool prefix");
+            return;
+        }
         let key = sanitize_mcp_server_name(&connection.name);
         self.connections.insert(key, connection);
     }

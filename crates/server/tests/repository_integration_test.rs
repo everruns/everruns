@@ -1587,7 +1587,7 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
         .await
         .expect("Failed to create session");
 
-    let total = 3_050;
+    let total = 2_001;
     for index in 1..=total {
         let (event_type, data) = if index == total - 1 {
             (
@@ -1639,39 +1639,16 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
             .expect("Failed to create long-history event");
     }
 
-    let started = std::time::Instant::now();
     let fallback = backend
         .list_message_events_limited(session.id, None)
         .await
         .expect("list bounded fallback history");
-    let fallback_elapsed = started.elapsed();
     assert_eq!(
         fallback.len(),
         everruns_server::storage::repository::MESSAGE_SAFETY_LIMIT
     );
-    assert_eq!(
-        fallback.first().expect("first fallback row").sequence,
-        1_051
-    );
+    assert_eq!(fallback.first().expect("first fallback row").sequence, 2);
     assert_eq!(fallback.last().expect("last fallback row").sequence, total);
-
-    let fallback_bytes: usize = fallback
-        .iter()
-        .map(|event| {
-            event.data.to_string().len()
-                + event.context.to_string().len()
-                + event
-                    .metadata
-                    .as_ref()
-                    .map(|value| value.to_string().len())
-                    .unwrap_or(0)
-                + event
-                    .tags
-                    .as_ref()
-                    .map(|tags| tags.iter().map(String::len).sum::<usize>())
-                    .unwrap_or(0)
-        })
-        .sum();
 
     let window = backend
         .list_message_events_filtered(
@@ -1697,44 +1674,56 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
     );
 
     let pool = backend.pool().expect("postgres pool");
-    let message_index: (String,) = sqlx::query_as(
-        "SELECT indexdef FROM pg_indexes WHERE schemaname = current_schema() AND indexname = 'idx_events_messages'",
+    let (index_ddl, index_target, predicate): (String, String, Option<String>) = sqlx::query_as(
+        r#"
+        SELECT pg_get_indexdef(i.indexrelid),
+               format(' ON %I.%I USING ', n.nspname, t.relname),
+               pg_get_expr(i.indpred, i.indrelid)
+        FROM pg_index i
+        JOIN pg_class idx ON idx.oid = i.indexrelid
+        JOIN pg_class t ON t.oid = i.indrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE i.indrelid = 'events'::regclass AND idx.relname = 'idx_events_messages'
+        "#,
     )
     .fetch_one(pool)
     .await
     .expect("message events partial index should exist");
-    assert!(
-        message_index.0.contains("WHERE"),
-        "idx_events_messages should remain a partial index: {}",
-        message_index.0
-    );
+    assert!(predicate.is_some(), "message index must remain partial");
 
-    // The property migration 084 established is that the query predicate is
-    // *implied by* the index predicate, which is what lets Postgres use this
-    // partial index at all. Assert that directly, with sequential scans
-    // disabled for the planning of this one statement.
-    //
-    // Asserting "the plan contains no Seq Scan" instead would test the
-    // planner's cost comparison rather than the index, and that comparison
-    // depends on how many unrelated rows other tests happen to have left in
-    // the shared `events` table: once a large enough fraction of the table
-    // matches the predicate, a sequential scan is genuinely the cheaper plan
-    // and Postgres is right to choose it. That made the old assertion fail on
-    // `main` without either this query or the index changing.
-    //
-    // `SET LOCAL` scopes the setting to this transaction, which is rolled
-    // back, so no pooled connection escapes with seqscan disabled.
+    // Prove index eligibility independently of shared-table statistics and
+    // competing indexes. Disabling seqscan alone still lets PostgreSQL choose
+    // another index by cost; that does not imply this partial index is unusable.
+    // Clone the migrated definition onto a transaction-local empty table, where
+    // it is the only index. Rollback removes the probe and the planner setting.
     let mut tx = pool.begin().await.expect("begin planner-assertion tx");
+    sqlx::query("CREATE TEMP TABLE message_history_index_probe (LIKE events) ON COMMIT DROP")
+        .execute(&mut *tx)
+        .await
+        .expect("create isolated index probe");
+    assert!(
+        index_ddl.contains(&index_target),
+        "unexpected index definition: {index_ddl}"
+    );
+    let probe_ddl = index_ddl.replacen(
+        &index_target,
+        " ON pg_temp.message_history_index_probe USING ",
+        1,
+    );
+    sqlx::query(sqlx::AssertSqlSafe(probe_ddl.as_str()))
+        .execute(&mut *tx)
+        .await
+        .expect("clone migrated index onto isolated probe");
     sqlx::query("SET LOCAL enable_seqscan = off")
         .execute(&mut *tx)
         .await
         .expect("disable seq scans for the planner assertion");
     let plan_rows: Vec<(String,)> = sqlx::query_as(
         r#"
-        EXPLAIN (ANALYZE, BUFFERS)
+        EXPLAIN (COSTS OFF)
         SELECT * FROM (
             SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
-            FROM events
+            FROM message_history_index_probe
             WHERE session_id = $1
               AND event_type IN ('input.message', 'output.message.completed', 'tool.completed')
             ORDER BY sequence DESC
@@ -1754,24 +1743,12 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
         .map(|row| row.0)
         .collect::<Vec<_>>()
         .join("\n");
-    // Widening the query's event types beyond the index predicate, or
-    // narrowing the index back to the pre-084 pair, makes the partial index
-    // unusable and drops the planner onto `idx_events_session_sequence` --
-    // scanning every event type in the session. That is the regression this
-    // catches.
+    // A pre-084 two-event predicate cannot satisfy this three-event query,
+    // so it forces a sequential scan even when seqscan is discouraged.
     assert!(
         plan.contains("idx_events_messages"),
         "message history query must be servable by the idx_events_messages \
-         partial index; a plan on another index means the query predicate is \
-         no longer implied by the index predicate (see migration 084):\n{plan}"
-    );
-
-    println!(
-        "long message-history benchmark: before_rows={total}, after_rows={}, bytes_returned={}, service_time_ms={}, plan=\n{}",
-        fallback.len(),
-        fallback_bytes,
-        fallback_elapsed.as_millis(),
-        plan
+         partial index in isolation (see migration 084):\n{plan}"
     );
 }
 

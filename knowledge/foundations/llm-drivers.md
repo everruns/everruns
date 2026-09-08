@@ -669,16 +669,11 @@ preset-derived values; when multiple presets target the same field, later ones w
 Presets are applied before capacity strategy, `apply_presets()` runs first, then
 `apply_capacity_strategy()` runs on the result.
 
-| Preset | Wire effect |
-|--------|-------------|
-| `CheapestWithTools` | `require_parameters = true`, `sort = price` |
-| `LowestLatencyReview` | `sort = throughput` |
-| `ZdrOnly` | `zdr = true` |
-| `ByokFirst` | `allow_fallbacks = true` (if not already set) |
-| `NoDataCollection` | `data_collection = deny` |
-| `StrictJson` | `require_parameters = true` |
-| `ReasoningRequired` | `require_parameters = true` |
-| `MaxPrice { prompt_usd_per_million, completion_usd_per_million }` | `max_price.prompt`, `max_price.completion` (converted from USD/M to per-token) |
+Preset definitions and their exact mappings live in
+[`OpenRouterRoutingPreset` and its compiler](../../crates/provider/src/driver_registry.rs).
+Price ceilings retain USD per million prompt/completion tokens, matching the
+[OpenRouter routing contract](https://openrouter.ai/docs/guides/routing/provider-selection).
+Catalog model pricing uses a different unit and must not be applied to routing ceilings.
 
 `apply_presets()` returns `Err` for invalid inputs (e.g. negative `MaxPrice` values).
 When `presets` is empty the driver skips calling `apply_presets()` entirely (clone-free fast path).

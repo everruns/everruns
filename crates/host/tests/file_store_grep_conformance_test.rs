@@ -174,3 +174,72 @@ async fn real_disk_store_honors_grep_regex_contract() {
     assert_regex_contract(store.clone()).await;
     assert_grep_limits(store).await;
 }
+
+#[tokio::test]
+async fn mounted_grep_preserves_alias_segment_boundaries_for_real_backends() {
+    let root = TempDir::new().unwrap();
+    let backends: Vec<Arc<dyn SessionFileSystem>> = vec![
+        Arc::new(InMemorySessionFileStore::new()),
+        Arc::new(RealDiskFileStore::new(root.path()).unwrap()),
+    ];
+    for backend in backends {
+        let store = everruns_core::MountFs::new(backend);
+        let session = SessionId::from_seed(778);
+        for (path, content) in [
+            ("/workspacefoo/target.txt", "before\nneedle target\nafter"),
+            ("/foo/decoy.txt", "needle decoy"),
+        ] {
+            store
+                .write_file(session, path, content, "text")
+                .await
+                .unwrap();
+        }
+        for (filter, expected) in [
+            ("/workspacefoo", "/workspacefoo/target.txt"),
+            ("/workspacefoo/*.txt", "/workspacefoo/target.txt"),
+            ("/workspace/foo/*.txt", "/foo/decoy.txt"),
+        ] {
+            let flat = store
+                .grep_files(session, "needle", Some(filter))
+                .await
+                .unwrap();
+            assert_eq!(
+                flat.iter().map(|hit| hit.path.as_str()).collect::<Vec<_>>(),
+                [expected]
+            );
+            let contextual = store
+                .grep_files_with_options(
+                    session,
+                    "needle",
+                    &GrepOptions {
+                        path_pattern: Some(filter.into()),
+                        before_context: 1,
+                        after_context: 1,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+            assert_eq!(contextual.total_matches, 1);
+            assert_eq!(contextual.returned_matches, 1);
+            assert_eq!(
+                contextual
+                    .blocks
+                    .iter()
+                    .map(|block| block.path.as_str())
+                    .collect::<Vec<_>>(),
+                [expected]
+            );
+            if expected == "/workspacefoo/target.txt" {
+                assert_eq!(
+                    contextual.blocks[0]
+                        .lines
+                        .iter()
+                        .map(|line| (line.line.as_str(), line.is_match))
+                        .collect::<Vec<_>>(),
+                    [("before", false), ("needle target", true), ("after", false)]
+                );
+            }
+        }
+    }
+}

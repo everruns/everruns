@@ -16,6 +16,7 @@ mod llm_test_matrix;
 
 use everruns_provider::model::ReasoningEffort;
 use everruns_provider::provider::DriverId;
+use everruns_provider::reasoning::ReasoningContentPart;
 use llm_test_matrix::*;
 use rstest::rstest;
 
@@ -180,15 +181,15 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
     assert!(
         reasoning_parts
             .iter()
-            .any(|part| part.display_text().is_some_and(|text| !text.is_empty())),
-        "At least one reasoning artifact should carry readable text for {config}"
+            .any(|part| reasoning_artifact_has_content(part)),
+        "At least one reasoning artifact should carry readable text or complete opaque OpenAI replay state for {config}"
     );
 
     // Reasoning must never be folded into the answer text. A summary routed to
     // the assistant-text channel is persisted as the model's answer and
     // replayed as its own prior output.
     for part in &reasoning_parts {
-        if let Some(text) = part.display_text() {
+        if let Some(text) = part.display_text().filter(|text| !text.trim().is_empty()) {
             assert!(
                 !assistant_msg
                     .content
@@ -227,9 +228,8 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 #[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
-// GPT-6 Astra never surfaces readable reasoning text (see
-// llm_test_matrix::OPENAI_GPT6_ASTRA), but this test only asserts on the
-// tool call, so it is safe to cover here.
+// Include GPT-6 Astra in the reasoning-plus-tool-call scenario; its
+// reasoning artifacts can carry opaque replay state without summary text.
 #[case::openai_gpt6_astra(OPENAI_GPT6_ASTRA)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
 // Gemini binds a thoughtSignature to the function-call part it belongs to;
@@ -299,4 +299,66 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
 
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert_live_tool_call_contract(&result, "get_current_time", &config.label());
+}
+
+fn reasoning_artifact_has_content(part: &ReasoningContentPart) -> bool {
+    part.display_text().is_some_and(|text| !text.trim().is_empty())
+        // Responses may expose replay state without a readable summary.
+        || (part.provider == "openai"
+            && part.item_id.as_ref().is_some_and(|id| !id.is_empty())
+            && part.encrypted.as_ref().is_some_and(|payload| !payload.is_empty()))
+}
+
+#[cfg(test)]
+mod reasoning_artifact_tests {
+    use super::*;
+    use everruns_provider::reasoning::ReasoningText;
+
+    #[test]
+    fn opaque_openai_reasoning_requires_nonempty_replay_payload_and_id() {
+        let valid = ReasoningContentPart::opaque("openai")
+            .with_item_id("rs_test")
+            .with_encrypted("encrypted-fixture");
+        assert!(reasoning_artifact_has_content(&valid));
+        for invalid in [
+            ReasoningContentPart::opaque("openai"),
+            ReasoningContentPart::opaque("openai").with_item_id("rs_test"),
+            ReasoningContentPart::opaque("openai").with_encrypted("encrypted-fixture"),
+            valid.clone().with_item_id(""),
+            valid.clone().with_encrypted(""),
+            ReasoningContentPart::opaque("other")
+                .with_item_id("rs_test")
+                .with_encrypted("encrypted-fixture"),
+        ] {
+            assert!(!reasoning_artifact_has_content(&invalid));
+        }
+    }
+
+    #[test]
+    fn readable_reasoning_accepts_plain_and_summary_but_not_empty_text() {
+        for text in [
+            ReasoningText::Plain {
+                text: "thinking".into(),
+            },
+            ReasoningText::Summary {
+                parts: vec!["summary".into()],
+            },
+        ] {
+            assert!(reasoning_artifact_has_content(
+                &ReasoningContentPart::opaque("anthropic").with_text(text)
+            ));
+        }
+        for text in [
+            ReasoningText::Plain { text: " ".into() },
+            ReasoningText::Summary {
+                parts: vec!["".into()],
+            },
+            ReasoningText::Summary { parts: vec![] },
+            ReasoningText::Redacted,
+        ] {
+            assert!(!reasoning_artifact_has_content(
+                &ReasoningContentPart::opaque("anthropic").with_text(text)
+            ));
+        }
+    }
 }

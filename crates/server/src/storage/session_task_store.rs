@@ -579,6 +579,57 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sink_artifacts_survive_storage_conversion_and_attempt_fencing() {
+        use everruns_core::session_task::{RegistryTaskSink, TaskArtifact, TaskSink};
+        let registry = Arc::new(registry());
+        let session_id = SessionId::new();
+        let task = registry.create(create_input(session_id)).await.unwrap();
+        let sink = RegistryTaskSink::new(registry.clone(), session_id, task.id.clone());
+        let first = TaskArtifact {
+            name: "first".into(),
+            artifact_type: "file".into(),
+            path: Some("/first".into()),
+            url: None,
+        };
+        let second = TaskArtifact {
+            name: "second".into(),
+            artifact_type: "url".into(),
+            path: None,
+            url: Some("https://example.com/result".into()),
+        };
+        sink.artifact(first.clone()).await.unwrap();
+        sink.artifact(second.clone()).await.unwrap();
+        let stored = registry.get(session_id, &task.id).await.unwrap().unwrap();
+        assert_eq!(stored.artifacts, [first.clone(), second.clone()]);
+        registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    increment_attempt: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        sink.artifact(first).await.unwrap();
+        let fenced = registry.get(session_id, &task.id).await.unwrap().unwrap();
+        assert_eq!(fenced.artifacts, stored.artifacts);
+        assert_eq!(fenced.attempt, 2);
+        let other = RegistryTaskSink::new(registry.clone(), SessionId::new(), task.id.clone());
+        other.artifact(second).await.unwrap();
+        assert_eq!(
+            registry
+                .get(session_id, &task.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .artifacts,
+            stored.artifacts
+        );
+    }
+
+    #[tokio::test]
     async fn create_is_idempotent_on_id() {
         let registry = registry();
         let session_id = SessionId::new();

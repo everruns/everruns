@@ -585,81 +585,56 @@ mod tests {
     }
 
     #[test]
-    fn test_is_text_content() {
-        assert!(SessionFile::is_text_content(b"hello world"));
-        assert!(SessionFile::is_text_content(b"line1\nline2\n"));
+    fn text_heuristic_samples_only_first_eight_kibibytes() {
+        for bytes in [b"".as_slice(), b"hello world", b"line1\nline2\n"] {
+            assert!(SessionFile::is_text_content(bytes));
+        }
+        let mut bytes = vec![b'a'; 8193];
+        bytes[8192] = 0;
+        assert!(SessionFile::is_text_content(&bytes));
+        bytes[8191] = 0;
+        assert!(!SessionFile::is_text_content(&bytes));
         assert!(!SessionFile::is_text_content(b"hello\0world"));
     }
 
     #[test]
-    fn test_encode_content_text() {
-        let (content, encoding) = SessionFile::encode_content(b"hello world");
-        assert_eq!(content, "hello world");
-        assert_eq!(encoding, "text");
+    fn content_encoding_preserves_exact_text_and_binary_wire_values() {
+        for (input, content, encoding) in [
+            (b"".as_slice(), "", "text"),
+            (b"hello world".as_slice(), "hello world", "text"),
+            ("éà".as_bytes(), "éà", "text"),
+            (b"a\0b".as_slice(), "YQBi", "base64"),
+            (b"\xff\xfe".as_slice(), "//4=", "base64"),
+        ] {
+            let actual = SessionFile::encode_content(input);
+            assert_eq!(actual, (content.to_string(), encoding.to_string()));
+            assert_eq!(
+                SessionFile::decode_content(&actual.0, &actual.1).unwrap(),
+                input
+            );
+        }
     }
 
     #[test]
-    fn test_encode_content_binary() {
-        // Binary data with null byte
-        let binary = b"\x89PNG\r\n\x1a\n\0";
-        let (content, encoding) = SessionFile::encode_content(binary);
-        assert_eq!(encoding, "base64");
-        assert!(!content.is_empty());
-    }
-
-    #[test]
-    fn test_decode_content_text() {
-        let decoded = SessionFile::decode_content("hello world", "text").unwrap();
-        assert_eq!(decoded, b"hello world");
-    }
-
-    #[test]
-    fn test_decode_content_base64() {
-        let decoded = SessionFile::decode_content("aGVsbG8=", "base64").unwrap();
-        assert_eq!(decoded, b"hello");
-    }
-
-    #[test]
-    fn test_encode_decode_roundtrip() {
-        let original = b"Test content with special chars: \xc3\xa9\xc3\xa0";
-        let (encoded, encoding) = SessionFile::encode_content(original);
-        let decoded = SessionFile::decode_content(&encoded, &encoding).unwrap();
-        assert_eq!(decoded, original);
-    }
-
-    #[test]
-    fn test_file_info_serialization() {
-        let file_info = FileInfo {
-            id: Uuid::nil(),
-            session_id: Uuid::nil(),
-            path: "/test.txt".to_string(),
-            name: "test.txt".to_string(),
-            is_directory: false,
-            is_readonly: false,
-            size_bytes: 100,
-            created_at: DateTime::default(),
-            updated_at: DateTime::default(),
-        };
-
-        let json = serde_json::to_string(&file_info).unwrap();
-        assert!(json.contains("\"path\":\"/test.txt\""));
-        assert!(json.contains("\"is_directory\":false"));
-    }
-
-    #[test]
-    fn test_grep_result_serialization() {
-        let result = GrepResult {
-            path: "/test.txt".to_string(),
-            matches: vec![GrepMatch {
-                path: "/test.txt".to_string(),
-                line_number: 1,
-                line: "hello world".to_string(),
-            }],
-        };
-
-        let json = serde_json::to_string(&result).unwrap();
-        assert!(json.contains("\"line_number\":1"));
-        assert!(json.contains("\"line\":\"hello world\""));
+    fn content_decoding_preserves_text_and_rejects_invalid_base64() {
+        assert_eq!(
+            SessionFile::decode_content("literal ! é", "text").unwrap(),
+            "literal ! é".as_bytes()
+        );
+        assert_eq!(
+            SessionFile::decode_content("aGVsbG8=", "base64").unwrap(),
+            b"hello"
+        );
+        assert_eq!(
+            SessionFile::decode_content("YQBi", "base64").unwrap(),
+            b"a\0b"
+        );
+        for malformed in ["!", "YQ=", "===="] {
+            assert!(
+                SessionFile::decode_content(malformed, "base64").is_err(),
+                "{malformed}"
+            );
+        }
     }
 
     #[test]
@@ -697,8 +672,12 @@ mod tests {
 
         let merged = merge_grep_search_results(
             vec![
-                result(vec![block("/a.txt", 1, &[2]), block("/a.txt", 3, &[4])]),
                 result(vec![block("/b.txt", 4, &[5])]),
+                result(vec![
+                    block("/a.txt", 3, &[4]),
+                    block("/a.txt", 1, &[2]),
+                    block("/a.txt", 3, &[4]),
+                ]),
             ],
             &options,
         );
@@ -709,6 +688,41 @@ mod tests {
         assert_eq!(merged.blocks.len(), 2);
         assert_eq!(merged.blocks[0].match_line_numbers, vec![4]);
         assert_eq!(merged.blocks[1].match_line_numbers, vec![5]);
+        assert_eq!(merged.blocks[0].path, "/a.txt");
+        assert_eq!(merged.blocks[1].path, "/b.txt");
+        assert_eq!(
+            (merged.blocks[0].start_line, merged.blocks[0].end_line),
+            (3, 5)
+        );
+        assert_eq!(
+            (merged.blocks[1].start_line, merged.blocks[1].end_line),
+            (4, 6)
+        );
+        assert!(!merged.byte_truncated);
+        assert_eq!(
+            merged.blocks[0]
+                .lines
+                .iter()
+                .map(|line| (line.line_number, line.line.as_str(), line.is_match))
+                .collect::<Vec<_>>(),
+            [
+                (3, "line 3", false),
+                (4, "line 4", true),
+                (5, "line 5", false)
+            ]
+        );
+        assert_eq!(
+            merged.blocks[1]
+                .lines
+                .iter()
+                .map(|line| (line.line_number, line.line.as_str(), line.is_match))
+                .collect::<Vec<_>>(),
+            [
+                (4, "line 4", false),
+                (5, "line 5", true),
+                (6, "line 6", false)
+            ]
+        );
         assert_eq!(
             merged.blocks[0]
                 .lines
@@ -721,7 +735,7 @@ mod tests {
 
     #[test]
     fn contextual_grep_budgets_serialized_structure() {
-        let blocks = (0..1_000)
+        let blocks = (0..40)
             .map(|index| GrepContextBlock {
                 path: format!("/sparse/{index}.txt"),
                 start_line: 1,
@@ -736,13 +750,175 @@ mod tests {
                     .collect(),
             })
             .collect();
-        let result = apply_grep_byte_budget(Vec::new(), blocks, 1_000, &GrepOptions::default());
+        let result = apply_grep_byte_budget(Vec::new(), blocks, 40, &GrepOptions::default());
         let serialized_blocks = serde_json::to_vec(&result.blocks).unwrap();
 
         assert!(result.byte_truncated);
-        assert!(result.returned_matches < 1_000);
-        assert!(result.bytes_total > GREP_MAX_RETURN_BYTES);
-        assert!(result.bytes_returned <= GREP_MAX_RETURN_BYTES);
-        assert!(serialized_blocks.len() <= GREP_MAX_RETURN_BYTES);
+        assert!(result.returned_matches > 0 && result.returned_matches < 40);
+        assert!(result.bytes_total > 65_536);
+        assert!(result.bytes_returned <= 65_536);
+        assert!(serialized_blocks.len() <= 65_536);
+    }
+    #[test]
+    fn flat_grep_pagination_is_global_sorted_and_handles_empty_windows() {
+        let regex = regex::Regex::new("^hit").unwrap();
+        let files = vec![
+            ("/b".into(), "no\nhit b".into()),
+            ("/a".into(), "hit a1\nnot hit\nhit a3".into()),
+        ];
+        for (offset, limit, expected, next) in [
+            (
+                0,
+                2,
+                vec![("/a", 1, "hit a1"), ("/a", 3, "hit a3")],
+                Some(2),
+            ),
+            (1, 1, vec![("/a", 3, "hit a3")], Some(2)),
+            (2, 2, vec![("/b", 2, "hit b")], None),
+            (3, 1, vec![], None),
+            (usize::MAX, 2, vec![], None),
+            (0, 0, vec![], Some(0)),
+        ] {
+            let options = GrepOptions {
+                offset,
+                limit,
+                ..Default::default()
+            };
+            let built = build_grep_search_result(files.clone(), &regex, &options);
+            let unsorted = vec![
+                GrepMatch {
+                    path: "/b".into(),
+                    line_number: 2,
+                    line: "hit b".into(),
+                },
+                GrepMatch {
+                    path: "/a".into(),
+                    line_number: 3,
+                    line: "hit a3".into(),
+                },
+                GrepMatch {
+                    path: "/a".into(),
+                    line_number: 1,
+                    line: "hit a1".into(),
+                },
+            ];
+            let bounded = bound_grep_matches(unsorted, &options);
+            for result in [built, bounded] {
+                assert_eq!(
+                    result
+                        .matches
+                        .iter()
+                        .map(|hit| (hit.path.as_str(), hit.line_number, hit.line.as_str()))
+                        .collect::<Vec<_>>(),
+                    expected,
+                    "offset={offset} limit={limit}"
+                );
+                assert_eq!(result.total_matches, 3);
+                assert_eq!(result.returned_matches, expected.len());
+                assert_eq!(result.next_offset, next);
+                assert!(!result.byte_truncated);
+                assert!(result.blocks.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn context_builder_merges_adjacent_windows_and_marks_only_selected_matches() {
+        let result = build_grep_search_result(
+            vec![("/a".into(), "hit first\ncontext\nhit second\nafter".into())],
+            &regex::Regex::new("^hit").unwrap(),
+            &GrepOptions {
+                before_context: 1,
+                after_context: 1,
+                ..Default::default()
+            },
+        );
+        assert_eq!(result.total_matches, 2);
+        assert_eq!(result.returned_matches, 2);
+        assert_eq!(result.next_offset, None);
+        assert_eq!(result.blocks.len(), 1);
+        let block = &result.blocks[0];
+        assert_eq!(block.path, "/a");
+        assert_eq!((block.start_line, block.end_line), (1, 4));
+        assert_eq!(block.match_line_numbers, [1, 3]);
+        assert_eq!(
+            block
+                .lines
+                .iter()
+                .map(|line| (line.line_number, line.line.as_str(), line.is_match))
+                .collect::<Vec<_>>(),
+            [
+                (1, "hit first", true),
+                (2, "context", false),
+                (3, "hit second", true),
+                (4, "after", false)
+            ]
+        );
+        let paged = build_grep_search_result(
+            vec![("/a".into(), "hit first\ncontext\nhit second\nafter".into())],
+            &regex::Regex::new("^hit").unwrap(),
+            &GrepOptions {
+                before_context: 2,
+                after_context: 1,
+                offset: 1,
+                limit: 1,
+                ..Default::default()
+            },
+        );
+        assert_eq!(paged.blocks[0].match_line_numbers, [3]);
+        assert!(!paged.blocks[0].lines[0].is_match); // skipped match is context, not a second returned match
+        assert_eq!(paged.returned_matches, 1);
+    }
+
+    #[test]
+    fn flat_byte_budget_preserves_utf8_and_json_escaping_at_exact_entry_boundary() {
+        let input = GrepMatch {
+            path: "/a".into(),
+            line_number: 1,
+            line: "é\"x\n😀".into(),
+        };
+        let expected = GrepMatch {
+            line: "é".into(),
+            ..input.clone()
+        };
+        // The API budgets serialized entries, including a comma allowance.
+        let budget = br#"{"path":"/a","line_number":1,"line":""}"#.len() + "é".len() + 1;
+        let result = bound_grep_matches(
+            vec![
+                input.clone(),
+                GrepMatch {
+                    path: "/b".into(),
+                    line_number: 2,
+                    line: "next".into(),
+                },
+            ],
+            &GrepOptions {
+                max_bytes: budget,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            serde_json::to_value(&result.matches).unwrap(),
+            serde_json::json!([expected])
+        );
+        assert_eq!(result.bytes_returned, budget);
+        assert!(result.bytes_total > budget);
+        assert!(result.byte_truncated);
+        assert_eq!(result.total_matches, 2);
+        assert_eq!(result.returned_matches, 1);
+        assert_eq!(result.next_offset, Some(1));
+        for max_bytes in [0, 1] {
+            let empty = bound_grep_matches(
+                vec![input.clone()],
+                &GrepOptions {
+                    max_bytes,
+                    ..Default::default()
+                },
+            );
+            assert!(empty.matches.is_empty());
+            assert_eq!(empty.bytes_returned, 0);
+            assert!(empty.byte_truncated);
+            assert_eq!(empty.next_offset, Some(0));
+        }
     }
 }

@@ -219,122 +219,201 @@ mod tests {
     }
 
     #[test]
-    fn plain_text_with_no_tools_is_achieved_without_an_evaluator() {
-        assert_eq!(
-            gate_turn(&summary("Here is the summary you asked for.", 0, true)),
-            GateDecision::Conclusive(CompletionState::Achieved)
-        );
+    fn end_turn_gate_distinguishes_answers_work_and_background_precedence() {
+        for (response, calls, background, expected) in [
+            (
+                "Done.",
+                0,
+                false,
+                GateDecision::Conclusive(CompletionState::Achieved),
+            ),
+            ("Done.", 1, false, GateDecision::Evaluate),
+            (
+                "",
+                1,
+                false,
+                GateDecision::Conclusive(CompletionState::InProgress),
+            ),
+            (
+                " \n\u{2003}",
+                0,
+                false,
+                GateDecision::Conclusive(CompletionState::InProgress),
+            ),
+            (
+                "",
+                1,
+                true,
+                GateDecision::Conclusive(CompletionState::WaitingOnBackground),
+            ),
+            (
+                "Done.",
+                1,
+                true,
+                GateDecision::Conclusive(CompletionState::WaitingOnBackground),
+            ),
+            (
+                "Which environment?",
+                1,
+                true,
+                GateDecision::Conclusive(CompletionState::WaitingOnBackground),
+            ),
+            (
+                "Done.",
+                0,
+                true,
+                GateDecision::Conclusive(CompletionState::Achieved),
+            ),
+        ] {
+            let mut view = summary(response, calls, true);
+            view.has_active_background = background;
+            assert_eq!(gate_turn(&view), expected, "{view:?}");
+        }
     }
 
     #[test]
-    fn a_tool_only_turn_is_in_progress() {
-        assert_eq!(
-            gate_turn(&summary("", 1, true)),
-            GateDecision::Conclusive(CompletionState::InProgress)
-        );
-    }
-
-    #[test]
-    fn a_tool_only_turn_with_background_work_is_waiting_not_stalled() {
-        let mut view = summary("", 1, true);
-        view.has_active_background = true;
-        assert_eq!(
-            gate_turn(&view),
-            GateDecision::Conclusive(CompletionState::WaitingOnBackground)
-        );
-    }
-
-    #[test]
-    fn tool_using_candidate_final_answers_are_sent_for_evaluation() {
-        // The expensive case, and the only one: tools ran and text came back,
-        // so whether the request is done is a semantic question.
-        assert_eq!(
-            gate_turn(&summary("Done.", 3, true)),
-            GateDecision::Evaluate
-        );
-    }
-
-    #[test]
-    fn a_permanent_failure_never_continues() {
-        assert_eq!(
-            gate_turn(&summary("", 0, false)),
-            GateDecision::Conclusive(CompletionState::Failed)
-        );
-    }
-
-    #[test]
-    fn cancellation_is_blocked_rather_than_failed() {
-        // Blocked and Failed differ in what a host does next: a cancelled turn
-        // is the user's decision, not an error to report or retry.
-        let mut view = summary("", 0, false);
-        view.stop_reason = TurnStopReason::Cancelled;
-        assert_eq!(
-            gate_turn(&view),
-            GateDecision::Conclusive(CompletionState::Blocked)
-        );
-
-        let mut succeeded_but_cancelled = summary("partial", 1, true);
-        succeeded_but_cancelled.stop_reason = TurnStopReason::Cancelled;
-        assert_eq!(
-            gate_turn(&succeeded_but_cancelled),
-            GateDecision::Conclusive(CompletionState::Blocked)
-        );
-    }
-
-    #[test]
-    fn hitting_a_ceiling_is_in_progress_even_with_text() {
-        for stop_reason in [TurnStopReason::MaxTokens, TurnStopReason::MaxTurnRequests] {
-            let mut view = summary("I was in the middle of", 2, true);
-            view.stop_reason = stop_reason;
+    fn stop_reason_and_failure_take_precedence_over_text_and_background() {
+        for (reason, expected) in [
+            (TurnStopReason::Error, CompletionState::Failed),
+            (TurnStopReason::Refusal, CompletionState::Failed),
+            (TurnStopReason::Cancelled, CompletionState::Blocked),
+            (TurnStopReason::MaxTokens, CompletionState::InProgress),
+            (TurnStopReason::MaxTurnRequests, CompletionState::InProgress),
+        ] {
+            let view = TurnSummary {
+                success: true,
+                stop_reason: reason,
+                response: "Which environment?",
+                tool_calls_count: 2,
+                has_active_background: true,
+            };
+            assert_eq!(gate_turn(&view), GateDecision::Conclusive(expected));
+        }
+        for reason in [
+            TurnStopReason::EndTurn,
+            TurnStopReason::Error,
+            TurnStopReason::Refusal,
+            TurnStopReason::MaxTokens,
+            TurnStopReason::MaxTurnRequests,
+            TurnStopReason::Cancelled,
+        ] {
+            let view = TurnSummary {
+                success: false,
+                stop_reason: reason,
+                response: "Done.",
+                tool_calls_count: 2,
+                has_active_background: true,
+            };
+            let expected = if reason == TurnStopReason::Cancelled {
+                CompletionState::Blocked
+            } else {
+                CompletionState::Failed
+            };
             assert_eq!(
                 gate_turn(&view),
-                GateDecision::Conclusive(CompletionState::InProgress),
-                "{stop_reason:?} means stopped mid-task"
+                GateDecision::Conclusive(expected),
+                "{reason:?}"
             );
         }
     }
 
     #[test]
-    fn a_question_back_to_the_user_blocks() {
-        assert_eq!(
-            gate_turn(&summary("Which environment should I deploy to?", 0, true)),
-            GateDecision::Conclusive(CompletionState::Blocked)
-        );
-    }
-
-    #[test]
-    fn a_rhetorical_question_does_not_block() {
-        // No marker phrase, so this stays an ordinary answer rather than
-        // stranding the user waiting for a reply nobody asked for.
-        assert_eq!(
-            gate_turn(&summary("Ready to ship?", 0, true)),
-            GateDecision::Conclusive(CompletionState::Achieved)
-        );
-    }
-
-    #[test]
-    fn the_budget_stops_at_the_turn_that_crosses_a_limit() {
-        let mut budget = ContinuationBudget::default();
-        for _ in 0..DEFAULT_MAX_CONTINUATION_TURNS {
-            assert!(budget.observe_turn(1));
+    fn questions_require_both_a_marker_and_trailing_question_mark() {
+        for response in [
+            "Which environment?",
+            " WHAT should change? \n",
+            "Could you clarify?",
+            "Please provide the file?",
+            "Need more details?",
+        ] {
+            for calls in [0, 1] {
+                assert_eq!(
+                    gate_turn(&summary(response, calls, true)),
+                    GateDecision::Conclusive(CompletionState::Blocked),
+                    "{response}"
+                );
+            }
         }
-        assert!(!budget.observe_turn(1), "the ceiling is on work done");
+        for response in [
+            "Ready to ship?",
+            "Which file? I will start with the parser.",
+            "Need more details.",
+        ] {
+            assert_eq!(
+                gate_turn(&summary(response, 0, true)),
+                GateDecision::Conclusive(CompletionState::Achieved),
+                "{response}"
+            );
+            assert_eq!(
+                gate_turn(&summary(response, 1, true)),
+                GateDecision::Evaluate,
+                "{response}"
+            );
+        }
+    }
 
+    #[test]
+    fn default_budget_enforces_literal_turn_and_token_ceilings() {
+        let mut budget = ContinuationBudget::default();
+        for turn in 1..=6 {
+            assert!(budget.observe_turn(0));
+            assert_eq!(budget.usage(), (turn, 0));
+        }
+        assert!(!budget.observe_turn(0));
+        assert_eq!(budget.usage(), (7, 0));
+        budget.reset();
+        assert!(budget.observe_turn(64_000));
+        assert!(!budget.observe_turn(1));
+        assert_eq!(budget.usage(), (2, 64_001));
+        budget.reset();
+        budget.started = Instant::now() - Duration::from_secs(601);
+        assert!(!budget.observe_turn(0));
+    }
+
+    #[test]
+    fn custom_budget_reset_clears_usage_and_keeps_all_configured_limits() {
+        let mut budget = ContinuationBudget::new(2, 3, Duration::from_secs(60));
+        assert!(budget.observe_turn(1));
+        assert!(budget.observe_turn(2));
+        assert_eq!(budget.usage(), (2, 3));
+        assert!(!budget.observe_turn(0));
         budget.reset();
         assert_eq!(budget.usage(), (0, 0));
-        assert!(!budget.observe_turn(DEFAULT_MAX_CONTINUATION_TOKENS + 1));
-        assert_eq!(
-            budget.usage(),
-            (1, DEFAULT_MAX_CONTINUATION_TOKENS + 1),
-            "the crossing turn is still recorded"
-        );
+        assert!(budget.observe_turn(0));
+        assert!(budget.observe_turn(0));
+        assert!(!budget.observe_turn(0));
+        budget.reset();
+        assert!(!budget.observe_turn(4));
+        assert_eq!(budget.usage(), (1, 4));
+        budget.reset();
+        budget.started = Instant::now() - Duration::from_secs(61);
+        assert!(!budget.observe_turn(0));
+        budget.reset();
+        assert!(budget.observe_turn(1));
+        assert_eq!(budget.usage(), (1, 1));
+        for (turns, tokens) in [(0, 100), (100, 0)] {
+            assert!(
+                !ContinuationBudget::new(turns, tokens, Duration::from_secs(60)).observe_turn(1)
+            );
+        }
     }
 
     #[test]
     fn an_elapsed_budget_stops_a_cheap_but_slow_loop() {
-        // Turns and tokens both untouched; only wall-clock is exhausted.
-        let mut budget = ContinuationBudget::new(100, u64::MAX, Duration::ZERO);
-        std::thread::sleep(Duration::from_millis(1));
+        let mut budget = ContinuationBudget::new(100, u64::MAX, Duration::from_secs(1));
+        budget.started = Instant::now() - Duration::from_secs(2);
         assert!(!budget.observe_turn(1));
+        assert_eq!(budget.usage(), (1, 1));
+    }
+
+    #[test]
+    fn usage_saturates_instead_of_wrapping_after_overflow() {
+        let mut budget = ContinuationBudget::new(u32::MAX, u64::MAX - 1, Duration::from_secs(60));
+        budget.turns = u32::MAX;
+        budget.tokens = u64::MAX - 1;
+        assert!(!budget.observe_turn(10));
+        assert_eq!(budget.usage(), (u32::MAX, u64::MAX));
+        assert!(!budget.observe_turn(1));
+        assert_eq!(budget.usage(), (u32::MAX, u64::MAX));
     }
 }

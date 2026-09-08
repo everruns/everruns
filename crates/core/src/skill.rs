@@ -11,9 +11,9 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 use tracing::warn;
 
-/// Cached regex for `$ARGUMENTS[N]` indexed placeholder substitution.
-static INDEXED_ARGS_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\$ARGUMENTS\[([0-9]+)\]").unwrap());
+/// Match argument placeholders in the template, never in inserted argument values.
+static ARGUMENTS_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\$ARGUMENTS(?:\[([0-9]+)\])?|\$([0-9])").unwrap());
 
 /// Cached regex for ``!`command` `` dynamic command injection syntax.
 static COMMAND_INJECTION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"!`([^`]+)`").unwrap());
@@ -580,20 +580,28 @@ fn split_skill_args(raw: &str) -> Vec<String> {
     let mut args = Vec::new();
     let mut current = String::new();
     let mut in_quote: Option<char> = None;
+    let mut token_started = false;
     for c in raw.chars() {
         match (c, in_quote) {
-            ('"' | '\'', None) => in_quote = Some(c),
+            ('"' | '\'', None) => {
+                in_quote = Some(c);
+                token_started = true;
+            }
             (q, Some(open)) if q == open => in_quote = None,
             (c, Some(_)) => current.push(c),
             (c, None) if c.is_whitespace() => {
-                if !current.is_empty() {
+                if token_started {
                     args.push(std::mem::take(&mut current));
+                    token_started = false;
                 }
             }
-            (c, None) => current.push(c),
+            (c, None) => {
+                current.push(c);
+                token_started = true;
+            }
         }
     }
-    if !current.is_empty() {
+    if token_started {
         args.push(current);
     }
     args
@@ -601,7 +609,7 @@ fn split_skill_args(raw: &str) -> Vec<String> {
 
 /// Expand positional argument placeholders in skill content.
 ///
-/// Substitution variables (processed in this order):
+/// Supported template variables (inserted values are not expanded again):
 /// 1. `$ARGUMENTS[N]` → Nth positional argument (0-based)
 /// 2. `$ARGUMENTS` → full argument string
 /// 3. `$N` (single digit 0-9) → shorthand for `$ARGUMENTS[N]`
@@ -614,59 +622,32 @@ pub fn expand_skill_arguments(content: &str, raw_args: &str) -> String {
     }
 
     let args = split_skill_args(raw_args);
-    let mut result = content.to_string();
     let mut had_placeholder = false;
-
-    // 1. Replace $ARGUMENTS[N] (must be before $ARGUMENTS to avoid partial match)
-    if INDEXED_ARGS_RE.is_match(&result) {
-        had_placeholder = true;
-        result = INDEXED_ARGS_RE
-            .replace_all(&result, |caps: &regex::Captures| {
-                let idx: usize = caps[1].parse().unwrap_or(usize::MAX);
-                args.get(idx).cloned().unwrap_or_default()
-            })
-            .to_string();
-    }
-
-    // 2. Replace $ARGUMENTS (full string)
-    if result.contains("$ARGUMENTS") {
-        had_placeholder = true;
-        result = result.replace("$ARGUMENTS", raw_args);
-    }
-
-    // 3. Replace $N shorthand (single digit, not followed by word chars)
-    let chars: Vec<char> = result.chars().collect();
-    let mut new_result = String::with_capacity(result.len());
-    let mut found_shorthand = false;
-    let mut i = 0;
-
-    while i < chars.len() {
-        if chars[i] == '$' && i + 1 < chars.len() && chars[i + 1].is_ascii_digit() {
-            let digit = chars[i + 1];
-            let next_is_word = i + 2 < chars.len()
-                && (chars[i + 2].is_ascii_alphanumeric() || chars[i + 2] == '_');
-
-            if !next_is_word {
-                found_shorthand = true;
-                let idx = (digit as u8 - b'0') as usize;
-                new_result.push_str(args.get(idx).map(|s| s.as_str()).unwrap_or(""));
+    // Only scan the original template: values such as "$1" are data, not another template.
+    let mut result = ARGUMENTS_RE
+        .replace_all(content, |caps: &regex::Captures| {
+            let matched = caps.get(0).unwrap();
+            if let Some(digit) = caps.get(2) {
+                if content[matched.end()..]
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+                {
+                    return matched.as_str().to_string();
+                }
+                had_placeholder = true;
+                let index = (digit.as_str().as_bytes()[0] - b'0') as usize;
+                args.get(index).cloned().unwrap_or_default()
+            } else if let Some(index) = caps.get(1) {
+                had_placeholder = true;
+                let index = index.as_str().parse::<usize>().unwrap_or(usize::MAX);
+                args.get(index).cloned().unwrap_or_default()
             } else {
-                new_result.push('$');
-                new_result.push(digit);
+                had_placeholder = true;
+                raw_args.to_string()
             }
-            i += 2;
-        } else {
-            new_result.push(chars[i]);
-            i += 1;
-        }
-    }
-
-    if found_shorthand {
-        had_placeholder = true;
-        result = new_result;
-    }
-
-    // Fallback: append if no placeholders found
+        })
+        .to_string();
     if !had_placeholder {
         result.push_str(&format!("\n\nARGUMENTS: {}", raw_args));
     }
@@ -851,7 +832,16 @@ Use pdfplumber to extract text.
         let parsed = parse_skill_md(content).unwrap();
         assert_eq!(parsed.name, "pdf-processing");
         assert_eq!(parsed.description, "Extract text from PDF files.");
-        assert!(parsed.instructions.contains("# PDF Processing"));
+        assert_eq!(
+            parsed.instructions,
+            "# PDF Processing\n\nUse pdfplumber to extract text.\n"
+        );
+        assert!(parsed.user_invocable);
+        assert!(!parsed.disable_model_invocation);
+        assert_eq!(parsed.argument_hint, None);
+        assert_eq!(parsed.context, SkillContext::Inline);
+        assert_eq!(parsed.agent, None);
+        assert_eq!(parsed.model, None);
         assert_eq!(parsed.version, "1.0");
     }
 
@@ -956,119 +946,6 @@ Body.
     }
 
     #[test]
-    fn test_parse_user_invocable_default_true() {
-        let content = r#"---
-name: my-skill
-description: A skill without explicit invocable field.
----
-
-Instructions.
-"#;
-        let parsed = parse_skill_md(content).unwrap();
-        assert!(
-            parsed.user_invocable,
-            "user_invocable should default to true"
-        );
-    }
-
-    #[test]
-    fn test_parse_user_invocable_explicit_true() {
-        let content = r#"---
-name: my-skill
-description: An invocable skill.
-user-invocable: true
----
-
-Instructions.
-"#;
-        let parsed = parse_skill_md(content).unwrap();
-        assert!(parsed.user_invocable);
-    }
-
-    #[test]
-    fn test_parse_user_invocable_false() {
-        let content = r#"---
-name: background-context
-description: Context the agent should know but not a user command.
-user-invocable: false
----
-
-Instructions.
-"#;
-        let parsed = parse_skill_md(content).unwrap();
-        assert!(!parsed.user_invocable);
-    }
-
-    #[test]
-    fn test_parse_disable_model_invocation_default_false() {
-        let content = r#"---
-name: my-skill
-description: A skill without disable-model-invocation field.
----
-
-Instructions.
-"#;
-        let parsed = parse_skill_md(content).unwrap();
-        assert!(
-            !parsed.disable_model_invocation,
-            "disable_model_invocation should default to false"
-        );
-    }
-
-    #[test]
-    fn test_parse_disable_model_invocation_true() {
-        let content = r#"---
-name: manual-only
-description: A skill that cannot be auto-invoked by the model.
-disable-model-invocation: true
----
-
-Instructions.
-"#;
-        let parsed = parse_skill_md(content).unwrap();
-        assert!(parsed.disable_model_invocation);
-        assert!(parsed.user_invocable); // default true
-    }
-
-    #[test]
-    fn test_validate_warns_unreachable_skill() {
-        let content = r#"---
-name: unreachable
-description: Neither user nor model can invoke.
-user-invocable: false
-disable-model-invocation: true
----
-
-Instructions.
-"#;
-        let result = validate_skill_md(content);
-        assert!(result.valid);
-        assert!(
-            result.warnings.iter().any(|w| w.contains("unreachable")),
-            "Should warn about unreachable skill"
-        );
-    }
-
-    #[test]
-    fn test_skill_source_type_display() {
-        assert_eq!(SkillSourceType::Markdown.to_string(), "markdown");
-        assert_eq!(SkillSourceType::Archive.to_string(), "archive");
-    }
-
-    #[test]
-    fn test_skill_status_display() {
-        assert_eq!(SkillStatus::Active.to_string(), "active");
-        assert_eq!(SkillStatus::Disabled.to_string(), "disabled");
-    }
-
-    #[test]
-    fn test_skill_source_type_from_str() {
-        assert_eq!(SkillSourceType::from("archive"), SkillSourceType::Archive);
-        assert_eq!(SkillSourceType::from("markdown"), SkillSourceType::Markdown);
-        assert_eq!(SkillSourceType::from("other"), SkillSourceType::Markdown);
-    }
-
-    #[test]
     fn test_parse_argument_hint() {
         let content = r#"---
 name: fix-issue
@@ -1080,19 +957,6 @@ Fix issue $ARGUMENTS.
 "#;
         let parsed = parse_skill_md(content).unwrap();
         assert_eq!(parsed.argument_hint.as_deref(), Some("<issue-number>"));
-    }
-
-    #[test]
-    fn test_parse_argument_hint_default_none() {
-        let content = r#"---
-name: my-skill
-description: A skill.
----
-
-Body.
-"#;
-        let parsed = parse_skill_md(content).unwrap();
-        assert!(parsed.argument_hint.is_none());
     }
 
     // ========================================================================
@@ -1142,20 +1006,6 @@ Body.
 "#;
         let parsed = parse_skill_md(content).unwrap();
         assert_eq!(parsed.context, SkillContext::Inline);
-    }
-
-    #[test]
-    fn test_parse_context_default_inline() {
-        let content = r#"---
-name: my-skill
-description: A skill.
----
-
-Body.
-"#;
-        let parsed = parse_skill_md(content).unwrap();
-        assert_eq!(parsed.context, SkillContext::Inline);
-        assert!(parsed.agent.is_none());
     }
 
     #[test]
@@ -1209,17 +1059,6 @@ Body.
         );
     }
 
-    #[test]
-    fn test_skill_context_display() {
-        assert_eq!(SkillContext::Inline.to_string(), "inline");
-        assert_eq!(SkillContext::Fork.to_string(), "fork");
-    }
-
-    #[test]
-    fn test_skill_context_default() {
-        assert_eq!(SkillContext::default(), SkillContext::Inline);
-    }
-
     // -- model frontmatter tests --
 
     #[test]
@@ -1251,19 +1090,6 @@ Body.
         let parsed = parse_skill_md(content).unwrap();
         assert_eq!(parsed.model.as_deref(), Some("gpt-5.2"));
         assert_eq!(parsed.context, SkillContext::Inline);
-    }
-
-    #[test]
-    fn test_parse_no_model_field() {
-        let content = r#"---
-name: my-skill
-description: A skill.
----
-
-Body.
-"#;
-        let parsed = parse_skill_md(content).unwrap();
-        assert!(parsed.model.is_none());
     }
 
     #[test]
@@ -1406,52 +1232,6 @@ Body.
     // substitute_activation_vars tests
     // ========================================================================
 
-    #[test]
-    fn test_substitute_session_id() {
-        let content = "Session: ${SESSION_ID}";
-        let result = substitute_activation_vars(content, "session_01abc123", "/some/dir");
-        assert_eq!(result, "Session: session_01abc123");
-    }
-
-    #[test]
-    fn test_substitute_skill_dir_filesystem() {
-        let content = "Dir: ${SKILL_DIR}";
-        let result = substitute_activation_vars(content, "session_x", "/home/user/skills/my-skill");
-        assert_eq!(result, "Dir: /home/user/skills/my-skill");
-    }
-
-    #[test]
-    fn test_substitute_skill_dir_db_backed() {
-        let content = "Dir: ${SKILL_DIR}";
-        let result = substitute_activation_vars(content, "session_x", "/.agents/skills/my-skill");
-        assert_eq!(result, "Dir: /.agents/skills/my-skill");
-    }
-
-    #[test]
-    fn test_substitute_both_vars() {
-        let content = "Run: ${SKILL_DIR}/run.sh --session ${SESSION_ID}";
-        let result =
-            substitute_activation_vars(content, "session_01abc", "/.agents/skills/data-tool");
-        assert_eq!(
-            result,
-            "Run: /.agents/skills/data-tool/run.sh --session session_01abc"
-        );
-    }
-
-    #[test]
-    fn test_substitute_no_vars() {
-        let content = "No variables here.";
-        let result = substitute_activation_vars(content, "session_x", "/dir");
-        assert_eq!(result, "No variables here.");
-    }
-
-    #[test]
-    fn test_substitute_multiple_occurrences() {
-        let content = "${SESSION_ID} and ${SESSION_ID} again";
-        let result = substitute_activation_vars(content, "session_abc", "/dir");
-        assert_eq!(result, "session_abc and session_abc again");
-    }
-
     // ========================================================================
     // preprocess_command_injections tests
     // ========================================================================
@@ -1561,7 +1341,10 @@ Body.
 
         let content = "Result: !`unknown-cmd`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert!(result.contains("[Command failed: unknown-cmd"));
+        assert_eq!(
+            result,
+            "Result: [Command failed: unknown-cmd (exit code 127)]"
+        );
     }
 
     // -- lenient YAML fallback tests --
@@ -1581,14 +1364,14 @@ Instructions.
     }
 
     #[test]
-    fn test_lenient_parse_hash_in_value() {
+    fn test_parse_hash_inside_plain_value() {
         let content = "---\nname: my-skill\ndescription: Process C# files\n---\n\nBody.\n";
         let parsed = parse_skill_md(content).unwrap();
         assert_eq!(parsed.description, "Process C# files");
     }
 
     #[test]
-    fn test_lenient_parse_brackets_in_value() {
+    fn test_parse_embedded_brackets_in_plain_value() {
         let content =
             "---\nname: my-skill\ndescription: Parse [markdown] and {templates}\n---\n\nBody.\n";
         let parsed = parse_skill_md(content).unwrap();
@@ -1596,7 +1379,7 @@ Instructions.
     }
 
     #[test]
-    fn test_lenient_parse_already_quoted_value_unchanged() {
+    fn test_parse_already_quoted_value_unchanged() {
         let content = "---\nname: my-skill\ndescription: \"Already quoted: value\"\n---\n\nBody.\n";
         let parsed = parse_skill_md(content).unwrap();
         assert_eq!(parsed.description, "Already quoted: value");
@@ -1627,16 +1410,264 @@ Instructions.
         let input = "metadata:\n  version: 1.0\n  key: value: nested";
         let fixed = fix_yaml_values(input);
         // Nested keys (indented) should not be modified
-        assert!(fixed.contains("  version: 1.0"));
-        assert!(fixed.contains("  key: value: nested"));
+        assert_eq!(fixed, input);
     }
 
     #[test]
     fn test_fix_yaml_values_preserves_flow_collections() {
         let input = "name: my-skill\nmetadata: { version: \"1.0\" }\ntags: [a, b]";
         let fixed = fix_yaml_values(input);
-        // Flow collections should NOT be quoted
-        assert!(fixed.contains("metadata: { version: \"1.0\" }"));
-        assert!(fixed.contains("tags: [a, b]"));
+        assert_eq!(fixed, input);
+    }
+
+    #[test]
+    fn argument_values_are_inserted_literally_without_reexpansion() {
+        assert_eq!(
+            expand_skill_arguments("indexed: $ARGUMENTS[0]", "'$1' second"),
+            "indexed: $1"
+        );
+        assert_eq!(
+            expand_skill_arguments("full: $ARGUMENTS", "$1 second"),
+            "full: $1 second"
+        );
+        assert_eq!(
+            expand_skill_arguments("$ARGUMENTS[0] / $1", "'$ARGUMENTS' second"),
+            "$ARGUMENTS / second"
+        );
+    }
+
+    #[test]
+    fn quoted_empty_arguments_preserve_positional_identity() {
+        assert_eq!(
+            split_skill_args("\"\" next '' last"),
+            vec!["", "next", "", "last"]
+        );
+        assert_eq!(
+            expand_skill_arguments("$0|$1|$2|$3", "\"\" next '' last"),
+            "|next||last"
+        );
+    }
+
+    #[test]
+    fn invocation_flags_preserve_all_combinations_and_warn_only_when_unreachable() {
+        for (user, disabled) in [(false, false), (false, true), (true, false), (true, true)] {
+            let content = format!(
+                "---\nname: sample\ndescription: sample\nuser-invocable: {user}\ndisable-model-invocation: {disabled}\n---\nBody."
+            );
+            let parsed = parse_skill_md(&content).unwrap();
+            assert_eq!(
+                (parsed.user_invocable, parsed.disable_model_invocation),
+                (user, disabled)
+            );
+            let result = validate_skill_md(&content);
+            assert!(result.valid);
+            assert!(result.errors.is_empty());
+            let expected = if !user && disabled {
+                vec![
+                    "Skill is unreachable: user-invocable is false and disable-model-invocation is true. Neither users nor the model can invoke this skill.",
+                ]
+            } else {
+                vec![]
+            };
+            assert_eq!(result.warnings, expected);
+        }
+    }
+
+    #[test]
+    fn skill_wire_values_and_unknown_string_fallbacks_are_explicit() {
+        for (value, wire) in [
+            (SkillSourceType::Markdown, "markdown"),
+            (SkillSourceType::Archive, "archive"),
+        ] {
+            assert_eq!(value.to_string(), wire);
+            assert_eq!(
+                serde_json::to_value(&value).unwrap(),
+                serde_json::json!(wire)
+            );
+            assert_eq!(
+                serde_json::from_value::<SkillSourceType>(serde_json::json!(wire)).unwrap(),
+                value
+            );
+            assert_eq!(SkillSourceType::from(wire), value);
+        }
+        for (value, wire) in [
+            (SkillStatus::Active, "active"),
+            (SkillStatus::Disabled, "disabled"),
+            (SkillStatus::Archived, "archived"),
+            (SkillStatus::Deleted, "deleted"),
+        ] {
+            assert_eq!(value.to_string(), wire);
+            assert_eq!(
+                serde_json::to_value(&value).unwrap(),
+                serde_json::json!(wire)
+            );
+            assert_eq!(
+                serde_json::from_value::<SkillStatus>(serde_json::json!(wire)).unwrap(),
+                value
+            );
+            assert_eq!(SkillStatus::from(wire), value);
+        }
+        for (value, wire) in [
+            (SkillContext::Inline, "inline"),
+            (SkillContext::Fork, "fork"),
+        ] {
+            assert_eq!(value.to_string(), wire);
+            assert_eq!(
+                serde_json::to_value(&value).unwrap(),
+                serde_json::json!(wire)
+            );
+            assert_eq!(
+                serde_json::from_value::<SkillContext>(serde_json::json!(wire)).unwrap(),
+                value
+            );
+        }
+        assert_eq!(SkillSourceType::from("other"), SkillSourceType::Markdown);
+        assert_eq!(SkillStatus::from("other"), SkillStatus::Active);
+        assert!(serde_json::from_str::<SkillSourceType>("\"other\"").is_err());
+        assert!(serde_json::from_str::<SkillStatus>("\"other\"").is_err());
+        assert!(serde_json::from_str::<SkillContext>("\"other\"").is_err());
+    }
+
+    #[test]
+    fn activation_vars_replace_known_occurrences_and_preserve_other_text() {
+        for dir in ["/home/user/skills/my-skill", "/.agents/skills/my-skill"] {
+            assert_eq!(
+                substitute_activation_vars(
+                    "${SKILL_DIR}/run ${SESSION_ID} ${SESSION_ID} ${OTHER}",
+                    "session_abc",
+                    dir
+                ),
+                format!("{dir}/run session_abc session_abc ${{OTHER}}")
+            );
+            assert_eq!(
+                substitute_activation_vars("No variables. $SESSION_ID", "session_x", dir),
+                "No variables. $SESSION_ID"
+            );
+        }
+    }
+
+    #[test]
+    fn parser_accepts_literal_byte_limits_and_rejects_the_next_byte() {
+        for (field, limit) in [
+            ("description", 1024),
+            ("license", 500),
+            ("compatibility", 500),
+            ("argument-hint", 128),
+        ] {
+            for (value, valid) in [
+                ("é".repeat(limit / 2), true),
+                (format!("{}x", "é".repeat(limit / 2)), false),
+            ] {
+                let description = if field == "description" {
+                    String::new()
+                } else {
+                    "description: sample\n".into()
+                };
+                let content =
+                    format!("---\nname: sample\n{description}{field}: {value}\n---\nBody.");
+                let result = parse_skill_md(&content);
+                assert_eq!(result.is_ok(), valid, "{field}");
+                if !valid {
+                    assert_eq!(
+                        result.unwrap_err(),
+                        vec![format!("{field}: exceeds {limit} character limit")]
+                    );
+                }
+            }
+        }
+        assert!(validate_skill_name(&"a".repeat(64)).is_ok());
+        assert_eq!(
+            validate_skill_name(&"a".repeat(65)).unwrap_err(),
+            vec!["name: must be 1-64 characters"]
+        );
+        for (size, valid) in [(102400, true), (102401, false)] {
+            let result = parse_skill_md(&format!(
+                "---\nname: sample\ndescription: sample\n---\n{}",
+                "x".repeat(size)
+            ));
+            assert_eq!(result.is_ok(), valid);
+            if !valid {
+                assert_eq!(
+                    result.unwrap_err(),
+                    vec!["instructions: exceeds 100 KB limit"]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn validation_line_warning_starts_after_five_hundred_lines() {
+        for lines in [500, 501] {
+            let result = validate_skill_md(&format!(
+                "---\nname: sample\ndescription: sample\n---\n{}",
+                "line\n".repeat(lines)
+            ));
+            assert!(result.valid);
+            assert!(result.errors.is_empty());
+            let expected = if lines == 501 {
+                vec![
+                    "Instructions exceed 500 lines (501 lines). Consider splitting into references.",
+                ]
+            } else {
+                vec![]
+            };
+            assert_eq!(result.warnings, expected);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn command_preprocessing_bounds_fanout_and_preserves_result_order() {
+        use std::sync::{
+            Mutex,
+            atomic::{AtomicUsize, Ordering},
+        };
+        struct Executor {
+            active: AtomicUsize,
+            peak: AtomicUsize,
+            calls: Mutex<Vec<usize>>,
+        }
+        #[async_trait::async_trait]
+        impl CommandExecutor for Executor {
+            async fn execute_command(&self, command: &str) -> CommandResult {
+                let index: usize = command.parse().unwrap();
+                self.calls.lock().unwrap().push(index);
+                let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+                self.peak.fetch_max(active, Ordering::SeqCst);
+                tokio::time::sleep(std::time::Duration::from_millis((35 - index) as u64)).await;
+                self.active.fetch_sub(1, Ordering::SeqCst);
+                CommandResult {
+                    stdout: format!("value-{index}\n"),
+                    exit_code: 0,
+                }
+            }
+        }
+        let executor = Executor {
+            active: AtomicUsize::new(0),
+            peak: AtomicUsize::new(0),
+            calls: Mutex::new(vec![]),
+        };
+        let content = (0..34)
+            .map(|i| format!("界!`{i}`"))
+            .collect::<Vec<_>>()
+            .join("|");
+        let expected = (0..34)
+            .map(|i| {
+                if i < 32 {
+                    format!("界value-{i}")
+                } else {
+                    "界[Too many command placeholders: limit is 32]".into()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("|");
+        assert_eq!(
+            preprocess_command_injections(&content, &executor).await,
+            expected
+        );
+        assert_eq!(executor.peak.load(Ordering::SeqCst), 4);
+        assert_eq!(executor.active.load(Ordering::SeqCst), 0);
+        let mut calls = executor.calls.into_inner().unwrap();
+        calls.sort();
+        assert_eq!(calls, (0..32).collect::<Vec<_>>());
     }
 }

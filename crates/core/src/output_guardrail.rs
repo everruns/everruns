@@ -282,6 +282,22 @@ mod tests {
         }
     }
 
+    struct MustNotRun;
+    impl OutputGuardrailRun for MustNotRun {
+        fn check(&mut self, _: &str, _: &str) -> GuardrailDecision {
+            panic!("evaluation must stop after the first block")
+        }
+    }
+    #[async_trait]
+    impl PostGenerationOutputGuardrail for MustNotRun {
+        fn id(&self) -> &str {
+            "must-not-run"
+        }
+        async fn check_message(&self, _: &PostGenerationOutputContext<'_>) -> GuardrailDecision {
+            panic!("post-generation evaluation must stop after the first block")
+        }
+    }
+
     fn armed(cap: &str, guard: &str, run: Box<dyn OutputGuardrailRun>) -> ArmedGuardrail {
         ArmedGuardrail {
             capability_id: cap.to_string(),
@@ -295,7 +311,7 @@ mod tests {
         let mut runs = vec![
             armed("cap_a", "g_a", Box::new(NeverBlock)),
             armed("cap_b", "g_b", Box::new(AlwaysBlock)),
-            armed("cap_c", "g_c", Box::new(AlwaysBlock)),
+            armed("cap_c", "g_c", Box::new(MustNotRun)),
         ];
         let tripped = evaluate_guardrails(&mut runs, "any text", "delta").expect("blocked");
         assert_eq!(tripped.capability_id, "cap_b");
@@ -354,6 +370,10 @@ mod tests {
                 capability_id: "cap_b".to_string(),
                 provider: Arc::new(PostBlock),
             },
+            PostGenerationProvider {
+                capability_id: "cap_c".into(),
+                provider: Arc::new(MustNotRun),
+            },
         ];
         let ctx = post_ctx("hello");
         let tripped = evaluate_post_generation_guardrails(&providers, &ctx)
@@ -381,26 +401,104 @@ mod tests {
 
     #[test]
     fn post_generation_text_includes_client_visible_citation_metadata() {
-        let annotations = vec![TextAnnotation {
+        assert_eq!(post_generation_guardrail_text("Answer α", &[]), "Answer α");
+        let mut annotation = TextAnnotation {
             start: 0,
             end: 5,
-            origin: "citation_retrieval".to_string(),
+            origin: "citation_retrieval".into(),
             source: AnnotationSource {
-                uri: "https://example.com/private".to_string(),
-                title: Some("Private roadmap".to_string()),
-                snippet: Some("password S3CR3T".to_string()),
-                location: Some(serde_json::json!({ "page": 4 })),
+                uri: "https://example.com/private".into(),
+                title: Some("Private roadmap".into()),
+                snippet: Some("Sensitive snippet".into()),
+                location: Some(serde_json::json!({"page":4})),
             },
-            external_id: None,
+            external_id: Some("external-secret".into()),
             verified: None,
-        }];
+        };
+        assert_eq!(
+            post_generation_guardrail_text("Answer α", &[annotation.clone()]),
+            "Answer α\nhttps://example.com/private\nPrivate roadmap\nSensitive snippet\n{\"page\":4}\nexternal-secret"
+        );
+        annotation.source.title = None;
+        annotation.source.snippet = None;
+        annotation.source.location = None;
+        annotation.external_id = None;
+        assert_eq!(
+            post_generation_guardrail_text("Answer α", &[annotation.clone(), annotation]),
+            "Answer α\nhttps://example.com/private\nhttps://example.com/private"
+        );
+    }
 
-        let output = post_generation_guardrail_text("An answer.", &annotations);
-
-        assert!(output.contains("An answer."));
-        assert!(output.contains("https://example.com/private"));
-        assert!(output.contains("Private roadmap"));
-        assert!(output.contains("password S3CR3T"));
-        assert!(output.contains(r#"{"page":4}"#));
+    #[test]
+    fn arming_skips_declined_providers_and_keeps_stream_state_independent() {
+        struct Provider {
+            id: &'static str,
+            enabled: bool,
+        }
+        struct Run {
+            expected: String,
+            checks: usize,
+        }
+        impl OutputGuardrail for Provider {
+            fn id(&self) -> &str {
+                self.id
+            }
+            fn arm(&self, ctx: &OutputGuardrailContext<'_>) -> Option<Box<dyn OutputGuardrailRun>> {
+                self.enabled.then(|| {
+                    Box::new(Run {
+                        expected: format!(
+                            "{}:{}",
+                            ctx.system_prompt,
+                            ctx.config["suffix"].as_str().unwrap()
+                        ),
+                        checks: 0,
+                    }) as Box<dyn OutputGuardrailRun>
+                })
+            }
+        }
+        impl OutputGuardrailRun for Run {
+            fn check(&mut self, accumulated: &str, delta: &str) -> GuardrailDecision {
+                assert_eq!(accumulated, self.expected);
+                assert_eq!(delta, "tail");
+                self.checks += 1;
+                if self.checks == 1 {
+                    GuardrailDecision::Pass
+                } else {
+                    GuardrailDecision::block("repeated", "replacement")
+                }
+            }
+        }
+        let providers: Vec<(String, Arc<dyn OutputGuardrail>)> = vec![
+            (
+                "skip-owner".into(),
+                Arc::new(Provider {
+                    id: "skip",
+                    enabled: false,
+                }),
+            ),
+            (
+                "active-owner".into(),
+                Arc::new(Provider {
+                    id: "active",
+                    enabled: true,
+                }),
+            ),
+        ];
+        let config = serde_json::json!({"suffix":"tail"});
+        let ctx = OutputGuardrailContext {
+            system_prompt: "prompt",
+            config: &config,
+        };
+        let mut first = arm_guardrails(&providers, &ctx);
+        let mut second = arm_guardrails(&providers, &ctx);
+        assert_eq!(first.len(), 1);
+        assert_eq!(second.len(), 1);
+        assert_eq!(first[0].capability_id, "active-owner");
+        assert_eq!(first[0].guardrail_id, "active");
+        assert!(evaluate_guardrails(&mut first, "prompt:tail", "tail").is_none());
+        let trip = evaluate_guardrails(&mut first, "prompt:tail", "tail").unwrap();
+        assert_eq!(trip.block.reason_code, "repeated");
+        assert_eq!(trip.block.replacement, "replacement");
+        assert!(evaluate_guardrails(&mut second, "prompt:tail", "tail").is_none());
     }
 }

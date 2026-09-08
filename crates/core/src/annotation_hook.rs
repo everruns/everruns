@@ -282,14 +282,24 @@ mod tests {
 
     #[tokio::test]
     async fn keeps_in_bounds_and_drops_out_of_bounds_spans() {
+        let valid = ann(0, 3);
         let providers = vec![provider(FixedHook {
-            annotations: vec![ann(0, 5), ann(3, 100)],
+            annotations: vec![
+                valid.clone(),
+                ann(0, 0),
+                ann(2, 1),
+                ann(1, 4),
+                ann(3, 4),
+                ann(usize::MAX, usize::MAX),
+            ],
             rewritten: None,
         })];
-        let out = collect_annotations(&providers, "", "hello world", &[], None).await;
-        assert_eq!(out.text, "hello world");
-        assert_eq!(out.annotations.len(), 1);
-        assert_eq!((out.annotations[0].start, out.annotations[0].end), (0, 5));
+        let out = collect_annotations(&providers, "", "αβγ", &[], None).await;
+        assert_eq!(out.text, "αβγ");
+        assert_eq!(out.annotations, [valid]);
+        let empty = collect_annotations(&[], "", "Unchanged α", &[], None).await;
+        assert_eq!(empty.text, "Unchanged α");
+        assert!(empty.annotations.is_empty());
     }
 
     #[tokio::test]
@@ -301,25 +311,171 @@ mod tests {
             }),
             provider(FixedHook {
                 annotations: vec![ann(0, 2)],
-                rewritten: Some("hi".to_string()),
+                rewritten: Some("hi".into()),
             }),
         ];
         let out = collect_annotations(&providers, "", "hello", &[], None).await;
         assert_eq!(out.text, "hi");
-        // First hook's (0,4) annotation is discarded by the rewrite; only the
-        // rewriting hook's own (0,2) survives.
-        assert_eq!(out.annotations.len(), 1);
-        assert_eq!((out.annotations[0].start, out.annotations[0].end), (0, 2));
+        assert_eq!(out.annotations, [ann(0, 2)]);
     }
 
     #[tokio::test]
     async fn drops_span_out_of_bounds_after_rewrite() {
         let providers = vec![provider(FixedHook {
             annotations: vec![ann(0, 5)],
-            rewritten: Some("hi".to_string()),
+            rewritten: Some("hi".into()),
         })];
         let out = collect_annotations(&providers, "", "hello", &[], None).await;
         assert_eq!(out.text, "hi");
         assert!(out.annotations.is_empty());
+    }
+
+    #[tokio::test]
+    async fn hooks_receive_rewritten_context_and_only_changed_text_invalidates_prior_spans() {
+        struct Hook {
+            expected: &'static str,
+            result: AnnotationResult,
+            service: Arc<dyn crate::UtilityLlmService>,
+        }
+        #[async_trait]
+        impl PostGenerationAnnotationHook for Hook {
+            fn id(&self) -> &str {
+                "context"
+            }
+            async fn annotate(&self, ctx: &AnnotationContext<'_>) -> AnnotationResult {
+                assert_eq!(ctx.system_prompt, "system");
+                assert_eq!(ctx.message_text, self.expected);
+                assert_eq!(ctx.messages.len(), 1);
+                assert_eq!(ctx.messages[0].text(), Some("question"));
+                assert!(Arc::ptr_eq(ctx.utility_llm_service.unwrap(), &self.service));
+                self.result.clone()
+            }
+        }
+        let service: Arc<dyn crate::UtilityLlmService> = Arc::new(crate::DisabledUtilityLlmService);
+        let mut first = ann(0, 1);
+        first.origin = "first".into();
+        let mut second = ann(1, 3);
+        second.origin = "second".into();
+        let mut providers = vec![provider(FixedHook {
+            annotations: vec![ann(0, 2)],
+            rewritten: None,
+        })];
+        for (expected, rewrite, annotation) in [
+            ("αβγ", "δεζ", first.clone()),
+            ("δεζ", "δεζ", second.clone()),
+        ] {
+            providers.push(AnnotationProvider {
+                capability_id: "context".into(),
+                provider: Arc::new(Hook {
+                    expected,
+                    result: AnnotationResult {
+                        annotations: vec![annotation],
+                        rewritten_text: Some(rewrite.into()),
+                    },
+                    service: service.clone(),
+                }),
+            });
+        }
+        let out = collect_annotations(
+            &providers,
+            "system",
+            "αβγ",
+            &[Message::user("question")],
+            Some(&service),
+        )
+        .await;
+        assert_eq!(out.text, "δεζ");
+        assert_eq!(out.annotations, [first, second]);
+    }
+
+    #[tokio::test]
+    async fn verifier_chain_preserves_annotations_and_threads_prior_verdicts() {
+        use crate::message::{VerificationStatus, VerificationVerdict};
+        struct Verifier {
+            expected: Option<VerificationVerdict>,
+            next: VerificationVerdict,
+        }
+        #[async_trait]
+        impl CitationVerifier for Verifier {
+            fn id(&self) -> &str {
+                "verifier"
+            }
+            async fn verify(
+                &self,
+                ctx: &VerificationContext<'_>,
+                mut annotations: Vec<TextAnnotation>,
+            ) -> Vec<TextAnnotation> {
+                assert_eq!(ctx.message_text, "αβγ");
+                assert!(ctx.utility_llm_service.is_some());
+                for annotation in &mut annotations {
+                    assert_eq!(annotation.verified, self.expected);
+                    annotation.verified = Some(self.next.clone());
+                }
+                annotations
+            }
+        }
+        let original = vec![ann(0, 1), ann(1, 3)];
+        assert_eq!(
+            verify_annotations(&[], "αβγ", None, original.clone()).await,
+            original
+        );
+        let first = VerificationVerdict {
+            status: VerificationStatus::Uncertain,
+            score: Some(0.5),
+        };
+        let final_verdict = VerificationVerdict {
+            status: VerificationStatus::Entailed,
+            score: Some(1.0),
+        };
+        let providers = vec![
+            VerifierProvider {
+                capability_id: "first".into(),
+                provider: Arc::new(Verifier {
+                    expected: None,
+                    next: first.clone(),
+                }),
+            },
+            VerifierProvider {
+                capability_id: "second".into(),
+                provider: Arc::new(Verifier {
+                    expected: Some(first),
+                    next: final_verdict.clone(),
+                }),
+            },
+        ];
+        let service: Arc<dyn crate::UtilityLlmService> = Arc::new(crate::DisabledUtilityLlmService);
+        let out = verify_annotations(&providers, "αβγ", Some(&service), original.clone()).await;
+        let expected = original
+            .into_iter()
+            .map(|mut a| {
+                a.verified = Some(final_verdict.clone());
+                a
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn citation_text_helpers_preserve_unicode_spans_and_distinct_overlap() {
+        assert_eq!(
+            citation_tokens("THE café Rust RUST, a xy 42 abc123"),
+            ["café", "rust", "rust", "abc123"]
+        );
+        let words = |items: &[&str]| items.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(token_overlap_ratio(&[], &words(&["a"])), 0.0);
+        assert_eq!(token_overlap_ratio(&words(&["a"]), &[]), 0.0);
+        assert_eq!(
+            token_overlap_ratio(&words(&["a", "a", "b"]), &words(&["a", "a", "c"])),
+            0.5
+        );
+        assert_eq!(
+            token_overlap_ratio(&words(&["a", "b"]), &words(&["b", "a"])),
+            1.0
+        );
+        assert_eq!(span_text("α😀z", 1, 2), "😀");
+        assert_eq!(span_text("α😀z", 0, 3), "α😀z");
+        assert_eq!(span_text("α😀z", 2, 1), "");
+        assert_eq!(span_text("α😀z", 9, 12), "");
+        assert_eq!(span_text("α😀z", 2, 12), "z");
     }
 }

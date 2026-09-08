@@ -1683,6 +1683,7 @@ pub fn session_task_update_to_proto(u: &st::SessionTaskUpdate) -> proto::Session
         heartbeat_at: u.heartbeat_at.map(datetime_to_proto_timestamp),
         expected_attempt: u.expected_attempt,
         increment_attempt: u.increment_attempt,
+        append_artifact: u.append_artifact.as_ref().map(artifact_to_proto),
     }
 }
 
@@ -1711,6 +1712,7 @@ pub fn proto_to_session_task_update(p: proto::SessionTaskUpdateProto) -> st::Ses
         heartbeat_at: p.heartbeat_at.as_ref().map(proto_timestamp_to_datetime),
         expected_attempt: p.expected_attempt,
         increment_attempt: p.increment_attempt,
+        append_artifact: p.append_artifact.map(proto_to_artifact),
     }
 }
 
@@ -2634,6 +2636,39 @@ mod tests {
     }
 
     #[test]
+    fn append_artifact_has_an_independent_native_wire_field() {
+        use prost::Message;
+        let artifact = st::TaskArtifact {
+            name: "a".into(),
+            artifact_type: "file".into(),
+            path: Some("/a".into()),
+            url: None,
+        };
+        let update = st::SessionTaskUpdate {
+            append_artifact: Some(artifact.clone()),
+            ..Default::default()
+        };
+        let expected = [
+            0x72, 0x0d, 0x0a, 0x01, b'a', 0x12, 0x04, b'f', b'i', b'l', b'e', 0x1a, 0x02, b'/',
+            b'a',
+        ];
+        assert_eq!(
+            session_task_update_to_proto(&update).encode_to_vec(),
+            expected
+        );
+        let restored = proto_to_session_task_update(
+            proto::SessionTaskUpdateProto::decode(expected.as_slice()).unwrap(),
+        );
+        assert_eq!(restored.append_artifact, Some(artifact));
+        assert!(restored.artifacts.is_none());
+        assert!(
+            proto_to_session_task_update(proto::SessionTaskUpdateProto::default())
+                .append_artifact
+                .is_none()
+        );
+    }
+
+    #[test]
     fn session_task_update_native_proto_round_trip() {
         // A fully-populated update (all Option/Vec fields set).
         let full = st::SessionTaskUpdate {
@@ -2667,6 +2702,12 @@ mod tests {
             heartbeat_at: Some(Utc.timestamp_opt(1_700_000_000, 0).unwrap()),
             expected_attempt: Some(3),
             increment_attempt: true,
+            append_artifact: Some(st::TaskArtifact {
+                name: "appended".into(),
+                artifact_type: "file".into(),
+                path: Some("/appended".into()),
+                url: None,
+            }),
         };
         let restored = proto_to_session_task_update(session_task_update_to_proto(&full));
         assert_eq!(

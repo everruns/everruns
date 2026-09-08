@@ -356,103 +356,315 @@ mod tests {
         }
     }
 
-    #[test]
-    fn empty_stdout_zero_exit_is_allow() {
-        assert!(matches!(
-            parse_bash_output(out(0, "", "")),
-            HookOutcome::Allow
-        ));
-    }
-
-    #[test]
-    fn empty_stdout_nonzero_exit_is_block_with_stderr_reason() {
-        let outcome = parse_bash_output(out(1, "", "denied: rm -rf"));
-        match outcome {
-            HookOutcome::Block { reason, .. } => assert_eq!(reason, "denied: rm -rf"),
-            _ => panic!("expected Block"),
-        }
-    }
-
-    #[test]
-    fn empty_stdout_nonzero_exit_no_stderr_uses_generic_reason() {
-        let outcome = parse_bash_output(out(1, "", ""));
-        match outcome {
-            HookOutcome::Block { reason, .. } => assert_eq!(reason, "hook exited non-zero"),
-            _ => panic!("expected Block"),
-        }
-    }
-
-    #[test]
-    fn json_allow_decision() {
-        let outcome = parse_bash_output(out(0, r#"{"decision":"allow"}"#, ""));
-        assert!(matches!(outcome, HookOutcome::Allow));
-    }
-
-    #[test]
-    fn json_block_with_reason_and_user_message() {
-        let outcome = parse_bash_output(out(
-            0,
-            r#"{"decision":"block","reason":"blocked","user_message":"nope"}"#,
-            "",
-        ));
-        match outcome {
-            HookOutcome::Block {
-                reason,
-                user_message,
-            } => {
-                assert_eq!(reason, "blocked");
-                assert_eq!(user_message.as_deref(), Some("nope"));
+    fn assert_outcome(actual: HookOutcome, expected: HookOutcome) {
+        match (actual, expected) {
+            (HookOutcome::Allow, HookOutcome::Allow) => {}
+            (
+                HookOutcome::Block {
+                    reason: a,
+                    user_message: au,
+                },
+                HookOutcome::Block {
+                    reason: e,
+                    user_message: eu,
+                },
+            ) => {
+                assert_eq!(a, e);
+                assert_eq!(au, eu);
             }
-            _ => panic!("expected Block"),
-        }
-    }
-
-    #[test]
-    fn json_mutate_requires_patch() {
-        let no_patch = parse_bash_output(out(0, r#"{"decision":"mutate"}"#, ""));
-        assert!(matches!(no_patch, HookOutcome::Error { .. }));
-
-        let with_patch = parse_bash_output(out(
-            0,
-            r#"{"decision":"mutate","patch":{"arguments":{"x":1}}}"#,
-            "",
-        ));
-        match with_patch {
-            HookOutcome::Mutate { patch, .. } => {
-                assert_eq!(patch["arguments"]["x"], 1);
+            (
+                HookOutcome::Mutate {
+                    patch: a,
+                    reason: ar,
+                },
+                HookOutcome::Mutate {
+                    patch: e,
+                    reason: er,
+                },
+            ) => {
+                assert_eq!(a, e);
+                assert_eq!(ar, er);
             }
-            _ => panic!("expected Mutate"),
+            (HookOutcome::Error { message: a }, HookOutcome::Error { message: e }) => {
+                assert_eq!(a, e)
+            }
+            (actual, expected) => panic!("expected {expected:?}, got {actual:?}"),
         }
     }
 
     #[test]
-    fn unknown_decision_is_error() {
-        let outcome = parse_bash_output(out(0, r#"{"decision":"explode"}"#, ""));
-        assert!(matches!(outcome, HookOutcome::Error { .. }));
+    fn empty_output_uses_exit_status_and_trimmed_stderr() {
+        for stdout in ["", " \n\u{2003}"] {
+            assert_outcome(
+                parse_bash_output(out(0, stdout, "ignored warning")),
+                HookOutcome::Allow,
+            );
+            for (stderr, reason) in [
+                (" denied: rm -rf \n", "denied: rm -rf"),
+                (" \n", "hook exited non-zero"),
+            ] {
+                assert_outcome(
+                    parse_bash_output(out(7, stdout, stderr)),
+                    HookOutcome::Block {
+                        reason: reason.into(),
+                        user_message: None,
+                    },
+                );
+            }
+        }
     }
 
     #[test]
-    fn non_json_stdout_is_error() {
-        let outcome = parse_bash_output(out(0, "hello world", ""));
-        assert!(matches!(outcome, HookOutcome::Error { .. }));
+    fn json_decisions_preserve_complete_fields_and_take_precedence_over_exit() {
+        for (stdout, expected) in [
+            (r#"{"decision":"allow"}"#, HookOutcome::Allow),
+            (r#"{"reason":"all good"}"#, HookOutcome::Allow),
+            (
+                r#"{"decision":"block"}"#,
+                HookOutcome::Block {
+                    reason: "hook blocked".into(),
+                    user_message: None,
+                },
+            ),
+            (
+                r#"{"decision":"block","reason":"blocked","user_message":"nope"}"#,
+                HookOutcome::Block {
+                    reason: "blocked".into(),
+                    user_message: Some("nope".into()),
+                },
+            ),
+            (
+                r#"{"decision":"mutate","patch":{"arguments":{"x":1,"text":"α"}},"reason":"normalize"}"#,
+                HookOutcome::Mutate {
+                    patch: serde_json::json!({"arguments":{"x":1,"text":"α"}}),
+                    reason: Some("normalize".into()),
+                },
+            ),
+        ] {
+            for exit in [0, 7] {
+                assert_outcome(
+                    parse_bash_output(out(exit, &format!(" \n{stdout}\n"), "ignored")),
+                    expected.clone(),
+                );
+            }
+        }
     }
 
     #[test]
-    fn malformed_json_is_error() {
-        let outcome = parse_bash_output(out(0, "{not json", ""));
-        assert!(matches!(outcome, HookOutcome::Error { .. }));
+    fn invalid_decisions_and_json_shapes_report_specific_failures() {
+        for stdout in [
+            r#"{"decision":"mutate"}"#,
+            r#"{"decision":"mutate","patch":null}"#,
+        ] {
+            assert_outcome(
+                parse_bash_output(out(0, stdout, "")),
+                HookOutcome::Error {
+                    message: "hook decision `mutate` missing `patch`".into(),
+                },
+            );
+        }
+        assert_outcome(
+            parse_bash_output(out(0, r#"{"decision":"explode"}"#, "")),
+            HookOutcome::Error {
+                message: "unknown hook decision `explode`".into(),
+            },
+        );
+        for stdout in [
+            "{not json",
+            r#"{"decision":42}"#,
+            r#"{"decision":"block","reason":false}"#,
+            "{} trailing",
+        ] {
+            match parse_bash_output(out(0, stdout, "")) {
+                HookOutcome::Error { message } => assert!(
+                    message.starts_with("hook stdout JSON parse failed:"),
+                    "{message}"
+                ),
+                other => panic!("expected parsing error, got {other:?}"),
+            }
+        }
     }
 
     #[test]
-    fn missing_decision_field_defaults_to_allow() {
-        let outcome = parse_bash_output(out(0, r#"{"reason":"all good"}"#, ""));
-        assert!(matches!(outcome, HookOutcome::Allow));
+    fn non_json_diagnostics_obey_literal_utf8_byte_boundary() {
+        for (stdout, excerpt) in [
+            ("hello".into(), "hello".into()),
+            ("x".repeat(80), "x".repeat(80)),
+            ("x".repeat(81), "x".repeat(80)),
+            (format!("{}😀tail", "x".repeat(79)), "x".repeat(79)),
+            (
+                format!("{}😀tail", "x".repeat(76)),
+                format!("{}😀", "x".repeat(76)),
+            ),
+        ] {
+            assert_outcome(
+                parse_bash_output(out(0, &stdout, "")),
+                HookOutcome::Error {
+                    message: format!("hook stdout is not JSON (first 80 bytes: {excerpt})"),
+                },
+            );
+        }
+    }
+
+    fn payload() -> HookPayload {
+        HookPayload {
+            event: HookEvent::PreToolUse,
+            hook_id: HookId("user:check".into()),
+            session_id: SessionId::from_seed(1),
+            turn_id: Some("turn_1".into()),
+            org_id: None,
+            agent_id: None,
+            ts: "2026-01-01T00:00:00Z".into(),
+            data: serde_json::json!({"tool_name":"bash","tool_call_id":"call_1","arguments":{"text":"quote \" α"}}),
+        }
     }
 
     #[test]
-    fn first_n_safe_on_multibyte_boundary() {
-        let s = "héllo";
-        assert_eq!(first_n(s, 2), "h");
-        assert_eq!(first_n(s, 3), "hé");
+    fn standard_environment_preserves_payload_and_omits_absent_scalars() {
+        let mut payload = payload();
+        let env = standard_hook_env(&payload, "/workspace/.hooks/payload.json").unwrap();
+        assert_eq!(env[0].0, "EVERRUNS_HOOK_PAYLOAD_JSON");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&env[0].1).unwrap(),
+            serde_json::json!({"event":"pre_tool_use","hook_id":"user:check","session_id":"session_00000000000000000000000000000001","turn_id":"turn_1","org_id":null,"agent_id":null,"ts":"2026-01-01T00:00:00Z","data":{"tool_name":"bash","tool_call_id":"call_1","arguments":{"text":"quote \" α"}}})
+        );
+        assert_eq!(
+            env[1..]
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                (
+                    "EVERRUNS_HOOK_PAYLOAD_PATH",
+                    "/workspace/.hooks/payload.json"
+                ),
+                ("EVERRUNS_HOOK_EVENT", "pre_tool_use"),
+                ("EVERRUNS_HOOK_ID", "user:check"),
+                (
+                    "EVERRUNS_HOOK_SESSION_ID",
+                    "session_00000000000000000000000000000001"
+                ),
+                ("EVERRUNS_HOOK_TURN_ID", "turn_1"),
+                ("EVERRUNS_HOOK_TOOL_NAME", "bash"),
+                ("EVERRUNS_HOOK_TOOL_CALL_ID", "call_1"),
+            ]
+        );
+        payload.turn_id = None;
+        for data in [
+            serde_json::json!({}),
+            serde_json::json!({"tool_name":42,"tool_call_id":false}),
+        ] {
+            payload.data = data;
+            let env = standard_hook_env(&payload, "/payload").unwrap();
+            assert_eq!(
+                env.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(),
+                [
+                    "EVERRUNS_HOOK_PAYLOAD_JSON",
+                    "EVERRUNS_HOOK_PAYLOAD_PATH",
+                    "EVERRUNS_HOOK_EVENT",
+                    "EVERRUNS_HOOK_ID",
+                    "EVERRUNS_HOOK_SESSION_ID"
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn payload_filenames_sanitize_hook_ids_and_separate_invocations() {
+        let mut payload = payload();
+        for (id, prefix) in [("../a:β\n", "___a___-"), ("safe-A_9", "safe-A_9-")] {
+            payload.hook_id = HookId(id.into());
+            let first = payload_filename(&payload);
+            let second = payload_filename(&payload);
+            assert_ne!(first, second);
+            for name in [first, second] {
+                let nonce = name
+                    .strip_prefix(prefix)
+                    .unwrap()
+                    .strip_suffix(".json")
+                    .unwrap();
+                assert_eq!(uuid::Uuid::parse_str(nonce).unwrap().get_version_num(), 7);
+                assert!(!name.contains('/'));
+            }
+        }
+    }
+
+    struct InspectingDispatcher {
+        result: Result<BashExecOutput, String>,
+    }
+    #[async_trait]
+    impl BashHookDispatcher for InspectingDispatcher {
+        async fn dispatch(
+            &self,
+            received: &HookPayload,
+            command: &str,
+            env: &std::collections::BTreeMap<String, String>,
+            opts: &ExecutorOpts,
+        ) -> Result<BashExecOutput, String> {
+            assert_eq!(
+                serde_json::to_value(received).unwrap(),
+                serde_json::to_value(payload()).unwrap()
+            );
+            assert_eq!(command, "run-hook --check");
+            assert_eq!(
+                env,
+                &std::collections::BTreeMap::from([("CUSTOM".into(), "literal $VALUE".into())])
+            );
+            assert_eq!((opts.timeout_ms, opts.max_output_bytes), (321, 987));
+            self.result.clone()
+        }
+    }
+
+    #[tokio::test]
+    async fn executor_forwards_inputs_and_preserves_dispatch_failures() {
+        for (result, expected) in [
+            (
+                Ok(out(
+                    0,
+                    r#"{"decision":"block","reason":"blocked","user_message":"explain"}"#,
+                    "",
+                )),
+                HookOutcome::Block {
+                    reason: "blocked".into(),
+                    user_message: Some("explain".into()),
+                },
+            ),
+            (
+                Err("sandbox unavailable".into()),
+                HookOutcome::Error {
+                    message: "sandbox unavailable".into(),
+                },
+            ),
+        ] {
+            let executor = BashHookExecutor::with_dispatcher(
+                "run-hook --check".into(),
+                std::collections::BTreeMap::from([("CUSTOM".into(), "literal $VALUE".into())]),
+                Arc::new(InspectingDispatcher { result }),
+            );
+            assert_eq!(executor.kind(), "bash");
+            assert_outcome(
+                executor
+                    .run(
+                        payload(),
+                        &ExecutorOpts {
+                            timeout_ms: 321,
+                            max_output_bytes: 987,
+                        },
+                    )
+                    .await,
+                expected,
+            );
+        }
+        let executor = BashHookExecutor {
+            command: "run-hook".into(),
+            env: Default::default(),
+            dispatcher: None,
+        };
+        assert_outcome(
+            executor.run(payload(), &ExecutorOpts::default()).await,
+            HookOutcome::Error {
+                message: "bash hook executor has no dispatcher; runtime did not wire it".into(),
+            },
+        );
     }
 }

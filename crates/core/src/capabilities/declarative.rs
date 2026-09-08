@@ -294,7 +294,12 @@ pub fn validate_declarative_capability_definition(
             &file.content,
             MAX_FILE_BYTES,
         )?;
-        if file.path.starts_with(SKILLS_DISCOVERY_PATH) {
+        if file.path == SKILLS_DISCOVERY_PATH
+            || file
+                .path
+                .strip_prefix(SKILLS_DISCOVERY_PATH)
+                .is_some_and(|rest| rest.starts_with('/'))
+        {
             return Err(format!(
                 "file path {} is reserved; use skills[] for skill contributions",
                 file.path
@@ -395,25 +400,369 @@ mod tests {
             parse_declarative_capability_id("declarative:research_pack"),
             Some("research_pack")
         );
+        assert!(is_declarative_capability("declarative:research_pack"));
+        for other in ["plugin:research_pack", "research_pack", ""] {
+            assert!(!is_declarative_capability(other));
+            assert_eq!(parse_declarative_capability_id(other), None);
+        }
     }
 
     #[test]
-    fn validation_accepts_name_and_display_name() {
-        validate_declarative_capability_definition(&valid_definition()).unwrap();
+    fn names_and_required_text_use_literal_byte_boundaries() {
+        for name in ["a", "a0_b-c", &"a".repeat(38)] {
+            let mut d = valid_definition();
+            d.name = name.into();
+            validate_declarative_capability_definition(&d).unwrap();
+        }
+        for (name, error) in [
+            ("".to_string(), "name is required"),
+            (" ".to_string(), "name is required"),
+            ("a".repeat(39), "name cannot exceed 38 bytes"),
+            ("Aname".into(), "name must start with a lowercase letter"),
+            ("0name".into(), "name must start with a lowercase letter"),
+            (
+                "a.b".into(),
+                "name may contain only lowercase letters, digits, '_' and '-'",
+            ),
+            (
+                "aα".into(),
+                "name may contain only lowercase letters, digits, '_' and '-'",
+            ),
+            ("a_".into(), "name cannot end with '_' or '-'"),
+            ("a-".into(), "name cannot end with '_' or '-'"),
+        ] {
+            let mut d = valid_definition();
+            d.name = name;
+            assert_eq!(
+                validate_declarative_capability_definition(&d),
+                Err(error.into())
+            );
+        }
+        for (field, max) in [
+            ("display_name", 80),
+            ("description", 512),
+            ("skill.description", 512),
+        ] {
+            for (text, expected) in [
+                ("α".repeat(max / 2), Ok(())),
+                (
+                    "α".repeat(max / 2) + "x",
+                    Err(format!("{field} cannot exceed {max} bytes")),
+                ),
+                (" \t".into(), Err(format!("{field} is required"))),
+            ] {
+                let mut d = valid_definition();
+                match field {
+                    "display_name" => d.display_name = Some(text),
+                    "description" => d.description = text,
+                    _ => {
+                        d.skills = vec![DeclarativeCapabilitySkill {
+                            name: "ops".into(),
+                            description: text,
+                            instructions: "Body".into(),
+                            files: vec![],
+                            user_invocable: true,
+                            disable_model_invocation: false,
+                        }]
+                    }
+                }
+                assert_eq!(
+                    validate_declarative_capability_definition(&d),
+                    expected,
+                    "{field}"
+                );
+            }
+        }
+    }
+
+    fn skill() -> DeclarativeCapabilitySkill {
+        DeclarativeCapabilitySkill {
+            name: "ops".into(),
+            description: "Operations".into(),
+            instructions: "Body".into(),
+            files: vec![],
+            user_invocable: true,
+            disable_model_invocation: false,
+        }
     }
 
     #[test]
-    fn validation_rejects_names_that_do_not_fit_capability_ref_columns() {
-        let mut definition = valid_definition();
-        definition.name = "a".repeat(MAX_NAME_BYTES + 1);
-        let err = validate_declarative_capability_definition(&definition).unwrap_err();
-        assert!(err.contains("name cannot exceed"));
+    fn contribution_collections_accept_limits_and_reject_one_more() {
+        for (field, max) in [("files", 32), ("skills", 16), ("mcp_servers", 16)] {
+            for count in [max, max + 1] {
+                let mut d = valid_definition();
+                match field {
+                    "files" => {
+                        d.files = (0..count)
+                            .map(|i| DeclarativeCapabilityFile {
+                                path: format!("/file-{i}"),
+                                content: "x".into(),
+                                access: MountAccess::ReadOnly,
+                            })
+                            .collect()
+                    }
+                    "skills" => {
+                        d.skills = (0..count)
+                            .map(|i| DeclarativeCapabilitySkill {
+                                name: format!("skill-{i}"),
+                                ..skill()
+                            })
+                            .collect()
+                    }
+                    _ => {
+                        d.mcp_servers = Some(
+                            serde_json::from_value(serde_json::Value::Object(
+                                (0..count)
+                                    .map(|i| {
+                                        (
+                                            format!("server-{i}"),
+                                            serde_json::json!({"url":"https://example.com/mcp"}),
+                                        )
+                                    })
+                                    .collect(),
+                            ))
+                            .unwrap(),
+                        )
+                    }
+                }
+                let expected = if count == max {
+                    Ok(())
+                } else {
+                    Err(format!("{field} cannot contain more than {max} entries"))
+                };
+                assert_eq!(validate_declarative_capability_definition(&d), expected);
+            }
+        }
     }
 
     #[test]
-    fn capability_info_uses_display_name_for_title() {
-        let info = declarative_capability_info("research_pack", valid_definition());
-        assert_eq!(info.id.as_str(), "declarative:research_pack");
-        assert_eq!(info.name, "Research Pack");
+    fn content_limits_count_utf8_bytes_for_every_contribution_surface() {
+        for field in [
+            "system_prompt",
+            "file /notes",
+            "skill ops instructions",
+            "skill ops file ref.txt",
+        ] {
+            for extra in [false, true] {
+                let mut d = valid_definition();
+                let content = "α".repeat(32768) + if extra { "x" } else { "" };
+                match field {
+                    "system_prompt" => d.system_prompt = Some(content),
+                    "file /notes" => {
+                        d.files = vec![DeclarativeCapabilityFile {
+                            path: "/notes".into(),
+                            content,
+                            access: MountAccess::ReadOnly,
+                        }]
+                    }
+                    "skill ops instructions" => {
+                        d.skills = vec![DeclarativeCapabilitySkill {
+                            instructions: content,
+                            ..skill()
+                        }]
+                    }
+                    _ => {
+                        d.skills = vec![DeclarativeCapabilitySkill {
+                            files: vec![DeclarativeCapabilitySkillFile {
+                                path: "ref.txt".into(),
+                                content,
+                            }],
+                            ..skill()
+                        }]
+                    }
+                }
+                let expected = if extra {
+                    Err(format!("{field} cannot exceed 65536 bytes"))
+                } else {
+                    Ok(())
+                };
+                assert_eq!(validate_declarative_capability_definition(&d), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn path_validation_rejects_traversal_and_reserves_only_the_skill_directory() {
+        for path in [
+            "/notes.txt",
+            "/.agents/skills-extra/readme",
+            "/.agents/skills-backup",
+        ] {
+            let mut d = valid_definition();
+            d.files = vec![DeclarativeCapabilityFile {
+                path: path.into(),
+                content: "x".into(),
+                access: MountAccess::ReadOnly,
+            }];
+            assert_eq!(
+                validate_declarative_capability_definition(&d),
+                Ok(()),
+                "{path}"
+            );
+        }
+        for path in [
+            "relative",
+            "/../secret",
+            "/a//b",
+            "/.agents/skills",
+            "/.agents/skills/ops/SKILL.md",
+        ] {
+            let mut d = valid_definition();
+            d.files = vec![DeclarativeCapabilityFile {
+                path: path.into(),
+                content: "x".into(),
+                access: MountAccess::ReadOnly,
+            }];
+            let error = if path.starts_with("/.agents/skills") {
+                format!("file path {path} is reserved; use skills[] for skill contributions")
+            } else {
+                format!("invalid mount path: {path}")
+            };
+            assert_eq!(validate_declarative_capability_definition(&d), Err(error));
+        }
+        for path in ["", " ", "/absolute", "../secret", "a//b"] {
+            let mut d = valid_definition();
+            d.skills = vec![DeclarativeCapabilitySkill {
+                files: vec![DeclarativeCapabilitySkillFile {
+                    path: path.into(),
+                    content: "x".into(),
+                }],
+                ..skill()
+            }];
+            assert_eq!(
+                validate_declarative_capability_definition(&d),
+                Err(format!("invalid relative file path: {path}"))
+            );
+        }
+        let mut d = valid_definition();
+        d.skills = vec![DeclarativeCapabilitySkill {
+            files: vec![DeclarativeCapabilitySkillFile {
+                path: "scripts/run.sh".into(),
+                content: "x".into(),
+            }],
+            ..skill()
+        }];
+        assert_eq!(validate_declarative_capability_definition(&d), Ok(()));
+    }
+
+    #[test]
+    fn declarative_dependencies_are_rejected_but_other_namespaces_remain_valid() {
+        let mut d = valid_definition();
+        d.dependencies = vec!["session_file_system".into(), "plugin:tools".into()];
+        assert_eq!(validate_declarative_capability_definition(&d), Ok(()));
+        d.dependencies.push("declarative:other".into());
+        assert_eq!(validate_declarative_capability_definition(&d),Err("declarative capability dependencies cannot reference other declarative capabilities".into()));
+        d.dependencies.clear();
+        d.skills = vec![DeclarativeCapabilitySkill {
+            name: "../invalid".into(),
+            ..skill()
+        }];
+        assert!(
+            validate_declarative_capability_definition(&d)
+                .unwrap_err()
+                .starts_with("invalid skill name '../invalid':")
+        );
+    }
+
+    #[test]
+    fn catalog_projection_and_hydration_preserve_definition_not_incoming_overrides() {
+        let mut d = valid_definition();
+        d.system_prompt = Some("Exact prompt".into());
+        d.dependencies = vec!["filesystem".into()];
+        d.features = vec!["files".into()];
+        d.risk_level = RiskLevel::High;
+        d.status = CapabilityStatus::ComingSoon;
+        d.icon = None;
+        d.category = None;
+        for (info, id, category) in [
+            (
+                declarative_capability_info("external-id", d.clone()),
+                "declarative:external-id",
+                "Declarative",
+            ),
+            (
+                plugin_capability_info("install-42", d.clone()),
+                "plugin:install-42",
+                "Plugin",
+            ),
+        ] {
+            assert_eq!(info.id.as_str(), id);
+            assert_eq!(info.name, "Research Pack");
+            assert_eq!(info.description, "Curated research behavior");
+            assert_eq!(info.system_prompt.as_deref(), Some("Exact prompt"));
+            assert_eq!(info.dependencies, ["filesystem"]);
+            assert_eq!(info.features, ["files"]);
+            assert_eq!(info.risk_level, RiskLevel::High);
+            assert_eq!(info.status, CapabilityStatus::ComingSoon);
+            assert_eq!(info.icon.as_deref(), Some("puzzle"));
+            assert_eq!(info.category.as_deref(), Some(category));
+            assert!(info.tool_definitions.is_empty());
+        }
+        for hydrate in [
+            hydrate_declarative_capability_config,
+            hydrate_plugin_capability_config,
+        ] {
+            let value = hydrate(
+                serde_json::json!({"name":"attacker","system_prompt":"override","unknown":42}),
+                &d,
+            );
+            assert_eq!(value["name"], "research_pack");
+            assert_eq!(value["system_prompt"], "Exact prompt");
+            assert!(value.get("unknown").is_none());
+            assert_eq!(value, serde_json::to_value(&d).unwrap());
+        }
+        d.display_name = None;
+        d.icon = Some("custom".into());
+        d.category = Some("Custom".into());
+        for info in [
+            declarative_capability_info("id", d.clone()),
+            plugin_capability_info("id", d),
+        ] {
+            assert_eq!(info.name, "research_pack");
+            assert_eq!(info.icon.as_deref(), Some("custom"));
+            assert_eq!(info.category.as_deref(), Some("Custom"));
+        }
+    }
+
+    #[test]
+    fn mount_and_skill_projection_preserve_contents_owners_and_access() {
+        let mut d = valid_definition();
+        d.files = vec![
+            DeclarativeCapabilityFile {
+                path: "/readonly".into(),
+                content: "Read α".into(),
+                access: MountAccess::ReadOnly,
+            },
+            DeclarativeCapabilityFile {
+                path: "/writable".into(),
+                content: "Write β".into(),
+                access: MountAccess::ReadWrite,
+            },
+        ];
+        assert_eq!(
+            d.mounts("owner"),
+            vec![
+                MountPoint::readonly("/readonly", MountSource::text_file("Read α"), "owner"),
+                MountPoint::readwrite("/writable", MountSource::text_file("Write β"), "owner")
+            ]
+        );
+        d.skills = vec![DeclarativeCapabilitySkill {
+            user_invocable: false,
+            disable_model_invocation: true,
+            files: vec![DeclarativeCapabilitySkillFile {
+                path: "reference.txt".into(),
+                content: "Reference".into(),
+            }],
+            ..skill()
+        }];
+        let skills = d.skill_contributions();
+        assert_eq!(skills.len(), 1);
+        let s = &skills[0];
+        assert_eq!(s.name, "ops");
+        assert_eq!(s.description, "Operations");
+        assert_eq!(s.instructions, "Body");
+        assert_eq!(s.files, [("reference.txt".into(), "Reference".into())]);
+        assert!(!s.user_invocable);
+        assert!(s.disable_model_invocation);
     }
 }

@@ -420,217 +420,127 @@ impl EventEmitter for TestEventEmitter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uuid::Uuid;
 
-    #[tokio::test]
-    async fn test_in_memory_message_retriever() {
-        let store = TestMessageRetriever::new();
-        let session_id: SessionId = Uuid::now_v7().into();
-
-        store
-            .store(session_id, Message::user("Hello"))
-            .await
-            .unwrap();
-
-        let messages = store.load(session_id).await.unwrap();
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].text(), Some("Hello"));
+    fn values<T: serde::Serialize>(values: T) -> serde_json::Value {
+        serde_json::to_value(values).unwrap()
     }
 
     #[tokio::test]
-    async fn test_in_memory_message_retriever_add_and_get() {
+    async fn message_store_preserves_complete_records_and_session_isolation() {
         let store = TestMessageRetriever::new();
-        let session_id: SessionId = Uuid::now_v7().into();
-
-        // Add a message using the add method
-        let message = store
-            .add(session_id, InputMessage::user("Hello via add"))
+        let first = SessionId::from_uuid(Uuid::from_u128(1));
+        let second = SessionId::from_uuid(Uuid::from_u128(2));
+        let stored = Message::user("stored");
+        store.store(first, stored.clone()).await.unwrap();
+        let added = store.add(first, InputMessage::user("added")).await.unwrap();
+        let other = store
+            .add(second, InputMessage::user("other session"))
             .await
             .unwrap();
-
-        // Get the message by ID
-        let retrieved = store.get(session_id, message.id).await.unwrap();
-        assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().text(), Some("Hello via add"));
-
-        // Get non-existent message
-        let missing = store.get(session_id, MessageId::new()).await.unwrap();
-        assert!(missing.is_none());
-    }
-
-    /// Regression test: add() must return message with ID usable for get()
-    ///
-    /// This test documents a critical invariant: the ID in the message returned by
-    /// add() must match the ID stored internally, so that get(returned_id) succeeds.
-    #[tokio::test]
-    async fn test_message_retriever_add_returns_consistent_id() {
-        let store = TestMessageRetriever::new();
-        let session_id: SessionId = Uuid::now_v7().into();
-
-        // Add a message
-        let added = store
-            .add(session_id, InputMessage::user("Test consistency"))
-            .await
-            .unwrap();
-
-        // The returned message ID must be retrievable
-        let retrieved = store.get(session_id, added.id).await.unwrap();
-        assert!(
-            retrieved.is_some(),
-            "Message must be retrievable by the ID returned from add()"
-        );
-
-        // The retrieved message must have the same ID
-        let retrieved = retrieved.unwrap();
         assert_eq!(
-            retrieved.id, added.id,
-            "Retrieved message ID must match the ID returned from add()"
+            values(store.get(first, stored.id).await.unwrap()),
+            values(Some(&stored))
         );
-
-        // The message must also appear in load() with the same ID
-        let all_messages = store.load(session_id).await.unwrap();
-        let found = all_messages.iter().find(|m| m.id == added.id);
-        assert!(
-            found.is_some(),
-            "Message with returned ID must appear in load() results"
+        assert_eq!(
+            values(store.get(first, added.id).await.unwrap()),
+            values(Some(&added))
         );
+        assert!(store.get(second, added.id).await.unwrap().is_none());
+        assert_eq!(
+            values(store.load(first).await.unwrap()),
+            values([&stored, &added])
+        );
+        assert_eq!(values(store.load(second).await.unwrap()), values([&other]));
+        assert_eq!(store.count(first).await.unwrap(), 2);
+        store.clear_session(first).await;
+        assert!(store.load(first).await.unwrap().is_empty());
+        assert_eq!(values(store.load(second).await.unwrap()), values([&other]));
+        store.seed(second, vec![stored.clone()]).await;
+        assert_eq!(values(store.load(second).await.unwrap()), values([&stored]));
+        store.clear().await;
+        assert!(store.sessions().await.is_empty());
+        assert!(store.get(first, added.id).await.unwrap().is_none());
+        assert_eq!(store.count(second).await.unwrap(), 0);
     }
 
     #[tokio::test]
-    async fn test_in_memory_event_emitter() {
-        use crate::events::{EventContext, EventRequest, InputMessageData};
-
+    async fn event_store_preserves_records_filters_exactly_and_resets_sequence() {
+        use crate::events::{EventContext, EventRequest, InputMessageData, ReasonStartedData};
         let emitter = TestEventEmitter::new();
-        let session_id: SessionId = Uuid::now_v7().into();
-        let event_context = EventContext::empty();
-
-        // Emit an event
-        let event1 = emitter
+        let first = SessionId::from_uuid(Uuid::from_u128(1));
+        let second = SessionId::from_uuid(Uuid::from_u128(2));
+        let input = emitter
             .emit(EventRequest::new(
-                session_id,
-                event_context.clone(),
-                InputMessageData::new(Message::user("test1")),
+                first,
+                EventContext::empty(),
+                InputMessageData::new(Message::user("first")),
             ))
             .await
             .unwrap();
-        assert_eq!(event1.sequence, Some(1));
-
-        // Emit another event
-        let event2 = emitter
+        let reason = emitter
             .emit(EventRequest::new(
-                session_id,
-                event_context,
-                InputMessageData::new(Message::user("test2")),
-            ))
-            .await
-            .unwrap();
-        assert_eq!(event2.sequence, Some(2));
-
-        // Check events
-        let events = emitter.events().await;
-        assert_eq!(events.len(), 2);
-        assert_eq!(emitter.event_count().await, 2);
-    }
-
-    #[tokio::test]
-    async fn test_in_memory_event_emitter_filter_by_type() {
-        use crate::events::{
-            EventContext, EventRequest, INPUT_MESSAGE, InputMessageData, REASON_STARTED,
-            ReasonStartedData,
-        };
-
-        let emitter = TestEventEmitter::new();
-        let session_id: SessionId = Uuid::now_v7().into();
-        let event_context = EventContext::empty();
-
-        // Emit different event types
-        emitter
-            .emit(EventRequest::new(
-                session_id,
-                event_context.clone(),
-                InputMessageData::new(Message::user("test")),
-            ))
-            .await
-            .unwrap();
-
-        emitter
-            .emit(EventRequest::new(
-                session_id,
-                event_context,
+                second,
+                EventContext::empty(),
                 ReasonStartedData {
                     harness_id: HarnessId::from_seed(1),
-                    agent_id: Some(AgentId::new()),
+                    agent_id: None,
                     metadata: None,
                 },
             ))
             .await
             .unwrap();
-
-        // Filter by type
-        let received_events = emitter.events_by_type(INPUT_MESSAGE).await;
-        assert_eq!(received_events.len(), 1);
-
-        let started_events = emitter.events_by_type(REASON_STARTED).await;
-        assert_eq!(started_events.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_in_memory_event_emitter_filter_by_session() {
-        use crate::events::{EventContext, EventRequest, InputMessageData};
-
-        let emitter = TestEventEmitter::new();
-        let session1: SessionId = Uuid::now_v7().into();
-        let session2: SessionId = Uuid::now_v7().into();
-
-        // Emit events for different sessions
-        let context = EventContext::empty();
-
-        emitter
+        let last = emitter
             .emit(EventRequest::new(
-                session1,
-                context.clone(),
-                InputMessageData::new(Message::user("session1")),
+                first,
+                EventContext::empty(),
+                InputMessageData::new(Message::user("last")),
             ))
             .await
             .unwrap();
-        emitter
-            .emit(EventRequest::new(
-                session2,
-                context,
-                InputMessageData::new(Message::user("session2")),
-            ))
-            .await
-            .unwrap();
-
-        // Filter by session
-        let session1_events = emitter.events_for_session(session1.uuid()).await;
-        assert_eq!(session1_events.len(), 1);
-
-        let session2_events = emitter.events_for_session(session2.uuid()).await;
-        assert_eq!(session2_events.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_in_memory_event_emitter_clear() {
-        use crate::events::{EventContext, EventRequest, InputMessageData};
-
-        let emitter = TestEventEmitter::new();
-        let session_id: SessionId = Uuid::now_v7().into();
-        let event_context = EventContext::empty();
-
-        emitter
-            .emit(EventRequest::new(
-                session_id,
-                event_context,
-                InputMessageData::new(Message::user("test")),
-            ))
-            .await
-            .unwrap();
-
-        assert_eq!(emitter.event_count().await, 1);
-
+        assert_eq!(
+            [input.sequence, reason.sequence, last.sequence],
+            [Some(1), Some(2), Some(3)]
+        );
+        assert_eq!(
+            values(emitter.events().await),
+            values([&input, &reason, &last])
+        );
+        assert_eq!(emitter.event_count().await, 3);
+        assert_eq!(
+            values(emitter.events_by_type("input.message").await),
+            values([&input, &last])
+        );
+        assert_eq!(
+            values(emitter.events_by_type("reason.started").await),
+            values([&reason])
+        );
+        assert!(emitter.events_by_type("missing").await.is_empty());
+        assert_eq!(
+            values(emitter.events_for_session(first.uuid()).await),
+            values([&input, &last])
+        );
+        assert_eq!(
+            values(emitter.events_for_session(second.uuid()).await),
+            values([&reason])
+        );
+        assert!(
+            emitter
+                .events_for_session(Uuid::from_u128(3))
+                .await
+                .is_empty()
+        );
         emitter.clear().await;
-
+        assert!(emitter.events().await.is_empty());
         assert_eq!(emitter.event_count().await, 0);
+        let reset = emitter
+            .emit(EventRequest::new(
+                first,
+                EventContext::empty(),
+                InputMessageData::new(Message::user("after reset")),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(reset.sequence, Some(1));
+        assert_eq!(values(emitter.events().await), values([&reset]));
     }
 }

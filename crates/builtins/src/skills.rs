@@ -2098,11 +2098,12 @@ mod tests {
     async fn test_attach_skill_description_with_special_chars_roundtrips() {
         use crate::capabilities::attach_skill::AttachSkillCapability;
 
+        let description = "Description: \"quotes\", C:\\new\\tools\nSecond line.";
         let skill_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
         let cap = AttachSkillCapability::from_registry(
             skill_id,
             "tricky-skill".to_string(),
-            "Description with: colons, #hashtags, and \"quotes\"".to_string(),
+            description.to_string(),
             "# Instructions\nDo the thing.".to_string(),
             vec![],
         );
@@ -2125,12 +2126,22 @@ mod tests {
                 let skills = val["skills"].as_array().unwrap();
                 assert_eq!(skills.len(), 1);
                 assert_eq!(skills[0]["name"], "tricky-skill");
-                assert_eq!(
-                    skills[0]["description"],
-                    "Description with: colons, #hashtags, and \"quotes\""
-                );
+                assert_eq!(skills[0]["description"], description);
             }
             other => panic!("Expected Success, got: {:?}", other),
+        }
+        let activated = ActivateSkillFromVfsTool
+            .execute_with_context(serde_json::json!({"name":"tricky-skill"}), &context)
+            .await;
+        match activated {
+            ToolExecutionResult::Success(value) => {
+                assert_eq!(value["description"], description);
+                assert_eq!(
+                    value["instructions"],
+                    "<skill name=\"tricky-skill\">\n# Instructions\nDo the thing.\n</skill>"
+                );
+            }
+            other => panic!("expected activation success, got {other:?}"),
         }
     }
 
@@ -2382,5 +2393,26 @@ mod tests {
     fn localized_name_differs_from_default() {
         let cap = SkillsCapability;
         assert_ne!(cap.localized_name(Some("uk")), cap.name());
+    }
+
+    #[tokio::test]
+    async fn activation_preserves_literal_and_empty_arguments_through_vfs_pipeline() {
+        let fs = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        fs.add_file(session_id,"/.agents/skills/args/SKILL.md","---\nname: args\ndescription: Literal arguments.\n---\n$ARGUMENTS[0]|$1|$2|${SKILL_DIR}|!`unused-command`");
+        let context = ToolContext::with_file_store(session_id, fs);
+        let result = ActivateSkillFromVfsTool
+            .execute_with_context(
+                serde_json::json!({"name":"args","arguments":"'$1' \"\" tail"}),
+                &context,
+            )
+            .await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success: {result:?}")
+        };
+        assert_eq!(
+            value,
+            serde_json::json!({"skill":"args","description":"Literal arguments.","instructions":"<skill name=\"args\">\n$1||tail|/.agents/skills/args|!`unused-command`\n</skill>"})
+        );
     }
 }

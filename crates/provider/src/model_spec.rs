@@ -73,16 +73,17 @@ mod tests {
 
     #[test]
     fn model_spec_is_credential_and_endpoint_free() {
-        let spec = ModelSpec::on("openai-prod", "gpt-5");
-        let json = serde_json::to_string(&spec).unwrap();
-        let debug = format!("{spec:?}");
-        assert_eq!(json, r#"{"provider":"openai-prod","model":"gpt-5"}"#);
-        assert!(!debug.contains("api_key"));
-        assert!(!debug.contains("base_url"));
+        let spec: ModelSpec = serde_json::from_str(r#"{"provider":" OpenAI-PROD ","model":"wire-model","api_key":"must-not-survive","base_url":"https://private.example"}"#).unwrap();
+        assert_eq!(spec, ModelSpec::on("openai-prod", "wire-model"));
+        assert_eq!(
+            serde_json::to_string(&spec).unwrap(),
+            r#"{"provider":"openai-prod","model":"wire-model"}"#
+        );
+        assert!(!format!("{spec:?}").contains("must-not-survive"));
     }
 
     #[test]
-    fn two_models_select_distinct_providers_over_one_protocol() {
+    fn model_resolution_selects_provider_and_reports_sorted_alternatives() {
         let driver: std::sync::Arc<dyn crate::ChatDriver> = std::sync::Arc::new(Noop);
         let mut registry = RuntimeProviderRegistry::new();
         registry
@@ -101,5 +102,26 @@ mod tests {
         assert_eq!(east.id().as_str(), "east");
         assert_eq!(west.id().as_str(), "west");
         assert!(std::sync::Arc::ptr_eq(east.driver(), west.driver()));
+        let error = ModelSpec::on(" Missing ", "shared-model")
+            .resolve_provider(&registry)
+            .unwrap_err();
+        assert_eq!(
+            error,
+            UnknownProvider {
+                requested: ProviderKey::new("missing"),
+                registered: vec!["east".into(), "west".into()]
+            }
+        );
+        assert_eq!(
+            error.to_string(),
+            "provider 'missing' is not registered; registered providers: [east, west]"
+        );
+        let empty = ModelSpec::on("missing", "model")
+            .resolve_provider(&RuntimeProviderRegistry::new())
+            .unwrap_err();
+        assert_eq!(
+            empty.to_string(),
+            "provider 'missing' is not registered; registered providers: []"
+        );
     }
 }

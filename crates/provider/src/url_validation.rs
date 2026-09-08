@@ -287,356 +287,255 @@ fn is_blocked_ipv6(ip: Ipv6Addr) -> bool {
 mod tests {
     use super::*;
 
-    // --- Positive: valid public URLs ---
-
     #[test]
-    fn accepts_https_public_url() {
-        assert!(validate_safe_url("https://mcp.example.com/v1/mcp").is_ok());
+    fn public_urls_preserve_scheme_port_path_and_query() {
+        for input in [
+            "https://mcp.example.com/v1/mcp",
+            "http://mcp.example.com/v1/mcp",
+            "https://mcp.example.com:8443/v1/mcp",
+            "https://api.example.com/mcp?key=val",
+            "http://172.32.0.1/path",
+            "http://100.63.255.255/path",
+            "http://100.128.0.0/path",
+            "https://[2606:4700:4700::1111]/dns-query",
+        ] {
+            assert_eq!(validate_safe_url(input).unwrap().as_str(), input);
+        }
     }
 
     #[test]
-    fn accepts_http_public_url() {
-        assert!(validate_safe_url("http://mcp.example.com/v1/mcp").is_ok());
-    }
-
-    #[test]
-    fn accepts_url_with_port() {
-        assert!(validate_safe_url("https://mcp.example.com:8443/v1/mcp").is_ok());
-    }
-
-    #[test]
-    fn accepts_url_with_path_and_query() {
-        assert!(validate_safe_url("https://api.example.com/mcp?key=val").is_ok());
-    }
-
-    // --- Negative: blocked schemes ---
-
-    #[test]
-    fn rejects_ftp_scheme() {
-        let err = validate_safe_url("ftp://evil.com/file").unwrap_err();
-        assert!(matches!(err, UrlValidationError::DisallowedScheme(_)));
-    }
-
-    #[test]
-    fn rejects_file_scheme() {
-        let err = validate_safe_url("file:///etc/passwd").unwrap_err();
-        assert!(matches!(err, UrlValidationError::DisallowedScheme(_)));
-    }
-
-    #[test]
-    fn rejects_javascript_scheme() {
-        let err = validate_safe_url("javascript:alert(1)").unwrap_err();
-        // url crate may parse this as opaque or as scheme error
-        assert!(
-            matches!(err, UrlValidationError::DisallowedScheme(_))
-                || matches!(err, UrlValidationError::MissingHostname)
+    fn invalid_urls_and_disallowed_schemes_have_distinct_errors() {
+        for (input, scheme) in [
+            ("ftp://evil.com/file", "ftp"),
+            ("file:///etc/passwd", "file"),
+            ("javascript:alert(1)", "javascript"),
+            ("data:text/plain,hello", "data"),
+        ] {
+            assert_eq!(
+                validate_safe_url(input),
+                Err(UrlValidationError::DisallowedScheme(scheme.into()))
+            );
+        }
+        for input in ["", "not a url"] {
+            assert!(matches!(
+                validate_safe_url(input),
+                Err(UrlValidationError::InvalidUrl(_))
+            ));
+        }
+        assert_eq!(
+            UrlValidationError::BlockedHost("localhost".into()).to_string(),
+            "Blocked host: localhost (private/internal address)"
+        );
+        assert_eq!(
+            UrlValidationError::DisallowedScheme("ftp".into()).to_string(),
+            "Disallowed URL scheme: ftp (must be http or https)"
         );
     }
 
     #[test]
-    fn rejects_data_scheme() {
-        let err = validate_safe_url("data:text/plain,hello").unwrap_err();
-        assert!(
-            matches!(err, UrlValidationError::DisallowedScheme(_))
-                || matches!(err, UrlValidationError::MissingHostname)
-        );
-    }
-
-    // --- Negative: invalid URLs ---
-
-    #[test]
-    fn rejects_empty_string() {
-        assert!(validate_safe_url("").is_err());
-    }
-
-    #[test]
-    fn rejects_not_a_url() {
-        assert!(validate_safe_url("not a url").is_err());
-    }
-
-    // --- Negative: localhost ---
-
-    #[test]
-    fn rejects_localhost() {
-        let err = validate_safe_url("http://localhost/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    #[test]
-    fn rejects_localhost_with_port() {
-        let err = validate_safe_url("http://localhost:8080/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    #[test]
-    fn rejects_subdomain_of_localhost() {
-        let err = validate_safe_url("http://foo.localhost/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    // --- Negative: loopback IPs ---
-
-    #[test]
-    fn rejects_127_0_0_1() {
-        let err = validate_safe_url("http://127.0.0.1/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    #[test]
-    fn rejects_127_x_x_x() {
-        let err = validate_safe_url("http://127.255.0.1/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    #[test]
-    fn rejects_ipv6_loopback() {
-        let err = validate_safe_url("http://[::1]/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    // --- Negative: private RFC1918 ---
-
-    #[test]
-    fn rejects_10_x() {
-        let err = validate_safe_url("http://10.0.0.1/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    #[test]
-    fn rejects_172_16_x() {
-        let err = validate_safe_url("http://172.16.0.1/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    #[test]
-    fn rejects_172_31_x() {
-        let err = validate_safe_url("http://172.31.255.255/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    #[test]
-    fn accepts_172_32_x() {
-        // 172.32.x.x is NOT private
-        assert!(validate_safe_url("http://172.32.0.1/path").is_ok());
-    }
-
-    #[test]
-    fn rejects_192_168_x() {
-        let err = validate_safe_url("http://192.168.1.1/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    // --- Negative: link-local / cloud metadata ---
-
-    #[test]
-    fn rejects_link_local() {
-        let err = validate_safe_url("http://169.254.1.1/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    #[test]
-    fn rejects_cloud_metadata_ip() {
-        let err = validate_safe_url("http://169.254.169.254/latest/meta-data/").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    #[test]
-    fn rejects_gce_metadata_hostname() {
-        let err =
-            validate_safe_url("http://metadata.google.internal/computeMetadata/v1/").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    // --- Negative: 0.0.0.0 ---
-
-    #[test]
-    fn rejects_unspecified_v4() {
-        let err = validate_safe_url("http://0.0.0.0/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    // --- Negative: IPv6 special ---
-
-    #[test]
-    fn rejects_ipv6_unspecified() {
-        let err = validate_safe_url("http://[::]/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    #[test]
-    fn rejects_ipv6_link_local() {
-        let err = validate_safe_url("http://[fe80::1]/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    #[test]
-    fn rejects_ipv6_unique_local() {
-        let err = validate_safe_url("http://[fd00::1]/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    #[test]
-    fn rejects_ipv4_mapped_ipv6_private() {
-        let err = validate_safe_url("http://[::ffff:127.0.0.1]/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    #[test]
-    fn rejects_ipv4_mapped_ipv6_metadata() {
-        let err =
-            validate_safe_url("http://[::ffff:169.254.169.254]/latest/meta-data/").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    // --- Negative: carrier-grade NAT ---
-
-    #[test]
-    fn rejects_cgnat() {
-        let err = validate_safe_url("http://100.64.0.1/path").unwrap_err();
-        assert!(matches!(err, UrlValidationError::BlockedHost(_)));
-    }
-
-    // --- Display ---
-
-    #[test]
-    fn error_display_messages() {
-        assert!(
-            UrlValidationError::BlockedHost("localhost".into())
-                .to_string()
-                .contains("private/internal")
-        );
-        assert!(
-            UrlValidationError::DisallowedScheme("ftp".into())
-                .to_string()
-                .contains("http or https")
-        );
+    fn blocked_hosts_cover_all_private_families_and_normalized_spellings() {
+        for (input, host) in [
+            ("http://localhost/path", "localhost"),
+            ("http://localhost:8080/path", "localhost"),
+            ("http://foo.localhost/path", "foo.localhost"),
+            ("http://LOCALHOST./path", "localhost."),
+            ("http://foo.localhost./path", "foo.localhost."),
+            ("http://127.0.0.1/path", "127.0.0.1"),
+            ("http://127.255.0.1/path", "127.255.0.1"),
+            ("http://2130706433/path", "127.0.0.1"),
+            ("http://0x7f000001/path", "127.0.0.1"),
+            ("http://[::1]/path", "[::1]"),
+            ("http://10.0.0.1/path", "10.0.0.1"),
+            ("http://172.16.0.1/path", "172.16.0.1"),
+            ("http://172.31.255.255/path", "172.31.255.255"),
+            ("http://192.168.1.1/path", "192.168.1.1"),
+            ("http://169.254.1.1/path", "169.254.1.1"),
+            (
+                "http://169.254.169.254/latest/meta-data/",
+                "169.254.169.254",
+            ),
+            (
+                "http://metadata.google.internal/computeMetadata/v1/",
+                "metadata.google.internal",
+            ),
+            (
+                "http://metadata.google.internal./path",
+                "metadata.google.internal.",
+            ),
+            ("http://0.0.0.0/path", "0.0.0.0"),
+            ("http://[::]/path", "[::]"),
+            ("http://[fe80::1]/path", "[fe80::1]"),
+            ("http://[fd00::1]/path", "[fd00::1]"),
+            ("http://[::ffff:127.0.0.1]/path", "[::ffff:7f00:1]"),
+            (
+                "http://[::ffff:169.254.169.254]/latest/meta-data/",
+                "[::ffff:a9fe:a9fe]",
+            ),
+            ("http://100.64.0.1/path", "100.64.0.1"),
+            ("http://100.127.255.255/path", "100.127.255.255"),
+            ("http://192.0.2.1/path", "192.0.2.1"),
+            ("http://198.51.100.1/path", "198.51.100.1"),
+            ("http://203.0.113.1/path", "203.0.113.1"),
+        ] {
+            assert_eq!(
+                validate_safe_url(input),
+                Err(UrlValidationError::BlockedHost(host.into())),
+                "{input}"
+            );
+        }
     }
 
     #[test]
     fn env_cidr_allowlist_does_not_unblock_private_ips() {
-        // Private and internal targets must stay blocked for every consumer of
-        // the shared SSRF primitive. Consumer-specific exceptions must not be
-        // implemented by weakening this global check.
-        unsafe {
-            std::env::set_var("EVERRUNS_SSRF_ALLOW_CIDRS", "10.96.0.0/12");
+        if std::env::var_os("EVERRUNS_URL_VALIDATION_ALLOWLIST_TEST_CHILD").is_some() {
+            assert!(is_blocked_ip("10.96.0.42".parse().unwrap()));
+            assert!(is_blocked_ip("::ffff:10.96.0.42".parse().unwrap()));
+            return;
         }
-        assert!(is_blocked_ip("10.96.0.42".parse().unwrap()));
-        assert!(is_blocked_ip("::ffff:10.96.0.42".parse().unwrap()));
-        unsafe {
-            std::env::remove_var("EVERRUNS_SSRF_ALLOW_CIDRS");
-        }
-    }
-
-    // --- validate_url_dns_pinned: static pre-check path (IP literals) ---
-
-    #[tokio::test]
-    async fn dns_pinned_rejects_private_ip_literal() {
-        let result = validate_url_dns_pinned("http://10.0.0.1/mcp").await;
-        assert!(matches!(result, Err(UrlValidationError::BlockedHost(_))));
-    }
-
-    #[tokio::test]
-    async fn dns_pinned_rejects_loopback_ip_literal() {
-        let result = validate_url_dns_pinned("http://127.0.0.1/mcp").await;
-        assert!(matches!(result, Err(UrlValidationError::BlockedHost(_))));
-    }
-
-    #[tokio::test]
-    async fn dns_pinned_rejects_metadata_ip_literal() {
-        let result = validate_url_dns_pinned("http://169.254.169.254/latest/meta-data/").await;
-        assert!(matches!(result, Err(UrlValidationError::BlockedHost(_))));
-    }
-
-    #[tokio::test]
-    async fn dns_pinned_rejects_localhost_hostname() {
-        // "localhost" is caught by the static pre-check; resolver is never called.
-        let result = validate_url_dns_pinned("http://localhost:8080/mcp").await;
-        assert!(matches!(result, Err(UrlValidationError::BlockedHost(_))));
-    }
-
-    #[tokio::test]
-    async fn dns_pinned_rejects_bad_scheme() {
-        let result = validate_url_dns_pinned("ftp://example.com/mcp").await;
-        assert!(matches!(
-            result,
-            Err(UrlValidationError::DisallowedScheme(_))
-        ));
-    }
-
-    // --- validate_url_with_resolver: DNS resolution path (injectable resolver) ---
-
-    // Simulates DNS rebinding: public URL resolves to a private IP.
-    async fn private_ip_resolver(
-        _host: String,
-        _port: u16,
-    ) -> Result<Vec<SocketAddr>, std::io::Error> {
-        Ok(vec!["10.0.0.1:80".parse().unwrap()])
-    }
-
-    // Simulates a well-behaved response: public URL resolves to a public IP.
-    async fn public_ip_resolver(
-        _host: String,
-        _port: u16,
-    ) -> Result<Vec<SocketAddr>, std::io::Error> {
-        Ok(vec!["1.1.1.1:443".parse().unwrap()])
-    }
-
-    // Simulates a DNS failure / timeout.
-    async fn failing_resolver(
-        _host: String,
-        _port: u16,
-    ) -> Result<Vec<SocketAddr>, std::io::Error> {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::TimedOut,
-            "DNS lookup timed out",
-        ))
-    }
-
-    // Simulates empty DNS response (NXDOMAIN / no records).
-    async fn empty_resolver(_host: String, _port: u16) -> Result<Vec<SocketAddr>, std::io::Error> {
-        Ok(vec![])
-    }
-
-    #[tokio::test]
-    async fn dns_resolver_blocks_hostname_resolving_to_private_ip() {
-        // Simulates the DNS rebinding attack: public URL resolves to private IP.
-        let result =
-            validate_url_with_resolver("http://evil.example.com/mcp", private_ip_resolver).await;
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "url_validation::tests::env_cidr_allowlist_does_not_unblock_private_ips",
+                "--nocapture",
+            ])
+            .env("EVERRUNS_URL_VALIDATION_ALLOWLIST_TEST_CHILD", "1")
+            .env("EVERRUNS_SSRF_ALLOW_CIDRS", "10.96.0.0/12")
+            .output()
+            .unwrap();
         assert!(
-            matches!(result, Err(UrlValidationError::BlockedHost(_))),
-            "expected BlockedHost, got {result:?}"
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stdout)
         );
     }
 
     #[tokio::test]
-    async fn dns_resolver_allows_hostname_resolving_to_public_ip() {
-        let (url, addrs) =
-            validate_url_with_resolver("https://mcp.example.com/v1/mcp", public_ip_resolver)
-                .await
-                .expect("should succeed");
-        assert_eq!(url.host_str(), Some("mcp.example.com"));
-        // Caller pins the connection to these addrs via resolve_to_addrs.
-        assert_eq!(addrs.len(), 1);
+    async fn static_rejection_and_public_literals_never_resolve_dns() {
+        for (input, expected) in [
+            (
+                "http://10.0.0.1/mcp",
+                UrlValidationError::BlockedHost("10.0.0.1".into()),
+            ),
+            (
+                "http://127.0.0.1/mcp",
+                UrlValidationError::BlockedHost("127.0.0.1".into()),
+            ),
+            (
+                "http://169.254.169.254/latest/meta-data/",
+                UrlValidationError::BlockedHost("169.254.169.254".into()),
+            ),
+            (
+                "http://localhost:8080/mcp",
+                UrlValidationError::BlockedHost("localhost".into()),
+            ),
+            (
+                "ftp://example.com/mcp",
+                UrlValidationError::DisallowedScheme("ftp".into()),
+            ),
+        ] {
+            assert_eq!(
+                validate_url_with_resolver(input, |_, _| async {
+                    panic!("static failure must not resolve")
+                })
+                .await,
+                Err(expected.clone())
+            );
+            assert_eq!(validate_url_dns_pinned(input).await, Err(expected));
+        }
+        for input in ["https://1.1.1.1/mcp", "https://[2606:4700:4700::1111]/mcp"] {
+            let (url, addresses) = validate_url_with_resolver(input, |_, _| async {
+                panic!("literal must not resolve")
+            })
+            .await
+            .unwrap();
+            assert_eq!(url.as_str(), input);
+            assert!(addresses.is_empty());
+        }
     }
 
     #[tokio::test]
-    async fn dns_resolver_blocks_on_lookup_failure() {
-        let result = validate_url_with_resolver("http://example.com/mcp", failing_resolver).await;
-        assert!(matches!(result, Err(UrlValidationError::BlockedHost(_))));
-    }
-
-    #[tokio::test]
-    async fn dns_resolver_blocks_empty_response() {
-        let result = validate_url_with_resolver("http://example.com/mcp", empty_resolver).await;
-        assert!(matches!(result, Err(UrlValidationError::BlockedHost(_))));
-    }
-
-    #[tokio::test]
-    async fn dns_resolver_returns_addrs_for_connection_pinning() {
-        let (_url, addrs) =
-            validate_url_with_resolver("https://mcp.example.com/v1/mcp", public_ip_resolver)
+    async fn dns_pinning_preserves_exact_addresses_and_requested_port() {
+        for (input, port) in [
+            ("https://mcp.example.com/v1/mcp", 443),
+            ("http://mcp.example.com/v1/mcp", 80),
+            ("https://mcp.example.com:8443/v1/mcp", 8443),
+        ] {
+            let (url, addresses) =
+                validate_url_with_resolver(input, |host, actual_port| async move {
+                    assert_eq!(host, "mcp.example.com");
+                    assert_eq!(actual_port, port);
+                    Ok(vec![
+                        SocketAddr::new("1.1.1.1".parse().unwrap(), port),
+                        SocketAddr::new("2606:4700:4700::1111".parse().unwrap(), port),
+                    ])
+                })
                 .await
                 .unwrap();
-        assert!(!addrs.is_empty());
+            assert_eq!(url.as_str(), input);
+            assert_eq!(
+                addresses,
+                [
+                    SocketAddr::new("1.1.1.1".parse().unwrap(), port),
+                    SocketAddr::new("2606:4700:4700::1111".parse().unwrap(), port)
+                ]
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn any_private_dns_answer_rejects_the_entire_resolution() {
+        for blocked in [
+            "10.0.0.1",
+            "127.0.0.1",
+            "169.254.169.254",
+            "::1",
+            "::ffff:10.0.0.1",
+        ] {
+            for first in [true, false] {
+                let mut answers = vec![
+                    SocketAddr::new("1.1.1.1".parse().unwrap(), 80),
+                    SocketAddr::new(blocked.parse().unwrap(), 80),
+                ];
+                if first {
+                    answers.reverse();
+                }
+                let error =
+                    validate_url_with_resolver("http://evil.example.com/mcp", move |_, _| {
+                        let answers = answers.clone();
+                        async move { Ok(answers) }
+                    })
+                    .await
+                    .unwrap_err();
+                assert_eq!(
+                    error,
+                    UrlValidationError::BlockedHost(format!(
+                        "evil.example.com resolves to blocked address {}",
+                        blocked.parse::<IpAddr>().unwrap()
+                    ))
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_and_failed_dns_lookups_fail_closed() {
+        for fail in [false, true] {
+            let result =
+                validate_url_with_resolver("http://example.com/mcp", move |_, _| async move {
+                    if fail {
+                        Err(std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "DNS lookup timed out",
+                        ))
+                    } else {
+                        Ok(vec![])
+                    }
+                })
+                .await;
+            assert_eq!(
+                result,
+                Err(UrlValidationError::BlockedHost("example.com".into()))
+            );
+        }
     }
 }

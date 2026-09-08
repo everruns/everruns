@@ -397,18 +397,27 @@ mod tests {
         stdout: String,
         exit_code: i32,
         payloads: std::sync::Mutex<Vec<HookPayload>>,
+        settings: std::sync::Mutex<Vec<DispatchSettings>>,
     }
+
+    type DispatchSettings = (String, BTreeMap<String, String>, u32, usize);
 
     #[async_trait]
     impl BashHookDispatcher for CannedDispatcher {
         async fn dispatch(
             &self,
             payload: &HookPayload,
-            _command: &str,
-            _extra_env: &BTreeMap<String, String>,
-            _opts: &ExecutorOpts,
+            command: &str,
+            extra_env: &BTreeMap<String, String>,
+            opts: &ExecutorOpts,
         ) -> Result<BashExecOutput, String> {
             self.payloads.lock().unwrap().push(payload.clone());
+            self.settings.lock().unwrap().push((
+                command.into(),
+                extra_env.clone(),
+                opts.timeout_ms,
+                opts.max_output_bytes,
+            ));
             Ok(BashExecOutput {
                 exit_code: self.exit_code,
                 stdout: self.stdout.clone(),
@@ -438,218 +447,346 @@ mod tests {
             stdout: stdout.into(),
             exit_code: exit,
             payloads: Default::default(),
+            settings: Default::default(),
         })
     }
 
     fn turn_ctx() -> TurnHookContext {
         TurnHookContext {
-            session_id: SessionId::new(),
-            turn_id: Some(TurnId::new()),
-            org_id: None,
-            agent_id: None,
+            session_id: SessionId::from_seed(1),
+            turn_id: Some(TurnId::from_seed(2)),
+            org_id: Some(OrgId::from_seed(3)),
+            agent_id: Some("agent_4".into()),
         }
     }
 
     #[tokio::test]
-    async fn user_prompt_submit_allow_passes_message_through() {
-        let hooks = build_turn_lifecycle_hooks(
-            &[spec(HookEvent::UserPromptSubmit, OnError::Warn)],
-            HookEvent::UserPromptSubmit,
-            dispatcher("", 0),
-        );
-        let decision = run_user_prompt_submit_hooks(&hooks, &turn_ctx(), "hello".into()).await;
+    async fn prompt_decisions_apply_mutations_blocks_and_all_error_policies() {
         assert_eq!(
-            decision,
+            run_user_prompt_submit_hooks(&[], &turn_ctx(), "original".into()).await,
             UserPromptDecision::Continue {
-                message: "hello".into()
+                message: "original".into()
             }
         );
-    }
-
-    #[tokio::test]
-    async fn user_prompt_submit_block_via_json() {
-        let hooks = build_turn_lifecycle_hooks(
-            &[spec(HookEvent::UserPromptSubmit, OnError::Warn)],
-            HookEvent::UserPromptSubmit,
-            dispatcher(
+        for (stdout, exit, policy, expected) in [
+            (
+                "",
+                0,
+                OnError::Warn,
+                UserPromptDecision::Continue {
+                    message: "original".into(),
+                },
+            ),
+            (
+                r#"{"decision":"mutate","patch":{"message":"rewritten α"}}"#,
+                0,
+                OnError::Warn,
+                UserPromptDecision::Continue {
+                    message: "rewritten α".into(),
+                },
+            ),
+            (
+                r#"{"decision":"mutate","patch":{"message":42}}"#,
+                0,
+                OnError::Warn,
+                UserPromptDecision::Continue {
+                    message: "original".into(),
+                },
+            ),
+            (
+                r#"{"decision":"mutate","patch":{"unrelated":true}}"#,
+                0,
+                OnError::Warn,
+                UserPromptDecision::Continue {
+                    message: "original".into(),
+                },
+            ),
+            (
                 r#"{"decision":"block","reason":"nope","user_message":"blocked"}"#,
                 0,
+                OnError::Allow,
+                UserPromptDecision::Block {
+                    reason: "nope".into(),
+                    user_message: Some("blocked".into()),
+                },
             ),
-        );
-        let decision = run_user_prompt_submit_hooks(&hooks, &turn_ctx(), "hello".into()).await;
-        match decision {
-            UserPromptDecision::Block {
-                reason,
-                user_message,
-            } => {
-                assert_eq!(reason, "nope");
-                assert_eq!(user_message.as_deref(), Some("blocked"));
-            }
-            other => panic!("expected Block, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn user_prompt_submit_block_via_nonzero_exit() {
-        // Empty stdout + non-zero exit = block (git-hook fallback).
-        let hooks = build_turn_lifecycle_hooks(
-            &[spec(HookEvent::UserPromptSubmit, OnError::Warn)],
-            HookEvent::UserPromptSubmit,
-            dispatcher("", 1),
-        );
-        let decision = run_user_prompt_submit_hooks(&hooks, &turn_ctx(), "hello".into()).await;
-        assert!(matches!(decision, UserPromptDecision::Block { .. }));
-    }
-
-    #[tokio::test]
-    async fn user_prompt_submit_mutate_rewrites_message() {
-        let hooks = build_turn_lifecycle_hooks(
-            &[spec(HookEvent::UserPromptSubmit, OnError::Warn)],
-            HookEvent::UserPromptSubmit,
-            dispatcher(
-                r#"{"decision":"mutate","patch":{"message":"rewritten"}}"#,
+            (
+                "",
+                1,
+                OnError::Warn,
+                UserPromptDecision::Block {
+                    reason: "hook exited non-zero".into(),
+                    user_message: None,
+                },
+            ),
+            (
+                "bad",
                 0,
+                OnError::Block,
+                UserPromptDecision::Block {
+                    reason: "hook user:t errored: hook stdout is not JSON (first 80 bytes: bad)"
+                        .into(),
+                    user_message: None,
+                },
             ),
-        );
-        let decision = run_user_prompt_submit_hooks(&hooks, &turn_ctx(), "original".into()).await;
-        assert_eq!(
-            decision,
-            UserPromptDecision::Continue {
-                message: "rewritten".into()
-            }
-        );
+            (
+                "bad",
+                0,
+                OnError::Warn,
+                UserPromptDecision::Continue {
+                    message: "original".into(),
+                },
+            ),
+            (
+                "bad",
+                0,
+                OnError::Allow,
+                UserPromptDecision::Continue {
+                    message: "original".into(),
+                },
+            ),
+        ] {
+            let hooks = build_turn_lifecycle_hooks(
+                &[spec(HookEvent::UserPromptSubmit, policy)],
+                HookEvent::UserPromptSubmit,
+                dispatcher(stdout, exit),
+            );
+            assert_eq!(
+                run_user_prompt_submit_hooks(&hooks, &turn_ctx(), "original".into()).await,
+                expected,
+                "{stdout}/{policy:?}"
+            );
+        }
     }
 
-    #[tokio::test]
-    async fn user_prompt_submit_error_with_on_error_block_blocks() {
-        // Non-JSON stdout => executor Error; on_error=Block => Block.
-        let hooks = build_turn_lifecycle_hooks(
-            &[spec(HookEvent::UserPromptSubmit, OnError::Block)],
-            HookEvent::UserPromptSubmit,
-            dispatcher("not json at all", 0),
-        );
-        let decision = run_user_prompt_submit_hooks(&hooks, &turn_ctx(), "hello".into()).await;
-        assert!(matches!(decision, UserPromptDecision::Block { .. }));
-    }
-
-    #[tokio::test]
-    async fn user_prompt_submit_error_with_on_error_warn_continues() {
-        let hooks = build_turn_lifecycle_hooks(
-            &[spec(HookEvent::UserPromptSubmit, OnError::Warn)],
-            HookEvent::UserPromptSubmit,
-            dispatcher("not json", 0),
-        );
-        let decision = run_user_prompt_submit_hooks(&hooks, &turn_ctx(), "hello".into()).await;
-        assert_eq!(
-            decision,
-            UserPromptDecision::Continue {
-                message: "hello".into()
-            }
-        );
-    }
-
-    #[tokio::test]
-    async fn user_prompt_submit_chain_threads_mutations_then_blocks() {
-        // First hook rewrites, second hook blocks. Order preserved.
-        let specs = [
-            {
-                let mut s = spec(HookEvent::UserPromptSubmit, OnError::Warn);
-                s.id = Some("rewriter".into());
-                s
-            },
-            {
-                let mut s = spec(HookEvent::UserPromptSubmit, OnError::Warn);
-                s.id = Some("blocker".into());
-                s
-            },
-        ];
-        // Separate dispatchers let the second hook observe the first hook's mutation.
-        let rewriter = build_turn_lifecycle_hooks(
-            &specs[..1],
-            HookEvent::UserPromptSubmit,
-            dispatcher(r#"{"decision":"mutate","patch":{"message":"step1"}}"#, 0),
-        );
-        let block_dispatcher = dispatcher(r#"{"decision":"block","reason":"stop"}"#, 0);
-        let blocker = build_turn_lifecycle_hooks(
-            &specs[1..],
-            HookEvent::UserPromptSubmit,
-            block_dispatcher.clone(),
-        );
-        let mut chain = rewriter;
-        chain.extend(blocker);
-        let decision = run_user_prompt_submit_hooks(&chain, &turn_ctx(), "orig".into()).await;
-        assert!(matches!(decision, UserPromptDecision::Block { .. }));
-        let payloads = block_dispatcher.payloads.lock().unwrap();
-        assert_eq!(payloads.len(), 1);
-        assert_eq!(payloads[0].data["message"], "step1");
-    }
-
-    #[tokio::test]
-    async fn turn_end_runs_advisory_and_ignores_block() {
-        let dispatch = dispatcher(r#"{"decision":"block","reason":"ignored"}"#, 0);
-        let hooks = build_turn_lifecycle_hooks(
-            &[
-                spec(HookEvent::TurnEnd, OnError::Warn),
-                spec(HookEvent::TurnEnd, OnError::Warn),
-            ],
-            HookEvent::TurnEnd,
-            // Even a "block" decision must not abort anything here.
-            dispatch.clone(),
-        );
-        run_turn_end_hooks(&hooks, &turn_ctx(), json!({"success": true})).await;
-        let payloads = dispatch.payloads.lock().unwrap();
-        assert_eq!(payloads.len(), 2);
-        for payload in payloads.iter() {
-            assert_eq!(payload.event, HookEvent::TurnEnd);
-            assert_eq!(payload.data, json!({"success": true}));
+    struct MustNotRun;
+    #[async_trait]
+    impl BashHookDispatcher for MustNotRun {
+        async fn dispatch(
+            &self,
+            _: &HookPayload,
+            _: &str,
+            _: &BTreeMap<String, String>,
+            _: &ExecutorOpts,
+        ) -> Result<BashExecOutput, String> {
+            panic!("hook after the first block must not run")
         }
     }
 
     #[tokio::test]
-    async fn session_lifecycle_runs_advisory() {
-        let dispatch = dispatcher("", 0);
-        let hooks = build_session_lifecycle_hooks(
-            &[spec(HookEvent::SessionStart, OnError::Warn)],
-            HookEvent::SessionStart,
-            dispatch.clone(),
-        );
-        let ctx = SessionHookContext {
-            session_id: SessionId::new(),
-            org_id: None,
-            agent_id: Some("agt_x".into()),
-        };
-        run_session_lifecycle_hooks(&hooks, &ctx, json!({"agent_id": "agt_x"})).await;
-        let payloads = dispatch.payloads.lock().unwrap();
-        assert_eq!(payloads.len(), 1);
-        assert_eq!(payloads[0].session_id, ctx.session_id);
-        assert_eq!(payloads[0].event, HookEvent::SessionStart);
-        assert_eq!(payloads[0].data, json!({"agent_id": "agt_x"}));
+    async fn prompt_chain_threads_mutations_and_stops_at_explicit_or_error_block() {
+        for (stdout, policy, expected) in [
+            (
+                r#"{"decision":"block","reason":"stop","user_message":"explain"}"#,
+                OnError::Warn,
+                UserPromptDecision::Block {
+                    reason: "stop".into(),
+                    user_message: Some("explain".into()),
+                },
+            ),
+            (
+                "bad",
+                OnError::Block,
+                UserPromptDecision::Block {
+                    reason: "hook user:t errored: hook stdout is not JSON (first 80 bytes: bad)"
+                        .into(),
+                    user_message: None,
+                },
+            ),
+        ] {
+            let mut chain = build_turn_lifecycle_hooks(
+                &[spec(HookEvent::UserPromptSubmit, OnError::Warn)],
+                HookEvent::UserPromptSubmit,
+                dispatcher(r#"{"decision":"mutate","patch":{"message":"step1"}}"#, 0),
+            );
+            let blocked = dispatcher(stdout, 0);
+            chain.extend(build_turn_lifecycle_hooks(
+                &[spec(HookEvent::UserPromptSubmit, policy)],
+                HookEvent::UserPromptSubmit,
+                blocked.clone(),
+            ));
+            chain.extend(build_turn_lifecycle_hooks(
+                &[spec(HookEvent::UserPromptSubmit, OnError::Warn)],
+                HookEvent::UserPromptSubmit,
+                Arc::new(MustNotRun),
+            ));
+            assert_eq!(
+                run_user_prompt_submit_hooks(&chain, &turn_ctx(), "orig".into()).await,
+                expected
+            );
+            let payloads = blocked.payloads.lock().unwrap();
+            assert_eq!(payloads.len(), 1);
+            assert_eq!(payloads[0].data, json!({"message":"step1"}));
+            assert_eq!(payloads[0].session_id, SessionId::from_seed(1));
+            assert_eq!(
+                payloads[0].turn_id.as_deref(),
+                Some("turn_00000000000000000000000000000002")
+            );
+            assert_eq!(payloads[0].org_id, Some(OrgId::from_seed(3)));
+            assert_eq!(payloads[0].agent_id.as_deref(), Some("agent_4"));
+        }
     }
 
     #[tokio::test]
-    async fn builders_filter_by_event() {
-        let specs = vec![
-            spec(HookEvent::SessionStart, OnError::Warn),
-            spec(HookEvent::SessionEnd, OnError::Warn),
-            spec(HookEvent::TurnEnd, OnError::Warn),
-            spec(HookEvent::UserPromptSubmit, OnError::Warn),
-        ];
-        let d = dispatcher("", 0);
-        assert_eq!(
-            build_session_lifecycle_hooks(&specs, HookEvent::SessionStart, d.clone()).len(),
-            1
-        );
-        assert_eq!(
-            build_session_lifecycle_hooks(&specs, HookEvent::SessionEnd, d.clone()).len(),
-            1
-        );
-        assert_eq!(
-            build_turn_lifecycle_hooks(&specs, HookEvent::TurnEnd, d.clone()).len(),
-            1
-        );
-        assert_eq!(
-            build_turn_lifecycle_hooks(&specs, HookEvent::UserPromptSubmit, d).len(),
-            1
-        );
+    async fn turn_end_ignores_every_outcome_and_preserves_context_order() {
+        for stdout in [
+            "",
+            "bad",
+            r#"{"decision":"block","reason":"ignored"}"#,
+            r#"{"decision":"mutate","patch":{"message":"ignored"}}"#,
+        ] {
+            let dispatch = dispatcher(stdout, 0);
+            let mut second = spec(HookEvent::TurnEnd, OnError::Block);
+            second.id = Some("second".into());
+            let hooks = build_turn_lifecycle_hooks(
+                &[spec(HookEvent::TurnEnd, OnError::Block), second],
+                HookEvent::TurnEnd,
+                dispatch.clone(),
+            );
+            run_turn_end_hooks(
+                &hooks,
+                &turn_ctx(),
+                json!({"success":true,"summary":"done"}),
+            )
+            .await;
+            let payloads = dispatch.payloads.lock().unwrap();
+            assert_eq!(
+                payloads
+                    .iter()
+                    .map(|p| p.hook_id.as_str())
+                    .collect::<Vec<_>>(),
+                ["user:t", "user:second"]
+            );
+            for p in payloads.iter() {
+                assert_eq!(p.event, HookEvent::TurnEnd);
+                assert_eq!(p.data, json!({"success":true,"summary":"done"}));
+                assert_eq!(p.session_id, SessionId::from_seed(1));
+                assert_eq!(
+                    p.turn_id.as_deref(),
+                    Some("turn_00000000000000000000000000000002")
+                );
+                assert_eq!(p.org_id, Some(OrgId::from_seed(3)));
+                assert_eq!(p.agent_id.as_deref(), Some("agent_4"));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn session_events_are_advisory_and_preserve_optional_context() {
+        for event in [HookEvent::SessionStart, HookEvent::SessionEnd] {
+            for stdout in [
+                "",
+                "bad",
+                r#"{"decision":"block","reason":"ignored"}"#,
+                r#"{"decision":"mutate","patch":{"message":"ignored"}}"#,
+            ] {
+                let dispatch = dispatcher(stdout, 0);
+                let hooks = build_session_lifecycle_hooks(
+                    &[spec(event, OnError::Block), spec(event, OnError::Warn)],
+                    event,
+                    dispatch.clone(),
+                );
+                let ctx = SessionHookContext {
+                    session_id: SessionId::from_seed(1),
+                    org_id: Some(OrgId::from_seed(3)),
+                    agent_id: Some("agent_4".into()),
+                };
+                run_session_lifecycle_hooks(&hooks, &ctx, json!({"reason":"requested"})).await;
+                let payloads = dispatch.payloads.lock().unwrap();
+                assert_eq!(payloads.len(), 2);
+                for p in payloads.iter() {
+                    assert_eq!(p.event, event);
+                    assert_eq!(p.session_id, SessionId::from_seed(1));
+                    assert_eq!(p.org_id, Some(OrgId::from_seed(3)));
+                    assert_eq!(p.agent_id.as_deref(), Some("agent_4"));
+                    assert_eq!(p.turn_id, None);
+                    assert_eq!(p.data, json!({"reason":"requested"}));
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn builders_skip_invalid_specs_keep_source_indices_and_forward_settings() {
+        for (event, other, expected_id) in [
+            (
+                HookEvent::SessionStart,
+                HookEvent::SessionEnd,
+                "user:session_start_2",
+            ),
+            (
+                HookEvent::SessionEnd,
+                HookEvent::SessionStart,
+                "user:session_end_2",
+            ),
+            (
+                HookEvent::TurnEnd,
+                HookEvent::UserPromptSubmit,
+                "user:turn_end_2",
+            ),
+            (
+                HookEvent::UserPromptSubmit,
+                HookEvent::TurnEnd,
+                "user:user_prompt_submit_2",
+            ),
+        ] {
+            let mut invalid = spec(event, OnError::Warn);
+            invalid.timeout_ms = 99;
+            let mut valid = spec(event, OnError::Allow);
+            valid.id = None;
+            valid.timeout_ms = 1234;
+            valid.executor = ExecutorSpec::Bash {
+                command: "custom".into(),
+                env: BTreeMap::from([("A".into(), "B".into())]),
+            };
+            let specs = [spec(other, OnError::Warn), invalid, valid];
+            let dispatch = dispatcher("", 0);
+            if matches!(event, HookEvent::SessionStart | HookEvent::SessionEnd) {
+                let hooks = build_session_lifecycle_hooks(&specs, event, dispatch.clone());
+                assert_eq!(hooks.len(), 1);
+                assert_eq!(hooks[0].event(), event);
+                assert_eq!(hooks[0].hook_id().as_str(), expected_id);
+                hooks[0]
+                    .fire(
+                        &SessionHookContext {
+                            session_id: SessionId::from_seed(1),
+                            org_id: None,
+                            agent_id: None,
+                        },
+                        json!({}),
+                    )
+                    .await;
+            } else {
+                let hooks = build_turn_lifecycle_hooks(&specs, event, dispatch.clone());
+                assert_eq!(hooks.len(), 1);
+                assert_eq!(hooks[0].event(), event);
+                assert_eq!(hooks[0].hook_id().as_str(), expected_id);
+                assert_eq!(hooks[0].on_error(), OnError::Allow);
+                let ctx = TurnHookContext {
+                    session_id: SessionId::from_seed(1),
+                    turn_id: None,
+                    org_id: None,
+                    agent_id: None,
+                };
+                assert!(matches!(
+                    hooks[0].run(&ctx, json!({})).await,
+                    HookOutcome::Allow
+                ));
+            }
+            assert_eq!(
+                *dispatch.settings.lock().unwrap(),
+                [(
+                    "custom".into(),
+                    BTreeMap::from([("A".into(), "B".into())]),
+                    1234,
+                    65536
+                )]
+            );
+            let payloads = dispatch.payloads.lock().unwrap();
+            assert_eq!(payloads.len(), 1);
+            assert_eq!(payloads[0].org_id, None);
+            assert_eq!(payloads[0].agent_id, None);
+            assert_eq!(payloads[0].turn_id, None);
+        }
     }
 }

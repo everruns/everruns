@@ -118,16 +118,18 @@ pub fn resolve_scoped_mcp_server(
 ) -> Option<McpServerResolved> {
     let effective = merge_effective_scoped_mcp_servers(harness, agent, session);
     effective.into_iter().find_map(|(name, server)| {
-        (sanitize_mcp_server_name(&name) == server_prefix).then(|| McpServerResolved {
-            id: scoped_mcp_server_uuid(session.id.uuid(), &name),
-            name,
-            url: server.url,
-            auth_mode: server.auth_mode,
-            protocol_mode: server.protocol_mode,
-            oauth_provider_id: server.oauth_provider_id,
-            api_key: None,
-            headers: server.headers,
-        })
+        (everruns_core::mcp_server::is_valid_mcp_server_name(&name)
+            && sanitize_mcp_server_name(&name) == server_prefix)
+            .then(|| McpServerResolved {
+                id: scoped_mcp_server_uuid(session.id.uuid(), &name),
+                name,
+                url: server.url,
+                auth_mode: server.auth_mode,
+                protocol_mode: server.protocol_mode,
+                oauth_provider_id: server.oauth_provider_id,
+                api_key: None,
+                headers: server.headers,
+            })
     })
 }
 
@@ -145,16 +147,18 @@ pub fn resolve_scoped_mcp_server_with_capabilities(
         capability_registry,
     );
     effective.into_iter().find_map(|(name, server)| {
-        (sanitize_mcp_server_name(&name) == server_prefix).then(|| McpServerResolved {
-            id: scoped_mcp_server_uuid(session.id.uuid(), &name),
-            name,
-            url: server.url,
-            auth_mode: server.auth_mode,
-            protocol_mode: server.protocol_mode,
-            oauth_provider_id: server.oauth_provider_id,
-            api_key: None,
-            headers: server.headers,
-        })
+        (everruns_core::mcp_server::is_valid_mcp_server_name(&name)
+            && sanitize_mcp_server_name(&name) == server_prefix)
+            .then(|| McpServerResolved {
+                id: scoped_mcp_server_uuid(session.id.uuid(), &name),
+                name,
+                url: server.url,
+                auth_mode: server.auth_mode,
+                protocol_mode: server.protocol_mode,
+                oauth_provider_id: server.oauth_provider_id,
+                api_key: None,
+                headers: server.headers,
+            })
     })
 }
 
@@ -295,10 +299,10 @@ pub fn validate_scoped_mcp_servers(servers: &ScopedMcpServers) -> Result<()> {
         validate_safe_url(&server.url)
             .map_err(|e| anyhow!("Invalid scoped MCP server URL for '{name}': {e}"))?;
         let prefix = sanitize_mcp_server_name(name);
-        if prefix.contains("__") {
+        if !everruns_core::mcp_server::is_valid_mcp_server_name(name) {
             return Err(anyhow!(
                 "Scoped MCP server name '{name}' is invalid after sanitization: \
-                 consecutive underscores are reserved for MCP tool prefix delimiters"
+                 consecutive or trailing underscores are reserved for MCP tool prefix delimiters"
             ));
         }
         if !sanitized.insert(prefix) {
@@ -710,18 +714,24 @@ mod tests {
 
     #[test]
     fn validate_scoped_mcp_servers_rejects_reserved_delimiter_after_sanitization() {
-        let mut servers = ScopedMcpServers::default();
-        servers.insert(
-            "admin__foo".to_string(),
+        for name in ["admin__foo", "admin..foo", "admin_", "admin-", "_"] {
+            let servers = ScopedMcpServers::from([(
+                name.into(),
+                scoped_server("https://one.example.com/mcp"),
+            )]);
+            let error = validate_scoped_mcp_servers(&servers).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("reserved for MCP tool prefix delimiters"),
+                "{name}: {error}"
+            );
+        }
+        let servers = ScopedMcpServers::from([(
+            "admin_api".into(),
             scoped_server("https://one.example.com/mcp"),
-        );
-
-        let error = validate_scoped_mcp_servers(&servers).unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("reserved for MCP tool prefix delimiters")
-        );
+        )]);
+        validate_scoped_mcp_servers(&servers).unwrap();
     }
 
     #[test]

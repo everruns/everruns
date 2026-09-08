@@ -246,14 +246,8 @@ pub const OPENAI_GPT56_LUNA: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.6-luna", "OPENAI_API_KEY")
         .reasoning_as_text();
 
-// GPT-6 Astra is the current OpenAI flagship (verified serving inference on
-// the Doppler `OPENAI_API_KEY` on 2026-09-04). Unlike every other OpenAI case
-// here, its reasoning item never carries readable summary text (`content: []`
-// even with `summary: "auto"`) — only opaque `encrypted_content` — so it is
-// NOT covered by `test_extended_thinking` in agent_run_with_thinking.rs,
-// which asserts on readable reasoning text. It is covered by the basic/
-// tool-call suites and by `test_thinking_with_tool_call`, none of which
-// require readable reasoning.
+// GPT-6 Astra is covered by the basic and reasoning-plus-tool-call scenarios.
+// Its reasoning can carry opaque encrypted replay state without readable text.
 pub const OPENAI_GPT6_ASTRA: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::OpenAI, "gpt-6-astra", "OPENAI_API_KEY");
 

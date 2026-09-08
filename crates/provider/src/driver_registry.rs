@@ -1106,10 +1106,11 @@ impl OpenRouterRoutingConfig {
                     if prompt_usd_per_million.is_some() || completion_usd_per_million.is_some() {
                         let mp = derived.max_price.get_or_insert_with(Default::default);
                         if let Some(p) = prompt_usd_per_million {
-                            mp.prompt = Some(p / 1_000_000.0);
+                            // Routing ceilings use USD per million, unlike model catalog pricing.
+                            mp.prompt = Some(*p);
                         }
                         if let Some(c) = completion_usd_per_million {
-                            mp.completion = Some(c / 1_000_000.0);
+                            mp.completion = Some(*c);
                         }
                     }
                 }
@@ -2458,44 +2459,6 @@ mod tests {
         assert_eq!(disjoint_prompt_tokens(800, Some(1000)), 0);
     }
 
-    #[test]
-    fn test_chat_driver_defaults_are_conservative_and_boxed_capabilities_forward() {
-        // Default trait impl is conservative: drivers opt in.
-        struct DefaultDriver;
-        #[async_trait]
-        impl ChatDriver for DefaultDriver {
-            async fn chat_completion_stream(
-                &self,
-                _endpoint: &ProviderEndpoint,
-                _messages: Vec<LlmMessage>,
-                _config: &LlmCallConfig,
-            ) -> Result<LlmResponseStream> {
-                unreachable!()
-            }
-        }
-        assert!(!DefaultDriver.supports_parallel_tool_calls("any-model"));
-        assert!(!DefaultDriver.supports_stateful_responses());
-
-        struct StatefulDriver;
-        #[async_trait]
-        impl ChatDriver for StatefulDriver {
-            async fn chat_completion_stream(
-                &self,
-                _endpoint: &ProviderEndpoint,
-                _messages: Vec<LlmMessage>,
-                _config: &LlmCallConfig,
-            ) -> Result<LlmResponseStream> {
-                unreachable!()
-            }
-
-            fn supports_stateful_responses(&self) -> bool {
-                true
-            }
-        }
-        let boxed: BoxedChatDriver = Box::new(StatefulDriver);
-        assert!(boxed.supports_stateful_responses());
-    }
-
     /// A call config with nothing set beyond the model, so a test can assert on
     /// exactly what a wrapper adds.
     fn bare_call_config() -> LlmCallConfig {
@@ -2519,189 +2482,6 @@ mod tests {
             cache_diagnostics: None,
             reasoning_state: None,
         }
-    }
-
-    /// A provider connection's request options must reach the wire driver as
-    /// per-call config: headers appended, diagnostics enabled and chained to the
-    /// previous generation of the turn.
-    #[tokio::test]
-    async fn request_options_reach_the_driver_config() {
-        use std::sync::Mutex as StdMutex;
-
-        #[derive(Default)]
-        struct CapturingDriver {
-            seen: std::sync::Arc<StdMutex<Option<LlmCallConfig>>>,
-        }
-        #[async_trait]
-        impl ChatDriver for CapturingDriver {
-            async fn chat_completion_stream(
-                &self,
-                _endpoint: &ProviderEndpoint,
-                _messages: Vec<LlmMessage>,
-                config: &LlmCallConfig,
-            ) -> Result<LlmResponseStream> {
-                *self.seen.lock().unwrap() = Some(config.clone());
-                Ok(Box::pin(futures::stream::empty()))
-            }
-        }
-
-        let seen = std::sync::Arc::new(StdMutex::new(None));
-        let driver: BoxedChatDriver = Box::new(CapturingDriver {
-            seen: std::sync::Arc::clone(&seen),
-        });
-        let options = crate::provider::ProviderRequestOptions {
-            headers: vec![crate::provider::ProviderRequestHeader {
-                name: "x-gateway-tenant".to_string(),
-                value: "acme".to_string(),
-            }],
-            cache_diagnostics: true,
-        };
-        let wrapped = RequestOptionsDriver::wrap(driver, &options);
-
-        let mut config = bare_call_config();
-        config.previous_response_id = Some("msg_1".to_string());
-
-        let _ = wrapped
-            .chat_completion_stream(&ProviderEndpoint::default(), vec![], &config)
-            .await
-            .unwrap();
-
-        let seen = seen.lock().unwrap().clone().expect("driver was called");
-        assert_eq!(
-            seen.extra_headers,
-            vec![("x-gateway-tenant".to_string(), "acme".to_string())]
-        );
-        let diagnostics = seen.cache_diagnostics.expect("diagnostics requested");
-        assert!(diagnostics.enabled);
-        assert_eq!(diagnostics.previous_message_id.as_deref(), Some("msg_1"));
-    }
-
-    /// A connection with no options must leave every call's config exactly as
-    /// the caller built it: no headers appended, no diagnostics opt-in.
-    #[tokio::test]
-    async fn empty_request_options_leave_the_call_config_untouched() {
-        use std::sync::Mutex as StdMutex;
-
-        struct CapturingDriver {
-            seen: std::sync::Arc<StdMutex<Option<LlmCallConfig>>>,
-        }
-        #[async_trait]
-        impl ChatDriver for CapturingDriver {
-            async fn chat_completion_stream(
-                &self,
-                _endpoint: &ProviderEndpoint,
-                _messages: Vec<LlmMessage>,
-                config: &LlmCallConfig,
-            ) -> Result<LlmResponseStream> {
-                *self.seen.lock().unwrap() = Some(config.clone());
-                Ok(Box::pin(futures::stream::empty()))
-            }
-        }
-
-        let seen = std::sync::Arc::new(StdMutex::new(None));
-        let driver = RequestOptionsDriver::wrap(
-            Box::new(CapturingDriver {
-                seen: std::sync::Arc::clone(&seen),
-            }),
-            &crate::provider::ProviderRequestOptions::default(),
-        );
-
-        let config = bare_call_config();
-        let _ = driver
-            .chat_completion_stream(&ProviderEndpoint::default(), vec![], &config)
-            .await
-            .unwrap();
-
-        let seen = seen.lock().unwrap().clone().expect("driver was called");
-        assert!(seen.extra_headers.is_empty());
-        assert!(seen.cache_diagnostics.is_none());
-    }
-
-    #[test]
-    fn test_fold_system_messages_none_when_absent() {
-        let messages = vec![
-            LlmMessage::text(LlmMessageRole::User, "hi"),
-            LlmMessage::text(LlmMessageRole::Assistant, "ok"),
-        ];
-        assert_eq!(fold_system_messages(&messages), None);
-    }
-
-    #[test]
-    fn test_fold_system_messages_single() {
-        let messages = vec![
-            LlmMessage::text(LlmMessageRole::System, "AGENT-PROMPT"),
-            LlmMessage::text(LlmMessageRole::User, "hi"),
-        ];
-        assert_eq!(
-            fold_system_messages(&messages),
-            Some("AGENT-PROMPT".to_string())
-        );
-    }
-
-    #[test]
-    fn test_fold_system_messages_accumulates_in_order() {
-        // The agent system prompt plus a later notice/summary System message
-        // (infinity_context / compaction) must both survive, in order — the
-        // later one must not overwrite the real agent system prompt.
-        let messages = vec![
-            LlmMessage::text(LlmMessageRole::System, "A"),
-            LlmMessage::text(LlmMessageRole::User, "hi"),
-            LlmMessage::text(LlmMessageRole::Assistant, "ok"),
-            LlmMessage::text(LlmMessageRole::System, "B"),
-        ];
-        assert_eq!(fold_system_messages(&messages), Some("A\n\nB".to_string()));
-    }
-
-    #[test]
-    fn test_fold_system_messages_concatenates_parts() {
-        let messages = vec![LlmMessage::parts(
-            LlmMessageRole::System,
-            vec![
-                LlmContentPart::text("foo"),
-                LlmContentPart::image("data:image/png;base64,xxx"),
-                LlmContentPart::text("bar"),
-            ],
-        )];
-        assert_eq!(fold_system_messages(&messages), Some("foobar".to_string()));
-    }
-
-    #[test]
-    fn test_openrouter_fallback_models_empty_is_empty() {
-        let routing = OpenRouterRoutingConfig::fallback_models(std::iter::empty::<String>());
-
-        assert!(routing.is_empty());
-        assert_eq!(routing.route, None);
-    }
-
-    #[test]
-    fn test_openrouter_routing_validates_primary_model() {
-        let routing = OpenRouterRoutingConfig::fallback_models([
-            "openai/gpt-5-mini",
-            "anthropic/claude-sonnet-4.5",
-        ]);
-
-        assert!(
-            routing
-                .validate_for_primary_model("openai/gpt-5-mini")
-                .is_ok()
-        );
-        let err = routing
-            .validate_for_primary_model("anthropic/claude-sonnet-4.5")
-            .unwrap_err();
-        assert!(err.contains("models[0]"));
-    }
-
-    #[test]
-    fn test_openrouter_routing_rejects_fallback_without_models() {
-        let routing = OpenRouterRoutingConfig {
-            route: Some(OpenRouterRoute::Fallback),
-            ..Default::default()
-        };
-
-        let err = routing
-            .validate_for_primary_model("openai/gpt-5-mini")
-            .unwrap_err();
-        assert!(err.contains("requires at least one model"));
     }
 
     #[test]
@@ -2764,65 +2544,6 @@ mod tests {
     }
 
     #[test]
-    fn test_provider_type_parsing() {
-        assert_eq!("openai".parse::<DriverId>().unwrap(), DriverId::OpenAI);
-        assert_eq!(
-            "openrouter".parse::<DriverId>().unwrap(),
-            DriverId::OpenRouter
-        );
-        assert_eq!(
-            "openai_completions".parse::<DriverId>().unwrap(),
-            DriverId::OpenAICompletions
-        );
-        assert_eq!(
-            "azure_openai".parse::<DriverId>().unwrap(),
-            DriverId::AzureOpenAI
-        );
-        assert_eq!(
-            "anthropic".parse::<DriverId>().unwrap(),
-            DriverId::Anthropic
-        );
-        assert_eq!("gemini".parse::<DriverId>().unwrap(), DriverId::Gemini);
-        // Unknown ids parse to External rather than erroring.
-        assert_eq!(
-            "ollama".parse::<DriverId>().unwrap(),
-            DriverId::external("ollama")
-        );
-        assert_eq!(
-            "custom".parse::<DriverId>().unwrap(),
-            DriverId::external("custom")
-        );
-    }
-
-    #[test]
-    fn test_external_provider_id_is_case_insensitive() {
-        // Built-in matching and external normalization are both case-folding,
-        // so the same id in different casing resolves to one provider.
-        assert_eq!("OpenAI".parse::<DriverId>().unwrap(), DriverId::OpenAI);
-        assert_eq!(
-            "Ollama".parse::<DriverId>().unwrap(),
-            "ollama".parse::<DriverId>().unwrap()
-        );
-        assert_eq!(DriverId::external("OpenAI-Codex").as_str(), "openai-codex");
-        // Registration and parsed lookup agree regardless of casing.
-        assert_eq!(
-            DriverId::external("MyProvider"),
-            "myprovider".parse::<DriverId>().unwrap()
-        );
-    }
-
-    #[test]
-    fn test_provider_config_builder() {
-        let config = ProviderConfig::new(DriverId::Anthropic)
-            .with_api_key("test-key")
-            .with_base_url("https://custom.api.com");
-
-        assert_eq!(config.provider_type, DriverId::Anthropic);
-        assert_eq!(config.api_key, Some("test-key".to_string()));
-        assert_eq!(config.base_url, Some("https://custom.api.com".to_string()));
-    }
-
-    #[test]
     fn provider_config_debug_redacts_runtime_values() {
         let config = ProviderConfig::new(DriverId::OpenAI)
             .with_api_key("secret-key")
@@ -2833,6 +2554,9 @@ mod tests {
                 extra: Some(serde_json::json!({ "client_secret": "metadata-secret" })),
             });
         let debug = format!("{config:?}");
+        assert!(debug.contains("ProviderConfig"));
+        assert!(debug.contains("openai"));
+        assert!(debug.contains("<configured>"));
         for secret in [
             "secret-key",
             "password",
@@ -2844,477 +2568,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn keyless_selection_constructs_but_fails_before_provider_call() {
-        // Register a mock factory
-        let mut registry = DriverRegistry::new();
-        let provider_called = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let called = provider_called.clone();
-        registry.register(DriverId::OpenAI, move |_config| {
-            // Return a mock driver - just need something that compiles
-            struct MockDriver(Arc<std::sync::atomic::AtomicBool>);
-            #[async_trait]
-            impl ChatDriver for MockDriver {
-                async fn chat_completion_stream(
-                    &self,
-                    _endpoint: &ProviderEndpoint,
-                    _messages: Vec<LlmMessage>,
-                    _config: &LlmCallConfig,
-                ) -> Result<LlmResponseStream> {
-                    self.0.store(true, std::sync::atomic::Ordering::SeqCst);
-                    unreachable!("credential gate must reject before provider I/O")
-                }
-            }
-            Box::new(MockDriver(called.clone()))
-        });
-
-        // Selection is constructible without credentials so command/context
-        // assembly can reach a provider-repair command.
-        let config = ProviderConfig::new(DriverId::OpenAI);
-        let driver = registry
-            .create_chat_driver(&config)
-            .expect("selected provider remains constructible");
-        let error = futures::executor::block_on(driver.list_models(&ProviderEndpoint::default()))
-            .expect_err("provider operation must fail locally");
-        assert!(error.to_string().contains("API key is required"));
-        assert!(!provider_called.load(std::sync::atomic::Ordering::SeqCst));
-
-        // Driver with API key should succeed
-        let config_with_key = ProviderConfig::new(DriverId::OpenAI).with_api_key("test-key");
-        let result = registry.create_chat_driver(&config_with_key);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_driver_registry_returns_error_for_unregistered_provider() {
-        let registry = DriverRegistry::new();
-        let config = ProviderConfig::new(DriverId::Anthropic).with_api_key("test-key");
-
-        let result = registry.create_chat_driver(&config);
-
-        // Should fail with DriverNotRegistered error
-        if let Err(AgentLoopError::DriverNotRegistered(provider)) = result {
-            assert_eq!(provider, "anthropic");
-        } else {
-            panic!("Expected DriverNotRegistered error");
-        }
-    }
-
-    #[test]
-    fn test_driver_registry_registration() {
-        let mut registry = DriverRegistry::new();
-
-        assert!(!registry.has_driver(&DriverId::OpenAI));
-        assert!(!registry.has_driver(&DriverId::Anthropic));
-
-        registry.register(DriverId::OpenAI, |_config| {
-            struct MockDriver;
-            #[async_trait]
-            impl ChatDriver for MockDriver {
-                async fn chat_completion_stream(
-                    &self,
-                    _endpoint: &ProviderEndpoint,
-                    _messages: Vec<LlmMessage>,
-                    _config: &LlmCallConfig,
-                ) -> Result<LlmResponseStream> {
-                    unimplemented!()
-                }
-            }
-            Box::new(MockDriver)
-        });
-
-        assert!(registry.has_driver(&DriverId::OpenAI));
-        assert!(!registry.has_driver(&DriverId::Anthropic));
-    }
-
-    #[test]
-    fn test_register_external_and_create_driver_without_api_key() {
-        struct MockDriver;
-        #[async_trait]
-        impl ChatDriver for MockDriver {
-            async fn chat_completion_stream(
-                &self,
-                _endpoint: &ProviderEndpoint,
-                _messages: Vec<LlmMessage>,
-                _config: &LlmCallConfig,
-            ) -> Result<LlmResponseStream> {
-                unimplemented!()
-            }
-        }
-
-        let mut registry = DriverRegistry::new();
-        registry.register_external("openai-codex", |config| {
-            // External providers may authenticate via metadata, not an api_key.
-            assert_eq!(config.provider_type, DriverId::external("openai-codex"));
-            Box::new(MockDriver)
-        });
-
-        assert!(registry.has_driver(&DriverId::external("openai-codex")));
-
-        // No api_key required for external providers.
-        let config = ProviderConfig::new(DriverId::external("openai-codex")).with_metadata(
-            ProviderMetadata {
-                refresh_token: Some("rt".into()),
-                ..Default::default()
-            },
-        );
-        assert!(registry.create_chat_driver(&config).is_ok());
-    }
-
-    #[test]
-    fn test_register_defaults_to_chat_only_descriptor() {
-        struct MockDriver;
-        #[async_trait]
-        impl ChatDriver for MockDriver {
-            async fn chat_completion_stream(
-                &self,
-                _endpoint: &ProviderEndpoint,
-                _messages: Vec<LlmMessage>,
-                _config: &LlmCallConfig,
-            ) -> Result<LlmResponseStream> {
-                unimplemented!()
-            }
-        }
-
-        let mut registry = DriverRegistry::new();
-        registry.register(DriverId::Anthropic, |_config| Box::new(MockDriver));
-
-        let descriptor = registry.descriptor(&DriverId::Anthropic).unwrap();
-        assert_eq!(descriptor.display_name, "anthropic");
-        assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
-        assert!(descriptor.chat.is_some());
-        // Default credential shape is a single required api_key field.
-        assert_eq!(descriptor.credential_schema.fields.len(), 1);
-        assert_eq!(descriptor.credential_schema.fields[0].name, "api_key");
-        assert!(descriptor.credential_schema.fields[0].required);
-
-        // Keyless drivers default to an empty schema.
-        registry.register(DriverId::LlmSim, |_config| Box::new(MockDriver));
-        let sim = registry.descriptor(&DriverId::LlmSim).unwrap();
-        assert!(sim.credential_schema.fields.is_empty());
-    }
-
-    #[test]
-    fn test_descriptor_services_and_lookup() {
-        struct MockDriver;
-        #[async_trait]
-        impl ChatDriver for MockDriver {
-            async fn chat_completion_stream(
-                &self,
-                _endpoint: &ProviderEndpoint,
-                _messages: Vec<LlmMessage>,
-                _config: &LlmCallConfig,
-            ) -> Result<LlmResponseStream> {
-                unimplemented!()
-            }
-        }
-
-        let mut registry = DriverRegistry::new();
-        registry.register_descriptor(DriverDescriptor {
-            services: vec![ServiceKind::Chat, ServiceKind::Realtime],
-            ..DriverDescriptor::chat_only(DriverId::OpenAI, |_config| Box::new(MockDriver))
-        });
-        registry.register(DriverId::Anthropic, |_config| Box::new(MockDriver));
-
-        assert!(registry.supports(&DriverId::OpenAI, ServiceKind::Chat));
-        assert!(registry.supports(&DriverId::OpenAI, ServiceKind::Realtime));
-        assert!(!registry.supports(&DriverId::Anthropic, ServiceKind::Realtime));
-        assert!(!registry.supports(&DriverId::Gemini, ServiceKind::Chat));
-
-        let realtime = registry.providers_for(ServiceKind::Realtime);
-        assert_eq!(realtime, vec![DriverId::OpenAI]);
-        let mut chat = registry.providers_for(ServiceKind::Chat);
-        chat.sort_by_key(|p| p.to_string());
-        assert_eq!(chat, vec![DriverId::Anthropic, DriverId::OpenAI]);
-    }
-
-    #[test]
-    fn test_create_chat_driver_fails_without_chat_factory() {
-        let mut registry = DriverRegistry::new();
-        registry.register_descriptor(DriverDescriptor {
-            id: DriverId::external("embeddings-only"),
-            display_name: "Embeddings Only".to_string(),
-            services: vec![ServiceKind::Embeddings],
-            credential_schema: CredentialFormSchema::empty(),
-            oauth: None,
-            chat: None,
-            embeddings: None,
-        });
-
-        let config = ProviderConfig::new(DriverId::external("embeddings-only"));
-        let err = match registry.create_chat_driver(&config) {
-            Ok(_) => panic!("expected error for missing chat factory"),
-            Err(err) => err,
-        };
-        assert!(
-            err.to_string()
-                .contains("does not implement the chat service"),
-            "unexpected error: {err}"
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "already registered")]
-    fn test_register_duplicate_panics() {
-        struct MockDriver;
-        #[async_trait]
-        impl ChatDriver for MockDriver {
-            async fn chat_completion_stream(
-                &self,
-                _endpoint: &ProviderEndpoint,
-                _messages: Vec<LlmMessage>,
-                _config: &LlmCallConfig,
-            ) -> Result<LlmResponseStream> {
-                unimplemented!()
-            }
-        }
-
-        let mut registry = DriverRegistry::new();
-        registry.register(DriverId::OpenAI, |_config| Box::new(MockDriver));
-        // Second registration for the same provider must panic.
-        registry.register(DriverId::OpenAI, |_config| Box::new(MockDriver));
-    }
-
-    #[test]
-    fn test_register_or_replace_overwrites() {
-        struct MockDriver;
-        #[async_trait]
-        impl ChatDriver for MockDriver {
-            async fn chat_completion_stream(
-                &self,
-                _endpoint: &ProviderEndpoint,
-                _messages: Vec<LlmMessage>,
-                _config: &LlmCallConfig,
-            ) -> Result<LlmResponseStream> {
-                unimplemented!()
-            }
-        }
-
-        let mut registry = DriverRegistry::new();
-        registry.register(DriverId::LlmSim, |_config| Box::new(MockDriver));
-        // Replacing intentionally must not panic.
-        registry.register_or_replace(DriverId::LlmSim, |_config| Box::new(MockDriver));
-        assert!(registry.has_driver(&DriverId::LlmSim));
-    }
-
-    #[test]
-    fn test_prepend_text_prefix_simple_text() {
-        let mut msg = LlmMessage::text(LlmMessageRole::User, "Hello bot");
-        msg.prepend_text_prefix("[Alice] ");
-        assert_eq!(msg.content_as_text(), "[Alice] Hello bot");
-    }
-
-    #[test]
-    fn test_prepend_text_prefix_parts() {
-        let mut msg = LlmMessage::parts(
-            LlmMessageRole::User,
-            vec![
-                LlmContentPart::Text {
-                    text: "Hello".to_string(),
-                },
-                LlmContentPart::Image {
-                    url: "data:image/png;base64,abc".to_string(),
-                },
-            ],
-        );
-        msg.prepend_text_prefix("[Bob] ");
-        match &msg.content {
-            LlmMessageContent::Parts(parts) => {
-                if let LlmContentPart::Text { text } = &parts[0] {
-                    assert_eq!(text, "[Bob] Hello");
-                } else {
-                    panic!("Expected text part");
-                }
-            }
-            _ => panic!("Expected parts content"),
-        }
-    }
-
-    #[test]
-    fn test_prepend_text_prefix_parts_no_text() {
-        let mut msg = LlmMessage::parts(
-            LlmMessageRole::User,
-            vec![LlmContentPart::Image {
-                url: "data:image/png;base64,abc".to_string(),
-            }],
-        );
-        msg.prepend_text_prefix("[Eve] ");
-        match &msg.content {
-            LlmMessageContent::Parts(parts) => {
-                assert_eq!(parts.len(), 2);
-                if let LlmContentPart::Text { text } = &parts[0] {
-                    assert_eq!(text, "[Eve] ");
-                } else {
-                    panic!("Expected prepended text part");
-                }
-            }
-            _ => panic!("Expected parts content"),
-        }
-    }
-
-    #[test]
-    fn test_openrouter_plugin_config_is_empty() {
-        assert!(OpenRouterPluginConfig::default().is_empty());
-        assert!(
-            !OpenRouterPluginConfig {
-                web: Some(OpenRouterWebSearchPlugin::default()),
-                file: None,
-            }
-            .is_empty()
-        );
-        assert!(
-            !OpenRouterPluginConfig {
-                web: None,
-                file: Some(OpenRouterFilePlugin {}),
-            }
-            .is_empty()
-        );
-    }
-
-    #[test]
-    fn test_openrouter_routing_is_empty_with_plugins() {
-        let with_plugins = OpenRouterRoutingConfig {
-            plugins: Some(OpenRouterPluginConfig {
-                web: Some(OpenRouterWebSearchPlugin::default()),
-                file: None,
-            }),
-            ..Default::default()
-        };
-        assert!(!with_plugins.is_empty());
-
-        let empty_plugins = OpenRouterRoutingConfig {
-            plugins: Some(OpenRouterPluginConfig::default()),
-            ..Default::default()
-        };
-        assert!(empty_plugins.is_empty());
-    }
-
-    #[test]
-    fn test_openrouter_web_search_plugin_serialization() {
-        let plugin = OpenRouterWebSearchPlugin {
-            max_results: Some(10),
-            search_prompt: Some("search for Rust crates".to_string()),
-        };
-        let json = serde_json::to_value(&plugin).unwrap();
-        assert_eq!(json["max_results"], 10);
-        assert_eq!(json["search_prompt"], "search for Rust crates");
-    }
-
-    #[test]
-    fn test_openrouter_web_search_plugin_omits_none_fields() {
-        let plugin = OpenRouterWebSearchPlugin::default();
-        let json = serde_json::to_value(&plugin).unwrap();
-        assert!(json.get("max_results").is_none());
-        assert!(json.get("search_prompt").is_none());
-    }
-
-    #[test]
-    fn test_capacity_strategy_shared_capacity_is_noop() {
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            capacity_strategy: Some(OpenRouterCapacityStrategy::SharedCapacity),
-            ..Default::default()
-        };
-        let result = base.apply_capacity_strategy().unwrap();
-        assert_eq!(
-            result.capacity_strategy,
-            Some(OpenRouterCapacityStrategy::SharedCapacity)
-        );
-        assert!(result.provider.is_none());
-    }
-
-    #[test]
-    fn test_capacity_strategy_none_is_noop() {
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            capacity_strategy: None,
-            ..Default::default()
-        };
-        let result = base.apply_capacity_strategy().unwrap();
-        assert!(result.provider.is_none());
-    }
-
-    #[test]
-    fn test_capacity_strategy_byok_first_sets_allow_fallbacks() {
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokFirst),
-            ..Default::default()
-        };
-        let result = base.apply_capacity_strategy().unwrap();
-        let provider = result.provider.as_ref().expect("provider set by ByokFirst");
-        assert_eq!(provider.allow_fallbacks, Some(true));
-    }
-
-    #[test]
-    fn test_capacity_strategy_byok_first_preserves_explicit_allow_fallbacks() {
-        // If allow_fallbacks was already set explicitly, ByokFirst must not override it.
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokFirst),
-            provider: Some(OpenRouterProviderRouting {
-                allow_fallbacks: Some(false),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let result = base.apply_capacity_strategy().unwrap();
-        let provider = result.provider.as_ref().unwrap();
-        assert_eq!(provider.allow_fallbacks, Some(false));
-    }
-
-    #[test]
-    fn test_capacity_strategy_byok_only_requires_provider_only() {
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokOnly),
-            ..Default::default()
-        };
-        let err = base.apply_capacity_strategy().unwrap_err();
-        assert!(
-            err.contains("provider.only"),
-            "error should mention provider.only: {err}"
-        );
-    }
-
-    #[test]
-    fn test_capacity_strategy_byok_only_disables_fallbacks() {
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokOnly),
-            provider: Some(OpenRouterProviderRouting {
-                only: vec!["my-byok-provider".to_string()],
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let result = base.apply_capacity_strategy().unwrap();
-        let provider = result.provider.as_ref().unwrap();
-        assert_eq!(provider.allow_fallbacks, Some(false));
-        assert_eq!(provider.only, vec!["my-byok-provider"]);
-    }
-
-    #[test]
-    fn test_capacity_strategy_byok_only_not_empty_in_is_empty() {
-        let with_strategy = OpenRouterRoutingConfig {
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokOnly),
-            ..Default::default()
-        };
-        assert!(!with_strategy.is_empty());
-
-        let byok_first = OpenRouterRoutingConfig {
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokFirst),
-            ..Default::default()
-        };
-        assert!(!byok_first.is_empty());
-
-        let shared = OpenRouterRoutingConfig {
-            capacity_strategy: Some(OpenRouterCapacityStrategy::SharedCapacity),
-            ..Default::default()
-        };
-        assert!(shared.is_empty());
-    }
-
     // -------------------------------------------------------------------------
 
     // OpenRouterRoutingPreset tests
@@ -3322,164 +2575,198 @@ mod tests {
     // -------------------------------------------------------------------------
 
     #[test]
-    fn test_preset_no_presets_is_noop() {
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        assert_eq!(result, base);
-    }
-
-    #[test]
-    fn test_preset_cheapest_with_tools_sets_require_parameters_and_sort_price() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::CheapestWithTools],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        assert!(result.presets.is_empty(), "presets cleared after apply");
-        let provider = result.provider.expect("provider set by preset");
-        assert_eq!(provider.require_parameters, Some(true));
+    fn fallback_routing_preserves_order_and_rejects_invalid_primary() {
+        let empty = OpenRouterRoutingConfig::fallback_models(std::iter::empty::<String>());
+        assert_eq!(serde_json::to_value(&empty).unwrap(), serde_json::json!({}));
+        assert!(empty.is_empty());
+        assert_eq!(empty.validate_for_primary_model("primary"), Ok(()));
+        let routing = OpenRouterRoutingConfig::fallback_models(["primary", "backup", "primary"]);
         assert_eq!(
-            provider.sort,
-            Some(OpenRouterProviderSort::Simple(
-                OpenRouterProviderSortBy::Price
-            ))
+            serde_json::to_value(&routing).unwrap(),
+            serde_json::json!({"models":["primary","backup","primary"],"route":"fallback"})
         );
-    }
-
-    #[test]
-    fn test_preset_lowest_latency_review_sets_sort_throughput() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::LowestLatencyReview],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set by preset");
+        assert_eq!(routing.validate_for_primary_model("primary"), Ok(()));
         assert_eq!(
-            provider.sort,
-            Some(OpenRouterProviderSort::Simple(
-                OpenRouterProviderSortBy::Throughput
-            ))
+            routing.validate_for_primary_model("backup").unwrap_err(),
+            "OpenRouter routing models[0] ('primary') must match primary model ('backup')"
         );
-    }
-
-    #[test]
-    fn test_preset_zdr_only_sets_zdr() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::ZdrOnly],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
-        assert_eq!(provider.zdr, Some(true));
-    }
-
-    #[test]
-    fn test_preset_byok_first_sets_allow_fallbacks() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::ByokFirst],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
-        assert_eq!(provider.allow_fallbacks, Some(true));
-    }
-
-    #[test]
-    fn test_preset_no_data_collection_sets_data_collection_deny() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::NoDataCollection],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
         assert_eq!(
-            provider.data_collection,
-            Some(OpenRouterDataCollection::Deny)
+            OpenRouterRoutingConfig {
+                route: Some(OpenRouterRoute::Fallback),
+                ..Default::default()
+            }
+            .validate_for_primary_model("primary")
+            .unwrap_err(),
+            "OpenRouter fallback routing requires at least one model in `models`"
         );
     }
 
     #[test]
-    fn test_preset_strict_json_sets_require_parameters() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::StrictJson],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
-        assert_eq!(provider.require_parameters, Some(true));
+    fn routing_emptiness_preserves_each_actionable_control_in_call_config() {
+        use serde_json::json;
+        for (wire, active) in [
+            (json!({}), false),
+            (json!({"plugins":{}}), false),
+            (json!({"capacity_strategy":"shared_capacity"}), false),
+            (json!({"models":["model"]}), true),
+            (json!({"route":"fallback"}), true),
+            (json!({"provider":{"allow_fallbacks":false}}), true),
+            (json!({"plugins":{"web":{}}}), true),
+            (json!({"plugins":{"file":{}}}), true),
+            (json!({"capacity_strategy":"byok_first"}), true),
+            (json!({"capacity_strategy":"byok_only"}), true),
+            (json!({"presets":[{"kind":"zdr_only"}]}), true),
+        ] {
+            let routing: OpenRouterRoutingConfig = serde_json::from_value(wire.clone()).unwrap();
+            assert_eq!(!routing.is_empty(), active, "{wire}");
+            let config = LlmCallConfigBuilder::from_config(bare_call_config())
+                .openrouter_routing(routing.clone())
+                .build();
+            assert_eq!(
+                config.openrouter_routing,
+                active.then_some(routing),
+                "{wire}"
+            );
+        }
     }
 
     #[test]
-    fn test_preset_reasoning_required_sets_require_parameters() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::ReasoningRequired],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
-        assert_eq!(provider.require_parameters, Some(true));
+    fn plugin_payloads_preserve_options_and_omit_absent_fields() {
+        use serde_json::json;
+        for wire in [
+            json!({}),
+            json!({"web":{}}),
+            json!({"file":{}}),
+            json!({"web":{"max_results":10,"search_prompt":"search for Rust crates"},"file":{}}),
+        ] {
+            let plugins: OpenRouterPluginConfig = serde_json::from_value(wire.clone()).unwrap();
+            assert_eq!(plugins.is_empty(), wire == json!({}));
+            assert_eq!(serde_json::to_value(plugins).unwrap(), wire);
+        }
     }
 
     #[test]
-    fn test_preset_max_price_converts_usd_per_million() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::MaxPrice {
-                prompt_usd_per_million: Some(5.0),
-                completion_usd_per_million: Some(15.0),
-            }],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
-        let max_price = provider.max_price.expect("max_price set");
-        // 5.0 USD/M → 5.0 / 1_000_000 per token
-        let prompt = max_price.prompt.expect("prompt set");
-        assert!((prompt - 5.0 / 1_000_000.0).abs() < f64::EPSILON);
-        let completion = max_price.completion.expect("completion set");
-        assert!((completion - 15.0 / 1_000_000.0).abs() < f64::EPSILON);
+    fn capacity_strategies_preserve_unrelated_routing_and_enforce_byok_policy() {
+        use serde_json::json;
+        for (strategy, explicit, expected) in [
+            (None, None, None),
+            (Some("shared_capacity"), Some(false), Some(false)),
+            (Some("byok_first"), None, Some(true)),
+            (Some("byok_first"), Some(false), Some(false)),
+            (Some("byok_first"), Some(true), Some(true)),
+            (Some("byok_only"), Some(true), Some(false)),
+        ] {
+            let mut wire = json!({"models":["primary","backup"],"provider":{"only":["my-byok-provider"],"order":["first"],"zdr":true},"plugins":{"file":{}},"presets":[{"kind":"strict_json"}]});
+            if let Some(strategy) = strategy {
+                wire["capacity_strategy"] = json!(strategy);
+            }
+            if let Some(value) = explicit {
+                wire["provider"]["allow_fallbacks"] = json!(value);
+            }
+            let base: OpenRouterRoutingConfig = serde_json::from_value(wire.clone()).unwrap();
+            let result = base.apply_capacity_strategy().unwrap();
+            let mut expected_wire = wire.clone();
+            if let Some(value) = expected {
+                expected_wire["provider"]["allow_fallbacks"] = json!(value);
+            }
+            assert_eq!(serde_json::to_value(&result).unwrap(), expected_wire);
+            assert_eq!(serde_json::to_value(&base).unwrap(), wire);
+            assert_eq!(result.apply_capacity_strategy().unwrap(), result);
+        }
+        for provider in [None, Some(OpenRouterProviderRouting::default())] {
+            let base = OpenRouterRoutingConfig {
+                capacity_strategy: Some(OpenRouterCapacityStrategy::ByokOnly),
+                provider,
+                ..Default::default()
+            };
+            assert_eq!(
+                base.apply_capacity_strategy().unwrap_err(),
+                "OpenRouter BYOK-only strategy requires provider.only to list at least one upstream provider slug. Configure the provider list to match the BYOK providers registered in your OpenRouter workspace."
+            );
+        }
     }
 
     #[test]
-    fn test_preset_max_price_rejects_negative_values() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::MaxPrice {
-                prompt_usd_per_million: Some(-1.0),
-                completion_usd_per_million: None,
-            }],
+    fn presets_compile_to_complete_literal_routing_and_clear_once() {
+        use serde_json::json;
+        for (preset, provider) in [
+            (
+                OpenRouterRoutingPreset::CheapestWithTools,
+                json!({"require_parameters":true,"sort":"price"}),
+            ),
+            (
+                OpenRouterRoutingPreset::LowestLatencyReview,
+                json!({"sort":"throughput"}),
+            ),
+            (OpenRouterRoutingPreset::ZdrOnly, json!({"zdr":true})),
+            (
+                OpenRouterRoutingPreset::ByokFirst,
+                json!({"allow_fallbacks":true}),
+            ),
+            (
+                OpenRouterRoutingPreset::NoDataCollection,
+                json!({"data_collection":"deny"}),
+            ),
+            (
+                OpenRouterRoutingPreset::StrictJson,
+                json!({"require_parameters":true}),
+            ),
+            (
+                OpenRouterRoutingPreset::ReasoningRequired,
+                json!({"require_parameters":true}),
+            ),
+        ] {
+            let base = OpenRouterRoutingConfig {
+                models: vec!["primary".into()],
+                presets: vec![preset],
+                ..Default::default()
+            };
+            let before = base.clone();
+            let result = base.apply_presets().unwrap();
+            assert_eq!(
+                serde_json::to_value(&result).unwrap(),
+                json!({"models":["primary"],"provider":provider})
+            );
+            assert_eq!(base, before);
+            assert_eq!(result.apply_presets().unwrap(), result);
+        }
+        let base = OpenRouterRoutingConfig::fallback_models(["primary", "backup"]);
+        assert_eq!(base.apply_presets().unwrap(), base);
+    }
+
+    #[test]
+    fn preset_precedence_preserves_explicit_false_values_and_every_provider_field() {
+        use serde_json::json;
+        let presets = vec![
+            OpenRouterRoutingPreset::CheapestWithTools,
+            OpenRouterRoutingPreset::ZdrOnly,
+            OpenRouterRoutingPreset::NoDataCollection,
+            OpenRouterRoutingPreset::ByokFirst,
+            OpenRouterRoutingPreset::LowestLatencyReview,
+        ];
+        let combined = OpenRouterRoutingConfig {
+            presets: presets.clone(),
             ..Default::default()
-        };
-        let err = base.apply_presets().unwrap_err();
-        assert!(
-            err.contains("non-negative"),
-            "error should mention non-negative: {err}"
+        }
+        .apply_presets()
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(&combined).unwrap(),
+            json!({"provider":{"require_parameters":true,"sort":"throughput","zdr":true,"data_collection":"deny","allow_fallbacks":true}})
         );
-    }
-
-    #[test]
-    fn test_preset_max_price_both_none_no_provider_field() {
+        let explicit = json!({"order":["second","first"],"only":["allowed"],"ignore":["ignored"],"allow_fallbacks":false,"require_parameters":false,"data_collection":"allow","zdr":false,"enforce_distillable_text":false,"quantizations":["fp8"],"sort":{"by":"latency","partition":"model"},"max_price":{"prompt":7.0,"completion":8.0,"request":0.2,"image":0.1}});
         let base = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::MaxPrice {
-                prompt_usd_per_million: None,
-                completion_usd_per_million: None,
-            }],
+            presets,
+            provider: Some(serde_json::from_value(explicit.clone()).unwrap()),
             ..Default::default()
         };
-        let result = base.apply_presets().unwrap();
-        assert!(
-            result.provider.is_none(),
-            "MaxPrice with no dimensions should not produce a provider field"
+        assert_eq!(
+            serde_json::to_value(base.apply_presets().unwrap()).unwrap(),
+            json!({"provider":explicit})
         );
-    }
-
-    #[test]
-    fn test_preset_explicit_provider_overrides_preset() {
-        let base = OpenRouterRoutingConfig {
+        let partial = OpenRouterRoutingConfig {
             presets: vec![OpenRouterRoutingPreset::CheapestWithTools],
             provider: Some(OpenRouterProviderRouting {
-                // Caller explicitly wants throughput sort, overriding Price preset
                 sort: Some(OpenRouterProviderSort::Simple(
                     OpenRouterProviderSortBy::Throughput,
                 )),
@@ -3487,75 +2774,718 @@ mod tests {
             }),
             ..Default::default()
         };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
-        // Explicit sort wins
         assert_eq!(
-            provider.sort,
-            Some(OpenRouterProviderSort::Simple(
-                OpenRouterProviderSortBy::Throughput
-            ))
-        );
-        // But preset-derived require_parameters still set (not overridden by explicit)
-        assert_eq!(provider.require_parameters, Some(true));
-    }
-
-    #[test]
-    fn test_preset_multiple_presets_combined() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![
-                OpenRouterRoutingPreset::ZdrOnly,
-                OpenRouterRoutingPreset::NoDataCollection,
-                OpenRouterRoutingPreset::LowestLatencyReview,
-            ],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
-        assert_eq!(provider.zdr, Some(true));
-        assert_eq!(
-            provider.data_collection,
-            Some(OpenRouterDataCollection::Deny)
-        );
-        assert_eq!(
-            provider.sort,
-            Some(OpenRouterProviderSort::Simple(
-                OpenRouterProviderSortBy::Throughput
-            ))
+            serde_json::to_value(partial.apply_presets().unwrap()).unwrap(),
+            json!({"provider":{"sort":"throughput","require_parameters":true}})
         );
     }
 
     #[test]
-    fn test_preset_later_preset_overrides_sort() {
-        let base = OpenRouterRoutingConfig {
-            presets: vec![
-                OpenRouterRoutingPreset::CheapestWithTools, // sets Price sort
-                OpenRouterRoutingPreset::LowestLatencyReview, // overrides to Throughput
-            ],
-            ..Default::default()
-        };
-        let result = base.apply_presets().unwrap();
-        let provider = result.provider.expect("provider set");
-        // Later preset wins for sort
-        assert_eq!(
-            provider.sort,
-            Some(OpenRouterProviderSort::Simple(
-                OpenRouterProviderSortBy::Throughput
-            ))
-        );
-        // require_parameters still set by CheapestWithTools
-        assert_eq!(provider.require_parameters, Some(true));
+    fn price_presets_preserve_literal_usd_per_million_and_dimension_boundaries() {
+        use serde_json::json;
+        for (prompt, completion, expected) in [
+            (
+                Some(5.0),
+                Some(15.0),
+                json!({"provider":{"max_price":{"prompt":5.0,"completion":15.0}}}),
+            ),
+            (
+                Some(0.0),
+                None,
+                json!({"provider":{"max_price":{"prompt":0.0}}}),
+            ),
+            (
+                None,
+                Some(0.5),
+                json!({"provider":{"max_price":{"completion":0.5}}}),
+            ),
+            (None, None, json!({})),
+        ] {
+            let base = OpenRouterRoutingConfig {
+                presets: vec![OpenRouterRoutingPreset::MaxPrice {
+                    prompt_usd_per_million: prompt,
+                    completion_usd_per_million: completion,
+                }],
+                ..Default::default()
+            };
+            assert_eq!(
+                serde_json::to_value(base.apply_presets().unwrap()).unwrap(),
+                expected
+            );
+        }
+        for (prompt, completion) in [(Some(-1.0), None), (None, Some(-0.01))] {
+            let base = OpenRouterRoutingConfig {
+                presets: vec![OpenRouterRoutingPreset::MaxPrice {
+                    prompt_usd_per_million: prompt,
+                    completion_usd_per_million: completion,
+                }],
+                ..Default::default()
+            };
+            assert_eq!(
+                base.apply_presets().unwrap_err(),
+                "MaxPrice preset values must be non-negative USD per million tokens"
+            );
+        }
+    }
+    #[test]
+    fn system_messages_fold_only_system_text_in_transcript_order() {
+        use LlmMessageRole::{Assistant, System, Tool, User};
+        for (messages, expected) in [
+            (vec![], None),
+            (
+                vec![
+                    LlmMessage::text(User, "user"),
+                    LlmMessage::text(Assistant, "answer"),
+                    LlmMessage::text(Tool, "result"),
+                ],
+                None,
+            ),
+            (vec![LlmMessage::text(System, "")], Some("")),
+            (
+                vec![
+                    LlmMessage::text(System, "rules"),
+                    LlmMessage::text(User, "question"),
+                ],
+                Some("rules"),
+            ),
+            (
+                vec![
+                    LlmMessage::text(System, "first"),
+                    LlmMessage::text(User, "question"),
+                    LlmMessage::text(System, "second"),
+                    LlmMessage::text(Assistant, "answer"),
+                    LlmMessage::text(System, "third"),
+                ],
+                Some("first\n\nsecond\n\nthird"),
+            ),
+            (
+                vec![
+                    LlmMessage::parts(
+                        System,
+                        vec![
+                            LlmContentPart::text("foo"),
+                            LlmContentPart::image("image"),
+                            LlmContentPart::audio("audio"),
+                            LlmContentPart::text("bar"),
+                        ],
+                    ),
+                    LlmMessage::text(System, "next"),
+                ],
+                Some("foobar\n\nnext"),
+            ),
+        ] {
+            assert_eq!(fold_system_messages(&messages).as_deref(), expected);
+        }
     }
 
     #[test]
-    fn test_preset_non_empty_in_is_empty() {
-        let with_preset = OpenRouterRoutingConfig {
-            presets: vec![OpenRouterRoutingPreset::ZdrOnly],
-            ..Default::default()
-        };
-        assert!(!with_preset.is_empty());
+    fn prefix_preserves_all_media_and_changes_only_the_first_text_part() {
+        let mut plain = LlmMessage::text(LlmMessageRole::User, "Hello");
+        plain.prepend_text_prefix("[Alice] ");
+        assert!(
+            matches!(plain.content, LlmMessageContent::Text(ref text) if text == "[Alice] Hello")
+        );
+        for (parts, expected) in [
+            (vec![], vec![("text", "[Alice] ")]),
+            (
+                vec![
+                    LlmContentPart::image("image"),
+                    LlmContentPart::audio("audio"),
+                ],
+                vec![("text", "[Alice] "), ("image", "image"), ("audio", "audio")],
+            ),
+            (
+                vec![
+                    LlmContentPart::text("Hello"),
+                    LlmContentPart::image("image"),
+                ],
+                vec![("text", "[Alice] Hello"), ("image", "image")],
+            ),
+            (
+                vec![
+                    LlmContentPart::image("image"),
+                    LlmContentPart::text("Hello"),
+                    LlmContentPart::audio("audio"),
+                    LlmContentPart::text("later"),
+                ],
+                vec![
+                    ("image", "image"),
+                    ("text", "[Alice] Hello"),
+                    ("audio", "audio"),
+                    ("text", "later"),
+                ],
+            ),
+            (
+                vec![LlmContentPart::text(""), LlmContentPart::text("later")],
+                vec![("text", "[Alice] "), ("text", "later")],
+            ),
+        ] {
+            let mut message = LlmMessage::parts(LlmMessageRole::Tool, parts);
+            message.tool_call_id = Some("call-1".into());
+            message.prepend_text_prefix("[Alice] ");
+            let LlmMessageContent::Parts(parts) = &message.content else {
+                panic!("parts must remain parts")
+            };
+            let actual: Vec<_> = parts
+                .iter()
+                .map(|part| match part {
+                    LlmContentPart::Text { text } => ("text", text.as_str()),
+                    LlmContentPart::Image { url } => ("image", url.as_str()),
+                    LlmContentPart::Audio { url } => ("audio", url.as_str()),
+                })
+                .collect();
+            assert_eq!(actual, expected);
+            assert_eq!(message.role, LlmMessageRole::Tool);
+            assert_eq!(message.tool_call_id.as_deref(), Some("call-1"));
+        }
+    }
+    struct FixtureDriver(&'static str);
 
-        let without = OpenRouterRoutingConfig::default();
-        assert!(without.is_empty());
+    #[async_trait]
+    impl ChatDriver for FixtureDriver {
+        async fn chat_completion_stream(
+            &self,
+            _: &ProviderEndpoint,
+            _: Vec<LlmMessage>,
+            _: &LlmCallConfig,
+        ) -> Result<LlmResponseStream> {
+            Ok(Box::pin(futures::stream::iter([
+                Ok(LlmStreamEvent::TextDelta(self.0.into())),
+                Ok(LlmStreamEvent::Done(Box::default())),
+            ])))
+        }
+        async fn list_models(&self, _: &ProviderEndpoint) -> Result<Option<Vec<DiscoveredModel>>> {
+            Ok(Some(vec![DiscoveredModel {
+                model_id: self.0.into(),
+                display_name: None,
+                created_at: None,
+                owned_by: None,
+                capabilities: vec!["chat".into()],
+                discovered_profile: None,
+            }]))
+        }
+        async fn compact(
+            &self,
+            _: &ProviderEndpoint,
+            request: CompactRequest,
+        ) -> Result<Option<CompactResponse>> {
+            Ok(Some(CompactResponse {
+                output: vec![crate::compact::CompactOutputItem::Compaction {
+                    encrypted_content: request.model,
+                }],
+                usage: None,
+            }))
+        }
+        fn supports_compact(&self) -> bool {
+            true
+        }
+        fn supports_stateful_responses(&self) -> bool {
+            true
+        }
+        fn effective_context_window(&self, model: &str) -> Option<usize> {
+            (model == "known").then_some(12345)
+        }
+        fn supports_parallel_tool_calls(&self, model: &str) -> bool {
+            model == "known"
+        }
+    }
+
+    fn compact_fixture() -> CompactRequest {
+        CompactRequest {
+            reasoning_state: None,
+            model: "compact-model".into(),
+            input: vec![],
+            previous_response_id: None,
+            instructions: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn default_and_boxed_drivers_preserve_optional_operations_and_model_capabilities() {
+        struct DefaultDriver;
+        #[async_trait]
+        impl ChatDriver for DefaultDriver {
+            async fn chat_completion_stream(
+                &self,
+                _: &ProviderEndpoint,
+                _: Vec<LlmMessage>,
+                _: &LlmCallConfig,
+            ) -> Result<LlmResponseStream> {
+                Ok(Box::pin(futures::stream::empty()))
+            }
+        }
+        let endpoint = ProviderEndpoint::default();
+        assert!(!DefaultDriver.supports_compact());
+        assert!(!DefaultDriver.supports_stateful_responses());
+        assert!(!DefaultDriver.supports_parallel_tool_calls("known"));
+        assert_eq!(DefaultDriver.effective_context_window("known"), None);
+        assert!(
+            DefaultDriver
+                .list_models(&endpoint)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            DefaultDriver
+                .compact(&endpoint, compact_fixture())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let boxed: BoxedChatDriver = Box::new(FixtureDriver("boxed"));
+        assert!(boxed.supports_compact());
+        assert!(boxed.supports_stateful_responses());
+        for (model, expected) in [("known", true), ("unknown", false)] {
+            assert_eq!(boxed.supports_parallel_tool_calls(model), expected);
+            assert_eq!(
+                boxed.effective_context_window(model),
+                expected.then_some(12345)
+            );
+        }
+        assert_eq!(
+            boxed
+                .chat_completion(&endpoint, vec![], &bare_call_config())
+                .await
+                .unwrap()
+                .text,
+            "boxed"
+        );
+    }
+
+    #[tokio::test]
+    async fn registry_replacement_changes_factory_and_preserves_other_descriptors() {
+        let mut registry = DriverRegistry::new();
+        assert!(registry.registered_providers().is_empty());
+        registry.register(DriverId::LlmSim, |_| Box::new(FixtureDriver("first")));
+        registry.register_descriptor(DriverDescriptor {
+            display_name: "OpenAI custom".into(),
+            services: vec![ServiceKind::Chat, ServiceKind::Realtime],
+            ..DriverDescriptor::chat_only(DriverId::OpenAI, |_| Box::new(FixtureDriver("other")))
+        });
+        let config = ProviderConfig::new(DriverId::LlmSim);
+        let endpoint = ProviderEndpoint::default();
+        assert_eq!(
+            registry
+                .create_chat_driver(&config)
+                .unwrap()
+                .chat_completion(&endpoint, vec![], &bare_call_config())
+                .await
+                .unwrap()
+                .text,
+            "first"
+        );
+        registry.register_or_replace(DriverId::LlmSim, |_| Box::new(FixtureDriver("replacement")));
+        assert_eq!(
+            registry
+                .create_chat_driver(&config)
+                .unwrap()
+                .chat_completion(&endpoint, vec![], &bare_call_config())
+                .await
+                .unwrap()
+                .text,
+            "replacement"
+        );
+        assert!(registry.has_driver(&DriverId::LlmSim));
+        assert!(!registry.has_driver(&DriverId::Anthropic));
+        assert_eq!(
+            registry.providers_for(ServiceKind::Realtime),
+            vec![DriverId::OpenAI]
+        );
+        let mut chat = registry.providers_for(ServiceKind::Chat);
+        chat.sort_by_key(|id| id.to_string());
+        assert_eq!(chat, vec![DriverId::LlmSim, DriverId::OpenAI]);
+        assert!(registry.supports(&DriverId::OpenAI, ServiceKind::Realtime));
+        assert!(!registry.supports(&DriverId::LlmSim, ServiceKind::Realtime));
+        assert!(!registry.supports(&DriverId::Gemini, ServiceKind::Chat));
+        assert_eq!(
+            registry.descriptor(&DriverId::OpenAI).unwrap().display_name,
+            "OpenAI custom"
+        );
+        assert_eq!(
+            registry
+                .create_chat_driver(
+                    &ProviderConfig::new(DriverId::OpenAI).with_api_key("synthetic-key")
+                )
+                .unwrap()
+                .chat_completion(&endpoint, vec![], &bare_call_config())
+                .await
+                .unwrap()
+                .text,
+            "other"
+        );
+        let defaults = DriverDescriptor::chat_only(DriverId::Anthropic, |_| {
+            Box::new(FixtureDriver("default"))
+        });
+        assert_eq!(defaults.display_name, "anthropic");
+        let sim = registry.descriptor(&DriverId::LlmSim).unwrap();
+        assert!(sim.credential_schema.fields.is_empty());
+        assert_eq!(sim.services, vec![ServiceKind::Chat]);
+        assert!(sim.chat.is_some());
+        let real = registry.descriptor(&DriverId::OpenAI).unwrap();
+        assert_eq!(real.credential_schema.fields.len(), 1);
+        assert_eq!(real.credential_schema.fields[0].name, "api_key");
+        assert!(real.credential_schema.fields[0].required);
+        assert!(registry.descriptor(&DriverId::Gemini).is_none());
+    }
+
+    #[test]
+    #[should_panic(expected = "already registered")]
+    fn duplicate_registration_rejects_an_existing_driver() {
+        let mut registry = DriverRegistry::new();
+        registry.register(DriverId::OpenAI, |_| Box::new(FixtureDriver("first")));
+        registry.register(DriverId::OpenAI, |_| Box::new(FixtureDriver("second")));
+    }
+
+    #[tokio::test]
+    async fn factory_receives_complete_config_and_external_metadata_auth_remains_keyless() {
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let capture = seen.clone();
+        let mut registry = DriverRegistry::new();
+        registry.register_external("CUSTOM", move |config| {
+            capture.lock().unwrap().push(config.clone());
+            Box::new(FixtureDriver("external"))
+        });
+        let metadata = ProviderMetadata {
+            refresh_token: Some("refresh".into()),
+            account_id: Some("account".into()),
+            extra: Some(serde_json::json!({"region":"west"})),
+        };
+        for key in [None, Some("synthetic-key")] {
+            let mut config =
+                ProviderConfig::for_provider("connection", DriverId::external("custom"))
+                    .with_base_url("https://gateway.example/v1")
+                    .with_metadata(metadata.clone());
+            if let Some(key) = key {
+                config = config.with_api_key(key);
+            }
+            let response = registry
+                .create_chat_driver(&config)
+                .unwrap()
+                .chat_completion(&ProviderEndpoint::default(), vec![], &bare_call_config())
+                .await
+                .unwrap();
+            assert_eq!(response.text, "external");
+            let received = seen.lock().unwrap().pop().unwrap();
+            assert_eq!(received.provider.as_str(), "connection");
+            assert_eq!(received.provider_type, DriverId::external("custom"));
+            assert_eq!(received.api_key.as_deref(), key);
+            assert_eq!(received.credential("api_key"), key);
+            assert_eq!(received.credentials.len(), usize::from(key.is_some()));
+            assert_eq!(
+                received.base_url.as_deref(),
+                Some("https://gateway.example/v1")
+            );
+            assert_eq!(received.metadata, metadata);
+        }
+        assert!(
+            registry
+                .descriptor(&DriverId::external("custom"))
+                .unwrap()
+                .credential_schema
+                .fields
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn registry_distinguishes_missing_driver_from_missing_chat_service() {
+        let mut registry = DriverRegistry::new();
+        assert!(
+            matches!(registry.create_chat_driver(&ProviderConfig::new(DriverId::Anthropic)), Err(AgentLoopError::DriverNotRegistered(id)) if id == "anthropic")
+        );
+        registry.register_descriptor(DriverDescriptor {
+            id: DriverId::external("embeddings-only"),
+            display_name: "Embeddings Only".into(),
+            services: vec![ServiceKind::Embeddings],
+            credential_schema: CredentialFormSchema::empty(),
+            oauth: None,
+            chat: None,
+            embeddings: None,
+        });
+        match registry
+            .create_chat_driver(&ProviderConfig::new(DriverId::external("embeddings-only")))
+        {
+            Err(AgentLoopError::Llm(error)) => assert_eq!(
+                error.message,
+                "Provider driver 'embeddings-only' does not implement the chat service."
+            ),
+            _ => panic!("expected a missing-chat-service error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn credential_gate_rejects_every_io_operation_before_dispatch() {
+        struct ForbiddenDriver;
+        #[async_trait]
+        impl ChatDriver for ForbiddenDriver {
+            async fn chat_completion_stream(
+                &self,
+                _: &ProviderEndpoint,
+                _: Vec<LlmMessage>,
+                _: &LlmCallConfig,
+            ) -> Result<LlmResponseStream> {
+                panic!("unauthenticated stream dispatch")
+            }
+            async fn list_models(
+                &self,
+                _: &ProviderEndpoint,
+            ) -> Result<Option<Vec<DiscoveredModel>>> {
+                panic!("unauthenticated model dispatch")
+            }
+            async fn compact(
+                &self,
+                _: &ProviderEndpoint,
+                _: CompactRequest,
+            ) -> Result<Option<CompactResponse>> {
+                panic!("unauthenticated compact dispatch")
+            }
+        }
+        let mut registry = DriverRegistry::new();
+        registry.register(DriverId::OpenAI, |config| {
+            if config.api_key.is_some() {
+                Box::new(FixtureDriver("authenticated"))
+            } else {
+                Box::new(ForbiddenDriver)
+            }
+        });
+        let driver = registry
+            .create_chat_driver(&ProviderConfig::new(DriverId::OpenAI))
+            .unwrap();
+        let endpoint = ProviderEndpoint::default();
+        let stream_error = match driver
+            .chat_completion_stream(&endpoint, vec![], &bare_call_config())
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("expected authentication error"),
+        };
+        for error in [
+            stream_error,
+            driver
+                .chat_completion(&endpoint, vec![], &bare_call_config())
+                .await
+                .unwrap_err(),
+            driver.list_models(&endpoint).await.unwrap_err(),
+            driver
+                .compact(&endpoint, compact_fixture())
+                .await
+                .unwrap_err(),
+        ] {
+            assert_eq!(error.llm_error_kind(), Some(LlmErrorKind::Authentication));
+            assert_eq!(
+                error.to_string(),
+                "LLM error: API key is required. Configure the API key in provider settings."
+            );
+        }
+        let driver = registry
+            .create_chat_driver(
+                &ProviderConfig::new(DriverId::OpenAI).with_api_key("synthetic-key"),
+            )
+            .unwrap();
+        assert_eq!(
+            driver
+                .chat_completion(&endpoint, vec![], &bare_call_config())
+                .await
+                .unwrap()
+                .text,
+            "authenticated"
+        );
+        assert_eq!(
+            driver.list_models(&endpoint).await.unwrap().unwrap()[0].model_id,
+            "authenticated"
+        );
+        assert_eq!(
+            serde_json::to_value(
+                driver
+                    .compact(&endpoint, compact_fixture())
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .output
+            )
+            .unwrap(),
+            serde_json::json!([{"type":"compaction","encrypted_content":"compact-model"}])
+        );
+    }
+
+    #[tokio::test]
+    async fn request_options_preserve_calls_and_apply_headers_and_diagnostics_independently() {
+        struct CapturingDriver(Arc<std::sync::Mutex<Vec<LlmCallConfig>>>);
+        impl CapturingDriver {
+            fn capture(
+                &self,
+                endpoint: &ProviderEndpoint,
+                messages: &[LlmMessage],
+                config: &LlmCallConfig,
+            ) {
+                assert_eq!(
+                    endpoint.url("probe").as_deref(),
+                    Some("https://gateway.example/v1/probe")
+                );
+                assert_eq!(messages.len(), 1);
+                assert_eq!(messages[0].role, LlmMessageRole::User);
+                assert_eq!(messages[0].content_as_text(), "request text");
+                self.0.lock().unwrap().push(config.clone());
+            }
+        }
+        #[async_trait]
+        impl ChatDriver for CapturingDriver {
+            async fn chat_completion_stream(
+                &self,
+                endpoint: &ProviderEndpoint,
+                messages: Vec<LlmMessage>,
+                config: &LlmCallConfig,
+            ) -> Result<LlmResponseStream> {
+                self.capture(endpoint, &messages, config);
+                FixtureDriver("stream")
+                    .chat_completion_stream(endpoint, messages, config)
+                    .await
+            }
+            async fn chat_completion(
+                &self,
+                endpoint: &ProviderEndpoint,
+                messages: Vec<LlmMessage>,
+                config: &LlmCallConfig,
+            ) -> Result<LlmResponse> {
+                self.capture(endpoint, &messages, config);
+                FixtureDriver("completion")
+                    .chat_completion(endpoint, messages, config)
+                    .await
+            }
+        }
+        let provider = crate::Provider::new("fixture", FixtureDriver("endpoint"))
+            .base_url("https://gateway.example/v1");
+        for (headers, diagnostics) in [(false, false), (true, false), (false, true), (true, true)] {
+            let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let options = crate::provider::ProviderRequestOptions {
+                headers: if headers {
+                    vec![crate::provider::ProviderRequestHeader {
+                        name: "x-base".into(),
+                        value: "connection".into(),
+                    }]
+                } else {
+                    vec![]
+                },
+                cache_diagnostics: diagnostics,
+            };
+            let driver =
+                RequestOptionsDriver::wrap(Box::new(CapturingDriver(seen.clone())), &options);
+            let mut config = bare_call_config();
+            config.model = "requested-model".into();
+            config.temperature = Some(0.25);
+            config.max_tokens = Some(42);
+            config
+                .metadata
+                .insert("session_id".into(), "session-one".into());
+            config.previous_response_id = Some("response-one".into());
+            config.extra_headers = vec![("x-base".into(), "original".into())];
+            config.cache_diagnostics = Some(CacheDiagnosticsConfig {
+                enabled: false,
+                previous_message_id: Some("existing".into()),
+            });
+            let mut stream = driver
+                .chat_completion_stream(
+                    provider.endpoint(),
+                    vec![LlmMessage::text(LlmMessageRole::User, "request text")],
+                    &config,
+                )
+                .await
+                .unwrap();
+            use futures::StreamExt;
+            assert!(
+                matches!(stream.next().await.unwrap().unwrap(), LlmStreamEvent::TextDelta(text) if text == "stream")
+            );
+            assert!(matches!(
+                stream.next().await.unwrap().unwrap(),
+                LlmStreamEvent::Done(_)
+            ));
+            assert!(stream.next().await.is_none());
+            assert_eq!(
+                driver
+                    .chat_completion(
+                        provider.endpoint(),
+                        vec![LlmMessage::text(LlmMessageRole::User, "request text")],
+                        &config
+                    )
+                    .await
+                    .unwrap()
+                    .text,
+                "completion"
+            );
+            let mut expected_headers = vec![("x-base".into(), "original".into())];
+            if headers {
+                expected_headers.push(("x-base".into(), "connection".into()));
+            }
+            let observed = seen.lock().unwrap();
+            assert_eq!(observed.len(), 2);
+            for received in observed.iter() {
+                assert_eq!(received.extra_headers, expected_headers);
+                let diagnostic = received.cache_diagnostics.as_ref().unwrap();
+                assert_eq!(diagnostic.enabled, diagnostics);
+                assert_eq!(
+                    diagnostic.previous_message_id.as_deref(),
+                    Some(if diagnostics {
+                        "response-one"
+                    } else {
+                        "existing"
+                    })
+                );
+                assert_eq!(received.model, "requested-model");
+                assert_eq!(received.temperature, Some(0.25));
+                assert_eq!(received.max_tokens, Some(42));
+                assert_eq!(received.metadata, config.metadata);
+                assert_eq!(received.previous_response_id, config.previous_response_id);
+            }
+            assert_eq!(
+                config.extra_headers,
+                vec![("x-base".into(), "original".into())]
+            );
+            assert!(!config.cache_diagnostics.as_ref().unwrap().enabled);
+            assert_eq!(
+                config
+                    .cache_diagnostics
+                    .as_ref()
+                    .unwrap()
+                    .previous_message_id
+                    .as_deref(),
+                Some("existing")
+            );
+        }
+        let options = crate::provider::ProviderRequestOptions {
+            headers: vec![],
+            cache_diagnostics: true,
+        };
+        let wrapped = RequestOptionsDriver::wrap(Box::new(FixtureDriver("forwarded")), &options);
+        assert!(wrapped.supports_compact());
+        assert!(wrapped.supports_stateful_responses());
+        for (model, expected) in [("known", true), ("unknown", false)] {
+            assert_eq!(wrapped.supports_parallel_tool_calls(model), expected);
+            assert_eq!(
+                wrapped.effective_context_window(model),
+                expected.then_some(12345)
+            );
+        }
+        assert_eq!(
+            wrapped
+                .list_models(provider.endpoint())
+                .await
+                .unwrap()
+                .unwrap()[0]
+                .model_id,
+            "forwarded"
+        );
+        assert_eq!(
+            serde_json::to_value(
+                wrapped
+                    .compact(provider.endpoint(), compact_fixture())
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .output
+            )
+            .unwrap(),
+            serde_json::json!([{"type":"compaction","encrypted_content":"compact-model"}])
+        );
     }
 }

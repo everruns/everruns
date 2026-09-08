@@ -370,166 +370,219 @@ fn collect_dir(
 mod tests {
     use super::*;
 
-    #[test]
-    fn dir_name_to_plugin_name_simple() {
-        assert_eq!(dir_name_to_plugin_name("microsoft-docs"), "microsoft-docs");
-        assert_eq!(dir_name_to_plugin_name("MyPlugin"), "myplugin");
-        assert_eq!(dir_name_to_plugin_name("my_plugin"), "my-plugin");
-        assert_eq!(dir_name_to_plugin_name("---test---"), "test");
-        assert_eq!(dir_name_to_plugin_name("my  plugin"), "my-plugin");
+    fn file_set(files: &[(&str, &[u8])]) -> PluginFileSet {
+        PluginFileSet::from_map(
+            "test",
+            files
+                .iter()
+                .map(|(p, b)| (p.to_string(), b.to_vec()))
+                .collect(),
+        )
+        .unwrap()
     }
 
     #[test]
-    fn plugin_file_set_from_fixture() {
-        let fixture = std::path::Path::new(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../testdata/plugins/microsoft-docs"
-        ));
-        let fs = PluginFileSet::from_dir(fixture).expect("should load microsoft-docs fixture");
-        assert!(fs.files.contains_key(".claude-plugin/plugin.json"));
-        assert!(fs.files.contains_key(".mcp.json"));
-        assert!(fs.files.contains_key("agents/docs-researcher.md"));
-        assert!(fs.files.contains_key("skills/microsoft-docs/SKILL.md"));
-        assert!(fs.files.contains_key("commands/ms-docs.md"));
+    fn missing_manifest_synthesizes_normalized_name_and_warning() {
+        for (directory, expected) in [
+            ("microsoft-docs", "microsoft-docs"),
+            ("MyPlugin", "myplugin"),
+            ("my_plugin", "my-plugin"),
+            ("---test---", "test"),
+            ("my  plugin", "my-plugin"),
+            ("---💡---", "plugin"),
+            ("", "plugin"),
+        ] {
+            let fs = PluginFileSet::from_map(directory, BTreeMap::new()).unwrap();
+            let (manifest, warnings) = fs.manifest().unwrap();
+            assert_eq!(
+                serde_json::to_value(manifest).unwrap(),
+                serde_json::json!({"name":expected})
+            );
+            assert_eq!(
+                warnings,
+                ["no plugin.json manifest found; name derived from directory name"]
+            );
+        }
     }
 
     #[test]
-    fn manifest_discovery_from_fixture() {
-        let fixture = std::path::Path::new(concat!(
+    fn fixture_load_preserves_all_files_and_discovers_legacy_manifest() {
+        let fixture = Path::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../testdata/plugins/microsoft-docs"
         ));
         let fs = PluginFileSet::from_dir(fixture).unwrap();
+        assert_eq!(fs.dir_name, "microsoft-docs");
+        assert_eq!(
+            fs.files.keys().map(String::as_str).collect::<Vec<_>>(),
+            [
+                ".claude-plugin/plugin.json",
+                ".mcp.json",
+                "agents/docs-researcher.md",
+                "assets/icon.svg",
+                "commands/ms-docs.md",
+                "skills/microsoft-docs/SKILL.md"
+            ]
+        );
+        assert!(fs.files.values().all(|bytes| !bytes.is_empty()));
         let (manifest, warnings) = fs.manifest().unwrap();
         assert_eq!(manifest.name, "microsoft-docs");
-        assert!(
-            warnings.iter().any(|w| w.contains("interface")),
-            "expected warning about 'interface' field, got: {warnings:?}"
+        assert_eq!(manifest.display_name.as_deref(), Some("Microsoft Docs"));
+        assert_eq!(manifest.version.as_deref(), Some("0.1.0"));
+        assert_eq!(manifest.icon.as_deref(), Some("./assets/icon.svg"));
+        assert_eq!(
+            warnings,
+            ["plugin manifest: unrecognized field 'interface' will be ignored"]
         );
     }
 
     #[test]
-    fn canonical_manifest_ignores_unknown_fields() {
-        let mut files = BTreeMap::new();
-        files.insert(
-            "plugin.json".to_string(),
-            br#"{
-                "$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-                "name":"portable-plugin",
-                "futureField":true
-            }"#
-            .to_vec(),
-        );
-        let file_set = PluginFileSet::from_map("portable-plugin", files).unwrap();
-
-        let (manifest, warnings) = file_set.manifest().unwrap();
-
+    fn manifest_priority_and_schema_failures_do_not_silently_fall_back() {
+        let mut fs = file_set(&[
+            ("plugin.json", br#"{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"portable-plugin","futureField":true}"#),
+            (".claude-plugin/plugin.json", br#"{"name":"claude"}"#),
+            (".codex-plugin/plugin.json", br#"{"name":"codex"}"#),
+            (".cursor-plugin/plugin.json", br#"{"name":"cursor"}"#),
+        ]);
+        let (manifest, warnings) = fs.manifest().unwrap();
+        assert_eq!(manifest.name, "portable-plugin");
         assert!(manifest.is_agent_plugins_v1());
-        assert!(!manifest.extra.contains_key("futureField"));
+        assert!(manifest.extra.is_empty());
+        assert_eq!(
+            warnings,
+            ["plugin.json: unrecognized field 'futureField' was ignored"]
+        );
+        fs.files.insert("plugin.json".into(), br#"{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"portable-plugin","author":{"name":"Acme","unexpected":true}}"#.to_vec());
         assert!(
-            warnings
-                .iter()
-                .any(|warning| warning.contains("futureField"))
+            fs.manifest()
+                .unwrap_err()
+                .starts_with("invalid plugin.json: /author:")
         );
-    }
-
-    #[test]
-    fn canonical_manifest_rejects_fatal_schema_violations() {
-        let mut files = BTreeMap::new();
-        files.insert(
-            "plugin.json".to_string(),
-            br#"{
-                "$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-                "name":"portable-plugin",
-                "author":{"name":"Acme","unexpected":true}
-            }"#
-            .to_vec(),
+        fs.files.insert("plugin.json".into(), br#"{"$schema":"https://agent-plugins.org/schemas/2.0.0/plugin.schema.json","name":"future"}"#.to_vec());
+        assert_eq!(
+            fs.manifest().unwrap_err(),
+            "unsupported Agent Plugins schema 'https://agent-plugins.org/schemas/2.0.0/plugin.schema.json'; supported schema is https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
         );
-        let file_set = PluginFileSet::from_map("portable-plugin", files).unwrap();
-
-        let error = file_set.manifest().unwrap_err();
-
-        assert!(error.contains("invalid plugin.json"), "{error}");
-    }
-
-    #[test]
-    fn non_agent_root_manifest_does_not_mask_legacy_host_manifest() {
-        let mut files = BTreeMap::new();
-        files.insert(
-            "plugin.json".to_string(),
+        fs.files.insert(
+            "plugin.json".into(),
             br#"{"name":"unrelated-package"}"#.to_vec(),
         );
-        files.insert(
-            ".claude-plugin/plugin.json".to_string(),
-            br#"{"name":"legacy-plugin","description":"Legacy plugin"}"#.to_vec(),
-        );
-        let file_set = PluginFileSet::from_map("legacy-plugin", files).unwrap();
-
-        let (manifest, warnings) = file_set.manifest().unwrap();
-
-        assert_eq!(manifest.name, "legacy-plugin");
-        assert!(!manifest.is_agent_plugins_v1());
-        assert!(
-            warnings
-                .iter()
-                .any(|warning| warning.contains("root plugin.json"))
-        );
-    }
-
-    #[test]
-    fn synthesized_manifest_for_no_manifest_dir() {
-        // Use a temp dir with no plugin.json.
-        let tmpdir = tempfile::tempdir().unwrap();
-        std::fs::write(tmpdir.path().join("hello.md"), b"# Hello").unwrap();
-        // Rename the temp dir to have a known name by creating a sub-dir.
-        let plugin_dir = tmpdir.path().join("my-test-plugin");
-        std::fs::create_dir(&plugin_dir).unwrap();
-        std::fs::write(plugin_dir.join("README.md"), b"content").unwrap();
-        let fs = PluginFileSet::from_dir(&plugin_dir).unwrap();
         let (manifest, warnings) = fs.manifest().unwrap();
-        assert_eq!(manifest.name, "my-test-plugin");
-        assert!(warnings.iter().any(|w| w.contains("no plugin.json")));
+        assert_eq!(manifest.name, "claude");
+        assert!(!manifest.is_agent_plugins_v1());
+        assert_eq!(
+            warnings,
+            ["root plugin.json does not declare an Agent Plugins schema and was ignored"]
+        );
+        fs.files.remove("plugin.json");
+        for (path, name) in [
+            (".claude-plugin/plugin.json", "claude"),
+            (".codex-plugin/plugin.json", "codex"),
+            (".cursor-plugin/plugin.json", "cursor"),
+        ] {
+            let (manifest, warnings) = fs.manifest().unwrap();
+            assert_eq!(manifest.name, name);
+            assert!(warnings.is_empty());
+            fs.files.insert(path.into(), vec![0xff]);
+            assert_eq!(
+                fs.manifest().unwrap_err(),
+                format!("{path} is not valid UTF-8")
+            );
+            fs.files.remove(path);
+        }
+        fs.files.insert("plugin.json".into(), vec![0xff]);
+        assert_eq!(fs.manifest().unwrap_err(), "plugin.json is not valid UTF-8");
+    }
+
+    #[test]
+    fn map_paths_and_text_listing_preserve_content_and_directory_boundaries() {
+        for path in ["/absolute", "../outside", "a/../../outside"] {
+            let error = PluginFileSet::from_map("test", BTreeMap::from([(path.into(), vec![])]))
+                .unwrap_err();
+            assert!(error.contains(path), "{error}");
+            assert!(
+                error.contains("relative") || error.contains("path traversal"),
+                "{error}"
+            );
+        }
+        let fs = file_set(&[
+            ("skills/z.md", b"last\r\n"),
+            ("skills/a.md", "first é".as_bytes()),
+            ("skills/sub/b.bin", &[0xff]),
+            ("skills-extra/no.md", b"no"),
+        ]);
+        assert_eq!(fs.text_file("skills/a.md").as_deref(), Some("first é"));
+        assert_eq!(fs.text_file("skills/z.md").as_deref(), Some("last\r\n"));
+        assert_eq!(fs.text_file("missing"), None);
+        assert_eq!(fs.text_file("skills/sub/b.bin"), None);
+        for prefix in ["skills", "skills/"] {
+            assert_eq!(
+                fs.list_dir(prefix),
+                [("a.md", "skills/a.md"), ("z.md", "skills/z.md")]
+            );
+            assert_eq!(
+                fs.list_dir_recursive(prefix),
+                ["skills/a.md", "skills/sub/b.bin", "skills/z.md"]
+            );
+        }
+        assert!(fs.list_dir("missing").is_empty());
+        assert!(fs.list_dir_recursive("missing").is_empty());
+    }
+
+    #[test]
+    fn map_and_disk_enforce_literal_count_file_and_total_size_boundaries() {
+        for (count, bytes, extra, expected_error) in [
+            (256, 0, false, None),
+            (257, 0, false, Some("256")),
+            (1, 131072, false, None),
+            (1, 131073, false, Some("131072-byte limit")),
+            (32, 131072, false, None),
+            (32, 131072, true, Some("4194304 bytes")),
+        ] {
+            let mut files: BTreeMap<String, Vec<u8>> = (0..count)
+                .map(|i| (format!("file-{i:03}"), vec![b'x'; bytes]))
+                .collect();
+            if extra {
+                files.insert("extra".into(), vec![b'y']);
+            }
+            let tmp = tempfile::tempdir().unwrap();
+            for (path, content) in &files {
+                std::fs::write(tmp.path().join(path), content).unwrap();
+            }
+            for result in [
+                PluginFileSet::from_map("test", files.clone()),
+                PluginFileSet::from_dir(tmp.path()),
+            ] {
+                match expected_error {
+                    Some(message) => assert!(result.unwrap_err().contains(message)),
+                    None => assert_eq!(result.unwrap().files, files),
+                }
+            }
+        }
     }
 
     #[cfg(unix)]
     #[test]
-    fn symlink_rejected_even_within_root() {
-        let tmpdir = tempfile::tempdir().unwrap();
-        let plugin_dir = tmpdir.path().join("my-plugin");
-        std::fs::create_dir(&plugin_dir).unwrap();
-        std::fs::write(plugin_dir.join("README.md"), b"content").unwrap();
-        // In-root symlink: previously tolerated, now rejected (cycle defense).
-        std::os::unix::fs::symlink(plugin_dir.join("README.md"), plugin_dir.join("link.md"))
-            .unwrap();
-        let err = PluginFileSet::from_dir(&plugin_dir).unwrap_err();
-        assert!(
-            err.contains("symlink"),
-            "expected symlink error, got: {err}"
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn symlink_directory_cycle_rejected() {
-        let tmpdir = tempfile::tempdir().unwrap();
-        let plugin_dir = tmpdir.path().join("my-plugin");
-        std::fs::create_dir(&plugin_dir).unwrap();
-        std::fs::write(plugin_dir.join("README.md"), b"content").unwrap();
-        // Link back to the plugin root: would recurse forever if followed.
-        std::os::unix::fs::symlink(&plugin_dir, plugin_dir.join("loop")).unwrap();
-        let err = PluginFileSet::from_dir(&plugin_dir).unwrap_err();
-        assert!(
-            err.contains("symlink"),
-            "expected symlink error, got: {err}"
-        );
-    }
-
-    #[test]
-    fn oversized_file_rejected() {
-        let tmpdir = tempfile::tempdir().unwrap();
-        let big = vec![b'x'; MAX_PLUGIN_FILE_BYTES + 1];
-        std::fs::write(tmpdir.path().join("big.txt"), &big).unwrap();
-        let err = PluginFileSet::from_dir(tmpdir.path()).unwrap_err();
-        assert!(err.contains("exceeding the"), "error was: {err}");
+    fn disk_rejects_file_links_directory_cycles_and_escapes() {
+        for target in ["inside", "cycle", "outside", "missing"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let plugin = tmp.path().join("plugin");
+            std::fs::create_dir(&plugin).unwrap();
+            std::fs::write(plugin.join("README.md"), b"content").unwrap();
+            std::fs::write(tmp.path().join("outside"), b"secret").unwrap();
+            let destination = match target {
+                "inside" => plugin.join("README.md"),
+                "cycle" => plugin.clone(),
+                other => tmp.path().join(other),
+            };
+            std::os::unix::fs::symlink(destination, plugin.join("link")).unwrap();
+            assert_eq!(
+                PluginFileSet::from_dir(&plugin).unwrap_err(),
+                format!(
+                    "symlink {} is not allowed in a plugin directory",
+                    plugin.canonicalize().unwrap().join("link").display()
+                )
+            );
+        }
     }
 }

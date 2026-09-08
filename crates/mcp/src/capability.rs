@@ -182,6 +182,11 @@ impl Capability for McpCapability {
     }
 
     fn tool_definitions(&self) -> Vec<ToolDefinition> {
+        // Existing stored configs also pass here: never publish a name that
+        // parses as a different server/tool pair.
+        if !everruns_core::mcp_server::is_valid_mcp_server_name(&self.server_name) {
+            return vec![];
+        }
         self.tools
             .iter()
             .map(|t| self.mcp_tool_to_definition(t))
@@ -223,81 +228,119 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn test_mcp_capability_id() {
-        let server_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
-        let cap_id = mcp_capability_id(server_id);
-        assert_eq!(cap_id, "mcp:550e8400-e29b-41d4-a716-446655440000");
-    }
-
-    #[test]
-    fn test_is_mcp_capability() {
-        assert!(is_mcp_capability(
-            "mcp:550e8400-e29b-41d4-a716-446655440000"
-        ));
+    fn capability_id_helpers_preserve_wire_identity_and_reject_invalid_namespaces() {
+        let id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let wire = "mcp:550e8400-e29b-41d4-a716-446655440000";
+        assert_eq!(mcp_capability_id(id), wire);
+        assert!(is_mcp_capability(wire));
+        assert_eq!(parse_mcp_capability_id(wire), Some(id));
+        let capability_id = CapabilityId::mcp(id);
+        assert_eq!(capability_id.as_str(), wire);
+        assert!(capability_id.is_mcp());
+        assert_eq!(capability_id.mcp_server_id(), Some(id));
+        for invalid in ["current_time", "mcp_something", "mcp:invalid", "mcp:"] {
+            assert_eq!(parse_mcp_capability_id(invalid), None);
+            assert_eq!(CapabilityId::new(invalid).mcp_server_id(), None);
+        }
         assert!(!is_mcp_capability("current_time"));
-        assert!(!is_mcp_capability("mcp_something")); // Wrong format
+        assert!(!is_mcp_capability("mcp_something"));
+        assert!(!CapabilityId::new("current_time").is_mcp());
+        assert!(is_mcp_capability("mcp:invalid"));
     }
 
     #[test]
-    fn test_parse_mcp_capability_id() {
-        let server_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
-        let cap_id = mcp_capability_id(server_id);
-        let parsed = parse_mcp_capability_id(&cap_id);
-        assert_eq!(parsed, Some(server_id));
-
-        assert_eq!(parse_mcp_capability_id("current_time"), None);
-        assert_eq!(parse_mcp_capability_id("mcp:invalid"), None);
+    fn capability_definitions_preserve_schema_attribution_and_annotation_overrides() {
+        let id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let schema = json!({"type":"object","properties":{"query":{"type":"string","minLength":3}},"required":["query"]});
+        for (
+            annotations,
+            expected_readonly,
+            expected_destructive,
+            expected_idempotent,
+            expected_open_world,
+        ) in [
+            (None, None, None, None, true),
+            (
+                Some(everruns_core::McpToolAnnotations {
+                    read_only_hint: Some(true),
+                    destructive_hint: Some(false),
+                    idempotent_hint: Some(true),
+                    open_world_hint: Some(false),
+                }),
+                Some(true),
+                Some(false),
+                Some(true),
+                false,
+            ),
+        ] {
+            let capability = McpCapability::new(
+                id,
+                "microsoft-learn".into(),
+                Some("Microsoft Learn MCP".into()),
+                vec![McpToolDefinition {
+                    name: "search".into(),
+                    description: Some("Search documentation".into()),
+                    input_schema: schema.clone(),
+                    annotations,
+                }],
+            );
+            let defs = capability.tool_definitions();
+            assert_eq!(defs.len(), 1);
+            let ToolDefinition::Builtin(builtin) = &defs[0] else {
+                panic!("expected builtin")
+            };
+            assert_eq!(builtin.name, "mcp_microsoft_learn__search");
+            assert_eq!(builtin.description, "Search documentation");
+            assert_eq!(builtin.parameters, schema);
+            assert_eq!(builtin.hints.readonly, expected_readonly);
+            assert_eq!(builtin.hints.destructive, expected_destructive);
+            assert_eq!(builtin.hints.idempotent, expected_idempotent);
+            assert_eq!(builtin.hints.open_world, Some(expected_open_world));
+            assert_eq!(
+                defs[0].capability_attribution(),
+                Some((
+                    "mcp:550e8400-e29b-41d4-a716-446655440000",
+                    Some("microsoft-learn")
+                ))
+            );
+        }
     }
 
     #[test]
-    fn test_mcp_capability_tool_definitions() {
-        let server_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
-        let tools = vec![McpToolDefinition {
-            name: "search".to_string(),
-            description: Some("Search documentation".to_string()),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "query": { "type": "string" }
-                }
-            }),
-            annotations: None,
-        }];
-
+    fn ambiguous_server_names_do_not_publish_misrouted_tool_definitions() {
+        for name in ["docs_", "docs-", "docs__private", "docs..private", "_", ""] {
+            let capability = McpCapability::new(
+                Uuid::nil(),
+                name.into(),
+                None,
+                vec![McpToolDefinition {
+                    name: "search".into(),
+                    description: None,
+                    input_schema: json!({"type":"object"}),
+                    annotations: None,
+                }],
+            );
+            assert!(
+                capability.tool_definitions().is_empty(),
+                "ambiguous server {name:?} published tools"
+            );
+        }
         let capability = McpCapability::new(
-            server_id,
-            "microsoft-learn".to_string(),
-            Some("Microsoft Learn MCP".to_string()),
-            tools,
+            Uuid::nil(),
+            "docs_api".into(),
+            None,
+            vec![McpToolDefinition {
+                name: "read__file".into(),
+                description: None,
+                input_schema: json!({"type":"object"}),
+                annotations: None,
+            }],
         );
-
-        let defs = capability.tool_definitions();
-        assert_eq!(defs.len(), 1);
-
-        let ToolDefinition::Builtin(builtin) = &defs[0] else {
-            panic!("expected Builtin variant");
-        };
-        assert_eq!(builtin.name, "mcp_microsoft_learn__search");
-        assert_eq!(builtin.description, "Search documentation");
+        let definitions = capability.tool_definitions();
+        assert_eq!(definitions.len(), 1);
         assert_eq!(
-            defs[0].capability_attribution(),
-            Some((
-                "mcp:550e8400-e29b-41d4-a716-446655440000",
-                Some("microsoft-learn")
-            ))
+            everruns_core::parse_mcp_tool_name(definitions[0].name()),
+            Some(("docs_api".into(), "read__file".into()))
         );
-    }
-
-    #[test]
-    fn test_capability_id_mcp_methods() {
-        let server_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
-        let cap_id = CapabilityId::mcp(server_id);
-
-        assert!(cap_id.is_mcp());
-        assert_eq!(cap_id.mcp_server_id(), Some(server_id));
-
-        let regular_cap = CapabilityId::new("current_time");
-        assert!(!regular_cap.is_mcp());
-        assert_eq!(regular_cap.mcp_server_id(), None);
     }
 }

@@ -205,91 +205,128 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn not_truncated_shape() {
-        let info = TruncationInfo::not_truncated(128);
-        let v = info.to_json();
-        assert_eq!(v["truncated"], json!(false));
-        assert_eq!(v["bytes_returned"], json!(128));
-        assert_eq!(v["bytes_total"], json!(128));
-        assert!(v.get("next_offset").is_none());
-        assert!(v.get("resume_hint").is_none());
-        assert_eq!(v["reason"], json!("size_cap"));
-    }
-
-    #[test]
-    fn with_resume_shape() {
-        let info = TruncationInfo::with_resume(
-            49_512,
-            Some(184_221),
-            49_512,
-            "call read_file with offset=49512",
-            TruncationReason::SizeCap,
-        );
-        let v = info.to_json();
-        assert_eq!(v["truncated"], json!(true));
-        assert_eq!(v["bytes_returned"], json!(49_512));
-        assert_eq!(v["bytes_total"], json!(184_221));
-        assert_eq!(v["next_offset"], json!(49_512));
-        assert!(v["resume_hint"].as_str().unwrap().contains("offset=49512"));
-        assert_eq!(v["reason"], json!("size_cap"));
-    }
-
-    #[test]
-    fn without_resume_shape() {
-        let info = TruncationInfo::without_resume(1_000, None, TruncationReason::RowCap);
-        let v = info.to_json();
-        assert_eq!(v["truncated"], json!(true));
-        assert!(v.get("bytes_total").is_none());
-        assert!(v.get("next_offset").is_none());
-        assert!(v.get("resume_hint").is_none());
-        assert_eq!(v["reason"], json!("row_cap"));
+    fn constructors_pin_complete_wire_shapes_and_pass_conformance() {
+        for (info, wire) in [
+            (
+                TruncationInfo::not_truncated(128),
+                json!({"truncated":false,"bytes_returned":128,"bytes_total":128,"reason":"size_cap"}),
+            ),
+            (
+                TruncationInfo::not_truncated(0),
+                json!({"truncated":false,"bytes_returned":0,"bytes_total":0,"reason":"size_cap"}),
+            ),
+            (
+                TruncationInfo::with_resume(2, Some(8), 2, "offset=2", TruncationReason::LineCap),
+                json!({"truncated":true,"bytes_returned":2,"bytes_total":8,"next_offset":2,"resume_hint":"offset=2","reason":"line_cap"}),
+            ),
+            (
+                TruncationInfo::with_resume(3, None, 9, "offset=9", TruncationReason::ItemCap),
+                json!({"truncated":true,"bytes_returned":3,"next_offset":9,"resume_hint":"offset=9","reason":"item_cap"}),
+            ),
+            (
+                TruncationInfo::without_resume(4, None, TruncationReason::RowCap),
+                json!({"truncated":true,"bytes_returned":4,"reason":"row_cap"}),
+            ),
+            (
+                TruncationInfo::without_resume(5, Some(10), TruncationReason::ExecBudget),
+                json!({"truncated":true,"bytes_returned":5,"bytes_total":10,"reason":"exec_budget"}),
+            ),
+        ] {
+            assert_eq!(info.to_json(), wire);
+            assert_eq!(
+                serde_json::from_value::<TruncationInfo>(wire.clone()).unwrap(),
+                info
+            );
+            assert_conforms("reader", &json!({"truncation":wire}));
+        }
     }
 
     #[test]
     fn attach_inserts_under_truncation_key() {
-        let mut target = json!({ "content": "abc", "total_lines": 3 });
-        TruncationInfo::not_truncated(3).attach(&mut target);
-        assert_eq!(target["truncation"]["truncated"], json!(false));
-        assert_eq!(target["content"], json!("abc"));
-        assert_eq!(target["total_lines"], json!(3));
+        let mut target = json!({"content":"α","total_lines":1,"truncation":{"old":true}});
+        TruncationInfo::not_truncated(2).attach(&mut target);
+        assert_eq!(
+            target,
+            json!({"content":"α","total_lines":1,"truncation":{"truncated":false,"bytes_returned":2,"bytes_total":2,"reason":"size_cap"}})
+        );
+        for mut value in [
+            json!(null),
+            json!(false),
+            json!(42),
+            json!("text"),
+            json!([1, 2]),
+        ] {
+            let original = value.clone();
+            TruncationInfo::not_truncated(2).attach(&mut value);
+            assert_eq!(value, original);
+        }
     }
 
     #[test]
     fn reason_wire_values_are_stable() {
-        assert_eq!(TruncationReason::SizeCap.as_str(), "size_cap");
-        assert_eq!(TruncationReason::LineCap.as_str(), "line_cap");
-        assert_eq!(TruncationReason::RowCap.as_str(), "row_cap");
-        assert_eq!(TruncationReason::ExecBudget.as_str(), "exec_budget");
-        assert_eq!(TruncationReason::ItemCap.as_str(), "item_cap");
+        for (reason, wire) in [
+            (TruncationReason::SizeCap, "size_cap"),
+            (TruncationReason::LineCap, "line_cap"),
+            (TruncationReason::RowCap, "row_cap"),
+            (TruncationReason::ExecBudget, "exec_budget"),
+            (TruncationReason::ItemCap, "item_cap"),
+        ] {
+            assert_eq!(reason.as_str(), wire);
+            assert_eq!(serde_json::to_value(reason).unwrap(), json!(wire));
+            assert_eq!(
+                serde_json::from_value::<TruncationReason>(json!(wire)).unwrap(),
+                reason
+            );
+        }
+        assert!(serde_json::from_value::<TruncationReason>(json!("other")).is_err());
     }
 
     #[test]
-    fn assert_conforms_accepts_valid() {
-        let mut response = json!({});
-        TruncationInfo::with_resume(100, Some(500), 100, "resume", TruncationReason::LineCap)
-            .attach(&mut response);
-        assert_conforms("fake_tool", &response);
-    }
-
-    #[test]
-    #[should_panic(expected = "missing required `truncation` block")]
-    fn assert_conforms_rejects_missing() {
-        let response = json!({"content": "hi"});
-        assert_conforms("fake_tool", &response);
-    }
-
-    #[test]
-    #[should_panic(expected = "`next_offset` set on a non-truncated response")]
-    fn assert_conforms_rejects_offset_without_truncation() {
-        let response = json!({
-            "truncation": {
-                "truncated": false,
-                "bytes_returned": 10,
-                "bytes_total": 10,
-                "next_offset": 10,
-                "reason": "size_cap",
-            }
-        });
-        assert_conforms("fake_tool", &response);
+    fn conformance_rejects_malformed_and_inconsistent_resume_metadata() {
+        let block = |extra: Value| {
+            let mut b = json!({"truncated":true,"bytes_returned":2,"reason":"size_cap"});
+            b.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            json!({"truncation":b})
+        };
+        for (response, expected) in [
+            (json!([]), "response is not a JSON object"),
+            (
+                json!({"content":"x"}),
+                "response missing required `truncation` block",
+            ),
+            (json!({"truncation":{}}), "`truncation` block malformed"),
+            (
+                block(json!({"reason":"unknown"})),
+                "`truncation` block malformed",
+            ),
+            (
+                block(json!({"next_offset":2})),
+                "`next_offset` present but `resume_hint` missing",
+            ),
+            (
+                block(json!({"resume_hint":"resume"})),
+                "`resume_hint` present but `next_offset` missing",
+            ),
+            (
+                block(json!({"truncated":false,"next_offset":2})),
+                "`next_offset` set on a non-truncated response",
+            ),
+            (
+                block(json!({"truncated":false,"resume_hint":"resume"})),
+                "`resume_hint` set on a non-truncated response",
+            ),
+        ] {
+            let panic = std::panic::catch_unwind(|| assert_conforms("reader", &response))
+                .expect_err("invalid envelope must fail");
+            let message = panic
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| panic.downcast_ref::<&str>().copied())
+                .expect("text panic");
+            assert!(message.starts_with("reader:"), "{message}");
+            assert!(message.contains(expected), "{message}");
+        }
     }
 }

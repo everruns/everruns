@@ -770,114 +770,7 @@ mod tests {
 
     // -- role_has_permission tests --
 
-    #[test]
-    fn owner_has_all_permissions() {
-        for perm in Permission::ALL {
-            assert!(
-                role_has_permission(OrgRole::Owner, perm),
-                "Owner should have {:?}",
-                perm
-            );
-        }
-    }
-
-    #[test]
-    fn admin_has_manage_but_not_dangerous() {
-        assert!(role_has_permission(
-            OrgRole::Admin,
-            &Permission::OrgHarnessesManage
-        ));
-        assert!(!role_has_permission(
-            OrgRole::Admin,
-            &Permission::OrgHarnessesDangerous
-        ));
-        assert!(role_has_permission(
-            OrgRole::Admin,
-            &Permission::OrgAgentsManage
-        ));
-        assert!(role_has_permission(
-            OrgRole::Admin,
-            &Permission::OrgSettingsManage
-        ));
-    }
-
-    #[test]
-    fn member_has_only_basic_permissions() {
-        assert!(role_has_permission(
-            OrgRole::Member,
-            &Permission::OrgAgentsManage
-        ));
-        assert!(role_has_permission(
-            OrgRole::Member,
-            &Permission::OrgSessionsManage
-        ));
-        assert!(!role_has_permission(
-            OrgRole::Member,
-            &Permission::OrgHarnessesManage
-        ));
-        assert!(!role_has_permission(
-            OrgRole::Member,
-            &Permission::OrgSettingsManage
-        ));
-        assert!(!role_has_permission(
-            OrgRole::Member,
-            &Permission::OrgApiKeysManage
-        ));
-    }
-
     // -- EVE-656: per-domain split of OrgAgentsManage preserves behavior --
-
-    /// Per-domain VIEW+MANAGE permissions introduced in EVE-656. Every role that
-    /// previously held OrgAgentsManage (Owner, Admin, Member) gated these six
-    /// domains through it, so each role must still hold the equivalent per-domain
-    /// VIEW+MANAGE permissions. Plugins manage is excluded: it has always also
-    /// required OrgPluginsManage (Admin+ only) and is asserted separately below.
-    const SPLIT_DOMAIN_VIEW_MANAGE: &[Permission] = &[
-        Permission::OrgAppsView,
-        Permission::OrgAppsManage,
-        Permission::OrgMcpServersView,
-        Permission::OrgMcpServersManage,
-        Permission::OrgSkillsView,
-        Permission::OrgSkillsManage,
-        Permission::OrgCapabilitiesView,
-        Permission::OrgCapabilitiesManage,
-        Permission::OrgAgentIdentitiesView,
-        Permission::OrgAgentIdentitiesManage,
-        Permission::OrgPluginsView,
-    ];
-
-    #[test]
-    fn eve656_roles_with_agents_manage_keep_per_domain_access() {
-        // Owner, Admin, Member all held OrgAgentsManage and could therefore
-        // view+manage all six split domains (plugins manage excepted).
-        for role in [OrgRole::Owner, OrgRole::Admin, OrgRole::Member] {
-            assert!(role_has_permission(role, &Permission::OrgAgentsManage));
-            for perm in SPLIT_DOMAIN_VIEW_MANAGE {
-                assert!(
-                    role_has_permission(role, perm),
-                    "{role:?} must retain {perm:?} after the OrgAgentsManage split"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn eve656_plugin_manage_stays_admin_plus_only() {
-        // PLUGIN_MANAGE required OrgPluginsManage (Admin+ only), so Members must
-        // still be unable to manage plugins after the split.
-        assert!(role_has_permission(
-            OrgRole::Owner,
-            &Permission::OrgPluginsManage
-        ));
-        assert!(role_has_permission(
-            OrgRole::Admin,
-            &Permission::OrgPluginsManage
-        ));
-        assert!(!role_has_permission(
-            OrgRole::Member,
-            &Permission::OrgPluginsManage
-        ));
-    }
 
     // -- Policy evaluation tests --
 
@@ -900,97 +793,18 @@ mod tests {
     };
 
     #[test]
-    fn owner_passes_all_policies() {
-        let caller = owner_caller();
-        assert!(TEST_MANAGE.evaluate(&caller).is_ok());
-        assert!(TEST_DANGEROUS.evaluate(&caller).is_ok());
-        assert!(TEST_ROLE_ADMIN.evaluate(&caller).is_ok());
-    }
-
-    #[test]
-    fn admin_passes_manage_but_not_dangerous() {
-        let caller = admin_caller();
-        assert!(TEST_MANAGE.evaluate(&caller).is_ok());
-        assert!(TEST_DANGEROUS.evaluate(&caller).is_err());
-        assert!(TEST_ROLE_ADMIN.evaluate(&caller).is_ok());
-    }
-
-    #[test]
-    fn member_fails_manage_and_dangerous() {
-        let caller = member_caller();
-        assert!(TEST_MANAGE.evaluate(&caller).is_err());
-        assert!(TEST_DANGEROUS.evaluate(&caller).is_err());
-        assert!(TEST_ROLE_ADMIN.evaluate(&caller).is_err());
-    }
-
-    #[test]
     fn policy_error_contains_useful_info() {
         let caller = member_caller();
         let err = TEST_MANAGE.evaluate(&caller).unwrap_err();
         assert_eq!(err.policy_id, "harness.manage");
-        assert!(err.message.contains("org:harnesses:manage"));
-        assert!(err.to_string().contains("Access denied"));
+        assert_eq!(
+            err.message,
+            "Access denied: policy 'harness.manage' requires 'org:harnesses:manage'"
+        );
+        assert_eq!(err.to_string(), err.message);
     }
 
     // -- evaluate_policies (config endpoint helper) tests --
-
-    #[test]
-    fn evaluate_policies_returns_correct_map() {
-        let caller = admin_caller();
-        let result = evaluate_policies(&caller, &[&TEST_MANAGE, &TEST_DANGEROUS]);
-
-        assert_eq!(result.get("harness.manage"), Some(&true));
-        assert_eq!(result.get("harness.dangerous"), Some(&false));
-    }
-
-    #[test]
-    fn evaluate_policies_owner_all_true() {
-        let caller = owner_caller();
-        let result = evaluate_policies(&caller, &[&TEST_MANAGE, &TEST_DANGEROUS, &TEST_ROLE_ADMIN]);
-
-        assert_eq!(
-            result,
-            HashMap::from([
-                (TEST_MANAGE.id.to_string(), true),
-                (TEST_DANGEROUS.id.to_string(), true),
-                (TEST_ROLE_ADMIN.id.to_string(), true),
-            ])
-        );
-    }
-
-    #[test]
-    fn evaluate_policies_member_all_false_for_admin_policies() {
-        let caller = member_caller();
-        let result = evaluate_policies(&caller, &[&TEST_MANAGE, &TEST_DANGEROUS, &TEST_ROLE_ADMIN]);
-
-        assert_eq!(
-            result,
-            HashMap::from([
-                (TEST_MANAGE.id.to_string(), false),
-                (TEST_DANGEROUS.id.to_string(), false),
-                (TEST_ROLE_ADMIN.id.to_string(), false),
-            ])
-        );
-    }
-
-    #[test]
-    fn default_permission_resolver_matches_hardcoded_role_mapping() {
-        let resolver = DefaultPermissionResolver;
-
-        for caller in [owner_caller(), admin_caller(), member_caller()] {
-            for permission in Permission::ALL {
-                assert_eq!(
-                    resolver.has_permission(&caller, permission),
-                    role_has_permission(caller.role, permission)
-                );
-            }
-
-            assert_eq!(
-                resolver.caller_permissions(&caller),
-                role_permissions(caller.role).to_vec()
-            );
-        }
-    }
 
     struct DenyManageResolver;
 
@@ -1053,39 +867,7 @@ mod tests {
 
     // -- Permission display --
 
-    #[test]
-    fn permission_display() {
-        assert_eq!(
-            Permission::OrgHarnessesManage.to_string(),
-            "org:harnesses:manage"
-        );
-        assert_eq!(
-            Permission::OrgHarnessesDangerous.to_string(),
-            "org:harnesses:dangerous"
-        );
-        assert_eq!(Permission::OrgAgentsManage.to_string(), "org:agents:manage");
-    }
-
     // -- role_permissions --
-
-    #[test]
-    fn role_permissions_returns_correct_sets() {
-        assert_eq!(role_permissions(OrgRole::Owner).len(), 32);
-        assert_eq!(role_permissions(OrgRole::Admin).len(), 26);
-        assert_eq!(role_permissions(OrgRole::Member).len(), 18);
-        assert!(role_has_permission(
-            OrgRole::Owner,
-            &Permission::OrgReportsAdmin
-        ));
-        assert!(role_has_permission(
-            OrgRole::Admin,
-            &Permission::OrgReportsManage
-        ));
-        assert!(role_has_permission(
-            OrgRole::Member,
-            &Permission::OrgReportsView
-        ));
-    }
 
     // -- Caller --
 
@@ -1116,33 +898,6 @@ mod tests {
     }
 
     #[test]
-    fn caller_internal_has_owner_role() {
-        let caller = Caller::internal(42);
-        assert_eq!(caller.org_id, 42);
-        assert_eq!(caller.role, OrgRole::Owner);
-        assert!(caller.user_id.is_none());
-        // Internal callers should pass all policies
-        assert!(TEST_MANAGE.evaluate(&caller).is_ok());
-        assert!(TEST_DANGEROUS.evaluate(&caller).is_ok());
-        assert!(TEST_ROLE_ADMIN.evaluate(&caller).is_ok());
-    }
-
-    #[test]
-    fn caller_internal_generates_public_id() {
-        let caller = Caller::internal(1);
-        assert_eq!(caller.org_public_id, "org_00000000000000000000000000000001");
-
-        let caller = Caller::internal(99);
-        assert!(caller.org_public_id.starts_with("org_"));
-    }
-
-    #[test]
-    fn policy_error_is_std_error() {
-        let err = PolicyError::denied("test", "detail");
-        let _: &dyn std::error::Error = &err;
-    }
-
-    #[test]
     fn policy_error_downcast_from_anyhow() {
         let err = PolicyError::denied("test.policy", "org:harnesses:manage");
         let anyhow_err: anyhow::Error = err.into();
@@ -1153,72 +908,12 @@ mod tests {
 
     // -- View permissions --
 
-    #[test]
-    fn member_has_view_permissions() {
-        assert!(role_has_permission(
-            OrgRole::Member,
-            &Permission::OrgHarnessesView
-        ));
-        assert!(role_has_permission(
-            OrgRole::Member,
-            &Permission::OrgProvidersView
-        ));
-        assert!(role_has_permission(
-            OrgRole::Member,
-            &Permission::OrgSettingsView
-        ));
-        assert!(role_has_permission(
-            OrgRole::Member,
-            &Permission::OrgMembersView
-        ));
-    }
-
-    #[test]
-    fn member_lacks_manage_for_restricted_resources() {
-        assert!(!role_has_permission(
-            OrgRole::Member,
-            &Permission::OrgHarnessesManage
-        ));
-        assert!(!role_has_permission(
-            OrgRole::Member,
-            &Permission::OrgProvidersManage
-        ));
-        assert!(!role_has_permission(
-            OrgRole::Member,
-            &Permission::OrgSettingsManage
-        ));
-        assert!(!role_has_permission(
-            OrgRole::Member,
-            &Permission::OrgMembersManage
-        ));
-    }
-
     // -- IsPlatformUser rule --
 
     const TEST_PLATFORM: Policy = Policy {
         id: "durable.manage",
         rules: &[Rule::IsPlatformUser],
     };
-
-    #[test]
-    fn platform_user_passes_platform_policy() {
-        let mut caller = owner_caller();
-        caller.is_platform_user = true;
-        assert!(TEST_PLATFORM.evaluate(&caller).is_ok());
-    }
-
-    #[test]
-    fn non_platform_user_fails_platform_policy() {
-        let caller = owner_caller(); // is_platform_user = false
-        assert!(TEST_PLATFORM.evaluate(&caller).is_err());
-    }
-
-    #[test]
-    fn internal_caller_is_platform_user() {
-        let caller = Caller::internal(1);
-        assert!(caller.is_platform_user);
-        assert!(TEST_PLATFORM.evaluate(&caller).is_ok());
-    }
 
     // -- ResourceConfigResponse serialization --
 
@@ -1229,8 +924,10 @@ mod tests {
         policies.insert("harness.dangerous".to_string(), false);
         let response = ResourceConfigResponse { policies };
         let json = serde_json::to_value(&response).unwrap();
-        assert_eq!(json["policies"]["harness.manage"], true);
-        assert_eq!(json["policies"]["harness.dangerous"], false);
+        assert_eq!(
+            json,
+            serde_json::json!({"policies":{"harness.manage":true,"harness.dangerous":false}})
+        );
     }
 
     // -- Skill permission rules --
@@ -1327,10 +1024,344 @@ mod tests {
 
     #[test]
     fn skill_permission_deny_wins_at_same_specificity() {
-        let rules = vec![
-            parse_skill_permission_rule("allow Skill(deploy)").unwrap(),
-            parse_skill_permission_rule("deny Skill(deploy)").unwrap(),
+        for pattern in ["Skill", "Skill(deploy *)", "Skill(deploy)"] {
+            let mut rules = vec![
+                parse_skill_permission_rule(&format!("allow {pattern}")).unwrap(),
+                parse_skill_permission_rule(&format!("deny {pattern}")).unwrap(),
+            ];
+            assert!(!check_skill_permission(&rules, "deploy"));
+            rules.reverse();
+            assert!(!check_skill_permission(&rules, "deploy"));
+        }
+    }
+
+    #[test]
+    fn role_matrix_pins_permissions_and_resolver_results() {
+        let cases = [
+            (
+                Permission::OrgHarnessesView,
+                "org:harnesses:view",
+                true,
+                true,
+            ),
+            (
+                Permission::OrgHarnessesManage,
+                "org:harnesses:manage",
+                true,
+                false,
+            ),
+            (
+                Permission::OrgHarnessesDangerous,
+                "org:harnesses:dangerous",
+                false,
+                false,
+            ),
+            (Permission::OrgAgentsManage, "org:agents:manage", true, true),
+            (
+                Permission::OrgAgentsDangerous,
+                "org:agents:dangerous",
+                false,
+                false,
+            ),
+            (Permission::OrgAppsView, "org:apps:view", true, true),
+            (Permission::OrgAppsManage, "org:apps:manage", true, true),
+            (
+                Permission::OrgAppsDangerous,
+                "org:apps:dangerous",
+                false,
+                false,
+            ),
+            (
+                Permission::OrgMcpServersView,
+                "org:mcp-servers:view",
+                true,
+                true,
+            ),
+            (
+                Permission::OrgMcpServersManage,
+                "org:mcp-servers:manage",
+                true,
+                true,
+            ),
+            (
+                Permission::OrgMcpServersDangerous,
+                "org:mcp-servers:dangerous",
+                false,
+                false,
+            ),
+            (Permission::OrgSkillsView, "org:skills:view", true, true),
+            (Permission::OrgSkillsManage, "org:skills:manage", true, true),
+            (
+                Permission::OrgSkillsDangerous,
+                "org:skills:dangerous",
+                false,
+                false,
+            ),
+            (
+                Permission::OrgCapabilitiesView,
+                "org:capabilities:view",
+                true,
+                true,
+            ),
+            (
+                Permission::OrgCapabilitiesManage,
+                "org:capabilities:manage",
+                true,
+                true,
+            ),
+            (
+                Permission::OrgAgentIdentitiesView,
+                "org:agent-identities:view",
+                true,
+                true,
+            ),
+            (
+                Permission::OrgAgentIdentitiesManage,
+                "org:agent-identities:manage",
+                true,
+                true,
+            ),
+            (Permission::OrgPluginsView, "org:plugins:view", true, true),
+            (
+                Permission::OrgPluginsManage,
+                "org:plugins:manage",
+                true,
+                false,
+            ),
+            (
+                Permission::OrgSessionsManage,
+                "org:sessions:manage",
+                true,
+                true,
+            ),
+            (
+                Permission::OrgProvidersView,
+                "org:providers:view",
+                true,
+                true,
+            ),
+            (
+                Permission::OrgProvidersManage,
+                "org:providers:manage",
+                true,
+                false,
+            ),
+            (Permission::OrgSettingsView, "org:settings:view", true, true),
+            (
+                Permission::OrgSettingsManage,
+                "org:settings:manage",
+                true,
+                false,
+            ),
+            (Permission::OrgMembersView, "org:members:view", true, true),
+            (
+                Permission::OrgMembersManage,
+                "org:members:manage",
+                true,
+                false,
+            ),
+            (
+                Permission::OrgApiKeysManage,
+                "org:api-keys:manage",
+                true,
+                false,
+            ),
+            (
+                Permission::OrgAuditLogsView,
+                "org:audit-logs:view",
+                true,
+                false,
+            ),
+            (Permission::OrgReportsView, "org:reports:view", true, true),
+            (
+                Permission::OrgReportsManage,
+                "org:reports:manage",
+                true,
+                false,
+            ),
+            (
+                Permission::OrgReportsAdmin,
+                "org:reports:admin",
+                false,
+                false,
+            ),
         ];
-        assert!(!check_skill_permission(&rules, "deploy"));
+        let resolver = DefaultPermissionResolver;
+        assert_eq!(Permission::ALL, cases.map(|(p, _, _, _)| p));
+        for caller in [owner_caller(), admin_caller(), member_caller()] {
+            let mut expected = Vec::new();
+            for (permission, wire, admin, member) in cases {
+                let allowed = match caller.role {
+                    OrgRole::Owner => true,
+                    OrgRole::Admin => admin,
+                    OrgRole::Member => member,
+                };
+                assert_eq!(permission.to_string(), wire);
+                assert_eq!(
+                    role_has_permission(caller.role, &permission),
+                    allowed,
+                    "{:?}/{wire}",
+                    caller.role
+                );
+                assert_eq!(
+                    resolver.has_permission(&caller, &permission),
+                    allowed,
+                    "resolver {:?}/{wire}",
+                    caller.role
+                );
+                if allowed {
+                    expected.push(permission);
+                }
+            }
+            assert_eq!(role_permissions(caller.role), expected);
+            assert_eq!(resolver.caller_permissions(&caller), expected);
+        }
+    }
+
+    #[test]
+    fn default_policy_results_match_the_complete_config_response() {
+        for (caller, manage, dangerous, admin) in [
+            (owner_caller(), true, true, true),
+            (admin_caller(), true, false, true),
+            (member_caller(), false, false, false),
+        ] {
+            assert_eq!(TEST_MANAGE.evaluate(&caller).is_ok(), manage);
+            assert_eq!(TEST_DANGEROUS.evaluate(&caller).is_ok(), dangerous);
+            assert_eq!(TEST_ROLE_ADMIN.evaluate(&caller).is_ok(), admin);
+            assert_eq!(
+                evaluate_policies(&caller, &[&TEST_MANAGE, &TEST_DANGEROUS, &TEST_ROLE_ADMIN]),
+                HashMap::from([
+                    ("harness.manage".into(), manage),
+                    ("harness.dangerous".into(), dangerous),
+                    ("require.admin".into(), admin)
+                ])
+            );
+            assert!(evaluate_policies(&caller, &[]).is_empty());
+        }
+    }
+
+    #[test]
+    fn internal_caller_preserves_identity_and_satisfies_internal_policies() {
+        for (id, public_id) in [
+            (1, "org_00000000000000000000000000000001"),
+            (42, "org_0000000000000000000000000000002a"),
+            (99, "org_00000000000000000000000000000063"),
+        ] {
+            let caller = Caller::internal(id);
+            assert_eq!(caller.org_id, id);
+            assert_eq!(caller.org_public_id, public_id);
+            assert_eq!(caller.role, OrgRole::Owner);
+            assert_eq!(caller.user_id, None);
+            assert!(caller.is_internal);
+            assert!(caller.is_platform_user);
+            for policy in [
+                &TEST_MANAGE,
+                &TEST_DANGEROUS,
+                &TEST_ROLE_ADMIN,
+                &TEST_PLATFORM,
+            ] {
+                assert!(policy.evaluate(&caller).is_ok());
+            }
+        }
+    }
+
+    #[test]
+    fn platform_policy_depends_on_platform_flag_independently_of_role() {
+        for mut caller in [owner_caller(), admin_caller(), member_caller()] {
+            for flag in [false, true] {
+                caller.is_platform_user = flag;
+                assert_eq!(TEST_PLATFORM.evaluate(&caller).is_ok(), flag);
+            }
+        }
+    }
+
+    #[test]
+    fn skill_specificity_is_order_independent_and_exact_beats_wildcard() {
+        for (texts, expected) in [
+            (
+                ["deny Skill", "allow Skill(deploy *)", "deny Skill(deploy)"],
+                false,
+            ),
+            (
+                ["allow Skill", "deny Skill(deploy *)", "allow Skill(deploy)"],
+                true,
+            ),
+        ] {
+            for order in [
+                [0, 1, 2],
+                [0, 2, 1],
+                [1, 0, 2],
+                [1, 2, 0],
+                [2, 0, 1],
+                [2, 1, 0],
+            ] {
+                let rules: Vec<_> = order
+                    .into_iter()
+                    .map(|i| parse_skill_permission_rule(texts[i]).unwrap())
+                    .collect();
+                assert_eq!(
+                    check_skill_permission(&rules, "deploy"),
+                    expected,
+                    "{order:?}"
+                );
+                assert_eq!(check_skill_permission(&rules, "deploy-prod"), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn mixed_policy_short_circuits_and_preserves_denied_rule_identity() {
+        struct RecordingResolver(std::sync::Mutex<Vec<Permission>>);
+        impl PermissionResolver for RecordingResolver {
+            fn has_permission(&self, caller: &Caller, permission: &Permission) -> bool {
+                assert_eq!(caller.org_id, 42);
+                assert_eq!(caller.user_id, Some(Uuid::from_u128(7)));
+                self.0.lock().unwrap().push(*permission);
+                *permission != Permission::OrgHarnessesDangerous
+            }
+            fn caller_permissions(&self, _: &Caller) -> Vec<Permission> {
+                panic!("evaluation must ask the specific permission")
+            }
+        }
+        const MIXED: Policy = Policy {
+            id: "mixed",
+            rules: &[
+                Rule::IsPlatformUser,
+                Rule::UserHasRole(OrgRole::Admin),
+                Rule::UserHasPermission(Permission::OrgHarnessesManage),
+                Rule::UserHasPermission(Permission::OrgHarnessesDangerous),
+                Rule::UserHasPermission(Permission::OrgSettingsManage),
+            ],
+        };
+        let mut caller = member_caller();
+        caller.org_id = 42;
+        caller.user_id = Some(Uuid::from_u128(7));
+        let resolver = RecordingResolver(Default::default());
+        let err = MIXED.evaluate_with(&resolver, &caller).unwrap_err();
+        assert_eq!(
+            err.message,
+            "Access denied: policy 'mixed' requires 'platform_user'"
+        );
+        assert!(resolver.0.lock().unwrap().is_empty());
+        caller.is_platform_user = true;
+        assert_eq!(
+            MIXED.evaluate_with(&resolver, &caller).unwrap_err().message,
+            "Access denied: policy 'mixed' requires 'role:admin'"
+        );
+        assert!(resolver.0.lock().unwrap().is_empty());
+        caller.role = OrgRole::Admin;
+        let err = MIXED.evaluate_with(&resolver, &caller).unwrap_err();
+        assert_eq!(err.policy_id, "mixed");
+        assert_eq!(
+            err.message,
+            "Access denied: policy 'mixed' requires 'org:harnesses:dangerous'"
+        );
+        assert_eq!(
+            *resolver.0.lock().unwrap(),
+            vec![
+                Permission::OrgHarnessesManage,
+                Permission::OrgHarnessesDangerous
+            ]
+        );
     }
 }

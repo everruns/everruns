@@ -4,6 +4,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
+import ledger
 
 from ledger import ROOT, digest, read_ledger, reconcile, rust_tests, status
 
@@ -41,6 +43,28 @@ fn other() {}
     def test_same_name_in_different_modules_is_preserved(self):
         rows = list(rust_tests('src/lib.rs', 'mod a { #[test] fn same() {} } mod b { #[test] fn same() {} }'))
         self.assertEqual([r['name'] for r in rows], ['a::same', 'b::same'])
+
+    def test_unmerged_index_stages_do_not_duplicate_source_declarations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(['git', 'init', '--quiet'], cwd=root, check=True)
+            source = root/'src/lib.rs'
+            source.parent.mkdir()
+            # Distinct cfg bodies may legitimately have the same source name.
+            source.write_text('#[cfg(feature="a")] #[test] fn same() { one(); }\n'
+                              '#[cfg(not(feature="a"))] #[test] fn same() { two(); }\n')
+            blob = subprocess.check_output(['git', 'hash-object', '-w', '--stdin'],
+                                           input=source.read_text(), cwd=root, text=True).strip()
+            subprocess.run(['git', 'update-index', '--index-info'], cwd=root, text=True,
+                           input=''.join(f'100644 {blob} {stage}\tsrc/lib.rs\n' for stage in [1, 2, 3]),
+                           check=True)
+            self.assertEqual(subprocess.check_output(['git', 'ls-files'], cwd=root, text=True).splitlines(),
+                             ['src/lib.rs'] * 3)
+            (root/'scripts').symlink_to(ROOT/'scripts', target_is_directory=True)
+            with patch.object(ledger, 'ROOT', root):
+                rows = list(ledger.inventory())
+            self.assertEqual([r['id'] for r in rows], ['src/lib.rs::same', 'src/lib.rs::same#2'])
+            self.assertNotEqual(rows[0]['body_hash'], rows[1]['body_hash'])
 
     def test_reconciliation_never_marks_an_unreviewed_test_as_reviewed(self):
         row = dict(id='a', scope='unit', body_hash=digest('body'), file_hash=digest('file'))

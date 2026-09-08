@@ -288,7 +288,7 @@ pub struct GuardrailHit {
     pub reason_code: String,
     /// The check's custom replacement, if configured.
     pub replacement: Option<String>,
-    /// Bounded excerpt of the matched content (pattern source for regex,
+    /// Bounded excerpt of the matched content (matched text for regex,
     /// matched word for blocklist, tool name for tool_pattern).
     pub matched: Option<String>,
 }
@@ -847,12 +847,29 @@ mod tests {
     #[test]
     fn empty_or_null_config_compiles_to_no_checks() {
         let compiled = compile(json!({})).expect("compiles");
-        assert!(!compiled.has_stage(GuardrailStage::Output));
+        for stage in [
+            GuardrailStage::Output,
+            GuardrailStage::ToolUse,
+            GuardrailStage::ToolOutput,
+        ] {
+            assert!(!compiled.has_stage(stage));
+            assert!(
+                compiled
+                    .evaluate(stage, "x", Some("tool"), &no_skip())
+                    .is_empty()
+            );
+        }
         let compiled = GuardrailsConfig::from_value(&serde_json::Value::Null)
             .unwrap()
             .compile()
             .unwrap();
-        assert!(!compiled.has_stage(GuardrailStage::Output));
+        for stage in [
+            GuardrailStage::Output,
+            GuardrailStage::ToolUse,
+            GuardrailStage::ToolOutput,
+        ] {
+            assert!(!compiled.has_stage(stage));
+        }
     }
 
     #[test]
@@ -873,6 +890,11 @@ mod tests {
         assert_eq!(hits[0].action, GuardrailAction::Block);
         assert_eq!(hits[0].reason_code, "guardrail.blocklist");
         assert_eq!(hits[0].matched.as_deref(), Some("secret word"));
+        assert!(
+            compiled
+                .evaluate(GuardrailStage::Output, "ordinary prose", None, &no_skip())
+                .is_empty()
+        );
     }
 
     #[test]
@@ -897,7 +919,7 @@ mod tests {
     }
 
     #[test]
-    fn regex_matches_and_reports_pattern_source() {
+    fn regex_reports_complete_hit_and_matched_text() {
         let compiled = compile(json!({
             "checks": [
                 {"id": "ssn", "stage": "output", "type": "regex",
@@ -911,9 +933,29 @@ mod tests {
             None,
             &no_skip(),
         );
-        assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].check_label, "ssn");
-        assert_eq!(hits[0].rule_type, "regex");
+        assert_eq!(
+            hits,
+            vec![GuardrailHit {
+                check_index: 0,
+                check_label: "ssn".into(),
+                stage: GuardrailStage::Output,
+                rule_type: "regex",
+                action: GuardrailAction::Block,
+                reason_code: "guardrail.regex".into(),
+                replacement: None,
+                matched: Some("123-45-6789".into()),
+            }]
+        );
+        assert!(
+            compiled
+                .evaluate(GuardrailStage::Output, "123-45-678", None, &no_skip())
+                .is_empty()
+        );
+        assert!(
+            compiled
+                .evaluate(GuardrailStage::ToolOutput, "123-45-6789", None, &no_skip())
+                .is_empty()
+        );
     }
 
     #[test]
@@ -924,7 +966,8 @@ mod tests {
             ]
         }))
         .unwrap_err();
-        assert!(err.contains("check 'bad'"), "{err}");
+        assert!(err.contains("check 'bad': invalid regex '('"), "{err}");
+        assert!(err.contains("unclosed group"), "{err}");
     }
 
     #[test]
@@ -962,31 +1005,6 @@ mod tests {
     }
 
     #[test]
-    fn advisory_mode_downgrades_block_to_log() {
-        let compiled = compile(json!({
-            "mode": "advisory",
-            "checks": [
-                {"stage": "output", "type": "blocklist", "words": ["x"], "on_fail": "block"},
-            ]
-        }))
-        .unwrap();
-        let hits = compiled.evaluate(GuardrailStage::Output, "x", None, &no_skip());
-        assert_eq!(hits[0].action, GuardrailAction::Log);
-    }
-
-    #[test]
-    fn on_fail_log_yields_log_action_in_active_mode() {
-        let compiled = compile(json!({
-            "checks": [
-                {"stage": "output", "type": "blocklist", "words": ["x"], "on_fail": "log"},
-            ]
-        }))
-        .unwrap();
-        let hits = compiled.evaluate(GuardrailStage::Output, "x", None, &no_skip());
-        assert_eq!(hits[0].action, GuardrailAction::Log);
-    }
-
-    #[test]
     fn skip_suppresses_checks_by_index() {
         let compiled = compile(json!({
             "checks": [
@@ -998,47 +1016,96 @@ mod tests {
         let hits = compiled.evaluate(GuardrailStage::Output, "x y", None, &|i| i == 0);
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].check_index, 1);
-    }
-
-    #[test]
-    fn enforces_limits() {
-        let too_many_checks: Vec<_> = (0..=MAX_CHECKS)
-            .map(|_| json!({"stage": "output", "type": "blocklist", "words": ["x"]}))
-            .collect();
-        assert!(
-            compile(json!({"checks": too_many_checks}))
-                .unwrap_err()
-                .contains("too many checks")
+        assert_eq!(hits[0].check_label, "blocklist#1");
+        assert_eq!(hits[0].matched.as_deref(), Some("y"));
+        assert_eq!(
+            compiled
+                .evaluate(GuardrailStage::Output, "x y", None, &no_skip())
+                .iter()
+                .map(|h| h.check_index)
+                .collect::<Vec<_>>(),
+            vec![0, 1]
         );
-
-        let long_entry = "a".repeat(MAX_ENTRY_LEN + 1);
         assert!(
-            compile(json!({
-                "checks": [{"stage": "output", "type": "blocklist", "words": [long_entry]}]
-            }))
-            .unwrap_err()
-            .contains("exceeds")
-        );
-
-        assert!(
-            compile(json!({
-                "checks": [{"stage": "output", "type": "blocklist", "words": []}]
-            }))
-            .unwrap_err()
-            .contains("must not be empty")
+            compiled
+                .evaluate(GuardrailStage::Output, "x y", None, &|_| true)
+                .is_empty()
         );
     }
 
     #[test]
-    fn unknown_fields_are_rejected_gracefully_by_value_parse() {
-        // serde keeps unknown fields by default for forward-compat; the
-        // important part is that a wrong type errors with a clear message.
+    fn check_and_entry_limits_accept_boundary_and_reject_next_byte() {
+        let check = json!({"stage":"output", "type":"blocklist", "words":["x"]});
+        assert!(compile(json!({"checks":vec![check.clone();64]})).is_ok());
+        assert_eq!(
+            compile(json!({"checks":vec![check;65]})).unwrap_err(),
+            "too many checks: 65 (max 64)"
+        );
+        for (kind, field, stage) in [
+            ("blocklist", "words", "output"),
+            ("regex", "patterns", "output"),
+            ("tool_pattern", "tools", "tool_use"),
+            ("moderation", "categories", "output"),
+        ] {
+            let mut check = json!({"id":"bounded", "type":kind,"stage":stage});
+            check[field] = json!(vec!["x"; 64]);
+            assert!(compile(json!({"checks":[check.clone()]})).is_ok(), "{kind}");
+            check[field] = json!(vec!["x"; 65]);
+            assert_eq!(
+                compile(json!({"checks":[check.clone()]})).unwrap_err(),
+                format!("check 'bounded': too many {field}: 65 (max 64)")
+            );
+            for (entry, valid) in [
+                ("é".repeat(256), true),
+                (format!("{}x", "é".repeat(256)), false),
+                (String::new(), false),
+            ] {
+                check[field] = json!([entry]);
+                assert_eq!(
+                    compile(json!({"checks":[check.clone()]})).is_ok(),
+                    valid,
+                    "{kind}"
+                );
+            }
+            check[field] = json!([]);
+            assert_eq!(
+                compile(json!({"checks":[check]})).is_ok(),
+                kind == "moderation",
+                "{kind}"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_config_reports_parse_context() {
+        // Invalid container types must retain config context for callers.
         let err = GuardrailsConfig::from_value(&json!({"checks": "nope"})).unwrap_err();
         assert!(err.contains("invalid guardrails config"), "{err}");
     }
 
     #[test]
     fn wildcard_match_covers_anchors_and_inner_stars() {
+        for (pattern, name, expected) in [
+            ("", "", true),
+            ("", "x", false),
+            ("*", "", true),
+            ("a*b", "ab", true),
+            ("a*b", "aba", false),
+            ("a*b", "xab", false),
+            ("a*a", "a", false),
+            ("a**b", "ab", true),
+            ("a*b*c", "acb", false),
+            ("é*界", "é中界", true),
+            ("file?.*", "file1.txt", false),
+            ("file?.*", "file?.txt", true),
+            ("[ab]*", "abc", false),
+        ] {
+            assert_eq!(
+                wildcard_match(pattern, name),
+                expected,
+                "{pattern:?}/{name:?}"
+            );
+        }
         assert!(wildcard_match("bash*", "bashkit_exec"));
         assert!(wildcard_match("*_file", "read_file"));
         assert!(wildcard_match("mcp_*__delete_*", "mcp_github__delete_repo"));
@@ -1137,7 +1204,7 @@ mod tests {
 
     #[test]
     fn llm_judge_prompt_too_long_rejected() {
-        let long_prompt = "x".repeat(MAX_JUDGE_PROMPT_LEN + 1);
+        let long_prompt = "x".repeat(4_001);
         let err = compile(json!({
             "checks": [
                 {"stage": "tool_use", "type": "llm_judge", "prompt": long_prompt},
@@ -1145,60 +1212,6 @@ mod tests {
         }))
         .unwrap_err();
         assert!(err.contains("exceeds"), "{err}");
-    }
-
-    #[test]
-    fn llm_judge_not_in_sync_evaluate() {
-        // A config with only an llm_judge check contributes nothing to sync
-        // evaluate() — no hits, ever.
-        let compiled = compile(json!({
-            "checks": [
-                {"stage": "tool_use", "type": "llm_judge", "prompt": "Block everything."},
-            ]
-        }))
-        .unwrap();
-        assert!(
-            compiled
-                .evaluate(
-                    GuardrailStage::ToolUse,
-                    "anything",
-                    Some("tool"),
-                    &no_skip()
-                )
-                .is_empty()
-        );
-    }
-
-    #[test]
-    fn llm_judge_advisory_downgrades_judge_action() {
-        let compiled = compile(json!({
-            "mode": "advisory",
-            "checks": [
-                {"stage": "tool_use", "type": "llm_judge", "prompt": "p", "on_fail": "block"},
-            ]
-        }))
-        .unwrap();
-        let check = compiled
-            .judge_checks_for_stage(GuardrailStage::ToolUse)
-            .next()
-            .unwrap();
-        // advisory mode downgrades block → log
-        assert_eq!(compiled.judge_action(check.on_fail), GuardrailAction::Log);
-    }
-
-    #[test]
-    fn llm_judge_active_block_yields_block_action() {
-        let compiled = compile(json!({
-            "checks": [
-                {"stage": "tool_use", "type": "llm_judge", "prompt": "p", "on_fail": "block"},
-            ]
-        }))
-        .unwrap();
-        let check = compiled
-            .judge_checks_for_stage(GuardrailStage::ToolUse)
-            .next()
-            .unwrap();
-        assert_eq!(compiled.judge_action(check.on_fail), GuardrailAction::Block);
     }
 
     #[test]
@@ -1320,7 +1333,7 @@ mod tests {
 
     #[test]
     fn mcp_ref_too_long_rejected() {
-        let long = "x".repeat(MAX_MCP_REF_LEN + 1);
+        let long = "x".repeat(129);
         let err = compile(json!({
             "checks": [
                 {"stage": "tool_use", "type": "mcp", "server": long, "tool": "scan"},
@@ -1328,57 +1341,6 @@ mod tests {
         }))
         .unwrap_err();
         assert!(err.contains("exceeds"), "{err}");
-    }
-
-    #[test]
-    fn mcp_not_in_sync_evaluate() {
-        let compiled = compile(json!({
-            "checks": [
-                {"stage": "tool_use", "type": "mcp", "server": "guard", "tool": "scan"},
-            ]
-        }))
-        .unwrap();
-        assert!(
-            compiled
-                .evaluate(
-                    GuardrailStage::ToolUse,
-                    "anything",
-                    Some("tool"),
-                    &no_skip()
-                )
-                .is_empty()
-        );
-    }
-
-    #[test]
-    fn mcp_advisory_downgrades_action() {
-        let compiled = compile(json!({
-            "mode": "advisory",
-            "checks": [
-                {"stage": "tool_use", "type": "mcp", "server": "g", "tool": "t", "on_fail": "block"},
-            ]
-        }))
-        .unwrap();
-        let check = compiled
-            .mcp_checks_for_stage(GuardrailStage::ToolUse)
-            .next()
-            .unwrap();
-        assert_eq!(compiled.async_action(check.on_fail), GuardrailAction::Log);
-    }
-
-    #[test]
-    fn mcp_active_block_yields_block_action() {
-        let compiled = compile(json!({
-            "checks": [
-                {"stage": "tool_use", "type": "mcp", "server": "g", "tool": "t", "on_fail": "block"},
-            ]
-        }))
-        .unwrap();
-        let check = compiled
-            .mcp_checks_for_stage(GuardrailStage::ToolUse)
-            .next()
-            .unwrap();
-        assert_eq!(compiled.async_action(check.on_fail), GuardrailAction::Block);
     }
 
     #[test]
@@ -1403,5 +1365,178 @@ mod tests {
         assert_eq!(value["checks"][0]["tool"], "scan");
         let back = GuardrailsConfig::from_value(&value).unwrap();
         assert_eq!(back, cfg);
+    }
+
+    #[test]
+    fn effective_actions_cover_every_mode_and_failure_policy() {
+        for (mode, on_fail, expected) in [
+            ("active", "block", GuardrailAction::Block),
+            ("active", "log", GuardrailAction::Log),
+            ("advisory", "block", GuardrailAction::Log),
+            ("advisory", "log", GuardrailAction::Log),
+        ] {
+            let compiled=compile(json!({"mode":mode,"checks":[
+                {"stage":"output","type":"blocklist","words":["x"],"on_fail":on_fail,"replacement":"withheld"},
+                {"stage":"tool_use","type":"llm_judge","prompt":"policy","on_fail":on_fail},
+                {"stage":"tool_output","type":"mcp","server":"guard","tool":"scan","on_fail":on_fail},
+                {"stage":"output","type":"moderation","on_fail":on_fail}
+            ]})).unwrap();
+            let hits = compiled.evaluate(GuardrailStage::Output, "x", None, &no_skip());
+            assert_eq!(hits.len(), 1);
+            assert_eq!(hits[0].action, expected, "{mode}/{on_fail}");
+            assert_eq!(hits[0].replacement.as_deref(), Some("withheld"));
+            let judge = compiled
+                .judge_checks_for_stage(GuardrailStage::ToolUse)
+                .next()
+                .unwrap();
+            let mcp = compiled
+                .mcp_checks_for_stage(GuardrailStage::ToolOutput)
+                .next()
+                .unwrap();
+            let moderation = compiled
+                .moderation_checks_for_stage(GuardrailStage::Output)
+                .next()
+                .unwrap();
+            assert_eq!(compiled.judge_action(judge.on_fail), expected);
+            assert_eq!(compiled.async_action(mcp.on_fail), expected);
+            assert_eq!(compiled.async_action(moderation.on_fail), expected);
+        }
+    }
+
+    #[test]
+    fn moderation_compiles_defaults_overrides_and_stays_out_of_sync_evaluation() {
+        let compiled=compile(json!({"checks":[
+            {"stage":"output","type":"moderation"},
+            {"id":"custom","stage":"output","type":"moderation","categories":["private"],"threshold":100,"on_fail":"log","replacement":"hidden"}
+        ]})).unwrap();
+        let checks: Vec<_> = compiled
+            .moderation_checks_for_stage(GuardrailStage::Output)
+            .collect();
+        assert_eq!(checks.len(), 2);
+        assert_eq!(
+            (
+                checks[0].index,
+                checks[0].label.as_str(),
+                checks[0].threshold
+            ),
+            (0, "moderation#0", 50)
+        );
+        assert_eq!(
+            checks[0].categories,
+            [
+                "hate",
+                "harassment",
+                "self_harm",
+                "sexual",
+                "violence",
+                "illicit"
+            ]
+        );
+        assert_eq!(checks[0].on_fail, GuardrailOnFail::Block);
+        assert_eq!(checks[0].replacement, None);
+        assert_eq!(
+            (
+                checks[1].index,
+                checks[1].label.as_str(),
+                checks[1].threshold
+            ),
+            (1, "custom", 100)
+        );
+        assert_eq!(checks[1].categories, ["private"]);
+        assert_eq!(checks[1].on_fail, GuardrailOnFail::Log);
+        assert_eq!(checks[1].replacement.as_deref(), Some("hidden"));
+        for stage in [
+            GuardrailStage::Output,
+            GuardrailStage::ToolUse,
+            GuardrailStage::ToolOutput,
+        ] {
+            assert_eq!(compiled.has_stage(stage), stage == GuardrailStage::Output);
+            assert!(
+                compiled
+                    .evaluate(stage, "private violence", Some("tool"), &no_skip())
+                    .is_empty()
+            );
+            if stage != GuardrailStage::Output {
+                assert_eq!(compiled.moderation_checks_for_stage(stage).count(), 0);
+            }
+        }
+        for (threshold, valid) in [(0, true), (100, true), (101, false), (255, false)] {
+            assert_eq!(
+                compile(
+                    json!({"checks":[{"stage":"output","type":"moderation","threshold":threshold}]})
+                )
+                .is_ok(),
+                valid
+            );
+        }
+        for stage in ["tool_use", "tool_output"] {
+            assert_eq!(
+                compile(json!({"checks":[{"stage":stage,"type":"moderation"}]})).unwrap_err(),
+                "check 'moderation#0': moderation is only supported on the 'output' stage"
+            );
+        }
+    }
+
+    #[test]
+    fn common_metadata_limits_apply_to_every_compiler() {
+        for mut check in [
+            json!({"stage":"output","type":"blocklist","words":["x"]}),
+            json!({"stage":"tool_use","type":"llm_judge","prompt":"p"}),
+            json!({"stage":"tool_use","type":"mcp","server":"g","tool":"t"}),
+            json!({"stage":"output","type":"moderation"}),
+        ] {
+            check["id"] = json!("é".repeat(64));
+            check["replacement"] = json!("é".repeat(1000));
+            assert!(compile(json!({"checks":[check.clone()]})).is_ok());
+            check["replacement"] = json!(format!("{}x", "é".repeat(1000)));
+            assert!(
+                compile(json!({"checks":[check.clone()]}))
+                    .unwrap_err()
+                    .ends_with("replacement exceeds 2000 bytes")
+            );
+            check.as_object_mut().unwrap().remove("replacement");
+            for id in [String::new(), "é".repeat(65)] {
+                check["id"] = json!(id);
+                assert_eq!(
+                    compile(json!({"checks":[check.clone()]})).unwrap_err(),
+                    "check #0: id must be 1..=64 characters"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn async_reference_boundaries_are_bytes_and_include_both_mcp_fields() {
+        for (kind, field, limit) in [
+            ("llm_judge", "prompt", 4000),
+            ("mcp", "server", 128),
+            ("mcp", "tool", 128),
+        ] {
+            let mut check =
+                json!({"stage":"tool_use","type":kind,"prompt":"p","server":"g","tool":"t"});
+            check[field] = json!("é".repeat(limit / 2));
+            assert!(compile(json!({"checks":[check.clone()]})).is_ok());
+            check[field] = json!(format!("{}x", "é".repeat(limit / 2)));
+            assert!(
+                compile(json!({"checks":[check]}))
+                    .unwrap_err()
+                    .contains(&format!("{field} exceeds {limit} bytes"))
+            );
+        }
+    }
+
+    #[test]
+    fn match_excerpt_is_utf8_safe_and_bounded_for_each_sync_rule() {
+        let text = format!("{}界tail", "a".repeat(199));
+        for check in [
+            json!({"stage":"tool_use","type":"regex","patterns":[".+"]}),
+            json!({"stage":"tool_use","type":"blocklist","words":[text.clone()]}),
+            json!({"stage":"tool_use","type":"tool_pattern","tools":["*"]}),
+        ] {
+            let compiled = compile(json!({"checks":[check]})).unwrap();
+            let hits = compiled.evaluate(GuardrailStage::ToolUse, &text, Some(&text), &no_skip());
+            assert_eq!(hits.len(), 1);
+            assert_eq!(hits[0].matched, Some("a".repeat(199)));
+        }
     }
 }

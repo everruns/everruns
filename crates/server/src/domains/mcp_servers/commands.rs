@@ -32,10 +32,15 @@ fn validate_url(url: &str) -> Result<(), CommandError> {
     Ok(())
 }
 
-/// Validate name is non-empty.
+/// Validate the name can be used as an unambiguous MCP tool prefix.
 fn validate_mcp_name(name: &str) -> Result<(), CommandError> {
     if name.trim().is_empty() {
         return Err(CommandError::bad_request("Name cannot be empty"));
+    }
+    if !everruns_core::mcp_server::is_valid_mcp_server_name(name) {
+        return Err(CommandError::bad_request(
+            "MCP server name cannot contain consecutive underscores or end in an underscore after sanitization",
+        ));
     }
     Ok(())
 }
@@ -572,5 +577,22 @@ mod oauth_authority_tests {
             Some("https://new.example/mcp"),
             None,
         ));
+    }
+    #[test]
+    fn server_names_reject_ambiguous_sanitized_prefixes() {
+        for name in [
+            "",
+            " ",
+            "_",
+            "docs_",
+            "docs-",
+            "docs__private",
+            "docs..private",
+        ] {
+            assert!(validate_mcp_name(name).is_err(), "{name:?}");
+        }
+        for name in ["docs", "Docs API", "docs-api", "_docs"] {
+            validate_mcp_name(name).unwrap();
+        }
     }
 }

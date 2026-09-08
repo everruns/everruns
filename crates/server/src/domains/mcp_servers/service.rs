@@ -192,6 +192,9 @@ impl McpServerService {
     }
 
     pub async fn create(&self, caller: &Caller, req: CreateMcpServerRequest) -> Result<McpServer> {
+        if !everruns_core::mcp_server::is_valid_mcp_server_name(&req.name) {
+            anyhow::bail!("MCP server name has an ambiguous tool prefix");
+        }
         // Org-managed MCP servers are always remote; stdio is reserved for
         // single-tenant runtime/CLI hosts (knowledge/integrations/runtime-mcp.md D2).
         if req.transport_type.is_local() {
@@ -292,6 +295,13 @@ impl McpServerService {
         id: Uuid,
         req: UpdateMcpServerRequest,
     ) -> Result<Option<McpServer>> {
+        if req
+            .name
+            .as_deref()
+            .is_some_and(|name| !everruns_core::mcp_server::is_valid_mcp_server_name(name))
+        {
+            anyhow::bail!("MCP server name has an ambiguous tool prefix");
+        }
         if let Some(existing) = self.db.get_mcp_server(caller.org_id, id).await?
             && !matches!(existing.status.as_str(), "active" | "disabled")
         {
@@ -725,13 +735,9 @@ impl McpServerService {
         let server_prefix_lower = server_prefix.to_lowercase();
 
         let server = servers.into_iter().find(|s| {
-            let sanitized = s
-                .name
-                .to_lowercase()
-                .chars()
-                .map(|c| if c.is_alphanumeric() { c } else { '_' })
-                .collect::<String>();
-            sanitized == server_prefix_lower && s.status == McpServerStatus::Active
+            everruns_core::mcp_server::is_valid_mcp_server_name(&s.name)
+                && everruns_core::sanitize_mcp_server_name(&s.name) == server_prefix_lower
+                && s.status == McpServerStatus::Active
         });
 
         let server = match server {
@@ -1005,6 +1011,31 @@ mod tests {
         )
         .await
         .unwrap();
+
+        for name in ["docs_", "docs__private", "docs-"] {
+            db.create_mcp_server(
+                1,
+                CreateMcpServerRow {
+                    name: name.into(),
+                    description: None,
+                    url: "https://invalid.example/mcp".into(),
+                    transport_type: "http".into(),
+                    api_key_encrypted: None,
+                    headers: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+            let prefix = everruns_core::sanitize_mcp_server_name(name);
+            assert!(
+                svc.resolve_by_prefix(&test_caller(1), &prefix)
+                    .await
+                    .unwrap()
+                    .is_none(),
+                "stored invalid name {name} resolved"
+            );
+        }
 
         let resolved = svc
             .resolve_by_prefix(&test_caller(1), "my_cool_server")
@@ -1450,5 +1481,35 @@ mod tests {
 
         let result = svc.get_tools(&test_caller(1), row.id.uuid(), false).await;
         assert!(result.is_err());
+    }
+    #[tokio::test]
+    async fn create_and_rename_reject_ambiguous_names_without_changing_stored_identity() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = McpServerService::new(db.clone(), Some(test_encryption()));
+        let caller = test_caller(1);
+        for name in ["docs_", "docs-", "docs__private", ""] {
+            let request: CreateMcpServerRequest = serde_json::from_value(
+                serde_json::json!({"name":name,"url":"https://example.com/mcp"}),
+            )
+            .unwrap();
+            assert!(svc.create(&caller, request).await.is_err(), "{name}");
+        }
+        assert!(svc.list(&caller, None, false).await.unwrap().is_empty());
+        let request: CreateMcpServerRequest = serde_json::from_value(
+            serde_json::json!({"name":"docs_api","url":"https://example.com/mcp"}),
+        )
+        .unwrap();
+        let server = svc.create(&caller, request).await.unwrap();
+        let update: UpdateMcpServerRequest =
+            serde_json::from_value(serde_json::json!({"name":"docs_"})).unwrap();
+        assert!(svc.update(&caller, server.id.uuid(), update).await.is_err());
+        assert_eq!(
+            svc.get(&caller, server.id.uuid())
+                .await
+                .unwrap()
+                .unwrap()
+                .name,
+            "docs_api"
+        );
     }
 }
