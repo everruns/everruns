@@ -18,6 +18,7 @@ mod driver_tests {
             max_tokens: None,
             tools: vec![],
             reasoning_effort: None,
+            reasoning_state: None,
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
             provider_opaque_context: None,
