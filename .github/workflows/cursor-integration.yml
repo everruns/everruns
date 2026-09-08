@@ -61,6 +61,18 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Doppler CLI
+        id: doppler_install
+        # Absorbs one transient installer failure; see
+        # scripts/test-doppler-install-retry.sh for why.
+        continue-on-error: true
+        uses: dopplerhq/cli-action@v4
+
+      - name: Pause before Doppler CLI retry
+        if: steps.doppler_install.outcome == 'failure'
+        run: sleep 15
+
+      - name: Install Doppler CLI (retry)
+        if: steps.doppler_install.outcome == 'failure'
         uses: dopplerhq/cli-action@v4
 
       - name: Install Rust toolchain
