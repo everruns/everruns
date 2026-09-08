@@ -211,20 +211,19 @@ pub enum AgentLoopError {
 }
 
 impl AgentLoopError {
-    /// Prefix a provider-bound error without discarding its semantic variant.
+    /// Prefix provider-bound messages without changing structured identifiers.
     pub fn with_provider(mut self, provider: &str) -> Self {
         let prefix = format!("provider '{provider}': ");
         match &mut self {
             AgentLoopError::Llm(error) if !error.message.starts_with(&prefix) => {
                 error.message.insert_str(0, &prefix)
             }
-            AgentLoopError::RequestTooLarge(message)
-            | AgentLoopError::ModelNotAvailable(message)
-            | AgentLoopError::Configuration(message)
+            AgentLoopError::RequestTooLarge(message) | AgentLoopError::Configuration(message)
                 if !message.starts_with(&prefix) =>
             {
                 message.insert_str(0, &prefix)
             }
+            // ModelNotAvailable stores a model ID, not a free-form message.
             _ => {}
         }
         self
@@ -787,7 +786,9 @@ mod tests {
             request.user_facing_message(),
             "The conversation has become too long for the model to process. Please start a new session or reduce the context size."
         );
-        let model = AgentLoopError::model_not_available("gpt-99");
+        let model = AgentLoopError::model_not_available("gpt-99")
+            .with_provider("custom")
+            .with_provider("custom");
         assert!(!model.is_request_too_large());
         assert!(model.is_model_not_available());
         assert_eq!(model.model_not_available_id(), Some("gpt-99"));

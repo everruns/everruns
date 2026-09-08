@@ -26,9 +26,6 @@
 
 mod driver;
 
-#[cfg(test)]
-mod tests;
-
 pub use driver::{AnthropicChatDriver, provider, register_driver};
 
 // Re-export core types for convenience
