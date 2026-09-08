@@ -443,98 +443,205 @@ mod tests {
         }
     }
 
-    #[test]
-    fn debug_redacts_secrets() {
-        // Credentials must never surface through `{:?}` (logs, error chains).
-        let api = MaiAuth::ApiKey("super-secret-key".into());
-        let rendered = format!("{api:?}");
-        assert!(!rendered.contains("super-secret-key"), "{rendered}");
-        assert!(rendered.contains("REDACTED"), "{rendered}");
-
-        let oauth = EntraOAuthConfig {
-            tenant_id: "tenant".into(),
-            client_id: "client".into(),
-            client_secret: "super-secret-value".into(),
-            scope: DEFAULT_ENTRA_SCOPE.into(),
-            authority: DEFAULT_ENTRA_AUTHORITY.into(),
-        };
-        let rendered = format!("{:?}", MaiAuth::EntraOAuth(oauth));
-        assert!(!rendered.contains("super-secret-value"), "{rendered}");
-        assert!(rendered.contains("REDACTED"), "{rendered}");
-        // Non-secret fields remain visible for diagnostics.
-        assert!(rendered.contains("tenant"), "{rendered}");
-        assert!(rendered.contains("client"), "{rendered}");
-    }
-
-    #[test]
-    fn api_key_selected_when_no_oauth() {
-        let auth = MaiAuth::from_driver_config(&driver_config(Some("key-123"), None)).unwrap();
-        assert!(matches!(auth, MaiAuth::ApiKey(k) if k == "key-123"));
-    }
-
-    #[test]
-    fn oauth_selected_from_credential_json_document() {
-        // Server-stored providers carry OAuth as a JSON document in the
-        // (encrypted) api_key/credential field, like Bedrock. This is what makes
-        // OAuth work end-to-end for chat and model sync without metadata plumbing.
-        let credential = serde_json::json!({
-            "tenant_id": "tenant",
-            "client_id": "client",
-            "client_secret": "secret",
-            "scope": "https://example/.default",
-        })
-        .to_string();
-        let auth = MaiAuth::from_driver_config(&driver_config(Some(&credential), None)).unwrap();
-        match auth {
-            MaiAuth::EntraOAuth(cfg) => {
-                assert_eq!(cfg.tenant_id, "tenant");
-                assert_eq!(cfg.client_id, "client");
-                assert_eq!(cfg.scope, "https://example/.default");
-            }
-            other => panic!("expected EntraOAuth from credential JSON, got {other:?}"),
+    fn oauth(tenant: &str) -> EntraOAuthConfig {
+        EntraOAuthConfig {
+            tenant_id: tenant.into(),
+            client_id: "client-marker".into(),
+            client_secret: "secret-marker".into(),
+            scope: "https://cognitiveservices.azure.com/.default".into(),
+            authority: "https://login.microsoftonline.com".into(),
         }
     }
-
-    #[test]
-    fn plain_key_credential_is_api_key() {
-        // A normal Foundry key parses to a lone `api_key` field → api-key auth.
-        let auth = MaiAuth::from_driver_config(&driver_config(Some("sk-foundry-plain-key"), None))
-            .expect("plain key is valid");
-        assert!(matches!(auth, MaiAuth::ApiKey(k) if k == "sk-foundry-plain-key"));
+    fn auth_request() -> ProviderAuthRequest<'static> {
+        ProviderAuthRequest {
+            method: "POST",
+            url: "https://resource.services.ai.azure.com/openai/v1/chat/completions",
+            headers: &[],
+            body: b"{}",
+        }
     }
-
     #[test]
-    fn malformed_oauth_credential_json_is_a_clear_error() {
-        // Looks like Entra (has tenant_id) but is missing client_secret.
-        let credential = serde_json::json!({ "tenant_id": "t", "client_id": "c" }).to_string();
-        let err = MaiAuth::from_driver_config(&driver_config(Some(&credential), None)).unwrap_err();
-        assert!(err.to_string().contains("Entra ID OAuth config"));
+    fn debug_preserves_diagnostics_while_redacting_secrets() {
+        assert_eq!(
+            format!("{:?}", MaiAuth::ApiKey("key-marker".into())),
+            "ApiKey(\"[REDACTED]\")"
+        );
+        assert_eq!(
+            format!("{:?}", MaiAuth::EntraOAuth(oauth("tenant-marker"))),
+            "EntraOAuth(EntraOAuthConfig { tenant_id: \"tenant-marker\", client_id: \"client-marker\", client_secret: \"[REDACTED]\", scope: \"https://cognitiveservices.azure.com/.default\", authority: \"https://login.microsoftonline.com\" })"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                ApiKeyAuth {
+                    key: "key-marker".into()
+                }
+            ),
+            "ApiKeyAuth { key: \"[REDACTED]\" }"
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                FailingAuth {
+                    message: "private-error-marker".into()
+                }
+            ),
+            "FailingAuth { .. }"
+        );
     }
-
+    #[tokio::test]
+    async fn credential_and_metadata_precedence_reach_complete_auth_headers() {
+        use serde_json::json;
+        for (document, extra, key) in [
+            ("plain-key", None, "plain-key"),
+            (
+                r#"{"api_key":"json-key"}"#,
+                Some(json!({"unrelated":true})),
+                "json-key",
+            ),
+        ] {
+            let provider = MaiAuth::from_driver_config(&driver_config(Some(document), extra))
+                .unwrap()
+                .into_provider();
+            assert_eq!(
+                provider.headers(auth_request()).await.unwrap(),
+                vec![("api-key".into(), key.into())]
+            );
+        }
+        let typed=json!({"tenant_id":"typed-tenant","client_id":"typed-client","client_secret":"typed-secret","scope":"https://custom/.default","authority":"https://login.microsoftonline.us"}).to_string();
+        for (document, extra, expected) in [
+            (
+                typed.as_str(),
+                None,
+                (
+                    "typed-tenant",
+                    "typed-client",
+                    "typed-secret",
+                    "https://custom/.default",
+                    "https://login.microsoftonline.us",
+                ),
+            ),
+            (
+                typed.as_str(),
+                Some(
+                    json!({"auth":"entra","tenant_id":"metadata-tenant","client_id":"metadata-client","client_secret":"metadata-secret"}),
+                ),
+                (
+                    "metadata-tenant",
+                    "metadata-client",
+                    "metadata-secret",
+                    "https://cognitiveservices.azure.com/.default",
+                    "https://login.microsoftonline.com",
+                ),
+            ),
+            (
+                r#"{"api_key":"fallback-key","tenant_id":"typed-tenant","client_id":"typed-client","client_secret":"typed-secret","scope":"","authority":""}"#,
+                None,
+                (
+                    "typed-tenant",
+                    "typed-client",
+                    "typed-secret",
+                    "https://cognitiveservices.azure.com/.default",
+                    "https://login.microsoftonline.com",
+                ),
+            ),
+        ] {
+            let provider = MaiAuth::from_driver_config(&driver_config(Some(document), extra))
+                .unwrap()
+                .into_provider();
+            let oauth = provider
+                .as_any()
+                .downcast_ref::<EntraOAuthProvider>()
+                .expect("OAuth strategy");
+            let cfg = &oauth.config;
+            assert_eq!(
+                (
+                    cfg.tenant_id.as_str(),
+                    cfg.client_id.as_str(),
+                    cfg.client_secret.as_str(),
+                    cfg.scope.as_str(),
+                    cfg.authority.as_str()
+                ),
+                expected
+            );
+            assert_eq!(
+                cfg.token_url(),
+                format!("{}/{}/oauth2/v2.0/token", expected.4, expected.0)
+            );
+            *oauth.cache.lock().await = Some(CachedToken {
+                token: "cached-bearer".into(),
+                expires_at: Utc::now() + Duration::seconds(600),
+            });
+            assert_eq!(
+                provider.headers(auth_request()).await.unwrap(),
+                vec![("authorization".into(), "Bearer cached-bearer".into())]
+            );
+        }
+    }
     #[test]
-    fn oauth_selected_from_metadata_extra() {
-        let extra = serde_json::json!({
-            "tenant_id": "tenant",
-            "client_id": "client",
-            "client_secret": "secret",
-        });
-        let auth = MaiAuth::from_driver_config(&driver_config(Some("key"), Some(extra))).unwrap();
-        match auth {
-            MaiAuth::EntraOAuth(cfg) => {
-                assert_eq!(cfg.tenant_id, "tenant");
-                assert_eq!(cfg.scope, DEFAULT_ENTRA_SCOPE);
-                assert_eq!(cfg.authority, DEFAULT_ENTRA_AUTHORITY);
+    fn partial_oauth_never_falls_back_to_a_valid_api_key() {
+        use serde_json::json;
+        for missing in ["tenant_id", "client_id", "client_secret"] {
+            let mut partial = json!({"tenant_id":"tenant-marker","client_id":"client-marker","client_secret":"secret-marker"});
+            partial.as_object_mut().unwrap().remove(missing);
+            for from_metadata in [false, true] {
+                let mut document = partial.clone();
+                document["api_key"] = json!("valid-fallback-key");
+                let config = if from_metadata {
+                    driver_config(Some("valid-fallback-key"), Some(partial.clone()))
+                } else {
+                    driver_config(Some(&document.to_string()), None)
+                };
+                let error = MaiAuth::from_driver_config(&config)
+                    .unwrap_err()
+                    .to_string();
+                assert!(
+                    error.starts_with("LLM error: Invalid Microsoft Entra ID OAuth config"),
+                    "{error}"
+                );
+                assert!(
+                    error.contains(&format!("missing field `{missing}`")),
+                    "{error}"
+                );
+                for secret in ["secret-marker", "valid-fallback-key"] {
+                    assert!(!error.contains(secret));
+                }
+            }
+        }
+        for key in [None, Some("")] {
+            assert_eq!(
+                MaiAuth::from_driver_config(&driver_config(key, None))
+                    .unwrap_err()
+                    .to_string(),
+                "LLM error: Microsoft MAI provider is not authenticated: configure an Azure AI Foundry API key, or Entra ID OAuth credentials (tenant_id, client_id, client_secret)."
+            );
+        }
+    }
+    #[test]
+    fn authority_validation_covers_every_supported_cloud_and_forbidden_component() {
+        use serde_json::json;
+        for authority in [
+            "https://login.microsoftonline.com",
+            "https://login.microsoftonline.us",
+            "https://login.chinacloudapi.cn",
+        ] {
+            let document = json!({"tenant_id":"tenant","client_id":"client","client_secret":"secret","authority":authority});
+            for from_metadata in [false, true] {
+                let config = if from_metadata {
+                    driver_config(None, Some(document.clone()))
+                } else {
+                    driver_config(Some(&document.to_string()), None)
+                };
+                let MaiAuth::EntraOAuth(auth) = MaiAuth::from_driver_config(&config).unwrap()
+                else {
+                    panic!("OAuth expected")
+                };
                 assert_eq!(
-                    cfg.token_url(),
-                    "https://login.microsoftonline.com/tenant/oauth2/v2.0/token"
+                    auth.token_url(),
+                    format!("{authority}/tenant/oauth2/v2.0/token")
                 );
             }
-            other => panic!("expected EntraOAuth, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn oauth_authority_rejects_localhost_and_private_hosts() {
         for authority in [
             "http://127.0.0.1:39991",
             "https://127.0.0.1",
@@ -542,27 +649,6 @@ mod tests {
             "https://169.254.169.254",
             "https://10.0.0.5",
             "https://192.168.1.10",
-        ] {
-            let credential = serde_json::json!({
-                "tenant_id": "tenant",
-                "client_id": "client",
-                "client_secret": "secret",
-                "authority": authority,
-            })
-            .to_string();
-
-            let err = MaiAuth::from_driver_config(&driver_config(Some(&credential), None))
-                .expect_err("unsafe authority must be rejected");
-            assert!(
-                err.to_string().contains("OAuth authority URL"),
-                "{authority}: {err}"
-            );
-        }
-    }
-
-    #[test]
-    fn oauth_authority_rejects_non_entra_origins_and_url_components() {
-        for authority in [
             "https://example.com",
             "https://login.microsoftonline.com:444",
             "https://login.microsoftonline.com/path",
@@ -570,87 +656,141 @@ mod tests {
             "https://login.microsoftonline.com#fragment",
             "https://user:pass@login.microsoftonline.com",
             "https://user@login.microsoftonline.com",
+            "https://login.microsoftonline.com.evil.example",
+            "https://login.microsoftonline.com@evil.example",
         ] {
-            let extra = serde_json::json!({
-                "tenant_id": "tenant",
-                "client_id": "client",
-                "client_secret": "secret",
-                "authority": authority,
-            });
-
-            let err = MaiAuth::from_driver_config(&driver_config(None, Some(extra)))
-                .expect_err("unsupported authority must be rejected");
-            assert!(
-                err.to_string().contains("OAuth authority URL"),
-                "{authority}: {err}"
+            let document = json!({"tenant_id":"tenant","client_id":"client","client_secret":"secret","authority":authority});
+            for from_metadata in [false, true] {
+                let config = if from_metadata {
+                    driver_config(None, Some(document.clone()))
+                } else {
+                    driver_config(Some(&document.to_string()), None)
+                };
+                let error = MaiAuth::from_driver_config(&config)
+                    .unwrap_err()
+                    .to_string();
+                assert!(
+                    error.contains("OAuth authority URL"),
+                    "{authority}: {error}"
+                );
+            }
+        }
+    }
+    #[tokio::test]
+    async fn token_minting_cache_and_refresh_preserve_exact_client_credentials() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::builder().start().await;
+        let count = Arc::new(AtomicUsize::new(0));
+        let counter = count.clone();
+        Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(move |_: &wiremock::Request| {
+                let number = counter.fetch_add(1, Ordering::SeqCst) + 1;
+                ResponseTemplate::new(200).set_body_json(
+                    serde_json::json!({"access_token":format!("minted-{number}"),"expires_in":600}),
+                )
+            })
+            .mount(&server)
+            .await;
+        // Direct construction is a trusted embedder path, also used by chat_wire's local token fixture.
+        let mut config = oauth("tenant");
+        config.authority = server.uri();
+        config.client_id = "client+marker".into();
+        config.client_secret = "secret&marker".into();
+        let provider = EntraOAuthProvider::new(config);
+        let results =
+            futures::future::join_all((0..5).map(|_| provider.headers(auth_request()))).await;
+        for result in results {
+            assert_eq!(
+                result.unwrap(),
+                vec![("authorization".into(), "Bearer minted-1".into())]
+            );
+        }
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+        provider.cache.lock().await.as_mut().unwrap().expires_at =
+            Utc::now() + Duration::seconds(119);
+        assert_eq!(
+            provider.headers(auth_request()).await.unwrap(),
+            vec![("authorization".into(), "Bearer minted-2".into())]
+        );
+        assert_eq!(count.load(Ordering::SeqCst), 2);
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 2);
+        for request in requests {
+            assert_eq!(request.url.path(), "/tenant/oauth2/v2.0/token");
+            assert_eq!(
+                request.headers["content-type"],
+                "application/x-www-form-urlencoded"
+            );
+            assert_eq!(
+                String::from_utf8(request.body).unwrap(),
+                "grant_type=client_credentials&client_id=client%2Bmarker&client_secret=secret%26marker&scope=https%3A%2F%2Fcognitiveservices.azure.com%2F.default"
             );
         }
     }
-
-    #[test]
-    fn oauth_authority_accepts_microsoft_entra_origins() {
-        for authority in [
-            DEFAULT_ENTRA_AUTHORITY,
-            "https://login.microsoftonline.us",
-            "https://login.chinacloudapi.cn",
-        ] {
-            let credential = serde_json::json!({
-                "tenant_id": "tenant",
-                "client_id": "client",
-                "client_secret": "secret",
-                "authority": authority,
-            })
-            .to_string();
-
-            let auth = MaiAuth::from_driver_config(&driver_config(Some(&credential), None))
-                .expect("supported Microsoft authority should be accepted");
-            assert!(matches!(auth, MaiAuth::EntraOAuth(_)));
-        }
-    }
-
-    #[test]
-    fn missing_auth_is_an_error() {
-        let err = MaiAuth::from_driver_config(&driver_config(None, None)).unwrap_err();
-        assert!(err.to_string().contains("not authenticated"));
-    }
-
-    #[test]
-    fn partial_oauth_block_is_a_clear_error() {
-        // Looks like Entra (has tenant_id) but is missing client_secret.
-        let extra = serde_json::json!({ "tenant_id": "t", "client_id": "c" });
-        let err = MaiAuth::from_driver_config(&driver_config(None, Some(extra))).unwrap_err();
-        assert!(err.to_string().contains("Entra ID OAuth config"));
-    }
-
     #[tokio::test]
-    async fn api_key_provider_emits_api_key_header() {
-        let provider = MaiAuth::ApiKey("secret-key".to_string()).into_provider();
-        let headers = provider
-            .headers(ProviderAuthRequest {
-                method: "POST",
-                url: "https://example.services.ai.azure.com/openai/v1/chat/completions",
-                headers: &[],
-                body: b"{}",
-            })
-            .await
-            .unwrap();
-        let (name, value) = &headers[0];
-        assert_eq!(name, "api-key");
-        assert_eq!(value, "secret-key");
+    async fn failed_refresh_never_reuses_expired_tokens_or_follows_redirects() {
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let redirect_target = MockServer::builder().start().await;
+        for status in [302, 401, 200] {
+            let server = MockServer::builder().start().await;
+            Mock::given(wiremock::matchers::method("POST"))
+                .respond_with(
+                    ResponseTemplate::new(status)
+                        .insert_header("location", redirect_target.uri())
+                        .set_body_json(serde_json::json!({"error":"token unavailable"})),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+            let mut config = oauth("tenant");
+            config.authority = server.uri();
+            let provider = EntraOAuthProvider::new(config);
+            *provider.cache.lock().await = Some(CachedToken {
+                token: "expired-token".into(),
+                expires_at: Utc::now() - Duration::seconds(1),
+            });
+            let error = provider
+                .headers(auth_request())
+                .await
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.contains(if status == 200 {
+                    "Failed to parse Entra ID token response"
+                } else {
+                    "Entra ID token request failed"
+                }),
+                "{error}"
+            );
+            assert!(!error.contains("expired-token"));
+        }
+        assert!(
+            redirect_target
+                .received_requests()
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
-
     #[test]
-    fn cached_token_freshness_accounts_for_skew() {
-        let now = Utc::now();
-        let almost_expired = CachedToken {
-            token: "t".into(),
-            expires_at: now + Duration::seconds(30),
-        };
-        assert!(!almost_expired.is_fresh(now));
-        let fresh = CachedToken {
-            token: "t".into(),
-            expires_at: now + Duration::seconds(600),
-        };
-        assert!(fresh.is_fresh(now));
+    fn cached_token_refresh_boundary_is_strict_and_deterministic() {
+        let now = DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        for (seconds, fresh) in [
+            (-1, false),
+            (0, false),
+            (119, false),
+            (120, false),
+            (121, true),
+            (600, true),
+        ] {
+            let token = CachedToken {
+                token: "cached".into(),
+                expires_at: now + Duration::seconds(seconds),
+            };
+            assert_eq!(token.is_fresh(now), fresh, "expiry offset {seconds}");
+        }
     }
 }
