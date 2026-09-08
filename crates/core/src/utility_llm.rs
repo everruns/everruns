@@ -208,6 +208,7 @@ mod tests {
         assert!(config.speed.is_none());
         assert!(config.verbosity.is_none());
         assert!(config.cache_diagnostics.is_none());
+        assert!(config.reasoning_state.is_none());
     }
 
     #[test]
