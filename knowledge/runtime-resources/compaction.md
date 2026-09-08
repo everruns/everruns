@@ -37,6 +37,39 @@ call on short follow-ups after a long session. The same checkpoint re-arming,
 lineage-aware retry watermark, and failure fallback used by window pressure
 apply; cost pressure does not create a second compaction lifecycle.
 
+### Astra reasoning transitions
+
+Astra standard single-agent Responses conversations keep their initial request
+effort stable and replay ordered configuration changes. The prepared state is
+persisted before generation in the stream-start event and on completion in the
+assistant metadata; checkpoints preserve it when replacing history. This lets a
+restarted worker distinguish the baseline from the effective effort. Generation
+observability reports the effective effort and records the baseline separately,
+because the provider response continues to report the baseline.
+
+Configuration changes require explicit Responses compaction. They cannot be
+combined with automatic provider compaction, automatic truncation, or standalone
+compact requests. Proactive pressure and reactive context errors use the same
+explicit native operation, install its replacement atomically, and reassert the
+effective effort after the replacement boundary. All returned items after that
+boundary, including encrypted reasoning, remain in order. Incomplete, missing,
+ineffective, or failed replacements never become canonical. If explicit native
+compaction fails, the runtime surfaces the context error rather than trimming
+away the opaque history.
+
+This mode is scoped to Astra's supported efforts and native Responses driver.
+Changing model/provider starts a new effort epoch and clears the response handle;
+incompatible configuration updates are not sent to the new model. Builders who
+explicitly choose local summarization or observation masking keep request-level
+effort controls and their selected compaction strategy. No default model changes.
+
+Implementation and regression contracts live in
+[`reasoning_updates.rs`](../../crates/engine/src/execution/reason/reasoning_updates.rs),
+[`compaction.rs`](../../crates/engine/src/execution/reason/compaction.rs), and the
+[`Responses wire tests`](../../crates/provider/tests/openresponses_protocol_wire.rs).
+Provider contracts: [changing reasoning](https://developers.openai.com/api/docs/guides/reasoning#change-reasoning-mid-conversation)
+and [compaction output handling](https://developers.openai.com/api/docs/guides/compaction).
+
 ### Durable replacement checkpoints
 
 Compaction that replaces a history prefix MUST survive later turns and durable

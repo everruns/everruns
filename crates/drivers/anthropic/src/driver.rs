@@ -2413,6 +2413,7 @@ mod tests {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
             LlmMessage {
                 role: LlmMessageRole::Assistant,
@@ -2421,6 +2422,7 @@ mod tests {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
         ];
 
@@ -2448,6 +2450,7 @@ mod tests {
             tool_call_id: None,
             phase: None,
             reasoning: Vec::new(),
+            configuration_update: None,
         };
         let messages = vec![
             msg(LlmMessageRole::User, "turn 1"),
@@ -2481,6 +2484,7 @@ mod tests {
             tool_call_id: None,
             phase: None,
             reasoning: Vec::new(),
+            configuration_update: None,
         }];
 
         let (_, converted) = AnthropicChatDriver::convert_messages(&messages, true, 0);
@@ -2498,6 +2502,7 @@ mod tests {
             tool_call_id: None,
             phase: None,
             reasoning: Vec::new(),
+            configuration_update: None,
         };
         // A live `<facts>` block trails the last stable (assistant) message.
         let messages = vec![
@@ -2782,6 +2787,7 @@ mod tests {
             tool_call_id: None,
             phase: None,
             reasoning: Vec::new(),
+            configuration_update: None,
         }];
 
         let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
@@ -2868,6 +2874,7 @@ mod tests {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
             LlmMessage {
                 role: LlmMessageRole::User,
@@ -2876,6 +2883,7 @@ mod tests {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
         ];
 
@@ -2919,6 +2927,7 @@ mod tests {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -2927,6 +2936,7 @@ mod tests {
                 tool_call_id: Some("call_123".to_string()),
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
         ];
 
@@ -2962,6 +2972,7 @@ mod tests {
             tool_call_id: Some("trimmed_call".to_string()),
             phase: None,
             reasoning: Vec::new(),
+            configuration_update: None,
         }];
 
         let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
@@ -2986,6 +2997,7 @@ mod tests {
             tool_call_id: Some("call_img".to_string()),
             phase: None,
             reasoning: Vec::new(),
+            configuration_update: None,
         };
 
         let assistant = LlmMessage {
@@ -2999,6 +3011,7 @@ mod tests {
             tool_call_id: None,
             phase: None,
             reasoning: Vec::new(),
+            configuration_update: None,
         };
         let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant, msg], false, 0);
 
@@ -3050,6 +3063,7 @@ mod tests {
             tool_call_id: Some("call_txt".to_string()),
             phase: None,
             reasoning: Vec::new(),
+            configuration_update: None,
         };
 
         let assistant = LlmMessage {
@@ -3063,6 +3077,7 @@ mod tests {
             tool_call_id: None,
             phase: None,
             reasoning: Vec::new(),
+            configuration_update: None,
         };
         let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant, msg], false, 0);
 

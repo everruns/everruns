@@ -2,6 +2,11 @@
 
 ## 2026-09-05
 
+* Astra reasoning changes preserve the initial request effort, persist effective
+  effort through stream recovery and checkpoints, and use explicit Responses
+  compaction so configuration updates do not break long conversations. See
+  [Compaction](runtime-resources/compaction.md).
+
 * Integration capabilities can share their protocol and vendor operation across
   Framework and hosted execution while binding credentials in each context.
   Brave Search establishes the application adapter pattern and separates hosted
