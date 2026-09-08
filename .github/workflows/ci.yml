@@ -686,7 +686,7 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
   # Fast unit tests - no external dependencies (PostgreSQL, LLM APIs)
-  # Runs in ~30s, provides quick feedback on logic errors
+  # Keeps server compilation in the integration job that already builds it.
   unit-test:
     name: Unit Tests (Pure)
     runs-on: ubuntu-latest
@@ -724,9 +724,6 @@ jobs:
           cargo test -p everruns-anthropic -p everruns-openai -p everruns-gemini \
             -p everruns-bedrock -p everruns-fireworks -p everruns-mai \
             -p everruns-meta -p everruns-openrouter -p everruns-internal-protocol --all-features
-          # These API contracts use the in-memory TestServer, without PostgreSQL.
-          cargo test -p everruns-server --test mcp_url_consent_test \
-            --test mcp_url_elicitation_test --test sse_replay_test
           # Core and the local embedder: run the WHOLE suite (lib + integration +
           # doctests), not just --lib, so integration tests aren't silently skipped.
           # Both are pure (llmsim-based, no credentials or network).
@@ -1071,6 +1068,11 @@ jobs:
 
       - name: Run server integration tests (API + repository)
         run: cargo test -p everruns-server --test api_integration_test --test repository_integration_test --test repository_conformance_test -- --test-threads=1
+
+      # These contracts use in-memory TestServer instances, but share the server
+      # compilation above instead of rebuilding it in the pure-test job.
+      - name: Run in-memory server API contracts
+        run: cargo test -p everruns-server --test mcp_url_consent_test --test mcp_url_elicitation_test --test sse_replay_test
 
       # Blob-offload suite against the in-memory object_store backend (no S3
       # container). Exercises the same offload code paths the S3 job covers,
