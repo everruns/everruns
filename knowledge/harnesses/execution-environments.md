@@ -27,10 +27,15 @@ folds Yolop into the same contract:
 
 ### The word "sandbox" carries two meanings
 
-Everruns uses it for **where code runs**. `SessionSandboxProvider`
-(`crates/platform/src/session_sandbox.rs`) selects Bashkit, Daytona, E2B,
-Docker. Containment is whatever the provider happens to give: Bashkit is
-default-deny by construction, a Daytona VM is wide open inside itself.
+Everruns uses it for **where code runs**, and answers that question by which
+capability the harness enables. Bashkit, `container_sandbox`, Daytona, and E2B
+are four independent capabilities with four tool families and four state
+formats. `SessionSandboxProvider` (`crates/platform/src/session_sandbox.rs`) is
+the newer provider-neutral attempt at the same question, but it is behind an
+internal feature flag and Daytona is its only implementation. Containment is not
+a field anywhere: it is whatever the chosen capability happens to give, so
+Bashkit is default-deny by construction while a Daytona VM is wide open inside
+itself.
 
 Yolop uses it for **what code may touch**. `SandboxProvider`
 (`src/exec/sandbox.rs`, `SandboxMode` in `src/config/mod.rs`) always runs on the
