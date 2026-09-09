@@ -87,6 +87,12 @@ impl Command for CreateMcpServer {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(CliRoute::new(&["mcp-servers"], "create").with_examples(&[
+            "everruns mcp-servers create --name github --url https://api.example.com/mcp",
+        ]))
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&MCP_SERVER_MANAGE)
     }
@@ -183,6 +189,13 @@ impl Command for ListMcpServers {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["mcp-servers"], "list")
+                .with_examples(&["everruns mcp-servers list --limit 20"]),
+        )
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&MCP_SERVER_VIEW)
     }
@@ -222,6 +235,13 @@ impl Command for GetMcpServer {
             method: "GET",
             path: "/v1/mcp-servers/{id}",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["mcp-servers"], "get")
+                .with_examples(&["everruns mcp-servers get mcp_01h9..."]),
+        )
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -287,6 +307,13 @@ impl Command for UpdateMcpServerCmd {
             method: "PATCH",
             path: "/v1/mcp-servers/{id}",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["mcp-servers"], "update")
+                .with_examples(&["everruns mcp-servers update mcp_01h9... --name github-prod"]),
+        )
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -439,6 +466,14 @@ impl Command for DeleteMcpServer {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["mcp-servers"], "delete").with_examples(&[
+                "everruns mcp-servers delete mcp_01h9...   # archive, restorable",
+            ]),
+        )
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&MCP_SERVER_MANAGE)
     }
@@ -491,6 +526,12 @@ impl Command for DestroyMcpServer {
             method: "POST",
             path: "/v1/mcp-servers/{id}/delete",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(CliRoute::new(&["mcp-servers"], "destroy").with_examples(&[
+            "everruns mcp-servers destroy mcp_01h9...  # permanent, archived servers only",
+        ]))
     }
 
     fn policy() -> Option<&'static Policy> {

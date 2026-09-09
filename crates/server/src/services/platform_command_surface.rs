@@ -3,7 +3,7 @@
 //! MCP and the built-in Platform capability both delegate here so command
 //! discovery, Bashkit behavior, limits, and error sanitization stay identical.
 
-use crate::api::mcp_endpoint::{catalog, positional};
+use crate::api::mcp_endpoint::{catalog, cli_tree, positional};
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -263,7 +263,11 @@ async fn script(
         .unwrap_or(30_000)
         .min(60_000);
 
-    let rewritten = positional::rewrite(commands, positional::positional_map());
+    // Tree spelling first, then the positional fixup: `everruns agents get X`
+    // becomes `get_agent X` and then `get_agent --id X`, so both rewrites
+    // compose instead of each needing to know about the other.
+    let with_tree = cli_tree::rewrite(commands, cli_tree::tree());
+    let rewritten = positional::rewrite(&with_tree, positional::positional_map());
     let tool = catalog::build_toolset(context, mode);
     let request = bashkit::ToolRequest::new(rewritten);
     let result = tokio::time::timeout(

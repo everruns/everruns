@@ -683,6 +683,58 @@ impl Ctx {
 }
 
 // ============================================================================
+// CLI route
+// ============================================================================
+
+/// Where a command sits in the `everruns` command tree.
+///
+/// Opt-in: a command joins the tree only by declaring [`Command::cli`]. The
+/// catalog's flat names (`list_agents`) stay the wire identity and keep
+/// working; this declares the noun-verb spelling the tree renders
+/// (`agents list`).
+///
+/// `path` is a slice rather than a single noun because the flat names hide a
+/// hierarchy: `list_session_participants` is `sessions participants list` and
+/// `list_agent_versions` is `agents versions list`. Deriving either by string
+/// surgery on the flat name is wrong for exactly the irregular commands that
+/// matter (`set_default_agent_version`, `diff_agent_versions`), so the shape
+/// is declared, not inferred.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CliRoute {
+    /// Noun path from the tree root, e.g. `["agents"]` or `["agents", "versions"]`.
+    pub path: &'static [&'static str],
+    /// Leaf verb, e.g. `"list"`.
+    pub verb: &'static str,
+    /// Complete, runnable invocations rendered under the leaf's help.
+    ///
+    /// Agents re-probe `--help` when argument forms only appear on leaves, so
+    /// an example carries real flags, not a restatement of the syntax.
+    pub examples: &'static [&'static str],
+}
+
+impl CliRoute {
+    pub const fn new(path: &'static [&'static str], verb: &'static str) -> Self {
+        Self {
+            path,
+            verb,
+            examples: &[],
+        }
+    }
+
+    pub const fn with_examples(mut self, examples: &'static [&'static str]) -> Self {
+        self.examples = examples;
+        self
+    }
+
+    /// Space-joined spelling, e.g. `"agents versions list"`.
+    pub fn spelling(&self) -> String {
+        let mut parts = self.path.to_vec();
+        parts.push(self.verb);
+        parts.join(" ")
+    }
+}
+
+// ============================================================================
 // Command trait
 // ============================================================================
 
@@ -711,6 +763,15 @@ pub trait Command: DeserializeOwned + Send + 'static + CommandSchema {
     /// for positional args, so the command string is pre-rewritten to insert
     /// `--<positional_arg>` before the value. See EVE-323.
     fn positional_arg() -> Option<&'static str> {
+        None
+    }
+
+    /// Where this command sits in the `everruns` command tree, if it is
+    /// exposed there at all.
+    ///
+    /// Defaults to `None`: tree membership is opt-in, so internal plumbing
+    /// cannot leak into a human- or agent-facing surface by being written.
+    fn cli() -> Option<CliRoute> {
         None
     }
 
@@ -1034,6 +1095,7 @@ pub struct CommandDescriptor {
     pub meta: fn() -> CommandMeta,
     pub read_only: fn() -> bool,
     pub positional_arg: fn() -> Option<&'static str>,
+    pub cli: fn() -> Option<CliRoute>,
     pub param_schema: fn() -> Value,
     pub output_schema: fn() -> Value,
     pub output_shape: fn() -> &'static str,
@@ -1052,6 +1114,7 @@ impl CommandDescriptor {
             meta: C::meta,
             read_only: C::read_only,
             positional_arg: C::positional_arg,
+            cli: C::cli,
             param_schema: <C as Command>::param_schema,
             output_schema: C::output_schema,
             output_shape: C::output_shape,
