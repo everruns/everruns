@@ -88,6 +88,38 @@ API takes a patch bump even in a release where the product minor moved. `cargo-s
 guards against under-bumping (shipping a breaking change as a patch), so run it on every crate you
 release.
 
+**Run the bump gate before merging, not only in CI.** `python3 scripts/check-semver-bumps.py`
+resolves the crates this change releases (a published package whose manifest version is not yet on
+crates.io) and runs `cargo-semver-checks` against each one's latest crates.io release. Ordinary
+changes bump no crate versions and the gate finds nothing to classify, so it is only ever
+meaningful on a release change — run it there before opening the PR, and take the bump it requires.
+CI runs the same script in the **Crate Semver Bumps** job.
+
+An under-bump is not caught by the publish-cone gate below, which compares version *requirements*
+rather than API. `everruns-host` 0.20.4 shipped API breakage in the patch slot: the `^0.20.3` pin of
+every published dependant still admitted it, so `strand-check` stayed green while the published
+`everruns` facade resolved the new host and no longer compiled for downstream consumers
+([#665](https://github.com/everruns/yolop/issues/665)). Under-bumps are unrecoverable once
+published — crates.io versions are immutable, and yanking the new version breaks everything already
+released against it — which is why the classification happens before merge. Run against that
+release, `check-semver-bumps.py` demands the breaking slot for host 0.20.4.
+
+**Never `#[doc(hidden)]` an item another published crate calls.** `cargo-semver-checks` excludes
+hidden items by design — the attribute declares "not public API, free to change without a bump" —
+so no API-diffing gate can cover them, this one included. That exemption holds only while the item
+stays inside one crate. `#[doc(hidden)]` hides an item from rustdoc and from the gate; it does not
+make it private, and a contract crossing a crates.io boundary is public whatever it is annotated
+with.
+
+This is the whole of [#665](https://github.com/everruns/yolop/issues/665): the published `everruns`
+facade drives a hidden steering surface on `everruns-host`
+([`crates/host/src/runtime.rs`](../../crates/host/src/runtime.rs)) under a caret pin, so a host
+patch release changed an API a separately versioned crates.io package depends on, invisibly to both
+gates. That surface is now documented public contract, which puts it back under the bump gate:
+break it and the gate demands the minor slot, the old facade's caret stops admitting the new host,
+and `strand-check` forces the cascade. The rule generalizes — if a published crate calls it, it is
+contract, so document it rather than hiding it.
+
 **A breaking bump is not done until its dependants are handled — the whole cone, not just the
 crate.** A crates.io package is immutable, so a published dependant that pins the old, now-incompatible
 requirement (`everruns-host = "^0.18.0"` when host is now `0.19.0`) will forever resolve the old
@@ -111,7 +143,9 @@ To release a changed crate:
 1. Bump only the package whose public contract changed, by the smallest compatible increment above.
 2. Run `python3 scripts/sync-publish-pin-versions.py --write` so published
    dependants reference the dependency package's current version.
-3. Validate and merge the release change to `main`.
+3. Run `python3 scripts/check-semver-bumps.py` and confirm every bump is large enough for the API
+   it carries.
+4. Validate and merge the release change to `main`.
 
 Tagging and publishing are then automated — the same schema as the product
 release, where tags are created by CI rather than pushed by hand. On merge to

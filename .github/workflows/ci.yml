@@ -152,9 +152,11 @@ jobs:
               - 'examples/demo-support/**'
               - 'scripts/cli-e2e-test.sh'
               - 'scripts/lib/check-everruns-examples.sh'
-              # The lockfile job runs the publish-cone gate; re-run it when the
-              # gate or the pin-sync script it pairs with changes.
+              # The lockfile job runs the publish-cone gate and the semver-bumps
+              # job the bump gate; re-run them when either gate or the pin-sync
+              # script they pair with changes.
               - 'scripts/check-publish-cone.py'
+              - 'scripts/check-semver-bumps.py'
               - 'scripts/sync-publish-pin-versions.py'
               - 'Cargo.toml'
               - 'Cargo.lock'
@@ -383,6 +385,66 @@ jobs:
 
       - name: Check publish cone has no unhealed strands
         run: python3 scripts/check-publish-cone.py --pre-merge
+
+  # Companion guard to the publish cone, covering the class it structurally
+  # cannot see. check-publish-cone.py compares version *requirements*, so a
+  # breaking change released in the patch slot looks healthy: everruns-host
+  # 0.20.4 shipped API breakage while still satisfying every published
+  # dependant's `^0.20.3` pin, and downstream builds resolved the new host into
+  # an older facade that no longer compiled. This job compares *API*, on the
+  # crates a change is actually releasing; run against that release it demands
+  # the breaking slot. It does not see `#[doc(hidden)]` items, which
+  # cargo-semver-checks excludes by design, so nothing another published crate
+  # calls may carry that attribute -- see knowledge/project/release-process.md.
+  semver-bumps:
+    name: Crate Semver Bumps
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Self-test the semver-bump gate
+        run: python3 scripts/check-semver-bumps.py --self-test
+
+      # Crate versions move only in a release change, so ordinary PRs have no
+      # candidates and skip the expensive half of this job entirely.
+      - name: Resolve release candidates
+        id: plan
+        run: |
+          set -euo pipefail
+          candidates="$(python3 scripts/check-semver-bumps.py --candidates)"
+          if [ -n "$candidates" ]; then
+            echo "Releasing: $candidates"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No crate versions are being released in this change."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache Rust
+        if: steps.plan.outputs.found == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "semver-checks"
+
+      # Pinned against rust-toolchain.toml, not independently: cargo-semver-checks
+      # parses rustdoc JSON and rejects a format version it does not know, so a
+      # toolchain bump can outrun an older pin (0.44.0 cannot read the v57 JSON
+      # that 1.96.0 emits). Bump this alongside the toolchain.
+      - name: Install cargo-semver-checks
+        if: steps.plan.outputs.found == 'true'
+        timeout-minutes: 15
+        run: cargo install cargo-semver-checks --version 0.50.0 --locked
+
+      - name: Check released crates are bumped large enough
+        if: steps.plan.outputs.found == 'true'
+        run: python3 scripts/check-semver-bumps.py
 
   msrv:
     name: Published Crate MSRV
@@ -2221,6 +2283,7 @@ jobs:
       - changes
       - format
       - lockfile
+      - semver-bumps
       - msrv
       - knowledge
       - clippy
