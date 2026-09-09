@@ -57,6 +57,7 @@ members = [
     "examples/incident-commander-agent",
     "examples/coding-cli",
     "examples/framework-cli-host",
+    "examples/bashkit-repo-agent",
 ]
 
 exclude = [
@@ -65,6 +66,9 @@ exclude = [
     "examples/weekend-concierge-host",
     "evals/platform-capability",
     "evals/generic",
+    # Fixture repository materialized by the bashkit-repo-agent example; it is a
+    # standalone Cargo workspace, not a member of this one.
+    "examples/bashkit-repo-agent/sample-repo",
 ]
 
 [workspace.package]

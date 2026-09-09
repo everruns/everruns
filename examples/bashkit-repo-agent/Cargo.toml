@@ -1,0 +1,18 @@
+# A release-engineering agent that does all of its work through the sandboxed
+# Bashkit shell over a real host workspace. Its only dependency on the
+# framework is the public `everruns` facade, with the `bashkit` execution
+# runtime and the `openai` provider turned on.
+
+[package]
+name = "everruns-bashkit-repo-agent"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+publish = false
+description = "Repository release-prep agent running on the Bashkit shell capability"
+
+[dependencies]
+everruns = { path = "../../crates/everruns", features = ["bashkit", "openai"] }
+serde_json = "1.0"
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -2248,6 +2248,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-bashkit-repo-agent"
+version = "0.1.0"
+dependencies = [
+ "everruns",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-bedrock"
 version = "0.18.3"
 dependencies = [
