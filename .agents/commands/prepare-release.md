@@ -50,7 +50,12 @@ crates.io package silently drifts behind its source.
    (`0.18.0 → 0.18.1`) and the **minor** component only for a breaking change (`0.18.0 → 0.19.0`; the
    minor is the breaking slot for `0.x` crates). Do not round crates up to the product version for
    tidiness. Then run `/prepare-crate-release` to bump the package and run
-   `python3 scripts/sync-publish-pin-versions.py --write`. Tagging and publishing are automated: on
+   `python3 scripts/sync-publish-pin-versions.py --write`. With every bump set, run
+   `python3 scripts/check-semver-bumps.py` — it re-runs `cargo-semver-checks` over exactly the
+   crates this change releases and fails a bump that is too small for the API it carries. Do this
+   before opening the PR: an under-bump cannot be undone once published (crates.io versions are
+   immutable, and yanking the new one breaks everything already released against it). CI runs the
+   same script in the **Crate Semver Bumps** job. Tagging and publishing are automated: on
    merge to `main` the **Crate Release** workflow (`.github/workflows/crate-release.yml`) creates
    `crate/<pkg>/v<ver>` and dispatches Publish Crate for any version not yet on crates.io, in
    dependency order — you never push crate tags by hand. For an absorbed/deleted crate, record where

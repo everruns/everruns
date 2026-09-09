@@ -1433,6 +1433,14 @@ impl InProcessRuntime {
     }
 
     /// Persist accepted steering that could not reach another reason boundary.
+    ///
+    /// `#[doc(hidden)]` here does not make this free to change: the separately
+    /// versioned `everruns` facade calls it across a published crate boundary,
+    /// so a change lands in a downstream consumer's build. cargo-semver-checks
+    /// excludes hidden items, so the bump gate will not catch it either --
+    /// adding the `turn_id` parameter under a host patch release is what broke
+    /// the published facade (everruns/yolop#665). Change the signature only
+    /// alongside a host minor bump and a facade release.
     #[doc(hidden)]
     pub async fn append_accepted_inputs(
         &self,

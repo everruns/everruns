@@ -31,7 +31,14 @@ dependants from the graph:
 python3 scripts/sync-publish-pin-versions.py --write
 python3 scripts/sync-publish-pin-versions.py --check
 cargo generate-lockfile
+python3 scripts/check-semver-bumps.py
 ```
+
+`check-semver-bumps.py` re-runs `cargo-semver-checks` over exactly the packages this change
+releases and fails a bump that is too small for the API it carries. Run it here, after the version
+is set — an under-bump is unrecoverable once published, because crates.io versions are immutable
+and yanking the new one breaks everything already released against it. CI enforces the same script
+in the **Crate Semver Bumps** job, so a bump it rejects will not merge.
 
 Review every rewritten pin. If dependant crates require public changes rather
 than a compatible dependency baseline update, release them separately after
