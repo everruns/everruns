@@ -8,7 +8,9 @@
   proposed environment model makes target and containment orthogonal fields of
   one profile, keeps a single model-facing toolset across Bashkit, Daytona,
   Docker, a registered machine, and the host, and lets an agent pick among
-  preapproved environments rather than authoring one. The Framework's existing
+  preapproved environments rather than authoring one. Named Environment on both
+  surfaces, with a domain model separating the pinned profile from the durable
+  Environment row and its disposable instances. The Framework's existing
   `Environment` seam is the anchor: it already carries a workspace head and an
   extension point documented for compute. Includes proposed Framework and HTTP
   API shapes. See
