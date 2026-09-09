@@ -2453,7 +2453,6 @@ dependencies = [
  "everruns-host",
  "everruns-integrations-bashkit",
  "everruns-integrations-filesystem",
- "everruns-llmsim",
  "everruns-openai",
  "everruns-provider",
  "serde_json",
