@@ -32,6 +32,6 @@
     "starlight-openapi": "^0.26.0",
     "starlight-sidebar-topics": "^0.8.0",
     "typescript": "^6.0.3",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   }
 }
