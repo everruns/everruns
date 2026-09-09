@@ -126,7 +126,7 @@ pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptedTool {
 
 /// `everruns_help` renders the noun-verb tree. The rewriter emits it for every
 /// help or unresolved invocation, and a caller may run it directly.
-fn help_tool_def() -> ToolDef {
+pub(crate) fn help_tool_def() -> ToolDef {
     ToolDef::new(
         super::cli_tree::HELP_BUILTIN,
         "Show commands available under an `everruns` tree path, or the flags of one command.",
@@ -148,7 +148,7 @@ fn help_tool_def() -> ToolDef {
     .with_category("system")
 }
 
-fn make_help_callback()
+pub(crate) fn make_help_callback()
 -> impl Fn(ToolArgs) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send>>
 + Send
 + Sync

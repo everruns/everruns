@@ -800,3 +800,77 @@ mod discovery_tests {
         assert!(tree().leaf(undeclared.name).is_none());
     }
 }
+
+/// End-to-end coverage for the pieces unit tests cannot reach: that the text
+/// the rewriter emits is valid bash, that `everruns_help` is actually
+/// registered and its flags parse, and that a caller gets help rather than an
+/// interpreter error.
+///
+/// These drive the real Bashkit interpreter. They deliberately do not need a
+/// database: help is the one branch of the surface that touches no domain
+/// command, so it can be proven here rather than only in the live eval.
+#[cfg(test)]
+mod bashkit_tests {
+    use super::*;
+    use crate::api::mcp_endpoint::catalog::{help_tool_def, make_help_callback};
+    use bashkit::{ScriptedTool, Tool, ToolRequest};
+
+    async fn run(script: &str) -> (i32, String, String) {
+        let tool = ScriptedTool::builder("everruns")
+            .async_tool_fn(help_tool_def(), make_help_callback())
+            .sanitize_errors(false)
+            .build();
+        let rewritten = rewrite(script, tree());
+        let response = Tool::execute(&tool, ToolRequest::new(rewritten)).await;
+        (response.exit_code, response.stdout, response.stderr)
+    }
+
+    #[tokio::test]
+    async fn root_help_runs_through_the_interpreter() {
+        let (code, stdout, stderr) = run("everruns --help").await;
+        assert_eq!(code, 0, "stderr: {stderr}");
+        assert!(stdout.contains("agents"), "{stdout}");
+        assert!(stdout.contains("mcp-servers"), "{stdout}");
+    }
+
+    #[tokio::test]
+    async fn node_help_runs_and_lists_verbs() {
+        let (code, stdout, stderr) = run("everruns agents --help").await;
+        assert_eq!(code, 0, "stderr: {stderr}");
+        assert!(stdout.contains("versions"), "{stdout}");
+        assert!(stdout.contains("check-name"), "{stdout}");
+    }
+
+    #[tokio::test]
+    async fn leaf_help_runs_and_shows_real_flags() {
+        let (code, stdout, stderr) = run("everruns agents list --help").await;
+        assert_eq!(code, 0, "stderr: {stderr}");
+        assert!(stdout.contains("everruns agents list"), "{stdout}");
+        assert!(stdout.contains("--search"), "{stdout}");
+        assert!(stdout.contains("Wire name: list_agents"), "{stdout}");
+    }
+
+    #[tokio::test]
+    async fn a_bare_noun_shows_its_children_instead_of_failing() {
+        let (code, stdout, stderr) = run("everruns agents").await;
+        assert_eq!(code, 0, "stderr: {stderr}");
+        assert!(stdout.contains("Usage: everruns agents"), "{stdout}");
+    }
+
+    #[tokio::test]
+    async fn an_unknown_verb_exits_nonzero_and_names_real_neighbours() {
+        let (code, stdout, stderr) = run("everruns agents lst").await;
+        assert_ne!(code, 0, "an unusable command must not look like success");
+        let text = format!("{stdout}{stderr}");
+        assert!(text.contains("unknown command `lst`"), "{text}");
+        assert!(text.contains("list"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn help_output_survives_a_pipeline() {
+        // The rewrite has to emit something the interpreter can still compose.
+        let (code, stdout, stderr) = run("everruns --help | head -3").await;
+        assert_eq!(code, 0, "stderr: {stderr}");
+        assert!(stdout.lines().count() <= 3, "{stdout}");
+    }
+}

@@ -415,6 +415,32 @@ mod tests {
         )
     }
 
+    /// Discovery is where a model learns the spelling, so the tree has to
+    /// reach it: a working rewrite that nothing advertises is a surface nobody
+    /// finds.
+    #[test]
+    fn discovery_shows_the_tree_spelling_and_usage() {
+        let text = discover_for_test(&json!({"query": "list_agents"})).expect("discover");
+        let value: Value = serde_json::from_str(&text).expect("json");
+        let rendered = serde_json::to_string(&value).expect("re-encode");
+
+        assert!(rendered.contains("everruns agents list"), "{rendered}");
+        // The wire name stays present: it is the identity, and still runs.
+        assert!(rendered.contains("list_agents"), "{rendered}");
+    }
+
+    /// A command outside the declared tranche must not gain a spelling by
+    /// accident. Tree membership is opt-in precisely so internal plumbing
+    /// cannot leak into an agent-facing surface.
+    #[test]
+    fn discovery_omits_a_spelling_for_undeclared_commands() {
+        let text = discover_for_test(&json!({"query": "health_check"})).expect("discover");
+        let value: Value = serde_json::from_str(&text).expect("json");
+        let rendered = serde_json::to_string(&value).expect("re-encode");
+        assert!(rendered.contains("health_check"), "{rendered}");
+        assert!(!rendered.contains("\"cli\""), "{rendered}");
+    }
+
     #[test]
     fn jq_errors_are_concise_and_omit_input() {
         let error = sanitize_script_error(
