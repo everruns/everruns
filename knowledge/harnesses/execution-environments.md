@@ -98,14 +98,22 @@ job.
 
 ### Naming
 
-Call the resolved configuration an **Environment** and the running thing an
-**environment instance**. Reserve "sandbox" for the security property. This is
-what makes `sandbox: none` sayable without contradiction, and it matches the
-vocabulary Claude Managed Agents and LangChain backends already use, cited in
-[Sandbox Abstraction](sandbox-abstraction.md).
+The Framework already named this. `Environment` in
+`crates/host/src/workspace.rs` is "session execution resources", a workspace
+head plus a type-keyed extension seam, and `EnvironmentBuilder::workspace_extension`
+documents that seam for "process, container, or remote mount" providers that
+must address the same head as the file tools. Compute was left as a future
+extension; this proposal fills it in.
 
-The durable resource, generations, checkpoints, and reconciliation from that
-concept are unchanged; the tables and the manager are renamed, not redesigned.
+So there is no rename to argue about at the Framework level. The work is to
+promote compute and containment from anonymous extensions to named members of
+`Environment`, and to give the control plane a Sandbox resource that is the
+durable projection of the same thing. Reserve "sandbox" for the security
+property, which is what makes `containment: none` sayable without
+contradiction.
+
+The durable resource, generations, checkpoints, and reconciliation from
+[Sandbox Abstraction](sandbox-abstraction.md) are unchanged.
 
 ### Environment profile
 
@@ -270,6 +278,333 @@ spec: model input may never choose a host executable or silently widen mounts,
 and startup fails closed when a required OS primitive is unavailable rather than
 falling back to an unsandboxed host.
 
+## Framework API
+
+Proposed signatures, not implemented. They extend the existing `Environment`
+seam rather than adding a parallel one, and follow the promotion rule in
+[Application API Boundaries](../framework/application-api.md): `everruns-host`
+owns the traits, `everruns` re-exports the value types an application composes.
+
+### No sandbox, on this machine
+
+The Yolop and coding-CLI position. Containment is stated, never defaulted,
+because an omitted containment field that silently means `none` is how a
+trusted-operator default becomes an accident.
+
+```rust
+use everruns::{Agent, Compute, Containment, Environment, InMemoryEngine};
+
+let environment = Environment::builder()
+    .workspace(head)                    // existing: WorkspaceHead
+    .compute(Compute::host())           // this machine, in-process
+    .containment(Containment::none())   // explicit
+    .build()?;
+
+let session = engine.create(agent).environment(environment).start().await?;
+```
+
+### Same machine, kernel containment
+
+`Containment::native()` is Yolop's Seatbelt and Landlock policy, moved into the
+shared crate. It fails closed: if the OS primitive is unavailable, `build()`
+returns an error rather than degrading to the host.
+
+```rust
+let environment = Environment::builder()
+    .workspace(head)
+    .compute(Compute::host())
+    .containment(
+        Containment::native()
+            .writable_root(head.path()?)
+            .network(Network::Deny)
+            .escalation(Escalation::Approval(approval_gate)),
+    )
+    .build()?;
+```
+
+### Bashkit
+
+Bashkit brings its own filesystem and its own boundary, so it supplies both
+halves. Asking for weaker containment than a target enforces is a build error,
+not a silent upgrade.
+
+```rust
+let environment = Environment::builder()
+    .compute(Compute::bashkit())        // provides the working filesystem too
+    .build()?;
+
+assert_eq!(environment.containment().level(), ContainmentLevel::Isolated);
+```
+
+### Daytona
+
+```rust
+let environment = Environment::builder()
+    .compute(Compute::provider("daytona", daytona::Compute::small()
+        .snapshot("everruns-rust")
+        .workspace_path("/home/daytona/workspace")))
+    .containment(Containment::isolated()
+        .network(Network::allowlist(["crates.io", "static.crates.io"])))
+    .durability(Durability::Checkpointed)
+    .build()?;
+```
+
+### A registered machine
+
+```rust
+let environment = Environment::builder()
+    .compute(Compute::machine(MachineTarget::ssh("build-01.internal")
+        .connection(connection_id)      // credentials live in the connection
+        .workspace_path("/srv/agent")))
+    .containment(Containment::none())
+    .build()?;
+
+// Refused: the machine target advertises no portable checkpoint.
+assert!(matches!(
+    environment.durability(),
+    Durability::None,
+));
+```
+
+### Capabilities are asked, never assumed
+
+```rust
+let caps = session.environment().capabilities();
+if !caps.native_processes {
+    // Bashkit: `cargo build` will not work here. Say so, or switch.
+}
+```
+
+### Named environments and the agent's choice
+
+L2 from above. The set is authored by the application; the model receives one
+control tool whose argument is constrained to these names.
+
+```rust
+let agent = Agent::builder()
+    .instructions("You are an expert software developer.")
+    .model(Model::openai("gpt-5.2"))
+    .environments([
+        ("scratch", scratch_environment),   // bashkit, cheap, no native binaries
+        ("build",   daytona_environment),   // real Linux, network allowlist
+    ])
+    .default_environment("scratch")
+    .environment_switching(Switching::Allowed { workspace: Transfer::Carry })
+    .build()?;
+```
+
+From application code the same switch is explicit and reports what was lost:
+
+```rust
+let outcome = session.use_environment("build").carry_workspace().await?;
+println!("{} files carried, {} lost", outcome.files_carried, outcome.processes_lost);
+```
+
+### Implementing a target
+
+Two small traits, mirroring the driver contract in
+[Sandbox Abstraction](sandbox-abstraction.md). A provider implements what it
+has; absent capabilities are absent, not stubbed.
+
+```rust
+#[async_trait]
+pub trait Compute: Send + Sync {
+    fn capabilities(&self) -> ComputeCapabilities;
+    async fn connect(&self, head: &WorkspaceHead) -> Result<ComputeHandle, ComputeError>;
+}
+
+#[async_trait]
+pub trait ComputeSession: Send + Sync {
+    async fn exec(&self, request: ExecRequest, sink: OutputSink) -> Result<ExecResult, ComputeError>;
+    async fn cancel(&self, execution_id: &str) -> Result<(), ComputeError>;
+}
+```
+
+`Containment` stays a separate, narrow trait so a target and a policy compose
+independently: it maps a policy plus a resolved workspace root to a launch
+decision, which is exactly Yolop's existing `SandboxProvider::command`
+generalized past the local process case.
+
+## Control-plane API
+
+Today the whole surface is `GET`/`POST /v1/sessions/{session_id}/sandbox`
+(`crates/server/src/api/session_sandbox.rs`), whose response mixes
+configuration, lifecycle, and provider identity into one flat body with
+`configured` and `exists` booleans. Proposed shapes follow
+[API Conventions](../execution/api-conventions.md), including `allowed_actions`
+computed from current state.
+
+### Environments are agent configuration
+
+```http
+POST /v1/agents
+```
+
+```json
+{
+  "name": "coding",
+  "harness": "coding",
+  "environments": {
+    "default": "scratch",
+    "switching": { "allowed": true, "workspace": "carry" },
+    "profiles": {
+      "scratch": {
+        "target": { "kind": "vfs", "provider": "bashkit" },
+        "containment": { "level": "isolated", "network": { "mode": "deny" } },
+        "durability": "checkpointed"
+      },
+      "build": {
+        "target": { "kind": "managed", "provider": "daytona",
+                    "options": { "size": "small", "snapshot": "everruns-rust" } },
+        "containment": { "level": "isolated",
+                         "network": { "mode": "allowlist", "allowed_hosts": ["crates.io"] } },
+        "durability": "checkpointed",
+        "lifecycle": { "idle_after_seconds": 180, "idle_action": "checkpoint_and_stop" }
+      },
+      "build-01": {
+        "target": { "kind": "machine", "connection_id": "conn_...",
+                    "options": { "workspace_path": "/srv/agent" } },
+        "containment": { "level": "none", "escalation": "never" },
+        "durability": "none"
+      }
+    }
+  }
+}
+```
+
+Validation is where the honesty is enforced: a `durability: none` profile on an
+agent that requires durable recovery is a `422`, and a containment level a
+target cannot enforce is a `422`, both with the `retry` error rel and a `hint`
+naming the offending field.
+
+### Session environment
+
+```http
+GET /v1/sessions/{session_id}/environment
+```
+
+```json
+{
+  "self_url": "https://api.example/v1/sessions/session_.../environment",
+  "name": "build",
+  "environment_id": "env_...",
+  "target": { "kind": "managed", "provider": "daytona" },
+  "containment": { "level": "isolated", "network": { "mode": "allowlist" } },
+  "durability": "checkpointed",
+  "capabilities": {
+    "native_processes": true, "packages": true, "pty": true,
+    "ports": true, "portable_checkpoint": true, "network_enforced": true
+  },
+  "desired_state": "ready",
+  "observed_state": "ready",
+  "generation": 17,
+  "current_checkpoint_id": "sbxcp_...",
+  "last_activity_at": "2026-09-09T10:31:02Z",
+  "available": ["scratch", "build"],
+  "allowed_actions": [
+    { "rel": "pause",  "method": "POST", "operation_id": "manage_session_environment",
+      "href": ".../environment", "hint": "Checkpoint and stop the instance." },
+    { "rel": "delete", "method": "POST", "operation_id": "manage_session_environment",
+      "href": ".../environment", "hint": "Discard the instance and its working filesystem." },
+    { "rel": "switch", "method": "POST", "operation_id": "switch_session_environment",
+      "href": ".../environment/switch", "schema_ref": "#/components/schemas/SwitchEnvironmentRequest",
+      "hint": "Move this session to another profile the agent declares." }
+  ]
+}
+```
+
+`switch` is a new entry in the closed `rel` vocabulary and therefore a spec
+change to [API Conventions](../execution/api-conventions.md), to be made
+deliberately rather than by adding a one-off rel. `pause`, `resume`, and
+`delete` reuse existing rels.
+
+```http
+POST /v1/sessions/{session_id}/environment/switch
+```
+
+```json
+{ "to": "build", "workspace": "carry" }
+```
+
+```json
+{
+  "from": "scratch",
+  "to": "build",
+  "generation": 18,
+  "workspace": { "mode": "carry", "files": 214, "bytes": 8134221, "revision": "wsr_..." },
+  "lost": ["background_processes", "shell_state"],
+  "observed_state": "ready"
+}
+```
+
+`workspace: "carry"` against a target that advertises no portable checkpoint is
+a `409` with a `retry` action hinting `fresh`, never a silent `fresh`.
+
+### Targets this deployment can actually offer
+
+The UI cannot render an honest picker from provider names alone.
+
+```http
+GET /v1/environment-targets
+```
+
+```json
+{
+  "items": [
+    { "kind": "vfs", "provider": "bashkit", "available": true,
+      "capabilities": { "native_processes": false, "packages": false, "pty": false,
+                        "ports": false, "portable_checkpoint": true },
+      "containment_levels": ["isolated"] },
+    { "kind": "managed", "provider": "daytona", "available": true,
+      "requires_connection": true,
+      "capabilities": { "native_processes": true, "packages": true, "pty": true,
+                        "ports": true, "portable_checkpoint": true },
+      "containment_levels": ["isolated"] },
+    { "kind": "host", "available": false,
+      "reason": "host execution is disabled for this deployment",
+      "containment_levels": ["none", "native"] }
+  ]
+}
+```
+
+### Escalation
+
+An in-session request to widen containment surfaces as an event and is resolved
+over the API, which is Yolop's approval gate with an HTTP front end.
+
+```json
+{ "type": "environment.escalation_requested", "escalation_id": "esc_...",
+  "command": "cargo publish", "requested": { "network": { "mode": "allow" } },
+  "reason": "publishing requires crates.io access" }
+```
+
+```http
+POST /v1/sessions/{session_id}/environment/escalations/{escalation_id}
+{ "decision": "approve_once" }
+```
+
+A `scope: session` grant of one level never implies a higher one, matching
+Yolop's rule that a sandbox-scoped grant does not license full access later.
+
+### Machines
+
+```http
+POST /v1/machines
+{ "name": "build-01", "transport": "ssh", "address": "build-01.internal",
+  "connection_id": "conn_..." }
+```
+
+Credentials stay in the connection record. A machine row carries no token, and
+the profile references it by id, keeping the "no bearer credential in sandbox
+rows, checkpoints, events, or logs" criterion from
+[Sandbox Abstraction](sandbox-abstraction.md) intact.
+
+### Events
+
+`environment.switched`, `environment.instance_lost`, `environment.recovered`,
+and `environment.escalation_requested` join the session event stream, so a UI
+and a durable agent learn about a replaced incarnation the same way.
+
 ## What this removes
 
 - `coding-container`, `coding-daytona`, `coding-session-sandbox` collapse into
@@ -285,11 +620,12 @@ falling back to an unsandboxed host.
 
 This sequences alongside the existing migration plan rather than restarting it.
 
-**P0, vocabulary and containment field.** Rename the resource to Environment,
-add the containment block, the durability class, and the containment
-capabilities to the profile. No new providers. Exit: a profile can express
-`host + none` and `daytona + isolated + allowlist`, and validation rejects a
-durable-agent agent pinned to `durability: none`.
+**P0, containment field and capability catalog.** Add the containment block,
+the durability class, and the containment capabilities to the profile; promote
+compute and containment to named members of the Framework's existing
+`Environment`; add `GET /v1/environment-targets`. No new providers. Exit: a
+profile can express `host + none` and `daytona + isolated + allowlist`, and
+validation rejects a durable-agent agent pinned to `durability: none`.
 
 **P1, host target.** Compute implementation for the in-process host, joined to
 the existing `RealDiskFileStore`. Containment providers extracted from Yolop
@@ -323,9 +659,10 @@ P1 and P2 are independent of the Daytona durability work in
 
 ## Open questions
 
-1. Rename to Environment, or keep "Sandbox" as the resource name with
-   `containment.level = "none"` inside it? The rename is clearer and touches API
-   routes, tables, and UI.
+1. The Framework already calls this `Environment`. Does the control plane's
+   Sandbox resource take the same name, so one word spans both surfaces, or does
+   `/v1/sessions/{id}/sandbox` keep its name with a containment field inside?
+   Aligning is clearer and touches routes, tables, and UI.
 2. Is L2 wanted in the first release, or is config-only selection (L1) enough
    until a workflow demands the switch?
 3. Should the platform's host target require kernel containment by default, or
@@ -333,3 +670,6 @@ P1 and P2 are independent of the Daytona durability work in
    Yolop's `--sandbox` opt-in is the model?
 4. Where does the shared containment crate live: inside `everruns-host`, or its
    own publishable crate that both repositories depend on?
+5. `switch` is a new entry in a deliberately closed `rel` vocabulary. Accept the
+   spec change, or model a switch as delete plus create and lose the single
+   atomic action?
