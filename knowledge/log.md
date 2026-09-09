@@ -2,6 +2,15 @@
 
 ## 2026-09-09
 
+* **Where commands run, and what they may touch.** Everruns' sandbox providers
+  answered only the first question and Yolop's only the second, so neither could
+  express "run on this machine but deny the network" or "no sandbox at all". The
+  proposed environment model makes target and containment orthogonal fields of
+  one profile, keeps a single model-facing toolset across Bashkit, Daytona,
+  Docker, a registered machine, and the host, and lets an agent pick among
+  preapproved environments rather than authoring one. See
+  [Execution Environments](harnesses/execution-environments.md).
+
 * **One command grammar, several hosts.** Operations reached through the
   scripted MCP surface, a session's shell, and (eventually) the external CLI had
   drifted into two spellings. The `everruns <noun> <verb>` tree is declared once
