@@ -686,53 +686,10 @@ impl Ctx {
 // CLI route
 // ============================================================================
 
-/// Where a command sits in the `everruns` command tree.
-///
-/// Opt-in: a command joins the tree only by declaring [`Command::cli`]. The
-/// catalog's flat names (`list_agents`) stay the wire identity and keep
-/// working; this declares the noun-verb spelling the tree renders
-/// (`agents list`).
-///
-/// `path` is a slice rather than a single noun because the flat names hide a
-/// hierarchy: `list_session_participants` is `sessions participants list` and
-/// `list_agent_versions` is `agents versions list`. Deriving either by string
-/// surgery on the flat name is wrong for exactly the irregular commands that
-/// matter (`set_default_agent_version`, `diff_agent_versions`), so the shape
-/// is declared, not inferred.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CliRoute {
-    /// Noun path from the tree root, e.g. `["agents"]` or `["agents", "versions"]`.
-    pub path: &'static [&'static str],
-    /// Leaf verb, e.g. `"list"`.
-    pub verb: &'static str,
-    /// Complete, runnable invocations rendered under the leaf's help.
-    ///
-    /// Agents re-probe `--help` when argument forms only appear on leaves, so
-    /// an example carries real flags, not a restatement of the syntax.
-    pub examples: &'static [&'static str],
-}
-
-impl CliRoute {
-    pub const fn new(path: &'static [&'static str], verb: &'static str) -> Self {
-        Self {
-            path,
-            verb,
-            examples: &[],
-        }
-    }
-
-    pub const fn with_examples(mut self, examples: &'static [&'static str]) -> Self {
-        self.examples = examples;
-        self
-    }
-
-    /// Space-joined spelling, e.g. `"agents versions list"`.
-    pub fn spelling(&self) -> String {
-        let mut parts = self.path.to_vec();
-        parts.push(self.verb);
-        parts.join(" ")
-    }
-}
+// The tree contract is transport-neutral and shared with the bash-tool
+// adapter, so it lives in the bashkit integration rather than being defined
+// twice. Re-exported here because command declarations reference it.
+pub use everruns_integrations_bashkit::cli::CliRoute;
 
 // ============================================================================
 // Command trait
