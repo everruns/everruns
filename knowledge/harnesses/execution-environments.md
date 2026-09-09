@@ -247,11 +247,12 @@ incarnation cannot overwrite current state. The Session, the conversation, and
 the files survive; RAM, processes, and PTYs do not.
 
 **The filesystem lineage outlives the environment.** `WORKSPACE_HEAD` belongs to
-the Workspace, not to the Environment, so a switch from `scratch` to `build`
-moves compute while the head stays the session's. What the switch actually
-transfers is bytes, through a checkpoint. For Bashkit the working filesystem
-*is* that head, so a checkpoint is nearly free; for Daytona the live worktree is
-instance-local and mirrored into a committed checkpoint at each mutating step.
+the Workspace, not to the Environment. That is what lets a replacement
+incarnation resume the same files after physical loss, and what lets a second
+session on a different environment bind the same Workspace. For Bashkit the
+working filesystem *is* that head, so a checkpoint is nearly free; for Daytona
+the live worktree is instance-local and mirrored into a committed checkpoint at
+each mutating step.
 
 **Credentials live in exactly one place.** `ENVIRONMENT` references a
 `CONNECTION` and resolves the token at operation time. No profile snapshot,
@@ -307,11 +308,9 @@ The rejected alternative is worth recording, because it is the obvious next
 request. Give the model one control tool, `use_environment { name }`, argument
 constrained to that map, and an agent that hits `cargo build` inside Bashkit can
 move itself to `build` instead of failing. It is rejected for the first version
-because it buys a rescue path at the cost of switch semantics in the hot path, a
-tool-schema refresh mid-session, and a failure mode where a confused model
-bounces between environments. The API-driven switch below already covers the
-same recovery with a human or an application in the loop, and nothing in the
-design forecloses adding the tool later.
+because a session's environment does not change once it starts, for the reasons
+below. An agent that needs a different one is a new session against the same
+Workspace, and that is a decision for a human or an application.
 
 Two invariants hold whoever is choosing. Selection is always *from* a set of
 profiles a human authored: model input never becomes provider configuration, an
@@ -322,27 +321,38 @@ Escalation, Yolop's `require_escalated` path with its once-or-session approval
 grant, belongs to the same later phase as kernel containment: there is nothing
 to escalate while every target fixes its own boundary.
 
-### Switching is a filesystem event
+### An environment does not change under a session
 
-A switch is an application or operator action, through the API or the UI. Each
-environment owns a working filesystem, so a switch has to say what happened to
-the files. Exactly three modes, chosen by the profile, reported in the result:
+Rejected: a switch operation that moves a running session from one environment
+to another. It was invented to rescue a model stuck in the wrong place, and with
+selection settled at session creation nothing needs it. It also does not survive
+contact with the targets.
 
-- `fresh`: the new environment starts bootstrapped and empty. Default.
-- `carry`: export a portable workspace checkpoint from the old environment and
-  import it into the new one. Requires both to advertise portable checkpoints,
-  and is bounded by size.
-- `attach`: both bind the same durable volume or mount. Same provider family
-  only.
+Daytona to Bashkit cannot work at all. What makes a Daytona worktree useful is
+installed packages, caches, compiled artifacts, and running processes; Bashkit
+runs no native binaries, so the files would arrive somewhere that cannot use
+them. Bashkit to Daytona is coherent, but it is only "copy these bytes into a
+fresh machine", which is what creating a session against the same Workspace
+already does. A switch operation, its transfer modes, a new link relation, and a
+mid-session tool-schema refresh buy one direction of one pair, badly.
 
-The result also states what did not survive: processes, servers, PTYs,
-interpreter state, RAM. This is the same honesty the physical-loss recovery
-event already owes the agent.
+The honest mechanism already exists. A Workspace outlives any one session, and
+`POST /v1/sessions` takes `workspace_id`, so a new session on a different
+environment binds the same files. Where the conversation matters too, fork the
+session (see [Forking sessions](../runtime-resources/forking-sessions.md)) and
+give the fork a different environment.
 
-A switch changes the advertised capability set, so it changes the tool schemas.
-It must land on a turn boundary with a schema refresh, never mid-batch. With
-selection kept out of the model's hands this is rare and externally triggered,
-which is most of why the first version is cheaper to build.
+```http
+POST /v1/sessions
+{ "agent_name": "coding",
+  "environment": { "use": "build" },
+  "workspace_id": "wsp_01933b5a00007000800000000000001" }
+```
+
+This states plainly what a switch would have blurred: files come with you,
+machine state does not. Nothing carries installed packages, caches, background
+processes, servers, PTYs, or shell state across that boundary, and no operation
+should imply otherwise.
 
 ## The machine target
 
@@ -487,7 +497,7 @@ assert!(matches!(
 ```rust
 let caps = session.environment().capabilities();
 if !caps.native_processes {
-    // Bashkit: `cargo build` will not work here. Say so, or switch.
+    // Bashkit: `cargo build` will not work here. Say so.
 }
 ```
 
@@ -510,12 +520,16 @@ let agent = Agent::builder()
 let session = engine.create(agent).environment_named("build").start().await?;
 ```
 
-The application may still move a running session, and the call reports what was
-lost:
+Needing the other environment means a new session on the same files, never a
+mutation of this one:
 
 ```rust
-let outcome = session.switch_environment("build").carry_workspace().await?;
-println!("{} files carried, {} lost", outcome.files_carried, outcome.processes_lost);
+let build = engine
+    .create(agent)
+    .environment_named("build")
+    .workspace(head)            // same head, different compute
+    .start()
+    .await?;
 ```
 
 ### Implementing a target
@@ -564,7 +578,6 @@ POST /v1/agents
   "harness": "coding",
   "environments": {
     "default": "scratch",
-    "switching": { "workspace": "carry" },
     "profiles": {
       "scratch": {
         "target": { "kind": "vfs", "provider": "bashkit" },
@@ -754,47 +767,22 @@ GET /v1/sessions/{session_id}/environment
   "generation": 17,
   "current_checkpoint_id": "sbxcp_...",
   "last_activity_at": "2026-09-09T10:31:02Z",
-  "available": ["scratch", "build"],
   "allowed_actions": [
     { "rel": "pause",  "method": "POST", "operation_id": "manage_session_environment",
       "href": ".../environment", "hint": "Checkpoint and stop the instance." },
     { "rel": "delete", "method": "POST", "operation_id": "manage_session_environment",
       "href": ".../environment", "hint": "Discard the instance and its working filesystem." },
-    { "rel": "switch", "method": "POST", "operation_id": "switch_session_environment",
-      "href": ".../environment/switch", "schema_ref": "#/components/schemas/SwitchEnvironmentRequest",
-      "hint": "Move this session to another profile the agent declares." }
+    { "rel": "reset", "method": "POST", "operation_id": "manage_session_environment",
+      "href": ".../environment", "hint": "Discard the instance and rebuild it from the pinned profile." }
   ]
 }
 ```
 
-`pause`, `resume`, and `delete` reuse existing rels. `switch` is a new word in
-that deliberately closed vocabulary, so adopting it is a spec change to
-[API Conventions](../execution/api-conventions.md). Take the spec change: the
-alternative, modelling a switch as delete plus create, gives up atomicity and
-has nowhere to express the workspace transfer, which is the part that needs to
-succeed or fail as one operation.
-
-```http
-POST /v1/sessions/{session_id}/environment/switch
-```
-
-```json
-{ "to": "build", "workspace": "carry" }
-```
-
-```json
-{
-  "from": "scratch",
-  "to": "build",
-  "generation": 18,
-  "workspace": { "mode": "carry", "files": 214, "bytes": 8134221, "revision": "wsr_..." },
-  "lost": ["background_processes", "shell_state"],
-  "observed_state": "ready"
-}
-```
-
-`workspace: "carry"` against a target that advertises no portable checkpoint is
-a `409` with a `retry` action hinting `fresh`, never a silent `fresh`.
+`pause`, `resume`, and `delete` reuse existing rels, so the closed vocabulary in
+[API Conventions](../execution/api-conventions.md) needs no new word. There is
+deliberately no switch endpoint: a session's environment is fixed once it
+starts, and moving work elsewhere is a new session against the same
+`workspace_id`.
 
 ### Targets this deployment can actually offer
 
@@ -857,9 +845,9 @@ rows, checkpoints, events, or logs" criterion from
 
 ### Events
 
-`environment.switched`, `environment.instance_lost`, `environment.recovered`,
-and `environment.escalation_requested` join the session event stream, so a UI
-and a durable agent learn about a replaced incarnation the same way.
+`environment.instance_lost` and `environment.recovered` join the session event
+stream, so a UI and a durable agent learn about a replaced incarnation the same
+way.
 
 ## What this removes
 
@@ -890,11 +878,10 @@ phase: Bashkit and Daytona fix their own boundary, so nothing in the first
 release needs Seatbelt or Landlock. Exit: an Everruns session runs `bash` on the
 worker host, and the API refuses to pin a durable agent to it.
 
-**P2, environment sets.** Named environments on the agent version, selection at
-session creation, the API-driven switch with its three workspace modes, and the
-schema refresh a switch implies. No model-facing control tool. Exit: a session
-created on Bashkit is switched to Daytona carrying its workspace, and the
-transcript states exactly what was lost.
+**P2, environment sets.** Named environments on the agent version and selection
+at session creation, inherited, named, or inlined. No switch operation, no
+model-facing control tool. Exit: two sessions bound to one Workspace, one on
+Bashkit and one on Daytona, read and write the same files.
 
 **P3, machine target and consolidation.** SSH or daemon transport, then port
 E2B, Deno, Sprites, and container behind the driver contract as already planned.
@@ -909,16 +896,15 @@ P1 and P2 are independent of the Daytona durability work in
 
 ## Risks
 
-- Capability-negotiated tools mean the toolset changes mid-session on a switch.
-  Providers cache schemas; the turn-boundary rule is load-bearing, not a detail.
 - Extracting Yolop's containment providers couples two release trains. The crate
   boundary must be small enough that Yolop can pin a published version, as it
   already does for Tuika and `everruns-host`.
 - A machine target invites treating someone's laptop as durable agent
   infrastructure. The `durability: none` declaration must be enforced at
   validation time, not documented as a caveat.
-- `carry` across targets is a full workspace transfer. Size bounds and cache
-  exclusions decide whether it is usable or a trap.
+- Two sessions on one Workspace are two writers. Everruns already owes shared
+  workspaces an exclusive-writer answer; environments do not change that
+  question, but they make it easier to reach by accident.
 
 ## Open questions
 
@@ -928,5 +914,5 @@ P1 and P2 are independent of the Daytona durability work in
    `everruns-host`, or its own publishable crate that both repositories pin, the
    way Yolop already pins Tuika?
 3. Does the Environment row own a workspace head, or reference one the Session
-   already bound? The domain model takes the second reading, which keeps one
-   filesystem lineage across a switch.
+   already bound? The domain model takes the second reading, which is what lets
+   a second session on another environment bind the same files.
