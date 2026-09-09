@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Check that every integration test file under a workspace crate's tests/
-# directory is actually run by some GitHub Actions workflow, or is explicitly
-# allowlisted with a reason.
+# Check that driver libraries and crate integration targets have workflow
+# invocations, or an explicit allowlist reason. Ignored cases remain opt-in.
 #
 # Why: CI hand-enumerates test targets — there is no `cargo test --workspace`
 # anywhere in .github/workflows/. A crate is covered only if a workflow names
@@ -57,26 +56,44 @@ fi
 # by their own dedicated workflow (brave-search, duckduckgo, parallel, the
 # container sandbox sweep). Reading ci.yml alone would report those as
 # uncovered and train people to ignore this check.
-workflows="$(cat "$WORKFLOW_DIR"/*.yml)"
+# Join shell continuations before matching packages and targets. Ignore comments:
+# mentioning an omitted command in an explanation does not execute it.
+workflows="$(awk '
+  /^[[:space:]]*#/ { next }
+  /\\$/ { sub(/\\$/, ""); printf "%s ", $0; next }
+  { print }
+' "$WORKFLOW_DIR"/*.yml)"
 
 violations=()
 checked=0
+drivers=0
 
 while IFS= read -r manifest; do
+  manifest="$PROJECT_ROOT/$manifest"
   crate_dir="$(dirname "$manifest")"
   tests_dir="$crate_dir/tests"
-  [ -d "$tests_dir" ] || continue
 
   package="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$manifest" | head -1)"
   [ -n "$package" ] || continue
 
+  invocations="$(grep -E -- "cargo test .*-p[[:space:]]+${package}([[:space:]]|$)" <<<"$workflows" || true)"
+
+  # A library-only driver (e.g. Bedrock) must not disappear from coverage just
+  # because it has no tests/ directory. Named integration/doc runs don't run it.
+  case "$crate_dir" in
+    "$PROJECT_ROOT/crates/drivers/"*)
+      drivers=$((drivers + 1))
+      if ! grep -Ev -- '(--test[[:space:]]|--doc|--ignored)' <<<"$invocations" | grep -q 'cargo test'; then
+        violations+=("${package}: driver library has no unit-test invocation")
+      fi
+      ;;
+  esac
+
+  [ -d "$tests_dir" ] || continue
   shopt -s nullglob
   test_files=("$tests_dir"/*.rs)
   shopt -u nullglob
   [ "${#test_files[@]}" -gt 0 ] || continue
-
-  # Invocation lines for this exact package.
-  invocations="$(grep -E -- "cargo test .*-p[[:space:]]+${package}([[:space:]]|$)" <<<"$workflows" || true)"
 
   if [ -z "$invocations" ]; then
     for path in "${test_files[@]}"; do
@@ -90,7 +107,7 @@ while IFS= read -r manifest; do
 
   # A run that filters neither to --lib nor to named --test targets executes
   # the crate's whole suite, integration tests included.
-  if grep -qvE -- "(--lib|--test[[:space:]])" <<<"$invocations"; then
+  if grep -qvE -- "(--lib|--test[[:space:]]|--doc|--ignored)" <<<"$invocations"; then
     checked=$((checked + ${#test_files[@]}))
     continue
   fi
@@ -99,10 +116,10 @@ while IFS= read -r manifest; do
     name="$(basename "$path" .rs)"
     checked=$((checked + 1))
     allowlist_reason "${package}:${name}" >/dev/null && continue
-    grep -qE -- "--test[[:space:]]+${name}([[:space:]]|$)" <<<"$workflows" && continue
+    grep -qE -- "--test[[:space:]]+${name}([[:space:]]|$)" <<<"$invocations" && continue
     violations+=("${package}: ${crate_dir#"$PROJECT_ROOT"/}/tests/${name}.rs — not run as '--test ${name}'")
   done
-done < <(find "$PROJECT_ROOT/crates" "$PROJECT_ROOT/integrations" -maxdepth 2 -name Cargo.toml 2>/dev/null | sort)
+done < <(git -C "$PROJECT_ROOT" ls-files -- 'crates/**/Cargo.toml' 'integrations/**/Cargo.toml' | sort)
 
 if [ "$checked" -eq 0 ]; then
   echo "error: no crate test files discovered — the search paths are probably wrong"
@@ -123,4 +140,4 @@ if [ "${#violations[@]}" -gt 0 ]; then
   exit 1
 fi
 
-echo "✅ all ${checked} crate test files are run by a workflow or allowlisted"
+echo "✅ all ${drivers} driver libraries and ${checked} crate test targets are covered by a workflow or allowlisted (ignored cases remain opt-in)"

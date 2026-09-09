@@ -12067,6 +12067,7 @@ export interface components {
       /** @description Optional model name being used */
       model?: string | null;
       phase?: null | components["schemas"]["ExecutionPhase"];
+      reasoning_state?: null | components["schemas"]["ReasoningState"];
       /**
        * @description Turn ID this output belongs to
        * @example turn_01933b5a00007000800000000000001
@@ -13577,6 +13578,16 @@ export interface components {
       name: string;
       /** @description The API value (e.g., "low", "medium") */
       value: components["schemas"]["ReasoningEffort"];
+    };
+    /** @description Persisted with assistant messages and native compaction checkpoints. */
+    ReasoningState: {
+      baseline?: null | components["schemas"]["ReasoningEffort"];
+      effective?: null | components["schemas"]["ReasoningEffort"];
+      /**
+       * @description A new epoch starts when switching model/provider or entering this mode.
+       * @example 01933b5a-0000-7000-8000-000000000001
+       */
+      epoch: string;
     };
     /**
      * @description Readable reasoning text, in the form the provider actually exposes.

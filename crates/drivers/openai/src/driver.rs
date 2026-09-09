@@ -156,11 +156,16 @@ impl ChatDriver for OpenAIChatDriver {
         }
 
         let models_url = models_url_for_api_url(&api_url);
-        list_openai_models(self.inner.client(), endpoint, &models_url).await
+        list_openai_models(&self.inner.client(), endpoint, &models_url).await
     }
 
     fn supports_compact(&self) -> bool {
         self.inner.supports_compact()
+    }
+
+    fn supports_stateful_responses(&self) -> bool {
+        // The engine uses this to preserve tool results whose calls live in prior state.
+        self.inner.supports_stateful_responses()
     }
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
@@ -245,7 +250,7 @@ impl ChatDriver for OpenAICompletionsChatDriver {
         }
 
         let models_url = models_url_for_api_url(&api_url);
-        list_openai_models(self.inner.client(), endpoint, &models_url).await
+        list_openai_models(&self.inner.client(), endpoint, &models_url).await
     }
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
@@ -424,20 +429,132 @@ impl Default for OpenAICompletionsChatDriver {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_openai_api_url, supports_model_listing};
-
-    #[test]
-    fn supports_model_listing_for_openai_host_with_port() {
-        assert!(supports_model_listing(
-            "https://api.openai.com:443/v1/responses"
-        ));
+    use super::*;
+    use everruns_provider::runtime_provider::{ProviderAuth, ProviderAuthRequest};
+    use serde_json::json;
+    #[tokio::test]
+    async fn public_discovery_gates_both_protocols_before_accessing_credentials() {
+        struct Probe(Option<&'static str>);
+        #[async_trait]
+        impl ProviderAuth for Probe {
+            async fn headers(
+                &self,
+                request: ProviderAuthRequest<'_>,
+            ) -> Result<Vec<(String, String)>> {
+                assert_eq!(request.method, "GET");
+                assert_eq!(
+                    Some(request.url),
+                    self.0,
+                    "unexpected credential destination"
+                );
+                Err(AgentLoopError::config("probe stopped before network"))
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+        for completions in [false, true] {
+            for (base, expected) in [
+                (None, None),
+                (Some("not a URL"), None),
+                (
+                    Some("https://api.openai.com:443/v1"),
+                    Some("https://api.openai.com/v1/models"),
+                ),
+                (
+                    Some("https://resource.openai.azure.com/openai/v1"),
+                    Some("https://resource.openai.azure.com/openai/v1/models"),
+                ),
+                (
+                    Some("https://resource.services.ai.azure.com/openai/v1"),
+                    Some("https://resource.services.ai.azure.com/openai/v1/models"),
+                ),
+                (Some("https://openrouter.ai/api/v1"), None),
+                (Some("https://api.openai.com.evil.example/v1"), None),
+                (
+                    Some("https://resource.openai.azure.com@evil.example/v1"),
+                    None,
+                ),
+                (Some("https://evil.example/api.openai.com"), None),
+            ] {
+                let driver: Box<dyn ChatDriver> = if completions {
+                    Box::new(OpenAICompletionsChatDriver::new())
+                } else {
+                    Box::new(OpenAIChatDriver::new())
+                };
+                let service = Provider::new("probe", driver).auth(Probe(expected));
+                let service = if let Some(base) = base {
+                    service.base_url(base)
+                } else {
+                    service
+                };
+                let result = service.list_models().await;
+                if expected.is_some() {
+                    assert!(
+                        result
+                            .unwrap_err()
+                            .to_string()
+                            .contains("probe stopped before network")
+                    );
+                } else {
+                    assert!(result.unwrap().is_none(), "{base:?}");
+                }
+            }
+        }
     }
 
-    #[test]
-    fn rejects_non_openai_hosts_for_model_listing() {
-        assert!(!is_openai_api_url("https://example.com/v1/responses"));
-        assert!(!supports_model_listing(
-            "https://openrouter.ai/api/v1/responses"
-        ));
+    #[tokio::test]
+    async fn catalog_http_maps_chat_and_embeddings_and_filters_unsupported_models() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::builder().start().await;
+        let mut data = vec![
+            json!({"id":"gpt-5","created":0,"owned_by":"openai"}),
+            json!({"id":"text-embedding-3-small","created":9223372036854775807_i64,"owned_by":"system"}),
+        ];
+        for id in [
+            "dall-e-3",
+            "tts-1",
+            "whisper-1",
+            "davinci-002",
+            "babbage-002",
+            "omni-moderation-latest",
+            "sora-2",
+            "gpt-image-1",
+            "codex-mini",
+            "gpt-transcribe",
+            "gpt-realtime",
+            "gpt-audio",
+            "gpt-tts",
+            "unknown",
+        ] {
+            data.push(json!({"id":id,"created":0,"owned_by":"openai"}));
+        }
+        for id in ["o1-mini", "o3", "o4-mini", "chatgpt-latest"] {
+            data.push(json!({"id":id,"created":0,"owned_by":"openai"}));
+        }
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .and(header("authorization", "Bearer synthetic-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data":data})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let service = provider("catalog", "synthetic-key").base_url(format!("{}/v1", server.uri()));
+        let models = list_openai_models(
+            &reqwest::Client::new(),
+            service.endpoint(),
+            &format!("{}/v1/models", server.uri()),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let actual:Vec<_>=models.into_iter().map(|m| json!({"id":m.model_id,"name":m.display_name,"owner":m.owned_by,"created":m.created_at.map(|t|t.to_rfc3339()),"capabilities":m.capabilities,"profile":m.discovered_profile})).collect();
+        let mut expected = vec![
+            json!({"id":"gpt-5","name":null,"owner":"openai","created":"1970-01-01T00:00:00+00:00","capabilities":["chat"],"profile":null}),
+            json!({"id":"text-embedding-3-small","name":null,"owner":"system","created":null,"capabilities":["embeddings"],"profile":null}),
+        ];
+        expected.extend(["o1-mini","o3","o4-mini","chatgpt-latest"].map(|id|json!({"id":id,"name":null,"owner":"openai","created":"1970-01-01T00:00:00+00:00","capabilities":["chat"],"profile":null})));
+        assert_eq!(actual, expected);
     }
 }

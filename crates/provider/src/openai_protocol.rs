@@ -64,8 +64,6 @@ pub fn is_openai_api_url(api_url: &str) -> bool {
 // map a non-success status into an error. They live in core so the provider
 // crates can reuse them without duplicating logic.
 
-const OPENAI_MODELS_URL: &str = "https://api.openai.com/v1/models";
-
 /// Whether `api_url`'s host equals `host` (case-insensitive), ignoring path/port.
 pub fn url_host_eq(api_url: &str, host: &str) -> bool {
     Url::parse(api_url)
@@ -87,22 +85,23 @@ pub fn normalize_api_url(base_url: &str, endpoint_suffix: &str) -> String {
 
 /// Derive the `/models` discovery URL from a chat/responses API URL.
 pub fn models_url_for_api_url(api_url: &str) -> String {
-    let trimmed = api_url.trim_end_matches('/');
-
-    if let Some(prefix) = trimmed.strip_suffix("/responses") {
-        return format!("{prefix}/models");
-    }
-    if let Some(prefix) = trimmed.strip_suffix("/chat/completions") {
-        return format!("{prefix}/models");
-    }
-    if trimmed.ends_with("/models") {
-        return trimmed.to_string();
-    }
-    if trimmed.ends_with("/v1") || trimmed.ends_with("/openai/v1") {
-        return format!("{trimmed}/models");
-    }
-
-    OPENAI_MODELS_URL.to_string()
+    let Ok(mut url) = Url::parse(api_url) else {
+        return api_url.to_owned();
+    };
+    // THREAT[TM-API-025]: discovery must never move provider credentials to a
+    // fallback origin when a URL contains a query or a custom path.
+    let path = url.path().trim_end_matches('/');
+    let models_path = if path.ends_with("/models") {
+        path.to_owned()
+    } else {
+        let base = path
+            .strip_suffix("/responses")
+            .or_else(|| path.strip_suffix("/chat/completions"))
+            .unwrap_or(path);
+        format!("{base}/models")
+    };
+    url.set_path(&models_path);
+    url.to_string()
 }
 
 /// Build the error returned when the `/models` endpoint responds with a
@@ -135,7 +134,6 @@ pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
 /// ```
 #[derive(Clone)]
 pub struct OpenAIProtocolChatDriver {
-    client: Client,
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
 }
@@ -143,8 +141,12 @@ pub struct OpenAIProtocolChatDriver {
 impl OpenAIProtocolChatDriver {
     /// Create a wire-only OpenAI Chat Completions protocol driver.
     pub fn new() -> Self {
+        // EVE-924: choose the rustls backend on the startup path. The shared
+        // client installs it as well, but that now happens on the first
+        // request, and products expect the process-wide choice to be settled
+        // while providers are being constructed.
+        crate::install_default_crypto_provider();
         Self {
-            client: crate::driver_helpers::shared_streaming_http_client(),
             retry_config: LlmRetryConfig::default(),
         }
     }
@@ -155,9 +157,15 @@ impl OpenAIProtocolChatDriver {
         self
     }
 
-    /// Get the HTTP client (for subclass access)
-    pub fn client(&self) -> &Client {
-        &self.client
+    /// The process-wide streaming HTTP client, resolved per request rather than
+    /// held as a field. Building it loads the platform trust store (~1.3 ms),
+    /// which would otherwise land on the agent startup path; after the first
+    /// request this is a `OnceLock` read and an `Arc` clone.
+    ///
+    /// Returned by value for subclass access; a `reqwest::Client` is an `Arc`
+    /// handle, so cloning it shares the same connection pool.
+    pub fn client(&self) -> Client {
+        crate::driver_helpers::shared_streaming_http_client()
     }
 
     /// Send one streaming chat-completion request, applying the shared
@@ -191,7 +199,7 @@ impl OpenAIProtocolChatDriver {
                     .resolve("POST", api_url, &body)
                     .await
                     .map_err(SendOutcome::Fatal)?;
-                let mut request_builder = self.client.post(&resolved.url);
+                let mut request_builder = self.client().post(&resolved.url);
                 let mut headers = resolved.headers;
                 headers.push(("Content-Type".to_string(), "application/json".to_string()));
                 for (name, value) in
@@ -1407,6 +1415,7 @@ mod tests {
     }
     fn call_config() -> LlmCallConfig {
         LlmCallConfig {
+            reasoning_state: None,
             model: "model".to_string(),
             temperature: None,
             max_tokens: None,
@@ -1800,5 +1809,42 @@ mod tests {
             .unwrap(),
             json!([{"role":"user","content":"hello"}])
         );
+    }
+    #[test]
+    fn discovery_urls_preserve_origin_queries_and_custom_paths() {
+        for (input, expected) in [
+            (
+                "https://api.openai.com/v1/responses",
+                "https://api.openai.com/v1/models",
+            ),
+            (
+                "https://openrouter.ai/api/v1/responses?route=a%20b#section",
+                "https://openrouter.ai/api/v1/models?route=a%20b#section",
+            ),
+            (
+                "https://api.fireworks.ai/inference/v1/chat/completions/",
+                "https://api.fireworks.ai/inference/v1/models",
+            ),
+            (
+                "https://api.meta.ai/v1/models?x=1",
+                "https://api.meta.ai/v1/models?x=1",
+            ),
+            (
+                "https://resource.openai.azure.com/custom?api-version=preview",
+                "https://resource.openai.azure.com/custom/models?api-version=preview",
+            ),
+            (
+                "https://resource.services.ai.azure.com/openai/v1/?api-version=preview",
+                "https://resource.services.ai.azure.com/openai/v1/models?api-version=preview",
+            ),
+            (
+                "https://proxy.example:8443/tenant%20one",
+                "https://proxy.example:8443/tenant%20one/models",
+            ),
+            ("https://proxy.example", "https://proxy.example/models"),
+            ("not a URL", "not a URL"),
+        ] {
+            assert_eq!(models_url_for_api_url(input), expected, "{input}");
+        }
     }
 }

@@ -200,7 +200,7 @@ mod tests {
 
         assert_eq!(response.status_code, 200);
         assert_eq!(response.format.as_deref(), Some("markdown"));
-        assert!(response.content.unwrap().contains("# Title"));
+        assert_eq!(response.content.as_deref(), Some("T\n# Title\n\nBody"));
         assert_eq!(egress.requested_urls(), vec!["http://93.184.216.34/page"]);
     }
 
@@ -219,6 +219,7 @@ mod tests {
 
         assert_eq!(response.status_code, 200);
         assert_eq!(response.url, "http://93.184.216.35/final");
+        assert_eq!(response.content.as_deref(), Some("done"));
         assert_eq!(
             egress.requested_urls(),
             vec!["http://93.184.216.34/start", "http://93.184.216.35/final"],
@@ -226,56 +227,177 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn forwards_request_metadata_to_egress() {
-        let egress = Arc::new(MockEgress::with_responses(vec![MockEgress::ok(
-            200,
-            &[("content-type", "text/plain")],
-            "ok",
-        )]));
-        let acl = NetworkAccessList::allow_only(["93.184.216.34"]);
-        let tool = fetchkit::Tool::builder()
-            .transport(Arc::new(EgressHttpTransport::new(
-                egress.clone(),
-                Some(acl.clone()),
-            )))
-            .build();
-
-        tool.execute(FetchRequest::new("http://93.184.216.34/meta"))
-            .await
-            .unwrap();
-
-        let requests = egress.requests.lock().unwrap();
-        let request = &requests[0];
-        assert_eq!(request.method, "GET");
-        assert_eq!(request.kind, EgressRequestKind::Capability);
-        assert_eq!(request.signing, EgressSigning::PlatformDefault);
-        assert_eq!(request.network_access, Some(acl));
-        assert!(
-            request.headers.contains_key("user-agent")
-                || request.headers.contains_key("User-Agent"),
-            "fetchkit headers must be forwarded, got: {:?}",
-            request.headers.keys().collect::<Vec<_>>()
-        );
+    fn transport_request(method: TransportMethod) -> TransportRequest {
+        TransportRequest {
+            method,
+            url: "https://docs.example.test:8443/path?q=one".parse().unwrap(),
+            headers: vec![
+                ("user-agent".to_string(), "contract-agent".to_string()),
+                ("if-none-match".to_string(), "\"v1\"".to_string()),
+                ("signature".to_string(), "fixture-signature".to_string()),
+            ],
+            timeout: None,
+            pinned_addrs: vec![],
+            respect_proxy_env: false,
+        }
     }
 
     #[tokio::test]
-    async fn egress_denial_surfaces_as_policy_error() {
-        let egress = Arc::new(MockEgress::with_responses(vec![Err(
-            EgressError::NetworkAccessDenied {
-                url: "http://93.184.216.34/blocked".to_string(),
-            },
-        )]));
-        let tool = tool_with_egress(egress);
+    async fn forwards_complete_requests_and_streamed_responses() {
+        let acl = NetworkAccessList::allow_only(["docs.example.test"]);
+        for (method, verb) in [
+            (TransportMethod::Get, "GET"),
+            (TransportMethod::Head, "HEAD"),
+        ] {
+            for (timeout, timeout_ms) in [
+                (None, None),
+                (Some(std::time::Duration::from_micros(1234)), Some(1)),
+                (Some(std::time::Duration::MAX), Some(u64::MAX)),
+            ] {
+                for pinned in [
+                    vec![],
+                    vec![
+                        "93.184.216.34:8443".parse().unwrap(),
+                        "93.184.216.35:8443".parse().unwrap(),
+                    ],
+                ] {
+                    let egress = Arc::new(MockEgress::with_responses(vec![MockEgress::ok(
+                        206,
+                        &[("content-type", "text/plain"), ("etag", "\"v2\"")],
+                        "complete body",
+                    )]));
+                    let transport = EgressHttpTransport::new(egress.clone(), Some(acl.clone()));
+                    let mut request = transport_request(method);
+                    request.timeout = timeout;
+                    request.pinned_addrs = pinned.clone();
+                    request.respect_proxy_env = true;
+                    let response = transport.execute(request).await.unwrap();
+                    assert_eq!(response.status, 206);
+                    assert_eq!(
+                        response.url.as_str(),
+                        "https://docs.example.test:8443/path?q=one"
+                    );
+                    assert_eq!(
+                        response.headers,
+                        vec![
+                            ("content-type".to_string(), "text/plain".to_string()),
+                            ("etag".to_string(), "\"v2\"".to_string())
+                        ]
+                    );
+                    let chunks = response.body.collect::<Vec<_>>().await;
+                    assert_eq!(chunks.len(), 1);
+                    assert_eq!(chunks[0].as_ref().unwrap().as_ref(), b"complete body");
+                    let requests = egress.requests.lock().unwrap();
+                    assert_eq!(requests.len(), 1);
+                    assert_eq!(
+                        requests[0],
+                        EgressRequest {
+                            method: verb.to_string(),
+                            url: "https://docs.example.test:8443/path?q=one".to_string(),
+                            headers: [
+                                ("user-agent".to_string(), "contract-agent".to_string()),
+                                ("if-none-match".to_string(), "\"v1\"".to_string()),
+                                ("signature".to_string(), "fixture-signature".to_string())
+                            ]
+                            .into_iter()
+                            .collect(),
+                            body: vec![],
+                            kind: EgressRequestKind::Capability,
+                            signing: EgressSigning::PlatformDefault,
+                            network_access: Some(acl.clone()),
+                            timeout_ms,
+                            dns_pinning_required: false,
+                            pinned_addrs: if pinned.is_empty() {
+                                None
+                            } else {
+                                Some(("docs.example.test".to_string(), pinned))
+                            },
+                        }
+                    );
+                }
+            }
+        }
+    }
 
-        let error = tool
-            .execute(FetchRequest::new("http://93.184.216.34/blocked"))
+    #[tokio::test]
+    async fn egress_failures_preserve_policy_and_transport_diagnostics() {
+        for (failure, expected, other) in [
+            (
+                EgressError::NetworkAccessDenied {
+                    url: "https://blocked.example/path".to_string(),
+                },
+                "Outbound request blocked by network policy: https://blocked.example/path",
+                false,
+            ),
+            (
+                EgressError::InvalidRequest("invalid request".to_string()),
+                "invalid request",
+                false,
+            ),
+            (
+                EgressError::SigningUnavailable,
+                "outbound request signing unavailable",
+                true,
+            ),
+            (
+                EgressError::Transport("connection lost".to_string()),
+                "connection lost",
+                false,
+            ),
+        ] {
+            let egress = Arc::new(MockEgress::with_responses(vec![Err(failure)]));
+            let transport = EgressHttpTransport::new(egress.clone(), None);
+            let error = match transport
+                .execute(transport_request(TransportMethod::Get))
+                .await
+            {
+                Err(error) => error,
+                Ok(_) => panic!("failure became successful response"),
+            };
+            match error {
+                TransportError::Other(message) if other => assert_eq!(message, expected),
+                TransportError::Request(message) if !other => assert_eq!(message, expected),
+                error => panic!("wrong transport error: {error:?}"),
+            }
+            assert_eq!(
+                egress.requested_urls(),
+                vec!["https://docs.example.test:8443/path?q=one"]
+            );
+        }
+    }
+
+    struct InterruptedBody;
+    #[async_trait]
+    impl EgressService for InterruptedBody {
+        async fn send(&self, _: EgressRequest) -> EgressResult<EgressResponse> {
+            panic!("adapter must use streaming egress")
+        }
+        async fn send_stream(&self, _: EgressRequest) -> EgressResult<EgressStreamResponse> {
+            Ok(EgressStreamResponse {
+                status: 200,
+                headers: Default::default(),
+                body: Box::pin(futures::stream::iter(vec![
+                    Ok(vec![0, 255]),
+                    Err(EgressError::Transport("body interrupted".to_string())),
+                ])),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn partial_body_bytes_and_late_stream_errors_are_preserved() {
+        let transport = EgressHttpTransport::new(Arc::new(InterruptedBody), None);
+        let mut response = transport
+            .execute(transport_request(TransportMethod::Get))
             .await
-            .unwrap_err();
-
-        assert!(
-            error.to_string().contains("blocked by network policy"),
-            "expected policy denial, got: {error}"
+            .unwrap();
+        assert_eq!(
+            response.body.next().await.unwrap().unwrap().as_ref(),
+            &[0, 255]
         );
+        assert!(
+            matches!(response.body.next().await,Some(Err(TransportError::Request(message))) if message=="body interrupted")
+        );
+        assert!(response.body.next().await.is_none());
     }
 }

@@ -227,7 +227,20 @@ export function CodePreview({ content, extension }: { content: string; extension
 }
 
 function parseCSV(content: string): { headers: string[]; rows: string[][] } {
-  const lines = content.split("\n").filter((line) => line.trim());
+  // A quoted field can span physical lines; split only at record boundaries.
+  const lines: string[] = [];
+  let recordStart = 0;
+  let quoted = false;
+  for (let i = 0; i < content.length; i++) {
+    if (content[i] === '"') quoted = !quoted;
+    if (content[i] === "\n" && !quoted) {
+      const record = content.slice(recordStart, i);
+      if (record.trim()) lines.push(record);
+      recordStart = i + 1;
+    }
+  }
+  const lastRecord = content.slice(recordStart);
+  if (lastRecord.trim()) lines.push(lastRecord);
   if (lines.length === 0) return { headers: [], rows: [] };
 
   // Simple CSV parser (handles quoted fields)
@@ -346,19 +359,20 @@ export function parseFrontmatter(content: string): {
   entries: { key: string; value: string }[];
   body: string;
 } {
-  // Frontmatter must start at the very beginning with ---
-  if (!content.startsWith("---")) {
+  // Require complete delimiter lines so ordinary Markdown cannot be discarded.
+  const opening = /^---\r?\n/.exec(content);
+  if (!opening) {
     return { entries: [], body: content };
   }
 
-  // Find the closing ---
-  const endIndex = content.indexOf("\n---", 3);
-  if (endIndex === -1) {
+  const remainder = content.slice(opening[0].length);
+  const closing = /^---(?:\r?\n|$)/m.exec(remainder);
+  if (!closing) {
     return { entries: [], body: content };
   }
 
-  const frontmatterBlock = content.slice(4, endIndex).trim();
-  const body = content.slice(endIndex + 4).trimStart();
+  const frontmatterBlock = remainder.slice(0, closing.index).trim();
+  const body = remainder.slice(closing.index + closing[0].length).trimStart();
 
   if (!frontmatterBlock) {
     return { entries: [], body };
@@ -367,7 +381,7 @@ export function parseFrontmatter(content: string): {
   // Parse simple YAML key: value pairs
   // Handles multiline values by treating indented continuation lines as part of the previous value
   const entries: { key: string; value: string }[] = [];
-  const lines = frontmatterBlock.split("\n");
+  const lines = frontmatterBlock.split(/\r?\n/);
   let currentKey = "";
   let currentValue = "";
 
@@ -573,11 +587,11 @@ const HTML_PREVIEW_CSP = "object-src 'none'; base-uri 'none'; form-action 'none'
  */
 function injectHtmlPreviewCsp(html: string): string {
   const meta = `<meta http-equiv="Content-Security-Policy" content="${HTML_PREVIEW_CSP}">`;
-  const headOpen = /<head[^>]*>/i;
+  const headOpen = /<head(?=[\s>])[^>]*>/i;
   if (headOpen.test(html)) {
     return html.replace(headOpen, (match) => `${match}${meta}`);
   }
-  const htmlOpen = /<html[^>]*>/i;
+  const htmlOpen = /<html(?=[\s>])[^>]*>/i;
   if (htmlOpen.test(html)) {
     return html.replace(htmlOpen, (match) => `${match}<head>${meta}</head>`);
   }
