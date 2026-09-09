@@ -2432,6 +2432,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-framework-cli-host"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "everruns-anthropic",
+ "everruns-core",
+ "everruns-host",
+ "everruns-integrations-bashkit",
+ "everruns-integrations-filesystem",
+ "everruns-llmsim",
+ "everruns-openai",
+ "everruns-provider",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-framework-support-agent"
 version = "0.1.0"
 dependencies = [
