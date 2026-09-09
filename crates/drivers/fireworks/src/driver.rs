@@ -114,7 +114,7 @@ impl ChatDriver for FireworksChatDriver {
         }
 
         let models_url = models_url_for_api_url(&api_url);
-        list_fireworks_models(self.inner.client(), endpoint, &models_url).await
+        list_fireworks_models(&self.inner.client(), endpoint, &models_url).await
     }
 }
 
@@ -361,6 +361,7 @@ mod tests {
 
     fn config() -> LlmCallConfig {
         LlmCallConfig {
+            reasoning_state: None,
             model: "accounts/fireworks/models/example".into(),
             temperature: Some(0.25),
             max_tokens: Some(64),

@@ -231,7 +231,12 @@ fn clamp_i64_to_i32(value: i64) -> i32 {
 }
 
 fn openrouter_price_per_million(value: &str) -> Option<f64> {
-    value.parse::<f64>().ok().map(|price| price * 1_000_000.0)
+    value
+        .parse::<f64>()
+        .ok()
+        .map(|price| price * 1_000_000.0)
+        // Check after scaling too: a finite per-token value can overflow.
+        .filter(|price| price.is_finite() && *price >= 0.0)
 }
 
 /// Standard low/medium/high effort config for OpenRouter reasoning models.
@@ -295,125 +300,171 @@ mod openrouter_tests {
     }
 
     #[test]
-    fn nemotron_profile_advertises_reasoning_with_effort_levels() {
+    fn catalog_metadata_maps_to_a_complete_profile() {
         let model = parse(NEMOTRON_JSON);
         assert!(model.is_chat_model());
-
-        let profile = model.to_discovered_profile();
-        assert!(profile.reasoning, "Nemotron must be reasoning-capable");
-
-        let effort = profile
-            .reasoning_effort
-            .expect("reasoning models expose an effort config");
-        assert_eq!(effort.default, ReasoningEffort::Medium);
-        let values: Vec<_> = effort.values.iter().map(|v| v.value).collect();
-        assert_eq!(
-            values,
-            vec![
-                ReasoningEffort::Low,
-                ReasoningEffort::Medium,
-                ReasoningEffort::High
-            ]
-        );
-
-        // Capabilities derived from supported_parameters.
-        assert!(profile.tool_call);
-        assert!(profile.structured_output);
-        assert!(profile.temperature);
-        assert_eq!(profile.name, "NVIDIA: Nemotron 3 Super");
-        assert_eq!(profile.family, "nvidia/nemotron-3-super-120b-a12b");
-        assert_eq!(
-            profile.description.as_deref(),
-            Some("A reasoning-capable chat model.")
-        );
-        assert_eq!(profile.release_date, None);
-        assert_eq!(profile.knowledge.as_deref(), Some("2025-01"));
-        let supported: Vec<_> = profile
-            .supported_parameters
-            .iter()
-            .map(String::as_str)
-            .collect();
-        assert_eq!(
-            supported,
-            vec![
-                "include_reasoning",
-                "max_tokens",
-                "reasoning",
-                "response_format",
-                "structured_outputs",
-                "temperature",
-                "tool_choice",
-                "tools",
-                "top_p"
-            ]
-        );
-        let cost = profile.cost.expect("cost");
+        let mut profile = model.to_discovered_profile();
+        let cost = profile.cost.take().unwrap();
         assert!((cost.input - 0.1).abs() < 1e-9);
         assert!((cost.output - 0.4).abs() < 1e-9);
-        assert!((cost.cache_read.expect("cache read") - 0.02).abs() < 1e-9);
-        // Prefer the routed provider's effective context window.
-        let limits = profile.limits.expect("limits");
-        assert_eq!(limits.context, 262144);
-        // max_completion_tokens is null here, so output falls back to context
-        // rather than a misleading 0.
-        assert_eq!(limits.output, 262144);
+        assert!((cost.cache_read.unwrap() - 0.02).abs() < 1e-9);
+        assert!(cost.cost_tiers.is_empty());
+        assert_eq!(
+            serde_json::to_value(profile).unwrap(),
+            serde_json::json!({
+                "name":"NVIDIA: Nemotron 3 Super", "family":"nvidia/nemotron-3-super-120b-a12b",
+                "description":"A reasoning-capable chat model.", "attachment":false,
+                "reasoning":true, "temperature":true, "knowledge":"2025-01",
+                "tool_call":true,"structured_output":true,"open_weights":false,
+                "limits":{"context":262144,"output":262144},
+                "modalities":{"input":["text"],"output":["text"]},
+                "reasoning_effort":{"values":[{"value":"low","name":"Low"},{"value":"medium","name":"Medium"},{"value":"high","name":"High"}],"default":"medium"},
+                "tool_search":false,"supports_phases":false,
+                "supported_parameters":["include_reasoning","max_tokens","reasoning","response_format","structured_outputs","temperature","tool_choice","tools","top_p"]
+            })
+        );
     }
 
     #[test]
-    fn oversized_token_counts_saturate_instead_of_wrapping() {
-        // Values beyond i32::MAX must clamp, not wrap to a negative number.
-        let model = parse(
-            r#"{
-                "id": "vendor/huge-context",
-                "context_length": 5000000000,
-                "architecture": { "output_modalities": ["text"] },
-                "supported_parameters": ["max_tokens"]
-            }"#,
-        );
-        let limits = model.to_discovered_profile().limits.expect("limits");
-        assert_eq!(limits.context, i32::MAX);
-        assert_eq!(limits.output, i32::MAX);
-        assert!(limits.output > 0);
+    fn capability_aliases_and_modalities_do_not_invent_missing_features() {
+        for (metadata, chat, expected) in [
+            (
+                serde_json::json!({}),
+                true,
+                serde_json::json!([false, false, false, false, false, ["text"]]),
+            ),
+            (
+                serde_json::json!({"architecture":{"output_modalities":["image"]}}),
+                false,
+                serde_json::json!([false, false, false, false, false, ["text"]]),
+            ),
+            (
+                serde_json::json!({"architecture":{"output_modalities":[]},"supported_parameters":["max_tokens","temperature","tools"]}),
+                true,
+                serde_json::json!([false, true, true, false, false, ["text"]]),
+            ),
+            (
+                serde_json::json!({"architecture":{"input_modalities":["IMAGE","file","pdf"],"output_modalities":["image","TEXT"]},"supported_parameters":["REASONING_EFFORT","TOOL_CHOICE","RESPONSE_FORMAT"]}),
+                true,
+                serde_json::json!([true, false, true, true, true, ["text", "image", "pdf"]]),
+            ),
+        ] {
+            let mut input = metadata;
+            input["id"] = serde_json::json!("vendor/model");
+            let model: OpenRouterModelInfo = serde_json::from_value(input).unwrap();
+            assert_eq!(model.is_chat_model(), chat);
+            let profile = model.to_discovered_profile();
+            assert_eq!(profile.name, "vendor/model");
+            assert_eq!(profile.family, "vendor/model");
+            assert_eq!(
+                serde_json::json!([
+                    profile.reasoning,
+                    profile.temperature,
+                    profile.tool_call,
+                    profile.structured_output,
+                    profile.attachment,
+                    profile.modalities.unwrap().input
+                ]),
+                expected
+            );
+            assert_eq!(
+                profile.reasoning_effort.map(|effort| effort.default),
+                profile.reasoning.then_some(ReasoningEffort::Medium)
+            );
+            assert!(profile.cost.is_none());
+            assert!(profile.limits.is_none());
+        }
     }
 
     #[test]
-    fn non_reasoning_model_has_no_effort_config() {
-        let model = parse(
-            r#"{
-                "id": "openai/gpt-4o-mini",
-                "architecture": { "output_modalities": ["text"] },
-                "supported_parameters": ["max_tokens", "temperature", "tools"]
-            }"#,
-        );
-        let profile = model.to_discovered_profile();
-        assert!(!profile.reasoning);
-        assert!(profile.reasoning_effort.is_none());
-        assert!(profile.tool_call);
+    fn effective_token_limits_saturate_and_keep_explicit_output_caps() {
+        for (context, top, expected) in [
+            (None, serde_json::json!({}), None),
+            (Some(-1_i64), serde_json::json!({}), Some((0, 0))),
+            (
+                Some(5_000_000_000),
+                serde_json::json!({}),
+                Some((i32::MAX, i32::MAX)),
+            ),
+            (
+                Some(100),
+                serde_json::json!({"context_length":80,"max_completion_tokens":20}),
+                Some((80, 20)),
+            ),
+            (
+                Some(100),
+                serde_json::json!({"context_length":80,"max_completion_tokens":-1}),
+                Some((80, 0)),
+            ),
+            (
+                Some(100),
+                serde_json::json!({"max_completion_tokens":5_000_000_000_i64}),
+                Some((100, i32::MAX)),
+            ),
+            (
+                Some(i32::MAX as i64),
+                serde_json::json!({}),
+                Some((i32::MAX, i32::MAX)),
+            ),
+        ] {
+            let model: OpenRouterModelInfo = serde_json::from_value(serde_json::json!({"id":"vendor/model","context_length":context,"top_provider":top})).unwrap();
+            assert_eq!(
+                model.to_discovered_profile().limits.map(|l| {
+                    assert!(l.input.is_none());
+                    assert!(l.max_media.is_none());
+                    (l.context, l.output)
+                }),
+                expected
+            );
+        }
     }
 
     #[test]
-    fn image_only_output_models_are_excluded() {
-        let model = parse(
-            r#"{
-                "id": "some/image-generator",
-                "architecture": { "output_modalities": ["image"] },
-                "supported_parameters": []
-            }"#,
-        );
-        assert!(!model.is_chat_model());
-    }
-
-    #[test]
-    fn legacy_reasoning_effort_alias_is_detected() {
-        let model = parse(
-            r#"{
-                "id": "vendor/legacy-reasoner",
-                "architecture": { "output_modalities": ["text"] },
-                "supported_parameters": ["reasoning_effort", "temperature"]
-            }"#,
-        );
-        let profile = model.to_discovered_profile();
-        assert!(profile.reasoning);
-        assert!(profile.reasoning_effort.is_some());
+    fn catalog_prices_are_finite_nonnegative_and_optional_cache_prices_stay_optional() {
+        let profile = |pricing| {
+            serde_json::from_value::<OpenRouterModelInfo>(
+                serde_json::json!({"id":"vendor/model","pricing":pricing}),
+            )
+            .unwrap()
+            .to_discovered_profile()
+        };
+        for invalid in ["NaN", "inf", "-inf", "-0.01", "1e308", "not-a-price"] {
+            for field in ["prompt", "completion"] {
+                let mut pricing = serde_json::json!({"prompt":"0.000001","completion":"0.000002"});
+                pricing[field] = serde_json::json!(invalid);
+                assert!(
+                    profile(pricing).cost.is_none(),
+                    "invalid {field}: {invalid}"
+                );
+            }
+            let pricing = serde_json::json!({"prompt":"0.000001","completion":"0.000002","input_cache_read":invalid});
+            let cost = profile(pricing).cost.unwrap();
+            assert_eq!((cost.input, cost.output, cost.cache_read), (1.0, 2.0, None));
+        }
+        for pricing in [
+            serde_json::json!({}),
+            serde_json::json!({"prompt":"0"}),
+            serde_json::json!({"completion":"0"}),
+        ] {
+            assert!(profile(pricing).cost.is_none());
+        }
+        for (pricing, expected) in [
+            (
+                serde_json::json!({"prompt":"0","completion":"0"}),
+                (0.0, 0.0, None),
+            ),
+            (
+                serde_json::json!({"prompt":"1e-6","completion":"2e-6","cache_read":"0.0000005"}),
+                (1.0, 2.0, Some(0.5)),
+            ),
+            (
+                serde_json::json!({"prompt":"1e-6","completion":"2e-6","cache_read":"0.0000005","input_cache_read":"0.00000025"}),
+                (1.0, 2.0, Some(0.25)),
+            ),
+        ] {
+            let cost = profile(pricing).cost.unwrap();
+            assert_eq!((cost.input, cost.output, cost.cache_read), expected);
+            assert!(cost.cost_tiers.is_empty());
+        }
     }
 }
