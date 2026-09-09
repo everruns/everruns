@@ -122,11 +122,12 @@ pub struct OpenResponsesProtocolChatDriver {
 impl OpenResponsesProtocolChatDriver {
     /// Create a wire-only Open Responses protocol driver.
     pub fn new() -> Self {
+        // EVE-924: choose the rustls backend on the startup path. The shared
+        // client installs it as well, but that now happens on the first
+        // request, and products expect the process-wide choice to be settled
+        // while providers are being constructed.
+        crate::install_default_crypto_provider();
         Self {
-            // SSRF-hardened shared client (redirects disabled + DNS-pinned
-            // resolver). The api_url is org-configurable, so a bare
-            // `Client::new()` would leave this provider open to DNS-rebind /
-            // redirect SSRF (TM-API-013, EVE-623).
             retry_config: LlmRetryConfig::default(),
             request_extension: None,
             stateful_responses: None,
@@ -349,6 +350,11 @@ impl OpenResponsesProtocolChatDriver {
     ///
     /// Returned by value for subclass access; a `reqwest::Client` is an `Arc`
     /// handle, so cloning it shares the same connection pool.
+    ///
+    /// The shared client is SSRF-hardened (redirects disabled + DNS-pinned
+    /// resolver). The api_url is org-configurable, so a bare `Client::new()`
+    /// would leave this provider open to DNS-rebind / redirect SSRF
+    /// (TM-API-013, EVE-623).
     pub fn client(&self) -> Client {
         crate::driver_helpers::shared_streaming_http_client()
     }

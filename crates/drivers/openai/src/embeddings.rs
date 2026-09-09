@@ -9,6 +9,11 @@ pub struct OpenAIEmbeddingsDriver;
 
 impl OpenAIEmbeddingsDriver {
     pub fn new() -> Self {
+        // EVE-924: choose the rustls backend on the startup path. The shared
+        // client installs it as well, but that now happens on the first
+        // request, and products expect the process-wide choice to be settled
+        // while providers are being constructed.
+        everruns_provider::install_default_crypto_provider();
         Self
     }
 

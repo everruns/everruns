@@ -48,6 +48,11 @@ impl TurbopufferVectorStore {
     /// Build a new backend. `base_url` is the regional Turbopuffer endpoint
     /// (any trailing slash is trimmed); `api_key` authenticates every request.
     pub fn new(base_url: impl Into<String>, api_key: impl Into<String>) -> Self {
+        // EVE-924: choose the rustls backend on the startup path. The shared
+        // client installs it as well, but that now happens on the first
+        // request, and products expect the process-wide choice to be settled
+        // while providers are being constructed.
+        everruns_provider::install_default_crypto_provider();
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             api_key: api_key.into(),
