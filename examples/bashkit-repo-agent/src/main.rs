@@ -31,9 +31,11 @@ You are a release engineer for the repository mounted at /workspace. The bash \
 tool is your only way to see or change anything: no file is read or written \
 except through a shell command. It is a sandboxed Bash interpreter, so there \
 is no network, no host filesystem, and no git; work with the files in the \
-working tree. Inspect before you edit, make every edit idempotent, verify the \
-result with a command that would fail loudly if the edit did not land, and \
-keep the final answer under 120 words.";
+working tree. It implements a large but partial coreutils surface, so when a \
+command is missing, reach for a portable alternative instead of retrying it. \
+Inspect before you edit, make every edit idempotent, verify the result with a \
+command that would fail loudly if the edit did not land, and keep the final \
+answer under 120 words.";
 
 fn release_request(release_date: &str) -> String {
     format!(
@@ -155,9 +157,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     sample_repo::materialize(&root)?;
 
     let release_date = today_utc();
-    println!("Model: {MODEL}");
-    println!("Working copy: {}", root.display());
-    println!("Capability: bashkit_shell (sandboxed Bash over /workspace)");
+    demo::banner("everruns · bashkit repo agent");
+    demo::field("model", MODEL);
+    demo::field(
+        "capability",
+        "bashkit_shell — sandboxed Bash over /workspace",
+    );
+    demo::field("workspace", &root.display().to_string());
+    demo::field("release", &format!("{TARGET_VERSION} ({release_date})"));
 
     // `OpenAI::from_env` reads OPENAI_API_KEY; the turn below is a real
     // provider call, not a simulation.
@@ -166,18 +173,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     demo::run(&session, &release_request(&release_date)).await?;
 
     let checks = verify(&root, &release_date);
-    println!("\nRELEASE CHECKS");
+    demo::section("RELEASE CHECKS ON DISK");
     for item in &checks {
-        println!(
-            "  [{}] {}",
-            if item.passed { "ok" } else { "FAIL" },
-            item.label
-        );
+        demo::check(item.passed, &item.label);
     }
-    println!("\nCHANGELOG.md after the run");
-    for line in fs::read_to_string(root.join("CHANGELOG.md"))?.lines() {
-        println!("  {line}");
-    }
+    demo::section("CHANGELOG.md AFTER THE RUN");
+    demo::body(&fs::read_to_string(root.join("CHANGELOG.md"))?, demo::DIM);
 
     let failed = checks.iter().filter(|item| !item.passed).count();
     if failed > 0 {

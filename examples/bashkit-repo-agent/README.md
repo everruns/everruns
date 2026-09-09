@@ -5,6 +5,8 @@ A Framework agent that performs a real repository operation — cutting a releas
 runtime. It runs against a real model (`gpt-5.6-terra`), and the host verifies
 the result on disk after the turn.
 
+![Bashkit Repo Agent terminal demo](demo.gif)
+
 ## Run
 
 ```bash
@@ -33,6 +35,24 @@ The tests never contact the provider.
    claim (`verify` in [src/main.rs](src/main.rs)), exiting non-zero if the
    release did not actually land.
 
+## How the demo works
+
+The screencast is a **paged replay of a recorded live run**, with provider wait
+time removed. Read the [complete displayed transcript](demo.txt) at your own
+pace; long scripts and command output are truncated for display only, the agent
+receives the full result. The run shown hits a real edge of the sandbox — `find
+-delete` is not implemented — and recovers with a portable `-exec rm -f {} \;`.
+
+To capture a new live run, export `OPENAI_API_KEY` and run:
+
+```bash
+bash record.sh
+```
+
+Recording needs VHS, `less`, and a real provider call. Adjust the page count in
+[demo.tape](demo.tape) if a new transcript is longer; `vhs demo.tape` replays
+the saved transcript without API calls.
+
 ## Why Bashkit
 
 Bashkit interprets bash in-process against the session filesystem: no
@@ -45,8 +65,9 @@ available, so the agent works on the checked-out tree.
 Agent setup, the release request, and the verification live in
 [src/main.rs](src/main.rs); [src/demo.rs](src/demo.rs) subscribes to session
 events and prints each shell script the agent runs with a bounded preview of its
-output. The shell here operates on this example's own throwaway copy — review
-what an observer prints before pointing one at a workspace with private data.
+output, colored unless `NO_COLOR` is set. The shell here operates on this
+example's own throwaway copy — review what an observer prints before pointing
+one at a workspace with private data.
 
 ## See also
 

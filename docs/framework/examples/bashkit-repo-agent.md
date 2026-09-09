@@ -14,6 +14,13 @@ sample repository is mounted as `/workspace` with a read-write workspace policy,
 so the shell edits real files on disk while staying inside the sandbox: no
 subprocess, no host filesystem, no network, and no `git`.
 
+![Bashkit Repo Agent terminal demo](https://raw.githubusercontent.com/everruns/everruns/main/examples/bashkit-repo-agent/demo.gif)
+
+This screencast replays a real run in readable pages, with waiting time removed.
+[Read the complete displayed transcript](https://github.com/everruns/everruns/blob/main/examples/bashkit-repo-agent/demo.txt).
+Scripts and command output are truncated for display; the agent receives the
+full result.
+
 ```bash
 OPENAI_API_KEY=... cargo run -p everruns-bashkit-repo-agent
 ```
