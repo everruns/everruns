@@ -3,7 +3,7 @@
 //! MCP and the built-in Platform capability both delegate here so command
 //! discovery, Bashkit behavior, limits, and error sanitization stay identical.
 
-use crate::api::mcp_endpoint::{catalog, positional};
+use crate::api::mcp_endpoint::{catalog, cli_tree, positional};
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,10 +100,20 @@ fn discover(
         if let Some(positional_arg) = entry.positional_arg {
             value["positional_arg"] = json!(positional_arg);
         }
+        // Show the spelling a caller should type. `name` stays the wire
+        // identity (and still works), but usage renders the tree form so
+        // discovery teaches one grammar instead of two.
+        if let Some(spelling) = &entry.cli {
+            value["cli"] = json!(format!("{} {spelling}", cli_tree::ROOT));
+        }
         if include_schemas {
             value["input_schema"] = entry.input_schema.clone();
             value["output_schema"] = entry.output_schema.clone();
-            value["bash_usage"] = json!(catalog::bash_usage(entry.name, &entry.input_schema));
+            let usage_name = match &entry.cli {
+                Some(spelling) => format!("{} {spelling}", cli_tree::ROOT),
+                None => entry.name.to_string(),
+            };
+            value["bash_usage"] = json!(catalog::bash_usage(&usage_name, &entry.input_schema));
             value["output_fields"] = json!(catalog::schema_field_paths(&entry.output_schema));
             if serde_json::to_vec(&value).is_ok_and(|encoded| encoded.len() > 2_000) {
                 value
@@ -263,7 +273,11 @@ async fn script(
         .unwrap_or(30_000)
         .min(60_000);
 
-    let rewritten = positional::rewrite(commands, positional::positional_map());
+    // Tree spelling first, then the positional fixup: `everruns agents get X`
+    // becomes `get_agent X` and then `get_agent --id X`, so both rewrites
+    // compose instead of each needing to know about the other.
+    let with_tree = cli_tree::rewrite(commands, cli_tree::tree());
+    let rewritten = positional::rewrite(&with_tree, positional::positional_map());
     let tool = catalog::build_toolset(context, mode);
     let request = bashkit::ToolRequest::new(rewritten);
     let result = tokio::time::timeout(
@@ -399,6 +413,32 @@ mod tests {
                 machine_payments: true,
             },
         )
+    }
+
+    /// Discovery is where a model learns the spelling, so the tree has to
+    /// reach it: a working rewrite that nothing advertises is a surface nobody
+    /// finds.
+    #[test]
+    fn discovery_shows_the_tree_spelling_and_usage() {
+        let text = discover_for_test(&json!({"query": "list_agents"})).expect("discover");
+        let value: Value = serde_json::from_str(&text).expect("json");
+        let rendered = serde_json::to_string(&value).expect("re-encode");
+
+        assert!(rendered.contains("everruns agents list"), "{rendered}");
+        // The wire name stays present: it is the identity, and still runs.
+        assert!(rendered.contains("list_agents"), "{rendered}");
+    }
+
+    /// A command outside the declared tranche must not gain a spelling by
+    /// accident. Tree membership is opt-in precisely so internal plumbing
+    /// cannot leak into an agent-facing surface.
+    #[test]
+    fn discovery_omits_a_spelling_for_undeclared_commands() {
+        let text = discover_for_test(&json!({"query": "health_check"})).expect("discover");
+        let value: Value = serde_json::from_str(&text).expect("json");
+        let rendered = serde_json::to_string(&value).expect("re-encode");
+        assert!(rendered.contains("health_check"), "{rendered}");
+        assert!(!rendered.contains("\"cli\""), "{rendered}");
     }
 
     #[test]

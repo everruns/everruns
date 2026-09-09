@@ -45,6 +45,12 @@ impl Command for CreateSkill {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(CliRoute::new(&["skills"], "create").with_examples(&[
+            "everruns skills create --name code-review --content \"$(cat SKILL.md)\"",
+        ]))
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&SKILL_MANAGE)
     }
@@ -139,6 +145,10 @@ impl Command for ListSkills {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(CliRoute::new(&["skills"], "list").with_examples(&["everruns skills list --limit 20"]))
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&SKILL_VIEW)
     }
@@ -177,6 +187,10 @@ impl Command for GetSkill {
             method: "GET",
             path: "/v1/skills/{id}",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(CliRoute::new(&["skills"], "get").with_examples(&["everruns skills get skl_01h9..."]))
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -229,6 +243,13 @@ impl Command for GetSkillContent {
             method: "GET",
             path: "/v1/skills/{id}/content",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["skills"], "content")
+                .with_examples(&["everruns skills content skl_01h9..."]),
+        )
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -329,6 +350,13 @@ impl Command for UpdateSkillCmd {
             method: "PATCH",
             path: "/v1/skills/{id}",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["skills"], "update")
+                .with_examples(&["everruns skills update skl_01h9... --name code-review-v2"]),
+        )
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -485,6 +513,13 @@ impl Command for DeleteSkill {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["skills"], "delete")
+                .with_examples(&["everruns skills delete skl_01h9...   # archive, restorable"]),
+        )
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&SKILL_MANAGE)
     }
@@ -540,6 +575,13 @@ impl Command for DestroySkill {
             method: "POST",
             path: "/v1/skills/{id}/delete",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["skills"], "destroy")
+                .with_examples(&["everruns skills destroy skl_01h9...  # permanent"]),
+        )
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -607,6 +649,10 @@ impl Command for ListSkillsUsage {
             method: "GET",
             path: "/v1/skills/usage",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(CliRoute::new(&["skills"], "usage").with_examples(&["everruns skills usage"]))
     }
 
     fn policy() -> Option<&'static Policy> {

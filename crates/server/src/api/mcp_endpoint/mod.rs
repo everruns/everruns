@@ -65,6 +65,7 @@ use std::sync::Arc;
 use super::common::impl_auth_state;
 
 pub(crate) mod catalog;
+pub(crate) mod cli_tree;
 pub(crate) mod positional;
 
 // ============================================================================

@@ -271,6 +271,13 @@ impl Command for CreateAgent {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents"], "create")
+                .with_examples(&["everruns agents create --name triage --harness_name generic"]),
+        )
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&AGENT_MANAGE)
     }
@@ -435,6 +442,13 @@ impl Command for ListAgents {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents"], "list")
+                .with_examples(&["everruns agents list --search triage --limit 20"]),
+        )
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&AGENT_VIEW)
     }
@@ -497,6 +511,10 @@ impl Command for GetAgent {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(CliRoute::new(&["agents"], "get").with_examples(&["everruns agents get agt_01h9..."]))
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&AGENT_VIEW)
     }
@@ -539,6 +557,13 @@ impl Command for UpdateAgentCmd {
             method: "PATCH",
             path: "/v1/agents/{id}",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents"], "update")
+                .with_examples(&["everruns agents update agt_01h9... --name triage-v2"]),
+        )
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -731,6 +756,13 @@ impl Command for DeleteAgent {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents"], "delete")
+                .with_examples(&["everruns agents delete agt_01h9...   # archive, restorable"]),
+        )
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&AGENT_MANAGE)
     }
@@ -804,6 +836,13 @@ impl Command for UpsertAgent {
             method: "PUT",
             path: "/v1/agents/{id}",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents"], "upsert")
+                .with_examples(&["everruns agents upsert --name triage --harness_name generic"]),
+        )
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -954,6 +993,13 @@ impl Command for CopyAgent {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents"], "copy")
+                .with_examples(&["everruns agents copy agt_01h9... --name triage-copy"]),
+        )
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&AGENT_MANAGE)
     }
@@ -1022,6 +1068,13 @@ impl Command for ExportAgent {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents"], "export")
+                .with_examples(&["everruns agents export agt_01h9... > agent.json"]),
+        )
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&AGENT_VIEW)
     }
@@ -1065,6 +1118,13 @@ impl Command for ImportAgent {
             method: "POST",
             path: "/v1/agents/import",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents"], "import")
+                .with_examples(&["everruns agents import --definition \"$(cat agent.json)\""]),
+        )
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -1306,6 +1366,13 @@ impl Command for ListAgentVersions {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents", "versions"], "list")
+                .with_examples(&["everruns agents versions list --agent_id agt_01h9..."]),
+        )
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&AGENT_VIEW)
     }
@@ -1341,6 +1408,14 @@ impl Command for CreateAgentVersionCmd {
             method: "POST",
             path: "/v1/agents/{agent_id}/versions",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents", "versions"], "create").with_examples(&[
+                "everruns agents versions create --agent_id agt_01h9... --label v2",
+            ]),
+        )
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -1382,6 +1457,14 @@ impl Command for SetDefaultAgentVersion {
             method: "POST",
             path: "/v1/agents/{agent_id}/versions/default",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents", "versions"], "set-default").with_examples(&[
+                "everruns agents versions set-default --agent_id agt_01h9... --version 3",
+            ]),
+        )
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -1445,6 +1528,14 @@ impl Command for RollbackAgentVersion {
             method: "POST",
             path: "/v1/agents/{agent_id}/versions/{version_id}/rollback",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents", "versions"], "rollback").with_examples(&[
+                "everruns agents versions rollback --agent_id agt_01h9... --version 2",
+            ]),
+        )
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -1540,6 +1631,14 @@ impl Command for DiffAgentVersions {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents", "versions"], "diff").with_examples(&[
+                "everruns agents versions diff --agent_id agt_01h9... --from 2 --to 3",
+            ]),
+        )
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&AGENT_VIEW)
     }
@@ -1603,6 +1702,14 @@ impl Command for ForkAgentVersion {
             method: "POST",
             path: "/v1/agents/{agent_id}/versions/{version_id}/fork",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents", "versions"], "fork").with_examples(&[
+                "everruns agents versions fork --agent_id agt_01h9... --version 2",
+            ]),
+        )
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -1718,6 +1825,13 @@ impl Command for PreviewAgent {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents"], "preview")
+                .with_examples(&["everruns agents preview agt_01h9..."]),
+        )
+    }
+
     fn read_only() -> bool {
         true
     }
@@ -1804,6 +1918,13 @@ impl Command for AnalyzeAgent {
             method: "POST",
             path: "/v1/agents/analyze",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents"], "analyze")
+                .with_examples(&["everruns agents analyze agt_01h9..."]),
+        )
     }
 
     // Makes paid utility-LLM calls; not a free read.
@@ -1917,6 +2038,13 @@ impl Command for CheckAgentName {
             method: "GET",
             path: "/v1/agents/check-name",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents"], "check-name")
+                .with_examples(&["everruns agents check-name --name triage"]),
+        )
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -3031,6 +3159,13 @@ impl Command for DestroyAgent {
             method: "POST",
             path: "/v1/agents/{id}/delete",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents"], "destroy")
+                .with_examples(&["everruns agents destroy agt_01h9...  # permanent"]),
+        )
     }
 
     fn policy() -> Option<&'static Policy> {

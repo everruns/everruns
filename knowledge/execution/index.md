@@ -20,5 +20,6 @@
 * [Tool Search Specification](tool-search.md) - OpenAI tool_search deferred tool loading capability.
 * [fetchkit](fetchkit.md) - fetchkit library powering the `web_fetch` capability.
 * [Toolkit Library Contract](toolkit-library-contract.md) - Convention for external toolkit libraries.
+* [Command Tree Specification](command-tree.md) - The `everruns <noun> <verb>` surface shared by scripted MCP, session shells, and Framework hosts.
 * [Bashkit Requirements for Custom FileSystem Adapters](bashkit-requirements.md) - Bash sandbox capabilities and requirements.
 * [Lua Execution Capability (experimental)](lua-execution.md) - Experimental Lua execution capability (sandboxed VFS scripting; aims to supersede bashkit_shell).
