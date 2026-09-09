@@ -279,50 +279,54 @@ adopts the same block: target, containment, network, writable roots,
 capabilities, durability. One `coding` harness then replaces three, because the
 only thing that differed between them was the environment.
 
-## Letting the agent choose
+## Who chooses the environment
 
-The request is that an agent be able to select no sandbox, Bashkit, or Daytona.
-Three levels, in increasing order of what the model itself decides:
+Decision: the **caller**, when creating the session, or the **agent**, as
+configuration. Never the model at runtime.
 
-**L1, declarative.** The agent version pins one environment profile. Already the
-plan in [Sandbox Abstraction](sandbox-abstraction.md). Sufficient for most
-deployments and the only level required for a first release.
-
-**L2, a set with a switch.** The agent version declares *named* environments and
-a default:
+An agent version declares named environments and a default:
 
 ```json
 {
   "environments": {
     "default": "scratch",
-    "scratch": { "target": { "kind": "vfs", "provider": "bashkit" } },
-    "build":   { "target": { "kind": "managed", "provider": "daytona" } },
-    "here":    { "target": { "kind": "host" }, "containment": { "level": "native" } }
+    "profiles": {
+      "scratch": { "target": { "kind": "vfs", "provider": "bashkit" } },
+      "build":   { "target": { "kind": "managed", "provider": "daytona" } },
+      "here":    { "target": { "kind": "host" }, "containment": { "level": "none" } }
+    }
   }
 }
 ```
 
-The model gets one control tool, `use_environment { name }`, whose argument is
-constrained to that map. It never passes provider configuration, an image, a
-resource id, or a containment relaxation. The dangerous version of "the agent
-picks its sandbox" is the model authoring the profile; the useful version is the
-model choosing among profiles a human already approved. Only the second is
-proposed.
+A session inherits the default, names one of the profiles, or inlines its own.
+That is the whole selection mechanism, and it keeps the model's tool schema
+fixed for the life of a session.
 
-**L3, escalation.** Within the current environment, request more access:
-Yolop's `require_escalated` path, gated by human approval, grantable once or for
-the session, with a sandbox-scoped grant never implying a full-access grant.
-Already implemented in Yolop (`src/sandbox_approval.rs`) and worth lifting to
-the platform rather than reinventing.
+The rejected alternative is worth recording, because it is the obvious next
+request. Give the model one control tool, `use_environment { name }`, argument
+constrained to that map, and an agent that hits `cargo build` inside Bashkit can
+move itself to `build` instead of failing. It is rejected for the first version
+because it buys a rescue path at the cost of switch semantics in the hot path, a
+tool-schema refresh mid-session, and a failure mode where a confused model
+bounces between environments. The API-driven switch below already covers the
+same recovery with a human or an application in the loop, and nothing in the
+design forecloses adding the tool later.
 
-Invariant across all three: the model may pick from a preapproved set or narrow
-its own access. Widening requires configuration or a human.
+Two invariants hold whoever is choosing. Selection is always *from* a set of
+profiles a human authored: model input never becomes provider configuration, an
+image, a resource id, or a containment relaxation. And widening access always
+needs configuration or a human, never a runtime decision by the agent.
+
+Escalation, Yolop's `require_escalated` path with its once-or-session approval
+grant, belongs to the same later phase as kernel containment: there is nothing
+to escalate while every target fixes its own boundary.
 
 ### Switching is a filesystem event
 
-Each environment owns a working filesystem, so a switch has to say what happened
-to the files. Exactly three modes, chosen by the profile, reported in the tool
-result:
+A switch is an application or operator action, through the API or the UI. Each
+environment owns a working filesystem, so a switch has to say what happened to
+the files. Exactly three modes, chosen by the profile, reported in the result:
 
 - `fresh`: the new environment starts bootstrapped and empty. Default.
 - `carry`: export a portable workspace checkpoint from the old environment and
@@ -336,7 +340,9 @@ interpreter state, RAM. This is the same honesty the physical-loss recovery
 event already owes the agent.
 
 A switch changes the advertised capability set, so it changes the tool schemas.
-It must land on a turn boundary with a schema refresh, never mid-batch.
+It must land on a turn boundary with a schema refresh, never mid-batch. With
+selection kept out of the model's hands this is rare and externally triggered,
+which is most of why the first version is cheaper to build.
 
 ## The machine target
 
@@ -485,10 +491,10 @@ if !caps.native_processes {
 }
 ```
 
-### Named environments and the agent's choice
+### Named environments
 
-L2 from above. The set is authored by the application; the model receives one
-control tool whose argument is constrained to these names.
+The set is authored by the application. A session takes the default or names
+one; the model is not given a tool to change it.
 
 ```rust
 let agent = Agent::builder()
@@ -499,14 +505,16 @@ let agent = Agent::builder()
         ("build",   daytona_environment),   // real Linux, network allowlist
     ])
     .default_environment("scratch")
-    .environment_switching(Switching::Allowed { workspace: Transfer::Carry })
     .build()?;
+
+let session = engine.create(agent).environment_named("build").start().await?;
 ```
 
-From application code the same switch is explicit and reports what was lost:
+The application may still move a running session, and the call reports what was
+lost:
 
 ```rust
-let outcome = session.use_environment("build").carry_workspace().await?;
+let outcome = session.switch_environment("build").carry_workspace().await?;
 println!("{} files carried, {} lost", outcome.files_carried, outcome.processes_lost);
 ```
 
@@ -556,7 +564,7 @@ POST /v1/agents
   "harness": "coding",
   "environments": {
     "default": "scratch",
-    "switching": { "allowed": true, "workspace": "carry" },
+    "switching": { "workspace": "carry" },
     "profiles": {
       "scratch": {
         "target": { "kind": "vfs", "provider": "bashkit" },
@@ -609,8 +617,8 @@ POST /v1/sessions
 { "agent_name": "coding", "title": "Rename the config module" }
 ```
 
-**Name one of the agent's profiles.** Same set the model may switch between, so
-a caller cannot reach an environment the agent does not declare:
+**Name one of the agent's profiles.** Selection is bounded by what the agent
+declares, so a caller cannot reach an environment it does not offer:
 
 ```http
 POST /v1/sessions
@@ -882,10 +890,11 @@ phase: Bashkit and Daytona fix their own boundary, so nothing in the first
 release needs Seatbelt or Landlock. Exit: an Everruns session runs `bash` on the
 worker host, and the API refuses to pin a durable agent to it.
 
-**P2, environment sets.** Named environments, `use_environment`, switch modes,
-schema refresh on switch, escalation gate lifted from Yolop. Exit: one session
-starts in Bashkit, switches to Daytona for a build carrying its workspace, and
-the transcript states exactly what was lost.
+**P2, environment sets.** Named environments on the agent version, selection at
+session creation, the API-driven switch with its three workspace modes, and the
+schema refresh a switch implies. No model-facing control tool. Exit: a session
+created on Bashkit is switched to Daytona carrying its workspace, and the
+transcript states exactly what was lost.
 
 **P3, machine target and consolidation.** SSH or daemon transport, then port
 E2B, Deno, Sprites, and container behind the driver contract as already planned.
@@ -913,13 +922,11 @@ P1 and P2 are independent of the Daytona durability work in
 
 ## Open questions
 
-1. Is L2 wanted in the first release, or is config-only selection (L1) enough
-   until a workflow demands the switch?
-2. Is `sandbox` the better wire name for the containment field, given that
+1. Is `sandbox` the better wire name for the containment field, given that
    `sandbox: none` says the original request literally?
-3. When kernel containment does arrive, where does the shared crate live: inside
+2. When kernel containment does arrive, where does the shared crate live: inside
    `everruns-host`, or its own publishable crate that both repositories pin, the
    way Yolop already pins Tuika?
-4. Does the Environment row own a workspace head, or reference one the Session
+3. Does the Environment row own a workspace head, or reference one the Session
    already bound? The domain model takes the second reading, which keeps one
    filesystem lineage across a switch.
