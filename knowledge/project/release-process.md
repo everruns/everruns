@@ -104,16 +104,21 @@ published — crates.io versions are immutable, and yanking the new version brea
 released against it — which is why the classification happens before merge. Run against that
 release, `check-semver-bumps.py` demands the breaking slot for host 0.20.4.
 
-**Known gap: `#[doc(hidden)]` API crossing a published crate boundary.** `cargo-semver-checks`
-excludes `#[doc(hidden)]` items by design — the attribute declares "not public API, free to change
-without a bump" — so no API-diffing gate can cover them, this one included. That exemption only
-holds while such an item stays inside one crate. The break in
-[#665](https://github.com/everruns/yolop/issues/665) was precisely this: the published `everruns`
-facade calls the `#[doc(hidden)]` `InProcessRuntime::append_accepted_inputs`
-([`crates/host/src/runtime.rs`](../../crates/host/src/runtime.rs)) across a crate boundary, under a
-caret pin, so a host patch release changed an API a separately versioned crates.io package depends
-on. When changing a `#[doc(hidden)]` host item, check whether the facade calls it and release the
-two together; the gate will not do it for you.
+**Never `#[doc(hidden)]` an item another published crate calls.** `cargo-semver-checks` excludes
+hidden items by design — the attribute declares "not public API, free to change without a bump" —
+so no API-diffing gate can cover them, this one included. That exemption holds only while the item
+stays inside one crate. `#[doc(hidden)]` hides an item from rustdoc and from the gate; it does not
+make it private, and a contract crossing a crates.io boundary is public whatever it is annotated
+with.
+
+This is the whole of [#665](https://github.com/everruns/yolop/issues/665): the published `everruns`
+facade drives a hidden steering surface on `everruns-host`
+([`crates/host/src/runtime.rs`](../../crates/host/src/runtime.rs)) under a caret pin, so a host
+patch release changed an API a separately versioned crates.io package depends on, invisibly to both
+gates. That surface is now documented public contract, which puts it back under the bump gate:
+break it and the gate demands the minor slot, the old facade's caret stops admitting the new host,
+and `strand-check` forces the cascade. The rule generalizes — if a published crate calls it, it is
+contract, so document it rather than hiding it.
 
 **A breaking bump is not done until its dependants are handled — the whole cone, not just the
 crate.** A crates.io package is immutable, so a published dependant that pins the old, now-incompatible

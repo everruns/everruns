@@ -393,8 +393,8 @@ jobs:
   # an older facade that no longer compiled. This job compares *API*, on the
   # crates a change is actually releasing; run against that release it demands
   # the breaking slot. It does not see `#[doc(hidden)]` items, which
-  # cargo-semver-checks excludes by design -- see
-  # knowledge/project/release-process.md.
+  # cargo-semver-checks excludes by design, so nothing another published crate
+  # calls may carry that attribute -- see knowledge/project/release-process.md.
   semver-bumps:
     name: Crate Semver Bumps
     runs-on: ubuntu-latest
