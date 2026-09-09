@@ -23,3 +23,39 @@ agent for another Framework support issue.
 
 The documentation tool reads Markdown content from the official repository and
 returns source links alongside that evidence.
+
+## The important part
+
+```rust
+// A tool is ordinary async Rust, so it can reach the network. This one maps a
+// topic to a documentation page and returns the page with its source link, so
+// the model answers from fetched evidence rather than memory.
+#[everruns::tool]
+/// Read authoritative Framework documentation for a support topic.
+async fn search_docs(topic: String) -> Result<String, String> {
+    let topic = topic.to_lowercase();
+    let page = if topic.contains("custom") {
+        "custom-providers"
+    } else if topic.contains("provider") || topic.contains("model") {
+        "models-and-providers"
+    } else {
+        "examples"
+    };
+    // ... fetch https://raw.githubusercontent.com/.../docs/framework/{page}.md,
+    // strip the frontmatter, and cap the body at 16 000 characters so one tool
+    // result cannot swallow the context window.
+    Ok(format!("Source: https://docs.everruns.com/framework/{page}/\n{content}"))
+}
+
+let agent = Agent::builder()
+    .name("everruns-support-agent")
+    // Instructions that separate evidence from hypothesis are what make the
+    // fetched documentation useful rather than decorative.
+    .instructions("You support Everruns Framework users. Use search_docs before \
+        answering. Separate evidence from hypotheses and give the smallest safe \
+        next step with relevant documentation links.")
+    .provider(everruns_anthropic::provider("anthropic", api_key))
+    .model("claude-opus-5")
+    .tool(search_docs())
+    .build()?;
+```
