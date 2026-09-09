@@ -11,11 +11,12 @@
 
 use std::sync::Arc;
 
-use everruns_core::InputMessage;
+use everruns_core::events::{Event, EventData};
+use everruns_core::{ContentPart, InputMessage};
 use everruns_framework_cli_host::{Fleet, FleetCommands};
 use everruns_host::{
-    AgentBuilder, HarnessBuilder, HostComposition, InMemorySessionFileSystemFactory,
-    InProcessRuntimeBuilder, SessionBuilder,
+    AgentBuilder, EventSink, EventSinkError, HarnessBuilder, HostBackends, HostComposition,
+    InMemorySessionFileSystemFactory, InProcessRuntimeBuilder, SessionBuilder,
 };
 use everruns_integrations_bashkit::BashkitShellCapability;
 use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
@@ -33,8 +34,7 @@ You administer this deployment. Its operations are available in your shell as \
 about the fleet rather than guessing, and report exactly what the commands \
 returned.";
 
-const DEFAULT_PROMPT: &str =
-    "How many replicas is the api service running, and what other services exist?";
+const DEFAULT_PROMPT: &str = "List the fleet, then scale the api service to 4 replicas.";
 
 /// Everything after the flags becomes the prompt, so the example can be driven
 /// at a mutation (`... scale api to 4 replicas`) and checked against the state
@@ -49,6 +49,67 @@ fn prompt_from_args() -> String {
         DEFAULT_PROMPT.to_string()
     } else {
         prompt
+    }
+}
+
+/// Prints the agent's shell session as it happens.
+///
+/// Without this the demo shows only the model's final prose, which proves
+/// nothing: a model can claim any answer. What is worth seeing is the command
+/// the agent typed and the bytes the `everruns` builtin actually returned.
+#[derive(Default)]
+struct ShellTranscript;
+
+impl EventSink for ShellTranscript {
+    fn try_send(&self, event: Event) -> Result<(), EventSinkError> {
+        match &event.data {
+            EventData::ToolStarted(started) if started.tool_call.name == "bash" => {
+                if let Some(commands) = started
+                    .tool_call
+                    .arguments
+                    .get("commands")
+                    .and_then(|value| value.as_str())
+                {
+                    for line in commands.lines() {
+                        println!("  $ {line}");
+                    }
+                }
+            }
+            EventData::ToolCompleted(completed) if completed.tool_name == "bash" => {
+                let text = completed
+                    .result
+                    .as_ref()
+                    .map(|parts| {
+                        parts
+                            .iter()
+                            .filter_map(|part| match part {
+                                ContentPart::Text(text) => Some(text.text.as_str()),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>()
+                            .join("")
+                    })
+                    .unwrap_or_default();
+                // The bash tool returns a JSON envelope; print the stdout it
+                // carries so the transcript reads like the terminal session it
+                // actually was.
+                let output = serde_json::from_str::<serde_json::Value>(&text)
+                    .ok()
+                    .and_then(|value| {
+                        value
+                            .get("stdout")
+                            .and_then(|out| out.as_str())
+                            .map(ToOwned::to_owned)
+                    })
+                    .unwrap_or(text);
+                for line in output.lines().take(20) {
+                    println!("  {line}");
+                }
+                println!();
+            }
+            _ => {}
+        }
+        Ok(())
     }
 }
 
@@ -71,6 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source_fleet = fleet.clone();
     let mut builder = InProcessRuntimeBuilder::new()
         .host_composition(composition)
+        .backends(HostBackends::in_memory().with_event_sink(Arc::new(ShellTranscript)))
         // The stock shell capability. What makes this application's own
         // operations reachable is the command source below, not a special
         // shell.
@@ -103,22 +165,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Deterministic: the simulator drives the exact shell calls a model
         // would make, so the example runs in CI without a key.
         builder = builder.llm_sim_as_default(
-            LlmSimConfig::fixed(
-                "The api service runs 2 replicas; worker and scheduler run 1 each.",
-            )
-            .with_tool_call_sequence(vec![
-                vec![ToolCall {
-                    id: "call_help".into(),
-                    name: "bash".into(),
-                    arguments: serde_json::json!({ "commands": "everruns --help" }),
-                }],
-                vec![ToolCall {
-                    id: "call_list".into(),
-                    name: "bash".into(),
-                    arguments: serde_json::json!({ "commands": "everruns fleet list" }),
-                }],
-                vec![],
-            ]),
+            LlmSimConfig::fixed("Listed the fleet and scaled api from 2 replicas to 4.")
+                .with_tool_call_sequence(vec![
+                    vec![ToolCall {
+                        id: "call_help".into(),
+                        name: "bash".into(),
+                        arguments: serde_json::json!({ "commands": "everruns fleet --help" }),
+                    }],
+                    vec![ToolCall {
+                        id: "call_list".into(),
+                        name: "bash".into(),
+                        arguments: serde_json::json!({ "commands": "everruns fleet list" }),
+                    }],
+                    vec![ToolCall {
+                        id: "call_scale".into(),
+                        name: "bash".into(),
+                        arguments: serde_json::json!({
+                            "commands": "everruns fleet scale --name api --replicas 4"
+                        }),
+                    }],
+                    vec![],
+                ]),
         );
     } else {
         // Either key works; whichever is present wins, so the example runs
@@ -153,6 +220,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let prompt = prompt_from_args();
     println!("Prompt: {prompt}\n");
+    println!("== Agent's shell session ==");
     let result = runtime
         .run_turn(session_id, InputMessage::user(prompt))
         .await?;

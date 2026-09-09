@@ -10,24 +10,44 @@ and the agent gets the same grammar, the same bounded help, and the same error
 behaviour that the hosted product's much larger tree provides.
 
 ```console
-$ everruns --help
-Usage: everruns <command> [--flags]
+$ cargo run -p everruns-framework-cli-host -- --offline
+Prompt: List the fleet, then scale the api service to 4 replicas.
 
-Commands:
-  fleet  Services this deployment runs, and their scale.
+== Agent's shell session ==
+  $ everruns fleet --help
+  everruns fleet
+    Services this deployment runs, and their scale.
 
-$ everruns fleet --help
-everruns fleet
-  Services this deployment runs, and their scale.
+  Usage: everruns fleet <command> [--flags]
 
-Commands:
-  get    Show one service.
-  list   List services and their replica counts.
-  scale  Set a service's replica count.
+  Commands:
+    get    Show one service.
+    list   List services and their replica counts.
+    scale  Set a service's replica count.
 
-$ everruns fleet scale --name api --replicas 4
-{"name":"api","replicas":4,"scaled":true}
+  Run `everruns fleet <command> --help` for flags.
+
+  $ everruns fleet list
+  {"services":[{"name":"api","replicas":2},{"name":"scheduler","replicas":1},{"name":"worker","replicas":1}]}
+
+  $ everruns fleet scale --name api --replicas 4
+  {"name":"api","replicas":4,"scaled":true}
+
+== Response ==
+Listed the fleet and scaled api from 2 replicas to 4.
+
+== Fleet state after the turn ==
+  api: 4
+  worker: 1
+  scheduler: 1
+
+turn success: true | iterations: 4 | tool calls: 3
 ```
+
+The run prints three things on purpose: the commands the agent typed, the bytes
+the `everruns` builtin actually returned, and the application's own state
+afterwards. The last one is the load-bearing part — a model can claim any scale
+in prose, but only the builtin can move `api` from 2 replicas to 4.
 
 ## Run it
 
@@ -45,8 +65,11 @@ ANTHROPIC_API_KEY=... cargo run -p everruns-framework-cli-host -- \
   "Scale the api service to 4 replicas, then list the whole fleet."
 ```
 
-The run prints the fleet state after the turn, not only the model's answer: a
-claimed scale and an actual one read identically in prose.
+In `--offline` mode the simulator issues those shell calls deterministically,
+so what is proven is the surface, not the model's judgement: the tree resolves,
+help renders, and the mutation reaches the application. Whether a model *finds*
+the CLI unprompted is a separate question, measured by the `cli-tree` cases in
+`evals/platform-capability`.
 
 ## How it is wired
 
