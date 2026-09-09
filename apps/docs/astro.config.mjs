@@ -207,6 +207,7 @@ export default defineConfig({
                     { label: "Coding Review Agent", slug: "framework/examples/coding-review-agent" },
                     { label: "Research Agent", slug: "framework/examples/research-agent" },
                     { label: "Incident Commander Agent", slug: "framework/examples/incident-commander-agent" },
+                    { label: "Bashkit Repo Agent", slug: "framework/examples/bashkit-repo-agent" },
                   ],
                 },
               ],
