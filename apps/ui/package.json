@@ -44,7 +44,7 @@
     "cron-parser": "^5.6.1",
     "cronstrue": "^3.24.0",
     "lucide-react": "^1.23.0",
-    "next": "^16.2.11",
+    "next": "^16.3.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "recharts": "^3.9.1",
