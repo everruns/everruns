@@ -26,7 +26,7 @@
 //! post-commit durable events plus live-only ephemeral events. Sink absence,
 //! lag, or failure cannot create, roll back, or replace conversation history.
 
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 use everruns_core::events::{
     self, Event, EventContext, EventData, EventRequest, InputMessageData,
@@ -799,7 +799,14 @@ impl CancellationToken {
 /// [`EventStream`] as a projected [`SessionEvent`]. Sending never blocks, so an
 /// observer can never stall or fail a turn.
 pub(crate) struct FacadeEventBus {
-    sender: broadcast::Sender<SessionEvent>,
+    /// Created on first subscribe, not with the session. A broadcast channel
+    /// preallocates all `capacity` slots up front (~1.5 MB at 4096), which is
+    /// the single largest cost of creating a session. Deferring it is
+    /// observationally identical: a subscriber only receives events sent after
+    /// it subscribed, so events emitted while no channel exists were
+    /// unobservable either way.
+    sender: OnceLock<broadcast::Sender<SessionEvent>>,
+    capacity: usize,
     active_turn: Mutex<Option<EventContext>>,
 }
 
@@ -809,16 +816,20 @@ impl FacadeEventBus {
     }
 
     fn with_capacity(capacity: usize) -> Self {
-        let (sender, _rx) = broadcast::channel(capacity);
         Self {
-            sender,
+            sender: OnceLock::new(),
+            capacity,
             active_turn: Mutex::new(None),
         }
     }
 
-    /// Subscribe a new [`EventStream`] to this bus.
+    /// Subscribe a new [`EventStream`] to this bus, allocating the broadcast
+    /// channel on the first subscribe.
     pub(crate) fn subscribe(&self) -> EventStream {
-        EventStream::new(self.sender.subscribe())
+        let sender = self
+            .sender
+            .get_or_init(|| broadcast::channel(self.capacity).0);
+        EventStream::new(sender.subscribe())
     }
 
     /// Build a correlated terminal request after the facade drops a cancelled
@@ -881,7 +892,9 @@ impl FacadeEventBus {
         // can subscribe before the next turn. Observation is best-effort and
         // absence is equivalent to the host's no-op sink, not a delivery
         // failure worth counting on every canonical append.
-        let _ = self.sender.send(SessionEvent::from_core_event(event));
+        if let Some(sender) = self.sender.get() {
+            let _ = sender.send(SessionEvent::from_core_event(event));
+        }
         Ok(())
     }
 }
@@ -1058,6 +1071,38 @@ mod tests {
             Err(EventStreamError::Lagged { missed: 1 })
         ));
         assert!(stream.recv().await.expect("gap reported").is_some());
+    }
+
+    #[tokio::test]
+    async fn subscriber_after_earlier_events_still_observes_later_ones() {
+        // The broadcast channel is allocated on the first subscribe, so this
+        // pins the semantics that laziness relies on: events emitted before
+        // anyone subscribed are not replayed, and later events still arrive.
+        let session_id = SessionId::new();
+        let bus = Arc::new(FacadeEventBus::new());
+        let emitter = host(bus.clone());
+
+        emitter
+            .emit(turn_started(session_id, TurnId::new()))
+            .await
+            .expect("emitting without a subscriber succeeds");
+
+        let mut stream = bus.subscribe();
+        let turn_id = TurnId::new();
+        emitter
+            .emit(turn_started(session_id, turn_id))
+            .await
+            .expect("emitting to a live subscriber succeeds");
+
+        let observed = stream
+            .recv()
+            .await
+            .expect("stream stays open")
+            .expect("the event emitted after subscribing arrives");
+        assert_eq!(
+            observed.turn_id.as_deref(),
+            Some(turn_id.to_string().as_str())
+        );
     }
 
     #[tokio::test]

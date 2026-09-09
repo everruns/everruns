@@ -83,7 +83,7 @@ impl ChatDriver for MetaChatDriver {
         }
 
         let models_url = models_url_for_api_url(&api_url);
-        list_meta_models(self.inner.client(), endpoint, &models_url).await
+        list_meta_models(&self.inner.client(), endpoint, &models_url).await
     }
 }
 

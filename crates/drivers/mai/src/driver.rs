@@ -117,7 +117,7 @@ impl ChatDriver for MaiChatDriver {
         }
 
         list_foundry_models(
-            self.inner.client(),
+            &self.inner.client(),
             endpoint,
             &models_url_for_api_url(&api_url),
         )
