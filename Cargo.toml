@@ -58,6 +58,7 @@ members = [
     "examples/coding-cli",
     "examples/framework-cli-host",
     "examples/bashkit-repo-agent",
+    "examples/demo-support",
 ]
 
 exclude = [

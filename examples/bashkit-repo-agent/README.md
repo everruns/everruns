@@ -65,12 +65,14 @@ usable shell over the repository, and the deployment keeps a hard boundary
 around it. Because it is an interpreter rather than a shell-out, `git` is not
 available, so the agent works on the checked-out tree.
 
-Agent setup, the release request, and the verification live in
-[src/main.rs](src/main.rs); [src/demo.rs](src/demo.rs) subscribes to session
-events and prints each shell script the agent runs with a bounded preview of its
-output, colored unless `NO_COLOR` is set. The shell here operates on this
-example's own throwaway copy — review what an observer prints before pointing
-one at a workspace with private data.
+This example is only its agent: [src/main.rs](src/main.rs) holds the agent
+setup, the release request, and the verification. The terminal observer is
+shared by every example and lives in
+[examples/demo-support](../demo-support) — its `shell` module prints each
+script the agent runs and decodes the exec result it gets back, colored unless
+`NO_COLOR` is set. The shell here operates on this example's own throwaway copy
+— review what an observer prints before pointing one at a workspace with
+private data.
 
 ## See also
 

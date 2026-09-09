@@ -1,7 +1,10 @@
-//! Terminal presentation for this example; agent behavior lives in main.rs.
+//! Colored presentation for agents that drive a shell.
 //!
-//! Colors are ANSI escapes written unconditionally unless `NO_COLOR` is set, so
-//! a piped transcript (see `record.sh`) keeps them for replay under `less -R`.
+//! Renders each script the agent runs and decodes the exec payload it gets back
+//! (exit status plus bounded stdout and stderr) instead of printing the raw JSON
+//! envelope. Colors are ANSI escapes written unconditionally unless `NO_COLOR`
+//! is set, so a piped transcript (see an example's `record.sh`) keeps them for
+//! replay under `less -R`.
 
 use std::sync::OnceLock;
 
@@ -161,9 +164,8 @@ pub async fn run(session: &Session, request: &str) -> Result<Turn, Box<dyn std::
             SessionEventKind::ToolCompleted {
                 tool_name, success, ..
             } => {
-                // The shell runs against this example's own throwaway working
-                // copy. Review what a tool can return before printing its
-                // payload verbatim over a workspace that holds private data.
+                // Review what a tool can return before printing its payload
+                // verbatim over a workspace that holds private data.
                 let data = event.canonical_json();
                 let text = data["data"]["result"]
                     .as_array()
@@ -213,4 +215,24 @@ pub async fn run(session: &Session, request: &str) -> Result<Turn, Box<dyn std::
         )
     );
     Ok(turn)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PLAIN, WIDTH, clip, paint};
+
+    #[test]
+    fn clip_keeps_short_lines_and_truncates_long_ones_on_char_boundaries() {
+        assert_eq!(clip("short"), "short");
+        // A line of multi-byte characters must not be cut mid-character.
+        let wide = "é".repeat(WIDTH + 10);
+        let clipped = clip(&wide);
+        assert_eq!(clipped.chars().count(), WIDTH);
+        assert!(clipped.ends_with('…'));
+    }
+
+    #[test]
+    fn plain_style_adds_no_escapes() {
+        assert_eq!(paint(PLAIN, "text"), "text");
+    }
 }

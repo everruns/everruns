@@ -2252,7 +2252,7 @@ name = "everruns-bashkit-repo-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
- "serde_json",
+ "everruns-example-demo",
  "tempfile",
  "tokio",
 ]
@@ -2354,6 +2354,7 @@ version = "0.1.0"
 dependencies = [
  "everruns",
  "everruns-anthropic",
+ "everruns-example-demo",
  "tokio",
 ]
 
@@ -2439,6 +2440,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-example-demo"
+version = "0.1.0"
+dependencies = [
+ "everruns",
+ "serde_json",
+]
+
+[[package]]
 name = "everruns-fireworks"
 version = "0.18.3"
 dependencies = [
@@ -2476,6 +2485,7 @@ version = "0.1.0"
 dependencies = [
  "everruns",
  "everruns-anthropic",
+ "everruns-example-demo",
  "libc",
  "reqwest 0.13.5",
  "tokio",
@@ -2544,6 +2554,7 @@ name = "everruns-incident-commander-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
+ "everruns-example-demo",
  "everruns-meta",
  "tempfile",
  "tokio",
@@ -3127,6 +3138,7 @@ name = "everruns-research-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
+ "everruns-example-demo",
  "everruns-integrations-brave-search",
  "everruns-openrouter",
  "tokio",
@@ -3259,6 +3271,7 @@ name = "everruns-support-agent"
 version = "0.1.0"
 dependencies = [
  "everruns",
+ "everruns-example-demo",
  "tokio",
 ]
 

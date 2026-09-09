@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 everruns = { path = "../../crates/everruns" }
+everruns-example-demo = { path = "../demo-support" }
 everruns-openrouter = { path = "../../crates/drivers/openrouter" }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search", default-features = false }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -14,7 +14,9 @@
 //! OPENAI_API_KEY=... cargo run -p everruns-bashkit-repo-agent -- /tmp/release-run
 //! ```
 
-mod demo;
+// Terminal presentation is shared by every example; this file is the agent.
+use everruns_example_demo::shell as demo;
+
 mod sample_repo;
 
 use std::fs;
