@@ -96,6 +96,37 @@ inferred from the other. A Daytona VM being `isolated` at the target level says
 nothing about whether its egress is allowlisted; that is the containment field's
 job.
 
+### What containment means
+
+Containment is the answer to *what may this process touch*: which paths it can
+write, whether it can reach the network, and whether anything actually enforces
+that. It is a separate question from where the process runs, because the same
+machine can answer it several ways. Yolop is the whole illustration: always the
+local machine, but `read-only`, `workspace-write`, and `danger-full-access` are
+three different answers, enforced by Seatbelt and Landlock.
+
+For most targets it is not a choice. Bashkit and a Daytona VM each fix it by
+construction, so the field is descriptive there: it records what the target
+already enforces, which is what lets a profile be compared, validated, and
+displayed uniformly. It becomes a real choice only for `host` and `machine`,
+where the same box can run a command wide open or under a kernel policy. So the
+axis earns its place because of those two rows, not because every provider needs
+a knob.
+
+Every target therefore has an implied default, and stating the field is how a
+profile confirms rather than assumes it:
+
+| Target | Implied | Choice available |
+|---|---|---|
+| bashkit | isolated, network default-deny | none, fixed by the target |
+| daytona, e2b, container | isolated | egress policy only |
+| host, machine | none | `native` kernel policy, later |
+
+Naming note: `sandbox` is the plainer wire name for this field, and it makes the
+original request sayable literally, `sandbox: none`. The tradeoff is that
+"sandbox" then means the security property in one place and, colloquially, the
+whole environment everywhere else. Worth settling before the field ships.
+
 ### Naming
 
 The Framework already named this. `Environment` in
@@ -105,12 +136,15 @@ documents that seam for "process, container, or remote mount" providers that
 must address the same head as the file tools. Compute was left as a future
 extension; this proposal fills it in.
 
-So there is no rename to argue about at the Framework level. The work is to
-promote compute and containment from anonymous extensions to named members of
-`Environment`, and to give the control plane a Sandbox resource that is the
-durable projection of the same thing. Reserve "sandbox" for the security
-property, which is what makes `containment: none` sayable without
-contradiction.
+Decision: **Environment** is the resource name on both surfaces. The Framework
+promotes compute and containment from anonymous extensions to named members of
+`Environment`, and the control plane's durable resource, the one
+[Sandbox Abstraction](sandbox-abstraction.md) calls a Sandbox, is renamed to
+Environment and becomes the projection of the same thing. "Sandbox" is retained
+only for the security property, which is what makes `containment: none` sayable
+without contradiction, and `/v1/sessions/{id}/sandbox` becomes
+`/v1/sessions/{id}/environment` with the old route kept as a compatibility
+alias for its deprecation window.
 
 The durable resource, generations, checkpoints, and reconciliation from
 [Sandbox Abstraction](sandbox-abstraction.md) are unchanged.
@@ -153,6 +187,82 @@ native process execution, package installation, PTY, ports. Tools and UI are
 assembled from this set. An unsupported operation is absent, never emulated.
 Bashkit advertising "no native binaries" is the load-bearing example: it must
 not look like a Linux shell that happens to be failing.
+
+## Domain model
+
+Configuration is authored on the Agent version and is *desired* state.
+Everything below the Session line is *observed* state the control plane owns.
+
+```mermaid
+erDiagram
+    ORG ||--o{ HARNESS : owns
+    ORG ||--o{ AGENT : owns
+    ORG ||--o{ SESSION : owns
+    ORG ||--o{ WORKSPACE : owns
+    ORG ||--o{ CONNECTION : owns
+    ORG ||--o{ MACHINE : registers
+
+    HARNESS ||--o{ AGENT : "layered under"
+    AGENT ||--o{ AGENT_VERSION : versions
+    AGENT_VERSION ||--o{ ENVIRONMENT_PROFILE : "declares, one default"
+
+    SESSION ||--|| ENVIRONMENT : owns
+    SESSION }o--|| WORKSPACE_HEAD : binds
+    WORKSPACE ||--o{ WORKSPACE_HEAD : "lineage of"
+
+    ENVIRONMENT_PROFILE ||--o{ ENVIRONMENT : "pinned as snapshot"
+    ENVIRONMENT }o--|| WORKSPACE_HEAD : "working filesystem"
+    ENVIRONMENT ||--o{ ENVIRONMENT_INSTANCE : "replaces, by generation"
+    ENVIRONMENT ||--o{ ENVIRONMENT_CHECKPOINT : commits
+    ENVIRONMENT }o--o| CONNECTION : "credentials resolved from"
+    ENVIRONMENT }o--o| MACHINE : "target, machine kind only"
+    MACHINE }o--|| CONNECTION : "reached with"
+    ENVIRONMENT_INSTANCE }o--o| LEASED_RESOURCE : "cleaned up by"
+```
+
+Entities, and which of them are rows:
+
+| Entity | Kind | Owns |
+|---|---|---|
+| `ENVIRONMENT_PROFILE` | embedded value on the Agent version | target, containment, durability, lifecycle, bootstrap |
+| `ENVIRONMENT` (`env_`) | durable row, one per Session | pinned profile snapshot, desired/observed state, generation, current checkpoint |
+| `ENVIRONMENT_INSTANCE` | disposable row, many per Environment | provider resource id, provider state, generation, observed state |
+| `ENVIRONMENT_CHECKPOINT` | row | kind (`provider_native` or `portable`), workspace revision, source tool call |
+| `WORKSPACE_HEAD` | existing Framework type | the bytes every tool addresses |
+| `MACHINE` | row | transport and address of a registered box |
+| `CONNECTION` | existing row | the credential, never copied anywhere else |
+| `LEASED_RESOURCE` (`resource_`) | existing row | external-resource cleanup, subordinate to the Environment |
+
+Four rules the shape encodes:
+
+**A profile is pinned, not referenced.** `ENVIRONMENT` stores a snapshot of the
+profile it resolved at session start. Editing the Agent version afterwards
+cannot change the environment a running session is executing in; the next
+session picks up the new one.
+
+**The Environment is durable, its instances are not.** Physical loss increments
+`generation` and creates a new `ENVIRONMENT_INSTANCE`. Every provider call
+carries the generation as a fencing token, so a late reply from a lost
+incarnation cannot overwrite current state. The Session, the conversation, and
+the files survive; RAM, processes, and PTYs do not.
+
+**The filesystem lineage outlives the environment.** `WORKSPACE_HEAD` belongs to
+the Workspace, not to the Environment, so a switch from `scratch` to `build`
+moves compute while the head stays the session's. What the switch actually
+transfers is bytes, through a checkpoint. For Bashkit the working filesystem
+*is* that head, so a checkpoint is nearly free; for Daytona the live worktree is
+instance-local and mirrored into a committed checkpoint at each mutating step.
+
+**Credentials live in exactly one place.** `ENVIRONMENT` references a
+`CONNECTION` and resolves the token at operation time. No profile snapshot,
+provider state, checkpoint manifest, event, or lease metadata carries a bearer
+credential.
+
+Two consequences worth stating, because they are where the diagram stops being
+symmetric: a `host` or `machine` Environment has instances but no checkpoints,
+which is what `durability: none` means; and a `bashkit` Environment has an
+instance row for lifecycle symmetry but no external provider resource, so it
+needs no lease.
 
 ## Model-facing surface
 
@@ -649,10 +759,12 @@ GET /v1/sessions/{session_id}/environment
 }
 ```
 
-`switch` is a new entry in the closed `rel` vocabulary and therefore a spec
-change to [API Conventions](../execution/api-conventions.md), to be made
-deliberately rather than by adding a one-off rel. `pause`, `resume`, and
-`delete` reuse existing rels.
+`pause`, `resume`, and `delete` reuse existing rels. `switch` is a new word in
+that deliberately closed vocabulary, so adopting it is a spec change to
+[API Conventions](../execution/api-conventions.md). Take the spec change: the
+alternative, modelling a switch as delete plus create, gives up atomicity and
+has nowhere to express the workspace transfer, which is the part that needs to
+succeed or fail as one operation.
 
 ```http
 POST /v1/sessions/{session_id}/environment/switch
@@ -764,10 +876,11 @@ profile can express `host + none` and `daytona + isolated + allowlist`, and
 validation rejects a durable-agent agent pinned to `durability: none`.
 
 **P1, host target.** Compute implementation for the in-process host, joined to
-the existing `RealDiskFileStore`. Containment providers extracted from Yolop
-into the shared crate and wired to `containment.level`. Exit: an Everruns
-session runs `bash` on the worker host under Landlock, and Yolop builds against
-the shared containment crate with no behavior change.
+the existing `RealDiskFileStore`, declaring `containment: none` and
+`durability: none` honestly. Kernel containment is explicitly *not* in this
+phase: Bashkit and Daytona fix their own boundary, so nothing in the first
+release needs Seatbelt or Landlock. Exit: an Everruns session runs `bash` on the
+worker host, and the API refuses to pin a durable agent to it.
 
 **P2, environment sets.** Named environments, `use_environment`, switch modes,
 schema refresh on switch, escalation gate lifted from Yolop. Exit: one session
@@ -776,6 +889,11 @@ the transcript states exactly what was lost.
 
 **P3, machine target and consolidation.** SSH or daemon transport, then port
 E2B, Deno, Sprites, and container behind the driver contract as already planned.
+
+**Later, kernel containment.** Yolop's Seatbelt and Landlock providers become
+`containment: native` for the host and machine targets, extracted into a crate
+both repositories consume. This is the phase that makes containment a choice
+rather than a description, and nothing before it depends on it.
 
 P1 and P2 are independent of the Daytona durability work in
 [Sandbox Abstraction](sandbox-abstraction.md) Phase 2 and can run beside it.
@@ -795,17 +913,13 @@ P1 and P2 are independent of the Daytona durability work in
 
 ## Open questions
 
-1. The Framework already calls this `Environment`. Does the control plane's
-   Sandbox resource take the same name, so one word spans both surfaces, or does
-   `/v1/sessions/{id}/sandbox` keep its name with a containment field inside?
-   Aligning is clearer and touches routes, tables, and UI.
-2. Is L2 wanted in the first release, or is config-only selection (L1) enough
+1. Is L2 wanted in the first release, or is config-only selection (L1) enough
    until a workflow demands the switch?
-3. Should the platform's host target require kernel containment by default, or
-   is `host` a trusted-operator position where `none` is the sane default and
-   Yolop's `--sandbox` opt-in is the model?
-4. Where does the shared containment crate live: inside `everruns-host`, or its
-   own publishable crate that both repositories depend on?
-5. `switch` is a new entry in a deliberately closed `rel` vocabulary. Accept the
-   spec change, or model a switch as delete plus create and lose the single
-   atomic action?
+2. Is `sandbox` the better wire name for the containment field, given that
+   `sandbox: none` says the original request literally?
+3. When kernel containment does arrive, where does the shared crate live: inside
+   `everruns-host`, or its own publishable crate that both repositories pin, the
+   way Yolop already pins Tuika?
+4. Does the Environment row own a workspace head, or reference one the Session
+   already bound? The domain model takes the second reading, which keeps one
+   filesystem lineage across a switch.
