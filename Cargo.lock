@@ -2386,7 +2386,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable"
-version = "0.23.0"
+version = "0.24.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2855,7 +2855,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-internal-protocol"
-version = "0.23.0"
+version = "0.24.0"
 dependencies = [
  "chrono",
  "everruns-capability",
@@ -2876,7 +2876,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llm-tests"
-version = "0.23.0"
+version = "0.24.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3128,7 +3128,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server"
-version = "0.23.0"
+version = "0.24.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -3278,7 +3278,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-worker"
-version = "0.23.0"
+version = "0.24.0"
 dependencies = [
  "anyhow",
  "async-trait",
