@@ -1,12 +1,17 @@
 //! Runs the fleet host: one turn where the model administers this application
 //! through `everruns ...` in its own shell.
 //!
-//! ```text
-//! # Against a real provider
-//! OPENAI_API_KEY=... cargo run -p everruns-framework-cli-host
+//! Always a real model: there is no simulated mode, because a simulator told
+//! to emit the commands we hoped for demonstrates nothing about whether an
+//! agent finds them.
 //!
-//! # Offline, deterministic, no key required
-//! cargo run -p everruns-framework-cli-host -- --offline
+//! ```text
+//! ANTHROPIC_API_KEY=... cargo run -p everruns-framework-cli-host
+//! OPENAI_API_KEY=...    cargo run -p everruns-framework-cli-host
+//!
+//! # Any OpenAI-compatible endpoint (OpenRouter, Fireworks, vLLM, a gateway)
+//! OPENAI_API_KEY=... OPENAI_BASE_URL=https://openrouter.ai/api/v1 \
+//!   OPENAI_MODEL=openai/gpt-4o-mini cargo run -p everruns-framework-cli-host
 //! ```
 
 use std::sync::Arc;
@@ -88,19 +93,38 @@ impl EventSink for ShellTranscript {
                             .join("")
                     })
                     .unwrap_or_default();
-                // The bash tool returns a JSON envelope; print the stdout it
-                // carries so the transcript reads like the terminal session it
-                // actually was.
-                let output = serde_json::from_str::<serde_json::Value>(&text)
+                // The bash tool returns a JSON envelope. Print stderr and a
+                // non-zero exit too: a command that failed is the interesting
+                // part of a transcript, and printing only stdout renders it as
+                // a blank, which reads like the CLI said nothing at all.
+                let rendered = serde_json::from_str::<serde_json::Value>(&text)
                     .ok()
-                    .and_then(|value| {
-                        value
-                            .get("stdout")
-                            .and_then(|out| out.as_str())
-                            .map(ToOwned::to_owned)
+                    .map(|value| {
+                        let field = |name: &str| {
+                            value
+                                .get(name)
+                                .and_then(|field| field.as_str())
+                                .unwrap_or_default()
+                                .to_string()
+                        };
+                        let exit_code = value.get("exit_code").and_then(|code| code.as_i64());
+                        let mut out = field("stdout");
+                        let stderr = field("stderr");
+                        if !stderr.trim().is_empty() {
+                            out.push_str(&stderr);
+                        }
+                        if out.trim().is_empty() {
+                            out = match exit_code {
+                                Some(0) | None => "(no output)".to_string(),
+                                Some(code) => format!("(no output, exit {code})"),
+                            };
+                        } else if !matches!(exit_code, Some(0) | None) {
+                            out.push_str(&format!("[exit {}]", exit_code.unwrap_or_default()));
+                        }
+                        out
                     })
                     .unwrap_or(text);
-                for line in output.lines().take(20) {
+                for line in rendered.lines().take(20) {
                     println!("  {line}");
                 }
                 println!();
@@ -114,6 +138,14 @@ impl EventSink for ShellTranscript {
 enum Provider {
     Anthropic(String),
     OpenAi(String),
+    /// Any OpenAI-compatible endpoint: OpenRouter, Fireworks, vLLM, a gateway.
+    /// Chat Completions rather than Responses, since that is the dialect such
+    /// endpoints actually implement.
+    OpenAiCompatible {
+        key: String,
+        base_url: String,
+        model: String,
+    },
 }
 
 /// Picks the provider from `--provider <name>`, else whichever key is set.
@@ -129,6 +161,25 @@ fn provider_choice() -> Result<Provider, Box<dyn std::error::Error>> {
         .cloned();
 
     let key = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
+
+    // An OpenAI-compatible endpoint wins when configured, so the example can
+    // run against whichever account currently has credit without editing code.
+    if let (None, Some(base_url), Some(key)) = (
+        requested.as_deref(),
+        std::env::var("OPENAI_BASE_URL")
+            .ok()
+            .filter(|v| !v.is_empty()),
+        key("OPENAI_API_KEY"),
+    ) {
+        return Ok(Provider::OpenAiCompatible {
+            key,
+            base_url,
+            model: std::env::var("OPENAI_MODEL")
+                .ok()
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| OPENAI_MODEL.to_string()),
+        });
+    }
 
     match requested.as_deref() {
         Some("anthropic") => key("ANTHROPIC_API_KEY")
@@ -206,6 +257,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
         Provider::OpenAi(key) => builder
             .provider_with_default_model(everruns_openai::provider("openai", key), OPENAI_MODEL),
+        Provider::OpenAiCompatible {
+            key,
+            base_url,
+            model,
+        } => builder.provider_with_default_model(
+            everruns_openai::completions_provider("openai", key).base_url(base_url),
+            model,
+        ),
     };
 
     let runtime = builder.build().await?;

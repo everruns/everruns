@@ -1,133 +1,133 @@
 //! Proves the tree is reachable from inside a real session's shell.
 //!
-//! The simulator can produce any text it likes, so a canned final answer
-//! proves nothing. These assert on state the model can only have changed by
-//! actually running the builtin, and on the builtin's real output reaching the
-//! transcript.
+//! No model and no simulator: a simulator can be told to emit whichever
+//! commands the test hoped for, which makes the run a recording of the test's
+//! own script. These drive the real bash tool directly and assert on the
+//! builtin's real output and on state only the builtin can have changed.
 
 use std::sync::Arc;
 
-use everruns_core::InputMessage;
+use everruns_core::tool_context::{ToolContext, ToolContextExtensions};
+use everruns_core::tools::Tool;
 use everruns_framework_cli_host::{Fleet, FleetCommands};
-use everruns_host::{
-    AgentBuilder, HarnessBuilder, HostComposition, InMemorySessionFileSystemFactory,
-    InProcessRuntimeBuilder, SessionBuilder,
-};
-use everruns_integrations_bashkit::BashkitShellCapability;
-use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
-use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::tool_types::ToolCall;
-use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_host::InMemorySessionFileStore;
+use everruns_integrations_bashkit::BashTool;
+use everruns_provider::typed_id::SessionId;
 
-/// Build a session whose shell carries `fleet`'s commands, and run one turn in
-/// which the model issues `scripts` through bash.
-async fn run_with_shell(
-    fleet: Arc<Fleet>,
-    scripts: &[&str],
-    with_source: bool,
-) -> everruns_host::TurnResult {
-    let harness_id = HarnessId::new();
-    let agent_id = AgentId::new();
-    let session_id = SessionId::new();
+struct Output {
+    stdout: String,
+    stderr: String,
+    exit_code: i64,
+}
 
-    let composition = HostComposition::builder()
-        .driver_registry(DriverRegistry::new())
-        .session_file_system_factory(Arc::new(InMemorySessionFileSystemFactory))
-        .build();
+impl Output {
+    fn all(&self) -> String {
+        format!("{}{}", self.stdout, self.stderr)
+    }
+}
 
-    let calls: Vec<Vec<ToolCall>> = scripts
-        .iter()
-        .enumerate()
-        .map(|(index, script)| {
-            vec![ToolCall {
-                id: format!("call_{index}"),
-                name: "bash".into(),
-                arguments: serde_json::json!({ "commands": script }),
-            }]
-        })
-        .chain(std::iter::once(vec![]))
-        .collect();
-
-    let mut builder = InProcessRuntimeBuilder::new()
-        .host_composition(composition)
-        .capability(BashkitShellCapability)
-        .llm_sim_as_default(LlmSimConfig::fixed("done").with_tool_call_sequence(calls))
-        .harness(
-            HarnessBuilder::new("fleet-admin", "Administer the fleet.")
-                .id(harness_id)
-                .capability("bashkit_shell")
-                .build(),
-        )
-        .agent(
-            AgentBuilder::new("fleet-admin", "Administer the fleet.")
-                .id(agent_id)
-                .max_iterations(8)
-                .build(),
-        )
-        .session(
-            SessionBuilder::new(harness_id)
-                .id(session_id)
-                .agent(agent_id)
-                .build(),
-        );
+/// Run `script` through the real shell, with this application's commands
+/// attached exactly as the host attaches them. `with_source: false` is the
+/// host that supplies nothing.
+async fn run_shell(fleet: Arc<Fleet>, script: &str, with_source: bool) -> Output {
+    let mut context = ToolContext::new(SessionId::new());
+    context.file_store = Some(Arc::new(InMemorySessionFileStore::new()));
 
     if with_source {
-        builder = builder.with_tool_context_extensions_factory(Arc::new(move |_org, _session| {
-            let mut extensions = everruns_core::tool_context::ToolContextExtensions::default();
-            extensions.insert(Arc::new(FleetCommands::handle(fleet.clone())));
-            extensions
-        }));
+        let mut extensions = ToolContextExtensions::default();
+        extensions.insert(Arc::new(FleetCommands::handle(fleet)));
+        context.extensions = extensions;
     }
 
-    builder
-        .build()
+    let result = BashTool::default()
+        .execute_with_context(serde_json::json!({ "commands": script }), &context)
         .await
-        .expect("runtime builds")
-        .run_turn(session_id, InputMessage::user("Do the thing."))
-        .await
-        .expect("turn runs")
+        .into_tool_result("call", "bash");
+
+    let value = result.result.expect("bash returns a result envelope");
+    let field = |name: &str| {
+        value
+            .get(name)
+            .and_then(|field| field.as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
+    Output {
+        stdout: field("stdout"),
+        stderr: field("stderr"),
+        exit_code: value
+            .get("exit_code")
+            .and_then(|c| c.as_i64())
+            .unwrap_or(-1),
+    }
 }
 
 #[tokio::test]
 async fn a_mutating_command_changes_application_state() {
-    // The load-bearing assertion: `scale` really ran. A simulated final
-    // message could claim anything, but only the builtin can move this number.
+    // The load-bearing assertion: `scale` really ran. Output text could claim
+    // anything, but only the builtin can move this number.
     let fleet = Fleet::with_demo_services();
     assert_eq!(fleet.replicas("api"), Some(2));
 
-    let result = run_with_shell(
+    let out = run_shell(
         fleet.clone(),
-        &["everruns fleet scale --name api --replicas 4"],
+        "everruns fleet scale --name api --replicas 4",
         true,
     )
     .await;
 
-    assert!(result.success, "turn should succeed");
+    assert_eq!(out.exit_code, 0, "{}", out.all());
+    assert!(out.stdout.contains("\"replicas\":4"), "{}", out.stdout);
     assert_eq!(fleet.replicas("api"), Some(4), "the builtin actually ran");
 }
 
 #[tokio::test]
 async fn help_is_reachable_from_the_session_shell() {
     let fleet = Fleet::with_demo_services();
-    let result = run_with_shell(fleet, &["everruns --help", "everruns fleet --help"], true).await;
-    assert!(result.success, "help must not fail the turn");
+    let out = run_shell(fleet, "everruns fleet --help", true).await;
+
+    assert_eq!(out.exit_code, 0, "{}", out.all());
+    for verb in ["get", "list", "scale"] {
+        assert!(out.stdout.contains(verb), "{verb} missing: {}", out.stdout);
+    }
+}
+
+#[tokio::test]
+async fn a_leaf_renders_its_own_flags() {
+    // What makes the tree recoverable: a leaf's help carries the real flags,
+    // so a caller that guessed the wrong argument form can find the right one.
+    let fleet = Fleet::with_demo_services();
+    let out = run_shell(fleet, "everruns fleet scale --help", true).await;
+
+    assert_eq!(out.exit_code, 0, "{}", out.all());
+    assert!(out.stdout.contains("--name"), "{}", out.stdout);
+    assert!(out.stdout.contains("--replicas"), "{}", out.stdout);
+}
+
+#[tokio::test]
+async fn a_wrong_argument_form_is_an_error_that_names_the_fix() {
+    // A live model reaches the tree by guessing a positional form first. The
+    // error has to say what to do instead, or the guess becomes a dead end.
+    let fleet = Fleet::with_demo_services();
+    let out = run_shell(fleet.clone(), "everruns fleet scale api 4", true).await;
+
+    assert_ne!(out.exit_code, 0, "a bad form must fail");
+    assert!(out.all().contains("--flag value"), "{}", out.all());
+    assert_eq!(fleet.replicas("api"), Some(2), "nothing was scaled");
 }
 
 #[tokio::test]
 async fn a_host_that_supplies_no_commands_has_no_builtin() {
-    // Never advertise a surface the host cannot serve: without a source the
-    // shell has no `everruns` command at all, and says so the way any shell
-    // does.
+    // The builtin is not ambient: a host that supplies no source gets a shell
+    // with no `everruns` command, rather than one advertising a tree it
+    // cannot serve.
     let fleet = Fleet::with_demo_services();
-    let result = run_with_shell(fleet.clone(), &["everruns fleet list"], false).await;
+    let out = run_shell(fleet, "everruns fleet list", false).await;
 
+    assert_ne!(out.exit_code, 0);
     assert!(
-        result.success,
-        "a missing command is a failed command, not a failed turn"
-    );
-    assert_eq!(
-        fleet.replicas("api"),
-        Some(2),
-        "nothing should have run against the fleet"
+        out.all().contains("not found"),
+        "expected command-not-found, got: {}",
+        out.all()
     );
 }

@@ -24,8 +24,11 @@ OPENAI_API_KEY=...    cargo run -p everruns-framework-cli-host
 # currently serve a request.
 cargo run -p everruns-framework-cli-host -- --provider openai
 
-# Any trailing words become the prompt, so you can drive a mutation and check
-# it against the fleet state printed afterwards.
+# Any OpenAI-compatible endpoint: OpenRouter, Fireworks, vLLM, a gateway.
+OPENAI_API_KEY=... OPENAI_BASE_URL=https://openrouter.ai/api/v1 \
+  OPENAI_MODEL=openai/gpt-4o-mini cargo run -p everruns-framework-cli-host
+
+# Any trailing words become the prompt.
 cargo run -p everruns-framework-cli-host -- \
   "Scale the api service to 4 replicas, then list the whole fleet."
 ```
@@ -37,44 +40,49 @@ Three things, on purpose: the commands the agent typed, the bytes the
 afterwards. The last is the load-bearing part, since a model can claim any
 scale in prose but only the builtin can move `api` from 2 replicas to 4.
 
-The shape, for the default prompt. A live model picks its own commands, so the
-exact sequence varies between runs: it may skip `--help`, or list before and
-after the mutation.
+A real run, `gpt-4o-mini` via OpenRouter, prompt `"Scale the api service to 4
+replicas."`. The model guesses a flag, gets a real error, reads the leaf's
+help, and recovers:
 
 ```console
-$ cargo run -p everruns-framework-cli-host
-Prompt: List the fleet, then scale the api service to 4 replicas.
+$ everruns fleet --help
+everruns fleet
+  Services this deployment runs, and their scale.
 
-== Agent's shell session ==
-  $ everruns fleet --help
-  everruns fleet
-    Services this deployment runs, and their scale.
+Usage: everruns fleet <command> [--flags]
 
-  Usage: everruns fleet <command> [--flags]
+Commands:
+  get    Show one service.
+  list   List services and their replica counts.
+  scale  Set a service's replica count.
 
-  Commands:
-    get    Show one service.
-    list   List services and their replica counts.
-    scale  Set a service's replica count.
+$ everruns fleet scale --service api --replicas 4
+missing --name
+[exit 1]
 
-  $ everruns fleet list
-  {"services":[{"name":"api","replicas":2},{"name":"scheduler","replicas":1},{"name":"worker","replicas":1}]}
+$ everruns fleet scale --help
+everruns fleet scale
+  Set a service's replica count.
 
-  $ everruns fleet scale --name api --replicas 4
-  {"name":"api","replicas":4,"scaled":true}
+Usage: everruns fleet scale --name <service> --replicas <count>
 
-== Response ==
-Listed the fleet and scaled api from 2 replicas to 4.
+Examples:
+  everruns fleet scale --name api --replicas 4
+
+$ everruns fleet scale --name api --replicas 4
+{"name":"api","replicas":4,"scaled":true}
 
 == Fleet state after the turn ==
   api: 4
-  worker: 1
-  scheduler: 1
 ```
 
-Whether a model finds and drives the CLI *reliably* is a population question,
-not something one run answers; the `cli-tree` cases in
-`evals/platform-capability` measure that.
+That recovery loop is the whole point of the surface, and it is why the
+transcript prints stderr and a non-zero exit rather than stdout alone: the
+failed command is the interesting half.
+
+A live model picks its own commands, so runs differ. Whether one finds and
+drives the CLI *reliably* is a population question that no single run answers;
+the `cli-tree` cases in `evals/platform-capability` measure that.
 
 ## How it is wired
 
@@ -92,8 +100,10 @@ tree it cannot serve — `tests/cli_in_session.rs` covers that case explicitly.
 
 ## What the tests prove
 
-`tests/cli_in_session.rs` runs real turns through the real interpreter, driving
-the shell calls deterministically so the CLI surface can be asserted on without
-a network round trip. That makes them a test of the surface, never a claim
-about model behaviour: the load-bearing assertion is that a `scale` command
-moves the application's own state from 2 replicas to 4.
+`tests/cli_in_session.rs` drives the real bash tool directly, with no model and
+no simulator: a simulator told to emit the commands a test hoped for makes the
+run a recording of that test's own script. The load-bearing assertion is that a
+`scale` command moves the application's own state from 2 replicas to 4. The
+rest cover what a live model actually needs — a leaf rendering its own flags, a
+wrong argument form failing with a message that names the fix, and a host that
+supplies no source getting no builtin at all.

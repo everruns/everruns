@@ -20,7 +20,3 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-# Tests only. The example binary itself always calls a real model; the
-# simulator here is a deterministic driver for asserting on the CLI surface,
-# not a stand-in for agent behaviour.
-everruns-llmsim = { path = "../../crates/drivers/llmsim", features = ["host"] }
