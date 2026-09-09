@@ -477,6 +477,142 @@ agent that requires durable recovery is a `422`, and a containment level a
 target cannot enforce is a `422`, both with the `retry` error rel and a `hint`
 naming the offending field.
 
+### Create a session on Bashkit
+
+Today the request says nothing about where commands will run. Bashkit happens
+because `generic` carries the `bashkit_shell` capability:
+
+```http
+POST /v1/sessions
+{ "harness_name": "generic", "title": "Rename the config module" }
+```
+
+Getting Daytona instead means `"harness_name": "coding-daytona"`, which also
+changes the system prompt and every tool name. Three proposed forms, in
+increasing order of how much the caller decides.
+
+**Inherit the agent's default.** The common case. The agent declares `scratch`
+as its default profile, so the caller says nothing:
+
+```http
+POST /v1/sessions
+{ "agent_name": "coding", "title": "Rename the config module" }
+```
+
+**Name one of the agent's profiles.** Same set the model may switch between, so
+a caller cannot reach an environment the agent does not declare:
+
+```http
+POST /v1/sessions
+{ "agent_name": "coding", "environment": { "use": "scratch" } }
+```
+
+**Inline a profile.** For callers with no agent-level configuration. This is an
+operator authoring a profile, not the model, and it is validated against org
+policy the same way an agent's profiles are:
+
+```http
+POST /v1/sessions
+```
+
+```json
+{
+  "harness_name": "coding",
+  "title": "Rename the config module",
+  "workspace_id": "wsp_01933b5a00007000800000000000001",
+  "environment": {
+    "target": { "kind": "vfs", "provider": "bashkit" },
+    "containment": { "level": "isolated", "network": { "mode": "deny" } },
+    "durability": "checkpointed"
+  }
+}
+```
+
+The existing `workspace_id` field keeps its meaning and binds the working
+filesystem. For Bashkit the environment's filesystem *is* that workspace, which
+is the point: no second filesystem, no split brain between `read_file` and
+`bash`.
+
+Response:
+
+```json
+{
+  "self_url": "https://api.example/v1/sessions/session_01933b5a00007000800000000000001",
+  "view_url": "https://app.example/sessions/session_01933…/chat",
+  "id": "session_01933b5a00007000800000000000001",
+  "status": "started",
+  "harness_id": "harness_01933b5a00007000800000000000002",
+  "title": "Rename the config module",
+  "environment": {
+    "self_url": "https://api.example/v1/sessions/session_01933…/environment",
+    "name": "inline",
+    "target": { "kind": "vfs", "provider": "bashkit" },
+    "containment": { "level": "isolated", "network": { "mode": "deny" } },
+    "durability": "checkpointed",
+    "capabilities": {
+      "native_processes": false,
+      "packages": false,
+      "pty": false,
+      "ports": false,
+      "portable_checkpoint": true,
+      "network_enforced": true
+    },
+    "desired_state": "ready",
+    "observed_state": "absent",
+    "generation": 0,
+    "workspace_id": "wsp_01933b5a00007000800000000000001"
+  },
+  "created_at": "2026-09-09T15:24:00Z",
+  "updated_at": "2026-09-09T15:24:00Z"
+}
+```
+
+`observed_state: "absent"` at creation is correct, not an error: Bashkit
+provisions lazily on first use and has no billed warm compute to start. The
+`configured` and `exists` booleans on today's sandbox response disappear;
+`desired_state` and `observed_state` carry that information without conflating
+"the harness opted in" with "an instance exists".
+
+`capabilities` in the creation response is the payoff. A caller learns before
+the first turn that this session cannot run `cargo build`, rather than after a
+tool call fails inside a shell that looks real. A UI can grey out the right
+affordances, and a client that needs native processes can fail fast or create
+the session on `build` instead.
+
+```bash
+curl -sS -X POST https://api.example/v1/sessions \
+  -H "Authorization: Bearer $EVERRUNS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "agent_name": "coding",
+        "environment": { "use": "scratch" },
+        "title": "Rename the config module"
+      }'
+```
+
+The Framework equivalent binds the same environment before the session starts,
+which is the existing `EnvironmentSessionBuilder` path:
+
+```rust
+let session = engine
+    .create(agent)
+    .environment(Environment::builder().compute(Compute::bashkit()).build()?)
+    .start()
+    .await?;
+```
+
+What the model then sees is one context block, identical in shape for every
+target:
+
+```text
+<environment_context>
+target: bashkit (virtual filesystem)
+containment: isolated, network denied
+native processes: no
+packages: no
+</environment_context>
+```
+
 ### Session environment
 
 ```http
