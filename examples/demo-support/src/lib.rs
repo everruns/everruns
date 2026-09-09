@@ -1,6 +1,22 @@
-//! Terminal presentation for this example; agent behavior lives in main.rs.
+//! Terminal presentation shared by the Framework example agents.
+//!
+//! Agent behavior — tools, instructions, provider, capabilities — lives in each
+//! example's `main.rs`. This crate only prints, so nothing here changes what an
+//! agent does: replace [`run`] with [`Session::send_and_wait`] and the behavior
+//! is identical, minus the live view of each tool call.
+//!
+//! [`run`] suits agents whose tools return prose; [`shell::run`] suits agents
+//! driving a shell, where the payload is an exec result worth decoding.
+//!
+//! These observers print tool arguments and results. The example agents expose
+//! public or self-contained demo data; review what a tool can return before
+//! pointing an observer at one that handles private data.
+
+pub mod shell;
+
 use everruns::{Session, SessionEventKind, Turn};
 
+/// Send `question` and print each tool call with a bounded preview of its result.
 pub async fn run(session: &Session, question: &str) -> Result<Turn, Box<dyn std::error::Error>> {
     show("QUESTION", question);
     let mut events = session.events();
@@ -70,6 +86,7 @@ pub async fn run(session: &Session, question: &str) -> Result<Turn, Box<dyn std:
     Ok(turn)
 }
 
+/// Print a labeled block, wrapped to 90 columns.
 pub fn show(label: &str, text: &str) {
     println!("\n{label}");
     for paragraph in text.lines() {

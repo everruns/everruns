@@ -149,6 +149,7 @@ jobs:
               - 'examples/incident-commander-agent/**'
               - 'examples/coding-cli/**'
               - 'examples/bashkit-repo-agent/**'
+              - 'examples/demo-support/**'
               - 'scripts/cli-e2e-test.sh'
               - 'scripts/lib/check-everruns-examples.sh'
               # The lockfile job runs the publish-cone gate; re-run it when the
@@ -733,7 +734,8 @@ jobs:
           # turns, proving every catalog entry remains runnable without secrets.
           cargo test -p everruns-support-agent -p everruns-coding-review-agent \
             -p everruns-research-agent -p everruns-incident-commander-agent \
-            -p everruns-framework-support-agent -p everruns-bashkit-repo-agent
+            -p everruns-framework-support-agent -p everruns-bashkit-repo-agent \
+            -p everruns-example-demo
           # Production-safe deterministic simulator plus its optional host
           # extension. Pure llmsim; no credentials or network.
           cargo test -p everruns-llmsim --all-features

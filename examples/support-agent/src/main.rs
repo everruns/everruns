@@ -4,7 +4,8 @@
 //! OPENAI_API_KEY=... cargo run -p everruns-support-agent
 //! ```
 
-mod demo;
+// Terminal presentation is shared by every example; this file is the agent.
+use everruns_example_demo as demo;
 
 use everruns::{Agent, Engine, OpenAI, Turn};
 

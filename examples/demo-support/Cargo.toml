@@ -1,0 +1,20 @@
+# Terminal presentation shared by the Framework example agents. Every example
+# keeps its agent — tools, instructions, provider, capabilities — in its own
+# main.rs; only the printing lives here, so a reader of an example sees agent
+# code and nothing else.
+
+[package]
+name = "everruns-example-demo"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+publish = false
+description = "Shared terminal observers for the Everruns Framework examples"
+
+[lib]
+name = "everruns_example_demo"
+path = "src/lib.rs"
+
+[dependencies]
+everruns = { path = "../../crates/everruns" }
+serde_json = "1.0"
