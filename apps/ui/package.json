@@ -52,7 +52,7 @@
     "remark-github-blockquote-alert": "^2.1.0",
     "streamdown": "^2.5.0",
     "tailwind-merge": "^3.6.0",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@ag-ui/core": "^0.0.53",
