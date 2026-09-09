@@ -40,6 +40,7 @@ fn config(model: &str) -> LlmCallConfig {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        reasoning_state: None,
     }
 }
 
@@ -259,6 +260,7 @@ async fn native_compact_context_is_the_exact_ordered_responses_input() {
         },
     ];
     let context = ProviderOpaqueContext::OpenResponsesCompact {
+        reasoning_state: None,
         output: output.clone(),
     };
     let debug = format!("{context:?}");
@@ -436,4 +438,230 @@ async fn reasoning_items_replay_under_their_provider_ids() {
         ],
         "got: {request}"
     );
+}
+
+fn astra_state(
+    pending: Option<everruns_provider::ReasoningEffort>,
+) -> everruns_provider::reasoning_updates::ReasoningState {
+    use everruns_provider::ReasoningEffort::{High, Low};
+    everruns_provider::reasoning_updates::ReasoningState {
+        epoch: "test-epoch".into(),
+        baseline: Some(Low),
+        effective: Some(High),
+        pending,
+    }
+}
+
+fn astra_driver(server: &MockServer) -> Provider {
+    Provider::new(
+        "openai",
+        OpenResponsesProtocolChatDriver::new()
+            .with_native_features(true, true)
+            .with_stateful_responses(true),
+    )
+    .base_url(format!("{}/v1", server.uri()))
+}
+
+#[tokio::test]
+async fn astra_update_keeps_baseline_and_replays_after_response_id_rejection() {
+    use everruns_provider::ReasoningEffort::{High, Low, Max};
+    use wiremock::matchers::body_partial_json;
+    for error_message in [
+        "No tool output found for function call call_1",
+        "Previous response not found",
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .and(body_partial_json(
+                serde_json::json!({"previous_response_id":"lost"}),
+            ))
+            .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                "error":{"message":error_message, "type":"invalid_request_error"}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST")).and(path("/v1/responses"))
+        .and(body_partial_json(serde_json::json!({"input":[
+            {"type":"message","role":"user","content":"first"},
+            {"type":"message","role":"assistant","content":"first answer"},
+            {"type":"configuration_update","reasoning":{"effort":"high"}},
+            {"type":"message","role":"user","content":"second"},
+            {"type":"message","role":"assistant","content":"second answer"},
+            {"type":"configuration_update","reasoning":{"effort":"max"}},
+            {"type":"message","role":"user","content":"third"}
+        ]})))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(sse_event(
+            r#"{"type":"response.completed","response":{"id":"fresh","output":[],"usage":{"input_tokens":10,"output_tokens":1}}}"#
+        ), "text/event-stream")).expect(1).mount(&server).await;
+        let mut second = LlmMessage::text(LlmMessageRole::User, "second");
+        second.configuration_update = Some(High);
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "first"),
+            LlmMessage::text(LlmMessageRole::Assistant, "first answer"),
+            second,
+            LlmMessage::text(LlmMessageRole::Assistant, "second answer"),
+            LlmMessage::text(LlmMessageRole::User, "third"),
+        ];
+        let mut cfg = config("gpt-6-astra");
+        cfg.reasoning_effort = Some(Low);
+        cfg.reasoning_state = Some(astra_state(Some(Max)));
+        cfg.reasoning_state.as_mut().unwrap().effective = Some(Max);
+        cfg.previous_response_id = Some("lost".into());
+        drain_golden(
+            astra_driver(&server)
+                .chat_completion_stream(messages, &cfg)
+                .await
+                .unwrap(),
+        )
+        .await;
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 2);
+        let first: serde_json::Value = requests[0].body_json().unwrap();
+        let retry: serde_json::Value = requests[1].body_json().unwrap();
+        assert_eq!(first["input"].as_array().unwrap().len(), 2);
+        assert_eq!(first["input"][0]["type"], "configuration_update");
+        for body in [&first, &retry] {
+            assert_eq!(body["reasoning"]["effort"], "low");
+            assert!(body.get("context_management").is_none());
+            assert!(body.get("truncation").is_none());
+        }
+        assert!(retry.get("previous_response_id").is_none());
+    }
+}
+
+#[tokio::test]
+async fn astra_explicit_compaction_preserves_output_and_reasserts_effort() {
+    use everruns_provider::ReasoningEffort::{High, Low, Max};
+    use everruns_provider::compact::{CompactInputItem, CompactRequest, ConfigurationReasoning};
+    use wiremock::matchers::body_partial_json;
+    let server = MockServer::start().await;
+    Mock::given(method("POST")).and(path("/v1/responses"))
+        .and(body_partial_json(serde_json::json!({"stream":false})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "status":"completed", "output":[
+                {"type":"message","role":"assistant","content":"old"},
+                {"type":"compaction","encrypted_content":"opaque"},
+                {"type":"reasoning","id":"rs_retained","encrypted_content":"reasoning","summary":[]},
+                {"type":"message","role":"assistant","content":[{"type":"output_text","text":"retained"}]}
+            ], "usage":{"input_tokens":1000,"output_tokens":12,"total_tokens":1012}
+        }))).expect(1).mount(&server).await;
+    Mock::given(method("POST")).and(path("/v1/responses"))
+        .and(body_partial_json(serde_json::json!({"stream":true})))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(sse_event(
+            r#"{"type":"response.completed","response":{"id":"next","output":[],"usage":{"input_tokens":10,"output_tokens":1}}}"#
+        ), "text/event-stream")).expect(1).mount(&server).await;
+    let compacted = astra_driver(&server)
+        .into_boxed_driver()
+        .compact(
+            &everruns_provider::ProviderEndpoint::default(),
+            CompactRequest {
+                model: "gpt-6-astra".into(),
+                reasoning_state: Some(astra_state(None)),
+                previous_response_id: None,
+                instructions: Some("keep instructions".into()),
+                input: vec![
+                    CompactInputItem::Message {
+                        role: "user".into(),
+                        content: CompactContent::Text("history".into()),
+                    },
+                    CompactInputItem::ConfigurationUpdate {
+                        reasoning: ConfigurationReasoning { effort: High },
+                    },
+                    CompactInputItem::Message {
+                        role: "user".into(),
+                        content: CompactContent::Text("hard work".into()),
+                    },
+                ],
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(compacted.output.len(), 3);
+    assert_eq!(compacted.usage.unwrap().output_tokens, None);
+    let mut cfg = config("gpt-6-astra");
+    cfg.reasoning_effort = Some(Low);
+    cfg.reasoning_state = Some(astra_state(Some(Max)));
+    cfg.reasoning_state.as_mut().unwrap().effective = Some(Max);
+    cfg.previous_response_id = Some("must-clear".into());
+    cfg.provider_opaque_context = Some(ProviderOpaqueContext::OpenResponsesCompact {
+        output: compacted.output,
+        reasoning_state: Some(astra_state(None)),
+    });
+    // Empty checkpoint suffix with a new desired effort must coalesce the
+    // checkpoint's high and pending max updates, never send adjacent updates.
+    drain_golden(
+        astra_driver(&server)
+            .chat_completion_stream(
+                vec![LlmMessage::text(LlmMessageRole::User, "continue")],
+                &cfg,
+            )
+            .await
+            .unwrap(),
+    )
+    .await;
+    let requests = server.received_requests().await.unwrap();
+    let compact: serde_json::Value = requests[0].body_json().unwrap();
+    assert_eq!(
+        compact["input"][3],
+        serde_json::json!({"type":"compaction_trigger"})
+    );
+    assert_eq!(compact["reasoning"]["effort"], "low");
+    assert_eq!(compact["store"], false);
+    assert_eq!(compact["max_output_tokens"], 20_000);
+    assert!(compact.get("context_management").is_none());
+    let next: serde_json::Value = requests[1].body_json().unwrap();
+    assert_eq!(next["input"][0]["encrypted_content"], "opaque");
+    assert_eq!(next["input"][1]["id"], "rs_retained");
+    assert_eq!(next["input"][2]["content"][0]["text"], "retained");
+    assert_eq!(
+        next["input"][3],
+        serde_json::json!({"type":"configuration_update","reasoning":{"effort":"max"}})
+    );
+    assert_eq!(next["input"][4]["content"], "continue");
+    assert!(next.get("previous_response_id").is_none());
+}
+
+#[tokio::test]
+async fn astra_explicit_compaction_rejects_missing_or_incomplete_replacement() {
+    use everruns_provider::compact::{CompactInputItem, CompactRequest};
+    for (status, output) in [
+        (
+            "completed",
+            serde_json::json!([{"type":"message","role":"assistant","content":"no compact"}]),
+        ),
+        (
+            "incomplete",
+            serde_json::json!([{"type":"compaction","encrypted_content":"partial"}]),
+        ),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"status":status,"output":output})),
+            )
+            .mount(&server)
+            .await;
+        let result = astra_driver(&server)
+            .into_boxed_driver()
+            .compact(
+                &everruns_provider::ProviderEndpoint::default(),
+                CompactRequest {
+                    model: "gpt-6-astra".into(),
+                    reasoning_state: Some(astra_state(None)),
+                    input: vec![CompactInputItem::Message {
+                        role: "user".into(),
+                        content: CompactContent::Text("history".into()),
+                    }],
+                    previous_response_id: None,
+                    instructions: None,
+                },
+            )
+            .await;
+        assert!(result.is_err());
+    }
 }

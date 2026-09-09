@@ -129,7 +129,8 @@ async fn setting_a_session_secret_elicits_a_server_rendered_form_and_stores_the_
         html.contains("OPENAI_API_KEY"),
         "form should name the secret"
     );
-    assert!(html.contains("action=\"/mcp/elicitations/secret\""));
+    // An empty action keeps the deployment's API prefix when the browser posts.
+    assert!(html.contains("method=\"post\" action=\"\""));
     assert!(html.contains("type=\"password\""));
 
     // 3. The form posts the value straight back to Everruns.
@@ -137,7 +138,7 @@ async fn setting_a_session_secret_elicits_a_server_rendered_form_and_stores_the_
     let submitted = server
         .request_raw(
             Method::POST,
-            "/mcp/elicitations/secret",
+            &path_and_query(&url),
             vec![("content-type", "application/x-www-form-urlencoded")],
             format!("token={token}&value=sk-secret-value").into_bytes(),
         )

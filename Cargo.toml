@@ -67,7 +67,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.22.0"
+version = "0.24.0"
 edition = "2024"
 # Published crate MSRV: Rust 2024 plus current published dependency floors.
 rust-version = "1.94.0"
@@ -199,18 +199,18 @@ futures-util = "0.3"
 # Everruns SDK
 everruns-sdk = "0.2.0"
 everruns-capability = { path = "crates/capability", version = "0.18.1", default-features = false }
-everruns-builtins = { path = "crates/builtins", version = "0.18.5" }
-everruns-core = { path = "crates/core", version = "0.19.0" }
-everruns-engine = { path = "crates/engine", version = "0.18.2" }
-everruns-host = { path = "crates/host", version = "0.20.3" }
-everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.18.4", default-features = false }
+everruns-builtins = { path = "crates/builtins", version = "0.18.6" }
+everruns-core = { path = "crates/core", version = "0.19.1" }
+everruns-engine = { path = "crates/engine", version = "0.18.3" }
+everruns-host = { path = "crates/host", version = "0.20.4" }
+everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.18.5", default-features = false }
 everruns-test-support = { path = "crates/test-support", version = "0.18.2", default-features = false }
-everruns-platform = { path = "crates/platform", version = "0.19.1" }
-everruns-provider = { path = "crates/provider", version = "0.20.0", default-features = false }
+everruns-platform = { path = "crates/platform", version = "0.19.2" }
+everruns-provider = { path = "crates/provider", version = "0.20.1", default-features = false }
 everruns-model-profiles = { path = "crates/model-profiles", version = "0.1.0" }
-everruns-mcp = { path = "crates/mcp", version = "0.19.2" }
+everruns-mcp = { path = "crates/mcp", version = "0.19.3" }
 everruns-ard = { path = "crates/ard", version = "0.18.0" }
-everruns-openai = { path = "crates/drivers/openai", version = "0.18.2" }
+everruns-openai = { path = "crates/drivers/openai", version = "0.18.3" }
 everruns = { path = "crates/everruns", version = "0.18.0" }
 everruns-macros = { path = "crates/macros", version = "0.18.1" }
 everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.18.3" }

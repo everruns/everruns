@@ -42,6 +42,7 @@ pub fn llm_message_from_message(msg: &Message) -> LlmMessage {
         .collect();
 
     LlmMessage {
+        configuration_update: None,
         role,
         content: LlmMessageContent::Text(msg.content_to_llm_string()),
         tool_calls: if tool_calls.is_empty() {
@@ -141,6 +142,7 @@ pub fn llm_message_from_message_with_images(
     };
 
     LlmMessage {
+        configuration_update: None,
         role,
         content,
         tool_calls: if tool_calls.is_empty() {
@@ -191,6 +193,7 @@ pub fn llm_call_config_from_agent(runtime_agent: &RuntimeAgent) -> LlmCallConfig
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        reasoning_state: None,
     }
 }
 

@@ -110,6 +110,7 @@ impl UtilityLlmRequest {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            reasoning_state: None,
         };
         Ok((self.messages, config))
     }
@@ -207,6 +208,7 @@ mod tests {
         assert!(config.speed.is_none());
         assert!(config.verbosity.is_none());
         assert!(config.cache_diagnostics.is_none());
+        assert!(config.reasoning_state.is_none());
     }
 
     #[test]

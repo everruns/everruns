@@ -83,7 +83,7 @@ impl ChatDriver for MetaChatDriver {
         }
 
         let models_url = models_url_for_api_url(&api_url);
-        list_meta_models(self.inner.client(), endpoint, &models_url).await
+        list_meta_models(&self.inner.client(), endpoint, &models_url).await
     }
 }
 
@@ -180,6 +180,7 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
     fn config() -> LlmCallConfig {
         LlmCallConfig {
+            reasoning_state: None,
             model: "muse-spark-1.3".into(),
             temperature: Some(0.25),
             max_tokens: Some(64),
