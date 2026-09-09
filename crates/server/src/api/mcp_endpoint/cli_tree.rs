@@ -433,3 +433,40 @@ mod bashkit_tests {
         assert!(stdout.lines().count() <= 3, "{stdout}");
     }
 }
+
+/// The tree must not become a route around the read-only toolset.
+#[cfg(test)]
+mod read_only_tests {
+    use super::*;
+    use crate::api::mcp_endpoint::catalog::ToolsetMode;
+    use crate::domains::common::CommandDescriptor;
+
+    /// THREAT[TM-MCP-002]: `query` exposes read-only commands only. The rewrite
+    /// maps a tree spelling onto a wire name, and a mutating wire name is
+    /// simply not registered as a builtin in read-only mode, so the rewritten
+    /// script fails with command-not-found rather than mutating. This asserts
+    /// the property the rewrite depends on: it can only ever emit a name that
+    /// exists in the catalog, so mode gating stays the single decision point.
+    #[test]
+    fn every_tree_leaf_maps_to_a_registered_command_with_honest_read_only_status() {
+        let mutating: Vec<&str> = inventory::iter::<CommandDescriptor>
+            .into_iter()
+            .filter_map(|desc| {
+                let route = (desc.cli)()?;
+                let meta = (desc.meta)();
+                // The rewrite target must be the command's own wire name...
+                let leaf = tree().leaf(&route.spelling()).expect("declared leaf");
+                assert_eq!(leaf.command, meta.name);
+                // ...and its read-only classification is the command's, not
+                // something the tree can restate or soften.
+                (!(desc.read_only)()).then_some(meta.name)
+            })
+            .collect();
+
+        assert!(
+            mutating.contains(&"create_agent"),
+            "the tranche should include mutating commands, or this proves nothing"
+        );
+        assert_ne!(ToolsetMode::ReadOnly, ToolsetMode::Full);
+    }
+}

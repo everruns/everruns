@@ -1,5 +1,16 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-09
+
+* **One command grammar, several hosts.** Operations reached through the
+  scripted MCP surface, a session's shell, and (eventually) the external CLI had
+  drifted into two spellings. The `everruns <noun> <verb>` tree is declared once
+  per command and rendered by every host, with the flat wire name kept as the
+  identity so dispatch, schema coercion, policy, and error handling are
+  unchanged. A tree also makes `--help` affordable where a flat namespace of
+  hundreds of commands had to forbid it. See
+  [Command Tree](execution/command-tree.md).
+
 ## 2026-09-05
 
 * Astra reasoning changes preserve the initial request effort, persist effective

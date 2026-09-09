@@ -454,8 +454,14 @@ fn contains_help_flag(bytes: &[u8], mut i: usize, end: usize) -> bool {
     false
 }
 
-/// Build the help builtin invocation. Path words are `[a-z0-9-]` by
-/// construction, so single quotes cannot be broken out of.
+/// Build the help builtin invocation.
+///
+// THREAT[TM-BASH-011]: this is the one place the rewriter emits shell text
+// built from caller input, so a word carrying a quote would break out of the
+// single-quoted argument and inject a command. Two independent guards: the
+// tokenizer only accepts `[A-Za-z0-9_-]` as word characters, so a quote can
+// never be captured, and `sanitize` strips anything else regardless. Covered by
+// `quoting_cannot_be_broken_out_of`.
 fn help_call(path: &str, unknown: Option<&str>) -> String {
     let safe_path = sanitize(path);
     match unknown {
@@ -984,5 +990,107 @@ mod tests {
             .await
             .expect_err("bare value is not a flag");
         assert!(error.contains("--flag value"), "{error}");
+    }
+}
+
+/// Security-relevant properties of the rewrite, kept separate so a change that
+/// weakens one is obvious in the diff.
+#[cfg(test)]
+mod rewrite_safety_tests {
+    use super::*;
+
+    struct OneCommand;
+
+    #[async_trait]
+    impl CliCommandSource for OneCommand {
+        fn specs(&self) -> Vec<CliCommandSpec> {
+            vec![CliCommandSpec {
+                wire_name: "list_widgets".into(),
+                description: "List widgets.".into(),
+                route: CliRoute::new(&["widgets"], "list"),
+            }]
+        }
+        async fn dispatch(&self, _wire: &str, _params: Value) -> Result<String, String> {
+            Ok("{}".into())
+        }
+    }
+
+    fn tree() -> CliTree {
+        CliTree::from_source(&OneCommand)
+    }
+
+    #[test]
+    fn the_synthesizer_emits_only_sanitized_words() {
+        // THREAT[TM-BASH-011]: `help_call` is the only place the rewriter
+        // synthesizes shell text from caller input, so the invariant is tested
+        // where it lives rather than by slicing the combined output. Anything
+        // that could end a quoted token must not survive into the argument.
+        for hostile in [
+            "widgets'; rm -rf /",
+            "$(id)",
+            "`id`",
+            "a\nb",
+            "a\"b",
+            "a\\b",
+            "a;b|c&d",
+        ] {
+            let call = help_call(hostile, Some(hostile));
+            let quoted: String = call.chars().filter(|c| *c == '\'').collect();
+            assert_eq!(
+                quoted.len(),
+                4,
+                "expected exactly two quoted arguments in {call:?}"
+            );
+            for bad in [';', '`', '&', '|', '$', '"', '\\', '\n', '\''] {
+                assert!(
+                    !call.split('\'').nth(1).is_some_and(|arg| arg.contains(bad)),
+                    "{bad:?} survived into {call:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_tokenizer_never_captures_a_metacharacter() {
+        // The first of the two guards: a hostile byte is not a word character,
+        // so it is never consumed as a path word in the first place.
+        for bad in [b'\'', b'"', b';', b'|', b'&', b'$', b'`', b'\\', b'\n'] {
+            assert!(
+                !is_word_char(bad),
+                "{} is treated as a word char",
+                bad as char
+            );
+        }
+    }
+
+    #[test]
+    fn the_caller_s_own_text_is_passed_through_verbatim() {
+        // The corollary of the above: the rewriter replaces only the
+        // `everruns <words>` prefix and must not rewrite, escape, or drop the
+        // rest, or a legitimate script would change meaning.
+        let tree = tree();
+        let out = rewrite("everruns widgets list | jq -r '.total' > out.txt", &tree);
+        assert_eq!(out, "list_widgets | jq -r '.total' > out.txt");
+    }
+
+    #[test]
+    fn a_tree_word_inside_a_string_is_left_alone() {
+        let tree = tree();
+        assert_eq!(
+            rewrite("echo 'everruns widgets list'", &tree),
+            "echo 'everruns widgets list'"
+        );
+    }
+
+    #[test]
+    fn the_rewrite_only_ever_emits_a_declared_wire_name() {
+        // The rewrite cannot conjure a command: every leaf maps to a name the
+        // source declared, so it can never name a builtin the host did not
+        // choose to expose. Whether that name is *executable* remains the
+        // host's decision (a read-only toolset registers no mutating builtin,
+        // and an unregistered name is simply not found).
+        let tree = tree();
+        assert_eq!(rewrite("everruns widgets list", &tree), "list_widgets");
+        assert!(rewrite("everruns widgets create", &tree).starts_with(HELP_BUILTIN));
     }
 }
