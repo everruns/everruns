@@ -12,7 +12,6 @@ everruns-core = { path = "../../crates/core" }
 everruns-provider = { path = "../../crates/provider" }
 everruns-integrations-bashkit = { path = "../../integrations/bashkit" }
 everruns-integrations-filesystem = { path = "../../integrations/filesystem" }
-everruns-llmsim = { path = "../../crates/drivers/llmsim", features = ["host"] }
 everruns-openai = { path = "../../crates/drivers/openai" }
 everruns-anthropic = { path = "../../crates/drivers/anthropic" }
 async-trait.workspace = true
@@ -21,3 +20,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+# Tests only. The example binary itself always calls a real model; the
+# simulator here is a deterministic driver for asserting on the CLI surface,
+# not a stand-in for agent behaviour.
+everruns-llmsim = { path = "../../crates/drivers/llmsim", features = ["host"] }

@@ -19,9 +19,7 @@ use everruns_host::{
     InMemorySessionFileSystemFactory, InProcessRuntimeBuilder, SessionBuilder,
 };
 use everruns_integrations_bashkit::BashkitShellCapability;
-use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
 use everruns_provider::driver_registry::DriverRegistry;
-use everruns_provider::tool_types::ToolCall;
 use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 
 const OPENAI_MODEL: &str = "gpt-5.6-terra";
@@ -113,9 +111,45 @@ impl EventSink for ShellTranscript {
     }
 }
 
+enum Provider {
+    Anthropic(String),
+    OpenAi(String),
+}
+
+/// Picks the provider from `--provider <name>`, else whichever key is set.
+///
+/// The explicit flag matters in practice: an operator often has both keys
+/// exported while only one account can currently serve a request.
+fn provider_choice() -> Result<Provider, Box<dyn std::error::Error>> {
+    let args: Vec<String> = std::env::args().collect();
+    let requested = args
+        .iter()
+        .position(|arg| arg == "--provider")
+        .and_then(|index| args.get(index + 1))
+        .cloned();
+
+    let key = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
+
+    match requested.as_deref() {
+        Some("anthropic") => key("ANTHROPIC_API_KEY")
+            .map(Provider::Anthropic)
+            .ok_or_else(|| "--provider anthropic needs ANTHROPIC_API_KEY".into()),
+        Some("openai") => key("OPENAI_API_KEY")
+            .map(Provider::OpenAi)
+            .ok_or_else(|| "--provider openai needs OPENAI_API_KEY".into()),
+        Some(other) => Err(format!("unknown provider {other:?}; use anthropic or openai").into()),
+        None => match (key("ANTHROPIC_API_KEY"), key("OPENAI_API_KEY")) {
+            (Some(key), _) => Ok(Provider::Anthropic(key)),
+            (None, Some(key)) => Ok(Provider::OpenAi(key)),
+            (None, None) => Err(
+                "set ANTHROPIC_API_KEY or OPENAI_API_KEY (this example calls a real model)".into(),
+            ),
+        },
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let offline = std::env::args().any(|arg| arg == "--offline");
     let fleet = Fleet::with_demo_services();
 
     let harness_id = HarnessId::new();
@@ -161,60 +195,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .build(),
         );
 
-    if offline {
-        // Deterministic: the simulator drives the exact shell calls a model
-        // would make, so the example runs in CI without a key.
-        builder = builder.llm_sim_as_default(
-            LlmSimConfig::fixed("Listed the fleet and scaled api from 2 replicas to 4.")
-                .with_tool_call_sequence(vec![
-                    vec![ToolCall {
-                        id: "call_help".into(),
-                        name: "bash".into(),
-                        arguments: serde_json::json!({ "commands": "everruns fleet --help" }),
-                    }],
-                    vec![ToolCall {
-                        id: "call_list".into(),
-                        name: "bash".into(),
-                        arguments: serde_json::json!({ "commands": "everruns fleet list" }),
-                    }],
-                    vec![ToolCall {
-                        id: "call_scale".into(),
-                        name: "bash".into(),
-                        arguments: serde_json::json!({
-                            "commands": "everruns fleet scale --name api --replicas 4"
-                        }),
-                    }],
-                    vec![],
-                ]),
-        );
-    } else {
-        // Either key works; whichever is present wins, so the example runs
-        // wherever the operator already has credentials.
-        builder = match (
-            std::env::var("ANTHROPIC_API_KEY")
-                .ok()
-                .filter(|k| !k.is_empty()),
-            std::env::var("OPENAI_API_KEY")
-                .ok()
-                .filter(|k| !k.is_empty()),
-        ) {
-            (Some(key), _) => builder.provider_with_default_model(
-                everruns_anthropic::provider("anthropic", key),
-                ANTHROPIC_MODEL,
-            ),
-            (None, Some(key)) => builder.provider_with_default_model(
-                everruns_openai::provider("openai", key),
-                OPENAI_MODEL,
-            ),
-            (None, None) => {
-                return Err(
-                    "set ANTHROPIC_API_KEY or OPENAI_API_KEY, or pass --offline for the \
-                     deterministic run"
-                        .into(),
-                );
-            }
-        };
-    }
+    // A real model, always. A simulator can be told to emit the exact shell
+    // calls we hope for, which makes the demo a recording of our own script:
+    // it proves the CLI resolves, never that an agent found it. Only a live
+    // model choosing its own commands demonstrates that.
+    builder = match provider_choice()? {
+        Provider::Anthropic(key) => builder.provider_with_default_model(
+            everruns_anthropic::provider("anthropic", key),
+            ANTHROPIC_MODEL,
+        ),
+        Provider::OpenAi(key) => builder
+            .provider_with_default_model(everruns_openai::provider("openai", key), OPENAI_MODEL),
+    };
 
     let runtime = builder.build().await?;
 
