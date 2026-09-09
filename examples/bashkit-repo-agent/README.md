@@ -16,8 +16,11 @@ cargo test -p everruns-bashkit-repo-agent
 ```
 
 `cargo run` makes real provider calls. With no argument the working copy lives
-in a temporary directory that is removed on exit; pass a path to keep it.
-The tests never contact the provider.
+in a temporary directory that is removed on exit; pass a path to keep it. That
+directory is the agent's read-write workspace and is edited in place, so pass a
+scratch path rather than a repository you care about — the runtime clamps every
+shell path under it, but everything inside it is fair game. The tests never
+contact the provider.
 
 ## What it does
 
