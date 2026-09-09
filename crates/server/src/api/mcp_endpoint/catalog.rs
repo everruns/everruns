@@ -71,9 +71,22 @@ impl CatalogContext {
 /// Build one scripted tool from inventory-registered commands only.
 pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptedTool {
     let mut builder = ScriptedTool::builder("everruns")
+        // Discoverability is the whole game for a command surface: unlike a
+        // tool schema, a CLI does not advertise itself. State the tree, its
+        // help, and the fact that flat names still work, once, here.
         .short_description(match mode {
-            ToolsetMode::Full => "Everruns API operations as bash builtins",
-            ToolsetMode::ReadOnly => "Read-only Everruns API operations as bash builtins",
+            ToolsetMode::Full => {
+                "Everruns operations as bash builtins. Type `everruns <noun> <verb> --flags` \
+                 (e.g. `everruns agents list --limit 10`). Run `everruns --help` for the nouns \
+                 and `everruns <noun> --help` for its verbs. Flat names (`list_agents`) remain \
+                 valid aliases."
+            }
+            ToolsetMode::ReadOnly => {
+                "Read-only Everruns operations as bash builtins. Type \
+                 `everruns <noun> <verb> --flags` (e.g. `everruns agents list --limit 10`). Run \
+                 `everruns --help` for the nouns. Flat names (`list_agents`) remain valid \
+                 aliases."
+            }
         })
         .limits(
             bashkit::ExecutionLimits::new()

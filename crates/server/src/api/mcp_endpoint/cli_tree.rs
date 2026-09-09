@@ -770,3 +770,33 @@ mod usage_tests {
         assert!(text.contains("Wire name: create_mcp_server"), "{text}");
     }
 }
+
+#[cfg(test)]
+mod discovery_tests {
+    use super::*;
+    use crate::domains::common::catalog_entries_with_schemas;
+    use everruns_platform::FeatureFlags;
+
+    /// A CLI does not advertise itself the way a tool schema does, so
+    /// discovery has to carry the spelling. If this regresses, the tree still
+    /// works but nothing tells a model it exists.
+    #[test]
+    fn discovery_carries_the_tree_spelling_for_declared_commands() {
+        let flags = FeatureFlags::default();
+        let entries = catalog_entries_with_schemas(false, &flags);
+
+        let agents_list = entries
+            .iter()
+            .find(|entry| entry.name == "list_agents")
+            .expect("list_agents is registered");
+        assert_eq!(agents_list.cli.as_deref(), Some("agents list"));
+
+        // Opt-in: a command that never declared a route stays absent from the
+        // tree rather than being derived into it.
+        let undeclared = entries
+            .iter()
+            .find(|entry| entry.cli.is_none())
+            .expect("the tranche is a subset, not the whole catalog");
+        assert!(tree().leaf(undeclared.name).is_none());
+    }
+}

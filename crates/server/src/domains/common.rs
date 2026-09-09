@@ -1191,6 +1191,11 @@ pub struct CommandCatalogEntry {
     pub read_only: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub positional_arg: Option<&'static str>,
+    /// Tree spelling (`agents list`) when the command opted into the
+    /// `everruns` command tree, so discovery can teach the spelling a caller
+    /// should actually type.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cli: Option<String>,
     pub input_schema: Value,
     pub output_schema: Value,
     pub output_shape: &'static str,
@@ -1213,6 +1218,7 @@ pub fn catalog_entries_with_schemas(
                 path: meta.path,
                 read_only: (desc.read_only)(),
                 positional_arg: (desc.positional_arg)(),
+                cli: (desc.cli)().map(|route| route.spelling()),
                 input_schema: if include_schemas {
                     (desc.param_schema)()
                 } else {

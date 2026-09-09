@@ -100,10 +100,20 @@ fn discover(
         if let Some(positional_arg) = entry.positional_arg {
             value["positional_arg"] = json!(positional_arg);
         }
+        // Show the spelling a caller should type. `name` stays the wire
+        // identity (and still works), but usage renders the tree form so
+        // discovery teaches one grammar instead of two.
+        if let Some(spelling) = &entry.cli {
+            value["cli"] = json!(format!("{} {spelling}", cli_tree::ROOT));
+        }
         if include_schemas {
             value["input_schema"] = entry.input_schema.clone();
             value["output_schema"] = entry.output_schema.clone();
-            value["bash_usage"] = json!(catalog::bash_usage(entry.name, &entry.input_schema));
+            let usage_name = match &entry.cli {
+                Some(spelling) => format!("{} {spelling}", cli_tree::ROOT),
+                None => entry.name.to_string(),
+            };
+            value["bash_usage"] = json!(catalog::bash_usage(&usage_name, &entry.input_schema));
             value["output_fields"] = json!(catalog::schema_field_paths(&entry.output_schema));
             if serde_json::to_vec(&value).is_ok_and(|encoded| encoded.len() > 2_000) {
                 value
