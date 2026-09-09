@@ -354,7 +354,12 @@ mod tests {
     #[test]
     fn request_wire_covers_every_item_and_omits_absent_continuation_fields() {
         let request = CompactRequest {
-            reasoning_state: None,
+            reasoning_state: Some(crate::reasoning_updates::ReasoningState {
+                epoch: "local-only-epoch".into(),
+                baseline: Some(crate::model::ReasoningEffort::Low),
+                effective: Some(crate::model::ReasoningEffort::High),
+                pending: Some(crate::model::ReasoningEffort::High),
+            }),
             model: "model".into(),
             input: vec![
                 CompactInputItem::Message {
@@ -384,6 +389,14 @@ mod tests {
                 CompactInputItem::Compaction {
                     encrypted_content: "opaque".into(),
                 },
+                CompactInputItem::ConfigurationUpdate {
+                    reasoning: ConfigurationReasoning {
+                        effort: crate::model::ReasoningEffort::High,
+                    },
+                },
+                CompactInputItem::ProviderItem(
+                    json!({"type":"reasoning","id":"rs-native","encrypted_content":"native-opaque"}),
+                ),
             ],
             previous_response_id: None,
             instructions: Some("rules".into()),
@@ -395,7 +408,9 @@ mod tests {
                 {"type":"message","role":"assistant","content":[{"type":"input_text","text":"image"},{"type":"input_image","image_url":"data:image/png;base64,abc"}]},
                 {"type":"function_call","call_id":"call-1","name":"lookup","arguments":"{\"city\":\"NYC\"}"},
                 {"type":"function_call_output","call_id":"call-1","output":"result"},
-                {"type":"compaction","encrypted_content":"opaque"}
+                {"type":"compaction","encrypted_content":"opaque"},
+                {"type":"configuration_update","reasoning":{"effort":"high"}},
+                {"type":"reasoning","id":"rs-native","encrypted_content":"native-opaque"}
             ]})
         );
         assert_eq!(
@@ -440,6 +455,10 @@ mod tests {
             json!({"type":"unknown","encrypted_content":"opaque-future"}),
         ] {
             let decoded: CompactOutputItem = serde_json::from_value(native.clone()).unwrap();
+            assert_eq!(
+                serde_json::to_value(CompactInputItem::from(&decoded)).unwrap(),
+                native
+            );
             assert_eq!(serde_json::to_value(decoded).unwrap(), native);
         }
         let minimal: CompactResponse = serde_json::from_value(json!({"output":[]})).unwrap();
@@ -472,6 +491,21 @@ mod tests {
     #[test]
     fn message_conversion_keeps_roles_call_order_and_supported_content() {
         let mut assistant = LlmMessage::text(LlmMessageRole::Assistant, "checking");
+        assistant.configuration_update = Some(crate::model::ReasoningEffort::High);
+        assistant.phase = Some(crate::execution_phase::ExecutionPhase::Commentary);
+        assistant.reasoning = vec![
+            crate::reasoning::ReasoningContentPart::opaque("openai")
+                .with_item_id("rs-1")
+                .with_encrypted("private-replay")
+                .with_text(crate::reasoning::ReasoningText::Summary {
+                    parts: vec!["first".into(), "second".into()],
+                }),
+            crate::reasoning::ReasoningContentPart::opaque("anthropic")
+                .with_item_id("foreign")
+                .with_encrypted("foreign-secret"),
+            crate::reasoning::ReasoningContentPart::opaque("openai")
+                .with_item_id("missing-encrypted"),
+        ];
         assistant.tool_calls = Some(vec![crate::tool_types::ToolCall {
             id: "call-1".into(),
             name: "lookup".into(),
@@ -510,7 +544,9 @@ mod tests {
             json!([
                 {"type":"message","role":"developer","content":"rules"},
                 {"type":"message","role":"user","content":[{"type":"input_text","text":"see"},{"type":"input_image","image_url":"https://images.example/a.png"}]},
-                {"type":"message","role":"assistant","content":"checking"},
+                {"type":"configuration_update","reasoning":{"effort":"high"}},
+                {"type":"reasoning","id":"rs-1","encrypted_content":"private-replay","summary":[{"type":"summary_text","text":"first"},{"type":"summary_text","text":"second"}]},
+                {"type":"message","role":"assistant","content":"checking","phase":"commentary"},
                 {"type":"function_call","call_id":"call-1","name":"lookup","arguments":"{\"q\":1}"},
                 {"type":"function_call_output","call_id":"call-1","output":"done"},
                 {"type":"message","role":"user","content":"only text"}

@@ -134,7 +134,6 @@ pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
 /// ```
 #[derive(Clone)]
 pub struct OpenAIProtocolChatDriver {
-    client: Client,
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
 }
@@ -142,8 +141,12 @@ pub struct OpenAIProtocolChatDriver {
 impl OpenAIProtocolChatDriver {
     /// Create a wire-only OpenAI Chat Completions protocol driver.
     pub fn new() -> Self {
+        // EVE-924: choose the rustls backend on the startup path. The shared
+        // client installs it as well, but that now happens on the first
+        // request, and products expect the process-wide choice to be settled
+        // while providers are being constructed.
+        crate::install_default_crypto_provider();
         Self {
-            client: crate::driver_helpers::shared_streaming_http_client(),
             retry_config: LlmRetryConfig::default(),
         }
     }
@@ -154,9 +157,15 @@ impl OpenAIProtocolChatDriver {
         self
     }
 
-    /// Get the HTTP client (for subclass access)
-    pub fn client(&self) -> &Client {
-        &self.client
+    /// The process-wide streaming HTTP client, resolved per request rather than
+    /// held as a field. Building it loads the platform trust store (~1.3 ms),
+    /// which would otherwise land on the agent startup path; after the first
+    /// request this is a `OnceLock` read and an `Arc` clone.
+    ///
+    /// Returned by value for subclass access; a `reqwest::Client` is an `Arc`
+    /// handle, so cloning it shares the same connection pool.
+    pub fn client(&self) -> Client {
+        crate::driver_helpers::shared_streaming_http_client()
     }
 
     /// Send one streaming chat-completion request, applying the shared
@@ -190,7 +199,7 @@ impl OpenAIProtocolChatDriver {
                     .resolve("POST", api_url, &body)
                     .await
                     .map_err(SendOutcome::Fatal)?;
-                let mut request_builder = self.client.post(&resolved.url);
+                let mut request_builder = self.client().post(&resolved.url);
                 let mut headers = resolved.headers;
                 headers.push(("Content-Type".to_string(), "application/json".to_string()));
                 for (name, value) in

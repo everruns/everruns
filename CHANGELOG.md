@@ -7,6 +7,242 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-09-09
+
+### Highlights
+
+- **~3.5x faster agent startup** - Agent startup-to-ready latency cut by roughly 3.5x ([#3486](https://github.com/everruns/everruns/pull/3486)).
+- **MCP URL-mode elicitation with a consent pause** - MCP elicitation now works in URL mode on both sides, with an explicit consent pause surfaced in the UI ([#3354](https://github.com/everruns/everruns/pull/3354)).
+- **Gen-AI and OpenInference trace conventions** - Observability now emits Gen-AI agent and OpenInference trace conventions for standard agent tracing ([#3353](https://github.com/everruns/everruns/pull/3353)).
+- **Expanded model catalog** - Added OpenAI GPT-6 Astra, Claude Fable 5.1, and Muse Spark 1.3 profiles with live-matrix coverage ([#3363](https://github.com/everruns/everruns/pull/3363), [#3351](https://github.com/everruns/everruns/pull/3351), [#3352](https://github.com/everruns/everruns/pull/3352)).
+- **Broad provider wire-contract hardening** - A large sweep of driver and provider fixes plus expanded contract tests across Anthropic, OpenAI, Gemini, OpenRouter, Bedrock, MAI, Meta, and Fireworks, tightening streaming, usage, reasoning, and request-shaping behavior.
+
+### What's Changed
+
+- fix(release): cascade-bump integration crates and gate the publish cone ([#3286](https://github.com/everruns/everruns/pull/3286)) by [@chaliy](https://github.com/chaliy)
+- fix(release): republish everruns facade as 0.19.1 ([#3287](https://github.com/everruns/everruns/pull/3287)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): gate postgres integration on all provider crates ([#3289](https://github.com/everruns/everruns/pull/3289)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump distroless/cc-debian12 in /crates/worker ([#3282](https://github.com/everruns/everruns/pull/3282)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump distroless/cc-debian12 in /crates/server ([#3281](https://github.com/everruns/everruns/pull/3281)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump distroless/cc-debian12 in /docker ([#3283](https://github.com/everruns/everruns/pull/3283)) by [@dependabot](https://github.com/apps/dependabot)
+- fix(ci): stop reporting a pass for runs that executed nothing ([#3290](https://github.com/everruns/everruns/pull/3290)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump the cargo group with 2 updates ([#3284](https://github.com/everruns/everruns/pull/3284)) by [@dependabot](https://github.com/apps/dependabot)
+- fix(reasoning): persist Chat Completions reasoning, and run the tests CI never ran ([#3288](https://github.com/everruns/everruns/pull/3288)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): repair the workflow tests that first ran on main ([#3291](https://github.com/everruns/everruns/pull/3291)) by [@chaliy](https://github.com/chaliy)
+- chore(agents): drop the GitHub API token guidance ([#3293](https://github.com/everruns/everruns/pull/3293)) by [@chaliy](https://github.com/chaliy)
+- chore(models): retire sunset models and seed Bedrock Claude 5 ([#3294](https://github.com/everruns/everruns/pull/3294)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): lock the chat composer when no model is available ([#3295](https://github.com/everruns/everruns/pull/3295)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): stop losing the first message of a fresh chat thread ([#3296](https://github.com/everruns/everruns/pull/3296)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): give the live provider matrix its own job and gate ([#3297](https://github.com/everruns/everruns/pull/3297)) by [@chaliy](https://github.com/chaliy)
+- chore(models): retire Claude Sonnet 4 ([#3298](https://github.com/everruns/everruns/pull/3298)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): skip live workflow tests when the provider account is blocked ([#3299](https://github.com/everruns/everruns/pull/3299)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): surface live-provider skips in a green run's step summary ([#3300](https://github.com/everruns/everruns/pull/3300)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): echo live-provider skips into the job log, not just the summary ([#3301](https://github.com/everruns/everruns/pull/3301)) by [@chaliy](https://github.com/chaliy)
+- fix(scripts): install just without the GitHub API so cloud sessions get it ([#3302](https://github.com/everruns/everruns/pull/3302)) by [@chaliy](https://github.com/chaliy)
+- fix(scripts): verify gh and caddy checksums in the cloud bootstrap ([#3303](https://github.com/everruns/everruns/pull/3303)) by [@chaliy](https://github.com/chaliy)
+- fix(evals): send typed ReasoningEffort from the generic eval subject ([#3331](https://github.com/everruns/everruns/pull/3331)) by [@claude](https://github.com/apps/claude)
+- fix(everruns): disable repository Git hooks in LocalGitWorkspaceProvider ([#3304](https://github.com/everruns/everruns/pull/3304)) by [@chaliy](https://github.com/chaliy)
+- fix(engine): prevent replay of provider-executed OpenRouter server tools ([#3305](https://github.com/everruns/everruns/pull/3305)) by [@chaliy](https://github.com/chaliy)
+- fix(tools): validate arguments and enable strict schemas ([#3336](https://github.com/everruns/everruns/pull/3336)) by [@chaliy](https://github.com/chaliy)
+- fix(budgets): price retrieval embeddings ([#3307](https://github.com/everruns/everruns/pull/3307)) by [@chaliy](https://github.com/chaliy)
+- fix(core): exclude MCP connection secrets from serialized execution snapshots ([#3308](https://github.com/everruns/everruns/pull/3308)) by [@chaliy](https://github.com/chaliy)
+- fix(host): enforce `user_prompt_submit` hooks on finalized steering ([#3309](https://github.com/everruns/everruns/pull/3309)) by [@chaliy](https://github.com/chaliy)
+- fix(server): enforce org-effective feature flags for gRPC platform commands ([#3311](https://github.com/everruns/everruns/pull/3311)) by [@chaliy](https://github.com/chaliy)
+- Preserve generation estimates when folding compaction cost (fix budgets) ([#3306](https://github.com/everruns/everruns/pull/3306)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): redact security alert report details ([#3318](https://github.com/everruns/everruns/pull/3318)) by [@chaliy](https://github.com/chaliy)
+- fix(host): secure local event log opening ([#3310](https://github.com/everruns/everruns/pull/3310)) by [@chaliy](https://github.com/chaliy)
+- fix(agents): enforce HARNESS_VIEW before exposing effective_harness metadata ([#3312](https://github.com/everruns/everruns/pull/3312)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): gate skills server prefetch ([#3319](https://github.com/everruns/everruns/pull/3319)) by [@chaliy](https://github.com/chaliy)
+- fix(dev): generate private per-prefix KEK for local persisted provider keys ([#3320](https://github.com/everruns/everruns/pull/3320)) by [@chaliy](https://github.com/chaliy)
+- fix(server): require admin for organization updates ([#3315](https://github.com/everruns/everruns/pull/3315)) by [@chaliy](https://github.com/chaliy)
+- fix(providers): protect managed model catalogs ([#3316](https://github.com/everruns/everruns/pull/3316)) by [@chaliy](https://github.com/chaliy)
+- fix(guardrails): make secret-leak judge stage-agnostic and add test ([#3317](https://github.com/everruns/everruns/pull/3317)) by [@chaliy](https://github.com/chaliy)
+- fix(evals): surface event stream lag ([#3322](https://github.com/everruns/everruns/pull/3322)) by [@chaliy](https://github.com/chaliy)
+- fix(everruns): preserve Agent Plugins v1 name validation during capability validation ([#3323](https://github.com/everruns/everruns/pull/3323)) by [@chaliy](https://github.com/chaliy)
+- fix(cli): use versioned /v1/ API paths for plugins, skills, and knowledge-bases ([#3326](https://github.com/everruns/everruns/pull/3326)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): include knowledge job in aggregate Build Check ([#3328](https://github.com/everruns/everruns/pull/3328)) by [@chaliy](https://github.com/chaliy)
+- fix(models): preserve verbosity in merged profiles ([#3329](https://github.com/everruns/everruns/pull/3329)) by [@chaliy](https://github.com/chaliy)
+- fix(host): prevent concurrent JSONL writer corruption ([#3325](https://github.com/everruns/everruns/pull/3325)) by [@chaliy](https://github.com/chaliy)
+- fix(evals): allow generic workspace writes ([#3324](https://github.com/everruns/everruns/pull/3324)) by [@chaliy](https://github.com/chaliy)
+- chore(deno): mark the Deno integration unsupported and drop its live tests ([#3335](https://github.com/everruns/everruns/pull/3335)) by [@claude](https://github.com/apps/claude)
+- fix(tests): truncate live response previews on char boundaries ([#3340](https://github.com/everruns/everruns/pull/3340)) by [@claude](https://github.com/apps/claude)
+- fix(models): allow clearing organization default model ([#3321](https://github.com/everruns/everruns/pull/3321)) by [@chaliy](https://github.com/chaliy)
+- fix(local): serialize reconnect with wake fallback ([#3327](https://github.com/everruns/everruns/pull/3327)) by [@chaliy](https://github.com/chaliy)
+- fix(everruns): split reviewed and canonical session-event surfaces ([#3313](https://github.com/everruns/everruns/pull/3313)) by [@chaliy](https://github.com/chaliy)
+- feat(events): record mid-session model changes in the transcript ([#3346](https://github.com/everruns/everruns/pull/3346)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): limit run summary utility spend ([#3330](https://github.com/everruns/everruns/pull/3330)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): keep active voice stop control enabled ([#3333](https://github.com/everruns/everruns/pull/3333)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): reject semantic model suffix fallbacks ([#3334](https://github.com/everruns/everruns/pull/3334)) by [@chaliy](https://github.com/chaliy)
+- fix(core): prevent spawn target narration spoofing ([#3337](https://github.com/everruns/everruns/pull/3337)) by [@chaliy](https://github.com/chaliy)
+- fix(server): reject git source redirects ([#3339](https://github.com/everruns/everruns/pull/3339)) by [@chaliy](https://github.com/chaliy)
+- fix(engine): guard retained reasoning output ([#3338](https://github.com/everruns/everruns/pull/3338)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): include live provider matrix in build check ([#3332](https://github.com/everruns/everruns/pull/3332)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump rust from 1.97.1-slim to 1.98.0-slim in /crates/worker ([#3343](https://github.com/everruns/everruns/pull/3343)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump rust from 1.97.1-slim-bookworm to 1.98.0-slim-bookworm in /docker ([#3344](https://github.com/everruns/everruns/pull/3344)) by [@dependabot](https://github.com/apps/dependabot)
+- fix(ui): patch browserslist advisories in the UI lockfile ([#3347](https://github.com/everruns/everruns/pull/3347)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump rust from 1.97.1-slim to 1.98.0-slim in /crates/server ([#3342](https://github.com/everruns/everruns/pull/3342)) by [@dependabot](https://github.com/apps/dependabot)
+- fix(tests): assert message-history index support, not planner choice ([#3348](https://github.com/everruns/everruns/pull/3348)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump the cargo group with 9 updates ([#3345](https://github.com/everruns/everruns/pull/3345)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): migrate to argon2 0.6 with a cross-version hash test ([#3349](https://github.com/everruns/everruns/pull/3349)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add Claude Fable 5.1 profile, seed it, and cover it in the live matrix ([#3351](https://github.com/everruns/everruns/pull/3351)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add Muse Spark 1.3 and move Meta coverage onto it ([#3352](https://github.com/everruns/everruns/pull/3352)) by [@chaliy](https://github.com/chaliy)
+- docs: lead README with framework ([`ab13179`](https://github.com/everruns/everruns/commit/ab13179f82adb5df2fd07848205d1490faff3d0d)) by [@chaliy](https://github.com/chaliy)
+- docs(readme): add Everruns banner ([#3355](https://github.com/everruns/everruns/pull/3355)) by [@chaliy](https://github.com/chaliy)
+- feat(observability): Gen-AI agent and OpenInference trace conventions ([#3353](https://github.com/everruns/everruns/pull/3353)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump the npm_and_yarn group across 1 directory with 2 updates ([#3357](https://github.com/everruns/everruns/pull/3357)) by [@dependabot](https://github.com/apps/dependabot)
+- docs(readme): refine framework entry point ([#3359](https://github.com/everruns/everruns/pull/3359)) by [@chaliy](https://github.com/chaliy)
+- fix(server): honour NATS_URL credentials and cut Sentry noise from prod logs ([#3356](https://github.com/everruns/everruns/pull/3356)) by [@chaliy](https://github.com/chaliy)
+- docs(observability): OpenTelemetry page, and fix the OTLP traces endpoint ([#3360](https://github.com/everruns/everruns/pull/3360)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): URL mode elicitation on both sides, with a consent pause in the UI ([#3354](https://github.com/everruns/everruns/pull/3354)) by [@chaliy](https://github.com/chaliy)
+- fix(platform): surface partial script failures and composed boolean flags ([#3358](https://github.com/everruns/everruns/pull/3358)) by [@chaliy](https://github.com/chaliy)
+- feat(examples): add runnable framework agents ([#3361](https://github.com/everruns/everruns/pull/3361)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): back off before retrying a live turn that failed transiently ([#3362](https://github.com/everruns/everruns/pull/3362)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add OpenAI GPT-6 Astra profile, favorite, and live-matrix coverage ([#3363](https://github.com/everruns/everruns/pull/3363)) by [@chaliy](https://github.com/chaliy)
+- feat(examples): add real framework agent demos ([#3364](https://github.com/everruns/everruns/pull/3364)) by [@chaliy](https://github.com/chaliy)
+- feat(release): generate release cards ([#3365](https://github.com/everruns/everruns/pull/3365)) by [@chaliy](https://github.com/chaliy)
+- feat(ci): report which providers the live matrix actually exercised ([#3366](https://github.com/everruns/everruns/pull/3366)) by [@chaliy](https://github.com/chaliy)
+- fix(security): bump fast-uri override to 3.1.6 ([#3367](https://github.com/everruns/everruns/pull/3367)) by [@chaliy](https://github.com/chaliy)
+- refactor(provider): move model profiles into everruns-model-profiles crate ([#3368](https://github.com/everruns/everruns/pull/3368)) by [@chaliy](https://github.com/chaliy)
+- test: replace weak checks and fix provider URL errors ([#3369](https://github.com/everruns/everruns/pull/3369)) by [@chaliy](https://github.com/chaliy)
+- feat(brave-search): support framework capability execution ([#3370](https://github.com/everruns/everruns/pull/3370)) by [@chaliy](https://github.com/chaliy)
+- feat(examples): show useful live agent demos ([#3372](https://github.com/everruns/everruns/pull/3372)) by [@chaliy](https://github.com/chaliy)
+- chore(tests): track reviews and strengthen ARD tests ([#3373](https://github.com/everruns/everruns/pull/3373)) by [@chaliy](https://github.com/chaliy)
+- fix(core): replace stale ARD agents and improve listener tests ([#3375](https://github.com/everruns/everruns/pull/3375)) by [@chaliy](https://github.com/chaliy)
+- test(core): strengthen policy and path conformance assertions ([#3376](https://github.com/everruns/everruns/pull/3376)) by [@chaliy](https://github.com/chaliy)
+- test(core): strengthen event protocol assertions ([#3379](https://github.com/everruns/everruns/pull/3379)) by [@chaliy](https://github.com/chaliy)
+- test(core): cover message preservation and index boundaries ([#3380](https://github.com/everruns/everruns/pull/3380)) by [@chaliy](https://github.com/chaliy)
+- fix(core): preserve workspace roots after rejected updates ([#3377](https://github.com/everruns/everruns/pull/3377)) by [@chaliy](https://github.com/chaliy)
+- test: consolidate portable contracts at their owning types ([#3378](https://github.com/everruns/everruns/pull/3378)) by [@chaliy](https://github.com/chaliy)
+- fix(daytona): preserve command paths and streamed Unicode ([#3381](https://github.com/everruns/everruns/pull/3381)) by [@chaliy](https://github.com/chaliy)
+- test(core): isolate environment fixtures and verify complete overlays ([#3382](https://github.com/everruns/everruns/pull/3382)) by [@chaliy](https://github.com/chaliy)
+- test: tighten model, CLI, and release-card coverage ([#3374](https://github.com/everruns/everruns/pull/3374)) by [@chaliy](https://github.com/chaliy)
+- test(core): isolate feature gates and deployment environment cases ([#3384](https://github.com/everruns/everruns/pull/3384)) by [@chaliy](https://github.com/chaliy)
+- fix(core): preserve network policy boundaries during narrowing ([#3385](https://github.com/everruns/everruns/pull/3385)) by [@chaliy](https://github.com/chaliy)
+- test(core): strengthen telemetry projection and privacy contracts ([#3386](https://github.com/everruns/everruns/pull/3386)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): reject browser-normalized external return paths ([#3388](https://github.com/everruns/everruns/pull/3388)) by [@chaliy](https://github.com/chaliy)
+- fix(core): preserve tool payloads when attaching raw output ([#3387](https://github.com/everruns/everruns/pull/3387)) by [@chaliy](https://github.com/chaliy)
+- test(core): verify runtime assembly and snapshot boundaries ([#3383](https://github.com/everruns/everruns/pull/3383)) by [@chaliy](https://github.com/chaliy)
+- test(core): strengthen model router boundaries and wire contracts ([#3389](https://github.com/everruns/everruns/pull/3389)) by [@chaliy](https://github.com/chaliy)
+- fix(core): align hook glob validation and strengthen boundary tests ([#3390](https://github.com/everruns/everruns/pull/3390)) by [@chaliy](https://github.com/chaliy)
+- test(evals): add opt-in harness behavior comparison ([#3371](https://github.com/everruns/everruns/pull/3371)) by [@chaliy](https://github.com/chaliy)
+- test(core): strengthen file encoding and grep result contracts ([#3393](https://github.com/everruns/everruns/pull/3393)) by [@chaliy](https://github.com/chaliy)
+- fix(core): preserve mount segment boundaries in grep filters ([#3392](https://github.com/everruns/everruns/pull/3392)) by [@chaliy](https://github.com/chaliy)
+- test(server): isolate message history index eligibility from planner costs ([#3394](https://github.com/everruns/everruns/pull/3394)) by [@chaliy](https://github.com/chaliy)
+- fix(server): accept reserved characters in the NATS_URL password ([#3395](https://github.com/everruns/everruns/pull/3395)) by [@chaliy](https://github.com/chaliy)
+- fix(core): preserve output lines and tighten sanitizer tests ([#3396](https://github.com/everruns/everruns/pull/3396)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): accept OAuth config and strengthen domain tests ([#3398](https://github.com/everruns/everruns/pull/3398)) by [@chaliy](https://github.com/chaliy)
+- fix(core): honor narration aliases and strengthen tests ([#3397](https://github.com/everruns/everruns/pull/3397)) by [@chaliy](https://github.com/chaliy)
+- fix(tests): inventory conflicted source files only once ([#3402](https://github.com/everruns/everruns/pull/3402)) by [@chaliy](https://github.com/chaliy)
+- test(core): strengthen guardrail boundaries and action coverage ([#3400](https://github.com/everruns/everruns/pull/3400)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): reject ambiguous server prefixes across routing ([#3399](https://github.com/everruns/everruns/pull/3399)) by [@chaliy](https://github.com/chaliy)
+- test(core): verify permission matrices and rule precedence ([#3401](https://github.com/everruns/everruns/pull/3401)) by [@chaliy](https://github.com/chaliy)
+- fix(skills): preserve literal and empty positional arguments ([#3403](https://github.com/everruns/everruns/pull/3403)) by [@chaliy](https://github.com/chaliy)
+- test(core): strengthen capability composition coverage ([#3404](https://github.com/everruns/everruns/pull/3404)) by [@chaliy](https://github.com/chaliy)
+- fix(capabilities): validate reserved skill path boundaries ([#3406](https://github.com/everruns/everruns/pull/3406)) by [@chaliy](https://github.com/chaliy)
+- test(core): strengthen output guardrail orchestration coverage ([#3407](https://github.com/everruns/everruns/pull/3407)) by [@chaliy](https://github.com/chaliy)
+- test(core): strengthen citation annotation orchestration ([#3409](https://github.com/everruns/everruns/pull/3409)) by [@chaliy](https://github.com/chaliy)
+- test(core): strengthen progress reporting behavior checks ([#3408](https://github.com/everruns/everruns/pull/3408)) by [@chaliy](https://github.com/chaliy)
+- fix(core): audit context reduction and prompt accounting ([#3410](https://github.com/everruns/everruns/pull/3410)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): audit typed ids and correct schema examples ([#3411](https://github.com/everruns/everruns/pull/3411)) by [@chaliy](https://github.com/chaliy)
+- fix(skills): preserve reconstructed metadata without leaks ([#3405](https://github.com/everruns/everruns/pull/3405)) by [@chaliy](https://github.com/chaliy)
+- test(core): verify completion decisions and independent budgets ([#3412](https://github.com/everruns/everruns/pull/3412)) by [@chaliy](https://github.com/chaliy)
+- fix(core): release drained wake queues and verify delivery ([#3413](https://github.com/everruns/everruns/pull/3413)) by [@chaliy](https://github.com/chaliy)
+- test(core): cover schedule limits and store failures ([#3414](https://github.com/everruns/everruns/pull/3414)) by [@chaliy](https://github.com/chaliy)
+- fix(core): serialize observed task transitions and audit tests ([#3415](https://github.com/everruns/everruns/pull/3415)) by [@chaliy](https://github.com/chaliy)
+- test(core): verify hook executor payloads and output boundaries ([#3416](https://github.com/everruns/everruns/pull/3416)) by [@chaliy](https://github.com/chaliy)
+- test(core): verify lifecycle hook ordering and failure policies ([#3417](https://github.com/everruns/everruns/pull/3417)) by [@chaliy](https://github.com/chaliy)
+- test(core): verify fingerprints and execution workspace lineage ([#3418](https://github.com/everruns/everruns/pull/3418)) by [@chaliy](https://github.com/chaliy)
+- test(core): strengthen resource ownership enforcement coverage ([#3420](https://github.com/everruns/everruns/pull/3420)) by [@chaliy](https://github.com/chaliy)
+- test(core): audit plugin file ingestion boundaries ([#3421](https://github.com/everruns/everruns/pull/3421)) by [@chaliy](https://github.com/chaliy)
+- fix(core): preserve trait implementation types in outlines ([#3422](https://github.com/everruns/everruns/pull/3422)) by [@chaliy](https://github.com/chaliy)
+- test(llm): accept complete opaque OpenAI reasoning artifacts ([#3424](https://github.com/everruns/everruns/pull/3424)) by [@chaliy](https://github.com/chaliy)
+- test(core): remove no-value service tests and verify requests ([#3419](https://github.com/everruns/everruns/pull/3419)) by [@chaliy](https://github.com/chaliy)
+- test(core): strengthen exec output and MCP proxy contracts ([#3426](https://github.com/everruns/everruns/pull/3426)) by [@chaliy](https://github.com/chaliy)
+- fix(core): audit plugin compilation and allow IPv6 loopback ([#3423](https://github.com/everruns/everruns/pull/3423)) by [@chaliy](https://github.com/chaliy)
+- fix(core): preserve concurrent task artifacts and strengthen lifecycle tests ([#3427](https://github.com/everruns/everruns/pull/3427)) by [@chaliy](https://github.com/chaliy)
+- test(provider): strengthen credential precedence and document contracts ([#3428](https://github.com/everruns/everruns/pull/3428)) by [@chaliy](https://github.com/chaliy)
+- test(core): audit support contracts and reduce fixture overhead ([#3425](https://github.com/everruns/everruns/pull/3425)) by [@chaliy](https://github.com/chaliy)
+- test(core): consolidate private fixture tests around stored behavior ([#3429](https://github.com/everruns/everruns/pull/3429)) by [@chaliy](https://github.com/chaliy)
+- test(provider): verify complete streaming call assembly and flush behavior ([#3430](https://github.com/everruns/everruns/pull/3430)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): preserve tool schema values during strict conversion ([#3431](https://github.com/everruns/everruns/pull/3431)) by [@chaliy](https://github.com/chaliy)
+- test(provider): consolidate model and driver identity contracts ([#3433](https://github.com/everruns/everruns/pull/3433)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): clear stale error disclosure metadata ([#3435](https://github.com/everruns/everruns/pull/3435)) by [@chaliy](https://github.com/chaliy)
+- test(provider): strengthen error classification contracts ([#3436](https://github.com/everruns/everruns/pull/3436)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): join endpoint paths on complete URL segments ([#3432](https://github.com/everruns/everruns/pull/3432)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): preserve stream recovery time budgets ([#3438](https://github.com/everruns/everruns/pull/3438)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): remove stale duplicate request headers on override ([#3434](https://github.com/everruns/everruns/pull/3434)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): enforce retry deadlines and numeric bounds ([#3437](https://github.com/everruns/everruns/pull/3437)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): validate discovery targets and ranking limits ([#3439](https://github.com/everruns/everruns/pull/3439)) by [@chaliy](https://github.com/chaliy)
+- test(provider): strengthen tool wire contracts ([#3440](https://github.com/everruns/everruns/pull/3440)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): preserve operation query parameters ([#3444](https://github.com/everruns/everruns/pull/3444)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): enforce OpenResponses wire contracts ([#3441](https://github.com/everruns/everruns/pull/3441)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): preserve OpenRouter routing price units ([#3442](https://github.com/everruns/everruns/pull/3442)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): preserve chat completion terminal reasons ([#3443](https://github.com/everruns/everruns/pull/3443)) by [@chaliy](https://github.com/chaliy)
+- fix(gemini): preserve tool replay and complete streamed frames ([#3446](https://github.com/everruns/everruns/pull/3446)) by [@chaliy](https://github.com/chaliy)
+- test(provider): verify responses authentication on the wire ([#3445](https://github.com/everruns/everruns/pull/3445)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): preserve reported usage in streamed chat ([#3450](https://github.com/everruns/everruns/pull/3450)) by [@chaliy](https://github.com/chaliy)
+- test(provider): replace weak and duplicate registry tests ([#3449](https://github.com/everruns/everruns/pull/3449)) by [@chaliy](https://github.com/chaliy)
+- fix(gemini): preserve streamed unicode and schema literals ([#3451](https://github.com/everruns/everruns/pull/3451)) by [@chaliy](https://github.com/chaliy)
+- test(meta): verify complete provider wire contracts ([#3452](https://github.com/everruns/everruns/pull/3452)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): stabilize Responses tool-search cache identity ([#3447](https://github.com/everruns/everruns/pull/3447)) by [@chaliy](https://github.com/chaliy)
+- fix(deps): move off the yanked wnaf 0.14.0 ([#3457](https://github.com/everruns/everruns/pull/3457)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): absorb one transient Doppler CLI install failure ([#3458](https://github.com/everruns/everruns/pull/3458)) by [@chaliy](https://github.com/chaliy)
+- fix(bedrock): preserve unsigned tool argument precision ([#3453](https://github.com/everruns/everruns/pull/3453)) by [@chaliy](https://github.com/chaliy)
+- test(mai): verify auth precedence and token refresh contracts ([#3454](https://github.com/everruns/everruns/pull/3454)) by [@chaliy](https://github.com/chaliy)
+- test(daytona): verify dead sessions without real-time waits ([#3455](https://github.com/everruns/everruns/pull/3455)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): preserve query parameters in compact requests ([#3448](https://github.com/everruns/everruns/pull/3448)) by [@chaliy](https://github.com/chaliy)
+- fix(mai): preserve endpoint queries and review driver contracts ([#3456](https://github.com/everruns/everruns/pull/3456)) by [@chaliy](https://github.com/chaliy)
+- test(openrouter): verify request decoration and retry metadata ([#3468](https://github.com/everruns/everruns/pull/3468)) by [@chaliy](https://github.com/chaliy)
+- feat(engine): preserve Astra effort through compaction ([#3391](https://github.com/everruns/everruns/pull/3391)) by [@chaliy](https://github.com/chaliy)
+- fix(openrouter): initialize reasoning state in test fixture ([#3473](https://github.com/everruns/everruns/pull/3473)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): preserve file previews with stronger test contracts ([#3475](https://github.com/everruns/everruns/pull/3475)) by [@chaliy](https://github.com/chaliy)
+- fix(openrouter): reject invalid discovered model prices ([#3469](https://github.com/everruns/everruns/pull/3469)) by [@chaliy](https://github.com/chaliy)
+- fix(anthropic): complete unit-test review and preserve metadata ([#3472](https://github.com/everruns/everruns/pull/3472)) by [@chaliy](https://github.com/chaliy)
+- fix(openai): expose stateful continuation and verify contracts ([#3471](https://github.com/everruns/everruns/pull/3471)) by [@chaliy](https://github.com/chaliy)
+- test(ci): run nested driver suites and enforce enumeration ([#3467](https://github.com/everruns/everruns/pull/3467)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): preserve discovery origin before authentication ([#3470](https://github.com/everruns/everruns/pull/3470)) by [@chaliy](https://github.com/chaliy)
+- fix(web-fetch): reject invalid methods and tighten tests ([#3476](https://github.com/everruns/everruns/pull/3476)) by [@chaliy](https://github.com/chaliy)
+- test(core): preserve reasoning controls in reduction contracts ([#3477](https://github.com/everruns/everruns/pull/3477)) by [@chaliy](https://github.com/chaliy)
+- chore(tests): revalidate reviews after state field changes ([#3481](https://github.com/everruns/everruns/pull/3481)) by [@chaliy](https://github.com/chaliy)
+- test(provider): cover native compaction replay state ([#3478](https://github.com/everruns/everruns/pull/3478)) by [@chaliy](https://github.com/chaliy)
+- fix(test-support): emit one mock completion per response ([#3479](https://github.com/everruns/everruns/pull/3479)) by [@chaliy](https://github.com/chaliy)
+- perf(everruns): cut agent startup to ready by ~3.5x ([#3486](https://github.com/everruns/everruns/pull/3486)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+Independently versioned crates published this cycle. This release carries broad behavior fixes,
+additive features, and a re-export-preserving crate extraction; no public item was removed,
+renamed, or re-signatured, so every existing crate takes the smallest compatible (patch) bump.
+
+New crate (first crates.io publish):
+- `everruns-model-profiles` 0.1.0 - dependency-light leaf crate holding model identity, profile, and service-taxonomy types, extracted from `everruns-provider` (which re-exports them for source compatibility) ([#3368](https://github.com/everruns/everruns/pull/3368))
+
+Patch bumps (behavior/additive, non-breaking):
+- `everruns-core` 0.19.0 → 0.19.1
+- `everruns-provider` 0.20.0 → 0.20.1
+- `everruns-host` 0.20.3 → 0.20.4
+- `everruns-mcp` 0.19.2 → 0.19.3
+- `everruns-engine` 0.18.2 → 0.18.3
+- `everruns-builtins` 0.18.5 → 0.18.6
+- `everruns-platform` 0.19.1 → 0.19.2
+- `everruns-cli` 0.18.2 → 0.18.3
+- `everruns-test-support` 0.18.4 → 0.18.5
+- `everruns-turbopuffer` 0.18.2 → 0.18.3
+- `everruns-anthropic` 0.18.2 → 0.18.3
+- `everruns-bedrock` 0.18.2 → 0.18.3
+- `everruns-fireworks` 0.18.2 → 0.18.3
+- `everruns-gemini` 0.18.2 → 0.18.3
+- `everruns-llmsim` 0.18.4 → 0.18.5
+- `everruns-mai` 0.18.2 → 0.18.3
+- `everruns-meta` 0.18.2 → 0.18.3
+- `everruns-openai` 0.18.2 → 0.18.3
+- `everruns-openrouter` 0.18.2 → 0.18.3
+
+Already republished in-cycle: `everruns` (facade) 0.19.0 → 0.19.1 ([#3287](https://github.com/everruns/everruns/pull/3287)).
+
+No public-contract change this cycle (not bumped): `everruns-ard`, `everruns-capability`, `everruns-macros`.
+
+
 ## [0.22.0] - 2026-08-25
 
 ### Highlights

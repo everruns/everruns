@@ -86,7 +86,6 @@ const MESSAGE_CACHE_BREAKPOINTS: usize = 2;
 /// ```
 #[derive(Clone)]
 pub struct AnthropicChatDriver {
-    client: Client,
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
 }
@@ -106,10 +105,22 @@ struct SendMessagesOptions<'a> {
 impl AnthropicChatDriver {
     /// Create a new provider with the given API key
     pub fn new() -> Self {
+        // EVE-924: choose the rustls backend on the startup path. The shared
+        // client installs it as well, but that now happens on the first
+        // request, and products expect the process-wide choice to be settled
+        // while providers are being constructed.
+        everruns_provider::install_default_crypto_provider();
         Self {
-            client: driver_helpers::shared_streaming_http_client(),
             retry_config: LlmRetryConfig::default(),
         }
+    }
+
+    /// The process-wide streaming HTTP client, resolved per request rather than
+    /// held as a field. Building it loads the platform trust store (~1.3 ms),
+    /// which would otherwise land in `Agent::build` on the startup path; after
+    /// the first request this is a `OnceLock` read and an `Arc` clone.
+    fn client(&self) -> Client {
+        driver_helpers::shared_streaming_http_client()
     }
 
     /// Configure retry behavior for rate limit errors
@@ -209,7 +220,7 @@ impl AnthropicChatDriver {
                         })?;
                     let resolved = endpoint.resolve("POST", url, &body).await.map_err(SendOutcome::Fatal)?;
                     driver_headers.extend(resolved.headers);
-                    let mut request_builder = self.client.post(&resolved.url);
+                    let mut request_builder = self.client().post(&resolved.url);
                     for (name, value) in
                         driver_helpers::merge_request_headers(driver_headers, extra_headers)
                     {
@@ -1262,7 +1273,7 @@ impl ChatDriver for AnthropicChatDriver {
             .ok_or_else(|| AgentLoopError::config("Anthropic provider has no base URL"))?;
         let resolved = endpoint.resolve("GET", url, &[]).await?;
         let mut request = self
-            .client
+            .client()
             .get(&resolved.url)
             .header("anthropic-version", ANTHROPIC_VERSION);
         for (name, value) in resolved.headers {

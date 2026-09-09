@@ -262,15 +262,11 @@ impl ChatDriver for MockProvider {
         drop(responses);
 
         // Create a stream that emits the response
-        let events = vec![
-            Ok(LlmStreamEvent::TextDelta(response.text.clone())),
-            if let Some(tool_calls) = response.tool_calls {
-                Ok(LlmStreamEvent::ToolCalls(tool_calls))
-            } else {
-                Ok(LlmStreamEvent::Done(Box::default()))
-            },
-            Ok(LlmStreamEvent::Done(Box::default())),
-        ];
+        let mut events = vec![Ok(LlmStreamEvent::TextDelta(response.text))];
+        if let Some(tool_calls) = response.tool_calls {
+            events.push(Ok(LlmStreamEvent::ToolCalls(tool_calls)));
+        }
+        events.push(Ok(LlmStreamEvent::Done(Box::default())));
 
         Ok(Box::pin(stream::iter(events)))
     }
@@ -307,7 +303,123 @@ mod tests {
 
         let result = executor.execute(&tool_call, &tool_def).await.unwrap();
 
+        assert_eq!(result.tool_call_id, "call_1");
         assert!(result.error.is_none());
         assert_eq!(result.result, Some(serde_json::json!({"temp": 72})));
+        let mut fallback = tool_call.clone();
+        fallback.id = "call_2".into();
+        fallback.name = "unconfigured".into();
+        fallback.arguments = serde_json::json!({"other":true});
+        let result = executor.execute(&fallback, &tool_def).await.unwrap();
+        assert_eq!(result.tool_call_id, "call_2");
+        assert_eq!(result.result, Some(serde_json::json!({"status":"ok"})));
+        assert!(result.error.is_none());
+        assert_eq!(
+            serde_json::to_value(executor.calls().await).unwrap(),
+            serde_json::json!([tool_call, fallback])
+        );
+        executor.clear_calls().await;
+        assert!(executor.calls().await.is_empty());
+        assert_eq!(
+            executor
+                .execute(&tool_call, &tool_def)
+                .await
+                .unwrap()
+                .result,
+            Some(serde_json::json!({"temp":72}))
+        );
+    }
+
+    #[tokio::test]
+    async fn mock_provider_replays_queue_once_and_resets_without_duplicate_completion() {
+        use futures::StreamExt;
+        use serde_json::json;
+        async fn collect(provider: &MockProvider, prompt: &str) -> serde_json::Value {
+            let config = everruns_core::llm_conversions::llm_call_config_from_agent(
+                &everruns_core::RuntimeAgent::new("rules", "model"),
+            );
+            let events = provider
+                .chat_completion_stream(
+                    &everruns_provider::runtime_provider::ProviderEndpoint::default(),
+                    vec![LlmMessage::text(
+                        everruns_provider::LlmMessageRole::User,
+                        prompt,
+                    )],
+                    &config,
+                )
+                .await
+                .unwrap()
+                .collect::<Vec<_>>()
+                .await;
+            json!(
+                events
+                    .into_iter()
+                    .map(|event| match event.unwrap() {
+                        LlmStreamEvent::TextDelta(text) => json!({"text":text}),
+                        LlmStreamEvent::ToolCalls(calls) => json!({"calls":calls}),
+                        LlmStreamEvent::Done(_) => json!({"done":true}),
+                        other => panic!("unexpected mock event: {other:?}"),
+                    })
+                    .collect::<Vec<_>>()
+            )
+        }
+        let provider = MockProvider::new();
+        let calls = vec![ToolCall {
+            id: "call-1".into(),
+            name: "lookup".into(),
+            arguments: json!({"q":"α"}),
+        }];
+        provider
+            .set_responses(vec![MockLlmResponse::text("first")])
+            .await;
+        provider
+            .add_response(MockLlmResponse::with_tools("second", calls.clone()))
+            .await;
+        assert_eq!(
+            collect(&provider, "one").await,
+            json!([{"text":"first"},{"done":true}])
+        );
+        assert_eq!(
+            collect(&provider, "two").await,
+            json!([{"text":"second"},{"calls":calls},{"done":true}])
+        );
+        assert_eq!(
+            collect(&provider, "three").await,
+            json!([{"text":"Mock response (no more responses configured)"},{"done":true}])
+        );
+        assert_eq!(
+            provider
+                .calls()
+                .await
+                .iter()
+                .map(|messages| {
+                    assert_eq!(messages.len(), 1);
+                    assert_eq!(messages[0].role, everruns_provider::LlmMessageRole::User);
+                    messages[0].content_as_text()
+                })
+                .collect::<Vec<_>>(),
+            ["one", "two", "three"]
+        );
+        provider
+            .set_responses(vec![MockLlmResponse::text("replacement")])
+            .await;
+        assert_eq!(
+            collect(&provider, "four").await,
+            json!([{"text":"replacement"},{"done":true}])
+        );
+        assert_eq!(provider.calls().await.len(), 4);
+        provider.reset().await;
+        assert!(provider.calls().await.is_empty());
+        assert_eq!(
+            collect(&provider, "five").await,
+            json!([{"text":"Mock response (no more responses configured)"},{"done":true}])
+        );
+        provider
+            .set_responses(vec![MockLlmResponse::text("after reset")])
+            .await;
+        assert_eq!(
+            collect(&provider, "six").await,
+            json!([{"text":"after reset"},{"done":true}])
+        );
     }
 }
