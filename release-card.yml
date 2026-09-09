@@ -1,19 +1,19 @@
-version: 0.22.0
-date: 2026-08-25
+version: 0.23.0
+date: 2026-09-09
 headline:
-  - Reasoning,
-  - in order.
+  - Faster starts,
+  - broader reach.
 summary:
-  - Model reasoning now replays as
-  - it happened—clearer to inspect,
-  - easier to trust.
+  - Agents reach ready ~3.5x faster,
+  - MCP gains consent-paused URL elicitation,
+  - and tracing speaks Gen-AI and OpenInference.
 highlights:
-  - title: Ordered reasoning artifacts
-    description: Reasoning replays in production order with its classification visible.
-    source: "#3276"
-  - title: Bounded batch file reads
-    description: Read several guarded files in one policy-aware call.
-    source: "#3275"
-  - title: Cleaner replay events
-    description: Required summaries in; redundant recovery noise out.
-    source: "#3280"
+  - title: ~3.5x faster agent startup
+    description: Startup-to-ready latency cut by roughly 3.5x.
+    source: "#3486"
+  - title: MCP URL-mode elicitation
+    description: Two-sided URL elicitation with a consent pause in the UI.
+    source: "#3354"
+  - title: Gen-AI & OpenInference tracing
+    description: Observability emits standard Gen-AI agent and OpenInference conventions.
+    source: "#3353"
