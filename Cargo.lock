@@ -2173,7 +2173,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2229,7 +2229,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-ard"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2509,7 +2509,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.20.5"
+version = "0.20.6"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2985,7 +2985,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-mcp"
-version = "0.19.3"
+version = "0.19.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3062,7 +3062,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-platform"
-version = "0.19.2"
+version = "0.19.3"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -3277,7 +3277,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-test-support"
-version = "0.18.5"
+version = "0.18.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3300,7 +3300,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-turbopuffer"
-version = "0.18.3"
+version = "0.18.4"
 dependencies = [
  "anyhow",
  "async-trait",

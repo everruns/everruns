@@ -208,13 +208,13 @@ everruns-capability = { path = "crates/capability", version = "0.18.1", default-
 everruns-builtins = { path = "crates/builtins", version = "0.18.7" }
 everruns-core = { path = "crates/core", version = "0.20.0" }
 everruns-engine = { path = "crates/engine", version = "0.18.4" }
-everruns-host = { path = "crates/host", version = "0.20.5" }
+everruns-host = { path = "crates/host", version = "0.20.6" }
 everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.18.5", default-features = false }
 everruns-test-support = { path = "crates/test-support", version = "0.18.2", default-features = false }
-everruns-platform = { path = "crates/platform", version = "0.19.2" }
+everruns-platform = { path = "crates/platform", version = "0.19.3" }
 everruns-provider = { path = "crates/provider", version = "0.20.2", default-features = false }
 everruns-model-profiles = { path = "crates/model-profiles", version = "0.1.0" }
-everruns-mcp = { path = "crates/mcp", version = "0.19.3" }
+everruns-mcp = { path = "crates/mcp", version = "0.19.4" }
 everruns-ard = { path = "crates/ard", version = "0.18.0" }
 everruns-openai = { path = "crates/drivers/openai", version = "0.18.3" }
 everruns = { path = "crates/everruns", version = "0.18.0" }
