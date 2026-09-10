@@ -665,3 +665,144 @@ async fn astra_explicit_compaction_rejects_missing_or_incomplete_replacement() {
         assert!(result.is_err());
     }
 }
+
+/// A gateway that never sends `response.output_item.added` for the call still
+/// gets the tool executed. The `done` frame describes the finished call in
+/// full, so it is the authoritative record of it; before this, only `added`
+/// supplied the name, and a nameless entry was filtered out of the snapshot —
+/// the turn ended with a text answer even though the model had called a tool.
+#[tokio::test]
+async fn function_call_without_output_item_added_still_emits_the_tool_call() {
+    let server = MockServer::start().await;
+    let body = [
+        r#"data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather","arguments":"{\"city\":\"Paris\"}"}}"#,
+        "",
+        r#"data: {"type":"response.completed","response":{"id":"resp_3","status":"completed","output":[],"usage":{"input_tokens":15,"output_tokens":8}}}"#,
+        "",
+        "data: [DONE]",
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![LlmMessage::text(LlmMessageRole::User, "weather?")],
+            &config("gpt-5-mini"),
+        )
+        .await
+        .expect("stream should start");
+
+    assert_eq!(
+        drain_golden(stream).await,
+        vec![
+            Golden::ToolCall {
+                name: "get_weather".into(),
+                args: r#"{"city":"Paris"}"#.into(),
+            },
+            Golden::Done {
+                total: Some(23),
+                prompt: Some(15),
+                completion: Some(8),
+                cache_read: None,
+                finish: Some("tool_calls".into()),
+            },
+        ]
+    );
+}
+
+/// The terminal response resource is the last chance to notice a call the
+/// incremental frames never described. Reconciling against its `output` list
+/// emits the call ahead of `Done`, which is what ends the stream for the
+/// consumer.
+#[tokio::test]
+async fn function_call_only_in_the_completed_response_is_recovered() {
+    let server = MockServer::start().await;
+    let body = [
+        r#"data: {"type":"response.output_text.delta","delta":"Squash-merging."}"#,
+        "",
+        r#"data: {"type":"response.completed","response":{"id":"resp_4","status":"completed","output":[{"type":"function_call","id":"fc_9","call_id":"call_9","name":"bash","arguments":"{\"command\":\"gh pr merge\"}","status":"completed"}],"usage":{"input_tokens":15,"output_tokens":8}}}"#,
+        "",
+        "data: [DONE]",
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![LlmMessage::text(LlmMessageRole::User, "merge it")],
+            &config("gpt-5-mini"),
+        )
+        .await
+        .expect("stream should start");
+
+    assert_eq!(
+        drain_golden(stream).await,
+        vec![
+            Golden::Text("Squash-merging.".into()),
+            Golden::ToolCall {
+                name: "bash".into(),
+                args: r#"{"command":"gh pr merge"}"#.into(),
+            },
+            Golden::Done {
+                total: Some(23),
+                prompt: Some(15),
+                completion: Some(8),
+                cache_read: None,
+                finish: Some("tool_calls".into()),
+            },
+        ]
+    );
+}
+
+/// Reconciling at completion stays a no-op when the incremental frames already
+/// delivered the call: the consumer overwrites its tool-call list on every
+/// `ToolCalls` event, so a redundant repeat would be harmless but the contract
+/// is that one call produces one event.
+#[tokio::test]
+async fn completed_response_does_not_re_emit_an_already_streamed_call() {
+    let server = MockServer::start().await;
+    let body = [
+        r#"data: {"type":"response.output_item.added","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather"}}"#,
+        "",
+        r#"data: {"type":"response.function_call_arguments.delta","item_id":"fc_1","delta":"{\"city\":\"Paris\"}"}"#,
+        "",
+        r#"data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather","arguments":"{\"city\":\"Paris\"}"}}"#,
+        "",
+        r#"data: {"type":"response.completed","response":{"id":"resp_5","status":"completed","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather","arguments":"{\"city\":\"Paris\"}","status":"completed"}],"usage":{"input_tokens":15,"output_tokens":8}}}"#,
+        "",
+        "data: [DONE]",
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![LlmMessage::text(LlmMessageRole::User, "weather?")],
+            &config("gpt-5-mini"),
+        )
+        .await
+        .expect("stream should start");
+
+    assert_eq!(
+        drain_golden(stream).await,
+        vec![
+            Golden::ToolCall {
+                name: "get_weather".into(),
+                args: r#"{"city":"Paris"}"#.into(),
+            },
+            Golden::Done {
+                total: Some(23),
+                prompt: Some(15),
+                completion: Some(8),
+                cache_read: None,
+                finish: Some("tool_calls".into()),
+            },
+        ]
+    );
+}
