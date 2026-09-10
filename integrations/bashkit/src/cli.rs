@@ -27,8 +27,9 @@
 // makes `--help` affordable where a flat namespace of hundreds of commands has
 // to forbid it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
+use std::sync::{Mutex, OnceLock};
 
 use async_trait::async_trait;
 use bashkit::ExecResult;
@@ -105,6 +106,16 @@ pub trait CliCommandSource: Send + Sync {
     /// Commands to expose in the tree.
     fn specs(&self) -> Vec<CliCommandSpec>;
 
+    /// The word that introduces an invocation: `everruns agents list`.
+    ///
+    /// A host's own operations are its own, so the token that names them is
+    /// the host's too. The hosted product keeps the default; a Framework
+    /// application administering invoices has no reason to spell them under
+    /// someone else's brand.
+    fn root(&self) -> &str {
+        ROOT
+    }
+
     /// One-line summaries for grouping nodes, keyed by full node path
     /// (`"agents"`, `"agents versions"`).
     ///
@@ -135,8 +146,10 @@ pub struct Leaf {
 
 /// The assembled tree. Nodes are keyed by their full path so lookup is a
 /// single map hit; children are derived for help rendering.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct CliTree {
+    /// Token that introduces an invocation, from the source that built it.
+    root: String,
     node_about: BTreeMap<String, String>,
     /// "agents list" -> leaf
     leaves: BTreeMap<String, Leaf>,
@@ -144,7 +157,23 @@ pub struct CliTree {
     nodes: BTreeMap<String, Vec<String>>,
 }
 
+impl Default for CliTree {
+    fn default() -> Self {
+        Self {
+            root: ROOT.to_string(),
+            node_about: BTreeMap::new(),
+            leaves: BTreeMap::new(),
+            nodes: BTreeMap::new(),
+        }
+    }
+}
+
 impl CliTree {
+    /// The token that introduces an invocation in this tree.
+    pub fn root(&self) -> &str {
+        &self.root
+    }
+
     pub fn leaf(&self, path: &str) -> Option<&Leaf> {
         self.leaves.get(path)
     }
@@ -195,6 +224,7 @@ impl CliTree {
     /// Build a tree from a source's declared commands.
     pub fn from_source(source: &dyn CliCommandSource) -> Self {
         let mut tree = Self {
+            root: source.root().to_string(),
             node_about: source.node_about().into_iter().collect(),
             ..Self::default()
         };
@@ -257,7 +287,7 @@ pub fn rewrite(input: &str, tree: &CliTree) -> String {
             }
             let name = std::str::from_utf8(&bytes[name_start..i]).unwrap_or("");
 
-            if name == ROOT {
+            if name == tree.root() {
                 let (replacement, consumed) = resolve_invocation(bytes, i, tree);
                 out.extend_from_slice(replacement.as_bytes());
                 i = consumed;
@@ -500,12 +530,13 @@ pub fn render_help(
     usage_for: impl Fn(&str, &str) -> String,
 ) -> Result<String, String> {
     let path = path.trim();
+    let root = tree.root();
 
     if let Some(word) = unknown.filter(|value| !value.is_empty()) {
         let scope = if path.is_empty() {
-            ROOT.to_string()
+            root.to_string()
         } else {
-            format!("{ROOT} {path}")
+            format!("{root} {path}")
         };
         let mut text = format!("unknown command `{word}` under `{scope}`\n\n");
         text.push_str(&render_children(tree, path));
@@ -513,8 +544,8 @@ pub fn render_help(
     }
 
     if let Some(leaf) = tree.leaf(path) {
-        let mut text = format!("{ROOT} {path}\n  {}\n\n", leaf.description);
-        text.push_str(&usage_for(&leaf.command, &format!("{ROOT} {path}")));
+        let mut text = format!("{root} {path}\n  {}\n\n", leaf.description);
+        text.push_str(&usage_for(&leaf.command, &format!("{root} {path}")));
         if !leaf.route.examples.is_empty() {
             text.push_str("\nExamples:\n");
             for example in leaf.route.examples {
@@ -530,17 +561,18 @@ pub fn render_help(
     }
 
     Err(format!(
-        "unknown command `{ROOT} {path}`\n\n{}",
+        "unknown command `{root} {path}`\n\n{}",
         render_children(tree, "")
     ))
 }
 
 fn render_children(tree: &CliTree, path: &str) -> String {
     let children = tree.children(path);
+    let root = tree.root();
     let scope = if path.is_empty() {
-        ROOT.to_string()
+        root.to_string()
     } else {
-        format!("{ROOT} {path}")
+        format!("{root} {path}")
     };
 
     if children.is_empty() {
@@ -792,6 +824,11 @@ impl EverrunsBuiltin {
         }
     }
 
+    /// The token this builtin answers to.
+    pub fn root(&self) -> &str {
+        self.inner.tree().root()
+    }
+
     /// Comma-joined top-level nouns, for a host that wants to name them in
     /// its own prompt contribution.
     pub fn nouns(&self) -> Vec<String> {
@@ -824,11 +861,43 @@ impl bashkit::Builtin for EverrunsBuiltin {
     /// every call. It names the shape and sends the caller to `--help`, which
     /// is generated from the tree and therefore never goes stale.
     fn llm_hint(&self) -> Option<&'static str> {
-        Some(
-            "everruns <noun> <verb> [--flags] administers this deployment. \
-             Run `everruns --help` for the nouns and `everruns <noun> --help` for its verbs.",
-        )
+        Some(interned_hint(self.root()))
     }
+}
+
+/// Hint text for one root token, interned for the process lifetime.
+///
+/// The trait wants a `&'static str` and a builtin is rebuilt per execution, so
+/// the hint cannot be built per call without leaking on every one. Interning
+/// by root bounds the leak to the number of distinct root tokens a process
+/// uses, which is one for any host that is not embedding several trees.
+fn interned_hint(root: &str) -> &'static str {
+    static HINTS: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
+
+    if root == ROOT {
+        // The overwhelmingly common case allocates nothing.
+        return "everruns <noun> <verb> [--flags] administers this deployment. \
+                Run `everruns --help` for the nouns and `everruns <noun> --help` for its verbs.";
+    }
+
+    let hints = HINTS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut hints = match hints.lock() {
+        Ok(guard) => guard,
+        // A poisoned lock must not take the shell down over a hint string.
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if let Some(hint) = hints.get(root) {
+        return hint;
+    }
+    let hint: &'static str = Box::leak(
+        format!(
+            "{root} <noun> <verb> [--flags] administers this deployment. \
+             Run `{root} --help` for the nouns and `{root} <noun> --help` for its verbs."
+        )
+        .into_boxed_str(),
+    );
+    hints.insert(root.to_string(), hint);
+    hint
 }
 
 fn ensure_trailing_newline(mut text: String) -> String {
@@ -959,6 +1028,69 @@ mod tests {
             !out.contains("\"ran\""),
             "help must not run the command: {out}"
         );
+    }
+
+    /// A Framework host whose domain has nothing to do with everruns.
+    struct BrandedSource;
+
+    #[async_trait]
+    impl CliCommandSource for BrandedSource {
+        fn root(&self) -> &str {
+            "acme"
+        }
+
+        fn specs(&self) -> Vec<CliCommandSpec> {
+            vec![CliCommandSpec {
+                wire_name: "send_invoice".into(),
+                description: "Send an invoice.".into(),
+                route: CliRoute::new(&["invoices"], "send"),
+            }]
+        }
+
+        async fn dispatch(&self, wire_name: &str, params: Value) -> Result<String, String> {
+            Ok(serde_json::json!({ "ran": wire_name, "params": params }).to_string())
+        }
+    }
+
+    fn branded() -> CliBuiltin {
+        CliBuiltin::new(Arc::new(BrandedSource))
+    }
+
+    #[tokio::test]
+    async fn a_host_names_its_own_root() {
+        let out = branded()
+            .run(&argv("invoices send --id 7"))
+            .await
+            .expect("runs under the host's own root");
+        assert!(out.contains("\"ran\":\"send_invoice\""), "{out}");
+    }
+
+    #[tokio::test]
+    async fn help_is_rendered_in_the_hosts_own_name() {
+        let out = branded().run(&[]).await.expect("root help");
+        assert!(out.contains("acme"), "{out}");
+        assert!(
+            !out.contains("everruns"),
+            "a host's help must not wear another brand: {out}"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_rewriter_follows_the_hosts_root() {
+        let tree = CliTree::from_source(&BrandedSource);
+        assert_eq!(rewrite("acme invoices send", &tree), "send_invoice");
+        // The default token is just another word to a host that renamed it.
+        assert_eq!(
+            rewrite("everruns invoices send", &tree),
+            "everruns invoices send"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_default_root_is_unchanged() {
+        let tree = CliTree::from_source(&TestSource);
+        assert_eq!(tree.root(), "everruns");
+        assert_eq!(rewrite("everruns widgets list", &tree), "list_widgets");
     }
 
     #[tokio::test]
