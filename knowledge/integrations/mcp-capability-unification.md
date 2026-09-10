@@ -38,11 +38,12 @@ are stored* and inherits identity, tools, discovery, enablement, and reload for 
 | yolop `McpCapability` | yolop `src/capabilities/mcp.rs` | A **management capability**: four agent-facing tools (`list_mcp_servers`, `upsert_mcp_server`, `remove_mcp_server`, `set_mcp_server_enabled`) over a file-backed config store. Contributes no MCP tools. | `mcp` |
 
 They collide on name to the point that yolop's runtime imports its own as
-`YolopMcpCapability`. Neither is a superset of the other, and the hosted product has
-no management capability at all (its CRUD is REST/gRPC/DB only, in
-`crates/server/src/domains/mcp_servers/`), while yolop has no per-server virtual
-capability (it never registers one; it only borrows `McpCapability::tool_definitions`
-indirectly through the host).
+`YolopMcpCapability`. Neither is a superset of the other. yolop has no per-server
+virtual capability (it never registers one; it only borrows
+`McpCapability::tool_definitions` indirectly through the host), and the hosted
+product exposes no *management capability* either: its CRUD lives in
+`crates/server/src/domains/mcp_servers/` behind REST, gRPC, and the
+`everruns mcp-servers <verb>` command tree, never as model tools.
 
 ### The catalog layer is reimplemented per host
 
@@ -56,13 +57,36 @@ shared merge, but everything that produces and mutates that value is host-privat
 | Enable/disable | archived rows, capability attachment | per-entry `enabled: bool`, absent from `ScopedMcpServer` |
 | Shape normalization | typed API | `normalize_server_entry_value` (`transport_type` → `type`, `oauth` → `o_auth`, `mcpServers` alias) |
 | Secret handling | `secret_bindings` resolved from a secure store | `${VAR}` expansion at load; `secret_bindings` always empty |
-| Mutation surface | REST + gRPC + UI | agent tools, `/mcp` command, `yolop mcp` CLI |
+| Mutation surface | REST, gRPC, UI, `everruns mcp-servers` command tree | agent tools, `/mcp` command, `yolop mcp` CLI |
 | Live reload | per-turn resolution from the DB | `RuntimeHandles::reload_mcp_servers` swapping `session.mcp_servers` |
 
 Two of these are *general* and only accidentally live downstream:
 `normalize_server_entry_value` (every `.mcp.json` in the ecosystem uses that shape) and
 the per-entry `enabled` flag (the hosted product expresses the same idea with archived
 rows).
+
+### Both repositories have moved administration out of model tools
+
+The two products reached the same conclusion independently, after this analysis was
+first written:
+
+- Upstream, [Command Tree](../execution/command-tree.md) added the
+  `everruns <noun> <verb>` grammar, with `mcp-servers` in the first tranche.
+  Membership is opt-in through `Command::cli()`, and `CliCommandSource` (in the
+  bashkit integration, not the server) is where a host says which operations it
+  can serve, so a Framework application with no control plane behind it can source
+  the same tree.
+- In yolop, `src/control.rs` defines `ControlCapability` / `CliCapability`: a
+  capability contributes a top-level `yolop <cmd>` parser plus an attached control
+  route, and a directly invoked binary asks its parent session to mutate live
+  state. Extensions, skills, hooks, config, model, and worktree all use it. The
+  stated reason is context cost: administration tool schemas would be paid every
+  turn, so the affordance is named once in the system prompt instead.
+
+MCP is the odd one out in yolop, the last administrative domain still shaped as
+model tools; the follow-up recorded on yolop #661 is to move it onto
+`CliCapability`. This does not change the catalog decision below, but it does change
+what the management capability should *be* (D3).
 
 ### Host-private code forces downstream duplication
 
@@ -131,7 +155,11 @@ in `crates/server` for the hosted product.
 
 ### D3, `McpCapability` becomes the extensible management capability
 
-A single capability with id `mcp`, constructed from an `Arc<dyn McpCatalog>`:
+A single capability with id `mcp`, constructed from an `Arc<dyn McpCatalog>`. What
+varies is the *presentation*, not the operations: the catalog defines list, upsert,
+remove, and set-enabled once, and a host renders them as a command tree, as model
+tools, or as neither. Given that both products now prefer the CLI shape, the command
+declaration is the primary rendering and model tools are the opt-in:
 
 - Tool set is derived from what the catalog supports. A read-only catalog exposes only
   `list_mcp_servers`; a mutable one adds upsert/remove/enable. That is the
