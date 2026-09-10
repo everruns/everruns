@@ -564,7 +564,12 @@ pub(crate) fn bash_usage(command_name: &str, schema: &serde_json::Value) -> Stri
                     .map(|example| format!("'{}'", example.replace('\'', "'\"'\"'")))
                     .unwrap_or_else(|| "'<json>'".to_string())
             } else if property_has_type(property, defs, "boolean", 0) {
-                "<true|false>".to_string()
+                // A boolean is a switch, not a flag that takes a value. The
+                // interpreter inserts `true` on sight and consumes nothing, so
+                // the next token is parsed as a flag: `--include_archived true`
+                // fails with "expected --flag, got: true". Rendering a
+                // `<true|false>` placeholder documents a form that cannot work.
+                String::new()
             } else if property_has_type(property, defs, "integer", 0)
                 || property_has_type(property, defs, "number", 0)
             {
@@ -572,7 +577,11 @@ pub(crate) fn bash_usage(command_name: &str, schema: &serde_json::Value) -> Stri
             } else {
                 "'<string>'".to_string()
             };
-            let flag = format!("--{name} {placeholder}");
+            let flag = if placeholder.is_empty() {
+                format!("--{name}")
+            } else {
+                format!("--{name} {placeholder}")
+            };
             (required.contains(name), name, flag)
         })
         .collect::<Vec<_>>();
@@ -805,6 +814,40 @@ fn decorate_mcp_capability_refs(value: &mut serde_json::Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bash_usage_renders_booleans_as_switches() {
+        // The interpreter parses a boolean flag as a valueless switch, so a
+        // usage string promising `<true|false>` documents a form that errors
+        // with "expected --flag, got: true". A live model followed exactly
+        // that advertised form and lost the result.
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "include_archived": { "type": "boolean" },
+                "nullable_flag": { "type": ["boolean", "null"] },
+                "limit": { "type": "integer" },
+                "search": { "type": "string" },
+            }
+        });
+
+        let usage = bash_usage("list_agents", &schema);
+
+        assert!(
+            usage.contains("[--include_archived]"),
+            "boolean must render as a bare switch: {usage}"
+        );
+        assert!(
+            usage.contains("[--nullable_flag]"),
+            "a nullable boolean is still a switch: {usage}"
+        );
+        assert!(
+            !usage.contains("true|false"),
+            "no boolean may advertise a value: {usage}"
+        );
+        assert!(usage.contains("[--limit <number>]"), "{usage}");
+        assert!(usage.contains("[--search '<string>']"), "{usage}");
+    }
 
     #[test]
     fn inventory_command_defs_expose_structured_param_schemas() {

@@ -365,7 +365,8 @@ fn resolve_invocation(bytes: &[u8], mut i: usize, tree: &CliTree) -> (String, us
     // stray flags reach the help builtin.
     let end = statement_end(bytes, i);
     if wants_help || contains_help_flag(bytes, i, end) {
-        return (help_call(&path, None), end);
+        let (scope, unknown) = split_at_unknown(tree, &path);
+        return (help_call(&scope, unknown.as_deref()), end);
     }
     if let Some(leaf) = tree.leaf(&path) {
         return (leaf.command.to_string(), i);
@@ -376,15 +377,8 @@ fn resolve_invocation(bytes: &[u8], mut i: usize, tree: &CliTree) -> (String, us
 
     // Unresolved: report against the deepest node that does exist, so the
     // error names real neighbours rather than the whole tree.
-    let mut known: Vec<&str> = path.split(' ').collect();
-    let unknown = known.pop().unwrap_or_default().to_string();
-    let mut parent = known.join(" ");
-    while !parent.is_empty() && !tree.is_node(&parent) {
-        let mut segments: Vec<&str> = parent.split(' ').collect();
-        segments.pop();
-        parent = segments.join(" ");
-    }
-    (help_call(&parent, Some(&unknown)), i)
+    let (scope, unknown) = split_at_unknown(tree, &path);
+    (help_call(&scope, unknown.as_deref()), i)
 }
 
 /// End of the current simple command: the next unquoted statement separator.
@@ -640,11 +634,10 @@ impl CliBuiltin {
 
         if wants_help {
             // Help beats execution: a caller asking what a command does must
-            // never accidentally run it.
-            return CliPlan::Help {
-                path: nearest_known(&self.tree, &spelling),
-                unknown: None,
-            };
+            // never accidentally run it. It must still fail when the path is
+            // not real, or a typo renders as a working help page.
+            let (path, unknown) = split_at_unknown(&self.tree, &spelling);
+            return CliPlan::Help { path, unknown };
         }
         if let Some(leaf) = self.tree.leaf(&spelling) {
             return CliPlan::Run {
@@ -659,12 +652,8 @@ impl CliBuiltin {
             };
         }
 
-        let mut known: Vec<&str> = spelling.split(' ').collect();
-        let unknown = known.pop().unwrap_or_default().to_string();
-        CliPlan::Help {
-            path: nearest_known(&self.tree, &known.join(" ")),
-            unknown: Some(unknown),
-        }
+        let (path, unknown) = split_at_unknown(&self.tree, &spelling);
+        CliPlan::Help { path, unknown }
     }
 
     /// Render help, or run the command and return its output.
@@ -694,14 +683,29 @@ enum CliPlan {
     },
 }
 
-fn nearest_known(tree: &CliTree, path: &str) -> String {
-    let mut candidate = path.to_string();
-    while !candidate.is_empty() && !tree.is_node(&candidate) && tree.leaf(&candidate).is_none() {
-        let mut segments: Vec<&str> = candidate.split(' ').collect();
-        segments.pop();
-        candidate = segments.join(" ");
+/// Split a typed path into the deepest prefix the tree knows and the first
+/// segment that does not resolve under it.
+///
+/// Walking forward matters. Collapsing to the nearest known ancestor and
+/// blaming whatever word was left over reports the *last* token, so
+/// `gadgets resize thing 4` becomes "unknown command `4`" when `gadgets` is
+/// the word that does not exist. The first unresolvable segment is the one
+/// the caller got wrong; everything after it was never reachable.
+fn split_at_unknown(tree: &CliTree, path: &str) -> (String, Option<String>) {
+    let mut known: Vec<&str> = Vec::new();
+
+    for segment in path.split(' ').filter(|segment| !segment.is_empty()) {
+        let mut candidate = known.clone();
+        candidate.push(segment);
+        let joined = candidate.join(" ");
+        if tree.is_node(&joined) || tree.leaf(&joined).is_some() {
+            known = candidate;
+        } else {
+            return (known.join(" "), Some(segment.to_string()));
+        }
     }
-    candidate
+
+    (known.join(" "), None)
 }
 
 /// Parse `--flag value` pairs into a JSON object.
@@ -955,6 +959,43 @@ mod tests {
             !out.contains("\"ran\""),
             "help must not run the command: {out}"
         );
+    }
+
+    #[tokio::test]
+    async fn an_unknown_noun_names_the_noun_not_the_last_word() {
+        // A live model that guesses the wrong noun types a whole invocation,
+        // not one word. Blaming the trailing token sends it looking for a verb
+        // when the noun is what does not exist.
+        let error = builtin()
+            .run(&argv("gadgets resize thing 4"))
+            .await
+            .expect_err("an unknown noun must fail");
+        assert!(
+            error.contains("unknown command `gadgets`"),
+            "should name the first unresolvable segment: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn help_on_an_unknown_noun_is_an_error_not_root_help() {
+        // Rendering root help here is worse than saying nothing: it is the
+        // same shape as a valid `everruns widgets --help`, so the caller reads
+        // a typo as a working command.
+        let error = builtin()
+            .run(&argv("gadgets --help"))
+            .await
+            .expect_err("help on an unknown noun must fail");
+        assert!(
+            error.contains("unknown command `gadgets`"),
+            "should name the unknown noun: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn help_on_a_real_node_still_succeeds() {
+        let out = builtin().run(&argv("widgets --help")).await.expect("help");
+        assert!(out.contains("list"), "{out}");
+        assert!(out.contains("parts"), "{out}");
     }
 
     #[tokio::test]
