@@ -10,7 +10,7 @@ tags:
 
 ## Abstract
 
-The agent instructions capability reads configured Markdown instruction files from the session workspace and dynamically injects their content into the system prompt on every LLM turn. By default it reads `AGENTS.md`, preserving Everruns' original AGENTS.md behavior, while allowing agents to opt into files such as `CLAUDE.md`.
+The agent instructions capability resolves configured Markdown instruction files hierarchically — from the session filesystem root down to the working directory — and injects them as the leading user-role message on every LLM turn. By default it reads `AGENTS.md`, preserving Everruns' original AGENTS.md behavior, while allowing agents to opt into files such as `CLAUDE.md` at every hierarchy level. Workspace files are untrusted third-party content and never enter the system prompt.
 
 ## Background
 
@@ -23,14 +23,14 @@ Everruns implements AGENTS.md as a built-in capability that reads from the sessi
 | Question | Decision |
 |----------|----------|
 | File name | Defaults to `AGENTS.md`; configurable `files` list can include names such as `CLAUDE.md` |
-| Discovery | Configured workspace-root files only, no upward walk |
-| Injection point | Prepended to system prompt, before capability additions |
+| Discovery | Configured filenames resolved hierarchically from the filesystem root down to the working directory (`resolve_path(".")` anchor); deeper files override shallower ones, sibling subtrees out of scope |
+| Injection point | Leading user-role message of every turn (conversation context) — never the system prompt; system instructions always take precedence |
 | Dynamic reading | Re-read on every LLM turn (picks up changes immediately) |
-| Size limit | 32 KiB max per instruction file; truncated with warning if exceeded, excluding wrapper/hint text (matching Codex convention) |
+| Size limit | 32 KiB max per instruction file (truncated with warning, excluding wrapper/hint text, matching Codex convention) plus a 128 KiB total per-turn budget binding hierarchy depth (deeper files past the budget omitted with an explicit note) |
 | Missing file | Silently ignored per configured file (no error) |
 | Format | Plain markdown, no special syntax, no `@` imports |
 | Link-following hint | Appended after content; nudges LLM to read referenced files progressively |
-| Architecture | Self-contained capability with `system_prompt_contribution()` override |
+| Architecture | Self-contained capability with `conversation_context_contribution()` override; the turn loop inserts the collected block at the head of the per-request messages |
 | Dependencies | None required; `session_file_system` recommended for authoring |
 
 ## Authoring Guidance
@@ -39,9 +39,11 @@ Repository `AGENTS.md` files should stay short enough to be useful as hot prompt
 
 ## Capability Definition
 
-The capability encapsulates all AGENTS.md logic: reading from the session filesystem,
-formatting, size limiting, and XML wrapping. It uses config-aware `system_prompt_contribution()`
-async method (via `SystemPromptContext`) to access the session filesystem.
+The capability encapsulates all AGENTS.md logic: hierarchical discovery from the session filesystem,
+formatting, size limiting, and XML wrapping. It uses config-aware `conversation_context_contribution()`
+async method (via `SystemPromptContext`) to access the session filesystem. Its `system_prompt_contribution()`
+intentionally returns `None`: untrusted workspace content must stay below harness safety instructions
+in the instruction hierarchy and out of the cache-stable system prefix.
 
 See `crates/builtins/src/agent_instructions.rs` for the `AgentInstructionsCapability` implementation.
 
@@ -69,13 +71,13 @@ execute_llm_call()
   └── Execute LLM call
 ```
 
-### System Prompt Order
+### Turn message order
 
-After injection, system prompt order (top to bottom):
+Every turn the model sees, top to bottom:
 
-1. **Instruction file content**: each file wrapped in `<agent-instructions source="...">` tags
-2. **Capability system prompt additions**: each wrapped in `<capability id="...">` tags
-3. **Agent's base system prompt**: wrapped in `<system-prompt>` tags (only when capabilities are present)
+1. **System prompt**: harness safety instructions, capability additions, agent base prompt (cache-stable)
+2. **Conversation context**: the resolved hierarchy behind a trust framing header, each file wrapped in `<agent-instructions source="...">` tags, broadest scope first
+3. **Conversation history and the latest user message**
 
 XML tags provide clear boundaries between sections. See `knowledge/project/xml-prompt-formatting.md` for rationale.
 
@@ -85,7 +87,7 @@ ReasonAtom holds an optional `SessionFileSystem` that is passed to capabilities 
 
 ## Constants
 
-See `crates/builtins/src/agent_instructions.rs` for `MAX_AGENTS_MD_SIZE` (32 KiB), `AGENTS_MD_PATH`, `DEFAULT_AGENT_INSTRUCTIONS_FILE`, `MAX_AGENT_INSTRUCTIONS_FILES`, and `AGENT_INSTRUCTIONS_CAPABILITY_ID`.
+See `crates/builtins/src/agent_instructions.rs` for `MAX_AGENTS_MD_SIZE` (32 KiB), `MAX_TOTAL_AGENT_INSTRUCTIONS_BYTES` (128 KiB), `AGENTS_MD_PATH`, `DEFAULT_AGENT_INSTRUCTIONS_FILE`, `MAX_AGENT_INSTRUCTIONS_FILES`, and `AGENT_INSTRUCTIONS_CAPABILITY_ID`.
 
 ## API
 
@@ -98,7 +100,7 @@ Response includes:
 {
   "id": "agent_instructions",
   "name": "AGENTS.md",
-  "description": "Reads AGENTS.md from the session workspace...",
+  "description": "Resolves AGENTS.md hierarchies as conversation context...",
   "status": "available",
   "icon": "file-text",
   "category": "Configuration",

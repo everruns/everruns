@@ -488,6 +488,35 @@ pub trait Capability: Send + Sync {
         self.system_prompt_contribution(ctx).await
     }
 
+    /// User-visible conversation context contributed by this capability.
+    ///
+    /// Content returned here renders as the leading user-role message of every
+    /// turn: model-visible and re-resolved alongside the system prompt, but
+    /// never folded into the cached system prompt. This is the correct sink
+    /// for untrusted workspace content (e.g. AGENTS.md hierarchies): it keeps
+    /// file instructions below harness safety instructions in the instruction
+    /// hierarchy and out of the cache-stable prefix.
+    ///
+    /// Default returns `None` (no conversation context).
+    async fn conversation_context_contribution(
+        &self,
+        _ctx: &SystemPromptContext,
+    ) -> Option<String> {
+        None
+    }
+
+    /// Called during capability collection. Capabilities whose conversation
+    /// context depends on config override this method.
+    ///
+    /// Default delegates to `conversation_context_contribution(ctx)`.
+    async fn conversation_context_contribution_with_config(
+        &self,
+        ctx: &SystemPromptContext,
+        _config: &serde_json::Value,
+    ) -> Option<String> {
+        self.conversation_context_contribution(ctx).await
+    }
+
     /// Returns tool definitions for the agent config
     /// By default, converts tools() to definitions
     fn tool_definitions(&self) -> Vec<ToolDefinition> {
@@ -1392,6 +1421,15 @@ pub struct CollectedCapabilities {
     pub system_prompt_parts: Vec<String>,
     /// Source attribution for each system prompt addition.
     pub system_prompt_attributions: Vec<SystemPromptAttribution>,
+    /// Conversation-context additions (in order). Unlike system prompt parts,
+    /// these render as the leading user-role message of every turn:
+    /// model-visible and re-resolved alongside the system prompt, but never
+    /// folded into the cached system prompt. Untrusted workspace content
+    /// (e.g. AGENTS.md hierarchies) belongs here, below harness safety
+    /// instructions in the instruction hierarchy.
+    pub conversation_context_parts: Vec<String>,
+    /// Source attribution for each conversation-context addition.
+    pub conversation_context_attributions: Vec<SystemPromptAttribution>,
     /// Tool implementations for the registry
     pub tools: Vec<Box<dyn Tool>>,
     /// Tool definitions for config
@@ -1440,6 +1478,17 @@ impl CollectedCapabilities {
             None
         } else {
             Some(self.system_prompt_parts.join("\n\n"))
+        }
+    }
+
+    /// Combined conversation context from all capabilities (joined with blank
+    /// lines), or `None` when no capability contributed any. Renders as the
+    /// leading user-role message of every turn, never as system prompt.
+    pub fn conversation_context(&self) -> Option<String> {
+        if self.conversation_context_parts.is_empty() {
+            None
+        } else {
+            Some(self.conversation_context_parts.join("\n\n"))
         }
     }
 
@@ -2362,6 +2411,8 @@ pub async fn collect_capabilities_with_configs(
 ) -> CollectedCapabilities {
     let mut system_prompt_parts: Vec<String> = Vec::new();
     let mut system_prompt_attributions: Vec<SystemPromptAttribution> = Vec::new();
+    let mut conversation_context_parts: Vec<String> = Vec::new();
+    let mut conversation_context_attributions: Vec<SystemPromptAttribution> = Vec::new();
     let mut tools: Vec<Box<dyn Tool>> = Vec::new();
     let mut tool_definitions: Vec<ToolDefinition> = Vec::new();
     let mut mounts: Vec<MountPoint> = Vec::new();
@@ -2467,6 +2518,21 @@ pub async fn collect_capabilities_with_configs(
                     content: contribution.clone(),
                 });
                 system_prompt_parts.push(contribution);
+            }
+
+            // Collect conversation-context contribution (config-aware, may read
+            // from filesystem). Renders as the leading user-role message of
+            // every turn, never as system prompt, so untrusted workspace
+            // content cannot share privilege with harness safety instructions.
+            if let Some(contribution) = effective
+                .conversation_context_contribution_with_config(ctx, cap_config.config_value())
+                .await
+            {
+                conversation_context_attributions.push(SystemPromptAttribution {
+                    capability_id: cap_id.to_string(),
+                    content: contribution.clone(),
+                });
+                conversation_context_parts.push(contribution);
             }
 
             // Collect declared facts. Static facts fold into the cached prompt
@@ -2614,6 +2680,8 @@ pub async fn collect_capabilities_with_configs(
     CollectedCapabilities {
         system_prompt_parts,
         system_prompt_attributions,
+        conversation_context_parts,
+        conversation_context_attributions,
         tools,
         tool_definitions,
         mounts,
@@ -2692,6 +2760,10 @@ pub async fn apply_capabilities(
         collected.system_prompt_prefix().as_deref(),
     );
 
+    // Conversation context (e.g. hierarchical AGENTS.md) renders as the
+    // leading user-role message, never as system prompt. Bound before fields
+    // move out of `collected` below.
+    let conversation_context = collected.conversation_context();
     // Build tool registry from collected tools
     let mut tool_registry = ToolRegistry::new();
     for tool in collected.tools {
@@ -2720,6 +2792,9 @@ pub async fn apply_capabilities(
         parallel_tool_calls: base_runtime_agent
             .parallel_tool_calls
             .or(collected.parallel_tool_calls),
+        // Conversation context (e.g. hierarchical AGENTS.md) renders as the
+        // leading user-role message, never as system prompt.
+        conversation_context,
     };
 
     AppliedCapabilities {
