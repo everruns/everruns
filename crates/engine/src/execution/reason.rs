@@ -1100,6 +1100,20 @@ impl ReasonAtom {
             }
         }
 
+        // 9d. Prepend conversation context (e.g. hierarchical AGENTS.md) as
+        // the leading user-role message.
+        //
+        // Project instructions ride here: model-visible on every turn and
+        // re-resolved alongside the system prompt, but never folded into the
+        // cached system prompt. Untrusted workspace content must stay below
+        // harness safety instructions in the instruction hierarchy, and file
+        // edits must not invalidate the cache-stable system prefix.
+        if let Some(context) = runtime_agent.conversation_context.as_ref()
+            && !context.is_empty()
+        {
+            context_messages.insert(0, Message::user(context.clone()));
+        }
+
         // 10. Resolve images from image_file references (if any)
         //
         // Image resolution converts image_file content parts (which only contain UUIDs)

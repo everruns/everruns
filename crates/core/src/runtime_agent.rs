@@ -79,6 +79,13 @@ pub struct RuntimeAgent {
     /// scheduler to serialize the batch (see `ActInput.parallel_tool_calls`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parallel_tool_calls: Option<bool>,
+
+    /// User-visible conversation context (e.g. hierarchical AGENTS.md).
+    /// Renders as the leading user-role message of every turn: model-visible
+    /// and re-resolved alongside the system prompt, but never folded into the
+    /// cached system prompt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation_context: Option<String>,
 }
 
 /// Default maximum iterations per turn (500).
@@ -103,6 +110,7 @@ impl RuntimeAgent {
             openrouter_routing: None,
             network_access: None,
             parallel_tool_calls: None,
+            conversation_context: None,
         }
     }
 }
@@ -121,6 +129,7 @@ impl Default for RuntimeAgent {
             openrouter_routing: None,
             network_access: None,
             parallel_tool_calls: None,
+            conversation_context: None,
         }
     }
 }
@@ -302,6 +311,12 @@ impl RuntimeAgentBuilder {
             self.runtime_agent.system_prompt =
                 compose_system_prompt(&self.runtime_agent.system_prompt, Some(&prefix));
         }
+
+        // Carry conversation context (e.g. hierarchical AGENTS.md) alongside
+        // the agent. The turn loop renders it as the leading user-role
+        // message: model-visible every turn, but never folded into the cached
+        // system prompt.
+        self.runtime_agent.conversation_context = collected.conversation_context();
 
         // Apply tool definitions
         if !collected.tool_definitions.is_empty() {
