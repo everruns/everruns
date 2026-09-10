@@ -945,7 +945,9 @@ async fn platform_command_surface_uses_session_owner_and_org() {
     assert!(output.contains("list_models"));
 
     for (query, expected) in [
-        ("create agent", ["create_agent", "default_model_id"]),
+        // A tree command advertises its spelling and defers its flags to
+        // `--help`, so discovery names the command, not its parameters.
+        ("create agent", ["create_agent", "agents create --help"]),
         (
             "create agent trigger",
             ["create_agent_trigger", "cron_expression"],
