@@ -109,12 +109,10 @@ impl Capability for StatelessTodoListCapability {
 /// from the schema.
 const SYSTEM_PROMPT: &str = r#"## Task Management (`write_todos`)
 
-Use for work spanning 3+ distinct steps. Skip for greetings, single-step
-edits, or read-only checks.
+Use sparingly, only for substantial multi-step work needing tracking. Default to skipping it. Never use for greetings, single-step edits, read-only checks, or simple short tasks.
 
 Each `write_todos` call replaces the full list. Keep exactly one task
-`in_progress`. Mark `completed` only when the step is fully done (tests
-pass, no unresolved errors)."#;
+`in_progress`. Mark `completed` only when fully done (tests pass, no unresolved errors)."#;
 
 // ============================================================================
 // Tool: write_todos
