@@ -1359,8 +1359,13 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         let input_tokens = Arc::new(Mutex::new(0u32));
         let output_tokens = Arc::new(Mutex::new(0u32));
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
-        let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCallAccumulator>::new()));
+        let accumulated_tool_calls = Arc::new(Mutex::new(ToolCallStream::default()));
         let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
+        // Events a single SSE frame needs to emit *before* the one it maps to.
+        // Only the terminal frame uses it: reconciling the response's own
+        // function-call list has to reach the consumer ahead of `Done`, which
+        // ends the stream for it.
+        let deferred_events = Arc::new(Mutex::new(Vec::<LlmStreamEvent>::new()));
         // Share retry metadata with stream closure (only set if retries occurred)
         let shared_retry_metadata = if retry_metadata.had_retries() {
             Some(Arc::new(retry_metadata))
@@ -1368,6 +1373,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             None
         };
 
+        let frame_deferred_events = Arc::clone(&deferred_events);
         let converted_stream: LlmResponseStream = Box::pin(event_stream.then(move |result| {
             let model = model.clone();
             let input_tokens = Arc::clone(&input_tokens);
@@ -1375,6 +1381,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             let cache_read_tokens = Arc::clone(&cache_read_tokens);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
             let finish_reason = Arc::clone(&finish_reason);
+            let deferred_events = Arc::clone(&frame_deferred_events);
             let retry_metadata_for_done = shared_retry_metadata.clone();
 
             async move {
@@ -1402,6 +1409,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                 &cache_read_tokens,
                                 &accumulated_tool_calls,
                                 &finish_reason,
+                                &deferred_events,
                                 model,
                                 retry_metadata_for_done,
                             ));
@@ -1433,20 +1441,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             json.get("item_id").and_then(|c| c.as_str()),
                                             json.get("delta").and_then(|d| d.as_str()),
                                         ) {
-                                            let mut acc = accumulated_tool_calls.lock().unwrap();
-                                            // Find or create accumulator for this item_id
-                                            if let Some(tc) =
-                                                acc.iter_mut().find(|t| t.id == item_id)
-                                            {
-                                                tc.arguments.push_str(delta);
-                                            } else {
-                                                acc.push(ToolCallAccumulator {
-                                                    id: item_id.to_string(),
-                                                    call_id: String::new(),
-                                                    name: String::new(),
-                                                    arguments: delta.to_string(),
-                                                });
-                                            }
+                                            accumulated_tool_calls
+                                                .lock()
+                                                .unwrap()
+                                                .observe_arguments_delta(item_id, delta);
                                         }
                                         Ok(LlmStreamEvent::TextDelta(String::new()))
                                     }
@@ -1461,34 +1459,15 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             .and_then(|t| t.as_str());
                                         if item_type == Some("function_call") {
                                             let item = json.get("item").unwrap();
-                                            let id = item
-                                                .get("id")
-                                                .and_then(|c| c.as_str())
-                                                .unwrap_or("")
-                                                .to_string();
-                                            let call_id = item
-                                                .get("call_id")
-                                                .and_then(|c| c.as_str())
-                                                .unwrap_or("")
-                                                .to_string();
-                                            let name = item
-                                                .get("name")
-                                                .and_then(|n| n.as_str())
-                                                .unwrap_or("")
-                                                .to_string();
-
-                                            let mut acc = accumulated_tool_calls.lock().unwrap();
-                                            if let Some(tc) = acc.iter_mut().find(|t| t.id == id) {
-                                                tc.name = name;
-                                                tc.call_id = call_id;
-                                            } else {
-                                                acc.push(ToolCallAccumulator {
-                                                    id,
-                                                    call_id,
-                                                    name,
-                                                    arguments: String::new(),
-                                                });
-                                            }
+                                            let field = |key: &str| {
+                                                item.get(key).and_then(|v| v.as_str()).unwrap_or("")
+                                            };
+                                            accumulated_tool_calls.lock().unwrap().observe_item(
+                                                field("id"),
+                                                field("call_id"),
+                                                field("name"),
+                                                field("arguments"),
+                                            );
                                         } else if item_type == Some("message") {
                                             // Surface the assistant item's native
                                             // phase mid-stream as a best-effort hint
@@ -1514,31 +1493,25 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             && item.get("type").and_then(|t| t.as_str())
                                                 == Some("function_call")
                                         {
-                                            // Function call completed, emit ToolCalls event
-                                            let acc = accumulated_tool_calls.lock().unwrap();
-                                            if !acc.is_empty() {
-                                                let tool_calls: Vec<ToolCall> = acc
-                                                    .iter()
-                                                    .filter(|tc| !tc.name.is_empty())
-                                                    .map(|tc| {
-                                                        let arguments: Value =
-                                                            serde_json::from_str(&tc.arguments)
-                                                                .unwrap_or(json!({}));
-                                                        ToolCall {
-                                                            id: tc.call_id.clone(),
-                                                            name: tc.name.clone(),
-                                                            arguments,
-                                                        }
-                                                    })
-                                                    .collect();
-
-                                                if !tool_calls.is_empty() {
-                                                    *finish_reason.lock().unwrap() =
-                                                        Some("tool_calls".to_string());
-                                                    return Ok(LlmStreamEvent::ToolCalls(
-                                                        tool_calls,
-                                                    ));
-                                                }
+                                            // The done frame describes the
+                                            // finished call in full, so it is the
+                                            // authoritative record of it; the
+                                            // accumulator only fills in what
+                                            // streamed earlier.
+                                            let field = |key: &str| {
+                                                item.get(key).and_then(|v| v.as_str()).unwrap_or("")
+                                            };
+                                            let mut acc = accumulated_tool_calls.lock().unwrap();
+                                            acc.observe_item(
+                                                field("id"),
+                                                field("call_id"),
+                                                field("name"),
+                                                field("arguments"),
+                                            );
+                                            if let Some(tool_calls) = acc.take_unemitted() {
+                                                *finish_reason.lock().unwrap() =
+                                                    Some("tool_calls".to_string());
+                                                return Ok(LlmStreamEvent::ToolCalls(tool_calls));
                                             }
                                         }
                                         Ok(LlmStreamEvent::TextDelta(String::new()))
@@ -1549,6 +1522,26 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                     | Some("response.done") => {
                                         // Response completed - extract usage
                                         let response_obj = json.get("response").unwrap_or(&json);
+
+                                        // Reconcile against the response's own output list before ending
+                                        // the stream. Every incremental frame is best-effort: one that is
+                                        // dropped, reordered, or shaped differently by a gateway would
+                                        // otherwise lose the call silently, and the finish reason below is
+                                        // derived from what this driver emitted, so nothing downstream
+                                        // could tell that apart from the model choosing to stop.
+                                        {
+                                            let mut acc =
+                                                accumulated_tool_calls.lock().unwrap();
+                                            acc.observe_response_json(response_obj);
+                                            if let Some(tool_calls) = acc.take_unemitted() {
+                                                *finish_reason.lock().unwrap() =
+                                                    Some("tool_calls".to_string());
+                                                deferred_events
+                                                    .lock()
+                                                    .unwrap()
+                                                    .push(LlmStreamEvent::ToolCalls(tool_calls));
+                                            }
+                                        }
 
                                         // Authoritative per-request cost from OpenAI-compatible
                                         // gateways (e.g. OpenRouter `usage.cost`, in USD credits).
@@ -1704,6 +1697,17 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             }
         }));
 
+        // Flush whatever the frame queued ahead of the event it mapped to. The
+        // per-frame closure is 1:1 by construction, so this is the only place a
+        // frame can widen into several events.
+        let converted_stream: LlmResponseStream =
+            Box::pin(converted_stream.flat_map(move |item| {
+                let queued = std::mem::take(&mut *deferred_events.lock().unwrap());
+                let mut batch: Vec<Result<LlmStreamEvent>> = queued.into_iter().map(Ok).collect();
+                batch.push(item);
+                futures::stream::iter(batch)
+            }));
+
         Ok(converted_stream)
     }
 
@@ -1756,6 +1760,174 @@ struct ToolCallAccumulator {
     arguments: String,
 }
 
+impl ToolCallAccumulator {
+    /// The identity and body this entry would be emitted with. Compared, not
+    /// shown, so [`ToolCallStream`] can tell a repeat emission from a new one
+    /// without requiring `PartialEq` on the public `ToolCall`.
+    fn signature(&self) -> (String, String, String) {
+        (
+            self.call_id.clone(),
+            self.name.clone(),
+            self.arguments.clone(),
+        )
+    }
+}
+
+/// The tool calls one response has described so far, and what has already been
+/// handed to the consumer.
+///
+/// A gateway is free to carry a call's identity on any of the frames that
+/// describe it: `response.output_item.added` names it, the argument deltas
+/// stream its body, `response.output_item.done` repeats both in full, and the
+/// terminal `response` resource lists it once more. Only `.added` used to be
+/// read for the name, so a stream that dropped or mis-shaped that one frame
+/// left an entry that [`Self::snapshot`] filtered away: the model called a
+/// tool and the agent saw a plain text answer instead, with nothing downstream
+/// able to tell that apart from the model choosing to stop.
+#[derive(Default)]
+struct ToolCallStream {
+    calls: Vec<ToolCallAccumulator>,
+    /// Signatures of the set handed to the consumer by the last `ToolCalls`
+    /// event, so reconciling at completion stays a no-op when the incremental
+    /// frames already delivered everything.
+    emitted: Vec<(String, String, String)>,
+}
+
+impl ToolCallStream {
+    /// Append one streamed argument fragment to its call.
+    fn observe_arguments_delta(&mut self, item_id: &str, delta: &str) {
+        match self.calls.iter_mut().find(|tc| tc.id == item_id) {
+            Some(entry) => entry.arguments.push_str(delta),
+            None => self.calls.push(ToolCallAccumulator {
+                id: item_id.to_string(),
+                arguments: delta.to_string(),
+                ..Default::default()
+            }),
+        }
+    }
+
+    /// Fold a whole `function_call` item into the set.
+    ///
+    /// Every field is last-writer-wins over the frames that carry it, and an
+    /// empty field means "this frame does not carry it" rather than "cleared",
+    /// so a later identity-free frame cannot erase a known name.
+    fn observe_item(&mut self, id: &str, call_id: &str, name: &str, arguments: &str) {
+        // Match on either identifier: the frames do not all carry both, and a
+        // gateway that omits `id` entirely would otherwise collapse every
+        // parallel call in the response into one entry.
+        let existing = self.calls.iter().position(|tc| {
+            (!id.is_empty() && tc.id == id) || (!call_id.is_empty() && tc.call_id == call_id)
+        });
+        let entry = match existing {
+            Some(index) => &mut self.calls[index],
+            None => {
+                self.calls.push(ToolCallAccumulator::default());
+                self.calls.last_mut().expect("entry just pushed")
+            }
+        };
+        if !id.is_empty() {
+            entry.id = id.to_string();
+        }
+        if !call_id.is_empty() {
+            entry.call_id = call_id.to_string();
+        }
+        if !name.is_empty() {
+            entry.name = name.to_string();
+        }
+        // Whole-item frames carry the complete argument string, so they replace
+        // the streamed fragments rather than appending to them.
+        if !arguments.is_empty() {
+            entry.arguments = arguments.to_string();
+        }
+    }
+
+    /// Fold every `function_call` item of a terminal `response` resource in.
+    fn observe_response(&mut self, output: &[types::OutputItem]) {
+        for item in output {
+            if let types::OutputItem::FunctionCall {
+                id,
+                call_id,
+                name,
+                arguments,
+                ..
+            } = item
+            {
+                self.observe_item(id, call_id, name, arguments);
+            }
+        }
+    }
+
+    /// The JSON-fallback twin of [`Self::observe_response`].
+    fn observe_response_json(&mut self, response: &Value) {
+        let Some(output) = response.get("output").and_then(|o| o.as_array()) else {
+            return;
+        };
+        for item in output {
+            if item.get("type").and_then(|t| t.as_str()) != Some("function_call") {
+                continue;
+            }
+            let field = |key: &str| item.get(key).and_then(|v| v.as_str()).unwrap_or("");
+            self.observe_item(
+                field("id"),
+                field("call_id"),
+                field("name"),
+                field("arguments"),
+            );
+        }
+    }
+
+    /// The complete tool-call set observed so far, or `None` when it is empty
+    /// or identical to the set already emitted.
+    ///
+    /// Always the full set, never a delta: the engine's stream reader
+    /// *overwrites* its tool-call list on every `ToolCalls` event, so an event
+    /// carrying only the newest call would drop the earlier ones.
+    fn take_unemitted(&mut self) -> Option<Vec<ToolCall>> {
+        let signature: Vec<(String, String, String)> = self
+            .calls
+            .iter()
+            .filter(|tc| !tc.name.is_empty())
+            .map(ToolCallAccumulator::signature)
+            .collect();
+        if signature.is_empty() || signature == self.emitted {
+            return None;
+        }
+        self.emitted = signature;
+        Some(self.snapshot())
+    }
+
+    fn snapshot(&self) -> Vec<ToolCall> {
+        self.calls
+            .iter()
+            .filter(|tc| !tc.name.is_empty())
+            .map(|tc| {
+                let arguments: Value =
+                    serde_json::from_str(&tc.arguments).unwrap_or_else(|error| {
+                        // An empty string is the ordinary shape of a no-argument
+                        // call. Anything else that fails to parse is a truncated
+                        // or corrupt body, and silently substituting `{}` would
+                        // run the tool with the wrong inputs, so say so.
+                        if !tc.arguments.trim().is_empty() {
+                            tracing::warn!(
+                                tool = %tc.name,
+                                call_id = %tc.call_id,
+                                %error,
+                                "OpenResponses: unparseable tool-call arguments, \
+                                 falling back to empty arguments"
+                            );
+                        }
+                        json!({})
+                    });
+                ToolCall {
+                    id: tc.call_id.clone(),
+                    name: tc.name.clone(),
+                    arguments,
+                }
+            })
+            .collect()
+    }
+}
+
 /// Handle typed streaming events from the OpenResponses API
 #[allow(clippy::too_many_arguments)]
 fn handle_streaming_event(
@@ -1763,8 +1935,9 @@ fn handle_streaming_event(
     input_tokens: &Mutex<u32>,
     output_tokens: &Mutex<u32>,
     cache_read_tokens: &Mutex<Option<u32>>,
-    accumulated_tool_calls: &Mutex<Vec<ToolCallAccumulator>>,
+    accumulated_tool_calls: &Mutex<ToolCallStream>,
     finish_reason: &Mutex<Option<String>>,
+    deferred_events: &Mutex<Vec<LlmStreamEvent>>,
     model: String,
     retry_metadata: Option<Arc<RetryMetadata>>,
 ) -> LlmStreamEvent {
@@ -1794,37 +1967,26 @@ fn handle_streaming_event(
         }
 
         StreamingEvent::FunctionCallArgumentsDelta { item_id, delta, .. } => {
-            let mut acc = accumulated_tool_calls.lock().unwrap();
-            if let Some(tc) = acc.iter_mut().find(|t| t.id == item_id) {
-                tc.arguments.push_str(&delta);
-            } else {
-                acc.push(ToolCallAccumulator {
-                    id: item_id,
-                    call_id: String::new(),
-                    name: String::new(),
-                    arguments: delta,
-                });
-            }
+            accumulated_tool_calls
+                .lock()
+                .unwrap()
+                .observe_arguments_delta(&item_id, &delta);
             LlmStreamEvent::TextDelta(String::new())
         }
 
         StreamingEvent::OutputItemAdded { item, .. } => {
             match item {
                 Some(types::OutputItem::FunctionCall {
-                    id, call_id, name, ..
+                    id,
+                    call_id,
+                    name,
+                    arguments,
+                    ..
                 }) => {
-                    let mut acc = accumulated_tool_calls.lock().unwrap();
-                    if let Some(tc) = acc.iter_mut().find(|t| t.id == id) {
-                        tc.name = name;
-                        tc.call_id = call_id;
-                    } else {
-                        acc.push(ToolCallAccumulator {
-                            id,
-                            call_id,
-                            name,
-                            arguments: String::new(),
-                        });
-                    }
+                    accumulated_tool_calls
+                        .lock()
+                        .unwrap()
+                        .observe_item(&id, &call_id, &name, &arguments);
                     LlmStreamEvent::TextDelta(String::new())
                 }
                 // OpenAI Responses stamps the assistant item's phase on
@@ -1845,27 +2007,21 @@ fn handle_streaming_event(
 
         StreamingEvent::OutputItemDone { item, .. } => {
             match item {
-                Some(types::OutputItem::FunctionCall { .. }) => {
-                    let acc = accumulated_tool_calls.lock().unwrap();
-                    if !acc.is_empty() {
-                        let tool_calls: Vec<ToolCall> = acc
-                            .iter()
-                            .filter(|tc| !tc.name.is_empty())
-                            .map(|tc| {
-                                let arguments: Value =
-                                    serde_json::from_str(&tc.arguments).unwrap_or(json!({}));
-                                ToolCall {
-                                    id: tc.call_id.clone(),
-                                    name: tc.name.clone(),
-                                    arguments,
-                                }
-                            })
-                            .collect();
-
-                        if !tool_calls.is_empty() {
-                            *finish_reason.lock().unwrap() = Some("tool_calls".to_string());
-                            return LlmStreamEvent::ToolCalls(tool_calls);
-                        }
+                Some(types::OutputItem::FunctionCall {
+                    id,
+                    call_id,
+                    name,
+                    arguments,
+                    ..
+                }) => {
+                    // The done frame describes the finished call in full, so it
+                    // is the authoritative record of it; the accumulator only
+                    // fills in what streamed earlier.
+                    let mut acc = accumulated_tool_calls.lock().unwrap();
+                    acc.observe_item(&id, &call_id, &name, &arguments);
+                    if let Some(tool_calls) = acc.take_unemitted() {
+                        *finish_reason.lock().unwrap() = Some("tool_calls".to_string());
+                        return LlmStreamEvent::ToolCalls(tool_calls);
                     }
                     LlmStreamEvent::TextDelta(String::new())
                 }
@@ -1910,6 +2066,27 @@ fn handle_streaming_event(
 
         StreamingEvent::ResponseCompleted { response, .. }
         | StreamingEvent::ResponseIncomplete { response, .. } => {
+            // Reconcile against the response's own output list before ending
+            // the stream. Every incremental frame is best-effort: one that is
+            // dropped, reordered, or shaped differently by a gateway would
+            // otherwise lose the call silently, and the finish reason below is
+            // derived from what this driver emitted, so nothing downstream
+            // could tell that apart from the model choosing to stop.
+            {
+                let mut acc = accumulated_tool_calls.lock().unwrap();
+                acc.observe_response(&response.output);
+                if let Some(tool_calls) = acc.take_unemitted() {
+                    *finish_reason.lock().unwrap() = Some("tool_calls".to_string());
+                    // The consumer overwrites its tool-call list on each event,
+                    // so re-emitting the full set is a no-op when the
+                    // incremental frames already delivered it.
+                    deferred_events
+                        .lock()
+                        .unwrap()
+                        .push(LlmStreamEvent::ToolCalls(tool_calls));
+                }
+            }
+
             // Extract usage
             if let Some(usage) = &response.usage {
                 *input_tokens.lock().unwrap() = usage.input_tokens;
@@ -4054,8 +4231,9 @@ mod tests {
         let input_tokens = Mutex::new(0u32);
         let output_tokens = Mutex::new(0u32);
         let cache_read_tokens = Mutex::new(None);
-        let accumulated_tool_calls = Mutex::new(Vec::new());
+        let accumulated_tool_calls = Mutex::new(ToolCallStream::default());
         let finish_reason = Mutex::new(None);
+        let deferred_events = Mutex::new(Vec::new());
 
         // Create an OutputItemDone event with Reasoning item containing encrypted_content
         let event = StreamingEvent::OutputItemDone {
@@ -4076,6 +4254,7 @@ mod tests {
             &cache_read_tokens,
             &accumulated_tool_calls,
             &finish_reason,
+            &deferred_events,
             "gpt-5".to_string(),
             None,
         );
@@ -4131,8 +4310,9 @@ mod tests {
                 &Mutex::new(0),
                 &Mutex::new(0),
                 &Mutex::new(None),
-                &Mutex::new(Vec::new()),
+                &Mutex::new(ToolCallStream::default()),
                 &Mutex::new(None),
+                &Mutex::new(Vec::new()),
                 "gpt-5".to_string(),
                 None,
             );
@@ -4169,8 +4349,9 @@ mod tests {
             &Mutex::new(0),
             &Mutex::new(0),
             &Mutex::new(None),
-            &Mutex::new(Vec::new()),
+            &Mutex::new(ToolCallStream::default()),
             &Mutex::new(None),
+            &Mutex::new(Vec::new()),
             "gpt-5".to_string(),
             None,
         );
@@ -4209,8 +4390,9 @@ mod tests {
             &Mutex::new(0),
             &Mutex::new(0),
             &Mutex::new(None),
-            &Mutex::new(Vec::new()),
+            &Mutex::new(ToolCallStream::default()),
             &Mutex::new(None),
+            &Mutex::new(Vec::new()),
             "gpt-5".to_string(),
             None,
         );
@@ -4229,8 +4411,9 @@ mod tests {
         let input_tokens = Mutex::new(0u32);
         let output_tokens = Mutex::new(0u32);
         let cache_read_tokens = Mutex::new(None);
-        let accumulated_tool_calls = Mutex::new(Vec::new());
+        let accumulated_tool_calls = Mutex::new(ToolCallStream::default());
         let finish_reason = Mutex::new(None);
+        let deferred_events = Mutex::new(Vec::new());
 
         // Create an OutputItemDone event with Reasoning item but NO encrypted_content
         let event = StreamingEvent::OutputItemDone {
@@ -4253,6 +4436,7 @@ mod tests {
             &cache_read_tokens,
             &accumulated_tool_calls,
             &finish_reason,
+            &deferred_events,
             "gpt-5".to_string(),
             None,
         );
@@ -4282,8 +4466,9 @@ mod tests {
         let input_tokens = Mutex::new(0u32);
         let output_tokens = Mutex::new(0u32);
         let cache_read_tokens = Mutex::new(None);
-        let accumulated_tool_calls = Mutex::new(Vec::new());
+        let accumulated_tool_calls = Mutex::new(ToolCallStream::default());
         let finish_reason = Mutex::new(None);
+        let deferred_events = Mutex::new(Vec::new());
 
         // Reasoning item with plaintext content and a non-summary content part in `summary`.
         // Both must be excluded from the emitted ReasonItem.
@@ -4314,6 +4499,7 @@ mod tests {
             &cache_read_tokens,
             &accumulated_tool_calls,
             &finish_reason,
+            &deferred_events,
             "gpt-5".to_string(),
             None,
         );
@@ -4339,8 +4525,9 @@ mod tests {
         let input_tokens = Mutex::new(0u32);
         let output_tokens = Mutex::new(0u32);
         let cache_read_tokens = Mutex::new(None);
-        let accumulated_tool_calls = Mutex::new(Vec::new());
+        let accumulated_tool_calls = Mutex::new(ToolCallStream::default());
         let finish_reason = Mutex::new(None);
+        let deferred_events = Mutex::new(Vec::new());
 
         // Raw reasoning from o-series reaches the reasoning channel, not text.
         let event = StreamingEvent::ReasoningDelta {
@@ -4359,6 +4546,7 @@ mod tests {
             &cache_read_tokens,
             &accumulated_tool_calls,
             &finish_reason,
+            &deferred_events,
             "o3".to_string(),
             None,
         );
@@ -4379,8 +4567,9 @@ mod tests {
         let input_tokens = Mutex::new(0u32);
         let output_tokens = Mutex::new(0u32);
         let cache_read_tokens = Mutex::new(None);
-        let accumulated_tool_calls = Mutex::new(Vec::new());
+        let accumulated_tool_calls = Mutex::new(ToolCallStream::default());
         let finish_reason = Mutex::new(None);
+        let deferred_events = Mutex::new(Vec::new());
 
         // A reasoning summary is a reasoning artifact. Routing it to the
         // assistant-text channel persisted it as the model's answer and
@@ -4401,6 +4590,7 @@ mod tests {
             &cache_read_tokens,
             &accumulated_tool_calls,
             &finish_reason,
+            &deferred_events,
             "gpt-5.2".to_string(),
             None,
         );
@@ -4735,8 +4925,9 @@ mod tests {
             &Mutex::new(0),
             &Mutex::new(0),
             &Mutex::new(None),
-            &Mutex::new(Vec::new()),
+            &Mutex::new(ToolCallStream::default()),
             &Mutex::new(Some("tool_calls".to_string())),
+            &Mutex::new(Vec::new()),
             "gpt-5.5".to_string(),
             None,
         );
@@ -4780,8 +4971,9 @@ mod tests {
             &Mutex::new(0),
             &Mutex::new(0),
             &Mutex::new(None),
-            &Mutex::new(Vec::new()),
+            &Mutex::new(ToolCallStream::default()),
             &Mutex::new(None),
+            &Mutex::new(Vec::new()),
             "gpt-5.5".to_string(),
             None,
         );
@@ -4825,8 +5017,9 @@ mod tests {
             &Mutex::new(0),
             &Mutex::new(0),
             &Mutex::new(None),
-            &Mutex::new(Vec::new()),
+            &Mutex::new(ToolCallStream::default()),
             &Mutex::new(None),
+            &Mutex::new(Vec::new()),
             "gpt-5.5".to_string(),
             None,
         );

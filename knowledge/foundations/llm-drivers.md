@@ -76,6 +76,17 @@ graph TD
    default hostname, or credential. The same driver instance may serve multiple
    provider keys with different endpoints, headers, and auth.
 
+4. **`ToolCalls` carries the whole set, and a driver owes it before `Done`.**
+   The stream reader *replaces* its tool-call list on every `ToolCalls` event,
+   so an event carrying only the newest call drops the earlier ones; and `Done`
+   ends the stream for the reader, so a call surfaced after it never runs. A
+   driver whose wire protocol describes one call across several frames must
+   therefore treat every frame that names it as authoritative, not just the
+   first, and reconcile against the provider's own terminal call list before
+   emitting `Done`. Nothing downstream can audit this: the finish reason a
+   driver reports is derived from what it emitted, so a dropped call is
+   indistinguishable from the model choosing to stop.
+
 ### Error Types (Contract)
 
 Drivers MUST use the following error types from `AgentLoopError`:
