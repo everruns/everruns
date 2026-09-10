@@ -36,9 +36,9 @@ impl PartialStreamStore for PgPartialStreamStore {
     ) -> Result<Option<PartialStreamState>, AgentLoopError> {
         // Find the latest output.message.started and carry its message id into
         // recovery so the reconstructed lifecycle stays in one id scope.
-        let started: Option<(i32, Option<String>)> = sqlx::query_as(
+        let started: Option<(i32, Option<String>, Option<serde_json::Value>)> = sqlx::query_as(
             r#"
-            SELECT sequence, data->>'message_id'
+            SELECT sequence, data->>'message_id', data->'reasoning_state'
             FROM events
             WHERE session_id = $1
               AND context->>'turn_id' = $2
@@ -53,7 +53,7 @@ impl PartialStreamStore for PgPartialStreamStore {
         .await
         .map_err(|e| AgentLoopError::tool(format!("partial_stream started check: {e}")))?;
 
-        let Some((started_seq, raw_message_id)) = started else {
+        let Some((started_seq, raw_message_id, reasoning_state)) = started else {
             return Ok(None);
         };
         // A worker upgraded while an old-format stream is in flight may find a
@@ -128,6 +128,13 @@ impl PartialStreamStore for PgPartialStreamStore {
         .unwrap_or_default();
 
         Ok(Some(PartialStreamState {
+            reasoning_state: reasoning_state
+                .filter(|value| !value.is_null())
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(|e| {
+                    AgentLoopError::store(format!("invalid partial reasoning state: {e}"))
+                })?,
             message_id,
             accumulated,
         }))

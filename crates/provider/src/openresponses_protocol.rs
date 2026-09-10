@@ -108,7 +108,6 @@ pub trait OpenResponsesRequestExtension: Send + Sync {
 
 #[derive(Clone)]
 pub struct OpenResponsesProtocolChatDriver {
-    client: Client,
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
     /// Optional provider-specific request-body decorator (see
@@ -123,12 +122,12 @@ pub struct OpenResponsesProtocolChatDriver {
 impl OpenResponsesProtocolChatDriver {
     /// Create a wire-only Open Responses protocol driver.
     pub fn new() -> Self {
+        // EVE-924: choose the rustls backend on the startup path. The shared
+        // client installs it as well, but that now happens on the first
+        // request, and products expect the process-wide choice to be settled
+        // while providers are being constructed.
+        crate::install_default_crypto_provider();
         Self {
-            // SSRF-hardened shared client (redirects disabled + DNS-pinned
-            // resolver). The api_url is org-configurable, so a bare
-            // `Client::new()` would leave this provider open to DNS-rebind /
-            // redirect SSRF (TM-API-013, EVE-623).
-            client: crate::driver_helpers::shared_streaming_http_client(),
             retry_config: LlmRetryConfig::default(),
             request_extension: None,
             stateful_responses: None,
@@ -250,7 +249,7 @@ impl OpenResponsesProtocolChatDriver {
                     headers.insert(name, value);
                 }
 
-                self.client
+                self.client()
                     .post(&resolved.url)
                     .headers(headers)
                     .header("Content-Type", "application/json")
@@ -344,9 +343,20 @@ impl OpenResponsesProtocolChatDriver {
         .await
     }
 
-    /// Get the HTTP client (for subclass access)
-    pub fn client(&self) -> &Client {
-        &self.client
+    /// The process-wide streaming HTTP client, resolved per request rather than
+    /// held as a field. Building it loads the platform trust store (~1.3 ms),
+    /// which would otherwise land on the agent startup path; after the first
+    /// request this is a `OnceLock` read and an `Arc` clone.
+    ///
+    /// Returned by value for subclass access; a `reqwest::Client` is an `Arc`
+    /// handle, so cloning it shares the same connection pool.
+    ///
+    /// The shared client is SSRF-hardened (redirects disabled + DNS-pinned
+    /// resolver). The api_url is org-configurable, so a bare `Client::new()`
+    /// would leave this provider open to DNS-rebind / redirect SSRF
+    /// (TM-API-013, EVE-623).
+    pub fn client(&self) -> Client {
+        crate::driver_helpers::shared_streaming_http_client()
     }
 
     fn convert_role(role: &LlmMessageRole) -> &'static str {
@@ -591,6 +601,7 @@ impl OpenResponsesProtocolChatDriver {
     /// let driver = OpenResponsesProtocolChatDriver::new();
     ///
     /// let request = CompactRequest {
+    ///     reasoning_state: None,
     ///     model: "gpt-5.2".to_string(),
     ///     input: vec![
     ///         CompactInputItem::Message {
@@ -615,15 +626,44 @@ impl OpenResponsesProtocolChatDriver {
         let responses_url = endpoint.url("responses").ok_or_else(|| {
             AgentLoopError::Configuration("Open Responses provider has no base URL".to_string())
         })?;
-        let compact_url = if responses_url.ends_with("/responses") {
-            format!("{responses_url}/compact")
-        } else if responses_url.ends_with("/responses/") {
-            format!("{responses_url}compact")
-        } else {
-            // Custom URL - just append /compact
-            format!("{}/compact", responses_url.trim_end_matches('/'))
-        };
-        let body = serde_json::to_vec(&request).map_err(|e| {
+        let explicit = request.reasoning_state.is_some();
+        let mut compact_url = url::Url::parse(&responses_url)
+            .map_err(|e| AgentLoopError::config(format!("Invalid compact endpoint URL: {e}")))?;
+        if !explicit {
+            compact_url.set_path(&format!(
+                "{}/compact",
+                compact_url.path().trim_end_matches('/')
+            ));
+        }
+        let compact_url = compact_url.to_string();
+        let mut body = serde_json::to_value(&request).map_err(|e| {
+            AgentLoopError::llm(format!("failed to serialize compact request: {e}"))
+        })?;
+        if let Some(state) = &request.reasoning_state {
+            if !self.native_phases
+                || !crate::reasoning_updates::supports_configuration_updates(&request.model)
+                || !state.is_supported()
+            {
+                return Err(AgentLoopError::Configuration(
+                    "configuration updates require native Astra Responses".into(),
+                ));
+            }
+            // Explicit compaction accepts updates; /responses/compact does not.
+            // Do not inherit generation max_tokens: the API requires >=20,000
+            // when a trigger request supplies max_output_tokens.
+            let input = body["input"].as_array_mut().ok_or_else(|| {
+                AgentLoopError::Configuration("explicit compaction needs full input".into())
+            })?;
+            input.push(serde_json::json!({"type": "compaction_trigger"}));
+            body["stream"] = serde_json::json!(false);
+            body["store"] = serde_json::json!(false);
+            body["max_output_tokens"] = serde_json::json!(20_000);
+            body["include"] = serde_json::json!(["reasoning.encrypted_content"]);
+            if let Some(effort) = state.baseline {
+                body["reasoning"] = serde_json::json!({"effort": effort});
+            }
+        }
+        let body = serde_json::to_vec(&body).map_err(|e| {
             AgentLoopError::llm(format!("failed to serialize compact request: {e}"))
         })?;
 
@@ -643,7 +683,7 @@ impl OpenResponsesProtocolChatDriver {
                     .resolve("POST", &compact_url, &body)
                     .await
                     .map_err(SendOutcome::Fatal)?;
-                let mut builder = self.client.post(&resolved.url);
+                let mut builder = self.client().post(&resolved.url);
                 for (name, value) in resolved.headers {
                     builder = builder.header(name, value);
                 }
@@ -733,10 +773,49 @@ impl OpenResponsesProtocolChatDriver {
         .await?;
 
         // Parse the response
-        let compact_response: CompactResponse = response
+        let value: Value = response
             .json()
             .await
             .map_err(|e| AgentLoopError::llm(format!("Failed to parse compact response: {}", e)))?;
+
+        if explicit && value["status"] != "completed" {
+            return Err(AgentLoopError::llm("explicit compaction did not complete"));
+        }
+        let explicit_output = explicit.then(|| value["output"].clone());
+        let mut compact_response: CompactResponse = serde_json::from_value(value)
+            .map_err(|e| AgentLoopError::llm(format!("Failed to parse compact response: {e}")))?;
+        if explicit {
+            compact_response.output = explicit_output
+                .unwrap()
+                .as_array()
+                .ok_or_else(|| AgentLoopError::llm("explicit compaction returned invalid output"))?
+                .iter()
+                .map(|item| {
+                    if item["type"] == "compaction" {
+                        serde_json::from_value(item.clone()).map_err(|e| {
+                            AgentLoopError::llm(format!("invalid compaction item: {e}"))
+                        })
+                    } else {
+                        Ok(CompactOutputItem::ProviderItem(item.clone()))
+                    }
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let boundary = compact_response
+                .output
+                .iter()
+                .rposition(|item| matches!(item, CompactOutputItem::Compaction { .. }))
+                .ok_or_else(|| {
+                    AgentLoopError::llm("explicit compaction returned no compaction item")
+                })?;
+            // /responses output uses the latest compaction as its replacement
+            // boundary. Retain every following item, including opaque reasoning.
+            compact_response.output.drain(..boundary);
+            // Responses usage counts generation, not the size of the resulting
+            // compacted window. The engine compares serialized bytes instead.
+            if let Some(usage) = compact_response.usage.as_mut() {
+                usage.output_tokens = None;
+            }
+        }
 
         Ok(compact_response)
     }
@@ -773,6 +852,9 @@ impl OpenResponsesProtocolChatDriver {
         let mut input_items = Vec::new();
 
         for msg in messages {
+            if supports_phases && let Some(effort) = msg.configuration_update {
+                input_items.push(configuration_update_item(effort));
+            }
             if msg.role == LlmMessageRole::System {
                 // Folded above into `instructions`; never emit the System message
                 // as a separate input item.
@@ -876,6 +958,29 @@ impl Default for OpenResponsesProtocolChatDriver {
 /// passed only fresh user input), all items are treated as delta and kept. An
 /// empty input is also valid — the provider can resume purely from
 /// `previous_response_id`.
+fn configuration_update_item(effort: crate::model::ReasoningEffort) -> ResponsesInputItem {
+    ResponsesInputItem::ConfigurationUpdate {
+        r#type: "configuration_update".into(),
+        reasoning: crate::compact::ConfigurationReasoning { effort },
+    }
+}
+
+fn coalesce_configuration_updates(items: Vec<ResponsesInputItem>) -> Vec<ResponsesInputItem> {
+    let mut output = Vec::with_capacity(items.len());
+    for item in items {
+        if matches!(item, ResponsesInputItem::ConfigurationUpdate { .. })
+            && matches!(
+                output.last(),
+                Some(ResponsesInputItem::ConfigurationUpdate { .. })
+            )
+        {
+            output.pop();
+        }
+        output.push(item);
+    }
+    output
+}
+
 fn compute_delta_input_items(items: Vec<ResponsesInputItem>) -> Vec<ResponsesInputItem> {
     // Find the index of the last item that is part of a prior assistant turn.
     let last_assistant_turn_idx = items
@@ -904,11 +1009,11 @@ fn finalize_input_for_request(
     input_items: Vec<ResponsesInputItem>,
     previous_response_id: &Option<String>,
 ) -> Vec<ResponsesInputItem> {
-    if previous_response_id.is_some() {
+    coalesce_configuration_updates(if previous_response_id.is_some() {
         compute_delta_input_items(input_items)
     } else {
         repair_unpaired_function_call_items(input_items)
-    }
+    })
 }
 
 /// Find `call_id`s that break the OpenAI/Codex Responses tool-pairing invariant
@@ -1003,6 +1108,8 @@ fn is_missing_tool_output_continuation_error(error: &AgentLoopError) -> bool {
     let message = error.to_string().to_ascii_lowercase();
     message.contains("no tool output found for function call")
         || message.contains("no tool call found for function call output")
+        || message.contains("previous_response_not_found")
+        || (message.contains("previous response") && message.contains("not found"))
 }
 
 #[async_trait]
@@ -1027,7 +1134,30 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         let supports_phases = self.native_phases;
         let supports_tool_search = self.hosted_tool_search;
 
-        let (instructions, transcript_input_items) = Self::build_input(&messages, supports_phases);
+        let (instructions, mut transcript_input_items) =
+            Self::build_input(&messages, supports_phases);
+        let update_state = config.reasoning_state.as_ref().filter(|_| {
+            supports_phases
+                && crate::reasoning_updates::supports_configuration_updates(&config.model)
+        });
+        if let Some(state) = update_state {
+            if !state.is_supported() {
+                return Err(AgentLoopError::Configuration(
+                    "unsupported Astra configuration effort".into(),
+                ));
+            }
+            if let Some(effort) = state.pending {
+                // Insert before the fresh input, not before the preceding
+                // assistant output, so delta trimming and fallback agree.
+                let delta_len = compute_delta_input_items(transcript_input_items.clone()).len();
+                let boundary = transcript_input_items.len() - delta_len;
+                transcript_input_items.insert(boundary, configuration_update_item(effort));
+            }
+            transcript_input_items = coalesce_configuration_updates(transcript_input_items);
+        } else {
+            transcript_input_items
+                .retain(|item| !matches!(item, ResponsesInputItem::ConfigurationUpdate { .. }));
+        }
         let full_replay_input_items = transcript_input_items.clone();
 
         // Only chain via `previous_response_id` when the endpoint actually persists
@@ -1048,11 +1178,17 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         let input_items = match &config.provider_opaque_context {
             Some(crate::driver_registry::ProviderOpaqueContext::OpenResponsesCompact {
                 output,
+                reasoning_state,
             }) => {
                 previous_response_id = None;
                 let mut input_items: Vec<_> = output.iter().map(ResponsesInputItem::from).collect();
+                if update_state.is_some()
+                    && let Some(effort) = reasoning_state.as_ref().and_then(|state| state.effective)
+                {
+                    input_items.push(configuration_update_item(effort));
+                }
                 input_items.extend(transcript_input_items);
-                input_items
+                coalesce_configuration_updates(input_items)
             }
             None => finalize_input_for_request(transcript_input_items, &previous_response_id),
         };
@@ -1085,8 +1221,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
 
         // Reasoning items are only replayable when the provider hands back
         // their encrypted payload, and it only does so on request.
-        let include = reasoning
-            .is_some()
+        let include = (reasoning.is_some() || update_state.is_some())
             .then(|| vec!["reasoning.encrypted_content".to_string()]);
 
         // Build metadata for request tracking
@@ -1186,7 +1321,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                     "stateful Responses continuation rejected for missing tool output; retrying once with repaired stateless replay"
                 );
                 request.previous_response_id = None;
-                request.input = repair_unpaired_function_call_items(full_replay_input_items);
+                request.input = coalesce_configuration_updates(
+                    repair_unpaired_function_call_items(full_replay_input_items),
+                );
                 request.prompt_cache_key = Self::build_prompt_cache_key(
                     config,
                     &request.input,
@@ -1949,6 +2086,11 @@ struct ResponsesReasoning {
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 enum ResponsesInputItem {
+    ConfigurationUpdate {
+        r#type: String,
+        reasoning: crate::compact::ConfigurationReasoning,
+    },
+    ProviderItem(Value),
     Message {
         r#type: String,
         role: String,
@@ -2002,6 +2144,7 @@ enum ResponsesInputItem {
 impl From<&CompactOutputItem> for ResponsesInputItem {
     fn from(item: &CompactOutputItem) -> Self {
         match item {
+            CompactOutputItem::ProviderItem(item) => Self::ProviderItem(item.clone()),
             CompactOutputItem::Message { role, content } => Self::Message {
                 r#type: "message".to_string(),
                 role: role.clone(),
@@ -2473,6 +2616,7 @@ mod tests {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -2481,6 +2625,7 @@ mod tests {
                 tool_call_id: Some("call_xyz789".to_string()),
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
         ];
 
@@ -2523,6 +2668,7 @@ mod tests {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
         ];
 
@@ -2580,6 +2726,7 @@ mod tests {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -2588,6 +2735,7 @@ mod tests {
                 tool_call_id: Some("call_xyz789".to_string()),
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
         ];
 
@@ -3118,6 +3266,7 @@ mod tests {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -3126,6 +3275,7 @@ mod tests {
                 tool_call_id: Some("call_1".to_string()),
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
         ];
 
@@ -3149,6 +3299,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            reasoning_state: None,
         };
 
         // Fire the request. The stream body is irrelevant for this assertion.
@@ -3251,6 +3402,7 @@ mod tests {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -3259,6 +3411,7 @@ mod tests {
                 tool_call_id: Some("call_1".to_string()),
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
         ];
         let config = LlmCallConfig {
@@ -3279,6 +3432,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            reasoning_state: None,
         };
 
         let mut stream = driver
@@ -3356,6 +3510,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            reasoning_state: None,
         };
 
         let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
@@ -3430,6 +3585,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            reasoning_state: None,
         };
 
         let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
@@ -3502,6 +3658,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            reasoning_state: None,
         };
 
         let stream = driver
@@ -3597,6 +3754,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            reasoning_state: None,
         };
 
         let stream = driver
@@ -3652,154 +3810,6 @@ mod tests {
     // Compact endpoint tests
     // ========================================================================
 
-    #[test]
-    fn test_compact_request_serialization() {
-        let request = CompactRequest {
-            model: "gpt-5.2".to_string(),
-            input: vec![
-                CompactInputItem::Message {
-                    role: "user".to_string(),
-                    content: CompactContent::Text("Hello!".to_string()),
-                },
-                CompactInputItem::Message {
-                    role: "assistant".to_string(),
-                    content: CompactContent::Text("Hi there!".to_string()),
-                },
-            ],
-            previous_response_id: None,
-            instructions: Some("Be helpful".to_string()),
-        };
-
-        let json = serde_json::to_value(&request).unwrap();
-        assert_eq!(json["model"], "gpt-5.2");
-        assert_eq!(json["instructions"], "Be helpful");
-        assert!(json["input"].is_array());
-        assert_eq!(json["input"].as_array().unwrap().len(), 2);
-    }
-
-    #[test]
-    fn test_compact_input_item_message_serialization() {
-        let item = CompactInputItem::Message {
-            role: "user".to_string(),
-            content: CompactContent::Text("Test message".to_string()),
-        };
-
-        let json = serde_json::to_value(&item).unwrap();
-        assert_eq!(json["type"], "message");
-        assert_eq!(json["role"], "user");
-        assert_eq!(json["content"], "Test message");
-    }
-
-    #[test]
-    fn test_compact_input_item_function_call_serialization() {
-        let item = CompactInputItem::FunctionCall {
-            call_id: "call_123".to_string(),
-            name: "get_weather".to_string(),
-            arguments: r#"{"city":"NYC"}"#.to_string(),
-        };
-
-        let json = serde_json::to_value(&item).unwrap();
-        assert_eq!(json["type"], "function_call");
-        assert_eq!(json["call_id"], "call_123");
-        assert_eq!(json["name"], "get_weather");
-        assert_eq!(json["arguments"], r#"{"city":"NYC"}"#);
-    }
-
-    #[test]
-    fn test_compact_input_item_compaction_serialization() {
-        let item = CompactInputItem::Compaction {
-            encrypted_content: "encrypted_data_here".to_string(),
-        };
-
-        let json = serde_json::to_value(&item).unwrap();
-        assert_eq!(json["type"], "compaction");
-        assert_eq!(json["encrypted_content"], "encrypted_data_here");
-    }
-
-    #[test]
-    fn test_compact_output_item_deserialization() {
-        let json = r#"{
-            "type": "message",
-            "role": "user",
-            "content": "Hello"
-        }"#;
-
-        let item: CompactOutputItem = serde_json::from_str(json).unwrap();
-        match item {
-            CompactOutputItem::Message { role, content } => {
-                assert_eq!(role, "user");
-                match content {
-                    CompactContent::Text(text) => assert_eq!(text, "Hello"),
-                    _ => panic!("Expected text content"),
-                }
-            }
-            _ => panic!("Expected Message item"),
-        }
-    }
-
-    #[test]
-    fn test_compact_output_compaction_deserialization() {
-        let json = r#"{
-            "type": "compaction",
-            "encrypted_content": "abc123encrypted"
-        }"#;
-
-        let item: CompactOutputItem = serde_json::from_str(json).unwrap();
-        match item {
-            CompactOutputItem::Compaction { encrypted_content } => {
-                assert_eq!(encrypted_content, "abc123encrypted");
-            }
-            _ => panic!("Expected Compaction item"),
-        }
-    }
-
-    #[test]
-    fn test_compact_response_deserialization() {
-        let json = r#"{
-            "output": [
-                {"type": "message", "role": "user", "content": "Hello"},
-                {"type": "compaction", "encrypted_content": "xyz789"}
-            ],
-            "usage": {
-                "input_tokens": 100,
-                "output_tokens": 50,
-                "total_tokens": 150
-            }
-        }"#;
-
-        let response: CompactResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(response.output.len(), 2);
-        assert!(response.usage.is_some());
-        let usage = response.usage.unwrap();
-        assert_eq!(usage.input_tokens, Some(100));
-        assert_eq!(usage.output_tokens, Some(50));
-        assert_eq!(usage.total_tokens, Some(150));
-    }
-
-    #[test]
-    fn test_compact_content_parts_serialization() {
-        let content = CompactContent::Parts(vec![
-            CompactContentPart::InputText {
-                text: "Check this image".to_string(),
-            },
-            CompactContentPart::InputImage {
-                image_url: "data:image/png;base64,abc".to_string(),
-            },
-        ]);
-
-        let json = serde_json::to_value(&content).unwrap();
-        assert!(json.is_array());
-        assert_eq!(json[0]["type"], "input_text");
-        assert_eq!(json[0]["text"], "Check this image");
-        assert_eq!(json[1]["type"], "input_image");
-    }
-
-    #[test]
-    fn test_wire_protocol_supports_compact() {
-        let driver = OpenResponsesProtocolChatDriver::new();
-        assert!(driver.supports_compact());
-    }
-
     // ========================================================================
     // OpenAI Thinking/Reasoning Support Tests
     // ========================================================================
@@ -3842,6 +3852,7 @@ mod tests {
         let messages = vec![
             LlmMessage::text(LlmMessageRole::User, "Think"),
             LlmMessage {
+                configuration_update: None,
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("No summary on this one.".to_string()),
                 tool_calls: None,
@@ -3854,6 +3865,7 @@ mod tests {
                 ],
             },
             LlmMessage {
+                configuration_update: None,
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("This one was summarized.".to_string()),
                 tool_calls: None,
@@ -3905,6 +3917,7 @@ mod tests {
         let messages = vec![
             LlmMessage::text(LlmMessageRole::User, "Think about this deeply"),
             LlmMessage {
+                configuration_update: None,
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("I have thought about this.".to_string()),
                 tool_calls: None,
@@ -3953,6 +3966,7 @@ mod tests {
         let messages = vec![
             LlmMessage::text(LlmMessageRole::User, "What time is it? Think carefully."),
             LlmMessage {
+                configuration_update: None,
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("Let me check.".to_string()),
                 tool_calls: Some(vec![ToolCall {
@@ -3975,6 +3989,7 @@ mod tests {
                 tool_call_id: Some("call_123".to_string()),
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
         ];
 
@@ -4015,6 +4030,7 @@ mod tests {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
         ];
 
@@ -4427,6 +4443,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            reasoning_state: None,
         };
 
         // Simulate the driver's filter logic
@@ -4465,6 +4482,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            reasoning_state: None,
         };
 
         let reasoning = config
@@ -4512,6 +4530,7 @@ mod tests {
                 tool_call_id: None,
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
         ];
 
@@ -4534,6 +4553,7 @@ mod tests {
         let messages = vec![
             LlmMessage::text(LlmMessageRole::User, "First question"),
             LlmMessage {
+                configuration_update: None,
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("First answer.".to_string()),
                 tool_calls: None,
@@ -4547,6 +4567,7 @@ mod tests {
             },
             LlmMessage::text(LlmMessageRole::User, "Second question"),
             LlmMessage {
+                configuration_update: None,
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("Second answer.".to_string()),
                 tool_calls: None,
@@ -4594,6 +4615,7 @@ mod tests {
                 tool_call_id: None,
                 phase: Some(ExecutionPhase::Commentary),
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -4602,6 +4624,7 @@ mod tests {
                 tool_call_id: Some("call_1".to_string()),
                 phase: None,
                 reasoning: Vec::new(),
+                configuration_update: None,
             },
         ];
 
@@ -4885,6 +4908,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            reasoning_state: None,
         }
     }
 
@@ -5201,6 +5225,70 @@ mod tests {
         assert!(serialized.get("strict").is_none());
         assert!(serialized["parameters"].get("allOf").is_some());
     }
+    #[tokio::test]
+    async fn compact_request_preserves_endpoint_query_and_complete_contract() {
+        use wiremock::matchers::{header, method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::builder().start().await;
+        Mock::given(method("POST")).and(path("/v1/responses/compact"))
+            .and(query_param("api-version", "preview"))
+            .and(header("authorization", "Bearer compact-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "output":[{"type":"message","role":"user","content":"keep me"},{"type":"compaction","encrypted_content":"opaque"}],
+                "usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120,"cost":0.03}
+            }))).expect(1).mount(&server).await;
+        let provider = crate::runtime_provider::RuntimeProvider::new(
+            "compact-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url(format!("{}/v1/responses?api-version=preview", server.uri()))
+        .auth(crate::runtime_provider::BearerAuth::new("compact-key"));
+        let driver =
+            OpenResponsesProtocolChatDriver::new().with_retry_config(LlmRetryConfig::no_retry());
+        let result = ChatDriver::compact(
+            &driver,
+            provider.endpoint(),
+            CompactRequest {
+                reasoning_state: None,
+                model: "model-compact".into(),
+                input: vec![CompactInputItem::Message {
+                    role: "user".into(),
+                    content: CompactContent::Text("keep me".into()),
+                }],
+                previous_response_id: None,
+                instructions: Some("preserve facts".into()),
+            },
+        )
+        .await
+        .unwrap()
+        .expect("advertised compact capability must return output");
+        assert!(ChatDriver::supports_compact(&driver));
+        assert_eq!(
+            serde_json::to_value(&result.output).unwrap(),
+            json!([
+                {"type":"message","role":"user","content":"keep me"},
+                {"type":"compaction","encrypted_content":"opaque"}
+            ])
+        );
+        let usage = result.usage.unwrap();
+        assert_eq!(
+            (
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.total_tokens,
+                usage.cost
+            ),
+            (Some(100), Some(20), Some(120), Some(0.03))
+        );
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        let body: Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(
+            body,
+            json!({"model":"model-compact","input":[{"type":"message","role":"user","content":"keep me"}],"instructions":"preserve facts"})
+        );
+    }
+
     fn cache_config() -> LlmCallConfig {
         let mut config = auth_test_config();
         config

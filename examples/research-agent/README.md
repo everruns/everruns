@@ -22,11 +22,14 @@ contains no custom search HTTP client.
 
 ## How the demo works
 
-Agent setup and tools live in [src/main.rs](src/main.rs). The separate
-[src/demo.rs](src/demo.rs) subscribes to session events before sending the
-question, prints real tool arguments and bounded result previews, and displays
-the final answer. These tools expose public or demo data; review what may be
-printed before adapting this observer to private data.
+This example is only its agent: [src/main.rs](src/main.rs) holds the tools,
+instructions, provider, and model. The terminal observer is shared by every
+example and lives in [examples/demo-support](../demo-support); it subscribes to
+session events before sending the question, prints real tool arguments and
+bounded result previews, and displays the final answer. Nothing there changes
+what the agent does — `session.send_and_wait(question)` is the same run without
+the live view. These tools expose public or demo data; review what may be
+printed before pointing that observer at private data.
 
 The screencast is a **paged replay of a recorded live run**, with provider wait
 time removed. Read the [complete displayed transcript](demo.txt) at your own pace;

@@ -4,7 +4,8 @@
 //! OPENROUTER_API_KEY=... cargo run -p everruns-research-agent
 //! ```
 
-mod demo;
+// Terminal presentation is shared by every example; this file is the agent.
+use everruns_example_demo as demo;
 
 use everruns::{Agent, Engine, Turn};
 use everruns_integrations_brave_search::BraveSearch;

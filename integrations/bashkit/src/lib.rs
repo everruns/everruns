@@ -17,6 +17,8 @@
 //! assert_eq!(BashkitShellCapability.aliases(), vec!["virtual_bash"]);
 //! ```
 
+pub mod cli;
+
 mod egress_transport;
 pub mod hook_dispatch;
 
@@ -425,6 +427,7 @@ impl Tool for BashTool {
             .trace_mode(TraceMode::Redacted);
         let builder = install_observability_hooks(builder, context.session_id);
         let builder = configure_http(builder, self.enable_http, context);
+        let builder = install_cli_tree(builder, &context.extensions);
         let mut bash = builder.build();
 
         // Stream output via tool.output.delta events for live UI/CLI rendering.
@@ -648,6 +651,7 @@ impl BackgroundExecutableTool for BashTool {
             .trace_mode(TraceMode::Redacted);
         let builder = install_observability_hooks(builder, context.session_id);
         let builder = configure_http(builder, self.enable_http, &context);
+        let builder = install_cli_tree(builder, &context.extensions);
         let mut bash = builder.build();
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
@@ -777,6 +781,25 @@ impl BackgroundExecutableTool for BashTool {
             }
         }
     }
+}
+
+/// Register the `everruns` command tree when the host supplies a source.
+///
+/// Gated on the source being present rather than on a config flag: a session
+/// whose host offers no commands gets no builtin, so the surface can never
+/// promise a tree it cannot serve. Framework applications opt in by inserting
+/// a `CliCommandSourceHandle` on the tool context.
+fn install_cli_tree(
+    builder: BashBuilder,
+    extensions: &everruns_core::tool_context::ToolContextExtensions,
+) -> BashBuilder {
+    let Some(handle) = extensions.get::<crate::cli::CliCommandSourceHandle>() else {
+        return builder;
+    };
+    builder.builtin(
+        crate::cli::ROOT,
+        Box::new(crate::cli::EverrunsBuiltin::new(handle.0.clone())),
+    )
 }
 
 // Observational-only. Emits `tracing` events for each bashkit builtin

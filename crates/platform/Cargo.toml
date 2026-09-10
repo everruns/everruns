@@ -16,7 +16,7 @@
 
 [package]
 name = "everruns-platform"
-version = "0.19.1"
+version = "0.19.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -93,7 +93,7 @@ async-trait.workspace = true
 anyhow.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-jsonschema = { version = "0.52.0", default-features = false }
+jsonschema = { version = "0.54.0", default-features = false }
 
 # Outbound A2A delegation (optional).
 a2a = { workspace = true, optional = true }

@@ -23,3 +23,33 @@ status updates and the instructions prohibit unsupported production claims.
 
 Updates are appended to `incident.log` in the example folder, retained across
 runs, and ignored by Git. No production infrastructure is modified.
+
+## The important part
+
+```rust
+// The tool validates before it writes. A tool is the right place for limits
+// the model must not be able to talk its way past.
+#[everruns::tool]
+/// Record a bounded, non-sensitive incident status update.
+async fn record_incident_update(update: String) -> Result<String, String> {
+    if update.len() > 500 {
+        return Err("Keep incident updates under 500 characters.".into());
+    }
+    // Appends one newline-free line to the example's incident.log and returns
+    // what was written, so the model's next turn sees the effect it had.
+    append_update(&manifest_dir().join("incident.log"), &update)
+}
+
+let agent = Agent::builder()
+    .name("incident-commander-agent")
+    // The last sentence is the one that matters during an incident: the model
+    // may only claim a change happened if a tool result says it did.
+    .instructions("You are an incident commander. Record a concise incident \
+        update before answering. State known impact, unknowns, owners, and safe \
+        next actions. Never claim that a production change occurred unless the \
+        tool result says so.")
+    .provider(everruns_meta::provider("meta", api_key))
+    .model("muse-spark-1.3")
+    .tool(record_incident_update())
+    .build()?;
+```

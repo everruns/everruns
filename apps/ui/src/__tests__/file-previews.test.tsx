@@ -1,5 +1,5 @@
 import { MarkdownLink } from "@/components/markdown/markdown-link";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 
 let capturedStreamdownProps: Record<string, unknown> = {};
 
@@ -31,196 +31,97 @@ import {
 // getPreviewType Tests
 // ============================================
 
-describe("getPreviewType", () => {
-  describe("code files", () => {
-    it("returns 'code' for TypeScript files", () => {
-      expect(getPreviewType("ts", "text")).toBe("code");
-      expect(getPreviewType("tsx", "text")).toBe("code");
-    });
-
-    it("returns 'code' for JavaScript files", () => {
-      expect(getPreviewType("js", "text")).toBe("code");
-      expect(getPreviewType("jsx", "text")).toBe("code");
-    });
-
-    it("returns 'code' for Python files", () => {
-      expect(getPreviewType("py", "text")).toBe("code");
-    });
-
-    it("returns 'code' for Rust files", () => {
-      expect(getPreviewType("rs", "text")).toBe("code");
-    });
-
-    it("returns 'code' for Go files", () => {
-      expect(getPreviewType("go", "text")).toBe("code");
-    });
-
-    it("returns 'code' for shell scripts", () => {
-      expect(getPreviewType("sh", "text")).toBe("code");
-      expect(getPreviewType("bash", "text")).toBe("code");
-      expect(getPreviewType("zsh", "text")).toBe("code");
-    });
-
-    it("returns 'code' for config files", () => {
-      expect(getPreviewType("yml", "text")).toBe("code");
-      expect(getPreviewType("yaml", "text")).toBe("code");
-      expect(getPreviewType("toml", "text")).toBe("code");
-    });
-
-    it("returns 'code' for web files", () => {
-      expect(getPreviewType("css", "text")).toBe("code");
-      expect(getPreviewType("scss", "text")).toBe("code");
-    });
+describe("preview classification", () => {
+  it("classifies supported text extensions and gates the preview consistently", () => {
+    const groups = [
+      [
+        [
+          "ts",
+          "tsx",
+          "js",
+          "jsx",
+          "py",
+          "rs",
+          "go",
+          "sh",
+          "bash",
+          "zsh",
+          "yml",
+          "yaml",
+          "toml",
+          "css",
+          "scss",
+          "java",
+          "c",
+          "cpp",
+          "h",
+          "hpp",
+          "rb",
+          "php",
+          "sql",
+          "xml",
+          "sass",
+          "less",
+          "vue",
+          "svelte",
+        ],
+        "code",
+        true,
+      ],
+      [["html", "htm"], "html", true],
+      [["md", "markdown"], "markdown", true],
+      [["json"], "json", true],
+      [["csv"], "csv", true],
+      [["svg"], "svg", true],
+      [["txt", "xyz", "unknown", "", "png", "jpg", "pdf"], "text", false],
+    ] as const;
+    for (const [extensions, type, previewable] of groups) {
+      for (const extension of extensions) {
+        for (const variant of [
+          extension,
+          extension.toUpperCase(),
+          extension.slice(0, 1).toUpperCase() + extension.slice(1),
+        ]) {
+          expect({
+            extension: variant,
+            type: getPreviewType(variant, "text"),
+            previewable: canPreview(variant, "text"),
+          }).toEqual({ extension: variant, type, previewable });
+        }
+      }
+    }
   });
 
-  describe("html files", () => {
-    it("returns 'html' for .html and .htm files (rendered preview path)", () => {
-      expect(getPreviewType("html", "text")).toBe("html");
-      expect(getPreviewType("htm", "text")).toBe("html");
-    });
-  });
-
-  describe("pdf files", () => {
-    it("returns 'pdf' for PDF files with base64 encoding", () => {
-      expect(getPreviewType("pdf", "base64")).toBe("pdf");
-    });
-  });
-
-  describe("data files", () => {
-    it("returns 'csv' for CSV files", () => {
-      expect(getPreviewType("csv", "text")).toBe("csv");
-    });
-
-    it("returns 'json' for JSON files", () => {
-      expect(getPreviewType("json", "text")).toBe("json");
-    });
-  });
-
-  describe("markdown files", () => {
-    it("returns 'markdown' for .md files", () => {
-      expect(getPreviewType("md", "text")).toBe("markdown");
-    });
-
-    it("returns 'markdown' for .markdown files", () => {
-      expect(getPreviewType("markdown", "text")).toBe("markdown");
-    });
-  });
-
-  describe("image files", () => {
-    it("returns 'image' for PNG files with base64 encoding", () => {
-      expect(getPreviewType("png", "base64")).toBe("image");
-    });
-
-    it("returns 'image' for JPEG files with base64 encoding", () => {
-      expect(getPreviewType("jpg", "base64")).toBe("image");
-      expect(getPreviewType("jpeg", "base64")).toBe("image");
-    });
-
-    it("returns 'image' for GIF files with base64 encoding", () => {
-      expect(getPreviewType("gif", "base64")).toBe("image");
-    });
-
-    it("returns 'image' for WebP files with base64 encoding", () => {
-      expect(getPreviewType("webp", "base64")).toBe("image");
-    });
-
-    it("returns 'svg' for SVG files with base64 encoding", () => {
-      expect(getPreviewType("svg", "base64")).toBe("svg");
-    });
-
-    it("returns 'svg' for SVG files with text encoding", () => {
-      expect(getPreviewType("svg", "text")).toBe("svg");
-    });
-  });
-
-  describe("binary files", () => {
-    it("returns 'binary' for unknown base64 files", () => {
-      expect(getPreviewType("exe", "base64")).toBe("binary");
-      expect(getPreviewType("bin", "base64")).toBe("binary");
-      expect(getPreviewType("dll", "base64")).toBe("binary");
-    });
-  });
-
-  describe("text files", () => {
-    it("returns 'text' for plain text files", () => {
-      expect(getPreviewType("txt", "text")).toBe("text");
-    });
-
-    it("returns 'text' for unknown text files", () => {
-      expect(getPreviewType("xyz", "text")).toBe("text");
-      expect(getPreviewType("unknown", "text")).toBe("text");
-    });
-  });
-
-  describe("case insensitivity", () => {
-    it("handles uppercase extensions", () => {
-      expect(getPreviewType("TS", "text")).toBe("code");
-      expect(getPreviewType("JSON", "text")).toBe("json");
-      expect(getPreviewType("MD", "text")).toBe("markdown");
-      expect(getPreviewType("PNG", "base64")).toBe("image");
-    });
-
-    it("handles mixed case extensions", () => {
-      expect(getPreviewType("Ts", "text")).toBe("code");
-      expect(getPreviewType("Json", "text")).toBe("json");
-    });
-  });
-});
-
-// ============================================
-// canPreview Tests
-// ============================================
-
-describe("canPreview", () => {
-  describe("previewable files", () => {
-    it("returns true for code files", () => {
-      expect(canPreview("ts", "text")).toBe(true);
-      expect(canPreview("py", "text")).toBe(true);
-      expect(canPreview("rs", "text")).toBe(true);
-    });
-
-    it("returns true for data files", () => {
-      expect(canPreview("csv", "text")).toBe(true);
-      expect(canPreview("json", "text")).toBe(true);
-    });
-
-    it("returns true for markdown files", () => {
-      expect(canPreview("md", "text")).toBe(true);
-    });
-
-    it("returns true for image files", () => {
-      expect(canPreview("png", "base64")).toBe(true);
-      expect(canPreview("jpg", "base64")).toBe(true);
-    });
-
-    it("returns true for html files (sandboxed render path)", () => {
-      expect(canPreview("html", "text")).toBe(true);
-      expect(canPreview("htm", "text")).toBe(true);
-    });
-
-    it("returns true for pdf files (data: iframe path)", () => {
-      expect(canPreview("pdf", "base64")).toBe(true);
-    });
-  });
-
-  describe("non-previewable files", () => {
-    it("returns false for plain text files", () => {
-      expect(canPreview("txt", "text")).toBe(false);
-    });
-
-    it("returns false for binary files", () => {
-      expect(canPreview("exe", "base64")).toBe(false);
-      expect(canPreview("bin", "base64")).toBe(false);
-    });
-
-    it("returns true for SVG files (sandboxed preview path)", () => {
-      expect(canPreview("svg", "base64")).toBe(true);
-      expect(canPreview("svg", "text")).toBe(true);
-    });
-
-    it("returns false for unknown file types", () => {
-      expect(canPreview("xyz", "text")).toBe(false);
-    });
+  it("uses encoded binary routing even for extensions normally rendered as text", () => {
+    const cases = [
+      ["png", "image", true],
+      ["jpg", "image", true],
+      ["jpeg", "image", true],
+      ["gif", "image", true],
+      ["webp", "image", true],
+      ["bmp", "image", true],
+      ["ico", "image", true],
+      ["pdf", "pdf", true],
+      ["svg", "svg", true],
+      ["exe", "binary", false],
+      ["bin", "binary", false],
+      ["dll", "binary", false],
+      ["ts", "binary", false],
+      ["html", "binary", false],
+      ["md", "binary", false],
+      ["json", "binary", false],
+      ["csv", "binary", false],
+      ["", "binary", false],
+    ] as const;
+    for (const [extension, type, previewable] of cases) {
+      for (const variant of [extension, extension.toUpperCase()]) {
+        expect({
+          extension: variant,
+          type: getPreviewType(variant, "base64"),
+          previewable: canPreview(variant, "base64"),
+        }).toEqual({ extension: variant, type, previewable });
+      }
+    }
   });
 });
 
@@ -229,71 +130,82 @@ describe("canPreview", () => {
 // ============================================
 
 describe("CSVPreview", () => {
-  describe("rendering", () => {
-    it("renders table headers", () => {
-      const csv = "name,age,city\nAlice,30,NYC";
-      render(<CSVPreview content={csv} />);
-
-      expect(screen.getByText("name")).toBeInTheDocument();
-      expect(screen.getByText("age")).toBeInTheDocument();
-      expect(screen.getByText("city")).toBeInTheDocument();
-    });
-
-    it("renders table data rows", () => {
-      const csv = "name,age\nAlice,30\nBob,25";
-      render(<CSVPreview content={csv} />);
-
-      expect(screen.getByText("Alice")).toBeInTheDocument();
-      expect(screen.getByText("30")).toBeInTheDocument();
-      expect(screen.getByText("Bob")).toBeInTheDocument();
-      expect(screen.getByText("25")).toBeInTheDocument();
-    });
-
-    it("shows row and column count", () => {
-      const csv = "a,b,c\n1,2,3\n4,5,6";
-      render(<CSVPreview content={csv} />);
-
-      expect(screen.getByText("2 rows, 3 columns")).toBeInTheDocument();
-    });
+  it("renders complete ordered records, quoted fields, and accurate dimensions", async () => {
+    const { container, rerender } = render(<CSVPreview content="" />);
+    const cases = [
+      [
+        "name,age,city\nAlice,30,NYC\nBob,25,LA",
+        [
+          ["name", "age", "city"],
+          ["Alice", "30", "NYC"],
+          ["Bob", "25", "LA"],
+        ],
+        "2 rows, 3 columns",
+      ],
+      [
+        'name,address,quote\nJohn,"123 Main St, Apt 4","She said ""hello"""',
+        [
+          ["name", "address", "quote"],
+          ["John", "123 Main St, Apt 4", 'She said "hello"'],
+        ],
+        "1 rows, 3 columns",
+      ],
+      [
+        "names\nAlice\nBob\nCharlie",
+        [["names"], ["Alice"], ["Bob"], ["Charlie"]],
+        "3 rows, 1 columns",
+      ],
+      [
+        'name,note\nAlice,"first\nsecond"\nBob,done',
+        [
+          ["name", "note"],
+          ["Alice", "first\nsecond"],
+          ["Bob", "done"],
+        ],
+        "2 rows, 2 columns",
+      ],
+      [
+        'name,note\r\nAlice,"first\r\nsecond"\r\nBob,done',
+        [
+          ["name", "note"],
+          ["Alice", "first\r\nsecond"],
+          ["Bob", "done"],
+        ],
+        "2 rows, 2 columns",
+      ],
+      [
+        "a,b\n\n1,\n  \n,2\n",
+        [
+          ["a", "b"],
+          ["1", ""],
+          ["", "2"],
+        ],
+        "2 rows, 2 columns",
+      ],
+      ["header", [["header"]], "0 rows, 1 columns"],
+    ] as const;
+    for (const [content, cells, dimensions] of cases) {
+      await act(async () => {
+        rerender(<CSVPreview content={content} />);
+      });
+      expect(
+        Array.from(container.querySelectorAll("tr"), (row) =>
+          Array.from(row.querySelectorAll("th,td"), (cell) => cell.textContent),
+        ),
+      ).toEqual(cells);
+      expect(screen.getByText(dimensions)).toBeInTheDocument();
+    }
   });
 
-  describe("empty state", () => {
-    it("shows empty message for empty content", () => {
-      render(<CSVPreview content="" />);
-
+  it("removes the table when the input becomes empty", async () => {
+    const { container, rerender } = render(<CSVPreview content="name\nAlice" />);
+    for (const content of ["", " \t\r\n\n"]) {
+      await act(async () => {
+        rerender(<CSVPreview content={content} />);
+      });
+      expect(container.querySelector("table")).toBeNull();
       expect(screen.getByText("Empty or invalid CSV")).toBeInTheDocument();
-    });
-  });
-
-  describe("quoted fields", () => {
-    it("handles quoted fields with commas", () => {
-      const csv = 'name,address\nJohn,"123 Main St, Apt 4"';
-      render(<CSVPreview content={csv} />);
-
-      expect(screen.getByText("John")).toBeInTheDocument();
-      expect(screen.getByText("123 Main St, Apt 4")).toBeInTheDocument();
-    });
-
-    it("handles escaped quotes in fields", () => {
-      const csv = 'name,quote\nAlice,"She said ""hello"""';
-      render(<CSVPreview content={csv} />);
-
-      expect(screen.getByText("Alice")).toBeInTheDocument();
-      expect(screen.getByText('She said "hello"')).toBeInTheDocument();
-    });
-  });
-
-  describe("single column", () => {
-    it("renders single column CSV", () => {
-      const csv = "names\nAlice\nBob\nCharlie";
-      render(<CSVPreview content={csv} />);
-
-      expect(screen.getByText("names")).toBeInTheDocument();
-      expect(screen.getByText("Alice")).toBeInTheDocument();
-      expect(screen.getByText("Bob")).toBeInTheDocument();
-      expect(screen.getByText("Charlie")).toBeInTheDocument();
-      expect(screen.getByText("3 rows, 1 columns")).toBeInTheDocument();
-    });
+    }
   });
 });
 
@@ -302,61 +214,33 @@ describe("CSVPreview", () => {
 // ============================================
 
 describe("ImagePreview", () => {
-  // Base64 encoded 1x1 red pixel PNG
-  const sampleBase64 =
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
-
-  describe("rendering", () => {
-    it("renders image element", () => {
-      render(<ImagePreview content={sampleBase64} extension="png" fileName="test.png" />);
-
-      const img = screen.getByRole("img");
-      expect(img).toBeInTheDocument();
-    });
-
-    it("sets correct alt text", () => {
-      render(<ImagePreview content={sampleBase64} extension="png" fileName="test.png" />);
-
-      const img = screen.getByRole("img");
-      expect(img).toHaveAttribute("alt", "test.png");
-    });
-
-    it("sets correct data URL for PNG", () => {
-      render(<ImagePreview content={sampleBase64} extension="png" fileName="test.png" />);
-
-      const img = screen.getByRole("img");
-      expect(img).toHaveAttribute("src", `data:image/png;base64,${sampleBase64}`);
-    });
-
-    it("sets correct data URL for JPEG", () => {
-      render(<ImagePreview content={sampleBase64} extension="jpg" fileName="test.jpg" />);
-
-      const img = screen.getByRole("img");
-      expect(img).toHaveAttribute("src", `data:image/jpeg;base64,${sampleBase64}`);
-    });
-
-    it("sets correct data URL for GIF", () => {
-      render(<ImagePreview content={sampleBase64} extension="gif" fileName="test.gif" />);
-
-      const img = screen.getByRole("img");
-      expect(img).toHaveAttribute("src", `data:image/gif;base64,${sampleBase64}`);
-    });
-
-    it("sets correct data URL for WebP", () => {
-      render(<ImagePreview content={sampleBase64} extension="webp" fileName="test.webp" />);
-
-      const img = screen.getByRole("img");
-      expect(img).toHaveAttribute("src", `data:image/webp;base64,${sampleBase64}`);
-    });
-  });
-
-  describe("case insensitivity", () => {
-    it("handles uppercase extension", () => {
-      render(<ImagePreview content={sampleBase64} extension="PNG" fileName="test.PNG" />);
-
-      const img = screen.getByRole("img");
-      expect(img).toHaveAttribute("src", `data:image/png;base64,${sampleBase64}`);
-    });
+  it("preserves the bytes and accessible filename while selecting the image MIME type", async () => {
+    const content =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
+    const { rerender } = render(
+      <ImagePreview content={content} extension="png" fileName="first.png" />,
+    );
+    for (const [extension, mime] of [
+      ["png", "image/png"],
+      ["jpg", "image/jpeg"],
+      ["jpeg", "image/jpeg"],
+      ["gif", "image/gif"],
+      ["webp", "image/webp"],
+      ["bmp", "image/bmp"],
+      ["ico", "image/x-icon"],
+      ["unknown", "image/png"],
+    ]) {
+      for (const variant of [extension, extension.toUpperCase()]) {
+        const fileName = `diagram.${variant}`;
+        await act(async () => {
+          rerender(<ImagePreview content={content} extension={variant} fileName={fileName} />);
+        });
+        expect(screen.getByRole("img", { name: fileName })).toHaveAttribute(
+          "src",
+          `data:${mime};base64,${content}`,
+        );
+      }
+    }
   });
 });
 
@@ -365,398 +249,241 @@ describe("ImagePreview", () => {
 // ============================================
 
 describe("parseFrontmatter", () => {
-  it("returns no entries for content without frontmatter", () => {
-    const content = "# Hello\n\nSome content";
-    const result = parseFrontmatter(content);
-    expect(result.entries).toEqual([]);
-    expect(result.body).toBe(content);
+  it("preserves the complete input unless both delimiter lines are valid", () => {
+    for (const content of [
+      "# Hello\n\nSome content",
+      "\n---\ntitle: Not frontmatter\n---\nBody",
+      "---\ntitle: Unclosed\n\n# Content",
+      "---not-frontmatter\ntitle: Keep\n---\nBody",
+      "----\ntitle: Keep\n---\nBody",
+      "---\ntitle: Keep\n---suffix\nBody",
+      "---\ntitle: Keep\n----\nBody",
+      "---",
+      "",
+    ]) {
+      expect({ content, result: parseFrontmatter(content) }).toEqual({
+        content,
+        result: { entries: [], body: content },
+      });
+    }
   });
 
-  it("parses simple key-value pairs", () => {
-    const content = "---\ntitle: My Page\ndate: 2025-01-15\n---\n\n# Hello";
-    const result = parseFrontmatter(content);
-    expect(result.entries).toEqual([
-      { key: "title", value: "My Page" },
-      { key: "date", value: "2025-01-15" },
-    ]);
-    expect(result.body).toBe("# Hello");
+  it("returns every metadata value and the exact remaining body", () => {
+    const metadata = [
+      "title: My Page",
+      "date: 2025-01-15",
+      "tags: [react, typescript]",
+      "draft: false",
+      "published: true",
+      "url: https://example.com/a:b",
+      "empty:",
+      "description: First line",
+      "  continued here",
+      "\tlast line",
+      "full-title: Hello",
+      "my_key: World",
+    ];
+    for (const newline of ["\n", "\r\n"]) {
+      const content = ["---", ...metadata, "---", "", "# Body", "", "Trailing  "].join(newline);
+      expect(parseFrontmatter(content)).toEqual({
+        entries: [
+          { key: "title", value: "My Page" },
+          { key: "date", value: "2025-01-15" },
+          { key: "tags", value: "[react, typescript]" },
+          { key: "draft", value: "false" },
+          { key: "published", value: "true" },
+          { key: "url", value: "https://example.com/a:b" },
+          { key: "empty", value: "" },
+          { key: "description", value: "First line\ncontinued here\nlast line" },
+          { key: "full-title", value: "Hello" },
+          { key: "my_key", value: "World" },
+        ],
+        body: ["# Body", "", "Trailing  "].join(newline),
+      });
+    }
   });
 
-  it("handles array values in bracket notation", () => {
-    const content = "---\ntags: [react, typescript]\n---\n\nBody";
-    const result = parseFrontmatter(content);
-    expect(result.entries).toEqual([{ key: "tags", value: "[react, typescript]" }]);
-    expect(result.body).toBe("Body");
-  });
-
-  it("handles empty frontmatter block", () => {
-    const content = "---\n---\n\n# Content";
-    const result = parseFrontmatter(content);
-    expect(result.entries).toEqual([]);
-    expect(result.body).toBe("# Content");
-  });
-
-  it("handles boolean values", () => {
-    const content = "---\ndraft: false\npublished: true\n---\nBody";
-    const result = parseFrontmatter(content);
-    expect(result.entries).toEqual([
-      { key: "draft", value: "false" },
-      { key: "published", value: "true" },
-    ]);
-  });
-
-  it("returns original content when no closing delimiter found", () => {
-    const content = "---\ntitle: Broken\n\n# Content";
-    const result = parseFrontmatter(content);
-    expect(result.entries).toEqual([]);
-    expect(result.body).toBe(content);
-  });
-
-  it("does not parse frontmatter that doesn't start at beginning", () => {
-    const content = "\n---\ntitle: Not frontmatter\n---\nBody";
-    const result = parseFrontmatter(content);
-    expect(result.entries).toEqual([]);
-    expect(result.body).toBe(content);
-  });
-
-  it("handles values with colons", () => {
-    const content = "---\nurl: https://example.com\n---\nBody";
-    const result = parseFrontmatter(content);
-    expect(result.entries).toEqual([{ key: "url", value: "https://example.com" }]);
-  });
-
-  it("handles empty values", () => {
-    const content = "---\ntitle:\n---\nBody";
-    const result = parseFrontmatter(content);
-    expect(result.entries).toEqual([{ key: "title", value: "" }]);
-  });
-
-  it("handles multiline values with indentation", () => {
-    const content = "---\ndescription: First line\n  continued here\ntitle: Test\n---\nBody";
-    const result = parseFrontmatter(content);
-    expect(result.entries).toEqual([
-      { key: "description", value: "First line\ncontinued here" },
-      { key: "title", value: "Test" },
-    ]);
-  });
-
-  it("handles keys with hyphens and underscores", () => {
-    const content = "---\nfull-title: Hello\nmy_key: World\n---\nBody";
-    const result = parseFrontmatter(content);
-    expect(result.entries).toEqual([
-      { key: "full-title", value: "Hello" },
-      { key: "my_key", value: "World" },
-    ]);
+  it("handles empty metadata and a closing delimiter at end of input", () => {
+    for (const [content, expected] of [
+      ["---\n---\n\n# Content", { entries: [], body: "# Content" }],
+      ["---\r\n---\r\nBody", { entries: [], body: "Body" }],
+      ["---\n---", { entries: [], body: "" }],
+      ["---\ntitle: End\n---", { entries: [{ key: "title", value: "End" }], body: "" }],
+    ] as const) {
+      expect(parseFrontmatter(content)).toEqual(expected);
+    }
   });
 });
-
-// ============================================
-// MarkdownPreview Tests
-// ============================================
 
 describe("MarkdownPreview", () => {
-  beforeEach(() => {
-    capturedStreamdownProps = {};
-  });
+  it("passes only the body to Streamdown and renders complete metadata separately", async () => {
+    const body = "# Hello\n\n[PR](https://github.com/everruns/everruns/pull/44)\n";
+    const { container, rerender } = render(
+      <MarkdownPreview content={`---\ntitle: My Page\nauthor: Jane\nempty:\n---\n\n${body}`} />,
+    );
+    expect(capturedStreamdownProps.children).toBe(body);
+    expect((capturedStreamdownProps.components as Record<string, unknown>).a).toBe(MarkdownLink);
+    expect(
+      Array.from(container.querySelectorAll("tr"), (row) =>
+        Array.from(row.querySelectorAll("td"), (cell) => cell.textContent),
+      ),
+    ).toEqual([
+      ["title", "My Page"],
+      ["author", "Jane"],
+      ["empty", "—"],
+    ]);
 
-  it("renders markdown content without frontmatter", () => {
-    render(<MarkdownPreview content="# Hello World" />);
-    expect(screen.getByTestId("streamdown-mock")).toHaveTextContent("# Hello World");
-  });
-
-  it("passes the icon link renderer to readme markdown links", () => {
-    render(<MarkdownPreview content="[PR](https://github.com/everruns/everruns/pull/44)" />);
-
-    const components = capturedStreamdownProps.components as Record<string, unknown>;
-    expect(components.a).toBe(MarkdownLink);
-  });
-
-  it("strips frontmatter and renders body", () => {
-    const content = "---\ntitle: Test\n---\n\n# Hello";
-    render(<MarkdownPreview content={content} />);
-    expect(screen.getByTestId("streamdown-mock")).toHaveTextContent("# Hello");
-  });
-
-  it("displays frontmatter entries as metadata", () => {
-    const content = "---\ntitle: My Page\nauthor: Jane\n---\n\n# Content";
-    render(<MarkdownPreview content={content} />);
-    expect(screen.getByText("title")).toBeInTheDocument();
-    expect(screen.getByText("My Page")).toBeInTheDocument();
-    expect(screen.getByText("author")).toBeInTheDocument();
-    expect(screen.getByText("Jane")).toBeInTheDocument();
-  });
-
-  it("does not render frontmatter block when none present", () => {
-    const content = "# Just Markdown";
-    const { container } = render(<MarkdownPreview content={content} />);
-    expect(container.querySelector(".file-preview-frontmatter")).not.toBeInTheDocument();
+    for (const content of [
+      body,
+      "---invalid\ntitle: Keep\n---\n# Body",
+      "---\n---\n# Empty metadata",
+    ]) {
+      await act(async () => {
+        rerender(<MarkdownPreview content={content} />);
+      });
+      expect(capturedStreamdownProps.children).toBe(
+        content.startsWith("---\n---") ? "# Empty metadata" : content,
+      );
+      expect(container.querySelector("table")).toBeNull();
+    }
   });
 });
 
-// ============================================
-// SVGPreview Tests (sandboxed iframe path)
-// ============================================
-//
-// These tests verify two things:
-// 1. The trust-gate wiring: a sandboxed iframe is rendered with `sandbox=""`
-//    and a strict `Content-Security-Policy` meta tag inside the srcDoc.
-// 2. The legitimate SVG content survives intact, but XSS payloads
-//    (`<script>`, `on*` handlers, `javascript:` URLs, `<foreignObject>`
-//    HTML) are present in the sandboxed document body — they are NOT
-//    stripped server-side. The iframe sandbox + CSP do the gating, not
-//    text-level sanitization. The tests assert the SVG payload reaches
-//    the iframe so the gate is actually exercised.
-
+// These unit tests verify iframe attributes and payload isolation. JSDOM does
+// not execute iframe documents; browser enforcement needs browser tests.
 describe("SVGPreview", () => {
-  function getIframeSrcDoc(container: HTMLElement): string {
-    const iframe = container.querySelector("iframe");
-    expect(iframe).toBeInTheDocument();
-    return iframe?.getAttribute("srcdoc") ?? "";
-  }
-
-  describe("sandbox + CSP", () => {
-    it("renders an iframe with empty sandbox attribute", () => {
-      const svg = "<svg xmlns='http://www.w3.org/2000/svg'><circle r='10'/></svg>";
-      const { container } = render(<SVGPreview content={svg} encoding="text" />);
-      const iframe = container.querySelector("iframe");
-      expect(iframe).toBeInTheDocument();
-      // empty sandbox = deny all flags (scripts, forms, popups, top-nav, same-origin)
-      expect(iframe?.getAttribute("sandbox")).toBe("");
-    });
-
-    it("includes strict CSP in iframe srcdoc", () => {
-      const svg = "<svg xmlns='http://www.w3.org/2000/svg'/>";
-      const { container } = render(<SVGPreview content={svg} encoding="text" />);
-      const srcDoc = getIframeSrcDoc(container);
-      expect(srcDoc).toContain("Content-Security-Policy");
-      expect(srcDoc).toContain("default-src 'none'");
-      expect(srcDoc).toContain("style-src 'unsafe-inline'");
-      // remote img loads must stay blocked; only data: is allowed for inline raster
-      expect(srcDoc).toMatch(/img-src\s+data:/);
-    });
-
-    it("renders SVG body inside the sandboxed iframe", () => {
-      const svg = "<svg xmlns='http://www.w3.org/2000/svg'><rect width='10' height='10'/></svg>";
-      const { container } = render(<SVGPreview content={svg} encoding="text" />);
-      const srcDoc = getIframeSrcDoc(container);
-      expect(srcDoc).toContain("<rect width='10' height='10'/>");
-    });
+  it("isolates intact SVG payloads behind the exact sandbox and CSP", async () => {
+    const { container, rerender } = render(<SVGPreview content="" encoding="text" />);
+    for (const svg of [
+      "<svg xmlns='http://www.w3.org/2000/svg'><rect width='10' height='10'/></svg>",
+      "<svg xmlns='http://www.w3.org/2000/svg'><script>window.__svg_pwned=true</script></svg>",
+      "<svg xmlns='http://www.w3.org/2000/svg' onload='alert(1)'><circle r='5' onclick='alert(2)'/></svg>",
+      "<svg xmlns='http://www.w3.org/2000/svg'><a xlink:href='javascript:alert(1)'><circle r='5'/></a></svg>",
+      "<svg xmlns='http://www.w3.org/2000/svg'><foreignObject width='100' height='100'><div xmlns='http://www.w3.org/1999/xhtml'><img src=x onerror='alert(1)'/></div></foreignObject></svg>",
+      "<svg xmlns='http://www.w3.org/2000/svg'><!-- the string </body> appears here --><rect width='1' height='1'/></svg>",
+    ]) {
+      await act(async () => {
+        rerender(<SVGPreview content={svg} encoding="text" />);
+      });
+      const iframe = screen.getByTitle("SVG preview");
+      expect(iframe).toHaveAttribute("sandbox", "");
+      expect(iframe).not.toHaveAttribute("src");
+      const srcDoc = iframe.getAttribute("srcdoc")!;
+      expect(srcDoc).toContain(`<body>${svg}</body>`);
+      const document = new DOMParser().parseFromString(srcDoc, "text/html");
+      expect(
+        Array.from(
+          document.querySelectorAll('meta[http-equiv="Content-Security-Policy"]'),
+          (meta) => meta.getAttribute("content"),
+        ),
+      ).toEqual(["default-src 'none'; style-src 'unsafe-inline'; img-src data:"]);
+      expect(
+        container.querySelector("svg, script, foreignObject, img[onerror], a[href^='javascript:']"),
+      ).toBeNull();
+    }
   });
 
-  describe("XSS payloads remain inside sandbox", () => {
-    // We do NOT sanitize the SVG body; we rely on the sandbox + CSP. These
-    // tests assert that the dangerous markup does reach the iframe srcdoc
-    // (proving the sandbox is exercising it) AND that nothing in the host
-    // document was rendered or executed.
-
-    it("does not execute <script> outside the iframe", () => {
-      const svg =
-        "<svg xmlns='http://www.w3.org/2000/svg'><script>window.__svg_pwned=true</script></svg>";
-      const { container } = render(<SVGPreview content={svg} encoding="text" />);
-      // payload is inside the sandboxed srcdoc, not in host DOM
-      expect(container.querySelector("script")).not.toBeInTheDocument();
-      expect((window as unknown as { __svg_pwned?: boolean }).__svg_pwned).toBeUndefined();
-      const srcDoc = getIframeSrcDoc(container);
-      expect(srcDoc).toContain("<script>");
-    });
-
-    it("keeps on* event-handler attributes inside the sandbox", () => {
-      const svg =
-        "<svg xmlns='http://www.w3.org/2000/svg' onload='alert(1)'><circle r='5' onclick='alert(2)'/></svg>";
-      const { container } = render(<SVGPreview content={svg} encoding="text" />);
-      // host DOM has no <svg> elements with handlers
-      expect(container.querySelector("svg")).not.toBeInTheDocument();
-      const srcDoc = getIframeSrcDoc(container);
-      // payload reached the sandbox; CSP + sandbox stop execution
-      expect(srcDoc).toContain("onload='alert(1)'");
-      expect(srcDoc).toContain("onclick='alert(2)'");
-    });
-
-    it("keeps javascript: URLs inside the sandbox", () => {
-      const svg =
-        "<svg xmlns='http://www.w3.org/2000/svg'><a xlink:href='javascript:alert(1)'><circle r='5'/></a></svg>";
-      const { container } = render(<SVGPreview content={svg} encoding="text" />);
-      // host DOM has no anchor with the javascript: URL
-      expect(container.querySelector("a[href^='javascript:']")).not.toBeInTheDocument();
-      const srcDoc = getIframeSrcDoc(container);
-      expect(srcDoc).toContain("javascript:alert(1)");
-    });
-
-    it("keeps <foreignObject> HTML inside the sandbox", () => {
-      const svg =
-        "<svg xmlns='http://www.w3.org/2000/svg'><foreignObject width='100' height='100'><div xmlns='http://www.w3.org/1999/xhtml'><img src=x onerror='alert(1)'/></div></foreignObject></svg>";
-      const { container } = render(<SVGPreview content={svg} encoding="text" />);
-      // no foreignObject HTML escaped into the host DOM
-      expect(container.querySelector("foreignObject")).not.toBeInTheDocument();
-      expect(container.querySelector("img[onerror]")).not.toBeInTheDocument();
-      const srcDoc = getIframeSrcDoc(container);
-      expect(srcDoc).toContain("foreignObject");
-    });
+  it("decodes plain and whitespace-wrapped base64 without changing the SVG", async () => {
+    const svg = "<svg xmlns='http://www.w3.org/2000/svg'><rect width='5' height='5'/></svg>";
+    const base64 = Buffer.from(svg, "utf8").toString("base64");
+    const { rerender } = render(<SVGPreview content={base64} encoding="base64" />);
+    for (const content of [base64, ` \t${base64.replace(/(.{16})/g, "$1\r\n")} `]) {
+      await act(async () => {
+        rerender(<SVGPreview content={content} encoding="base64" />);
+      });
+      expect(screen.getByTitle("SVG preview").getAttribute("srcdoc")).toContain(
+        `<body>${svg}</body>`,
+      );
+    }
   });
 
-  describe("input variants", () => {
-    it("decodes base64-encoded SVG into the iframe", () => {
-      const svg = "<svg xmlns='http://www.w3.org/2000/svg'><rect width='5' height='5'/></svg>";
-      const base64 = Buffer.from(svg, "utf8").toString("base64");
-      const { container } = render(<SVGPreview content={base64} encoding="base64" />);
-      const srcDoc = getIframeSrcDoc(container);
-      expect(srcDoc).toContain("<rect width='5' height='5'/>");
-    });
-
-    it("decodes base64 SVG with embedded whitespace/newlines", () => {
-      // PEM-style line wrapping every 64 chars or pasted-from-clipboard
-      // payloads commonly include whitespace; strict `atob` rejects them.
-      const svg = "<svg xmlns='http://www.w3.org/2000/svg'><rect width='5' height='5'/></svg>";
-      const base64 = Buffer.from(svg, "utf8").toString("base64");
-      const wrapped = base64.replace(/(.{16})/g, "$1\n");
-      const { container } = render(<SVGPreview content={wrapped} encoding="base64" />);
-      const srcDoc = getIframeSrcDoc(container);
-      expect(srcDoc).toContain("<rect width='5' height='5'/>");
-    });
-
-    it("renders SVGs that happen to contain the substring </body>", () => {
-      // Defensive regression: a comment containing `</body>` must still
-      // render through the sandbox path rather than being blanked out.
-      const svg =
-        "<svg xmlns='http://www.w3.org/2000/svg'><!-- the string </body> appears here --><rect width='1' height='1'/></svg>";
-      const { container } = render(<SVGPreview content={svg} encoding="text" />);
-      const iframe = container.querySelector("iframe");
-      expect(iframe).toBeInTheDocument();
-      const srcDoc = iframe?.getAttribute("srcdoc") ?? "";
-      expect(srcDoc).toContain("<rect width='1' height='1'/>");
-    });
-
-    it("shows empty-state for whitespace-only SVG", () => {
-      const { container } = render(<SVGPreview content="   " encoding="text" />);
-      expect(container.querySelector("iframe")).not.toBeInTheDocument();
+  it("replaces the iframe with an empty state for blank or invalid encoded input", async () => {
+    const { container, rerender } = render(<SVGPreview content="<svg/>" encoding="text" />);
+    for (const [content, encoding] of [
+      ["   ", "text"],
+      ["", "text"],
+      ["!!!not-base64!!!", "base64"],
+      [" \n", "base64"],
+    ] as const) {
+      await act(async () => {
+        rerender(<SVGPreview content={content} encoding={encoding} />);
+      });
+      expect(container.querySelector("iframe")).toBeNull();
       expect(screen.getByText("Empty or invalid SVG")).toBeInTheDocument();
-    });
-
-    it("shows empty-state for unparseable base64", () => {
-      const { container } = render(<SVGPreview content="!!!not-base64!!!" encoding="base64" />);
-      expect(container.querySelector("iframe")).not.toBeInTheDocument();
-      expect(screen.getByText("Empty or invalid SVG")).toBeInTheDocument();
-    });
+    }
   });
 });
-
-// ============================================
-// HtmlPreview Tests (sandboxed, opaque-origin iframe path)
-// ============================================
-//
-// Two modes (see HtmlPreview): server-backed (`src` → JS runs via the endpoint's
-// own `sandbox allow-scripts` response CSP) and static fallback (`srcDoc` →
-// isolated, no JS under the app CSP). Both run in an opaque origin: `sandbox`
-// has `allow-scripts` but never `allow-same-origin`/top-nav/forms/popups.
 
 describe("HtmlPreview", () => {
-  function getIframe(container: HTMLElement): HTMLIFrameElement {
-    const iframe = container.querySelector("iframe");
-    expect(iframe).toBeInTheDocument();
-    return iframe as HTMLIFrameElement;
-  }
-
-  describe("server-backed mode (src)", () => {
-    it("loads the preview endpoint via src with an opaque-origin sandbox", () => {
-      const url = "/api/v1/workspaces/wsp_x/fs/_/preview/index.html";
-      const { container } = render(<HtmlPreview content="<p>ignored</p>" src={url} />);
-      const iframe = getIframe(container);
-      expect(iframe.getAttribute("src")).toBe(url);
-      // srcDoc must not be used in server-backed mode.
-      expect(iframe.getAttribute("srcdoc")).toBeNull();
-      expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
-      expect(iframe.getAttribute("sandbox")).not.toContain("allow-same-origin");
-      expect(iframe.getAttribute("referrerpolicy")).toBe("no-referrer");
-    });
+  it("loads server previews with the exact sandbox and without srcdoc", () => {
+    const src = "/api/v1/workspaces/wsp_x/fs/_/preview/index.html";
+    render(<HtmlPreview content="<p>ignored</p>" src={src} />);
+    const iframe = screen.getByTitle("HTML preview");
+    expect(iframe).toHaveAttribute("src", src);
+    expect(iframe).not.toHaveAttribute("srcdoc");
+    expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
+    expect(iframe).toHaveAttribute("referrerpolicy", "no-referrer");
   });
 
-  it("renders an iframe that allows scripts but not same-origin", () => {
-    const { container } = render(<HtmlPreview content="<p>hi</p>" />);
-    const iframe = getIframe(container);
-    // allow-scripts WITHOUT allow-same-origin keeps the document opaque-origin.
-    expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
-    expect(iframe.getAttribute("sandbox")).not.toContain("allow-same-origin");
-    expect(iframe.getAttribute("referrerpolicy")).toBe("no-referrer");
-  });
-
-  it("does not grant top-navigation, forms, popups, or modals", () => {
-    const { container } = render(<HtmlPreview content="<p>hi</p>" />);
-    const sandbox = getIframe(container).getAttribute("sandbox") ?? "";
-    expect(sandbox).not.toContain("allow-top-navigation");
-    expect(sandbox).not.toContain("allow-forms");
-    expect(sandbox).not.toContain("allow-popups");
-    expect(sandbox).not.toContain("allow-modals");
-  });
-
-  it("passes the HTML (including scripts) through to the srcdoc verbatim", () => {
-    const html =
-      "<html><head><title>T</title></head><body><script>window.x=1</script>hi</body></html>";
-    const { container } = render(<HtmlPreview content={html} />);
-    const srcDoc = getIframe(container).getAttribute("srcdoc") ?? "";
-    // No host-document script element; the payload lives only in the sandbox.
-    expect(container.querySelector("script")).not.toBeInTheDocument();
-    expect(srcDoc).toContain("<script>window.x=1</script>");
-    expect(srcDoc).toContain("hi");
-  });
-
-  it("injects a hardening CSP meta as the first child of <head>", () => {
-    const html = "<html><head><title>T</title></head><body>hi</body></html>";
-    const { container } = render(<HtmlPreview content={html} />);
-    const srcDoc = getIframe(container).getAttribute("srcdoc") ?? "";
-    expect(srcDoc).toContain('http-equiv="Content-Security-Policy"');
-    expect(srcDoc).toContain("object-src 'none'");
-    expect(srcDoc).toContain("base-uri 'none'");
-    expect(srcDoc).toContain("form-action 'none'");
-    // The meta must precede the user's head content so it governs it.
-    expect(srcDoc.indexOf("Content-Security-Policy")).toBeLessThan(srcDoc.indexOf("<title>"));
-    // The CSP intentionally does NOT constrain scripts (preview must run JS).
-    expect(srcDoc).not.toContain("script-src");
-  });
-
-  it("synthesizes a head when the HTML has none", () => {
-    const { container } = render(<HtmlPreview content="<html><body>hi</body></html>" />);
-    const srcDoc = getIframe(container).getAttribute("srcdoc") ?? "";
-    expect(srcDoc).toContain("<head>");
-    expect(srcDoc).toContain("Content-Security-Policy");
-    expect(srcDoc.indexOf("Content-Security-Policy")).toBeLessThan(srcDoc.indexOf("<body>"));
-  });
-
-  it("prepends the CSP for bare HTML fragments", () => {
-    const { container } = render(<HtmlPreview content="<p>just a fragment</p>" />);
-    const srcDoc = getIframe(container).getAttribute("srcdoc") ?? "";
-    expect(srcDoc.startsWith("<meta")).toBe(true);
-    expect(srcDoc).toContain("<p>just a fragment</p>");
+  it("places the exact hardening policy before user content and preserves every input byte", async () => {
+    const meta =
+      "<meta http-equiv=\"Content-Security-Policy\" content=\"object-src 'none'; base-uri 'none'; form-action 'none'\">";
+    const cases = [
+      [
+        "<html><head><title>T</title></head><body><script>window.x=1</script>hi</body></html>",
+        `<html><head>${meta}<title>T</title></head><body><script>window.x=1</script>hi</body></html>`,
+      ],
+      [
+        "<HTML lang='en'><HEAD data-theme='a'><title>T</title></HEAD><body>hi</body></HTML>",
+        `<HTML lang='en'><HEAD data-theme='a'>${meta}<title>T</title></HEAD><body>hi</body></HTML>`,
+      ],
+      ["<html><body>hi</body></html>", `<html><head>${meta}</head><body>hi</body></html>`],
+      ["<p>just a fragment</p>", `${meta}<p>just a fragment</p>`],
+      ["<header><h1>Heading</h1></header>", `${meta}<header><h1>Heading</h1></header>`],
+      ["<html-widget>custom</html-widget>", `${meta}<html-widget>custom</html-widget>`],
+    ];
+    const { container, rerender } = render(<HtmlPreview content="" />);
+    for (const [content, expected] of cases) {
+      await act(async () => {
+        rerender(<HtmlPreview content={content} />);
+      });
+      const iframe = screen.getByTitle("HTML preview");
+      expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
+      expect(iframe).toHaveAttribute("referrerpolicy", "no-referrer");
+      expect(iframe).not.toHaveAttribute("src");
+      expect(iframe.getAttribute("srcdoc")).toBe(expected);
+      const document = new DOMParser().parseFromString(expected, "text/html");
+      expect(document.head.firstElementChild?.getAttribute("content")).toBe(
+        "object-src 'none'; base-uri 'none'; form-action 'none'",
+      );
+      expect(container.querySelector("script, header, h1")).toBeNull();
+    }
   });
 });
 
-// ============================================
-// PdfPreview Tests (data: URL iframe path)
-// ============================================
-//
-// Chromium disables its PDF viewer inside any sandboxed iframe, so the security
-// boundary is the data: URL's opaque origin plus the out-of-process viewer.
-// These tests assert the data: URL wiring and the forced application/pdf type.
-
 describe("PdfPreview", () => {
-  const sampleBase64 = "JVBERi0xLjQKJUVPRg==";
-
-  it("renders an iframe pointing at a data:application/pdf URL", () => {
-    const { container } = render(<PdfPreview content={sampleBase64} />);
-    const iframe = container.querySelector("iframe");
-    expect(iframe).toBeInTheDocument();
-    expect(iframe?.getAttribute("src")).toBe(`data:application/pdf;base64,${sampleBase64}`);
+  it("forces PDF MIME and preserves normalized bytes without sandboxing the browser viewer", async () => {
+    const base64 = "JVBERi0xLjQKJUVPRg==";
+    const { rerender } = render(<PdfPreview content={base64} />);
+    for (const content of [base64, ` \t${base64.replace(/(.{4})/g, "$1\r\n")} `]) {
+      await act(async () => {
+        rerender(<PdfPreview content={content} />);
+      });
+      const iframe = screen.getByTitle("PDF preview");
+      expect(iframe).toHaveAttribute("src", `data:application/pdf;base64,${base64}`);
+      expect(iframe).not.toHaveAttribute("sandbox");
+      expect(iframe).not.toHaveAttribute("srcdoc");
+    }
   });
 
-  it("strips whitespace/newlines from base64 before building the data URL", () => {
-    const wrapped = sampleBase64.replace(/(.{4})/g, "$1\n");
-    const { container } = render(<PdfPreview content={wrapped} />);
-    const iframe = container.querySelector("iframe");
-    expect(iframe?.getAttribute("src")).toBe(`data:application/pdf;base64,${sampleBase64}`);
-  });
-
-  it("shows an empty-state for blank content", () => {
-    const { container } = render(<PdfPreview content="   " />);
-    expect(container.querySelector("iframe")).not.toBeInTheDocument();
-    expect(screen.getByText("Empty or invalid PDF")).toBeInTheDocument();
+  it("removes the viewer when its content becomes blank", async () => {
+    const { container, rerender } = render(<PdfPreview content="JVBERi0xLjQKJUVPRg==" />);
+    for (const content of ["", " \t\n"]) {
+      await act(async () => {
+        rerender(<PdfPreview content={content} />);
+      });
+      expect(container.querySelector("iframe")).toBeNull();
+      expect(screen.getByText("Empty or invalid PDF")).toBeInTheDocument();
+    }
   });
 });
