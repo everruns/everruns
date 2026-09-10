@@ -796,10 +796,11 @@ fn install_cli_tree(
     let Some(handle) = extensions.get::<crate::cli::CliCommandSourceHandle>() else {
         return builder;
     };
-    builder.builtin(
-        crate::cli::ROOT,
-        Box::new(crate::cli::EverrunsBuiltin::new(handle.0.clone())),
-    )
+    // Registered under the source's own root token, not a fixed name: the
+    // commands belong to the host, so the word that introduces them does too.
+    let builtin = crate::cli::EverrunsBuiltin::new(handle.0.clone());
+    let root = builtin.root().to_string();
+    builder.builtin(root, Box::new(builtin))
 }
 
 // Observational-only. Emits `tracing` events for each bashkit builtin
