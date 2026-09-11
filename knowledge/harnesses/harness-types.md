@@ -100,17 +100,32 @@ The recommended default harness. Bundles the core capabilities needed for genera
 
 ### Platform Chat
 
-Conversational harness for the global chat interface. Inherits Generic capabilities, adds `platform`, and is tagged separately to support the per-user singleton session pattern.
+Conversational harness for the global chat interface. Parents on Base and declares an explicit,
+focused capability set, so its effective surface is exactly what it lists. It is tagged separately to
+support the per-user singleton session pattern.
 
 | Property | Value |
 |----------|-------|
 | Name | `platform-chat` |
 | Display Name | Platform Chat |
-| Parent | `generic` |
+| Parent | `base` |
 | System Prompt | See `crates/server/src/harnesses/platform_chat.rs` for full prompt |
 | Tags | `chat`, `built-in` |
 
-**Effective capabilities:** Inherits Generic harness capabilities and adds local `platform`.
+**Effective capabilities:** Base contributes none, so the effective set is the local list in
+`crates/server/src/harnesses/platform_chat.rs` — pinned by
+`platform_chat_has_a_focused_tool_surface`. It grants platform catalog access, the UI-facing
+affordances the chat surface renders (tool narration, timestamps, todo lists), conversational
+robustness (loop detection, tool-call repair, detailed error disclosure, proactive compaction), and
+prompt caching for long operator threads.
+
+**Deliberately excluded:** no file system, shell, or web fetch — the chat stays grounded in platform
+state rather than becoming a coding agent. That exclusion transitively rules out
+`tool_output_distillation`, `tool_output_persistence`, and `memory`, which all depend on
+`session_file_system`; `memory` additionally needs `mounts[]` naming per-org `mem_` IDs that a
+built-in definition cannot know. `session_schedule` is excluded because recurring work belongs on an
+Agent Trigger, never on the chat session itself. Guarded by
+`platform_chat_omits_vfs_dependent_capabilities`.
 
 **Authorization rule:** Do not remove `platform` from Platform Chat to paper over authorization bugs. Platform tools must reload the session owner and enforce that caller's permissions via the normal command/policy path.
 

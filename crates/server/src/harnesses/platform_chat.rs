@@ -19,6 +19,24 @@ pub fn definition() -> BuiltInHarnessDefinition {
     .with_capabilities([
         BuiltInCapabilityDefinition::new("platform"),
         BuiltInCapabilityDefinition::new("btw"),
+        // This is the chat surface the UI renders, so model-authored tool
+        // narration and message timestamps are user-visible quality, not
+        // bookkeeping. `current_time` grounds relative-time questions ("which
+        // sessions ran today") that the platform catalog alone cannot answer.
+        BuiltInCapabilityDefinition::new("human_intent"),
+        BuiltInCapabilityDefinition::new("current_time"),
+        BuiltInCapabilityDefinition::new("message_metadata"),
+        // The preflight below mandates one bounded pass over five authoritative
+        // list views; serial tool calls fight that instruction.
+        BuiltInCapabilityDefinition::with_config(
+            "parallel_tool_calls",
+            serde_json::json!({"mode": "prefer"}),
+        ),
+        // Multi-step platform mutations become visible progress in the thread.
+        BuiltInCapabilityDefinition::new("stateless_todo_list"),
+        // Long-lived operator threads re-send a large system prompt every turn.
+        BuiltInCapabilityDefinition::new("prompt_caching"),
+        BuiltInCapabilityDefinition::new("tool_call_repair"),
         BuiltInCapabilityDefinition::new("loop_detection"),
         BuiltInCapabilityDefinition::with_config(
             "error_disclosure",
@@ -33,6 +51,13 @@ pub fn definition() -> BuiltInHarnessDefinition {
             }),
         ),
     ])
+    // Deliberately excluded: `tool_output_distillation` and `memory` both
+    // depend on `session_file_system`. Distillation only replaces a result once
+    // the full original is persisted to the session VFS, and Memory is driven by
+    // `mounts[]` entries naming concrete per-org `mem_` IDs that a built-in
+    // definition cannot know. Enabling either here would resolve a file-system
+    // tool surface into the chat harness to buy a no-op. Revisit together with a
+    // VFS decision, not separately.
 }
 
 const SYSTEM_PROMPT: &str = "\
@@ -120,11 +145,34 @@ mod tests {
             [
                 "platform",
                 "btw",
+                "human_intent",
+                "current_time",
+                "message_metadata",
+                "parallel_tool_calls",
+                "stateless_todo_list",
+                "prompt_caching",
+                "tool_call_repair",
                 "loop_detection",
                 "error_disclosure",
                 "compaction"
             ]
         );
+    }
+
+    /// Both depend on `session_file_system`, which this harness deliberately
+    /// does not have; see the note on `definition()`.
+    #[test]
+    fn platform_chat_omits_vfs_dependent_capabilities() {
+        let definition = definition();
+        let capabilities = definition
+            .capabilities
+            .iter()
+            .map(|capability| capability.capability_id())
+            .collect::<Vec<_>>();
+        assert!(!capabilities.contains(&"session_file_system"));
+        assert!(!capabilities.contains(&"tool_output_distillation"));
+        assert!(!capabilities.contains(&"tool_output_persistence"));
+        assert!(!capabilities.contains(&"memory"));
     }
 
     #[test]
