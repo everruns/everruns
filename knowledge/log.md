@@ -1,5 +1,20 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-11
+
+* **Test fixtures live with the crate that owns them, and never ship.** The
+  root `testdata/` and `tests/` trees each held a single fixture set. Plugin
+  marketplace fixtures moved to `crates/core/testdata/plugins/` (core owns the
+  plugin file set and compiler; host and server tests reach it through
+  `../core/testdata/plugins`), and the downstream-consumer workspace moved to
+  `crates/everruns/tests/fixtures/external-consumer/`, still its own cargo
+  workspace outside the repository workspace. Both crates now declare `exclude`
+  so neither fixture tree inflates a published package. The vestigial
+  `proposals/` relocation stub was removed; migration
+  `087_eval_external_runs.sql` is immutable, so its comment link to the old
+  path is left dangling on purpose, and the canonical design is
+  [External results publishing](evaluation/external-results-publishing.md).
+
 ## 2026-09-09
 
 * **One command grammar, several hosts.** Operations reached through the

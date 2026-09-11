@@ -176,7 +176,7 @@ jobs:
             shell:
               - 'scripts/run-shell-tests.sh'
               - 'scripts/test-*.sh'
-              - 'tests/fixtures/external-consumer/**'
+              - 'crates/everruns/tests/fixtures/external-consumer/**'
               - 'scripts/check_okf.py'
               # The report generators are covered by scripts/test-*.sh, so a
               # change to one has to run those tests. Without this a rewrite of

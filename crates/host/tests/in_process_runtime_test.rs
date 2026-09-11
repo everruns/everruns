@@ -1231,7 +1231,7 @@ async fn injected_resolver_reaches_tool_context_during_a_turn() {
 /// Fixture path for the microsoft-docs plugin used by plugin loading tests.
 const MICROSOFT_DOCS_PLUGIN_DIR: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../testdata/plugins/microsoft-docs"
+    "/../core/testdata/plugins/microsoft-docs"
 );
 
 /// Build a minimal runtime with the microsoft-docs plugin loaded and a single

@@ -1,7 +1,7 @@
 // Load a plugin from a local directory and inspect the assembled context.
 //
 // This example demonstrates `InProcessRuntimeBuilder::with_plugin_dir`:
-//   - compiles the testdata/plugins/microsoft-docs fixture
+//   - compiles the everruns-core testdata/plugins/microsoft-docs fixture
 //   - builds a runtime with a single session whose agent enables the plugin
 //   - calls `load_context` to inspect the result without executing a real turn
 //
@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // a checked-out plugin directory on disk.
     let plugin_dir = Path::new(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../testdata/plugins/microsoft-docs"
+        "/../core/testdata/plugins/microsoft-docs"
     ));
 
     // Load and compile the plugin. Compilation errors surface here.

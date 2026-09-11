@@ -11,7 +11,7 @@ publish = false
 # `everruns-provider`.
 [dependencies]
 async-trait = "0.1"
-everruns-provider = { path = "../../../../crates/provider" }
+everruns-provider = { path = "../../../../../../crates/provider" }
 futures = "0.3"
 
 [dev-dependencies]
