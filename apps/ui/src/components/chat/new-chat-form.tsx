@@ -62,7 +62,11 @@ export function NewChatForm({
 
     try {
       const session = await createSession.mutateAsync({
-        request: { ...binding, tags: [CHAT_THREAD_TAG] } as CreateSessionRequest,
+        request: {
+          ...binding,
+          source: "chat",
+          tags: [CHAT_THREAD_TAG],
+        } as CreateSessionRequest,
       });
       router.push(`/chats/${session.id}`);
     } catch (e) {

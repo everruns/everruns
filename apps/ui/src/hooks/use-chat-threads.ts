@@ -28,6 +28,16 @@ export interface UseChatThreadsOptions {
   /** Widen the list to archived threads too. Off by default: archiving a thread
    *  is the user asking for it to stop showing up. */
   includeArchived?: boolean;
+  /** Ask the server for this user's sessions only. The client-side owner
+   *  filter runs either way; this narrows the page the server returns, so a
+   *  busy org's other sessions cannot push the user's threads out of the
+   *  scanned window. */
+  mine?: boolean;
+  /** Keep the list fresh on a timer. On by default for surfaces that display
+   *  threads; a caller that only needs to read the list once (e.g. deciding
+   *  whether a thread exists) turns it off so it does not add a second poll of
+   *  the same endpoint. */
+  poll?: boolean;
 }
 
 /** This user's chat threads, pinned first and then ordered by recent activity. */
@@ -37,6 +47,8 @@ export function useChatThreads(options: UseChatThreadsOptions = {}): UseChatThre
   const org = currentOrg?.public_id;
   const enabled = !!org && (options.enabled ?? true);
   const includeArchived = options.includeArchived ?? false;
+  const poll = options.poll ?? true;
+  const mine = options.mine ?? false;
 
   const query = useQuery({
     // Still under the `["sessions"]` prefix, so a create/update invalidation of
@@ -44,13 +56,13 @@ export function useChatThreads(options: UseChatThreadsOptions = {}): UseChatThre
     // separate cache entry because it is a different server-side predicate.
     queryKey: queryKeys.sessions.filtered(
       org,
-      includeArchived ? "threads+archived" : "threads",
+      `${mine ? "my-threads" : "threads"}${includeArchived ? "+archived" : ""}`,
       0,
       THREAD_SCAN_LIMIT,
     ),
-    queryFn: () => listSessions({ offset: 0, limit: THREAD_SCAN_LIMIT, includeArchived }),
+    queryFn: () => listSessions({ offset: 0, limit: THREAD_SCAN_LIMIT, includeArchived, mine }),
     enabled,
-    refetchInterval: THREAD_POLL_MS,
+    refetchInterval: poll ? THREAD_POLL_MS : false,
   });
 
   const threads = useMemo(

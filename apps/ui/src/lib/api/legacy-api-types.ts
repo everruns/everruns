@@ -4028,6 +4028,10 @@ export interface ResourceStats {
 }
 
 export interface CreateSessionRequest {
+  /** How the session was started. Clients may declare only `chat` (an
+   *  interactive thread) or `api` (the default); every other source is
+   *  server-owned. */
+  source?: SessionSource;
   /** Harness ID for this session. If omitted, the harness is derived from the agent (when one is supplied), else the org default harness. */
   harness_id?: string;
   /** Harness name, resolved within the org. Mutually exclusive with `harness_id`. */
