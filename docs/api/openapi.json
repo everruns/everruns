@@ -18263,14 +18263,16 @@
               "string",
               "null"
             ],
-            "description": "Single-field credential. Mutually exclusive with `credentials`."
+            "description": "Single-field credential. Mutually exclusive with `credentials`.",
+            "example": "sk-proj-..."
           },
           "base_url": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Base URL for the provider's API, when not the driver default."
+            "description": "Base URL for the provider's API, when not the driver default.",
+            "example": "https://api.openai.com/v1"
           },
           "credentials": {
             "type": [
@@ -20749,6 +20751,7 @@
               "models": {
                 "type": "integer",
                 "description": "Number of models the provider listed for this credential.",
+                "example": 42,
                 "minimum": 0
               },
               "status": {
@@ -20769,7 +20772,8 @@
             "properties": {
               "message": {
                 "type": "string",
-                "description": "User-facing reason. Never carries the provider's response body."
+                "description": "User-facing reason. Never carries the provider's response body.",
+                "example": "The provider rejected this API key."
               },
               "status": {
                 "type": "string",
@@ -20804,7 +20808,8 @@
             "properties": {
               "message": {
                 "type": "string",
-                "description": "User-facing reason. Never carries the provider's response body."
+                "description": "User-facing reason. Never carries the provider's response body.",
+                "example": "Could not reach the provider to verify this API key."
               },
               "status": {
                 "type": "string",

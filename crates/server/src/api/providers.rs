@@ -243,6 +243,7 @@ pub struct CheckCredentialsRequest {
     pub provider_type: DriverId,
     /// Single-field credential. Mutually exclusive with `credentials`.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "sk-proj-...")]
     pub api_key: Option<String>,
     /// Typed multi-field credential, validated against the driver's schema
     /// exactly as on create.
@@ -250,6 +251,7 @@ pub struct CheckCredentialsRequest {
     pub credentials: Option<std::collections::BTreeMap<String, String>>,
     /// Base URL for the provider's API, when not the driver default.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "https://api.openai.com/v1")]
     pub base_url: Option<String>,
 }
 

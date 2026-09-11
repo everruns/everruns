@@ -5318,9 +5318,15 @@ export interface components {
     };
     /** @description Request to check a provider credential without storing it. */
     CheckCredentialsRequest: {
-      /** @description Single-field credential. Mutually exclusive with `credentials`. */
+      /**
+       * @description Single-field credential. Mutually exclusive with `credentials`.
+       * @example sk-proj-...
+       */
       api_key?: string | null;
-      /** @description Base URL for the provider's API, when not the driver default. */
+      /**
+       * @description Base URL for the provider's API, when not the driver default.
+       * @example https://api.openai.com/v1
+       */
       base_url?: string | null;
       /**
        * @description Typed multi-field credential, validated against the driver's schema
@@ -6769,13 +6775,19 @@ export interface components {
     /** @description Outcome of checking a candidate provider credential. */
     CredentialCheckResult:
       | {
-          /** @description Number of models the provider listed for this credential. */
+          /**
+           * @description Number of models the provider listed for this credential.
+           * @example 42
+           */
           models: number;
           /** @enum {string} */
           status: "valid";
         }
       | {
-          /** @description User-facing reason. Never carries the provider's response body. */
+          /**
+           * @description User-facing reason. Never carries the provider's response body.
+           * @example The provider rejected this API key.
+           */
           message: string;
           /** @enum {string} */
           status: "rejected";
@@ -6785,7 +6797,10 @@ export interface components {
           status: "unsupported";
         }
       | {
-          /** @description User-facing reason. Never carries the provider's response body. */
+          /**
+           * @description User-facing reason. Never carries the provider's response body.
+           * @example Could not reach the provider to verify this API key.
+           */
           message: string;
           /** @enum {string} */
           status: "unreachable";

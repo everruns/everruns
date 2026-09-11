@@ -28,11 +28,13 @@ pub enum CredentialCheckResult {
     /// The provider accepted the credential.
     Valid {
         /// Number of models the provider listed for this credential.
+        #[schema(example = 42)]
         models: usize,
     },
     /// The provider rejected the credential (401/403). Hard stop.
     Rejected {
         /// User-facing reason. Never carries the provider's response body.
+        #[schema(example = "The provider rejected this API key.")]
         message: String,
     },
     /// This driver has no credential-checking endpoint (custom base URL,
@@ -41,6 +43,7 @@ pub enum CredentialCheckResult {
     /// The provider could not be reached, so the credential is unproven.
     Unreachable {
         /// User-facing reason. Never carries the provider's response body.
+        #[schema(example = "Could not reach the provider to verify this API key.")]
         message: String,
     },
 }
