@@ -36,6 +36,17 @@ crates are versioned independently of the product, so a product bump does **not*
 changes to crates.io. If a crate's public contract changed and you don't cut its own release, the
 crates.io package silently drifts behind its source.
 
+**Preferred entrypoint — deterministic, run it before pushing:**
+`python3 scripts/plan-crate-release.py` prints the full version matrix (each candidate classified
+breaking vs additive against its crates.io baseline with `cargo-semver-checks`, plus the cone
+cascade computed to a fixpoint); `--write` applies it, runs
+`scripts/sync-publish-pin-versions.py --write`, regenerates every workspace and non-workspace
+lockfile, and re-runs the `check-semver-bumps` and `check-publish-cone --pre-merge` gates so the
+matrix is proven green **locally, before it ever reaches CI**. It classifies candidates on the
+current workspace, so its final gate pass is the backstop for a cascade crate that also carries its
+own breaking change — do not push a release until that pass is green. The manual steps below are the
+fallback when you need to override an individual decision.
+
 1. Diff each published crate's source and manifest since its last release, e.g.
    `git diff "$PREV"..HEAD -- <crate-dir>/src <crate-dir>/Cargo.toml`. Published crates are the
    workspace packages **without** `publish = false`.

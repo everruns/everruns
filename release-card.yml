@@ -1,19 +1,19 @@
-version: 0.24.0
-date: 2026-09-09
+version: 0.25.0
+date: 2026-09-11
 headline:
-  - Faster starts,
-  - broader reach.
+  - Context in place,
+  - chat for everyone.
 summary:
-  - Agents reach ready ~3.5x faster,
-  - MCP gains consent-paused URL elicitation,
-  - and tracing speaks Gen-AI and OpenInference.
+  - AGENTS.md resolves as conversation context,
+  - a pinned Platform Chat for every user,
+  - and a capability deprecation lifecycle.
 highlights:
-  - title: ~3.5x faster agent startup
-    description: Startup-to-ready latency cut by roughly 3.5x.
-    source: "#3486"
-  - title: MCP URL-mode elicitation
-    description: Two-sided URL elicitation with a consent pause in the UI.
-    source: "#3354"
-  - title: Gen-AI & OpenInference tracing
-    description: Observability emits standard Gen-AI agent and OpenInference conventions.
-    source: "#3353"
+  - title: Hierarchical AGENTS.md context
+    description: Instructions resolve AGENTS.md hierarchically, kept below harness safety instructions.
+    source: "#3501"
+  - title: Platform Chat for every user
+    description: A precreated, pinned Platform Chat thread with a widened capability set.
+    source: "#3508"
+  - title: Capability deprecation lifecycle
+    description: Capabilities can be Deprecated or Retired; platform_management is retired.
+    source: "#3513"
