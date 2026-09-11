@@ -84,6 +84,13 @@ const PROMPT_CACHE_KEY_PREFIX: &str = "everruns:";
 /// per request, after the base body is serialized and before it is sent; either
 /// may return an error to abort the request (e.g. failed routing validation).
 pub trait OpenResponsesRequestExtension: Send + Sync {
+    /// Whether a rejected stateful continuation may be retried as a repaired
+    /// stateless transcript. Extensions with provider-owned pending work must
+    /// opt out so the fallback cannot discard or repeat that work.
+    fn allow_stateless_recovery(&self) -> bool {
+        true
+    }
+
     fn decorate(&self, body: &mut Value, config: &LlmCallConfig) -> Result<()>;
 
     /// Add provider-specific **non-auth** request headers (routing, attribution,
@@ -1324,6 +1331,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             Ok(connected) => connected,
             Err(error)
                 if request.previous_response_id.is_some()
+                    && self
+                        .request_extension
+                        .as_ref()
+                        .is_none_or(|extension| extension.allow_stateless_recovery())
                     && is_missing_tool_output_continuation_error(&error) =>
             {
                 // The provider lost or rejected its continuation state. The
