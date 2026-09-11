@@ -234,8 +234,8 @@ The contract an implementation must uphold:
   and `EventHistory` remains a read-only projection rather than a second
   writable message store.
 
-`tests/fixtures/external-consumer/event-log` in the repository is a complete
-out-of-workspace implementation exercised by repository CI.
+`crates/everruns/tests/fixtures/external-consumer/event-log` in the
+repository is a complete out-of-workspace implementation exercised by repository CI.
 
 ## Ordering and bounded delivery
 

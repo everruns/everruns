@@ -1,7 +1,11 @@
 # Plugin test fixtures
 
-Local marketplace fixture for the plugins subsystem (`knowledge/integrations/plugins.md`).
-Not shipped; consumed by server and runtime tests and by manual smoke tests.
+Local marketplace fixture for the plugins subsystem
+(`knowledge/integrations/plugins.md`). Owned by `everruns-core`, whose plugin
+compiler and file set are the lowest consumers; `everruns-host` and
+`everruns-server` tests reach it through `../core/testdata/plugins`. Excluded
+from the published `everruns-core` package (`exclude` in `crates/core/Cargo.toml`)
+so the fixture never inflates the crate.
 
 - `.claude-plugin/marketplace.json` — marketplace manifest with
   relative-path plugin sources, so the directory works as a local

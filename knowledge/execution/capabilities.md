@@ -139,7 +139,8 @@ Contract rules:
 - The contract crate depends on neither `everruns-core` nor `everruns-host`
   and carries no Tokio/HTTP/SQLx/OpenAPI/inventory edge, so third-party
   capability crates can depend on it alone
-  (`tests/fixtures/external-consumer/capability-pack/` proves this;
+  (`crates/everruns/tests/fixtures/external-consumer/capability-pack/`
+  proves this;
   API/DB serialization adapters like the OpenAPI shadow schema in
   `crates/core/src/capability_types.rs` stay thin).
 - Architecture guard: `scripts/lib/check-capability-contract.sh` (pre-push

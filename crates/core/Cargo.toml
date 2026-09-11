@@ -19,6 +19,9 @@ description = "Transport-neutral agent execution contracts for Everruns"
 readme = "README.md"
 keywords = ["agent", "agentic", "llm", "ai", "framework"]
 categories = ["development-tools", "asynchronous"]
+# Plugin marketplace fixtures are test-only and must never inflate the
+# published package.
+exclude = ["testdata/"]
 
 [dependencies]
 # Provider/LLM abstraction foundation (typed IDs, credential schema, user-facing

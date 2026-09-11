@@ -269,17 +269,16 @@ The plugins subsystem must work in the in-process runtime
 
 ## Test fixture
 
-`testdata/plugins/` is a local marketplace fixture used by server and runtime
-tests:
+`crates/core/testdata/plugins/` is a local marketplace fixture used by
+server and runtime tests:
 
-- `testdata/plugins/.claude-plugin/marketplace.json`, valid marketplace
-  manifest with relative-path plugin sources.
-- `testdata/plugins/microsoft-docs/`, an Everruns-authored variant of the
-  public Microsoft Docs plugin (`MicrosoftDocs/mcp`), pointing at the same
+- `.claude-plugin/marketplace.json`, valid marketplace manifest with
+  relative-path plugin sources.
+- `microsoft-docs/`, an Everruns-authored variant of the public Microsoft Docs plugin (`MicrosoftDocs/mcp`), pointing at the same
   public MCP server (`https://learn.microsoft.com/api/mcp`). It exercises
   every v1 mapping: manifest metadata, `skills/`, `commands/`, `agents/`,
   and `.mcp.json`, plus an `interface` block that v1 ignores with a warning.
-- `testdata/plugins/oauth-mail/`, minimal fixture whose `.mcp.json` sets
+- `oauth-mail/`, minimal fixture whose `.mcp.json` sets
   `"auth": "oauth"`. It exercises the OAuth-anchor install path: install
   creates a disabled anchor row, assigns a host-owned `mcp_oauth_*` provider,
   and lists it in the connections API; uninstall removes it. The URL is a

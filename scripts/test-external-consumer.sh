@@ -29,15 +29,18 @@
 #   external-workspace-provider implements the open workspace lifecycle SPI
 #                             using only the published host crate.
 #
-# The fixtures are deliberately outside the workspace so they resolve the
-# published crates the way a downstream application does, and they build under
-# `-D warnings` so a deprecated or noisy public path fails the build.
+# The fixtures live under `crates/everruns/tests/fixtures/external-consumer` and
+# form their own cargo workspace, deliberately outside the repository workspace,
+# so they resolve the published crates the way a downstream application does.
+# They build under `-D warnings` so a deprecated or noisy public path fails the
+# build, and `exclude` in `crates/everruns/Cargo.toml` keeps them out of the
+# published package.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-FIXTURE="$PROJECT_ROOT/tests/fixtures/external-consumer/Cargo.toml"
+FIXTURE="$PROJECT_ROOT/crates/everruns/tests/fixtures/external-consumer/Cargo.toml"
 TARGET_DIR="$(mktemp -d "${TMPDIR:-/tmp}/everruns-external-consumer.XXXXXX")"
 trap 'rm -rf "$TARGET_DIR"' EXIT
 

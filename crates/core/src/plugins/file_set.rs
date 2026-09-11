@@ -409,7 +409,7 @@ mod tests {
     fn fixture_load_preserves_all_files_and_discovers_legacy_manifest() {
         let fixture = Path::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../testdata/plugins/microsoft-docs"
+            "/testdata/plugins/microsoft-docs"
         ));
         let fs = PluginFileSet::from_dir(fixture).unwrap();
         assert_eq!(fs.dir_name, "microsoft-docs");
