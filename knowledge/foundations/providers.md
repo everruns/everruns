@@ -323,6 +323,16 @@ the key, so setup proceeds rather than dead-ending a user behind an unprovable
 check (offline, air-gapped, or provider outage). Response messages are fixed
 strings: the provider's response body is logged server-side, never echoed.
 
+The same probe backs every provider form in Settings, not just org setup, and
+runs on input rather than behind a "test" button (`use-credential-check.ts`):
+verification that needs a click is verification most people skip, so a bad key
+is caught where it was pasted. A typing pause debounces it and a stale response
+is dropped, so the cadence is bounded by pauses in typing, not by keystrokes.
+Settings treats the verdict as **advisory** where setup treats it as a gate: a
+rejection is surfaced but never blocks saving, because a key can be valid for an
+org the probe cannot see, and a provider the user meant to add is worth more
+than an unprovable check.
+
 ### OAuth provider connection
 
 A driver may additionally declare an **interactive OAuth connect flow** so an org admin can connect a provider by authorizing in the browser instead of pasting a key. This is a second way to *populate* the credential document, not a second credential model: the flow always ends by writing a long-lived credential into `credentials_encrypted`, exactly where a hand-typed key lands. Runtime resolution is unchanged, and non-admin users are unaffected, they never authorize; they use models served by the org provider against the one stored credential, as before.
