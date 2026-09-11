@@ -3557,6 +3557,96 @@ mod tests {
         assert!(applied.applied_ids.is_empty());
     }
 
+    /// A deprecated capability has only *announced* its removal, so it must keep
+    /// behaving exactly as before. This is the regression guard for the gating
+    /// switch from `status() == Available` to `status().is_active()`.
+    #[tokio::test]
+    async fn test_apply_capabilities_keeps_deprecated_fully_functional() {
+        struct DeprecatedFixture;
+        impl Capability for DeprecatedFixture {
+            fn id(&self) -> &str {
+                "deprecated_fixture"
+            }
+            fn name(&self) -> &str {
+                "Deprecated Fixture"
+            }
+            fn description(&self) -> &str {
+                "Test-only capability."
+            }
+            fn status(&self) -> CapabilityStatus {
+                CapabilityStatus::Deprecated
+            }
+            fn system_prompt_addition(&self) -> Option<&str> {
+                Some("Still working.")
+            }
+        }
+        let mut registry = CapabilityRegistry::new();
+        registry.register(DeprecatedFixture);
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
+
+        let applied = apply_capabilities(
+            base_runtime_agent,
+            &["deprecated_fixture".to_string()],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+
+        assert!(
+            applied
+                .runtime_agent
+                .system_prompt
+                .contains("Still working.")
+        );
+        assert_eq!(applied.applied_ids, vec!["deprecated_fixture"]);
+    }
+
+    /// A retired capability is inert, but an agent that still references one must
+    /// keep running: the reference resolves to a no-op and every other capability
+    /// in the list still applies.
+    #[tokio::test]
+    async fn test_apply_capabilities_skips_retired_without_failing() {
+        struct RetiredFixture;
+        impl Capability for RetiredFixture {
+            fn id(&self) -> &str {
+                "retired_fixture"
+            }
+            fn name(&self) -> &str {
+                "Retired Fixture"
+            }
+            fn description(&self) -> &str {
+                "Test-only capability."
+            }
+            fn status(&self) -> CapabilityStatus {
+                CapabilityStatus::Retired
+            }
+            fn system_prompt_addition(&self) -> Option<&str> {
+                Some("Should never be applied.")
+            }
+        }
+        let mut registry = fixture_registry();
+        registry.register(RetiredFixture);
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
+
+        let applied = apply_capabilities(
+            base_runtime_agent,
+            &["retired_fixture".to_string(), "current_time".to_string()],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+
+        assert!(
+            !applied
+                .runtime_agent
+                .system_prompt
+                .contains("Should never be applied.")
+        );
+        // The surviving capability in the same list is unaffected.
+        assert_eq!(applied.applied_ids, vec!["current_time"]);
+        assert!(applied.tool_registry.has("get_current_time"));
+    }
+
     #[tokio::test]
     async fn test_apply_capabilities_preserves_order() {
         let registry = fixture_registry();
