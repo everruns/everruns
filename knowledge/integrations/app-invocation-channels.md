@@ -148,7 +148,7 @@ Invocation channels must be reachable through all app-management surfaces:
 
 - HTTP app APIs
 - MCP/bash command catalog (`create_app`, `list_app_channels`, `add_app_channel`, etc.)
-- `platform_management` capability (`read_apps`, `manage_apps`, `manage_app_channels`)
+- `platform` capability (the same commands through `discover`/`query`/`execute`)
 - Apps UI
 
 Agent-owned schedules use the Agent trigger API and Agent detail Triggers UI instead.

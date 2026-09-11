@@ -381,7 +381,7 @@ A2A channels are reachable through the same surfaces as other channels:
   - `DELETE /v1/apps/{id}/channels/{channel_id}`, delete channel
 - MCP/bash command catalog: `add_a2a_app_channel` flat command, plus
   `update_app_channel` / `delete_app_channel`
-- `platform_management` capability (`manage_app_channels`)
+- `platform` capability (the same commands through `discover`/`query`/`execute`)
 - Apps UI (`/apps/{id}` detail page → channels list → A2A entry)
 
 ## Testing

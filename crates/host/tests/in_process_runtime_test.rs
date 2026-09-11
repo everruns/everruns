@@ -228,7 +228,7 @@ async fn default_runtime_uses_runtime_safe_capability_preset() {
         .llm_sim_as_default(LlmSimConfig::fixed("ok"))
         .single_session(|s| {
             s.harness("platform", "You manage the platform.")
-                .with_capability("platform_management")
+                .with_capability("platform")
                 .agent("platform-agent", "Use tools when helpful.")
         })
         .build()

@@ -841,15 +841,15 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-006 | Cost runaway, unbounded LLM calls | High | Max iterations per turn (default 100); configurable per agent | MITIGATED |
 | TM-AGENT-007 | Cost runaway, many tools per iteration | Medium | No per-iteration tool call limit; agent can invoke many tools in a single LLM response | **OPEN** |
 | TM-AGENT-008 | Context window poisoning | Medium | Auto-compaction via `llm_driver.compact()` on `RequestTooLarge`; older messages compressed | MITIGATED |
-| TM-AGENT-009 | Agent self-modification | Medium | Agents with `platform` or legacy `platform_management` can modify agents/sessions via tools; each capability must be explicitly assigned and is org-scoped | **OPEN** |
-| TM-AGENT-010 | Agent spawning agent chains | Medium | Agents with `platform` or legacy `platform_management` can create agents/sessions; each capability must be explicitly assigned; no recursive depth limit | **OPEN** |
+| TM-AGENT-009 | Agent self-modification | Medium | Agents with `platform` can modify agents/sessions via tools; the capability must be explicitly assigned and is org-scoped | **OPEN** |
+| TM-AGENT-010 | Agent spawning agent chains | Medium | Agents with `platform` can create agents/sessions; the capability must be explicitly assigned; no recursive depth limit | **OPEN** |
 | TM-AGENT-011 | Sensitive data in system prompt | Medium | PII must not be placed in system prompts; no encryption at rest for prompts | **OPEN** |
 | TM-AGENT-012 | Tool result size amplification | Medium | 64 KiB hard limit on tool results via `OutputHardLimitHook` (EVE-225); always-on final hook in ActAtom | MITIGATED |
 | TM-AGENT-013 | Exfiltration via web_fetch | Medium | Agent with web_fetch capability can send session data to arbitrary URLs | **ACCEPTED** |
 | TM-AGENT-014 | Confused deputy, tool call with wrong session | Low | Tool context includes session_id; tools scoped to active session only | MITIGATED |
 | TM-AGENT-015 | Dangling tool calls cause LLM confusion | Low | Patched with synthetic "cancelled" results before LLM call; prevents API errors | MITIGATED |
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | When agent asks user for API key in chat, plaintext value stored in events table as message content; session secrets encrypt separately but chat retains plaintext | **OPEN** |
-| TM-AGENT-017 | Agent-initiated entity management | High | `platform` exposes the full scriptable command catalog and legacy `platform_management` exposes a smaller handwritten subset. Both are high-risk and explicitly assigned. Each call uses the session owner's real caller and active permission resolver; only that owner may submit Platform Chat turns or discover/execute its context-aware slash commands, and the distributed adapter reloads the org-scoped session without accepting a worker-supplied user identity. No fine-grained ownership RBAC exists within commands the caller is otherwise allowed to use. | **OPEN** |
+| TM-AGENT-017 | Agent-initiated entity management | High | `platform` exposes the full scriptable command catalog. It is high-risk and explicitly assigned. Each call uses the session owner's real caller and active permission resolver; only that owner may submit Platform Chat turns or discover/execute its context-aware slash commands, and the distributed adapter reloads the org-scoped session without accepting a worker-supplied user identity. No fine-grained ownership RBAC exists within commands the caller is otherwise allowed to use. | **OPEN** |
 | TM-AGENT-018 | Outbound URL filtering on web_fetch | Medium | Per-layer `NetworkAccessList` (harness ∩ agent ∩ session, narrow-only merge) plus optional deployment-wide system allowlist, both enforced at the `EgressService` boundary; web_fetch routes through egress with per-redirect-hop re-validation | MITIGATED |
 | TM-AGENT-019 | Internal network probing via high-risk execution capabilities | High | `daytona` and `e2b` provide full network access by design; `docker_container` uses host networking in dev mode; all rely on Admin-only assignment plus infrastructure egress isolation | **ACCEPTED** |
 | TM-AGENT-020 | Cross-session resource reuse via stale or guessed external IDs | Critical | Provider-owned resource IDs are checked against the active session's leased-resource/session-resource ownership before tool execution; raw sandbox list endpoints are filtered to owned IDs only | MITIGATED |
@@ -924,8 +924,7 @@ When an agent tool (e.g., Daytona) doesn't find an API key, it may instruct the 
 
 **TM-AGENT-017, Agent-Initiated Entity Management (OPEN):**
 Agents with the `platform` capability can invoke every command exposed to the
-scripted platform catalog; the legacy `platform_management` capability exposes
-a smaller handwritten set. Depending on caller permissions, this includes
+scripted platform catalog. Depending on caller permissions, this includes
 creating, updating, and deleting platform entities and interacting with
 sessions.
 

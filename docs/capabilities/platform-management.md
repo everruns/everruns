@@ -1,155 +1,68 @@
 ---
-title: Platform Management
-description: Programmatic management of harnesses, agents, and sessions from within a running session. Agents can read, create, update, and delete platform resources via tools.
+title: Platform Management (removed)
+description: Removed capability. Its management tools are superseded by the catalog-backed Platform capability.
 ---
 
-> This is the legacy handwritten compatibility capability. New built-in
-> Platform Chat sessions use the catalog-backed [Platform capability](/capabilities/platform/),
-> whose `discover`, `query`, and `execute` tools stay aligned with Everruns MCP.
+> **This capability has been removed.** Use the
+> [Platform capability](/capabilities/platform/) instead. Agents and harnesses
+> that still reference `platform_management` keep running, but the capability
+> contributes no tools and no system prompt.
 
 | | |
 |---|---|
 | **ID** | `platform_management` |
 | **Category** | Platform |
-| **Features** | None |
-| **Dependencies** | `session_file_system` |
+| **Status** | Retired |
+| **Tools** | None |
+| **Replacement** | [`platform`](/capabilities/platform/) |
 
-Tools to manage Everruns entities programmatically. Read, create, update, and delete harnesses, agents, and sessions; inspect session context usage; and interact with sessions by sending messages.
+## Why it was removed
 
-## Platform Documentation
+Its tools were hand-written alongside the API rather than derived from it, so
+they covered only harnesses, agents, apps, and sessions, and their schemas drifted
+as the platform grew. The `platform` capability exposes the same surface through
+`discover`, `query`, and `execute` over the server's registered command catalog,
+which is the same inventory behind Everruns MCP, so it cannot drift.
 
-This capability mounts the Everruns platform documentation at `/workspace/docs` as a virtual read-only filesystem. The documentation is embedded at compile time from the repository `docs/` directory (markdown files only) and served from memory, no database writes per session.
+## What to do
 
-Agents can browse and search the docs using standard file tools (`read_file`, `list_directory`, `grep`) and bash commands (`cat`, `ls`, `grep`) via the Bashkit Shell capability.
+Replace the capability on any agent or harness that still lists it:
 
-Key sections:
-- `/workspace/docs/getting-started/`, Introduction, concepts, architecture
-- `/workspace/docs/features/`, SDK, CLI, UI, events, harnesses, capabilities
-- `/workspace/docs/capabilities/`, Per-capability reference
-- `/workspace/docs/integrations/`, External integrations (Slack, Daytona, etc.)
-- `/workspace/docs/advanced/`, Budgets, compaction, embedding, network access
-- `/workspace/docs/sre/`, Environment variables, runbooks
+1. Open the agent or harness. A removed capability is flagged in its capability
+   list.
+2. Remove `platform_management` and add `platform`. Both are high-risk, so an
+   admin performs the change.
+3. Prompts that named the old tools should name the new flow instead: find the
+   command with `discover`, read state with `query`, mutate with `execute`.
 
-## Tools
+## Tool mapping
 
-### `read_capabilities`
+| Removed tool | Replacement |
+|---|---|
+| `read_capabilities` | `list_capabilities` / `get_capability` |
+| `read_harnesses` | `list_harnesses` / `get_harness` |
+| `manage_harnesses` | `create_harness`, `update_harness`, `delete_harness`, `copy_harness` |
+| `read_agents` | `list_agents` / `get_agent` |
+| `manage_agents` | `create_agent`, `update_agent`, `delete_agent` |
+| `read_apps` | `list_apps` / `get_app` / `list_app_channels` |
+| `manage_apps` | `create_app`, `update_app`, `delete_app`, `publish_app`, `unpublish_app` |
+| `manage_app_channels` | `add_*_app_channel`, `update_app_channel`, `delete_app_channel` |
+| `read_sessions` | `list_sessions` / `get_session` |
+| `manage_sessions` | `create_session`, `delete_session` |
+| `session_send_message` | `create_message` |
+| `session_read_messages` | `list_messages` |
+| `session_context_report` | `get_session_context_report` |
+| `session_read_response` | No equivalent. It blocked until the turn finished; poll `list_messages` instead. |
 
-Discover available capabilities (built-in, MCP servers, skills). Returns a single capability when `id` is given, otherwise a filtered list.
+Run `discover` for the exact current schema of any command in that table rather
+than assuming the flags.
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `id` | string | no | Capability ID to get a single capability |
-| `search` | string | no | Case-insensitive filter by name, description, category, or ID |
+## Platform documentation
 
-### `read_harnesses`
+The embedded documentation mount at `/workspace/docs` moved to the
+[Platform capability](/capabilities/platform/) unchanged.
 
-Read [harnesses](/getting-started/concepts/) by ID or list all. Returns full detail (incl. system_prompt) when `id` is given.
+## See also
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `id` | string | no | Harness ID to get a single harness |
-
-### `manage_harnesses`
-
-Harness mutations: create, update, delete, copy.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `operation` | enum | yes | `create`, `update`, `delete`, `copy` |
-| `harness_id` | string | conditional | Required for `update`, `delete`, `copy` |
-| `name` | string | conditional | Required for `create` |
-| `system_prompt` | string | conditional | Required for `create` |
-| `description` | string | no | Optional description |
-| `capabilities` | string[] | no | Capabilities to enable |
-
-### `read_agents`
-
-Read [agents](/getting-started/concepts/) by ID or list all. Returns full detail (incl. system_prompt) when `id` is given.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `id` | string | no | Agent ID to get a single agent |
-
-### `manage_agents`
-
-Agent mutations: create, update, delete.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `operation` | enum | yes | `create`, `update`, `delete` |
-| `agent_id` | string | conditional | Required for `update`, `delete` |
-| `name` | string | conditional | Required for `create` |
-| `system_prompt` | string | conditional | Required for `create` |
-| `description` | string | no | Optional description |
-| `capabilities` | string[] | no | Capabilities to enable |
-
-### `read_sessions`
-
-Read [sessions](/getting-started/concepts/) by ID or list/filter.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `id` | string | no | Session ID to get a single session |
-| `agent_id` | string | no | Optional filter by agent |
-| `limit` | integer | no | Max results for list (default: 20) |
-
-### `manage_sessions`
-
-Session mutations: create, delete.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `operation` | enum | yes | `create`, `delete` |
-| `session_id` | string | conditional | Required for `delete` |
-| `harness_id` | string | no | Harness ID for the session (defaults to Generic) |
-| `agent_id` | string | no | Optional for `create` |
-| `title` | string | no | Optional for `create` |
-
-### `session_send_message`
-
-Send a user message to a session, triggering a turn.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `session_id` | string | yes | Target session ID |
-| `content` | string | yes | Message content |
-
-### `session_read_messages`
-
-Read messages from a session.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `session_id` | string | yes | Target session ID |
-| `limit` | integer | no | Max messages (default: 10) |
-
-### `session_read_response`
-
-Wait for session to finish processing and return the response.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `session_id` | string | yes | Target session ID |
-| `timeout_secs` | integer | no | Timeout (default: 120). Set to 0 to check status without waiting. |
-
-### `session_context_report`
-
-Read the latest estimated context-token breakdown for a session. Returns total estimated input tokens, optional context-window size, cumulative usage, grouped sections, and per-capability contributions where available.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `session_id` | string | yes | Session ID to inspect |
-
-## Notes
-
-- All tool results include `ui_link` fields for navigating to the web interface
-- `read_capabilities` searches across built-in, MCP server, and skill capabilities
-- Session interaction follows the same turn lifecycle as the UI
-
-## See Also
-
-- [Platform](/capabilities/platform/), current catalog-backed capability
-- [Concepts](/getting-started/concepts/), Harness, Agent, Session model
-- [Agent Skills](/capabilities/agent-skills/), skill discovery
-- [API Reference](/api/), full REST API
+- [Platform](/capabilities/platform/), the replacement
 - [Capabilities Overview](/capabilities/)

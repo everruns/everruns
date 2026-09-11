@@ -2,8 +2,10 @@
 
 use async_trait::async_trait;
 use everruns_core::capabilities::{
-    Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
+    Capability, CapabilityLocalization, CapabilityStatus, MountPoint, RiskLevel,
 };
+#[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
+use everruns_core::capability_types::{MountAccess, MountSource};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{tool_context::ToolContext, tool_context::ToolContextService};
 use everruns_provider::tool_types::{DeferrablePolicy, ToolHints};
@@ -16,6 +18,35 @@ pub const QUERY_DESCRIPTION: &str = "Execute a bash script in an environment whe
 pub const EXECUTE_DESCRIPTION: &str = "Execute a bash script in an environment where every Everruns API operation is a built-in command, including operations with side effects. Supports pipes, variables, loops, conditionals, jq, and direct access to the full builtin set. Prefer query for read-only inspection; use execute when you need create/update/delete or other mutating operations.";
 
 const SYSTEM_PROMPT: &str = r#"Use `discover` only to find an Everruns operation or unknown schema. It searches operation metadata, not resource instances: a zero-match result never proves that a plugin, capability, agent, harness, MCP server, connection, model, knowledge index, schedule, or other entity is absent. For a resource question, discover the relevant authoritative list/get operation once if needed, then run it with `query`; do not repeat discovery or request a giant inventory. Before mutations, use one bounded query script to resolve names, status, references, attachments, and user-scoped connection state. Treat installed, active/available, attached, and connected as separate facts and report only fields returned by authoritative reads. Multi-match search results are intentionally compact; pick the operation name and discover that exact name once to get `bash_usage` and `output_fields`. Do not use `all: true` for a task-specific lookup and do not rediscover a single-match result. Invoke commands with exactly the flags in `bash_usage`, and use `output_fields` to select jq paths instead of guessing resource fields. Platform builtins do not implement `--help`; do not probe them with `--help`, shell inventory commands, or saved-output searches. Filesystem redirection is disabled: never write intermediate output to `/tmp` or another file; keep JSON in shell variables and pipe it directly to `jq`. Pass array and object flags as JSON text. For dependent mutations, capture JSON output and use `jq` to feed returned IDs or capability references to later commands in the same `execute` script. `create_mcp_server` returns `capability_ref`, which is accepted in `create_agent --capabilities`; there is no separate MCP attachment operation. Use `query` for read-only inspection and validation. Use `execute` only for user-requested mutations, then validate the resulting state with `query`. Do not guess operation names or flags. Platform commands are already scoped to the current organization."#;
+
+/// Appended to the system prompt when the product documentation is embedded and
+/// mounted. Kept separate so the non-embedded build contributes nothing.
+#[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
+const DOCS_PROMPT: &str = r#"
+<platform-docs>
+Platform documentation is available at /workspace/docs in the session filesystem.
+Use `read_file`, `list_directory`, or `grep` to browse and search it.
+Bash commands like `cat /workspace/docs/...`, `ls /workspace/docs/`, and
+`grep -r "pattern" /workspace/docs/` also work.
+
+Key sections:
+- /workspace/docs/getting-started/ — Introduction, concepts, architecture, Docker setup
+- /workspace/docs/features/ — SDK, CLI, UI, events, harnesses, capabilities, apps, skills
+- /workspace/docs/capabilities/ — Per-capability reference (file-system, bashkit-shell, web-fetch, etc.)
+- /workspace/docs/integrations/ — External integrations (Slack, Daytona, Browserless, etc.)
+- /workspace/docs/advanced/ — Budgets, compaction, embedding, network access, request signing
+- /workspace/docs/sre/ — Environment variables, admin container, runbooks
+
+When the user asks about Everruns features, configuration, or how things work,
+consult these docs before answering.
+</platform-docs>"#;
+
+#[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
+fn system_prompt_with_docs() -> &'static str {
+    use std::sync::OnceLock;
+    static PROMPT: OnceLock<String> = OnceLock::new();
+    PROMPT.get_or_init(|| format!("{SYSTEM_PROMPT}\n{DOCS_PROMPT}"))
+}
 
 pub struct PlatformCapability;
 
@@ -57,7 +88,46 @@ impl Capability for PlatformCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        Some(SYSTEM_PROMPT)
+        #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
+        {
+            Some(system_prompt_with_docs())
+        }
+        #[cfg(not(all(feature = "embedded-platform-docs", everruns_has_workspace_docs)))]
+        {
+            Some(SYSTEM_PROMPT)
+        }
+    }
+
+    /// The embedded product docs are mounted read-only at /docs when they were
+    /// compiled in; `dependencies()` then pulls in the filesystem capability
+    /// that serves them.
+    fn mounts(&self) -> Vec<MountPoint> {
+        #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
+        {
+            vec![MountPoint::new(
+                "/docs",
+                MountAccess::ReadOnly,
+                MountSource::Virtual {
+                    tree: super::platform_docs::docs_tree(),
+                },
+                self.id(),
+            )]
+        }
+        #[cfg(not(all(feature = "embedded-platform-docs", everruns_has_workspace_docs)))]
+        {
+            Vec::new()
+        }
+    }
+
+    fn dependencies(&self) -> Vec<&'static str> {
+        #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
+        {
+            vec!["session_file_system"]
+        }
+        #[cfg(not(all(feature = "embedded-platform-docs", everruns_has_workspace_docs)))]
+        {
+            Vec::new()
+        }
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
