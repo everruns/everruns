@@ -46,6 +46,17 @@ wording provider-agnostically (so any driver surfacing it is covered), captures
 the absolute `resets_at` unix timestamp as an `error_fields` value for clients
 to localize, and `is_transient_error_message` treats it as non-transient so the
 human-readable message surfaces immediately instead of after pointless retries.
+
+Provider account attestation gates are a fourth case, `provider_attestation_required`
+(EVE-952). OpenRouter refuses some models with a `403` until the account completes a
+confirmation such as 18+ age verification; by status alone that is indistinguishable
+from a bad key, so it was shown as `provider_misconfigured` — "contact support",
+addressed to the wrong person, with the page that actually clears it buried inside the
+JSON body. Detection is body-driven like quota (a `missing_attestation_types` list, or
+the provider's gate sentence), so a provider reporting the same gate under another
+status is still recognized. The parsed confirmation URL and gate types travel as
+`error_fields`, which is what lets a client render the URL as a link instead of leaving
+it inside JSON punctuation. Non-transient: no operator retry clears it.
 The user-facing copy reads "You're out of LLM usage limits. Your usage limit
 resets at &lt;time&gt;." An `auto_continue` field, set by the emit site only when
 an auto-continue capability is active, appends a promise that work resumes
@@ -88,8 +99,10 @@ unchanged (consistent with `knowledge/execution/public-endpoints.md` §4):
 
 - Public endpoints sanitize independently via `PublicError`
   (`knowledge/execution/public-endpoints.md`); disclosure modes govern the authenticated
-  session surface, not the public one. `provider_quota_exhausted` maps to the
-  public `service_unavailable`.
+  session surface, not the public one. `provider_quota_exhausted` and
+  `provider_attestation_required` both map to the public `service_unavailable`,
+  so neither the gate types nor the confirmation URL reach an unauthenticated
+  caller.
 - The durable worker's DLQ path (retry exhaustion) currently emits at
   `standard` disclosure because it classifies from persisted task-error
   strings without capability context.
