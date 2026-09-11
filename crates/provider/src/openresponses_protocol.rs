@@ -2941,6 +2941,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -2950,6 +2951,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
 
@@ -2993,6 +2995,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
 
@@ -3051,6 +3054,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -3060,6 +3064,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
 
@@ -3591,6 +3596,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -3600,6 +3606,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
 
@@ -3727,6 +3734,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -3736,6 +3744,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
         let config = LlmCallConfig {
@@ -4181,6 +4190,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::User, "Think"),
             LlmMessage {
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("No summary on this one.".to_string()),
                 tool_calls: None,
@@ -4194,6 +4204,7 @@ mod tests {
             },
             LlmMessage {
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("This one was summarized.".to_string()),
                 tool_calls: None,
@@ -4246,6 +4257,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::User, "Think about this deeply"),
             LlmMessage {
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("I have thought about this.".to_string()),
                 tool_calls: None,
@@ -4295,6 +4307,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::User, "What time is it? Think carefully."),
             LlmMessage {
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("Let me check.".to_string()),
                 tool_calls: Some(vec![ToolCall {
@@ -4318,6 +4331,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
 
@@ -4359,6 +4373,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
 
@@ -4872,6 +4887,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
 
@@ -4895,6 +4911,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::User, "First question"),
             LlmMessage {
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("First answer.".to_string()),
                 tool_calls: None,
@@ -4909,6 +4926,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::User, "Second question"),
             LlmMessage {
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("Second answer.".to_string()),
                 tool_calls: None,
@@ -4957,6 +4975,7 @@ mod tests {
                 phase: Some(ExecutionPhase::Commentary),
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -4966,6 +4985,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
 
