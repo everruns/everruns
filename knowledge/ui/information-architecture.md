@@ -69,6 +69,12 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
 * **Chats is the unconditional landing route.** It is core functionality, requires no feature
   opt-in, is the first thing in the sidebar, and is the default destination for every user with no
   other intent. A fresh organization can open Chats and start a thread without configuration.
+* **Every user starts with a pinned Platform Chat thread.** "Requires no configuration" is
+  not enough if the landing route is an empty list and a counterpart picker: the app creates a
+  thread bound to the built-in `platform-chat` harness on first entry, pins it so it stays at the
+  top, and ends onboarding there. It is an ordinary session, adopted rather than duplicated when
+  one already exists, and never recreated once archived — archiving is the user saying they do
+  not want it.
 * **A thread is bound to exactly one counterpart.** The counterpart may be an Agent or a Harness,
   so users can talk to a configured runtime without creating an otherwise-empty Agent. Switching
   counterparts starts a new thread rather than re-pointing an existing one; the transcript is only

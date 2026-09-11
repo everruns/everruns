@@ -8,7 +8,12 @@
 // Done: shown after the provider form is submitted OR skipped (replaces the old
 //   redirect straight to /chats). The Done subline is conditional — it only
 //   claims a provider is connected when one actually exists; a skip shows a
-//   gentle nudge instead. The user proceeds from Done into a real first action.
+//   gentle nudge instead. The user proceeds from Done into a real first action,
+//   and that action is the Platform Chat thread: onboarding ends in a
+//   conversation that can do the next steps (create an agent, add a provider)
+//   for the user, not on an empty form. The thread is ensured here because the
+//   onboarding surfaces render without the sidebar that ensures it everywhere
+//   else.
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -22,6 +27,7 @@ import {
   ArrowRight,
   Plus,
   LayoutGrid,
+  MessageCircle,
   Users,
   BookOpen,
 } from "lucide-react";
@@ -37,6 +43,7 @@ import { usePageTitle } from "@/hooks";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
+import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
 import { OnboardingShell } from "@/components/onboarding/onboarding-shell";
 import { useOnboardingArc } from "@/components/onboarding/onboarding-arc-context";
 import type { ApiError } from "@/lib/api/client";
@@ -119,6 +126,8 @@ export default function OrgSetupPage() {
   // (e.g. SaaS with a prepended "Verify") shifts indices/labels via context so
   // the stepper stays continuous across the whole journey.
   const arc = useOnboardingArc();
+  // Precreated, pinned Platform Chat thread — the landing place after Done.
+  const { thread: platformChatThread } = usePlatformChatThread({ ensure: true });
 
   const {
     data: org,
@@ -341,23 +350,35 @@ export default function OrgSetupPage() {
               )}
             </p>
 
+            {/* Land in the chat. Falls back to the Chats list while the thread
+                is still being created — it is pinned at the top there. */}
             <Link
-              href="/agents/new"
+              href={platformChatThread ? `/chats/${platformChatThread.id}` : "/chats"}
               className="mt-6 flex items-center gap-3.5 bg-primary px-5 py-4 text-primary-foreground transition-colors hover:bg-primary/90"
             >
               <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center border border-accent/50 bg-accent/[0.15] text-accent">
-                <Plus className="icon-sharp h-[18px] w-[18px]" strokeWidth={2} />
+                <MessageCircle className="icon-sharp h-[18px] w-[18px]" strokeWidth={2} />
               </span>
               <span className="flex-1">
-                <span className="block text-[15px] font-semibold">Create your first agent</span>
+                <span className="block text-[15px] font-semibold">Open Platform Chat</span>
                 <span className="block text-xs text-primary-foreground/60">
-                  Start from a template or a blank harness
+                  Ask it to create your first agent, or just start talking
                 </span>
               </span>
               <ArrowRight className="icon-sharp h-[18px] w-[18px] text-accent" strokeWidth={2} />
             </Link>
 
             <div className="mt-3.5 flex gap-2.5">
+              <Link
+                href="/agents/new"
+                className="flex flex-1 flex-col gap-2 border p-3.5 text-foreground transition-colors hover:bg-muted"
+              >
+                <Plus
+                  className="icon-sharp h-[18px] w-[18px] text-muted-foreground"
+                  strokeWidth={1.8}
+                />
+                <span className="text-[13px] font-medium">Create an agent</span>
+              </Link>
               <Link
                 href="/agents/examples"
                 className="flex flex-1 flex-col gap-2 border p-3.5 text-foreground transition-colors hover:bg-muted"

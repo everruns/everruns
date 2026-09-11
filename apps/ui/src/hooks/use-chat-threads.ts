@@ -28,6 +28,11 @@ export interface UseChatThreadsOptions {
   /** Widen the list to archived threads too. Off by default: archiving a thread
    *  is the user asking for it to stop showing up. */
   includeArchived?: boolean;
+  /** Keep the list fresh on a timer. On by default for surfaces that display
+   *  threads; a caller that only needs to read the list once (e.g. deciding
+   *  whether a thread exists) turns it off so it does not add a second poll of
+   *  the same endpoint. */
+  poll?: boolean;
 }
 
 /** This user's chat threads, pinned first and then ordered by recent activity. */
@@ -37,6 +42,7 @@ export function useChatThreads(options: UseChatThreadsOptions = {}): UseChatThre
   const org = currentOrg?.public_id;
   const enabled = !!org && (options.enabled ?? true);
   const includeArchived = options.includeArchived ?? false;
+  const poll = options.poll ?? true;
 
   const query = useQuery({
     // Still under the `["sessions"]` prefix, so a create/update invalidation of
@@ -50,7 +56,7 @@ export function useChatThreads(options: UseChatThreadsOptions = {}): UseChatThre
     ),
     queryFn: () => listSessions({ offset: 0, limit: THREAD_SCAN_LIMIT, includeArchived }),
     enabled,
-    refetchInterval: THREAD_POLL_MS,
+    refetchInterval: poll ? THREAD_POLL_MS : false,
   });
 
   const threads = useMemo(

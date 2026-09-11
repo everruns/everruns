@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import OrgSetupPage from "@/app/(main)/orgs/[orgId]/setup/page";
@@ -45,6 +45,12 @@ jest.mock("@/hooks/use-providers", () => ({
   }),
 }));
 
+// The Done step links to the precreated Platform Chat thread; its own suite
+// covers how the thread is ensured.
+jest.mock("@/hooks/use-platform-chat-thread", () => ({
+  usePlatformChatThread: () => ({ thread: { id: "ses_platform_chat" }, isLoading: false }),
+}));
+
 jest.mock("@/providers/org-provider", () => ({
   useOrg: () => ({
     currentOrg: { public_id: "org_test123", name: "Test Org", role: "owner" },
@@ -87,5 +93,16 @@ describe("OrgSetupPage", () => {
     // The breadth strip mentions Azure OpenAI as plain text, but it must not
     // be a selectable card during setup.
     expect(screen.queryByRole("button", { name: /Azure OpenAI/ })).not.toBeInTheDocument();
+  });
+
+  it("ends onboarding in the precreated Platform Chat thread", async () => {
+    render(<OrgSetupPage />, { wrapper });
+
+    // Skipping the provider form is the shortest route to the Done step.
+    const skip = await screen.findByRole("button", { name: "Skip for now" });
+    fireEvent.click(skip);
+
+    const open = await screen.findByRole("link", { name: /Open Platform Chat/ });
+    expect(open).toHaveAttribute("href", "/chats/ses_platform_chat");
   });
 });
