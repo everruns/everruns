@@ -248,7 +248,7 @@ service WorkerService {
     rpc SessionSqlDbSchema(SessionSqlDbSchemaRequest) returns (SessionSqlDbSchemaResponse);
 
     // === Platform management operations ===
-    // Used by the platform_management capability tools to manage org-wide entities
+    // Used by the platform capability to manage org-wide entities
     // via gRPC workers (mirrors PlatformStore trait in core)
 
     // Generic domain command transport for inventory-registered CRUD.

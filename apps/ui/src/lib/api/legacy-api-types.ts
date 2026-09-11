@@ -1131,7 +1131,7 @@ export interface UpdateBudgetRequest {
 
 // From legacy capability-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 // NOTE: CapabilityId is defined in common-types for proper ordering
-export type CapabilityStatus = "available" | "coming_soon" | "deprecated";
+export type CapabilityStatus = "available" | "coming_soon" | "deprecated" | "retired";
 
 export interface Capability {
   id: CapabilityId;

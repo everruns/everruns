@@ -296,7 +296,7 @@ fn test_interceptor_rejects_non_bearer_scheme() {
 }
 
 #[tokio::test]
-async fn test_list_commands_includes_platform_management_commands() {
+async fn test_list_commands_includes_platform_catalog_commands() {
     let service = test_worker_service().await;
 
     let response = service

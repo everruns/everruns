@@ -14,8 +14,16 @@ import type {
   UpdateDeclarativeCapabilityRequest,
 } from "./types";
 
-export async function listCapabilities(): Promise<Capability[]> {
-  const response = await api.get<ListResponse<Capability>>("/v1/capabilities");
+/**
+ * Retired capabilities are excluded by default, matching every other catalog
+ * surface. Pass `includeRetired` on screens that render the capabilities an
+ * existing agent or harness already references, so a retired one can be named
+ * and removed instead of showing up as an unknown reference.
+ */
+export async function listCapabilities(includeRetired = false): Promise<Capability[]> {
+  const response = await api.get<ListResponse<Capability>>(
+    includeRetired ? "/v1/capabilities?include_retired=true" : "/v1/capabilities",
+  );
   return response.data.data;
 }
 

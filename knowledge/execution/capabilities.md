@@ -627,6 +627,41 @@ MCP and Skill virtual capabilities currently declare no features.
 
 See `crates/core/src/capabilities/mod.rs` for `compute_features()`, resolves dependencies, collects features, deduplicates.
 
+### Capability Lifecycle
+
+Removing a built-in capability is a two-step lifecycle declared in code on the
+capability itself (`CapabilityStatus`, `crates/core/src/capability_types.rs`),
+never in org data. Nothing about a removal depends on a migration over agent or
+harness rows.
+
+| Status | Runtime | Catalogs | Pickers | Attached to an agent |
+|---|---|---|---|---|
+| `available` | contributes | listed | offered | normal |
+| `coming_soon` | inert | listed | not offered | n/a |
+| `deprecated` | contributes, unchanged | listed, marked deprecated | not offered | warned, still works |
+| `retired` | inert | hidden | not offered | reported as removed |
+
+- **`deprecated`** announces the removal. Behavior is deliberately unchanged, so
+  `CapabilityStatus::is_active()` — not an equality check against `Available` —
+  is what gates every runtime contribution (tools, system prompt, mounts, facts,
+  hooks, MCP servers). Existing agents keep working; the UI badges the
+  attachment and the docs page carries a deprecation callout.
+- **`retired`** is the removal. The implementation is deleted down to an
+  identity-only shell: no tools, prompt, mounts, dependencies, or hooks. The ID
+  stays registered on purpose — an unregistered ID fails
+  `RuntimeAgent` activation (`crates/host/src/runtime.rs`), whereas a retired one
+  resolves to a no-op, so an agent that still references it keeps running. It is
+  hidden from `list_capabilities` unless `include_retired` is set, which is how
+  management UIs still name the stale attachment and offer to remove it.
+
+A capability should sit at `deprecated` for at least one release before it is
+retired, so operators see the warning before the behavior goes away. Retired IDs
+are kept indefinitely; they cost one registry entry and are the only thing
+standing between an old agent row and a failed session.
+
+Unrelated to this lifecycle, `disabled`/`archived` MCP servers and declarative
+capabilities also surface as `retired`: they too are inert but still referenced.
+
 ### Risk Levels (TM-AGENT-005)
 
 Each capability declares a `RiskLevel` via the `Capability` trait. The API enforces that assigning high-risk capabilities to an agent requires `OrgRole::Admin`.
@@ -1247,41 +1282,31 @@ Session. Resource-grounding coverage verifies a bounded plugin/capability/Agent/
 connection preflight. Manual UI coverage remains in the Platform Chat cases
 under `knowledge/test-cases/agents/platform_chat/`.
 
-#### PlatformManagement (compatibility)
+#### PlatformManagement (retired)
 
-- **Status**: Available
+- **Status**: Retired, see [Capability Lifecycle](#capability-lifecycle)
 - **ID**: `platform_management`
-- **Purpose**: Legacy handwritten management tools retained for compatibility
-  with existing custom agents and harnesses. New built-ins use `platform`.
-- **System Prompt**: Describes available management tools, common workflows, and platform docs availability
-- **Mounts**: `/docs`, Everruns platform documentation (virtual, readonly). The stored/normalized mount path is `/docs`; agents/tools access it as `/workspace/docs`. Embedded at compile time via `include_dir!` from the repo `docs/` directory. Only markdown files (`.md`, `.mdx`) are included in the virtual tree.
-- **Lifecycle Parity**: Must enforce the same archive/delete, assignment, and read-only rules as the public API and UI. Agents using these tools may not bypass lifecycle restrictions.
-- **Tools**: Read/write split, read tools (`read_capabilities`, `read_harnesses`, `read_agents`, `read_sessions`, `session_context_report`, `session_read_messages`, `session_read_response`) return single item by ID, filtered lists, or latest session context usage; write tools (`manage_harnesses`, `manage_agents`, `manage_sessions`, `session_send_message`) perform mutations. See `crates/core/src/capabilities/platform_management.rs` for full tool parameter definitions.
+- **Purpose**: Superseded by `platform`. The handwritten tool surface duplicated
+  the command catalog by hand and drifted from it; `platform` derives the same
+  management surface from the authoritative inventory.
+- **Runtime**: Contributes nothing. The ID stays registered so existing agent,
+  harness, and session references resolve instead of failing.
+- **Replacement mapping**: the 14 tools map onto catalog commands reachable from
+  `discover`/`query`/`execute` (`list_harnesses`, `create_agent`,
+  `get_session_context_report`, `create_message`, `list_messages`,
+  `add_app_channel`, and so on). `session_read_response`, which blocked until a
+  turn finished, has no catalog equivalent; poll `list_messages` instead.
+- **Embedded docs mount**: moved to `platform`. The stored/normalized mount path
+  is `/docs`; agents access it as `/workspace/docs`. Embedded at compile time via
+  `include_dir!` from the repo `docs/` directory, markdown only (`.md`, `.mdx`),
+  behind the `embedded-platform-docs` feature and a workspace-docs build cfg.
 
-Lifecycle rules for platform management:
-- `delete` archives.
-- Archived entities can be read but not updated or assigned.
-- Deleted entities should behave as missing except where historical references are intentionally rendered as tombstones.
-- Future: `destroy` (hard delete) will require a dedicated `PlatformStore` method and dangerous permission gate.
+##### Design Decision: Authorization Happens In Tool Execution, Not Harness Removal
 
-##### Design Decision: Context-Aware Tools
-
-All platform management tools require session context to access the
-`PlatformStore`. Each tool implements `requires_context() -> true` and uses
-`execute_with_context()`. The host installs a typed `PlatformStoreExt` in the
-neutral `ToolContextExtensions` bag; core never names the hosted store.
-
-##### Design Decision: UI Links
-
-All tool results include `ui_link` fields pointing to the relevant UI page (e.g., `/harnesses/{id}`, `/agents/{id}`, `/sessions/{id}/chat`). This lets agents direct users to the web interface for visual management.
-
-##### Design Decision: Read/Write Tool Split
-
-Platform management tools are split into read tools (`read_*`) and write tools (`manage_*`). Read tools accept an optional `id` parameter: when provided they return a single detailed item, otherwise they return a filtered list. This separation lets LLMs use read tools freely (no side effects) while write tools are clearly mutation-oriented. Session interaction is split into three single-purpose tools (`session_send_message`, `session_read_messages`, `session_read_response`) eliminating the operation-dispatch pattern for session I/O.
-
-##### Design Decision: Capability Discovery via read_capabilities
-
-The `read_capabilities` tool enables agents (particularly the Platform Chat) to discover available capabilities before creating or updating agents/harnesses. It queries the `PlatformStore.list_capabilities()` method which returns built-in capabilities, MCP server capabilities, and skill capabilities. The search parameter supports case-insensitive filtering across name, description, category, and ID. The Platform Chat harness system prompt instructs the agent to use `read_capabilities` before creating agents.
+`platform` tools must enforce authorization using the session owner's caller
+context plus the active `PermissionResolver`. Do not fix permission bugs by
+removing platform access from Platform Chat; repair the execution boundary
+instead.
 
 ##### Design Decision: PlatformStore Trait
 
@@ -1289,13 +1314,9 @@ The `PlatformStore` trait and its management capabilities live in
 `everruns-platform`. `DirectPlatformStore` (in `everruns-server`) implements it
 using the existing `StorageBackend` and `SessionService`; core carries only the
 type-keyed extension boundary and the narrow neutral subagent delegate contract.
-
-##### Design Decision: Authorization Happens In Tool Execution, Not Harness Removal
-
-Both `platform` and compatibility `platform_management` tools must enforce
-authorization using the session owner's caller context plus the active
-`PermissionResolver`. Do not fix permission bugs by removing platform access
-from Platform Chat; repair the execution boundary instead.
+Its legacy org-scoped CRUD methods outlived `platform_management` because
+`subagents`, `agent_handoff`, and `a2a_agent_delegation` still call parts of
+them; the unused remainder is a follow-up cleanup.
 
 ### Experimental Capabilities
 

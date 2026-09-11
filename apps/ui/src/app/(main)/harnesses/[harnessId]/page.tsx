@@ -73,7 +73,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
   const { data: harness, isLoading: harnessLoading } = useHarness(harnessId);
   usePageTitle(harness ? getDisplayName(harness) : null, "Harness");
   const { data: harnesses = [] } = useHarnesses();
-  const { data: allCapabilities } = useCapabilities();
+  const { data: allCapabilities } = useCapabilities({ includeRetired: true });
   const { data: models } = useModels();
   const { data: stats, isLoading: statsLoading, error: statsError } = useHarnessStats(harnessId);
   const deleteHarness = useDeleteHarness();

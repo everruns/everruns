@@ -879,6 +879,7 @@ async fn read_capabilities(org: &ResolvedOrg, state: &AppState) -> Result<String
         search: None,
         offset: Some(0),
         limit: Some(200),
+        include_retired: false,
     }
     .run(&ctx)
     .await

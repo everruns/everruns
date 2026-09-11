@@ -28,8 +28,10 @@ pub use everruns_core::subagent_delegation::{PlatformCreateSessionRequest, Platf
 
 /// Trait for platform-level management operations.
 ///
-/// Provides the catalog-backed `platform` surface plus legacy org-scoped CRUD
-/// used by `platform_management` compatibility tools.
+/// Provides the catalog-backed `platform` surface plus legacy org-scoped CRUD.
+/// The CRUD half outlived the retired `platform_management` capability because
+/// the delegation capabilities (`subagents`, `agent_handoff`,
+/// `a2a_agent_delegation`) and session tooling still call parts of it.
 #[async_trait]
 pub trait PlatformStore: Send + Sync {
     // =========================================================================

@@ -21556,6 +21556,8 @@ export interface operations {
         offset?: number;
         /** @description Page size (default: 20, max: 100) */
         limit?: number;
+        /** @description Include retired capabilities (default: false) */
+        include_retired?: boolean;
       };
       header?: never;
       path?: never;

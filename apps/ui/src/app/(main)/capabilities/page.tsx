@@ -43,7 +43,9 @@ import {
 import { cn } from "@/lib/utils";
 
 const UNCATEGORIZED = "Uncategorized";
-type StatusTab = "all" | CapabilityStatus;
+// Retired capabilities are not fetched on this page (the API excludes them
+// unless include_retired is set), so they get no tab.
+type StatusTab = "all" | Exclude<CapabilityStatus, "retired">;
 
 const CapabilitiesIcon = registryDomainIcons.capabilities;
 
@@ -55,6 +57,8 @@ function getStatusLabel(status: CapabilityStatus): string {
       return "Coming Soon";
     case "deprecated":
       return "Deprecated";
+    case "retired":
+      return "Removed";
   }
 }
 

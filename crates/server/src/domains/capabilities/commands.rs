@@ -33,6 +33,12 @@ const MAX_LIMIT: u32 = 200;
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListCapabilities {
     pub search: Option<String>,
+    /// Include capabilities that have been retired (removed but still
+    /// referenceable). Off by default so catalogs and discovery surfaces do not
+    /// advertise a capability that no longer does anything; management UIs turn
+    /// it on to explain existing attachments.
+    #[serde(default)]
+    pub include_retired: bool,
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
     /// Zero-based offset into the result set.
     pub offset: Option<u32>,
@@ -48,7 +54,7 @@ impl Command for ListCapabilities {
         CommandMeta {
             name: "list_capabilities",
             category: "capabilities",
-            description: "List available capabilities. Use search for name/description filtering. Supports pagination (limit/offset).",
+            description: "List available capabilities. Use search for name/description filtering. Retired capabilities are excluded unless include_retired is set. Supports pagination (limit/offset).",
             method: "GET",
             path: "/v1/capabilities",
         }
@@ -70,8 +76,10 @@ impl Command for ListCapabilities {
             .map_err(classify_anyhow)?;
 
         capabilities.retain(|capability| {
-            ctx.feature_flags
-                .is_capability_enabled(capability.id.as_str())
+            (self.include_retired || capability.status.is_listed())
+                && ctx
+                    .feature_flags
+                    .is_capability_enabled(capability.id.as_str())
         });
 
         if let Some(ref search) = self.search {

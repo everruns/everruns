@@ -55,7 +55,6 @@ fn hosted_catalog_keeps_dependency_tool_and_narration_invariants() {
     let generic_narration_allowlist = [
         "data_knowledge",
         "platform",
-        "platform_management",
         "model_scout",
         "openrouter_workspace",
     ];
@@ -103,6 +102,27 @@ fn hosted_catalog_keeps_dependency_tool_and_narration_invariants() {
             );
         }
     }
+}
+
+/// A retired capability stays registered so existing agent, harness, and session
+/// references keep resolving, but must contribute nothing.
+#[test]
+fn retired_capabilities_stay_registered_and_inert() {
+    let registry = everruns_platform::capabilities::hosted_capability_registry_for_grade(
+        everruns_core::DeploymentGrade::Prod,
+    );
+    let capability = registry
+        .get("platform_management")
+        .expect("retired capability must stay registered");
+    assert_eq!(
+        capability.status(),
+        everruns_core::capabilities::CapabilityStatus::Retired
+    );
+    assert!(capability.tools().is_empty());
+    assert!(capability.tool_definitions().is_empty());
+    assert!(capability.system_prompt_addition().is_none());
+    assert!(capability.mounts().is_empty());
+    assert!(capability.dependencies().is_empty());
 }
 
 #[test]

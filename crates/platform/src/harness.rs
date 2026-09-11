@@ -512,7 +512,7 @@ mod tests {
                 "web_fetch",
                 serde_json::json!({"enable_file_download": false}),
             ),
-            AgentCapabilityConfig::new("platform_management"),
+            AgentCapabilityConfig::new("platform"),
         ];
         child.initial_files = vec![
             InitialFile {

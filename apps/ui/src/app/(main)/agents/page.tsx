@@ -49,7 +49,7 @@ export default function AgentsPage() {
   const router = useRouter();
   // Fetch the full set (including archived) so the facet rail can show accurate counts.
   const { data: agents, isLoading, error } = useAgents({ includeArchived: true });
-  const { data: allCapabilities } = useCapabilities();
+  const { data: allCapabilities } = useCapabilities({ includeRetired: true });
   const { data: examples, isLoading: examplesLoading, error: examplesError } = useAgentExamples();
   const importAgent = useImportAgent();
   const importExample = useImportAgentExample();

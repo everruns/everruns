@@ -3434,6 +3434,15 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "include_retired",
+            "in": "query",
+            "description": "Include retired capabilities (default: false)",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {

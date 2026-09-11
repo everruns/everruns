@@ -4492,7 +4492,7 @@ mod tests {
             status: "active".into(),
             created_at: None,
             updated_at: None,
-            capability_ids: vec!["platform_management".into()],
+            capability_ids: vec!["platform".into()],
             tags: vec!["chat".into(), "built-in".into()],
             parent_harness_id: Some(uuid_to_proto(parent_id)),
             is_built_in: true,
@@ -4753,14 +4753,13 @@ mod tests {
 
     #[test]
     fn test_capability_refs_to_configs_wraps_ids() {
-        let configs =
-            capability_refs_to_configs(&["session".to_string(), "platform_management".to_string()]);
+        let configs = capability_refs_to_configs(&["session".to_string(), "platform".to_string()]);
 
         assert_eq!(
             configs,
             vec![
                 serde_json::json!({ "ref": "session", "config": {} }),
-                serde_json::json!({ "ref": "platform_management", "config": {} }),
+                serde_json::json!({ "ref": "platform", "config": {} }),
             ]
         );
     }

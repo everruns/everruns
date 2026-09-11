@@ -97,6 +97,8 @@ pub struct ListCapabilitiesQuery {
     pub search: Option<String>,
     pub offset: Option<u32>,
     pub limit: Option<u32>,
+    #[serde(default)]
+    pub include_retired: bool,
 }
 
 /// GET /v1/capabilities - List available capabilities with pagination
@@ -107,6 +109,7 @@ pub struct ListCapabilitiesQuery {
         ("search" = Option<String>, Query, description = "Search by name/description"),
         ("offset" = Option<u32>, Query, description = "Pagination offset (default: 0)"),
         ("limit" = Option<u32>, Query, description = "Page size (default: 20, max: 100)"),
+        ("include_retired" = Option<bool>, Query, description = "Include retired capabilities (default: false)"),
     ),
     responses(
         (status = 200, description = "Paginated list of capabilities", body = PaginatedResponse<WithUrls<CapabilityInfo>>),
@@ -126,6 +129,7 @@ pub async fn list_capabilities(
             search: query.search,
             offset: query.offset,
             limit: query.limit,
+            include_retired: query.include_retired,
         })
         .await
 }

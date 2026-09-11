@@ -383,7 +383,7 @@ impl CapabilityService {
                 definition.status = if row.status == "active" {
                     CapabilityStatus::Available
                 } else {
-                    CapabilityStatus::Deprecated
+                    CapabilityStatus::Retired
                 };
                 return Ok(Some(declarative_capability_info(name, definition)));
             }

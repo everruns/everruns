@@ -301,7 +301,7 @@ export default defineConfig({
                       collapsed: true,
                       items: [
                         { label: "Platform", slug: "capabilities/platform" },
-                        { label: "Platform Management", slug: "capabilities/platform-management" },
+                        { label: "Platform Management (removed)", slug: "capabilities/platform-management" },
                       ],
                     },
                     {
