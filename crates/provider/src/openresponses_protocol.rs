@@ -1680,7 +1680,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             finish_reason: Some(reason),
                                             retry_metadata: retry_metadata_for_done
                                                 .map(|arc| (*arc).clone()),
-                                            response_id: None,
+                                            response_id: response_obj
+                                                .get("id")
+                                                .and_then(Value::as_str)
+                                                .map(str::to_owned),
                                             phase,
                                             cache_diagnostics: None,
                                         })))
@@ -1793,6 +1796,9 @@ struct ToolCallAccumulator {
     name: String,
     /// Accumulated JSON arguments
     arguments: String,
+    /// Only terminal items are executable. Announced siblings can still carry
+    /// partial arguments when another call finishes first.
+    completed: bool,
 }
 
 impl ToolCallAccumulator {
@@ -1832,7 +1838,8 @@ impl ToolCallStream {
     /// Append one streamed argument fragment to its call.
     fn observe_arguments_delta(&mut self, item_id: &str, delta: &str) {
         match self.calls.iter_mut().find(|tc| tc.id == item_id) {
-            Some(entry) => entry.arguments.push_str(delta),
+            Some(entry) if !entry.completed => entry.arguments.push_str(delta),
+            Some(_) => {}
             None => self.calls.push(ToolCallAccumulator {
                 id: item_id.to_string(),
                 arguments: delta.to_string(),
@@ -1888,6 +1895,7 @@ impl ToolCallStream {
             } = item
             {
                 self.observe_item(id, call_id, name, arguments);
+                self.mark_complete(id, call_id);
             }
         }
     }
@@ -1908,6 +1916,15 @@ impl ToolCallStream {
                 field("name"),
                 field("arguments"),
             );
+            self.mark_complete(field("id"), field("call_id"));
+        }
+    }
+
+    fn mark_complete(&mut self, id: &str, call_id: &str) {
+        if let Some(entry) = self.calls.iter_mut().find(|tc| {
+            (!id.is_empty() && tc.id == id) || (!call_id.is_empty() && tc.call_id == call_id)
+        }) {
+            entry.completed = true;
         }
     }
 
@@ -1921,7 +1938,7 @@ impl ToolCallStream {
         let signature: Vec<(String, String, String)> = self
             .calls
             .iter()
-            .filter(|tc| !tc.name.is_empty())
+            .filter(|tc| tc.completed && !tc.name.is_empty())
             .map(ToolCallAccumulator::signature)
             .collect();
         if signature.is_empty() || signature == self.emitted {
@@ -1934,7 +1951,7 @@ impl ToolCallStream {
     fn snapshot(&self) -> Vec<ToolCall> {
         self.calls
             .iter()
-            .filter(|tc| !tc.name.is_empty())
+            .filter(|tc| tc.completed && !tc.name.is_empty())
             .map(|tc| {
                 let arguments: Value =
                     serde_json::from_str(&tc.arguments).unwrap_or_else(|error| {
@@ -2015,6 +2032,7 @@ fn completed_tool_call_event(
         .to_string();
     let mut acc = accumulated.lock().unwrap();
     acc.observe_item(&id, &call_id, &name, &arguments);
+    acc.mark_complete(&id, &call_id);
     Ok(acc
         .take_unemitted()
         .map(LlmStreamEvent::ToolCalls)
