@@ -4,12 +4,12 @@ headline:
   - Context in place,
   - chat for everyone.
 summary:
-  - Agent instructions resolve AGENTS.md hierarchically as conversation context,
-  - every user gets a pinned Platform Chat,
-  - and capabilities gain a deprecation lifecycle.
+  - AGENTS.md resolves as conversation context,
+  - a pinned Platform Chat for every user,
+  - and a capability deprecation lifecycle.
 highlights:
   - title: Hierarchical AGENTS.md context
-    description: Agent instructions resolve AGENTS.md hierarchically, injected below harness safety instructions.
+    description: Instructions resolve AGENTS.md hierarchically, kept below harness safety instructions.
     source: "#3501"
   - title: Platform Chat for every user
     description: A precreated, pinned Platform Chat thread with a widened capability set.
