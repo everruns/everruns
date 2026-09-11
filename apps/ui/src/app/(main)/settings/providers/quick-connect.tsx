@@ -135,7 +135,9 @@ export function QuickConnect({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      {/* The settings pane is far narrower than the page, so the tiles cap at
+          three across: six would truncate every provider name. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {QUICK_CONNECT_DRIVERS.map((driver) => (
           <QuickConnectTile
             key={driver}
