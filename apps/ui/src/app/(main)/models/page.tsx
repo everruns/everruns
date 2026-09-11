@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Notice, NoticeDescription } from "@/components/ui/notice";
 import {
   PageContainer,
   PageBreadcrumb,
@@ -36,11 +37,21 @@ import { useModels, useProviders, useDeleteModel } from "@/hooks/use-providers";
 import { useOrganization, useUpdateOrganization } from "@/hooks/use-organizations";
 import { usePageTitle } from "@/hooks";
 import { updateModel } from "@/lib/api/providers";
+import { ApiError } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
 import { pluralize } from "@/lib/formatting";
 import { cn } from "@/lib/utils";
 import type { ModelWithProvider } from "@/lib/api/types";
 import { isChatModel } from "@/lib/model-capabilities";
+
+// The operator-readable half of a failed action. `ApiError` already carries the
+// server's Problem Details message; anything else falls back to its own text,
+// and a non-Error rejection to a fixed string rather than "[object Object]".
+function errorDetail(error: unknown): string {
+  if (error instanceof ApiError) return error.message;
+  if (error instanceof Error && error.message) return error.message;
+  return "Unexpected error";
+}
 
 // Order models by release date desc (newest first), then by created_at desc.
 // Models without a release_date in their profile fall to the bottom; this works
@@ -64,6 +75,10 @@ export default function ModelsPage() {
   const deleteModel = useDeleteModel();
   const [addModelOpen, setAddModelOpen] = useState(false);
   const [togglingModelId, setTogglingModelId] = useState<string | null>(null);
+  // Every action on this page can fail against the API. Without somewhere to
+  // put the reason, a rejection escapes the async handler unhandled — invisible
+  // on screen, and noise in Sentry (EVE-954).
+  const [actionError, setActionError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const selectedProviderId = searchParams.get("provider");
   const selectedProvider = useMemo(
@@ -121,33 +136,52 @@ export default function ModelsPage() {
       .sort((a, b) => b.count - a.count);
   }, [models, providers]);
 
+  // Run one page action, reporting the failure instead of letting it reject out
+  // of the handler. Clears any previous failure first, so the notice always
+  // describes the action the operator just took.
+  const runAction = async (summary: string, action: () => Promise<void>) => {
+    setActionError(null);
+    try {
+      await action();
+    } catch (error) {
+      console.error(`${summary}:`, error);
+      setActionError(`${summary}: ${errorDetail(error)}`);
+    }
+  };
+
   const handleDeleteModel = async (id: string) => {
     if (confirm("Are you sure you want to delete this model?")) {
-      await deleteModel.mutateAsync(id);
+      await runAction("Failed to delete model", () => deleteModel.mutateAsync(id).then(() => {}));
     }
   };
 
   const handleToggleEnabled = async (modelId: string, enabled: boolean) => {
     setTogglingModelId(modelId);
     try {
-      await updateModel(modelId, { enabled });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
-      if (!enabled) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
-      }
+      await runAction(`Failed to ${enabled ? "enable" : "disable"} model`, async () => {
+        await updateModel(modelId, { enabled });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
+        if (!enabled) {
+          await queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
+        }
+      });
     } finally {
       setTogglingModelId(null);
     }
   };
 
   const handleUpdateModel = async (modelId: string, data: Parameters<typeof updateModel>[1]) => {
-    await updateModel(modelId, data);
-    await queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.providers.all });
+    await runAction("Failed to update model", async () => {
+      await updateModel(modelId, data);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.providers.all });
+    });
   };
 
   const handleSetDefaultModel = async (modelId: string | null) => {
-    await updateOrg.mutateAsync({ default_model_id: modelId });
+    await runAction("Failed to set the default model", () =>
+      updateOrg.mutateAsync({ default_model_id: modelId }).then(() => {}),
+    );
   };
 
   return (
@@ -191,6 +225,12 @@ export default function ModelsPage() {
         <div className="border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
           Failed to load models: {modelsError.message}
         </div>
+      )}
+
+      {actionError && (
+        <Notice variant="destructive" role="alert">
+          <NoticeDescription>{actionError}</NoticeDescription>
+        </Notice>
       )}
 
       <PageControlStrip className="flex flex-wrap items-center gap-3">
