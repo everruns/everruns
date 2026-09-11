@@ -231,7 +231,10 @@ impl ModelService {
         id: Uuid,
         req: UpdateModelRequest,
     ) -> Result<Option<Model>> {
-        let existing = match self.db.get_model(caller.org_id, id).await? {
+        // Admin reads must see disabled rows: `get_model` is the resolution
+        // path and filters `enabled = TRUE`, so using it here made enabling a
+        // disabled model 404 (every discovered model starts disabled).
+        let existing = match self.db.get_model_with_provider(caller.org_id, id).await? {
             Some(row) => row,
             None => return Ok(None),
         };
@@ -294,7 +297,9 @@ impl ModelService {
     }
 
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
-        if let Some(model) = self.db.get_model(caller.org_id, id).await? {
+        // Disabled rows included on purpose, see `update`: otherwise the
+        // managed-catalog guard below is silently skipped for them.
+        if let Some(model) = self.db.get_model_with_provider(caller.org_id, id).await? {
             let provider = self
                 .get_provider(caller.org_id, model.provider_id.uuid())
                 .await?;
@@ -603,6 +608,91 @@ mod tests {
 
         assert!(!updated.enabled);
         assert!(updated.is_favorite);
+    }
+
+    /// Regression: enabling a disabled model 404'd because the precondition
+    /// read used the resolution-path `get_model`, which filters
+    /// `enabled = TRUE`. Every freshly discovered model is disabled, so the
+    /// models page could never enable anything.
+    #[tokio::test]
+    async fn update_can_enable_a_disabled_model() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = ModelService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
+        let model = service
+            .create(
+                &caller,
+                provider_id.uuid(),
+                CreateModelRequest {
+                    enabled: false,
+                    ..build_create_request()
+                },
+            )
+            .await
+            .unwrap();
+        assert!(!model.enabled);
+
+        let updated = service
+            .update(
+                &caller,
+                model.id.uuid(),
+                UpdateModelRequest {
+                    provider_id: None,
+                    model_id: None,
+                    display_name: None,
+                    capabilities: None,
+                    enabled: Some(true),
+                    is_favorite: None,
+                },
+            )
+            .await
+            .unwrap()
+            .expect("disabled model must be updatable");
+
+        assert!(updated.enabled);
+    }
+
+    /// The managed-catalog guard must also cover disabled rows: reading the
+    /// existing model through an enabled-only lookup silently skipped it.
+    #[tokio::test]
+    async fn managed_disabled_model_rejects_catalog_update_and_delete() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = ModelService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
+        let model = service
+            .create(
+                &caller,
+                provider_id.uuid(),
+                CreateModelRequest {
+                    enabled: false,
+                    ..build_create_request()
+                },
+            )
+            .await
+            .unwrap();
+        mark_provider_managed(&db, provider_id).await;
+
+        let err = service
+            .update(
+                &caller,
+                model.id.uuid(),
+                UpdateModelRequest {
+                    provider_id: None,
+                    model_id: None,
+                    display_name: Some("Renamed".to_string()),
+                    capabilities: None,
+                    enabled: None,
+                    is_favorite: None,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_managed_policy_error(err);
+
+        let err = service.delete(&caller, model.id.uuid()).await.unwrap_err();
+        assert_managed_policy_error(err);
     }
 
     #[tokio::test]
