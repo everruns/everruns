@@ -47,8 +47,10 @@ pub enum CredentialCheckResult {
 
 /// Probe `provider_type` with `api_key` by listing its models.
 ///
+/// THREAT[TM-LLM-036]: the candidate credential is never persisted or logged,
+/// and failures return fixed strings rather than the provider's response body.
 /// `base_url` must already have passed the same validation as provider
-/// creation — this issues a real outbound request to it.
+/// creation (TM-API-013) — this issues a real outbound request to it.
 pub async fn check_credentials(
     registry: &DriverRegistry,
     provider_type: DriverId,
