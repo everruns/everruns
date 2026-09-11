@@ -1,4 +1,11 @@
 //! Catalog-backed platform management capability.
+//!
+//! THREAT[TM-AGENT-017]: this is the only capability that grants agents the
+//! org-wide entity-management surface (it replaced the retired
+//! `platform_management`). Authorization is enforced in the command execution
+//! path — the session owner's real caller plus the active `PermissionResolver`
+//! — not by withholding the capability. Attaching it grants no authority its
+//! owner lacks.
 
 use async_trait::async_trait;
 use everruns_core::capabilities::{
