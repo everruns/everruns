@@ -7,6 +7,10 @@
  * A thread is an ordinary session: this posts `POST /v1/sessions` with either
  * an agent or a harness binding. Direct harness chats let users start from a
  * configured runtime without creating an otherwise-empty agent first.
+ *
+ * An org with no model to chat with never reaches this form: both hosts own
+ * their empty-state frame, so they swap the whole frame for the
+ * "no intelligence available" message rather than stacking a second one here.
  */
 "use client";
 

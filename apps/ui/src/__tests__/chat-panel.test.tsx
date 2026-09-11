@@ -94,6 +94,19 @@ jest.mock("@/components/session/session-participants-rail", () => ({
   SessionParticipantsRail: () => null,
 }));
 
+// The composer's "no intelligence available" notice reads the model list and the
+// provider policy map straight from `use-providers`, outside the `@/hooks`
+// barrel this suite stubs. A healthy enabled model keeps it hidden here; its own
+// behaviour is covered by no-intelligence-notice.test.tsx.
+jest.mock("@/hooks/use-providers", () => ({
+  useModels: () => ({
+    data: [{ enabled: true, healthy: true, capabilities: ["chat"] }],
+    isLoading: false,
+    isError: false,
+  }),
+  useProvidersConfig: () => ({ data: { policies: {} }, isLoading: false }),
+}));
+
 jest.mock("@/hooks", () => ({
   useModels: () => ({ data: mockModels, isLoading: false }),
   useProviders: () => ({ data: [] }),

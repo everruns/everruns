@@ -14,6 +14,18 @@ jest.mock("@/hooks", () => ({
   useHarnesses: jest.fn(),
 }));
 
+// ChatMessageList and friends reach `use-providers` for org context this suite
+// does not stub. The form itself no longer reads intelligence state — its hosts
+// do — so a fixed healthy model is enough.
+jest.mock("@/hooks/use-providers", () => ({
+  useModels: () => ({
+    data: [{ enabled: true, healthy: true, capabilities: ["chat"] }],
+    isLoading: false,
+    isError: false,
+  }),
+  useProvidersConfig: () => ({ data: { policies: {} }, isLoading: false }),
+}));
+
 jest.mock("@/hooks/use-sessions", () => ({
   useCreateSession: jest.fn(),
 }));

@@ -1,3 +1,4 @@
+import type React from "react";
 import { render, screen } from "@testing-library/react";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import type { Event } from "@/lib/api/types";
@@ -47,6 +48,40 @@ function event(id: string, type: string, data: Record<string, unknown>): Event {
     sequence: id.length,
   };
 }
+
+function renderEmpty(emptyState?: React.ReactNode) {
+  return render(
+    <ChatMessageList
+      events={[]}
+      chatEvents={[]}
+      sessionId="session-1"
+      toolResultsMap={new Map()}
+      toolProgressMap={new Map()}
+      toolOutputMap={new Map()}
+      eventsLoading={false}
+      hasMoreEvents={false}
+      loadingOlderEvents={false}
+      getMessageText={() => ""}
+      getToolCalls={() => []}
+      emptyState={emptyState}
+    />,
+  );
+}
+
+describe("ChatMessageList empty state", () => {
+  it("invites a first message by default", () => {
+    renderEmpty();
+
+    expect(screen.getByText("no_messages_yet")).toBeInTheDocument();
+  });
+
+  it("replaces that invitation with the override rather than stacking both", () => {
+    renderEmpty(<div>Nothing to chat with</div>);
+
+    expect(screen.getByText("Nothing to chat with")).toBeInTheDocument();
+    expect(screen.queryByText("no_messages_yet")).not.toBeInTheDocument();
+  });
+});
 
 describe("ChatMessageList work-log narration", () => {
   it("routes human reason.item and reason.completed text through the narration renderer", () => {

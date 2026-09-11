@@ -63,14 +63,14 @@ export function useProvider(providerId: string) {
 
 // Per-driver credential schemas (and caller policies), used to render the
 // provider credential forms as discrete typed inputs.
-export function useProvidersConfig() {
+export function useProvidersConfig(options: { enabled?: boolean } = {}) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
     queryKey: [...queryKeys.providers.all, "config", org],
     queryFn: () => getProvidersConfig(),
-    enabled: !!org,
+    enabled: !!org && (options.enabled ?? true),
     staleTime: 300000,
   });
 
@@ -87,6 +87,11 @@ export function useCreateProvider() {
     mutationFn: (data: CreateProviderRequest) => createProvider(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.providers.all });
+      // A provider created with a credential also discovers its models and may
+      // elect the org default model server-side, so the model caches are stale
+      // the moment this resolves.
+      queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
     },
   });
 }
@@ -101,6 +106,10 @@ export function useUpdateProvider(providerId: string) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.providers.detail(providerId),
       });
+      // Same as create: a key landing on an existing provider discovers models
+      // and may elect the org default.
+      queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
     },
   });
 }
@@ -123,9 +132,11 @@ export function useSyncProviderModels() {
   return useMutation({
     mutationFn: (providerId: string) => syncProviderModels(providerId),
     onSuccess: () => {
-      // Refresh models list after sync
+      // Refresh models list after sync. A sync may also elect the org default
+      // model when none resolved, so org settings are stale too.
       queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.providers.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
     },
   });
 }

@@ -16,6 +16,7 @@ import { getDisplayName } from "@/lib/entity-lifecycle";
 import { getSessionParticipantLabel } from "@/lib/session-participant-label";
 import type { ParticipantMentionOption } from "@/components/chat/participant-mention-autocomplete";
 import { useChatModelSelection } from "@/hooks/use-chat-model-selection";
+import { useIntelligenceStatus } from "@/hooks/use-intelligence";
 import { executeSessionCommand } from "@/lib/api/commands";
 import { ApiError } from "@/lib/api/client";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
@@ -23,6 +24,7 @@ import { endSessionVoice, startSessionVoice } from "@/lib/api/voice";
 import { useMutation } from "@tanstack/react-query";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { ChatComposer } from "@/components/chat/chat-composer";
+import { NoIntelligenceMessage } from "@/components/chat/no-intelligence-notice";
 import { MessageContent } from "@/components/chat/message-content";
 import { SessionTaskChips } from "@/components/session/session-task-chips";
 import { SessionParticipantsRail } from "@/components/session/session-participants-rail";
@@ -117,6 +119,7 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
     agentId,
     sessionId,
     session,
+    chatEvents,
     llmModel,
     llmModelLoading,
     eventsLoading,
@@ -131,6 +134,12 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
   } = useSessionContext();
 
   const { data: models = [], isLoading: modelsLoading } = useModels();
+  // One message, not two: when the org has no model to chat with, the notice
+  // *replaces* the transcript's "No messages yet" card on a fresh thread, and
+  // only sits above the composer once there is history to sit under.
+  const intelligence = useIntelligenceStatus();
+  const showNoIntelligence = !intelligence.isLoading && !intelligence.available;
+  const transcriptEmpty = chatEvents.length === 0;
   const { data: participants, refetch: refetchParticipants } = useSessionParticipants(sessionId);
   const { data: agents } = useAgents();
   const [inputValue, setInputValue] = useState("");
@@ -547,6 +556,11 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
         <div className="flex min-h-0 flex-1 flex-col">
           <SessionTranscript
             showRunCards={showRunCards}
+            emptyState={
+              showNoIntelligence ? (
+                <NoIntelligenceMessage canManage={intelligence.canManage} />
+              ) : undefined
+            }
             footer={
               <>
                 {submitError && (
@@ -572,6 +586,10 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
             basePath={sessionBasePath}
             hasTasksFeature={hasTasksFeature}
           />
+
+          {showNoIntelligence && !transcriptEmpty && (
+            <NoIntelligenceMessage canManage={intelligence.canManage} className="mb-3" />
+          )}
 
           <ChatComposer
             commands={commands}

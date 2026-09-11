@@ -5,6 +5,9 @@
 //
 // Configure: provisioning checklist + inline LLM provider setup (provider type +
 //   API key). Polling queries drive the checklist; "Skip for now" is preserved.
+//   Creating the provider with a key also discovers its models and elects the
+//   org default model server-side (see `provision_provider_models`), so the key
+//   entered here is enough to leave chat usable — the form waits for that call.
 // Done: shown after the provider form is submitted OR skipped (replaces the old
 //   redirect straight to /chats). The Done subline is conditional — it only
 //   claims a provider is connected when one actually exists; a skip shows a
@@ -619,7 +622,7 @@ export default function OrgSetupPage() {
                     Skip for now
                   </button>
                   <Button onClick={handleContinue} disabled={createProvider.isPending}>
-                    {createProvider.isPending ? "Configuring..." : "Finish setup"}
+                    {createProvider.isPending ? "Discovering models..." : "Finish setup"}
                     {!createProvider.isPending && <ArrowRight className="ml-2 h-4 w-4" />}
                   </Button>
                 </div>

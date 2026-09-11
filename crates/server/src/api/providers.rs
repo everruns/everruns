@@ -44,6 +44,11 @@ pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub service: Arc<ProviderService>,
     pub sync_service: Arc<ModelSyncService>,
+    /// Model service, so a provider that gains a credential can bootstrap the
+    /// org's enabled models and default model in the same request. Carries the
+    /// provider resolver when one exists, so the cache is invalidated after the
+    /// bootstrap writes.
+    pub model_service: Arc<crate::domains::models::ModelService>,
     pub auth: AuthState,
     /// Driver registry, used to discover whether a provider's driver declares an
     /// interactive OAuth connect flow.
@@ -60,6 +65,12 @@ impl AppState {
         auth: AuthState,
         provider_resolver: Option<Arc<ProviderResolverService>>,
     ) -> Self {
+        let model_service = match provider_resolver.clone() {
+            Some(resolver) => {
+                crate::domains::models::ModelService::with_resolver(db.clone(), resolver)
+            }
+            None => crate::domains::models::ModelService::new(db.clone()),
+        };
         let service = if let Some(resolver) = provider_resolver {
             ProviderService::with_resolver(db.clone(), encryption.clone(), resolver)
         } else {
@@ -68,6 +79,7 @@ impl AppState {
         Self {
             db: db.clone(),
             service: Arc::new(service),
+            model_service: Arc::new(model_service),
             sync_service: Arc::new(ModelSyncService::new(
                 db,
                 driver_registry.clone(),
@@ -88,6 +100,7 @@ impl AppState {
         )
         .with_provider_service(self.service.clone())
         .with_model_sync_service(self.sync_service.clone())
+        .with_model_service(self.model_service.clone())
     }
 }
 
@@ -1075,6 +1088,41 @@ mod tests {
 #[cfg(test)]
 mod creation_tests {
     use super::*;
+
+    /// The provider command context must carry both the sync service *and* the
+    /// model service: `provision_provider_models` bootstraps the org's enabled
+    /// models and default model through the latter, and its best-effort
+    /// `if let Some(..)` would otherwise skip that silently — discovery would
+    /// run, every model would stay disabled, and chat would still resolve
+    /// nothing. Regression guard for exactly that wiring gap.
+    #[tokio::test]
+    async fn provider_ctx_carries_the_services_provisioning_needs() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let state = AppState::new(
+            db.clone(),
+            None,
+            Arc::new(DriverRegistry::new()),
+            AuthState::builtin(crate::auth::AuthConfig::default(), db),
+            None,
+        );
+        let org = ResolvedOrg {
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            public_id: "org_test".into(),
+            name: "Test".into(),
+            user_id: None,
+            role: everruns_core::OrgRole::Owner,
+            is_platform_user: false,
+            feature_flags: Default::default(),
+        };
+
+        let ctx = state.ctx(&org);
+
+        assert!(
+            ctx.model_sync_service.is_some(),
+            "model sync service missing"
+        );
+        assert!(ctx.model_service.is_some(), "model service missing");
+    }
 
     #[tokio::test]
     async fn create_rejects_invalid_base_urls_as_client_errors() {
