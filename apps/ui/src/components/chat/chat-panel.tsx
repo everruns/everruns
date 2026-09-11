@@ -23,6 +23,7 @@ import { endSessionVoice, startSessionVoice } from "@/lib/api/voice";
 import { useMutation } from "@tanstack/react-query";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { ChatComposer } from "@/components/chat/chat-composer";
+import { NoIntelligenceNotice } from "@/components/chat/no-intelligence-notice";
 import { MessageContent } from "@/components/chat/message-content";
 import { SessionTaskChips } from "@/components/session/session-task-chips";
 import { SessionParticipantsRail } from "@/components/session/session-participants-rail";
@@ -572,6 +573,8 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
             basePath={sessionBasePath}
             hasTasksFeature={hasTasksFeature}
           />
+
+          <NoIntelligenceNotice className="mb-3" />
 
           <ChatComposer
             commands={commands}

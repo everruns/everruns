@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
+import { NoIntelligenceNotice } from "@/components/chat/no-intelligence-notice";
 import { useAgents, useHarnesses } from "@/hooks";
 import { useCreateSession } from "@/hooks/use-sessions";
 import { CHAT_THREAD_TAG } from "@/lib/chat-threads";
@@ -88,6 +89,8 @@ export function NewChatForm({
 
   return (
     <div className="space-y-3">
+      <NoIntelligenceNotice />
+
       <div className="flex flex-wrap items-center justify-center gap-2">
         <Select value={selection} onValueChange={setSelection} disabled={optionsLoading}>
           <SelectTrigger className="w-64" aria-label="Chat counterpart">

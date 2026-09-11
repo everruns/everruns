@@ -22,6 +22,62 @@ fn sync_service(
         .ok_or_else(|| CommandError::internal(anyhow::anyhow!("Model sync service not configured")))
 }
 
+/// Make a provider that just gained a credential immediately usable: discover
+/// its models, then bootstrap the org's enabled models and default model.
+///
+/// Best-effort by design. The provider row is already written and valid; a
+/// provider API that is slow, unreachable, or rejects the key must not fail the
+/// create/update. The UI surfaces the resulting state (and a "no intelligence
+/// configured" notice) from the models it can see.
+async fn provision_provider_models(ctx: &Ctx, provider: &Provider) {
+    let provider_uuid = provider.id.uuid();
+
+    if let Some(sync) = ctx.model_sync_service.as_ref() {
+        match tokio::time::timeout(
+            PROVISION_TIMEOUT,
+            sync.sync_provider(ctx.org_id(), provider_uuid),
+        )
+        .await
+        {
+            Ok(Ok(result)) => tracing::info!(
+                org_id = ctx.org_id(),
+                provider_id = %provider.id,
+                ?result,
+                "Synced models for newly credentialed provider"
+            ),
+            Ok(Err(error)) => tracing::warn!(
+                org_id = ctx.org_id(),
+                provider_id = %provider.id,
+                %error,
+                "Model sync after provider credential change failed (non-fatal)"
+            ),
+            Err(_) => tracing::warn!(
+                org_id = ctx.org_id(),
+                provider_id = %provider.id,
+                "Model sync after provider credential change timed out (non-fatal)"
+            ),
+        }
+    }
+
+    if let Some(models) = ctx.model_service.as_ref()
+        && let Err(error) = models
+            .bootstrap_intelligence(ctx.org_id(), provider_uuid)
+            .await
+    {
+        tracing::warn!(
+            org_id = ctx.org_id(),
+            provider_id = %provider.id,
+            %error,
+            "Intelligence bootstrap after provider credential change failed (non-fatal)"
+        );
+    }
+}
+
+/// Upper bound on the inline discovery call a create/update waits for. Long
+/// enough for a cold provider API, short enough that the onboarding request
+/// still returns.
+const PROVISION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateProvider {
     /// Human-readable name. Safe to render in user-facing messages.
@@ -54,7 +110,8 @@ impl Command for CreateProvider {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Provider, CommandError> {
-        q::service(ctx)
+        let has_credential = self.api_key.is_some();
+        let provider = q::service(ctx)
             .create(
                 &ctx.caller,
                 crate::api::providers::CreateProviderRequest {
@@ -70,7 +127,12 @@ impl Command for CreateProvider {
                 },
             )
             .await
-            .map_err(classify_anyhow)
+            .map_err(classify_anyhow)?;
+
+        if has_credential {
+            provision_provider_models(ctx, &provider).await;
+        }
+        Ok(provider)
     }
 }
 
@@ -185,7 +247,8 @@ impl Command for UpdateProvider {
 
     async fn execute(self, ctx: &Ctx) -> Result<Provider, CommandError> {
         let provider_id = q::parse_provider_id(&self.id)?;
-        q::service(ctx)
+        let has_credential = self.api_key.is_some();
+        let provider = q::service(ctx)
             .update(
                 &ctx.caller,
                 provider_id,
@@ -204,7 +267,14 @@ impl Command for UpdateProvider {
             )
             .await
             .map_err(classify_anyhow)?
-            .ok_or_else(|| CommandError::not_found("Provider"))
+            .ok_or_else(|| CommandError::not_found("Provider"))?;
+
+        // A key arriving on an existing provider is the same event as one
+        // arriving with a new provider: the org may only now have intelligence.
+        if has_credential {
+            provision_provider_models(ctx, &provider).await;
+        }
+        Ok(provider)
     }
 }
 
@@ -281,6 +351,22 @@ impl Command for SyncProviderModels {
             .sync_provider(ctx.org_id(), provider_id)
             .await
             .map_err(classify_anyhow)?;
+
+        // A manual refresh is also a chance to make the org usable: an org that
+        // still has no enabled chat model or no resolvable default gets one.
+        if let Some(models) = ctx.model_service.as_ref()
+            && let Err(error) = models
+                .bootstrap_intelligence(ctx.org_id(), provider_id)
+                .await
+        {
+            tracing::warn!(
+                org_id = ctx.org_id(),
+                %provider_id,
+                %error,
+                "Intelligence bootstrap after model sync failed (non-fatal)"
+            );
+        }
+
         match result {
             crate::services::SyncResult::Success {
                 created,

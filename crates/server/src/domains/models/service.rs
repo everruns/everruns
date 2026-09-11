@@ -32,6 +32,51 @@ pub const LLM_MODEL_MANAGE: Policy = Policy {
     rules: &[Rule::UserHasPermission(Permission::OrgProvidersManage)],
 };
 
+/// What [`ModelService::bootstrap_intelligence`] changed. All-zero means the org
+/// was already usable and nothing was touched.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct IntelligenceBootstrap {
+    /// How many of the provider's models were switched on.
+    pub enabled_models: usize,
+    /// How many of them were starred as favourites.
+    pub favorited_models: usize,
+    /// The model elected as the org default, when one was elected.
+    pub default_model_id: Option<Uuid>,
+}
+
+impl IntelligenceBootstrap {
+    pub fn changed(&self) -> bool {
+        self.enabled_models > 0 || self.favorited_models > 0 || self.default_model_id.is_some()
+    }
+}
+
+/// How many of a provider's ranked chat models the bootstrap switches on, and
+/// how many of those it stars. Shortlist sizes, not limits on what a user may
+/// enable afterwards in Settings.
+const BOOTSTRAP_ENABLE_LIMIT: usize = 8;
+const BOOTSTRAP_FAVORITE_LIMIT: usize = 3;
+
+/// Default-model preference order: newest release first, then the model with the
+/// fewest missing agent-relevant traits. Lower sorts better.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct ModelRank {
+    /// `Reverse` so a later date — and a known date over an unknown one — wins.
+    release: std::cmp::Reverse<String>,
+    capability_gaps: u8,
+}
+
+impl ModelRank {
+    fn of(profile: &ModelProfile) -> Self {
+        let gaps = u8::from(!profile.reasoning)
+            + u8::from(!profile.attachment)
+            + u8::from(!profile.structured_output);
+        Self {
+            release: std::cmp::Reverse(profile.release_date.clone().unwrap_or_default()),
+            capability_gaps: gaps,
+        }
+    }
+}
+
 pub struct ModelService {
     db: Arc<StorageBackend>,
     provider_resolver: Option<Arc<ProviderResolverService>>,
@@ -364,6 +409,163 @@ impl ModelService {
         Ok(())
     }
 
+    // ============================================================
+    // First-run intelligence bootstrap
+    // ============================================================
+    //
+    // Decision: configuring a provider credential is the moment an org gains
+    // intelligence, so it must also leave the org *usable*. Discovery creates
+    // models disabled and never elects an org default, which left a freshly
+    // onboarded org with a keyed provider, zero selectable models and a chat
+    // that could not resolve a model. Bootstrapping lives here, at the domain
+    // layer, so every entry path (onboarding, Settings, CLI, MCP) behaves the
+    // same.
+    //
+    // It only ever adds: models are enabled solely when the org has no enabled
+    // chat model at all, and the default is elected solely when none resolves.
+    // An org that deliberately disabled everything is left alone.
+
+    /// Make a freshly credentialed provider usable: enable its chat models when
+    /// the org has none, and elect an org default model when none resolves.
+    pub async fn bootstrap_intelligence(
+        &self,
+        org_id: i64,
+        provider_id: Uuid,
+    ) -> Result<IntelligenceBootstrap> {
+        let provider = self.get_provider(org_id, provider_id).await?;
+        let provider_type: DriverId = provider.provider_type.parse().unwrap_or(DriverId::OpenAI);
+        let mut outcome = IntelligenceBootstrap::default();
+
+        // A provider that cannot serve a request bootstraps nothing.
+        if !provider.api_key_set || provider.status != "active" {
+            return Ok(outcome);
+        }
+
+        let org_has_enabled_chat = self
+            .db
+            .list_all_models(org_id)
+            .await?
+            .iter()
+            .any(|row| row.enabled && Self::row_is_chat_model(&row.capabilities));
+
+        if !org_has_enabled_chat {
+            let candidates = self
+                .chat_candidates(org_id, &provider, &provider_type)
+                .await?;
+            // A shortlist, not the whole catalog: the picker stays readable, and
+            // the strongest few are starred so the composer has something to
+            // offer before anyone visits Settings.
+            for (rank, candidate) in candidates.iter().take(BOOTSTRAP_ENABLE_LIMIT).enumerate() {
+                let favorite = rank < BOOTSTRAP_FAVORITE_LIMIT && !candidate.is_favorite;
+                if candidate.enabled && !favorite {
+                    continue;
+                }
+                self.db
+                    .update_model(
+                        org_id,
+                        candidate.id.uuid(),
+                        UpdateModel {
+                            enabled: Some(true),
+                            is_favorite: favorite.then_some(true),
+                            ..Default::default()
+                        },
+                    )
+                    .await?;
+                if !candidate.enabled {
+                    outcome.enabled_models += 1;
+                }
+                if favorite {
+                    outcome.favorited_models += 1;
+                }
+            }
+        }
+
+        // `get_default_model` fails closed on a disabled model or an inactive
+        // provider, so "resolves to nothing" — not merely a NULL setting — is
+        // the condition that makes chat unusable.
+        if self.db.get_default_model(org_id).await?.is_none() {
+            let pick = self
+                .chat_candidates(org_id, &provider, &provider_type)
+                .await?
+                .into_iter()
+                .find(|row| row.enabled);
+            if let Some(pick) = pick {
+                self.db
+                    .upsert_organization_settings(org_id, Some(pick.id.uuid()))
+                    .await?;
+                outcome.default_model_id = Some(pick.id.uuid());
+            }
+        }
+
+        if outcome.changed() {
+            self.invalidate_resolver_cache(org_id).await;
+            tracing::info!(
+                org_id,
+                provider_id = %provider_id,
+                enabled_models = outcome.enabled_models,
+                favorited_models = outcome.favorited_models,
+                default_model_set = outcome.default_model_id.is_some(),
+                "Bootstrapped org intelligence from provider credential"
+            );
+        }
+        Ok(outcome)
+    }
+
+    /// This provider's chat models, best default first.
+    ///
+    /// Only catalog-known models that can call tools are candidates: a provider
+    /// catalog also lists transcription, image and legacy ids that make a poor
+    /// default, and an agent runtime needs tool calling. When the static catalog
+    /// knows none of them — a self-hosted or aggregator endpoint — the single
+    /// best-guess chat model still keeps the org usable.
+    async fn chat_candidates(
+        &self,
+        org_id: i64,
+        provider: &crate::storage::models::ProviderRow,
+        provider_type: &DriverId,
+    ) -> Result<Vec<ModelRow>> {
+        let mut chat: Vec<ModelRow> = self
+            .db
+            .list_models_for_provider(org_id, provider.id.uuid())
+            .await?
+            .into_iter()
+            .filter(|row| Self::row_is_chat_model(&row.capabilities))
+            .collect();
+
+        let mut known: Vec<(ModelRank, ModelRow)> = chat
+            .iter()
+            .filter_map(|row| {
+                let profile = get_model_profile(provider_type, &row.model_id)?;
+                profile
+                    .tool_call
+                    .then(|| (ModelRank::of(&profile), row.clone()))
+            })
+            .collect();
+
+        if !known.is_empty() {
+            known.sort_by(|(left_rank, left), (right_rank, right)| {
+                left_rank
+                    .cmp(right_rank)
+                    .then_with(|| left.model_id.cmp(&right.model_id))
+            });
+            return Ok(known.into_iter().map(|(_, row)| row).collect());
+        }
+
+        chat.sort_by(|left, right| left.model_id.cmp(&right.model_id));
+        chat.truncate(1);
+        Ok(chat)
+    }
+
+    /// Mirrors the UI rule (apps/ui/src/lib/model-capabilities.ts): an embedding
+    /// model is the one kind a chat cannot use.
+    fn row_is_chat_model(capabilities: &sqlx::types::JsonValue) -> bool {
+        let capabilities: Vec<String> =
+            serde_json::from_value(capabilities.clone()).unwrap_or_default();
+        !capabilities
+            .iter()
+            .any(|capability| capability.eq_ignore_ascii_case("embeddings"))
+    }
+
     async fn get_provider(
         &self,
         org_id: i64,
@@ -502,6 +704,7 @@ impl ModelService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::models::CreateModelRow;
     use crate::storage::{CreateOrganizationRow, CreateProviderRow};
     use everruns_core::{DEFAULT_ORG_ID, PolicyError};
 
@@ -559,6 +762,184 @@ mod tests {
 
     fn assert_managed_policy_error(err: anyhow::Error) {
         assert!(err.downcast_ref::<PolicyError>().is_some(), "{err:#}");
+    }
+
+    // --- first-run intelligence bootstrap ---
+
+    async fn create_keyed_provider(
+        db: &StorageBackend,
+        org_id: i64,
+    ) -> everruns_provider::typed_id::ProviderId {
+        db.create_provider(
+            org_id,
+            CreateProviderRow {
+                name: "OpenAI".to_string(),
+                provider_type: "openai".to_string(),
+                base_url: None,
+                api_key_encrypted: Some(b"encrypted".to_vec()),
+                settings: None,
+            },
+        )
+        .await
+        .unwrap()
+        .id
+    }
+
+    /// Mimics model discovery: catalog rows land disabled and unstarred.
+    async fn discover_model(
+        db: &StorageBackend,
+        org_id: i64,
+        provider_id: everruns_provider::typed_id::ProviderId,
+        model_id: &str,
+        capabilities: &[&str],
+    ) -> ModelRow {
+        db.create_model(
+            org_id,
+            CreateModelRow {
+                provider_id,
+                model_id: model_id.to_string(),
+                display_name: model_id.to_string(),
+                capabilities: capabilities.iter().map(|c| c.to_string()).collect(),
+                enabled: false,
+                is_favorite: false,
+                source: "discovered".to_string(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn bootstrap_enables_favourites_and_elects_a_default() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let org_id = create_second_org(&db).await;
+        let service = ModelService::new(db.clone());
+        let provider_id = create_keyed_provider(&db, org_id).await;
+
+        for model_id in ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.4-mini"] {
+            discover_model(&db, org_id, provider_id, model_id, &["chat"]).await;
+        }
+        let embedding = discover_model(
+            &db,
+            org_id,
+            provider_id,
+            "text-embedding-3-small",
+            &["embeddings"],
+        )
+        .await;
+
+        // Precondition: discovery alone leaves the org unable to resolve a model.
+        assert!(db.get_default_model(org_id).await.unwrap().is_none());
+
+        let outcome = service
+            .bootstrap_intelligence(org_id, provider_id.uuid())
+            .await
+            .unwrap();
+
+        assert_eq!(outcome.enabled_models, 3);
+        assert_eq!(outcome.favorited_models, 3);
+        let default = db
+            .get_default_model(org_id)
+            .await
+            .unwrap()
+            .expect("default elected");
+        assert_eq!(outcome.default_model_id, Some(default.id.uuid()));
+
+        let rows = db
+            .list_models_for_provider(org_id, provider_id.uuid())
+            .await
+            .unwrap();
+        for row in &rows {
+            if row.id == embedding.id {
+                assert!(!row.enabled, "embedding model must stay disabled");
+                assert!(!row.is_favorite);
+            } else {
+                assert!(row.enabled, "{} should be enabled", row.model_id);
+                assert!(row.is_favorite, "{} should be starred", row.model_id);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn bootstrap_leaves_a_configured_org_alone() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let org_id = create_second_org(&db).await;
+        let service = ModelService::new(db.clone());
+        let provider_id = create_keyed_provider(&db, org_id).await;
+
+        let chosen = discover_model(&db, org_id, provider_id, "gpt-5.6-terra", &["chat"]).await;
+        let other = discover_model(&db, org_id, provider_id, "gpt-5.6-sol", &["chat"]).await;
+        db.update_model(
+            org_id,
+            chosen.id.uuid(),
+            UpdateModel {
+                enabled: Some(true),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.upsert_organization_settings(org_id, Some(chosen.id.uuid()))
+            .await
+            .unwrap();
+
+        let outcome = service
+            .bootstrap_intelligence(org_id, provider_id.uuid())
+            .await
+            .unwrap();
+
+        assert_eq!(outcome, IntelligenceBootstrap::default());
+        let rows = db
+            .list_models_for_provider(org_id, provider_id.uuid())
+            .await
+            .unwrap();
+        let other_row = rows.iter().find(|row| row.id == other.id).unwrap();
+        assert!(
+            !other_row.enabled,
+            "a deliberate opt-out must not be overridden"
+        );
+    }
+
+    #[tokio::test]
+    async fn bootstrap_skips_a_provider_without_a_key() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let org_id = create_second_org(&db).await;
+        let service = ModelService::new(db.clone());
+        let provider_id = create_provider(&db, org_id).await;
+        discover_model(&db, org_id, provider_id, "gpt-5.6-terra", &["chat"]).await;
+
+        let outcome = service
+            .bootstrap_intelligence(org_id, provider_id.uuid())
+            .await
+            .unwrap();
+
+        assert_eq!(outcome, IntelligenceBootstrap::default());
+        assert!(db.get_default_model(org_id).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn bootstrap_falls_back_to_one_model_for_an_unknown_catalog() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let org_id = create_second_org(&db).await;
+        let service = ModelService::new(db.clone());
+        let provider_id = create_keyed_provider(&db, org_id).await;
+        for model_id in ["house-llm-a", "house-llm-b"] {
+            discover_model(&db, org_id, provider_id, model_id, &["chat"]).await;
+        }
+
+        let outcome = service
+            .bootstrap_intelligence(org_id, provider_id.uuid())
+            .await
+            .unwrap();
+
+        assert_eq!(outcome.enabled_models, 1);
+        let default = db
+            .get_default_model(org_id)
+            .await
+            .unwrap()
+            .expect("default elected");
+        assert_eq!(default.model_id, "house-llm-a");
     }
 
     #[tokio::test]

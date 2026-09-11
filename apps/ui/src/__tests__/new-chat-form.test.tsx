@@ -14,6 +14,18 @@ jest.mock("@/hooks", () => ({
   useHarnesses: jest.fn(),
 }));
 
+// The form carries the "no intelligence available" notice, which reads the model
+// list and provider policy map from `use-providers` (org context, not stubbed
+// here). A healthy enabled model keeps it hidden; the notice has its own suite.
+jest.mock("@/hooks/use-providers", () => ({
+  useModels: () => ({
+    data: [{ enabled: true, healthy: true, capabilities: ["chat"] }],
+    isLoading: false,
+    isError: false,
+  }),
+  useProvidersConfig: () => ({ data: { policies: {} }, isLoading: false }),
+}));
+
 jest.mock("@/hooks/use-sessions", () => ({
   useCreateSession: jest.fn(),
 }));
