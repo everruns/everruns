@@ -8,21 +8,29 @@ contains the maintained public examples. Each imports the `everruns` facade.
 
 ## Complete agents
 
-The root-level [`examples/agents`](https://github.com/everruns/everruns/tree/main/examples/agents)
-catalog pairs importable Platform definitions with five self-contained Framework
-programs. Each `cargo run` uses a real provider and model; CI only constructs
-the agents with placeholder credentials, so it never makes billed calls.
+The root-level [`examples`](https://github.com/everruns/everruns/tree/main/examples)
+catalog contains five Framework walkthroughs. Each folder includes the program,
+instructions, fixtures where applicable, and recording scripts. Run them from a
+repository checkout: their dependencies point to the workspace crates.
+
+`cargo run` uses a real provider and can incur charges. CI tests offline tool
+behavior and recording logic; it does not establish the quality of a live model's answer.
 
 | Example | Provider and model | What it does |
 | --- | --- | --- |
-| [Support Agent](/framework/examples/support-agent/) | OpenAI `gpt-5.6-terra` | Looks up safe customer state and answers support questions. |
-| [Everruns Support Agent](/framework/examples/everruns-support-agent/) | Anthropic `claude-opus-5` | Troubleshoots Framework questions with documentation links. |
-| [Coding Review Agent](/framework/examples/coding-review-agent/) | Anthropic `claude-sonnet-5` | Reads and reviews a self-contained code change. |
-| [Research Agent](/framework/examples/research-agent/) | OpenRouter `z-ai/glm-5.2` | Uses typed Brave web search, cites sources, and reports uncertainty. |
-| [Incident Commander Agent](/framework/examples/incident-commander-agent/) | Meta Model API `muse-spark-1.3` | Records an incident update and coordinates safe next actions. |
+| [Support Agent](/framework/examples/support-agent/) | OpenAI `gpt-5.6-terra` | Chooses between MFA recovery, lockout, and browser troubleshooting from facts and policy. |
+| [Everruns Support Agent](/framework/examples/everruns-support-agent/) | Anthropic `claude-opus-5` | Searches and reads citable official documentation snapshots. |
+| [Coding Review Agent](/framework/examples/coding-review-agent/) | Anthropic `claude-sonnet-5` | Reads a refund contract and executes a fixed regression before reporting a defect. |
+| [Research Agent](/framework/examples/research-agent/) | OpenRouter `z-ai/glm-5.2` | Searches and fetches primary sources before writing a cited brief. |
+| [Incident Commander Agent](/framework/examples/incident-commander-agent/) | Meta Model API `muse-spark-1.3` | Investigates fixture telemetry and persists an evidence-backed incident update. |
 
-Each example page includes source, prerequisite, command, and terminal
-screencast.
+Start with Support for typed tools, Research for reusable capabilities, or Code
+Review for restricted execution. Each walkthrough shows the agent builder and
+session loop, explains expected behavior, and documents what remains a fixture.
+
+These are in-memory sessions. For durability itself, use the session-history and
+workspace examples below. Importable hosted Platform definitions live separately
+in [`examples/agents`](https://github.com/everruns/everruns/tree/main/examples/agents).
 
 ## Execution runtimes
 

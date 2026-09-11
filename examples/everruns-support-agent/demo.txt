@@ -1,50 +1,99 @@
-Model: claude-opus-5
+MODEL: claude-opus-5
 
 QUESTION
-My Framework session fails after I add an Anthropic provider. What should I check first?
+How do I resume a durable Framework session after restarting my process? Find and read relevant documentation before answering.
 
-[Calling model]
+> search_docs
+  query: resume durable session after restart
 
-TOOL: search_docs
-{"topic":"Anthropic provider configuration"}
+< search_docs: OK
+Page: session-history
+Source: https://docs.everruns.com/framework/session-history/
+Match: title: Session History and Resume
 
-TOOL: search_docs
-{"topic":"session failures troubleshooting"}
+Page: persistence
+Source: https://docs.everruns.com/framework/persistence/
+Match: description: Choose volatile memory, crash-durable local state, or the distributed durable Platform.
 
-search_docs: OK
-Source: https://docs.everruns.com/framework/examples/
-The [`crates/everruns/examples`
-catalog](https://github.com/everruns/everruns/tree/main/crates/everruns/examples)
-contains the maintained public examples. Each imports the `everruns` fac … [preview]
+> search_docs
+  query: session persistence checkpoint state
 
-search_docs: OK
-Source: https://docs.everruns.com/framework/models-and-providers/
-The Framework separates **what model to use** from **how to reach it**:
+< search_docs: OK
+Page: session-history
+Source: https://docs.everruns.com/framework/session-history/
+Match: title: Session History and Resume
 
-- `.model("id")` selects the provider-visible model with a credential-free string.
-- `Provider` suppl … [preview]
+Page: persistence
+Source: https://docs.everruns.com/framework/persistence/
+Match: title: Persistence
 
-[Calling model]
+> read_doc
+  page_id: session-history
+
+< read_doc: OK
+Official docs snapshot, 2026-09-08
+Source: https://docs.everruns.com/framework/session-history/
+---
+title: Session History and Resume
+description: Read bounded conversation history and continue Framework sessions without importing host or runtime storage APIs.
+---
+
+Every Framework session has a typed `SessionId`. Keep that value when an
+application may need to reopen the conversation:
+
+```rust
+use everruns::{Agent, Engine, Model, SessionId};
+
+# #[tokio::main]
+# async fn main() -> Result<(), Box<dyn std::error::Error>> {
+let agent = Agent::builder()
+    .instructions("Remember the conversation.")
+    .model(Model::simulated("Acknowledged."))
+
+[excerpt; full result supplied to agent]
+
+> read_doc
+  page_id: persistence
+
+< read_doc: OK
+Official docs snapshot, 2026-09-08
+Source: https://docs.everruns.com/framework/persistence/
+---
+title: Persistence
+description: Choose volatile memory, crash-durable local state, or the distributed durable Platform.
+---
+
+Framework history is a read-only projection of canonical events. Normal
+execution has one write path, the engine's event log, so a resumed session and a
+running session cannot disagree about the conversation.
+
+| Deployment | Conversation state | Recovery boundary | Use when |
+| --- | --- | --- | --- |
+| `Engine::new()` | Volatile memory | One Engine in one process | Embedding, tests, and short-lived tools |
+| `Engine` with `L
+[excerpt; full result supplied to agent]
 
 ANSWER
-**Evidence (from docs)**
-- An agent accepts **one** provider via `.provider(...)`; model id stays credential‑free
-([Models and providers](https://docs.everruns.com/framework/models-and-providers/)).
-- Live providers are feature‑gated (e.g. `--features openai`) and read credentials from
-env, not from the model string.
-- Anthropic examples exist and use ids like `claude-opus-5` / `claude-sonnet-5`
-([Examples](https://docs.everruns.com/framework/examples/), [Everruns Support
-Agent](https://docs.everruns.com/framework/examples/everruns-support-agent/)).
 
-**Hypotheses (unconfirmed)**
-- You added a second `.provider(...)` call, so the Anthropic one replaced/conflicted with
-the existing setup.
-- Missing feature flag or unset Anthropic API key at build time.
-- Model id still an OpenAI id while the provider is Anthropic.
+**Documented behavior** (docs.everruns.com):
 
-**Smallest safe next step**
-Swap in `Model::simulated("fixed response")` and rebuild the agent offline. If it builds,
-the fault is provider/credential wiring, not the session; then re‑add Anthropic with a
-matching `claude-*` id and confirm the feature flag and env var.
+The default `Engine::new()` keeps sessions in volatile memory — process exit loses them. To survive a restart you need the `local` feature:
 
-Completed: 2 iterations, 2 tool calls
+1. `cargo add everruns --features local`
+2. Build the Agent with `.local(LocalConfig::new(".everruns-data"))`, using the **same trusted data directory** each run.
+3. Persist the typed `SessionId` yourself.
+4. After restart: rebuild the Agent from trusted config, then
+
+```rust
+let engine = Engine::new();
+engine.attach(session_id, build_agent()?).await?;
+let resumed = engine.resume(session_id).await?;
+```
+
+`attach` is required because a new engine cannot infer the Agent snapshot; it rejects IDs absent from that Agent's local catalog, and `resume` returns a typed not-found error for unknown IDs. Note: a session only becomes durable after its first async operation (`run`, `inspect`, or a history page read).
+
+Sources: https://docs.everruns.com/framework/session-history/ , https://docs.everruns.com/framework/persistence/
+
+**Caveat, not guesswork-free:** the local profile supports one process at a time; for multi-worker restarts the docs point to the Platform instead.
+
+Completed: 3 iterations, 4 tool calls

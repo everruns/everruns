@@ -1,0 +1,5 @@
+{
+  "cust_mfa": {"verified": true, "password_reset": "completed", "lockout_minutes": 0, "mfa_enabled": true, "authenticator_available": false, "recovery_codes_available": false},
+  "cust_locked": {"verified": true, "password_reset": "completed", "lockout_minutes": 15, "mfa_enabled": false, "authenticator_available": false, "recovery_codes_available": false},
+  "cust_browser": {"verified": true, "password_reset": "completed", "lockout_minutes": 0, "mfa_enabled": false, "authenticator_available": false, "recovery_codes_available": false}
+}

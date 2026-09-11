@@ -1,0 +1,1 @@
+Read `sample_payment.rs`, `contract.md`, and `regression.rs` with `inspect_change`, using those exact path values. Run the fixed regression test. Report the assertion actually observed, its impact, and a minimal fix; do not claim you applied a fix. Keep the answer under 120 words.
