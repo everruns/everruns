@@ -108,7 +108,7 @@ describe("NewChatForm", () => {
 
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
-        request: { agent_id: "agent_1", tags: ["chat"] },
+        request: { agent_id: "agent_1", source: "chat", tags: ["chat"] },
       }),
     );
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/chats/sess_new"));
@@ -124,7 +124,7 @@ describe("NewChatForm", () => {
 
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
-        request: { harness_name: "platform-chat", tags: ["chat"] },
+        request: { harness_name: "platform-chat", source: "chat", tags: ["chat"] },
       }),
     );
   });
@@ -150,7 +150,7 @@ describe("NewChatForm", () => {
 
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
-        request: { harness_name: "generic", tags: ["chat"] },
+        request: { harness_name: "generic", source: "chat", tags: ["chat"] },
       }),
     );
   });

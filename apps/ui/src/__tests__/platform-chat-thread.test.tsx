@@ -82,6 +82,7 @@ test("creates and pins a Platform Chat thread when the user has none", async () 
   await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
   expect(mockCreate).toHaveBeenCalledWith({
     request: {
+      source: "chat",
       harness_name: "platform-chat",
       title: "Platform Chat",
       tags: [CHAT_THREAD_TAG],

@@ -63,6 +63,9 @@ export function usePlatformChatThread(
   // get a fresh one on the next page load.
   const { threads, isLoading: threadsLoading } = useChatThreads({
     includeArchived: true,
+    // Scanning the org's sessions would let a busy org hide this user's thread
+    // past the scan window and have the app create a fresh one on every entry.
+    mine: true,
     poll: false,
   });
   const { data: harnesses = [], isLoading: harnessesLoading } = useHarnesses();
@@ -85,6 +88,7 @@ export function usePlatformChatThread(
       try {
         const session = await createSession.mutateAsync({
           request: {
+            source: "chat",
             harness_name: PLATFORM_CHAT_HARNESS_NAME,
             title: PLATFORM_CHAT_THREAD_TITLE,
             tags: [CHAT_THREAD_TAG],
