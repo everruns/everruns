@@ -21,13 +21,20 @@ const GPT_IMAGE_GEN_CAPABILITY_ID: &str = "gpt_image_gen";
 // Default to OpenAI's ChatGPT Images 2.0 API model (`gpt-image-2`), while
 // keeping the legacy GPT Image 1 path available as an explicit opt-in.
 const DEFAULT_OPENAI_IMAGE_MODEL: ImageGenerationModel = ImageGenerationModel::GptImage2;
+/// Fallback image model when GPT image providers are not configured but a
+/// Muse-capable provider (meta or openrouter driver) is available.
+const DEFAULT_MUSE_IMAGE_MODEL: ImageGenerationModel = ImageGenerationModel::MuseImage;
 const DEFAULT_OPENAI_IMAGE_QUALITY: ImageGenerationQuality = ImageGenerationQuality::Medium;
 const DEFAULT_OPENAI_IMAGE_PARTIAL_IMAGES: u8 = 1;
 const DEFAULT_OUTPUT_DIR: &str = "/workspace/.outputs/images";
 const DEFAULT_GENERATE_PREFIX: &str = "generated-image";
 const DEFAULT_EDIT_PREFIX: &str = "edited-image";
-const SESSION_API_KEY_SECRET_NAMES: &[&str] = &["OPENAI_API_KEY", "openai_api_key"];
-const SESSION_BASE_URL_SECRET_NAMES: &[&str] = &["OPENAI_BASE_URL", "openai_base_url"];
+/// Default base URL of the Meta Model API, which serves `muse-image-1.0` at
+/// the OpenAI-compatible `/v1/images/generations` endpoint.
+const DEFAULT_META_BASE_URL: &str = "https://api.meta.ai/v1";
+/// Default base URL of the OpenRouter API, which serves `meta/muse-image` at
+/// `/v1/images`.
+const DEFAULT_OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
 const MAX_EDIT_SOURCE_BYTES: usize = 50 * 1024 * 1024;
 
 inventory::submit! {
@@ -41,9 +48,7 @@ inventory::submit! {
 static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     r#"When image tools are listed, call them directly for generation/editing requests; do not claim they are unavailable or stop at writing prompts unless a tool call fails. Avoid unrelated bookkeeping before straightforward image calls.
 
-For multiple new images, make one generation call per requested concept unless the user asks for batching. Save session files under `/workspace/.outputs/images` by default, rely on the configured quality unless the user requests another, and wait for the completed result before describing a single-image output.
-
-Per-session OpenAI overrides belong in `secret_store` as `OPENAI_API_KEY` and optionally `OPENAI_BASE_URL`."#
+For multiple new images, make one generation call per requested concept unless the user asks for batching. Save session files under `/workspace/.outputs/images` by default, rely on the configured quality unless the user requests another, and wait for the completed result before describing a single-image output."#
         .to_string()
 });
 
@@ -107,7 +112,7 @@ impl Capability for GptImageGenCapability {
     }
 
     fn dependencies(&self) -> Vec<&'static str> {
-        vec!["session_file_system", "session_storage"]
+        vec!["session_file_system"]
     }
 
     fn config_schema(&self) -> Option<Value> {
@@ -118,7 +123,7 @@ impl Capability for GptImageGenCapability {
                 "model": {
                     "type": "string",
                     "title": "Image Model",
-                    "description": "Default model used by image generation and edit tools. With an Azure OpenAI provider, this must match the name of an image model deployment on the Azure resource.",
+                    "description": "Default model used by image generation and edit tools. GPT models use OpenAI/Azure providers; muse-image-1.0 uses Meta (muse-image-1.0) or OpenRouter (meta/muse-image) providers. With an Azure OpenAI provider, the model must match the name of an image model deployment on the Azure resource.",
                     "default": DEFAULT_OPENAI_IMAGE_MODEL.as_str(),
                     "oneOf": [
                         {
@@ -128,6 +133,10 @@ impl Capability for GptImageGenCapability {
                         {
                             "const": "gpt-image-1",
                             "title": "GPT Image 1"
+                        },
+                        {
+                            "const": "muse-image-1.0",
+                            "title": "Muse Image"
                         }
                     ]
                 },
@@ -156,6 +165,16 @@ impl Capability for GptImageGenCapability {
                         { "const": 2, "title": "2 Progress Updates" },
                         { "const": 3, "title": "3 Progress Updates" }
                     ]
+                },
+                "fallback": {
+                    "type": "string",
+                    "title": "Provider Fallback",
+                    "description": "When \"auto\" (default) and no OpenAI or Azure OpenAI credentials are configured, GPT image models fall back to the Muse image model via Meta or OpenRouter providers. When \"off\", GPT image models require OpenAI or Azure OpenAI credentials.",
+                    "default": "auto",
+                    "oneOf": [
+                        { "const": "auto", "title": "Auto" },
+                        { "const": "off", "title": "Off" }
+                    ]
                 }
             }
         }))
@@ -164,7 +183,7 @@ impl Capability for GptImageGenCapability {
     fn config_ui_schema(&self) -> Option<Value> {
         Some(json!({
             "ui:submitButtonOptions": { "norender": true },
-            "ui:order": ["model", "default_quality", "partial_images"],
+            "ui:order": ["model", "default_quality", "partial_images", "fallback"],
             "model": {
                 "ui:placeholder": DEFAULT_OPENAI_IMAGE_MODEL.as_str()
             },
@@ -172,6 +191,9 @@ impl Capability for GptImageGenCapability {
                 "ui:placeholder": DEFAULT_OPENAI_IMAGE_QUALITY.as_str()
             },
             "partial_images": {
+                "ui:widget": "select"
+            },
+            "fallback": {
                 "ui:widget": "select"
             }
         }))
@@ -190,8 +212,9 @@ impl Capability for GptImageGenCapability {
                 name: None,
                 description: None,
                 config_description: Some(
-                    "Choose the default image model, the default quality, and how many \
-                     streamed progress updates single-image requests emit.",
+                    "Choose the default image model, the default quality, how many \
+                     streamed progress updates single-image requests emit, and whether \
+                     a missing GPT provider falls back to Muse.",
                 ),
                 config_overlay: None,
             },
@@ -202,8 +225,9 @@ impl Capability for GptImageGenCapability {
                     "Генеруйте та редагуйте растрові зображення через GPT Image API від OpenAI.",
                 ),
                 config_description: Some(
-                    "Визначає типову модель зображень, типову якість і кількість потокових \
-                     оновлень прогресу для запитів з одним зображенням.",
+                    "Визначає типову модель зображень, типову якість, кількість потокових \
+                     оновлень прогресу для запитів з одним зображенням, а також чи \
+                     переходити на Muse за відсутності GPT-провайдера.",
                 ),
                 config_overlay: Some(json!({
                     "properties": {
@@ -212,7 +236,8 @@ impl Capability for GptImageGenCapability {
                             "description": "Типова модель для інструментів генерації та редагування зображень. Для провайдера Azure OpenAI назва має збігатися з іменем розгортання моделі зображень на ресурсі Azure.",
                             "enum_labels": {
                                 "gpt-image-2": "ChatGPT Images 2.0",
-                                "gpt-image-1": "GPT Image 1"
+                                "gpt-image-1": "GPT Image 1",
+                                "muse-image-1.0": "Muse Image"
                             }
                         },
                         "default_quality": {
@@ -233,6 +258,14 @@ impl Capability for GptImageGenCapability {
                                 "0": "Вимкнено",
                                 "2": "2 оновлення прогресу",
                                 "3": "3 оновлення прогресу"
+                            }
+                        },
+                        "fallback": {
+                            "title": "Резервна модель",
+                            "description": "Коли \"auto\" (типово) і облікові дані OpenAI або Azure OpenAI не налаштовані, моделі зображень GPT переходять на модель зображень Muse через провайдерів Meta або OpenRouter. Коли \"off\", моделі зображень GPT потребують облікових даних OpenAI або Azure OpenAI.",
+                            "enum_labels": {
+                                "auto": "Авто",
+                                "off": "Вимкнено"
                             }
                         }
                     }
@@ -337,9 +370,13 @@ impl Tool for GenerateImageTool {
             Ok(config) => config,
             Err(result) => return result,
         };
-        let model = capability_config.model.as_str();
-
-        let client = match build_client(context).await {
+        let (client, model) = match build_client(
+            context,
+            capability_config.model,
+            capability_config.fallback,
+        )
+        .await
+        {
             Ok(client) => client,
             Err(result) => return result,
         };
@@ -395,7 +432,7 @@ impl Tool for GenerateImageTool {
             &args.prompt,
             None,
             &args.common,
-            model,
+            &model,
             response.data,
             args.common
                 .filename_prefix
@@ -498,13 +535,17 @@ impl Tool for EditImageTool {
             Ok(config) => config,
             Err(result) => return result,
         };
-        let model = capability_config.model.as_str();
-
         let sources = match collect_edit_sources(context, &args).await {
             Ok(sources) => sources,
             Err(result) => return result,
         };
-        let client = match build_client(context).await {
+        let (client, model) = match build_client(
+            context,
+            capability_config.model,
+            capability_config.fallback,
+        )
+        .await
+        {
             Ok(client) => client,
             Err(result) => return result,
         };
@@ -558,7 +599,7 @@ impl Tool for EditImageTool {
                 "path": args.path,
             })),
             &args.common,
-            model,
+            &model,
             response.data,
             args.common
                 .filename_prefix
@@ -646,8 +687,14 @@ struct CommonImageArgsWithDefaults {
 
 #[derive(Debug, Clone)]
 struct ResolvedClientConfig {
+    provider_type: String,
     api_key: String,
     base_url: Option<String>,
+    /// Model id to send to the image API. This matches the configured model
+    /// except when falling back from a GPT image model to Muse, or when the
+    /// provider addresses the model under a different id (OpenRouter's
+    /// `meta/muse-image`).
+    api_model: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -656,6 +703,10 @@ enum ImageGenerationModel {
     GptImage2,
     #[serde(rename = "gpt-image-1")]
     GptImage1,
+    /// Meta Muse image model (`muse-image-1.0` on the Meta Model API,
+    /// `meta/muse-image` on OpenRouter).
+    #[serde(rename = "muse-image-1.0")]
+    MuseImage,
 }
 
 impl ImageGenerationModel {
@@ -663,7 +714,21 @@ impl ImageGenerationModel {
         match self {
             Self::GptImage2 => "gpt-image-2",
             Self::GptImage1 => "gpt-image-1",
+            Self::MuseImage => "muse-image-1.0",
         }
+    }
+
+    fn is_muse_model(self) -> bool {
+        matches!(self, Self::MuseImage)
+    }
+
+    /// Model id to send to the image API. OpenRouter addresses the Muse image
+    /// model as `meta/muse-image`; the Meta Model API uses `muse-image-1.0`.
+    fn api_model_id(self, provider_type: &str) -> String {
+        if self.is_muse_model() && provider_type == "openrouter" {
+            return "meta/muse-image".to_string();
+        }
+        self.as_str().to_string()
     }
 }
 
@@ -690,6 +755,22 @@ impl ImageGenerationQuality {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+enum ImageModelFallback {
+    /// Fall back to the Muse image model via Meta or OpenRouter providers
+    /// when no OpenAI or Azure OpenAI credentials are configured.
+    #[serde(rename = "auto")]
+    Auto,
+    /// Never fall back: GPT image models require OpenAI or Azure OpenAI
+    /// credentials.
+    #[serde(rename = "off")]
+    Off,
+}
+
+fn default_image_model_fallback() -> ImageModelFallback {
+    ImageModelFallback::Auto
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct GptImageGenCapabilityConfig {
     #[serde(default = "default_openai_image_model")]
@@ -698,6 +779,8 @@ struct GptImageGenCapabilityConfig {
     default_quality: ImageGenerationQuality,
     #[serde(default = "default_openai_image_partial_images")]
     partial_images: u8,
+    #[serde(default = "default_image_model_fallback")]
+    fallback: ImageModelFallback,
 }
 
 impl Default for GptImageGenCapabilityConfig {
@@ -706,6 +789,7 @@ impl Default for GptImageGenCapabilityConfig {
             model: default_openai_image_model(),
             default_quality: default_openai_image_quality(),
             partial_images: default_openai_image_partial_images(),
+            fallback: default_image_model_fallback(),
         }
     }
 }
@@ -805,72 +889,79 @@ async fn emit_stream_progress(
     context.emit_progress(tool_name, &message).await;
 }
 
-async fn build_client(context: &ToolContext) -> Result<OpenAiImageClient, ToolExecutionResult> {
-    let config = match resolve_client_config(context).await {
+async fn build_client(
+    context: &ToolContext,
+    model: ImageGenerationModel,
+    fallback: ImageModelFallback,
+) -> Result<(OpenAiImageClient, String), ToolExecutionResult> {
+    let config = match resolve_client_config(context, model, fallback).await {
         Ok(config) => config,
         Err(result) => return Err(result),
     };
 
-    OpenAiImageClient::new(config.api_key, config.base_url)
-        .map_err(|error| ToolExecutionResult::internal_error_msg(format!("{error:#}")))
+    let mut client = OpenAiImageClient::new(config.api_key, config.base_url)
+        .map_err(|error| ToolExecutionResult::internal_error_msg(format!("{error:#}")))?;
+
+    // OpenRouter serves image generation at `/v1/images` rather than the
+    // OpenAI-compatible `/v1/images/generations`.
+    if config.provider_type == "openrouter" {
+        client = client.with_images_path("images");
+    }
+
+    Ok((client, config.api_model))
 }
 
 async fn resolve_client_config(
     context: &ToolContext,
+    model: ImageGenerationModel,
+    fallback: ImageModelFallback,
 ) -> Result<ResolvedClientConfig, ToolExecutionResult> {
-    if let Some(storage_store) = &context.storage_store {
-        let api_key = match get_first_secret(
-            storage_store.as_ref(),
-            context,
-            SESSION_API_KEY_SECRET_NAMES,
-        )
-        .await
-        {
-            Ok(api_key) => api_key,
-            Err(error) => {
-                return Err(ToolExecutionResult::internal_error_msg(format!(
-                    "{error:#}"
-                )));
-            }
-        };
-        let base_url = match get_first_secret(
-            storage_store.as_ref(),
-            context,
-            SESSION_BASE_URL_SECRET_NAMES,
-        )
-        .await
-        {
-            Ok(base_url) => base_url,
-            Err(error) => {
-                return Err(ToolExecutionResult::internal_error_msg(format!(
-                    "{error:#}"
-                )));
-            }
-        };
-        if let Some(api_key) = api_key {
-            return Ok(ResolvedClientConfig { api_key, base_url });
-        }
-    }
-
     let Some(provider_store) = &context.provider_credential_store else {
         return Err(ToolExecutionResult::tool_error(
-            "OpenAI credentials are not configured. Store OPENAI_API_KEY via secret_store or configure an OpenAI or Azure OpenAI provider.",
+            "Image credentials are not configured. Configure an OpenAI or Azure OpenAI provider (GPT image models) or a Meta or OpenRouter provider (Muse image model).",
         ));
     };
 
     // Prefer a native OpenAI provider; fall back to Azure OpenAI, whose base
     // URL is validated at provider creation to the OpenAI-compatible
     // `/openai/v1` surface that serves the Images API (the client applies
-    // Azure's `api-key` auth header based on the URL).
-    for provider_type in ["openai", "azure_openai"] {
+    // Azure's `api-key` auth header based on the URL). Muse image models are
+    // served through the meta and openrouter drivers: an explicitly
+    // configured Muse model only considers those, while a GPT image model
+    // without OpenAI/Azure credentials smart-falls back to the Muse image
+    // model when a Muse-capable provider is configured and the capability
+    // `fallback` setting is `auto`. With `fallback: off`, GPT image models
+    // only consider OpenAI/Azure providers.
+    let provider_types: Vec<&str> = if model.is_muse_model() {
+        vec!["meta", "openrouter"]
+    } else if fallback == ImageModelFallback::Auto {
+        vec!["openai", "azure_openai", "meta", "openrouter"]
+    } else {
+        vec!["openai", "azure_openai"]
+    };
+    for provider_type in provider_types {
         match provider_store
             .get_default_provider_credentials(provider_type)
             .await
         {
             Ok(Some(credentials)) => {
+                // Muse-capable providers always serve the Muse image model;
+                // GPT model ids are not valid on the meta/openrouter surface.
+                let effective_model = if matches!(provider_type, "meta" | "openrouter") {
+                    DEFAULT_MUSE_IMAGE_MODEL
+                } else {
+                    model
+                };
+                let base_url = credentials.base_url.or_else(|| match provider_type {
+                    "meta" => Some(DEFAULT_META_BASE_URL.to_string()),
+                    "openrouter" => Some(DEFAULT_OPENROUTER_BASE_URL.to_string()),
+                    _ => None,
+                });
                 return Ok(ResolvedClientConfig {
+                    provider_type: provider_type.to_string(),
                     api_key: credentials.api_key,
-                    base_url: credentials.base_url,
+                    base_url,
+                    api_model: effective_model.api_model_id(provider_type),
                 });
             }
             Ok(None) => {}
@@ -879,21 +970,8 @@ async fn resolve_client_config(
     }
 
     Err(ToolExecutionResult::tool_error(
-        "OpenAI credentials are not configured. Store OPENAI_API_KEY via secret_store or configure an OpenAI or Azure OpenAI provider.",
+        "Image credentials are not configured. Configure an OpenAI or Azure OpenAI provider (GPT image models) or a Meta or OpenRouter provider (Muse image model).",
     ))
-}
-
-async fn get_first_secret(
-    store: &dyn everruns_core::session_services::SessionStorageStore,
-    context: &ToolContext,
-    names: &[&str],
-) -> anyhow::Result<Option<String>> {
-    for name in names {
-        if let Some(value) = store.get_secret(context.session_id, name).await? {
-            return Ok(Some(value));
-        }
-    }
-    Ok(None)
 }
 
 fn validate_output_options(common: &CommonImageArgs) -> Result<(), String> {
@@ -1181,82 +1259,14 @@ fn infer_image_content_type(path: &str) -> Option<&'static str> {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use everruns_core::connection_services::ProviderCredentialStore;
     use everruns_core::connection_services::ProviderCredentials;
-    use everruns_core::{
-        connection_services::ProviderCredentialStore, session_services::KeyInfo,
-        session_services::SecretInfo, session_services::SessionStorageStore,
-    };
     use everruns_provider::error::Result;
     use everruns_provider::typed_id::SessionId;
-    use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
-
-    struct MockSessionStorageStore {
-        secrets: Mutex<HashMap<String, String>>,
-    }
-
-    impl MockSessionStorageStore {
-        fn with_secrets(secrets: &[(&str, &str)]) -> Self {
-            let mut map = HashMap::new();
-            for (key, value) in secrets {
-                map.insert((*key).to_string(), (*value).to_string());
-            }
-            Self {
-                secrets: Mutex::new(map),
-            }
-        }
-    }
-
-    #[async_trait]
-    impl SessionStorageStore for MockSessionStorageStore {
-        async fn set_value(&self, _session_id: SessionId, _key: &str, _value: &str) -> Result<()> {
-            unreachable!("unused in tests")
-        }
-
-        async fn get_value(&self, _session_id: SessionId, _key: &str) -> Result<Option<String>> {
-            unreachable!("unused in tests")
-        }
-
-        async fn delete_value(&self, _session_id: SessionId, _key: &str) -> Result<bool> {
-            unreachable!("unused in tests")
-        }
-
-        async fn list_keys(&self, _session_id: SessionId) -> Result<Vec<KeyInfo>> {
-            unreachable!("unused in tests")
-        }
-
-        async fn set_secret(
-            &self,
-            _session_id: SessionId,
-            _name: &str,
-            _value: &str,
-        ) -> Result<()> {
-            unreachable!("unused in tests")
-        }
-
-        async fn get_secret(&self, _session_id: SessionId, name: &str) -> Result<Option<String>> {
-            Ok(self.secrets.lock().expect("poisoned").get(name).cloned())
-        }
-
-        async fn delete_secret(&self, _session_id: SessionId, _name: &str) -> Result<bool> {
-            unreachable!("unused in tests")
-        }
-
-        async fn list_secrets(&self, _session_id: SessionId) -> Result<Vec<SecretInfo>> {
-            unreachable!("unused in tests")
-        }
-    }
+    use std::sync::Arc;
 
     struct MockProviderCredentialStore {
         providers: Vec<(&'static str, ProviderCredentials)>,
-    }
-
-    impl MockProviderCredentialStore {
-        fn openai(credentials: ProviderCredentials) -> Self {
-            Self {
-                providers: vec![("openai", credentials)],
-            }
-        }
     }
 
     #[async_trait]
@@ -1298,68 +1308,7 @@ mod tests {
     #[test]
     fn capability_declares_session_file_system_dependency() {
         let capability = GptImageGenCapability;
-        assert_eq!(
-            capability.dependencies(),
-            vec!["session_file_system", "session_storage"]
-        );
-    }
-
-    #[tokio::test]
-    async fn uses_session_base_url_when_session_api_key_present() {
-        let session_id = SessionId::new();
-        let storage = Arc::new(MockSessionStorageStore::with_secrets(&[
-            ("OPENAI_API_KEY", "session-key"),
-            ("OPENAI_BASE_URL", "https://session.example/v1"),
-        ]));
-        let provider = Arc::new(MockProviderCredentialStore::openai(ProviderCredentials {
-            api_key: "provider-key".to_string(),
-            base_url: Some("https://provider.example/v1".to_string()),
-        }));
-        let context = ToolContext {
-            session_id,
-            storage_store: Some(storage),
-            provider_credential_store: Some(provider),
-            ..ToolContext::new(session_id)
-        };
-
-        let resolved = resolve_client_config(&context)
-            .await
-            .expect("resolve config");
-
-        assert_eq!(resolved.api_key, "session-key");
-        assert_eq!(
-            resolved.base_url,
-            Some("https://session.example/v1".to_string())
-        );
-    }
-
-    #[tokio::test]
-    async fn ignores_session_base_url_when_falling_back_to_provider_credentials() {
-        let session_id = SessionId::new();
-        let storage = Arc::new(MockSessionStorageStore::with_secrets(&[(
-            "OPENAI_BASE_URL",
-            "https://attacker.example/v1",
-        )]));
-        let provider = Arc::new(MockProviderCredentialStore::openai(ProviderCredentials {
-            api_key: "provider-key".to_string(),
-            base_url: Some("https://provider.example/v1".to_string()),
-        }));
-        let context = ToolContext {
-            session_id,
-            storage_store: Some(storage),
-            provider_credential_store: Some(provider),
-            ..ToolContext::new(session_id)
-        };
-
-        let resolved = resolve_client_config(&context)
-            .await
-            .expect("resolve config");
-
-        assert_eq!(resolved.api_key, "provider-key");
-        assert_eq!(
-            resolved.base_url,
-            Some("https://provider.example/v1".to_string())
-        );
+        assert_eq!(capability.dependencies(), vec!["session_file_system"]);
     }
 
     // With no OpenAI provider configured, credentials must fall back to the
@@ -1384,9 +1333,13 @@ mod tests {
             ..ToolContext::new(session_id)
         };
 
-        let resolved = resolve_client_config(&context)
-            .await
-            .expect("resolve config");
+        let resolved = resolve_client_config(
+            &context,
+            ImageGenerationModel::GptImage2,
+            ImageModelFallback::Auto,
+        )
+        .await
+        .expect("resolve config");
 
         assert_eq!(resolved.api_key, "azure-key");
         assert_eq!(
@@ -1423,11 +1376,220 @@ mod tests {
             ..ToolContext::new(session_id)
         };
 
-        let resolved = resolve_client_config(&context)
-            .await
-            .expect("resolve config");
+        let resolved = resolve_client_config(
+            &context,
+            ImageGenerationModel::GptImage2,
+            ImageModelFallback::Auto,
+        )
+        .await
+        .expect("resolve config");
 
         assert_eq!(resolved.api_key, "openai-key");
+    }
+
+    fn mock_context_with_named_providers(
+        providers: Vec<(&'static str, ProviderCredentials)>,
+    ) -> ToolContext {
+        let session_id = SessionId::new();
+        let provider = Arc::new(MockProviderCredentialStore { providers });
+        ToolContext {
+            session_id,
+            storage_store: None,
+            provider_credential_store: Some(provider),
+            ..ToolContext::new(session_id)
+        }
+    }
+
+    #[tokio::test]
+    async fn muse_model_resolves_meta_provider() {
+        let context = mock_context_with_named_providers(vec![(
+            "meta",
+            ProviderCredentials {
+                api_key: "meta-key".to_string(),
+                base_url: None,
+            },
+        )]);
+        let resolved = resolve_client_config(
+            &context,
+            ImageGenerationModel::MuseImage,
+            ImageModelFallback::Auto,
+        )
+        .await
+        .expect("resolve config");
+        assert_eq!(resolved.provider_type, "meta");
+        assert_eq!(resolved.api_key, "meta-key");
+        assert_eq!(resolved.base_url.as_deref(), Some(DEFAULT_META_BASE_URL));
+        assert_eq!(resolved.api_model, "muse-image-1.0");
+    }
+
+    #[tokio::test]
+    async fn muse_model_resolves_openrouter_provider_with_openrouter_model_id() {
+        let context = mock_context_with_named_providers(vec![(
+            "openrouter",
+            ProviderCredentials {
+                api_key: "or-key".to_string(),
+                base_url: None,
+            },
+        )]);
+        let resolved = resolve_client_config(
+            &context,
+            ImageGenerationModel::MuseImage,
+            ImageModelFallback::Auto,
+        )
+        .await
+        .expect("resolve config");
+        assert_eq!(resolved.provider_type, "openrouter");
+        assert_eq!(
+            resolved.base_url.as_deref(),
+            Some(DEFAULT_OPENROUTER_BASE_URL)
+        );
+        assert_eq!(resolved.api_model, "meta/muse-image");
+    }
+
+    #[tokio::test]
+    async fn muse_model_prefers_meta_provider_over_openrouter() {
+        let context = mock_context_with_named_providers(vec![
+            (
+                "openrouter",
+                ProviderCredentials {
+                    api_key: "or-key".to_string(),
+                    base_url: None,
+                },
+            ),
+            (
+                "meta",
+                ProviderCredentials {
+                    api_key: "meta-key".to_string(),
+                    base_url: None,
+                },
+            ),
+        ]);
+        let resolved = resolve_client_config(
+            &context,
+            ImageGenerationModel::MuseImage,
+            ImageModelFallback::Auto,
+        )
+        .await
+        .expect("resolve config");
+        assert_eq!(resolved.api_key, "meta-key");
+        assert_eq!(resolved.api_model, "muse-image-1.0");
+    }
+
+    #[tokio::test]
+    async fn muse_model_ignores_openai_provider() {
+        let context = mock_context_with_named_providers(vec![(
+            "openai",
+            ProviderCredentials {
+                api_key: "openai-key".to_string(),
+                base_url: None,
+            },
+        )]);
+        let error = resolve_client_config(
+            &context,
+            ImageGenerationModel::MuseImage,
+            ImageModelFallback::Auto,
+        )
+        .await
+        .unwrap_err();
+        let ToolExecutionResult::ToolError(message) = error else {
+            panic!("expected tool error, got {error:?}");
+        };
+        assert!(message.contains("Image credentials are not configured"));
+    }
+
+    #[tokio::test]
+    async fn gpt_model_falls_back_to_muse_when_only_muse_providers_exist() {
+        let context = mock_context_with_named_providers(vec![(
+            "openrouter",
+            ProviderCredentials {
+                api_key: "or-key".to_string(),
+                base_url: None,
+            },
+        )]);
+        let resolved = resolve_client_config(
+            &context,
+            ImageGenerationModel::GptImage2,
+            ImageModelFallback::Auto,
+        )
+        .await
+        .expect("resolve config");
+        assert_eq!(resolved.provider_type, "openrouter");
+        assert_eq!(resolved.api_model, "meta/muse-image");
+    }
+
+    #[tokio::test]
+    async fn gpt_model_prefers_openai_over_muse_fallback() {
+        let context = mock_context_with_named_providers(vec![
+            (
+                "meta",
+                ProviderCredentials {
+                    api_key: "meta-key".to_string(),
+                    base_url: None,
+                },
+            ),
+            (
+                "openai",
+                ProviderCredentials {
+                    api_key: "openai-key".to_string(),
+                    base_url: None,
+                },
+            ),
+        ]);
+        let resolved = resolve_client_config(
+            &context,
+            ImageGenerationModel::GptImage2,
+            ImageModelFallback::Auto,
+        )
+        .await
+        .expect("resolve config");
+        assert_eq!(resolved.provider_type, "openai");
+        assert_eq!(resolved.api_model, "gpt-image-2");
+    }
+
+    #[tokio::test]
+    async fn gpt_model_with_fallback_off_errors_when_only_muse_providers_exist() {
+        let context = mock_context_with_named_providers(vec![(
+            "openrouter",
+            ProviderCredentials {
+                api_key: "or-key".to_string(),
+                base_url: None,
+            },
+        )]);
+        let error = resolve_client_config(
+            &context,
+            ImageGenerationModel::GptImage2,
+            ImageModelFallback::Off,
+        )
+        .await
+        .unwrap_err();
+        let ToolExecutionResult::ToolError(message) = error else {
+            panic!("expected tool error, got {error:?}");
+        };
+        assert!(message.contains("Image credentials are not configured"));
+    }
+
+    #[test]
+    fn capability_config_defaults_to_auto_fallback() {
+        let config = parse_capability_config(&json!({})).unwrap();
+        assert_eq!(config.fallback, ImageModelFallback::Auto);
+    }
+
+    #[test]
+    fn capability_config_accepts_fallback_off() {
+        let config = parse_capability_config(&json!({
+            "fallback": "off"
+        }))
+        .unwrap();
+        assert_eq!(config.fallback, ImageModelFallback::Off);
+    }
+
+    #[test]
+    fn capability_config_accepts_muse_image_model() {
+        let config = parse_capability_config(&json!({
+            "model": "muse-image-1.0"
+        }))
+        .unwrap();
+        assert_eq!(config.model, ImageGenerationModel::MuseImage);
     }
 
     #[test]
