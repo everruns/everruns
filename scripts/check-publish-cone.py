@@ -40,6 +40,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 
 def index_path(name: str) -> str:
@@ -113,9 +114,14 @@ def find_strands(current: dict[str, str], pre_merge: bool) -> list[str]:
     being bumped in this change (workspace version != latest published), because
     that republish heals it.
     """
+    # Baselines are independent crates.io index reads: fetch them
+    # concurrently (pool.map preserves order, so output stays sorted).
+    names = sorted(current)
+    with ThreadPoolExecutor(max_workers=min(10, len(names) or 1)) as pool:
+        baselines = dict(zip(names, pool.map(latest_published, names)))
     strands: list[str] = []
-    for name in sorted(current):
-        latest = latest_published(name)
+    for name in names:
+        latest = baselines[name]
         if not latest:
             continue  # never published: cannot strand a consumer yet
         if pre_merge and current[name] != latest["vers"]:
@@ -202,6 +208,7 @@ def self_test() -> int:
         expect("pre-merge ignores bumped filesystem", pre_healed, [])
         strict_healed = find_strands(healed, pre_merge=False)
         expect("strict still flags until republished", any("filesystem" in s for s in strict_healed), True)
+        expect("concurrent scan is deterministic", find_strands(workspace, pre_merge=True), pre)
     finally:
         latest_published = real
 
