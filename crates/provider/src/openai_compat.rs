@@ -185,6 +185,7 @@ mod tests {
     #[test]
     fn reasoning_effort_is_validated_before_none_is_filtered() {
         let mut config = LlmCallConfig {
+            reasoning_state: None,
             speed: None,
             verbosity: None,
             model: "gpt-6-astra".to_string(),

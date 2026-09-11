@@ -930,6 +930,8 @@ async fn astra_cache_wire_and_usage_buckets() {
         .base_url(format!("{}/v1/responses", server.uri()));
         let mut cfg = config("gpt-6-astra");
         cfg.previous_response_id = Some("resp_previous".into());
+        cfg.reasoning_effort = Some(everruns_provider::ReasoningEffort::Low);
+        cfg.reasoning_state = Some(astra_state(Some(everruns_provider::ReasoningEffort::High)));
         cfg.prompt_cache = Some(PromptCacheConfig {
             enabled: true,
             strategy: PromptCacheStrategy::Explicit,
@@ -959,7 +961,10 @@ async fn astra_cache_wire_and_usage_buckets() {
             body["input"][0]["content"][0]["prompt_cache_breakpoint"],
             json!({"mode":"explicit"})
         );
-        assert_eq!(body["input"][1]["content"], "Current question");
+        assert_eq!(body["reasoning"]["effort"], "low");
+        assert_eq!(body["input"][1]["type"], "configuration_update");
+        assert_eq!(body["input"][1]["reasoning"]["effort"], "high");
+        assert_eq!(body["input"][2]["content"], "Current question");
         assert!(body.get("instructions").is_none());
         assert!(body.get("previous_response_id").is_none());
         assert!(body["prompt_cache_key"].as_str().unwrap().len() <= 64);

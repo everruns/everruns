@@ -2643,6 +2643,7 @@ mod tests {
     #[test]
     fn explicit_cache_wire_options_are_model_gated() {
         let mut config = LlmCallConfig {
+            reasoning_state: None,
             speed: None,
             verbosity: None,
             model: "gpt-6-astra".to_string(),
