@@ -284,6 +284,86 @@ fn response_preview(text: &str) -> String {
     text.chars().take(100).collect::<String>()
 }
 
+/// Create a model under a provider, adopting the row the provider's own
+/// credential already produced.
+///
+/// A provider that gains a credential now discovers its catalog and enables a
+/// shortlist of chat models (#3515). For a live provider that lands the exact
+/// models these tests then ask for, so `POST .../models` answers `409
+/// already_exists` instead of `201` and six tests panicked on main — where the
+/// live keys are, and where discovery therefore actually runs. On a pull
+/// request the same tests skip, so nothing caught it before the merge.
+///
+/// Who inserted the row is not what any of these tests are about, so adopt it
+/// and bring it to the state the test needs: enabled, under the name the test
+/// expects. Creating it outright stays the normal path.
+async fn ensure_model(
+    client: &reqwest::Client,
+    provider_id: &str,
+    model_id: &str,
+    display_name: &str,
+) -> Model {
+    let response = client
+        .post(format!("{API_BASE_URL}/v1/providers/{provider_id}/models"))
+        .json(&json!({
+            "model_id": model_id,
+            "display_name": display_name,
+            "enabled": true,
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+
+    let status = response.status();
+    if status == 201 {
+        return response.json().await.expect("Failed to parse model");
+    }
+    if status != 409 {
+        let body = response.text().await.unwrap_or_default();
+        panic!("Failed to create model {model_id}: status={status}, body={body}");
+    }
+
+    // 409 means discovery got there first. Find that row by its provider-scoped
+    // model_id — the only identifier the test knows.
+    let listed: Value = client
+        .get(format!("{API_BASE_URL}/v1/models"))
+        .send()
+        .await
+        .expect("Failed to list models after a create conflict")
+        .json()
+        .await
+        .expect("Failed to parse model list");
+    let existing_id = listed["data"]
+        .as_array()
+        .expect("model list should have a data array")
+        .iter()
+        .find(|model| model["provider_id"] == provider_id && model["model_id"] == model_id)
+        .and_then(|model| model["id"].as_str())
+        .unwrap_or_else(|| {
+            panic!("create said {model_id} already exists, but it is not in the model list")
+        })
+        .to_string();
+
+    // Discovery may have left it disabled, and it carries the catalog's display
+    // name rather than the test's. Both matter: the tests select this model by
+    // id for a real turn, and an assertion may name it.
+    let patched = client
+        .patch(format!("{API_BASE_URL}/v1/models/{existing_id}"))
+        .json(&json!({ "enabled": true, "display_name": display_name }))
+        .send()
+        .await
+        .expect("Failed to adopt the discovered model");
+    let patch_status = patched.status();
+    if patch_status != 200 {
+        let body = patched.text().await.unwrap_or_default();
+        panic!("Failed to adopt model {model_id}: status={patch_status}, body={body}");
+    }
+    patched
+        .json()
+        .await
+        .expect("Failed to parse the adopted model")
+}
+
 #[test]
 fn response_preview_truncates_on_char_boundaries() {
     // A byte slice at 100 panics here: the model's curly apostrophe occupies
@@ -1364,29 +1444,13 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     println!("Created Anthropic provider: {}", provider.id);
 
     // Create model (claude-haiku-4-5 for cost-effectiveness)
-    let model_response = client
-        .post(format!(
-            "{}/v1/providers/{}/models",
-            API_BASE_URL, provider.id
-        ))
-        .json(&json!({
-            "model_id": LIVE_ANTHROPIC_FAST_MODEL,
-            "display_name": "Anthropic Fast (FS Bash Test)",
-            "enabled": true
-        }))
-        .send()
-        .await
-        .expect("Failed to create model");
-
-    if model_response.status() != 201 {
-        let status = model_response.status();
-        let body = model_response.text().await.unwrap_or_default();
-        panic!(
-            "Failed to create Anthropic model: status={}, body={}",
-            status, body
-        );
-    }
-    let model: Model = model_response.json().await.expect("Failed to parse model");
+    let model = ensure_model(
+        &client,
+        &provider.id.to_string(),
+        LIVE_ANTHROPIC_FAST_MODEL,
+        "Anthropic Fast (FS Bash Test)",
+    )
+    .await;
     println!("Created model: {}", model.id);
 
     // Step 2: Create agent with both session_file_system and bashkit_shell capabilities
@@ -2122,26 +2186,13 @@ async fn test_no_duplicate_tool_calls() {
 
     // Step 2: Create a model configured for tool use
     println!("\nStep 2: Creating model...");
-    let model_response = client
-        .post(format!(
-            "{}/v1/providers/{}/models",
-            API_BASE_URL, provider.id
-        ))
-        .json(&json!({
-            "model_id": "gpt-5.4-mini",
-            "display_name": "GPT-5.4 Mini Test",
-            "enabled": true
-        }))
-        .send()
-        .await
-        .expect("Failed to create model");
-
-    if model_response.status() != 201 {
-        let status = model_response.status();
-        let body = model_response.text().await.unwrap_or_default();
-        panic!("Failed to create model: status={}, body={}", status, body);
-    }
-    let model: Model = model_response.json().await.expect("Failed to parse model");
+    let model = ensure_model(
+        &client,
+        &provider.id.to_string(),
+        "gpt-5.4-mini",
+        "GPT-5.4 Mini Test",
+    )
+    .await;
     println!("Created model: {}", model.id);
 
     // Step 3: Create an agent with current_time capability
@@ -3728,26 +3779,13 @@ async fn test_agent_execution_openai_with_tool_calls() {
     println!("Created OpenAI provider: {}", provider.id);
 
     // Create model (gpt-5.4-mini for cost-effectiveness)
-    let model_response = client
-        .post(format!(
-            "{}/v1/providers/{}/models",
-            API_BASE_URL, provider.id
-        ))
-        .json(&json!({
-            "model_id": "gpt-5.4-mini",
-            "display_name": "GPT-5.4 Mini (Tool Test)",
-            "enabled": true
-        }))
-        .send()
-        .await
-        .expect("Failed to create model");
-
-    if model_response.status() != 201 {
-        let status = model_response.status();
-        let body = model_response.text().await.unwrap_or_default();
-        panic!("Failed to create model: status={}, body={}", status, body);
-    }
-    let model: Model = model_response.json().await.expect("Failed to parse model");
+    let model = ensure_model(
+        &client,
+        &provider.id.to_string(),
+        "gpt-5.4-mini",
+        "GPT-5.4 Mini (Tool Test)",
+    )
+    .await;
     println!("Created model: {} ({})", model.display_name, model.id);
 
     // Step 2: Create dad jokes agent with current_time capability
@@ -3984,26 +4022,13 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     println!("Created Anthropic provider: {}", provider.id);
 
     // Create model (claude-haiku-4-5 for cost-effectiveness)
-    let model_response = client
-        .post(format!(
-            "{}/v1/providers/{}/models",
-            API_BASE_URL, provider.id
-        ))
-        .json(&json!({
-            "model_id": LIVE_ANTHROPIC_FAST_MODEL,
-            "display_name": "Anthropic Fast (Tool Test)",
-            "enabled": true
-        }))
-        .send()
-        .await
-        .expect("Failed to create model");
-
-    if model_response.status() != 201 {
-        let status = model_response.status();
-        let body = model_response.text().await.unwrap_or_default();
-        panic!("Failed to create model: status={}, body={}", status, body);
-    }
-    let model: Model = model_response.json().await.expect("Failed to parse model");
+    let model = ensure_model(
+        &client,
+        &provider.id.to_string(),
+        LIVE_ANTHROPIC_FAST_MODEL,
+        "Anthropic Fast (Tool Test)",
+    )
+    .await;
     println!("Created model: {} ({})", model.display_name, model.id);
 
     // Step 2: Create dad jokes agent with current_time capability
@@ -4891,26 +4916,13 @@ async fn test_anthropic_extended_thinking() {
     println!("Created Anthropic provider: {}", provider.id);
 
     // Create model (the live thinking model supports extended thinking)
-    let model_response = client
-        .post(format!(
-            "{}/v1/providers/{}/models",
-            API_BASE_URL, provider.id
-        ))
-        .json(&json!({
-            "model_id": LIVE_ANTHROPIC_THINKING_MODEL,
-            "display_name": "Anthropic Thinking (Thinking Test)",
-            "enabled": true
-        }))
-        .send()
-        .await
-        .expect("Failed to create model");
-
-    if model_response.status() != 201 {
-        let status = model_response.status();
-        let body = model_response.text().await.unwrap_or_default();
-        panic!("Failed to create model: status={}, body={}", status, body);
-    }
-    let model: Model = model_response.json().await.expect("Failed to parse model");
+    let model = ensure_model(
+        &client,
+        &provider.id.to_string(),
+        LIVE_ANTHROPIC_THINKING_MODEL,
+        "Anthropic Thinking (Thinking Test)",
+    )
+    .await;
     println!("Created model: {} ({})", model.display_name, model.id);
 
     // Step 2: Create agent (no tool calls - tests basic thinking flow)
@@ -5261,26 +5273,13 @@ async fn test_anthropic_extended_thinking_with_tools() {
     println!("Created Anthropic provider: {}", provider.id);
 
     // Create model (the live thinking model supports extended thinking)
-    let model_response = client
-        .post(format!(
-            "{}/v1/providers/{}/models",
-            API_BASE_URL, provider.id
-        ))
-        .json(&json!({
-            "model_id": LIVE_ANTHROPIC_THINKING_MODEL,
-            "display_name": "Anthropic Thinking (Thinking+Tools Test)",
-            "enabled": true
-        }))
-        .send()
-        .await
-        .expect("Failed to create model");
-
-    if model_response.status() != 201 {
-        let status = model_response.status();
-        let body = model_response.text().await.unwrap_or_default();
-        panic!("Failed to create model: status={}, body={}", status, body);
-    }
-    let model: Model = model_response.json().await.expect("Failed to parse model");
+    let model = ensure_model(
+        &client,
+        &provider.id.to_string(),
+        LIVE_ANTHROPIC_THINKING_MODEL,
+        "Anthropic Thinking (Thinking+Tools Test)",
+    )
+    .await;
     println!("Created model: {} ({})", model.display_name, model.id);
 
     // Step 2: Create agent WITH current_time tool
