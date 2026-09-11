@@ -1,9 +1,5 @@
 # Everruns
 
-<p align="center">
-  <img src="./assets/readme/banner.png" alt="Everruns" width="100%" />
-</p>
-
 [![Website](https://img.shields.io/badge/Website-everruns.com-blue)](https://everruns.com)
 [![Docs](https://img.shields.io/badge/Docs-docs.everruns.com-green)](https://docs.everruns.com)
 [![Crates.io](https://img.shields.io/crates/v/everruns.svg)](https://crates.io/crates/everruns)
@@ -21,6 +17,10 @@ production operations, run the Everruns platform yourself or use
 [Hosted Everruns](https://app.everruns.com).
 
 [Build with the framework](https://docs.everruns.com/framework/quickstart/) · [Read the docs](https://docs.everruns.com/framework/) · [Use Hosted Everruns](https://app.everruns.com)
+
+<p align="center">
+  <img src="./assets/readme/banner.png" alt="Everruns" width="100%" />
+</p>
 
 ## Build an agent
 
