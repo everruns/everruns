@@ -137,4 +137,3 @@ proving the OKF→agent loop end to end:
 (AND-semantics), so an over-specific query like `"active user definition"`
 returns nothing while `"active user"` matches. Consider
 `websearch_to_tsquery` / an OR fallback to improve agent-driven recall.
-
