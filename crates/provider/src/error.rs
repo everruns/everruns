@@ -5,8 +5,10 @@
 
 use crate::typed_id::{AgentId, HarnessId, SessionId};
 use crate::user_facing_error::{
-    UserFacingError, UserFacingErrorContext, classify_runtime_error_message,
-    codes as user_facing_error_codes, is_provider_quota_message, is_usage_limit_message,
+    AttestationRequirement, UserFacingError, UserFacingErrorContext,
+    classify_runtime_error_message, codes as user_facing_error_codes,
+    is_attestation_required_message, is_provider_quota_message, is_usage_limit_message,
+    parse_attestation_requirement,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use thiserror::Error;
@@ -31,6 +33,12 @@ pub enum LlmErrorKind {
     RateLimited,
     /// Provider outage or unreachable (5xx, 529, network failure).
     Unavailable,
+    /// Provider account has not completed a confirmation the model requires
+    /// (OpenRouter's 18+ age gate). Non-transient and not a credential
+    /// problem: it clears when the account holder completes the confirmation,
+    /// so it is kept apart from `Authentication` even though it arrives as a
+    /// 403.
+    AttestationRequired,
     /// Provider rejected the request shape (4xx that is not auth/quota/429).
     InvalidRequest,
     /// Unclassified; downstream falls back to string classification.
@@ -71,6 +79,12 @@ impl LlmErrorKind {
     pub fn from_provider_status(status: u16, body: &str) -> Self {
         if is_provider_quota_message(body) || is_usage_limit_message(body) {
             return LlmErrorKind::QuotaExhausted;
+        }
+        // Body-driven for the same reason as quota: the 403 this arrives under
+        // is indistinguishable from a bad-key 403 by status alone, and the
+        // gate is worth naming only when the body actually reports one.
+        if is_attestation_required_message(body) {
+            return LlmErrorKind::AttestationRequired;
         }
         match status {
             401 | 403 => LlmErrorKind::Authentication,
@@ -418,6 +432,7 @@ impl AgentLoopError {
                 LlmErrorKind::RateLimited | LlmErrorKind::Unavailable => true,
                 LlmErrorKind::Authentication
                 | LlmErrorKind::QuotaExhausted
+                | LlmErrorKind::AttestationRequired
                 | LlmErrorKind::InvalidRequest => false,
                 LlmErrorKind::Other => crate::llm_retry::is_transient_error_message(&err.message),
             },
@@ -498,6 +513,9 @@ impl AgentLoopError {
                     LlmErrorKind::Unavailable => {
                         Some(user_facing_error_codes::PROVIDER_UNAVAILABLE)
                     }
+                    LlmErrorKind::AttestationRequired => {
+                        Some(user_facing_error_codes::PROVIDER_ATTESTATION_REQUIRED)
+                    }
                     LlmErrorKind::InvalidRequest | LlmErrorKind::Other => None,
                 };
                 match code {
@@ -507,6 +525,14 @@ impl AgentLoopError {
                             .with_optional_field("model_id", context.model_id);
                         if code == user_facing_error_codes::PROVIDER_RATE_LIMITED {
                             error.with_optional_field("retry_after", context.retry_after)
+                        } else if code == user_facing_error_codes::PROVIDER_ATTESTATION_REQUIRED {
+                            // `LlmErrorKind` is `Copy` and payload-free, so the
+                            // confirmations and the URL that clears them are
+                            // read back out of the raw body the driver kept in
+                            // `message` rather than carried on the kind.
+                            parse_attestation_requirement(&err.message)
+                                .unwrap_or_else(AttestationRequirement::fallback)
+                                .apply_fields(error)
                         } else {
                             error
                         }
@@ -988,6 +1014,203 @@ mod tests {
                     "{status}: {message}"
                 );
             }
+        }
+    }
+
+    /// The canonical OpenRouter refusal from EVE-952, verbatim off the wire.
+    const ATTESTATION_BODY: &str = r#"{"error":{"message":"This model requires you to complete the following before use: 18+ age confirmation. Confirm at https://openrouter.ai/settings/preferences.","code":403,"metadata":{"missing_attestation_types":["age_18plus"],"routing_funnel":[{"step":"Initial Endpoints","endpoint_count":1}],"failed_routing_step":"Gate Endpoints with Attestations"}}}"#;
+
+    #[test]
+    fn attestation_gate_is_classified_apart_from_other_403s() {
+        assert_eq!(
+            LlmErrorKind::from_provider_status(403, ATTESTATION_BODY),
+            LlmErrorKind::AttestationRequired
+        );
+        // Status is not the signal: the same body under another status still
+        // names the gate, and a 403 without one stays an auth failure.
+        assert_eq!(
+            LlmErrorKind::from_provider_status(429, ATTESTATION_BODY),
+            LlmErrorKind::AttestationRequired
+        );
+        for body in [
+            r#"{"error":{"message":"Invalid credentials","code":403}}"#,
+            r#"{"error":{"message":"Insufficient credits","code":403,"metadata":{"routing_funnel":[]}}}"#,
+            "opaque",
+        ] {
+            assert_ne!(
+                LlmErrorKind::from_provider_status(403, body),
+                LlmErrorKind::AttestationRequired,
+                "{body}"
+            );
+        }
+        // Exhausted billing keeps precedence over the gate check.
+        assert_eq!(
+            LlmErrorKind::from_provider_status(
+                403,
+                r#"{"error":{"message":"insufficient_quota; requires you to complete the following before use"}}"#
+            ),
+            LlmErrorKind::QuotaExhausted
+        );
+    }
+
+    #[test]
+    fn attestation_gate_reaches_the_reader_with_the_types_and_the_confirm_url() {
+        let error = AgentLoopError::llm_kind(
+            LlmErrorKind::AttestationRequired,
+            format!("OpenAI Responses API error (403): {ATTESTATION_BODY}"),
+        )
+        .with_provider("openrouter");
+        // Not a credential problem and never worth retrying.
+        assert!(!error.is_auth_error());
+        assert!(!error.is_transient_llm_error());
+        assert_eq!(
+            serde_json::to_value(
+                error.user_facing_error(
+                    UserFacingErrorContext::default()
+                        .with_provider("openrouter")
+                        .with_model_id("meta/muse-spark-1.3-contributor")
+                )
+            )
+            .unwrap(),
+            json!({
+                "code": "provider_attestation_required",
+                "fields": {
+                    "provider": "openrouter",
+                    "model_id": "meta/muse-spark-1.3-contributor",
+                    "missing_types": ["age_18plus"],
+                    "confirm_url": "https://openrouter.ai/settings/preferences",
+                }
+            })
+        );
+        assert_eq!(
+            error.user_facing_message(),
+            "The AI provider account has not completed a confirmation this model requires (age_18plus). Complete it at https://openrouter.ai/settings/preferences, then try again."
+        );
+    }
+
+    #[test]
+    fn untyped_attestation_bodies_still_route_off_the_403_misconfiguration_copy() {
+        // Legacy/untyped errors reach the string classifier instead; it must
+        // reach the same code rather than "contact support".
+        let error = AgentLoopError::llm(format!(
+            "provider 'openrouter': OpenAI Responses API error (403): {ATTESTATION_BODY}"
+        ));
+        assert_eq!(
+            error
+                .user_facing_error(UserFacingErrorContext::default())
+                .code,
+            "provider_attestation_required"
+        );
+    }
+
+    #[test]
+    fn attestation_parsing_covers_multiple_types_escaped_bodies_and_a_missing_url() {
+        let requirement = |body: &str| {
+            parse_attestation_requirement(body).unwrap_or_else(|| panic!("no gate in {body}"))
+        };
+
+        // Multiple gates, in payload order.
+        let multiple = requirement(
+            r#"{"error":{"message":"This model requires you to complete the following before use: 18+ age confirmation and identity verification. Confirm at https://openrouter.ai/settings/preferences.","metadata":{"missing_attestation_types":["age_18plus","identity_verified"]}}}"#,
+        );
+        assert_eq!(multiple.missing_types, ["age_18plus", "identity_verified"]);
+        assert_eq!(
+            multiple.confirm_url,
+            "https://openrouter.ai/settings/preferences"
+        );
+
+        // JSON-escaped body (a provider error nested in another envelope).
+        let escaped = requirement(
+            r#"{"detail":"{\"error\":{\"message\":\"This model requires you to complete the following before use: 18+ age confirmation. Confirm at https:\/\/openrouter.ai\/settings\/gates.\",\"metadata\":{\"missing_attestation_types\":[\"age_18plus\"]}}}"}"#,
+        );
+        assert_eq!(escaped.missing_types, ["age_18plus"]);
+        assert_eq!(escaped.confirm_url, "https://openrouter.ai/settings/gates");
+
+        // No URL in the message: fall back rather than leave the reader with
+        // nowhere to go.
+        let no_url = requirement(
+            r#"{"error":{"message":"This model requires you to complete the following before use: 18+ age confirmation.","metadata":{"missing_attestation_types":["age_18plus"]}}}"#,
+        );
+        assert_eq!(
+            no_url.confirm_url,
+            "https://openrouter.ai/settings/preferences"
+        );
+
+        // The gate sentence alone is enough; the metadata block is optional.
+        let sentence_only = requirement(
+            "This model requires you to complete the following before use: 18+ age confirmation. Confirm at https://openrouter.ai/settings/preferences",
+        );
+        assert!(sentence_only.missing_types.is_empty());
+        assert_eq!(
+            sentence_only.confirm_url,
+            "https://openrouter.ai/settings/preferences"
+        );
+        // With nothing parsed, the message drops the list rather than
+        // rendering an empty one.
+        assert_eq!(
+            AgentLoopError::llm_kind(
+                LlmErrorKind::AttestationRequired,
+                "This model requires you to complete the following before use: a confirmation."
+            )
+            .user_facing_message(),
+            "The AI provider account has not completed a confirmation this model requires. Complete it at https://openrouter.ai/settings/preferences, then try again."
+        );
+
+        // A URL in the driver's own prefix is not mistaken for the gate page.
+        assert_eq!(
+            requirement(&format!(
+                "POST https://openrouter.ai/api/v1/responses failed: {ATTESTATION_BODY}"
+            ))
+            .confirm_url,
+            "https://openrouter.ai/settings/preferences"
+        );
+
+        for body in [
+            r#"{"error":{"message":"Invalid credentials"}}"#,
+            r#"{"error":{"metadata":{"missing_attestation_types":[]}}}"#,
+            "",
+        ] {
+            assert!(parse_attestation_requirement(body).is_none(), "{body}");
+        }
+    }
+
+    #[test]
+    fn a_hostile_attestation_payload_cannot_choose_how_much_reaches_the_viewer() {
+        let types = (0..40)
+            .map(|index| format!(r#""gate_{index}""#))
+            .collect::<Vec<_>>()
+            .join(",");
+        let long_type = "x".repeat(65);
+        let long_url = format!("https://evil.example/{}", "a".repeat(400));
+        let requirement = parse_attestation_requirement(&format!(
+            r#"{{"error":{{"message":"This model requires you to complete the following before use: gates. Confirm at {long_url}","metadata":{{"missing_attestation_types":["{long_type}",{types}]}}}}}}"#
+        ))
+        .expect("gate recognized");
+
+        // Over-long entries are dropped, not truncated, and the list is capped.
+        assert_eq!(requirement.missing_types.len(), 8);
+        assert_eq!(requirement.missing_types[0], "gate_0");
+        // An over-long URL falls back rather than shipping a 400-char link.
+        assert_eq!(
+            requirement.confirm_url,
+            "https://openrouter.ai/settings/preferences"
+        );
+
+        // Non-http(s) schemes never become the confirmation link.
+        for scheme in [
+            "javascript:alert(1)",
+            "data:text/html,<script>",
+            "file:///etc/passwd",
+        ] {
+            assert_eq!(
+                parse_attestation_requirement(&format!(
+                    "This model requires you to complete the following before use: a gate. Confirm at {scheme}"
+                ))
+                .expect("gate recognized")
+                .confirm_url,
+                "https://openrouter.ai/settings/preferences",
+                "{scheme}"
+            );
         }
     }
 

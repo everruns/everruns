@@ -26,6 +26,13 @@ pub mod codes {
     /// `provider_misconfigured` (bad/missing API key) so operators can tell
     /// "top up the account" apart from "fix the key".
     pub const PROVIDER_QUOTA_EXHAUSTED: &str = "provider_quota_exhausted";
+    /// The provider account has not completed a confirmation the model
+    /// requires (OpenRouter's 18+ age verification is the canonical case).
+    /// Distinct from `provider_misconfigured` (the key is fine) and from
+    /// `provider_quota_exhausted` (nothing is owed): it clears only when the
+    /// account holder visits the provider's settings page, so the error
+    /// carries that URL rather than pointing at support.
+    pub const PROVIDER_ATTESTATION_REQUIRED: &str = "provider_attestation_required";
     pub const PROVIDER_UNAVAILABLE: &str = "provider_unavailable";
     pub const PROCESSING_ERROR: &str = "processing_error";
     pub const DEPENDENCY_UNAVAILABLE: &str = "dependency_unavailable";
@@ -132,6 +139,143 @@ pub fn parse_usage_limit_reset_at(message: &str) -> Option<i64> {
         .as_str()
         .parse::<i64>()
         .ok()
+}
+
+/// Sentence OpenRouter puts in the human-readable half of an attestation-gate
+/// refusal. Matched case-insensitively as the second detection signal, so a
+/// gate reported without the `metadata` block is still recognized.
+const ATTESTATION_GATE_SENTENCE: &str = "requires you to complete the following before use";
+
+/// Where the account holder clears OpenRouter attestations. Used only when the
+/// provider's own message carries no URL — every observed payload does, but the
+/// error is worth nothing to a reader without somewhere to go.
+const ATTESTATION_CONFIRM_URL_FALLBACK: &str = "https://openrouter.ai/settings/preferences";
+
+/// Bounds on the provider-supplied halves of an attestation gate. Both values
+/// are rendered verbatim into every session viewer's transcript, so the payload
+/// does not get to decide how much of it lands there. A URL longer than this,
+/// or a gate type longer than `MAX_TYPE_CHARS`, is dropped rather than
+/// truncated: half a URL is worse than the fallback, and a truncated gate name
+/// is not a gate name.
+const MAX_CONFIRM_URL_CHARS: usize = 300;
+const MAX_ATTESTATION_TYPES: usize = 8;
+const MAX_TYPE_CHARS: usize = 64;
+
+/// A provider account attestation gate: the request is refused until the
+/// account completes one or more confirmations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttestationRequirement {
+    /// One entry per missing confirmation (e.g. `age_18plus`). Deliberately
+    /// `String` rather than an enum: providers add gates without notice, and
+    /// an unknown type must still reach the reader verbatim.
+    pub missing_types: Vec<String>,
+    /// Page where the account holder completes the confirmations.
+    pub confirm_url: String,
+}
+
+impl AttestationRequirement {
+    /// A requirement with nothing parsed out of the body — the reader still
+    /// gets the confirmation page, which is the actionable half.
+    pub fn fallback() -> Self {
+        Self {
+            missing_types: Vec::new(),
+            confirm_url: ATTESTATION_CONFIRM_URL_FALLBACK.to_string(),
+        }
+    }
+
+    /// Attach this requirement's interpolation fields to a user-facing error.
+    /// `missing_types` is omitted rather than sent empty, so a consumer can
+    /// tell "no list in the payload" from "an empty list".
+    pub fn apply_fields(self, error: UserFacingError) -> UserFacingError {
+        let error = error.with_field("confirm_url", self.confirm_url);
+        if self.missing_types.is_empty() {
+            error
+        } else {
+            error.with_field("missing_types", self.missing_types)
+        }
+    }
+}
+
+/// Parse an attestation gate out of a provider error body.
+///
+/// The canonical shape is OpenRouter's `403`:
+///
+/// ```json
+/// {"error":{"message":"This model requires you to complete the following before
+///   use: 18+ age confirmation. Confirm at https://openrouter.ai/settings/preferences.",
+///   "code":403,"metadata":{"missing_attestation_types":["age_18plus"], …}}}
+/// ```
+///
+/// Matching is driven by the body rather than the HTTP status, the same way
+/// [`is_provider_quota_message`] is: a status alone cannot tell this gate apart
+/// from an ordinary `403`, and a provider that reports the same gate under a
+/// different status should still be recognized. A `403` carrying neither the
+/// `missing_attestation_types` list nor the gate sentence does not match.
+pub fn parse_attestation_requirement(message: &str) -> Option<AttestationRequirement> {
+    // Bodies reach this classifier both raw and JSON-escaped, because a
+    // provider error nested inside another JSON envelope arrives with `\"` and
+    // `\/` intact. Undoing those two escapes first lets one parser cover both
+    // shapes; text without escapes is unchanged by it.
+    let message = message.replace("\\\"", "\"").replace("\\/", "/");
+    let missing_types = attestation_missing_types(&message).unwrap_or_default();
+    let lower = message.to_ascii_lowercase();
+    if missing_types.is_empty() && !lower.contains(ATTESTATION_GATE_SENTENCE) {
+        return None;
+    }
+    Some(AttestationRequirement {
+        missing_types,
+        confirm_url: attestation_confirm_url(&message, &lower)
+            .unwrap_or_else(|| ATTESTATION_CONFIRM_URL_FALLBACK.to_string()),
+    })
+}
+
+/// Whether a provider error body reports an account attestation gate.
+pub fn is_attestation_required_message(message: &str) -> bool {
+    parse_attestation_requirement(message).is_some()
+}
+
+fn attestation_missing_types(message: &str) -> Option<Vec<String>> {
+    static LIST: OnceLock<Regex> = OnceLock::new();
+    static ITEM: OnceLock<Regex> = OnceLock::new();
+    let list = LIST.get_or_init(|| {
+        Regex::new(r#""missing_attestation_types"\s*:\s*\[(?P<types>[^\]]*)\]"#)
+            .expect("valid missing_attestation_types regex")
+    });
+    let item =
+        ITEM.get_or_init(|| Regex::new(r#""([^"]*)""#).expect("valid attestation type regex"));
+    let types = list.captures(message)?.name("types")?.as_str();
+    Some(
+        item.captures_iter(types)
+            .map(|captures| captures[1].to_string())
+            // THREAT[TM-WEB-018] These strings come from the provider and are
+            // rendered into every session viewer's transcript, so the payload
+            // decides neither how many arrive nor how long each one is.
+            .filter(|attestation_type| {
+                !attestation_type.is_empty() && attestation_type.chars().count() <= MAX_TYPE_CHARS
+            })
+            .take(MAX_ATTESTATION_TYPES)
+            .collect(),
+    )
+}
+
+/// The confirmation page URL, searched from the gate sentence onward so a URL
+/// in the driver's own error prefix (an endpoint, a docs link) can never be
+/// mistaken for it. `lower` is the caller's ASCII-lowercased `message`, whose
+/// byte offsets line up with it exactly.
+fn attestation_confirm_url(message: &str, lower: &str) -> Option<String> {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    // THREAT[TM-WEB-018] The scheme is pinned to http(s) here, not just where
+    // the UI renders it: this URL is provider-controlled and this is the point
+    // at which it stops being an opaque blob and becomes something a reader is
+    // told to visit.
+    let re = RE
+        .get_or_init(|| Regex::new(r#"https?://[^\s"'\\<>)]+"#).expect("valid confirm url regex"));
+    let from = lower.find(ATTESTATION_GATE_SENTENCE).unwrap_or(0);
+    let url = re
+        .find(&message[from..])?
+        .as_str()
+        .trim_end_matches(['.', ',', ';', ':']);
+    (!url.is_empty() && url.chars().count() <= MAX_CONFIRM_URL_CHARS).then(|| url.to_string())
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -303,6 +447,7 @@ impl UserFacingError {
                 "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue."
                     .to_string()
             }
+            codes::PROVIDER_ATTESTATION_REQUIRED => attestation_required_message(&self.fields),
             codes::PROVIDER_UNAVAILABLE => {
                 "The AI provider is experiencing issues. Please try again shortly.".to_string()
             }
@@ -407,6 +552,21 @@ pub fn classify_runtime_error_message(
             .with_optional_field("resets_at", parse_usage_limit_reset_at(normalized));
     }
 
+    // Provider account attestation gate (OpenRouter: HTTP 403 carrying
+    // `missing_attestation_types`). Checked before the auth branch below: the
+    // outer error text contains "(403)", which would route it to
+    // PROVIDER_MISCONFIGURED — wrong twice over, because the API key is fine
+    // and the only person who can clear the gate is the account holder, not
+    // support. Checked before the 429 branch too, so a provider that reports
+    // the gate under a throttling status still reaches the right copy.
+    if let Some(requirement) = parse_attestation_requirement(normalized) {
+        return requirement.apply_fields(
+            UserFacingError::new(codes::PROVIDER_ATTESTATION_REQUIRED)
+                .with_optional_field("provider", context.provider.clone())
+                .with_optional_field("model_id", context.model_id.clone()),
+        );
+    }
+
     if lower.contains("(429)")
         || lower.contains("rate limit")
         || lower.contains("too many requests")
@@ -483,6 +643,30 @@ pub fn trim_error_chain_prefixes(error_chain: &str) -> &str {
 /// the viewer's timezone from the same raw field. When `auto_continue` is set —
 /// added by the emit site only when an auto-continue capability is active — the
 /// copy promises automatic resumption; otherwise it stays generic.
+fn attestation_required_message(fields: &UserFacingErrorFields) -> String {
+    let confirm_url =
+        string_field(fields, "confirm_url").unwrap_or(ATTESTATION_CONFIRM_URL_FALLBACK);
+    let missing_types = fields
+        .get("missing_types")
+        .and_then(Value::as_array)
+        .map(|types| {
+            types
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .filter(|list| !list.is_empty());
+    match missing_types {
+        Some(list) => format!(
+            "The AI provider account has not completed a confirmation this model requires ({list}). Complete it at {confirm_url}, then try again."
+        ),
+        None => format!(
+            "The AI provider account has not completed a confirmation this model requires. Complete it at {confirm_url}, then try again."
+        ),
+    }
+}
+
 fn usage_limit_reached_message(fields: &UserFacingErrorFields) -> String {
     let mut message = String::from("You're out of LLM usage limits.");
 

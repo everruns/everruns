@@ -16,6 +16,8 @@ use everruns_provider::driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream,
     LlmStreamEvent, ProviderOpaqueContext,
 };
+use everruns_provider::error::LlmErrorKind;
+use everruns_provider::user_facing_error::UserFacingErrorContext;
 use everruns_provider::{BearerAuth, CompactContent, CompactOutputItem, Provider};
 use futures::StreamExt;
 use wiremock::matchers::{method, path};
@@ -804,5 +806,65 @@ async fn completed_response_does_not_re_emit_an_already_streamed_call() {
                 finish: Some("tool_calls".into()),
             },
         ]
+    );
+}
+
+/// The OpenRouter attestation gate, off the wire (EVE-952). This transport is
+/// the one OpenRouter runs on, so serving the real `403` body here proves the
+/// classification at the seam the unit tests can only assume: the driver's own
+/// status/body boundary. Before this change the same response produced
+/// `Authentication` / `provider_misconfigured`, telling the reader to contact
+/// support and leaving the page that clears the gate inside the JSON.
+#[tokio::test]
+async fn attestation_gate_403_is_classified_at_the_driver_boundary() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+            "error": {
+                "message": "This model requires you to complete the following before use: 18+ age confirmation. Confirm at https://openrouter.ai/settings/preferences.",
+                "code": 403,
+                "metadata": {
+                    "missing_attestation_types": ["age_18plus"],
+                    "routing_funnel": [{"step": "Initial Endpoints", "endpoint_count": 1}],
+                    "failed_routing_step": "Gate Endpoints with Attestations"
+                }
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    // `LlmResponseStream` is not `Debug`, so unwrap the error by hand.
+    let Err(error) = driver(&server)
+        .chat_completion_stream(
+            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            &config("meta/muse-spark-1.3-contributor"),
+        )
+        .await
+    else {
+        panic!("a gated model must not start a stream");
+    };
+
+    assert_eq!(
+        error.llm_error_kind(),
+        Some(LlmErrorKind::AttestationRequired)
+    );
+    // Non-transient: retrying cannot clear a confirmation only a human can make.
+    assert!(!error.is_transient_llm_error());
+    // The raw body stays available for detailed disclosure.
+    assert!(error.to_string().contains("missing_attestation_types"));
+    assert_eq!(
+        serde_json::to_value(
+            error.user_facing_error(UserFacingErrorContext::default().with_provider("openrouter"))
+        )
+        .unwrap(),
+        serde_json::json!({
+            "code": "provider_attestation_required",
+            "fields": {
+                "provider": "openrouter",
+                "missing_types": ["age_18plus"],
+                "confirm_url": "https://openrouter.ai/settings/preferences",
+            }
+        })
     );
 }
