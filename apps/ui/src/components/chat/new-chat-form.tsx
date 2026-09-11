@@ -7,6 +7,10 @@
  * A thread is an ordinary session: this posts `POST /v1/sessions` with either
  * an agent or a harness binding. Direct harness chats let users start from a
  * configured runtime without creating an otherwise-empty agent first.
+ *
+ * An org with no model to chat with never reaches this form: both hosts own
+ * their empty-state frame, so they swap the whole frame for the
+ * "no intelligence available" message rather than stacking a second one here.
  */
 "use client";
 
@@ -24,9 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
-import { NoIntelligenceMessage } from "@/components/chat/no-intelligence-notice";
 import { useAgents, useHarnesses } from "@/hooks";
-import { useIntelligenceStatus } from "@/hooks/use-intelligence";
 import { useCreateSession } from "@/hooks/use-sessions";
 import { CHAT_THREAD_TAG } from "@/lib/chat-threads";
 import { getDisplayName } from "@/lib/entity-lifecycle";
@@ -50,7 +52,6 @@ export function NewChatForm({
   const { data: agents = [], isLoading: agentsLoading } = useAgents();
   const { data: harnesses = [], isLoading: harnessesLoading } = useHarnesses();
   const createSession = useCreateSession();
-  const intelligence = useIntelligenceStatus();
   const [selection, setSelection] = useState("");
   const [error, setError] = useState<string | null>(null);
   const optionsLoading = agentsLoading || harnessesLoading;
@@ -77,13 +78,6 @@ export function NewChatForm({
       setError(e instanceof Error ? e.message : "Could not start the chat.");
     }
   };
-
-  // Starting a thread with no model to answer it is a dead end, so the notice
-  // replaces the picker instead of sitting above it — and stays unboxed, since
-  // every host of this form already draws its own empty-state frame.
-  if (!intelligence.isLoading && !intelligence.available) {
-    return <NoIntelligenceMessage canManage={intelligence.canManage} variant="plain" />;
-  }
 
   if (!optionsLoading && agents.length === 0 && harnesses.length === 0) {
     return (

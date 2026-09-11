@@ -28,6 +28,28 @@ import { buttonVariants } from "@/components/ui/button";
 import { useIntelligenceStatus } from "@/hooks/use-intelligence";
 import { cn } from "@/lib/utils";
 
+/** One wording for every surface, so hosts that frame their own empty state
+ *  (the chats list, the new-chat page) say the same thing this message does. */
+export const NO_INTELLIGENCE_TITLE = "No intelligence available";
+export const NO_INTELLIGENCE_DESCRIPTION =
+  "This organisation has no model available for chat. Connect a provider and enable at least one model to start a conversation.";
+
+/** The way out, or who to ask when the caller has no route to Settings. */
+export function NoIntelligenceAction({ canManage }: { canManage: boolean }) {
+  if (!canManage) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Ask an organisation owner or admin to configure a model provider.
+      </p>
+    );
+  }
+  return (
+    <Link href="/settings/providers" className={buttonVariants({ variant: "outline", size: "sm" })}>
+      Manage providers &amp; models
+    </Link>
+  );
+}
+
 export function NoIntelligenceMessage({
   canManage,
   variant = "card",
@@ -49,23 +71,11 @@ export function NoIntelligenceMessage({
       )}
     >
       <Sparkles className="icon-sharp size-5 text-muted-foreground" strokeWidth={1.8} />
-      <p className="text-sm font-semibold text-foreground">No intelligence available</p>
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        This organisation has no model available for chat. Connect a provider and enable at least
-        one model to start a conversation.
-      </p>
-      {canManage ? (
-        <Link
-          href="/settings/providers"
-          className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-1")}
-        >
-          Manage providers &amp; models
-        </Link>
-      ) : (
-        <p className="mt-1 text-xs text-muted-foreground">
-          Ask an organisation owner or admin to configure a model provider.
-        </p>
-      )}
+      <p className="text-sm font-semibold text-foreground">{NO_INTELLIGENCE_TITLE}</p>
+      <p className="text-xs leading-relaxed text-muted-foreground">{NO_INTELLIGENCE_DESCRIPTION}</p>
+      <div className="mt-1">
+        <NoIntelligenceAction canManage={canManage} />
+      </div>
     </div>
   );
 }
