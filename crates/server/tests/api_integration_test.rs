@@ -1873,6 +1873,57 @@ async fn test_provider_crud() {
         .assert_status(StatusCode::NO_CONTENT);
 }
 
+/// Credential checks must never persist anything and must reject unusable
+/// input before any outbound request is made.
+#[tokio::test]
+async fn test_check_credentials_validates_input_without_persisting() {
+    let server = TestServer::in_memory().await;
+
+    // Seeded catalog providers exist from startup; the check must not add to
+    // them, so compare against the baseline rather than zero.
+    let before: serde_json::Value = server.get("/v1/providers").await.json();
+    let baseline = before["data"].as_array().map(Vec::len);
+
+    // Empty key: rejected up front, no provider row created.
+    server
+        .post(
+            "/v1/providers/check-credentials",
+            json!({"provider_type": "openai", "api_key": "   "}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+
+    // SSRF guard: the same base-URL validation as create applies, since the
+    // check issues a real outbound request.
+    server
+        .post(
+            "/v1/providers/check-credentials",
+            json!({
+                "provider_type": "openai",
+                "api_key": "sk-test",
+                "base_url": "http://127.0.0.1:8080/v1"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+
+    // A driver with no upstream to ask reports "unsupported" rather than
+    // failing the user's key.
+    let body: serde_json::Value = server
+        .post(
+            "/v1/providers/check-credentials",
+            json!({"provider_type": "llmsim", "api_key": "sk-test"}),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(body["status"], "unsupported");
+
+    // Nothing was stored by any of the above.
+    let after: serde_json::Value = server.get("/v1/providers").await.json();
+    assert_eq!(after["data"].as_array().map(Vec::len), baseline);
+}
+
 /// Connection-level request options retain their non-secret shape across the
 /// API, but header values must never be returned to provider-view callers.
 #[tokio::test]

@@ -1,3 +1,4 @@
+use super::credential_check::CredentialCheckResult;
 use super::queries as q;
 use super::types::SyncModelsResponse;
 use super::{LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW};
@@ -180,6 +181,64 @@ impl Command for ListProviders {
 }
 
 inventory::submit! { CommandDescriptor::of::<ListProviders>() }
+
+/// Check a candidate credential against the provider before it is stored.
+///
+/// Deliberately takes the credential inline rather than a provider id: the
+/// point is to find out whether a key works *before* any provider row exists
+/// (setup) or before an edit overwrites a working one. Nothing is persisted.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CheckProviderCredentials {
+    pub provider_type: DriverId,
+    /// The credential to probe. Typed multi-field credentials are assembled
+    /// into this single document at the HTTP boundary, as for create.
+    pub api_key: String,
+    /// Optional custom endpoint. Validated exactly as on create — this issues
+    /// a real outbound request.
+    #[serde(default)]
+    pub base_url: Option<String>,
+}
+
+impl Command for CheckProviderCredentials {
+    type Output = CredentialCheckResult;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "check_provider_credentials",
+            category: "providers",
+            description: "Check a provider API key without storing it.",
+            method: "POST",
+            path: "/v1/providers/check-credentials",
+        }
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&LLM_PROVIDER_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<CredentialCheckResult, CommandError> {
+        if self.api_key.trim().is_empty() {
+            return Err(CommandError::bad_request("api_key must not be empty"));
+        }
+        crate::domains::providers::service::validate_provider_type(&self.provider_type)
+            .map_err(classify_anyhow)?;
+        crate::domains::providers::service::validate_provider_base_url(
+            self.provider_type.clone(),
+            self.base_url.as_deref(),
+        )
+        .map_err(classify_anyhow)?;
+
+        Ok(crate::domains::providers::check_credentials(
+            &ctx.driver_registry,
+            self.provider_type,
+            self.api_key,
+            self.base_url,
+        )
+        .await)
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<CheckProviderCredentials>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetProvider {

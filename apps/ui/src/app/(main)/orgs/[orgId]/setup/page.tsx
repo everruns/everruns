@@ -40,6 +40,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getOrganization, completeOrgOnboarding } from "@/lib/api/organizations";
+import { checkProviderCredentials } from "@/lib/api/providers";
 import { listHarnesses } from "@/lib/api/harnesses";
 import { useCreateProvider, useProviders } from "@/hooks/use-providers";
 import { usePageTitle } from "@/hooks";
@@ -221,6 +222,7 @@ export default function OrgSetupPage() {
   const [apiKey, setApiKey] = useState("");
   const createProvider = useCreateProvider();
   const [providerError, setProviderError] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
 
   // --- Done step state ---
   // `done` flips when the user finishes the provider form or skips. We track
@@ -247,12 +249,37 @@ export default function OrgSetupPage() {
     setDone(true);
   }, [orgId, queryClient]);
 
+  // Validate the key with the provider before storing it. A key the provider
+  // rejects would otherwise be encrypted into the org and only surface at the
+  // first agent run, far from where the user can fix it. Only an outright
+  // rejection blocks: "unsupported" (driver has no check) and "unreachable"
+  // (outage, offline, air-gapped install) say nothing about the key, so setup
+  // continues rather than stranding the user behind an unprovable check.
   const handleContinue = async () => {
     if (!apiKey.trim()) {
       setProviderError("Please enter an API key");
       return;
     }
     setProviderError(null);
+    setVerifying(true);
+    try {
+      const check = await checkProviderCredentials({
+        provider_type: selectedProvider,
+        api_key: apiKey,
+      });
+      if (check.status === "rejected") {
+        setProviderError(
+          `${getProviderName(selectedProvider)} rejected this API key. Check the key and try again.`,
+        );
+        return;
+      }
+    } catch {
+      // The check itself failed — that is not evidence about the key, so fall
+      // through to creation rather than blocking setup.
+    } finally {
+      setVerifying(false);
+    }
+
     try {
       await createProvider.mutateAsync({
         name: getProviderName(selectedProvider),
@@ -265,6 +292,8 @@ export default function OrgSetupPage() {
       setProviderError("Failed to configure provider. Please try again.");
     }
   };
+
+  const busy = verifying || createProvider.isPending;
 
   // --- Loading skeleton ---
   if (orgLoading && !org) {
@@ -616,14 +645,18 @@ export default function OrgSetupPage() {
                   <button
                     type="button"
                     onClick={() => void finishOnboarding()}
-                    disabled={createProvider.isPending}
+                    disabled={busy}
                     className="text-sm text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
                   >
                     Skip for now
                   </button>
-                  <Button onClick={handleContinue} disabled={createProvider.isPending}>
-                    {createProvider.isPending ? "Discovering models..." : "Finish setup"}
-                    {!createProvider.isPending && <ArrowRight className="ml-2 h-4 w-4" />}
+                  <Button onClick={handleContinue} disabled={busy}>
+                    {verifying
+                      ? "Checking key..."
+                      : createProvider.isPending
+                        ? "Discovering models..."
+                        : "Finish setup"}
+                    {!busy && <ArrowRight className="ml-2 h-4 w-4" />}
                   </Button>
                 </div>
               </div>
