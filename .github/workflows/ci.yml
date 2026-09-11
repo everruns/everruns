@@ -1098,7 +1098,7 @@ jobs:
   # Integration tests requiring PostgreSQL
   # Tests API endpoints, repositories, and durable execution against real database
   integration-test:
-    name: Integration Tests (PostgreSQL)
+    name: Integration Tests (PostgreSQL Shards)
     # Opt-in larger runners via the CI_RUNNER_LABEL repo variable
     # (e.g. ubuntu-latest-8-core); defaults to standard runners.
     runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
@@ -1303,6 +1303,31 @@ jobs:
   # Doppler vault via env (build.rs, proc-macros, test bodies) — the same
   # TM-CI-001/TM-CI-002 boundary the step carried before the split. PR coverage
   # of the LLM matrix is still mocked in `unit-test`.
+
+  integration-test-gate:
+    # Reports the bare required-check name. Matrix legs report as
+    # "Integration Tests (PostgreSQL Shards) (server|domain|durable)",
+    # which never satisfies the branch rule expecting exactly
+    # "Integration Tests (PostgreSQL)" (it waits forever: "Expected --
+    # Waiting for status to be reported"). This gate mirrors the aggregate
+    # leg result under that name: success/skipped pass, anything else fails.
+    name: Integration Tests (PostgreSQL)
+    needs: [integration-test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate integration shard results
+        run: |
+          case "${{ needs.integration-test.result }}" in
+            success|skipped)
+              echo "Integration shards: ${{ needs.integration-test.result }}"
+              ;;
+            *)
+              echo "Integration shards result: ${{ needs.integration-test.result }}"
+              exit 1
+              ;;
+          esac
   live-provider-matrix:
     name: Live Provider Matrix
     runs-on: ubuntu-latest
