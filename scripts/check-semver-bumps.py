@@ -38,6 +38,7 @@ import tarfile
 import tempfile
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 
 def index_path(name: str) -> str:
@@ -136,6 +137,16 @@ def index_records(name: str) -> list[tuple[str, bool]]:
     ]
 
 
+INDEX_WORKERS = 10
+
+
+def fetch_many(names: list[str], fetch) -> dict:
+    """Fetch per-crate index data concurrently (order-preserving)."""
+    names = list(names)
+    with ThreadPoolExecutor(max_workers=min(INDEX_WORKERS, len(names) or 1)) as pool:
+        return dict(zip(names, pool.map(fetch, names)))
+
+
 def latest_published_version(records: list[tuple[str, bool]]) -> str | None:
     """Highest non-yanked version -- the baseline cargo-semver-checks uses."""
     best: str | None = None
@@ -222,7 +233,7 @@ def manifest_dirs() -> dict[str, str]:
     return _manifest_dirs
 
 
-def identical_to_baseline(name: str) -> tuple[bool, str]:
+def identical_to_baseline(name: str, records=None) -> tuple[bool, str]:
     """Whether a candidate's source is identical to its published baseline.
 
     Downloads the baseline .crate and compares trees. Returns (True, reason)
@@ -231,7 +242,9 @@ def identical_to_baseline(name: str) -> tuple[bool, str]:
     crate gets the full semver check. This function must never turn the gate
     green by itself.
     """
-    baseline = latest_published_version(index_records(name))
+    if records is None:
+        records = index_records(name)
+    baseline = latest_published_version(records)
     if baseline is None:
         return False, "no published baseline to compare against"
     try:
@@ -295,7 +308,7 @@ def run_semver_checks(packages: list[str]) -> int:
 
 def run_check(plan_only: bool, candidates_only: bool, shard=None) -> int:
     current = workspace_versions()
-    published = {name: published_versions(name) for name in current}
+    published = fetch_many(current, published_versions)
     packages, skipped = plan(current, published)
 
     if candidates_only:
@@ -328,8 +341,9 @@ def run_check(plan_only: bool, candidates_only: bool, shard=None) -> int:
     # baseline cannot have changed API; anything else (including any
     # comparison failure) falls through to the full check below.
     remaining: list[str] = []
+    baselines = fetch_many(packages, index_records)
     for name in packages:
-        identical, reason = identical_to_baseline(name)
+        identical, reason = identical_to_baseline(name, baselines[name])
         if identical:
             print(f"  - {name} (skipped: {reason})")
         else:
@@ -445,6 +459,11 @@ def self_test() -> int:
         "prerelease below release",
         parse_version_tuple("1.2.3") > parse_version_tuple("1.2.3-alpha"),
         True,
+    )
+    expect(
+        "fetch_many keeps order",
+        fetch_many(["b", "a"], lambda n: n.upper()),
+        {"b": "B", "a": "A"},
     )
 
     before = '[package]\nname = "demo"\nversion = "0.18.2"\nedition = "2021"\n'
