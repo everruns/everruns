@@ -13,6 +13,8 @@
  *   cannot act on reads as a dead end.
  * - Silent while loading and silent on a failed read: a false "no intelligence"
  *   on a working org is worse than a late one.
+ * - Split presentational/data-bound so `/dev/chat-components` can show both
+ *   permission variants without a backend.
  */
 
 import Link from "next/link";
@@ -21,11 +23,14 @@ import { buttonVariants } from "@/components/ui/button";
 import { useIntelligenceStatus } from "@/hooks/use-intelligence";
 import { cn } from "@/lib/utils";
 
-export function NoIntelligenceNotice({ className }: { className?: string }) {
-  const { isLoading, available, canManage } = useIntelligenceStatus();
-
-  if (isLoading || available) return null;
-
+export function NoIntelligenceMessage({
+  canManage,
+  className,
+}: {
+  /** Render the route to Settings → Providers. */
+  canManage: boolean;
+  className?: string;
+}) {
   return (
     <div
       role="status"
@@ -54,4 +59,12 @@ export function NoIntelligenceNotice({ className }: { className?: string }) {
       )}
     </div>
   );
+}
+
+export function NoIntelligenceNotice({ className }: { className?: string }) {
+  const { isLoading, available, canManage } = useIntelligenceStatus();
+
+  if (isLoading || available) return null;
+
+  return <NoIntelligenceMessage canManage={canManage} className={className} />;
 }
