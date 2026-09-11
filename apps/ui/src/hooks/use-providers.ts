@@ -63,14 +63,14 @@ export function useProvider(providerId: string) {
 
 // Per-driver credential schemas (and caller policies), used to render the
 // provider credential forms as discrete typed inputs.
-export function useProvidersConfig() {
+export function useProvidersConfig(options: { enabled?: boolean } = {}) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
     queryKey: [...queryKeys.providers.all, "config", org],
     queryFn: () => getProvidersConfig(),
-    enabled: !!org,
+    enabled: !!org && (options.enabled ?? true),
     staleTime: 300000,
   });
 
