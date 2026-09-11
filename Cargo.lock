@@ -2562,7 +2562,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-bashkit"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2582,7 +2582,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-brave-search"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2603,7 +2603,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-browserless"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2626,7 +2626,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-cursor"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2643,7 +2643,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-daytona"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2663,7 +2663,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-deno"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2688,7 +2688,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-docker"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2704,7 +2704,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-duckduckgo"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "async-trait",
  "everruns-capability",
@@ -2721,7 +2721,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-e2b"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "async-trait",
  "buffa",
@@ -2750,7 +2750,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-filesystem"
-version = "0.18.3"
+version = "0.18.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2770,7 +2770,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-github"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2788,7 +2788,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-lua"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2804,7 +2804,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-openai-image"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2824,7 +2824,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-openrouter-workspace"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2837,7 +2837,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-parallel"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "async-trait",
  "everruns-capability",
@@ -2853,7 +2853,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-sprites"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2871,7 +2871,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-web-fetch"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "async-trait",
  "base64 0.23.1",

@@ -58,7 +58,7 @@ LEVELS = ("patch", "minor", "major")
 
 
 def sh(*args: str) -> str:
-    return subprocess.check_output(args, cwd=ROOT, text=True).strip()
+    return subprocess.check_output(args, cwd=ROOT, text=True, stderr=subprocess.DEVNULL).strip()
 
 
 def caret_allows(req: str, ver: str) -> bool:
@@ -114,10 +114,22 @@ def workspace_deps() -> dict:
     return load_manifest(ROOT / "Cargo.toml").get("workspace", {}).get("dependencies", {})
 
 
+
+def crate_manifest_paths() -> list[str]:
+    """All member Cargo.toml paths from [workspace] members (exact or glob)."""
+    members = load_manifest(ROOT / "Cargo.toml").get("workspace", {}).get("members", [])
+    paths: list[str] = []
+    for m in members:
+        if any(c in m for c in "*?[]"):
+            paths += glob.glob(f"{m}/Cargo.toml", root_dir=ROOT, recursive=True)
+        elif (ROOT / m / "Cargo.toml").exists():
+            paths.append(f"{m}/Cargo.toml")
+    return sorted(paths)
+
 def all_crates() -> dict[str, dict]:
     """name -> {dir, version, published}. Workspace-wide, manifest truth."""
     out = {}
-    for path in sorted(glob.glob("crates/**/Cargo.toml", root_dir=ROOT, recursive=True)):
+    for path in sorted(crate_manifest_paths()):
         d = load_manifest(ROOT / path)
         if "package" not in d:
             continue
@@ -133,7 +145,7 @@ def all_crates() -> dict[str, dict]:
 def dep_edges(ws_deps: dict) -> dict[str, list[tuple[str, str]]]:
     """name -> [(dep_package, req)] for non-dev deps, workspace-resolved."""
     edges: dict[str, list[tuple[str, str]]] = {}
-    for path in sorted(glob.glob("crates/**/Cargo.toml", root_dir=ROOT, recursive=True)):
+    for path in sorted(crate_manifest_paths()):
         d = load_manifest(ROOT / path)
         if "package" not in d:
             continue
@@ -197,7 +209,7 @@ def plan(base: str, forced: dict[str, str]) -> tuple[dict[str, str], dict[str, s
         if info["version"] != old:
             already[name] = bump_level(old, info["version"])
 
-    changed = sh("git", "diff", "--name-only", f"{base}...HEAD", "--", "crates/").splitlines()
+    changed = sh("git", "diff", "--name-only", f"{base}...HEAD").splitlines()
     seeds: dict[str, str] = dict(forced)
     notes: list[str] = []
     for f in changed:
