@@ -61,12 +61,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Independently versioned crates published this cycle, classified with `cargo-semver-checks`. The
 capability lifecycle work added a `Retired` variant to the non-`#[non_exhaustive]` public enum
 `CapabilityStatus` (`everruns-core`) and removed the `platform_management` tool structs from
-`everruns-platform`, so both take a breaking `0.x` minor bump; every other change is additive or a
-compatibility re-pin (patch).
+`everruns-platform`, so both take a breaking `0.x` minor bump; `everruns-integrations-deno` takes a
+breaking bump for a removed Cargo feature; every other change is additive or a compatibility re-pin
+(patch).
 
 Breaking (minor):
 - `everruns-core` 0.19.1 → 0.20.0 (new `CapabilityStatus::Retired` variant; new public conversation-context fields/methods)
 - `everruns-platform` 0.19.2 → 0.20.0 (removed the `platform_management` tool structs; added harness `icon` fields)
+- `everruns-integrations-deno` 0.18.2 → 0.19.0 (removed the `deno-live-tests` Cargo feature)
 
 Additive / behavior (patch):
 - `everruns-provider` 0.20.1 → 0.20.2 (new attestation-requirement parsing helpers)
@@ -76,7 +78,7 @@ Additive / behavior (patch):
 
 Cone cascade — compatibility patch republish to re-pin `everruns-core`/`everruns-platform` at their new `0.20` requirement (own contract unchanged):
 - `everruns` 0.20.0 → 0.20.1, `everruns-ard` 0.18.2 → 0.18.3, `everruns-host` 0.20.5 → 0.20.6, `everruns-mcp` 0.19.3 → 0.19.4, `everruns-test-support` 0.18.5 → 0.18.6, `everruns-turbopuffer` 0.18.3 → 0.18.4
-- `everruns-integrations-*` 0.18.2 → 0.18.3 (`bashkit`, `brave-search`, `browserless`, `cursor`, `daytona`, `deno`, `docker`, `duckduckgo`, `e2b`, `github`, `lua`, `openai-image`, `openrouter-workspace`, `parallel`, `sprites`, `web-fetch`; `filesystem` 0.18.3 → 0.18.4)
+- `everruns-integrations-*` 0.18.2 → 0.18.3 (`bashkit`, `brave-search`, `browserless`, `cursor`, `daytona`, `docker`, `duckduckgo`, `e2b`, `github`, `lua`, `openai-image`, `openrouter-workspace`, `parallel`, `sprites`, `web-fetch`; `filesystem` 0.18.3 → 0.18.4; `deno` takes a breaking bump above)
 
 No crates were deleted or absorbed this cycle.
 
