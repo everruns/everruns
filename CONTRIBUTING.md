@@ -170,7 +170,7 @@ cargo test
 just pre-pr
 ```
 
-See [`test_cases/`](./test_cases/) for manual test cases (format in [`knowledge/evaluation/test-cases.md`](./knowledge/evaluation/test-cases.md)).
+See [`knowledge/test-cases/`](./knowledge/test-cases/) for manual test cases (format in [`knowledge/test-cases/format.md`](./knowledge/test-cases/format.md)).
 
 ## License Compliance
 

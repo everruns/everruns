@@ -1,0 +1,36 @@
+---
+type: Test Case
+title: "TC002: Evals - Hidden Without Feature Flag"
+description: "Verify that the evals sidebar link is hidden when the `evals` feature flag is disabled."
+tags:
+  - everruns
+  - test-case
+  - ui
+  - evals
+---
+# TC002: Evals - Hidden Without Feature Flag
+
+## Description
+
+Verify that the evals sidebar link is hidden when the `evals` feature flag is disabled.
+
+## Preconditions
+
+- Server running with `FEATURE_EVALS=false` (or production mode without explicit flag)
+- User logged in
+
+## Test Data
+
+None.
+
+## Steps
+
+1. Observe the sidebar navigation
+2. Look for "Evals" link in the Quality section
+
+## Expected Result
+
+| Check | Expected |
+|-------|----------|
+| Sidebar | "Evals" link is NOT visible |
+| Direct navigation | Navigating to `/evals` shows "Evals is not enabled" message with no evals content or actions |

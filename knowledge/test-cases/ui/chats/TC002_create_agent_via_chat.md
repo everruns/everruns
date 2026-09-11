@@ -1,0 +1,46 @@
+---
+type: Test Case
+title: "TC002: Global Chat - Create Agent via Chat"
+description: "Verify that the global chat agent can create a new agent when asked, using the `manage_agents` platform management tool."
+tags:
+  - everruns
+  - test-case
+  - ui
+  - chats
+---
+# TC002: Global Chat - Create Agent via Chat
+
+## Description
+
+Verify that the global chat agent can create a new agent when asked, using the `manage_agents` platform management tool. Agents have an addressable name (slug) and an optional display name.
+
+## Preconditions
+
+- Server running (`just start-dev`)
+- User logged in
+- LLM API keys configured
+
+## Test Data
+
+| Field | Value |
+|-------|-------|
+| User Message | Create an agent called "Weather Bot" with system prompt "You answer weather questions." |
+
+## Steps
+
+1. Open a Platform Chat thread: go to `/chats/new`, pick **Platform Chat**, and start the chat
+2. Type: `Create an agent called "Weather Bot" with system prompt "You answer weather questions."`
+3. Send the message
+4. Wait for the agent to respond (may ask for confirmation, confirm if so)
+5. Observe the response — should contain a clickable link to the new agent
+
+## Expected Result
+
+| Check | Expected |
+|-------|----------|
+| Agent created | Response mentions agent creation success |
+| Agent link | Response contains markdown link `[Weather Bot](/agents/agent_...)` |
+| Navigate to link | Agent detail page loads with display name "Weather Bot" shown prominently and slug `weather-bot` in monospace underneath |
+| Agent prompt | System prompt is "You answer weather questions." |
+| Agent status | `active` |
+| Agents list | New agent visible at `/agents` — card shows display name "Weather Bot" with slug `weather-bot` beneath |

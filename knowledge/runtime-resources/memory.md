@@ -388,7 +388,7 @@ Required coverage:
 * API CRUD permissions and org scoping.
 * OpenAPI export updated when API surface changes.
 * UI list/detail/capability-config/Workspace badge flows.
-* Manual test cases (`test_cases/memory/`).
+* Manual test cases (`knowledge/test-cases/ui/memory/`).
 
 ## Open Questions
 

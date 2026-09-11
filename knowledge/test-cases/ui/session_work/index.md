@@ -1,0 +1,3 @@
+# Session work (UI)
+
+* [TC001: Session Work tab — tasks, leased resources and schedules](TC001_session_work_tab.md) - Verify the session **Work** tab (`/sessions/{sessionId}/work`) lists the background work *this* session started — subagent tasks, handoffs, background tools and monitors — updates chips live from `task.updated` withou...

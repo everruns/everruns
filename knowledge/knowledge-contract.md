@@ -25,6 +25,9 @@ feature contracts, rationale, and success bars.
 - Keep stable identifiers such as `TM-*`; never renumber them.
 - Keep concepts readable in one sitting. Split an oversized concept by audience or
   subsystem and link its parts from the appropriate domain index.
+- Manual test cases are concepts too: they live in [`test-cases/`](test-cases/) and follow
+  [Test Cases Specification](test-cases/format.md). Run records are not concepts and stay out of
+  the bundle.
 - Public product documentation remains in `docs/`. Integration-specific specifications
   that live beside their implementation remain there and are linked from the relevant
   knowledge concept.
@@ -67,6 +70,7 @@ the pinned upstream `okf-lint` implementation.
 ## See also
 
 - [Maintenance](project/maintenance.md), goal-oriented repository maintenance
+- [Test Cases Specification](test-cases/format.md), the manual test case format
 - [Documentation](ui/documentation.md), the public documentation surface
 - [Integration Specifications](integrations/integrations.md), specifications owned by
   integration crates
