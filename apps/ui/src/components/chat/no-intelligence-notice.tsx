@@ -8,6 +8,11 @@
  * - A centred message, not a warning stripe. The chat is unusable, so this is
  *   the state of the surface rather than an aside about it; weight (bold) and
  *   position carry the message instead of an alert colour.
+ * - One message per surface. Where a surface already shows a centred empty
+ *   state ("No messages yet", "No chats yet"), this *replaces* it rather than
+ *   stacking under it — two centred cards competing for the same job reads as a
+ *   bug. Hosts that already frame their own box pass `variant="plain"` so the
+ *   message does not land as a card inside a card.
  * - The route out is only rendered for a caller who holds `provider.manage`.
  *   Everyone else gets a sentence naming who can fix it, because a link they
  *   cannot act on reads as a dead end.
@@ -25,17 +30,21 @@ import { cn } from "@/lib/utils";
 
 export function NoIntelligenceMessage({
   canManage,
+  variant = "card",
   className,
 }: {
   /** Render the route to Settings → Providers. */
   canManage: boolean;
+  /** `plain` drops the box, for a host that already draws one. */
+  variant?: "card" | "plain";
   className?: string;
 }) {
   return (
     <div
       role="status"
       className={cn(
-        "mx-auto flex max-w-md flex-col items-center gap-2 border border-border/70 bg-card/60 px-6 py-5 text-center",
+        "mx-auto flex max-w-md flex-col items-center gap-2 text-center",
+        variant === "card" && "border border-border/70 bg-card/60 px-6 py-5",
         className,
       )}
     >
@@ -61,10 +70,16 @@ export function NoIntelligenceMessage({
   );
 }
 
-export function NoIntelligenceNotice({ className }: { className?: string }) {
+export function NoIntelligenceNotice({
+  variant,
+  className,
+}: {
+  variant?: "card" | "plain";
+  className?: string;
+}) {
   const { isLoading, available, canManage } = useIntelligenceStatus();
 
   if (isLoading || available) return null;
 
-  return <NoIntelligenceMessage canManage={canManage} className={className} />;
+  return <NoIntelligenceMessage canManage={canManage} variant={variant} className={className} />;
 }

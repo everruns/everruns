@@ -92,6 +92,13 @@ interface ChatMessageListProps {
    * keeps its transcript free of run chrome.
    */
   runsByEventId?: Map<string, ChatRun[]>;
+  /**
+   * Replaces the default "No messages yet" card when the transcript is empty.
+   * Used when the surface has something more useful to say than "start typing"
+   * — e.g. the org has no model to chat with, so inviting a first message would
+   * be a second, competing centred message.
+   */
+  emptyState?: ReactNode;
 }
 
 /** A derived join/leave marker interleaved into the transcript by timestamp. */
@@ -163,6 +170,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   getToolCalls,
   participants,
   runsByEventId,
+  emptyState,
 }: ChatMessageListProps) {
   const { locale, t } = useLocale();
   const { data: providers } = useProviders();
@@ -466,6 +474,13 @@ export const ChatMessageList = memo(function ChatMessageList({
   }
 
   if (chatEvents.length === 0) {
+    if (emptyState) {
+      return (
+        <div className="flex flex-col items-center justify-end text-center text-muted-foreground">
+          {emptyState}
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center justify-end text-center text-muted-foreground">
         <div className={chatSurfaceStyles.emptyStateCard}>

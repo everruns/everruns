@@ -16,14 +16,14 @@ jest.mock("@/hooks", () => ({
 
 // The form carries the "no intelligence available" notice, which reads the model
 // list and provider policy map from `use-providers` (org context, not stubbed
-// here). A healthy enabled model keeps it hidden; the notice has its own suite.
+// here). Default to a healthy enabled model so the picker renders; one test
+// empties it to cover the no-intelligence branch.
+const intelligenceModels: { enabled: boolean; healthy: boolean; capabilities: string[] }[] = [
+  { enabled: true, healthy: true, capabilities: ["chat"] },
+];
 jest.mock("@/hooks/use-providers", () => ({
-  useModels: () => ({
-    data: [{ enabled: true, healthy: true, capabilities: ["chat"] }],
-    isLoading: false,
-    isError: false,
-  }),
-  useProvidersConfig: () => ({ data: { policies: {} }, isLoading: false }),
+  useModels: () => ({ data: intelligenceModels, isLoading: false, isError: false }),
+  useProvidersConfig: () => ({ data: { policies: { "provider.manage": true } }, isLoading: false }),
 }));
 
 jest.mock("@/hooks/use-sessions", () => ({
@@ -107,7 +107,23 @@ describe("NewChatForm", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mutateAsync.mockResolvedValue({ id: "sess_new" });
+    intelligenceModels.splice(0, intelligenceModels.length, {
+      enabled: true,
+      healthy: true,
+      capabilities: ["chat"],
+    });
     setup();
+  });
+
+  it("replaces the picker with the no-intelligence message when the org has no model", () => {
+    intelligenceModels.length = 0;
+
+    render(<NewChatForm />);
+
+    expect(screen.getByText("No intelligence available")).toBeInTheDocument();
+    // One message, not two: starting a thread nothing can answer is a dead end.
+    expect(screen.queryByRole("combobox", { name: "Chat counterpart" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Start chat/ })).not.toBeInTheDocument();
   });
 
   it("creates an agent-bound thread and opens it", async () => {

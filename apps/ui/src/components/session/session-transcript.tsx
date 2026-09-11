@@ -33,9 +33,12 @@ export function SessionTranscript({
   footer,
   /** Show inline run cards for work the turns started (Chats thread surface). */
   showRunCards = false,
+  /** Replaces the transcript's default empty state (see `ChatMessageList`). */
+  emptyState,
 }: {
   footer?: ReactNode;
   showRunCards?: boolean;
+  emptyState?: ReactNode;
 }) {
   const { t } = useLocale();
   const {
@@ -133,6 +136,7 @@ export function SessionTranscript({
           getToolCalls={getToolCalls}
           participants={participants}
           runsByEventId={runsByEventId}
+          emptyState={emptyState}
         />
 
         {(isThinking || streamingText) && (

@@ -93,8 +93,10 @@ export default function DevChatComponentsPage() {
           <div className="space-y-1">
             <h2 className="text-lg font-semibold text-foreground">No intelligence available</h2>
             <p className="text-sm text-muted-foreground">
-              Shown on every chat surface when the org has no enabled, healthy chat model: above the
-              composer on a thread, and above the counterpart picker on the new-chat form. The route
+              Shown on every chat surface when the org has no enabled, healthy chat model. It is
+              always the only centred message on the surface: it replaces the transcript&rsquo;s
+              &ldquo;No messages yet&rdquo; card on a fresh thread, sits above the composer once
+              there is history, and replaces the counterpart picker on the new-chat form. The route
               to Settings only appears for a caller who can manage providers.
             </p>
           </div>
@@ -110,6 +112,12 @@ export default function DevChatComponentsPage() {
                 Member, view only
               </p>
               <NoIntelligenceMessage canManage={false} />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                Plain, inside a host that draws its own frame
+              </p>
+              <NoIntelligenceMessage canManage variant="plain" />
             </div>
           </div>
         </section>
