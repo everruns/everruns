@@ -56,16 +56,49 @@ pub(crate) struct AgentCapabilityConfigSchema {
     pub config: serde_json::Value,
 }
 
-/// Capability status
+/// Capability lifecycle status.
+///
+/// Design Decision (capability deprecation): removal is a two-step lifecycle
+/// declared in code on the capability itself, not org data. `Deprecated`
+/// announces the removal while the capability still behaves exactly as before,
+/// so existing agents keep working and surfaces can warn. `Retired` is the
+/// removal: the implementation is stripped to an empty shell that contributes
+/// no tools, system prompt, mounts, facts, or hooks. A retired capability stays
+/// registered so agent, harness, and session references resolve instead of
+/// failing, but it is hidden from catalogs and reported as removed wherever it
+/// is still attached.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum CapabilityStatus {
     /// Capability is available for use
     Available,
     /// Capability is coming soon (not yet implemented)
+    // `comingsoon` is the pre-snake_case spelling that could be persisted in a
+    // declarative capability definition; accept it on read.
+    #[serde(alias = "comingsoon")]
     ComingSoon,
-    /// Capability is deprecated
+    /// Removal announced. Still fully functional; surfaces warn and discourage
+    /// new attachments.
     Deprecated,
+    /// Removed. Registered but inert, and hidden from capability catalogs.
+    Retired,
+}
+
+impl CapabilityStatus {
+    /// True when the capability still contributes runtime behavior (tools,
+    /// system prompt, mounts, facts, hooks, MCP servers).
+    ///
+    /// `Deprecated` is deliberately active: announcing a removal must not
+    /// change what already-attached agents do.
+    pub fn is_active(self) -> bool {
+        matches!(self, Self::Available | Self::Deprecated)
+    }
+
+    /// True when the capability should appear in capability catalogs and
+    /// discovery surfaces. Retired capabilities are hidden.
+    pub fn is_listed(self) -> bool {
+        !matches!(self, Self::Retired)
+    }
 }
 
 impl std::fmt::Display for CapabilityStatus {
@@ -74,6 +107,7 @@ impl std::fmt::Display for CapabilityStatus {
             CapabilityStatus::Available => write!(f, "available"),
             CapabilityStatus::ComingSoon => write!(f, "coming_soon"),
             CapabilityStatus::Deprecated => write!(f, "deprecated"),
+            CapabilityStatus::Retired => write!(f, "retired"),
         }
     }
 }
@@ -525,5 +559,44 @@ mod tests {
         assert_eq!(tree.len(), 5);
         assert!(!tree.is_empty());
         assert!(MountSource::virtual_tree(Arc::new(tree)).is_directory());
+    }
+
+    #[test]
+    fn capability_status_wire_format_is_snake_case() {
+        for (status, wire) in [
+            (CapabilityStatus::Available, "available"),
+            (CapabilityStatus::ComingSoon, "coming_soon"),
+            (CapabilityStatus::Deprecated, "deprecated"),
+            (CapabilityStatus::Retired, "retired"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(status).unwrap(),
+                serde_json::json!(wire)
+            );
+            assert_eq!(
+                serde_json::from_value::<CapabilityStatus>(serde_json::json!(wire)).unwrap(),
+                status
+            );
+            // The Display impl and the wire format must not drift apart.
+            assert_eq!(status.to_string(), wire);
+        }
+        // Pre-snake_case spelling still deserializes.
+        assert_eq!(
+            serde_json::from_value::<CapabilityStatus>(serde_json::json!("comingsoon")).unwrap(),
+            CapabilityStatus::ComingSoon
+        );
+    }
+
+    #[test]
+    fn only_available_and_deprecated_contribute_at_runtime() {
+        assert!(CapabilityStatus::Available.is_active());
+        assert!(CapabilityStatus::Deprecated.is_active());
+        assert!(!CapabilityStatus::ComingSoon.is_active());
+        assert!(!CapabilityStatus::Retired.is_active());
+
+        assert!(CapabilityStatus::Available.is_listed());
+        assert!(CapabilityStatus::ComingSoon.is_listed());
+        assert!(CapabilityStatus::Deprecated.is_listed());
+        assert!(!CapabilityStatus::Retired.is_listed());
     }
 }

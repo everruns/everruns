@@ -1909,8 +1909,7 @@ fn compaction_is_enabled(
 ) -> bool {
     capability_configs.iter().any(|cap_config| {
         registry.get(cap_config.capability_id()).is_some_and(|cap| {
-            cap.status() == CapabilityStatus::Available
-                && cap.compaction_policy(cap_config.config_value()).is_some()
+            cap.status().is_active() && cap.compaction_policy(cap_config.config_value()).is_some()
         })
     })
 }
@@ -1931,7 +1930,7 @@ pub fn collect_message_filters_only(
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_id();
         if let Some(capability) = registry.get(cap_id) {
-            if capability.status() != CapabilityStatus::Available {
+            if !capability.status().is_active() {
                 continue;
             }
             // Resolve against None: no model is known at message-filter collection
@@ -1970,7 +1969,7 @@ pub fn collect_model_view_providers(
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_id();
         if let Some(capability) = registry.get(cap_id) {
-            if capability.status() != CapabilityStatus::Available {
+            if !capability.status().is_active() {
                 continue;
             }
             let effective: &dyn Capability = capability
@@ -2004,7 +2003,7 @@ pub fn collect_dynamic_facts(
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_id();
         if let Some(capability) = registry.get(cap_id) {
-            if capability.status() != CapabilityStatus::Available {
+            if !capability.status().is_active() {
                 continue;
             }
             let effective: &dyn Capability = capability
@@ -2034,7 +2033,7 @@ pub fn collect_capability_mcp_servers(
             if let Ok(definition) = serde_json::from_value::<DeclarativeCapabilityDefinition>(
                 cap_config.config_value().clone(),
             ) {
-                if definition.status != CapabilityStatus::Available {
+                if !definition.status.is_active() {
                     continue;
                 }
                 if let Some(contributed) = definition.mcp_servers {
@@ -2044,7 +2043,7 @@ pub fn collect_capability_mcp_servers(
             continue;
         }
         if let Some(capability) = registry.get(cap_id) {
-            if capability.status() != CapabilityStatus::Available {
+            if !capability.status().is_active() {
                 continue;
             }
             servers = merge_scoped_mcp_servers(
@@ -2449,7 +2448,7 @@ pub async fn collect_capabilities_with_configs(
                 cap_config.config_value().clone(),
             ) {
                 Ok(definition) => {
-                    if definition.status != CapabilityStatus::Available {
+                    if !definition.status.is_active() {
                         continue;
                     }
 
@@ -2484,8 +2483,10 @@ pub async fn collect_capabilities_with_configs(
             continue;
         }
         if let Some(capability) = registry.get(cap_id) {
-            // Only collect from available capabilities
-            if capability.status() != CapabilityStatus::Available {
+            // Skip inert capabilities: `ComingSoon` is not implemented yet and
+            // `Retired` has been removed. Both resolve to a no-op rather than an
+            // error so an agent that still references one keeps running.
+            if !capability.status().is_active() {
                 continue;
             }
 
@@ -2630,7 +2631,7 @@ pub async fn collect_capabilities_with_configs(
         .into_iter()
         .filter(|cap| {
             !applied_ids.iter().any(|id| id == cap.id())
-                && cap.status() == CapabilityStatus::Available
+                && cap.status().is_active()
                 && cap.auto_activates_for(&tool_definitions)
         })
         .cloned()

@@ -94,5 +94,7 @@ export function getCapabilityStatusBadgeVariant(
       return "secondary";
     case "deprecated":
       return "outline";
+    case "retired":
+      return "outline";
   }
 }

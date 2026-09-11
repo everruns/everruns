@@ -1051,9 +1051,19 @@ impl InProcessRuntime {
                 capability.capability_id()
             ))
         })?;
-        if registered.status() != CapabilityStatus::Available {
+        // A `Deprecated` capability still works, so session-scoped activation
+        // stays allowed; only inert statuses are rejected here. Already-attached
+        // retired capabilities resolve to a no-op instead (see
+        // `collect_capabilities_with_configs`), which is what keeps existing
+        // agents from failing when a capability is retired.
+        if !registered.status().is_active() {
+            let reason = if registered.status() == CapabilityStatus::Retired {
+                "capability has been removed"
+            } else {
+                "capability is not available"
+            };
             return Err(AgentLoopError::config(format!(
-                "capability is not available: {}",
+                "{reason}: {}",
                 capability.capability_id()
             )));
         }

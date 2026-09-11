@@ -60,4 +60,46 @@ describe("SelectedCapabilityList", () => {
     fireEvent.click(screen.getByRole("button", { name: /remove unavailable capability/i }));
     expect(onRemove).toHaveBeenCalledWith("plugin:plugin_stale");
   });
+
+  it("warns without blocking when an attached capability is deprecated", () => {
+    const cap = capability({ status: "deprecated" });
+
+    render(
+      <SelectedCapabilityList
+        selected={[{ ref: "legacy_capability", config: {} }]}
+        getCapability={(id) => (id === cap.id ? cap : undefined)}
+        getDependents={() => []}
+        onRemove={jest.fn()}
+        onConfigChange={jest.fn()}
+        onMoveUp={jest.fn()}
+        onMoveDown={jest.fn()}
+      />,
+    );
+
+    // Still a normal, configurable row — deprecation only announces the removal.
+    expect(screen.getByText("Legacy Capability")).toBeInTheDocument();
+    expect(screen.getByText("Deprecated")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("reports a retired capability as removed", () => {
+    const onRemove = jest.fn();
+    const cap = capability({ status: "retired" });
+
+    render(
+      <SelectedCapabilityList
+        selected={[{ ref: "legacy_capability", config: {} }]}
+        getCapability={(id) => (id === cap.id ? cap : undefined)}
+        getDependents={() => []}
+        onRemove={onRemove}
+        onConfigChange={jest.fn()}
+        onMoveUp={jest.fn()}
+        onMoveDown={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Legacy Capability was removed");
+    fireEvent.click(screen.getByRole("button", { name: /remove removed capability/i }));
+    expect(onRemove).toHaveBeenCalledWith("legacy_capability");
+  });
 });

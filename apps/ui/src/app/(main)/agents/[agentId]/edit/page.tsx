@@ -88,7 +88,9 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
   const { can: canPolicies } = usePolicies("agents");
 
   // Capabilities data
-  const { data: allCapabilities, isLoading: capabilitiesLoading } = useCapabilities();
+  const { data: allCapabilities, isLoading: capabilitiesLoading } = useCapabilities({
+    includeRetired: true,
+  });
 
   // Tab state
   const [activeTab, setActiveTab] = useState<string>("edit");
