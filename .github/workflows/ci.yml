@@ -398,10 +398,20 @@ jobs:
   # calls may carry that attribute -- see knowledge/project/release-process.md.
   semver-bumps:
     name: Crate Semver Bumps
-    runs-on: ubuntu-latest
+    # Opt-in larger runners via the CI_RUNNER_LABEL repo variable
+    # (e.g. ubuntu-latest-8-core); defaults to standard runners.
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 45
+
+    # Sharded: one check-release over ~28 candidates was ~45 min of serial
+    # rustdoc builds (current + baseline per crate). Four legs partition the
+    # sorted candidate list deterministically; fail-fast stops the burn on red.
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [0, 1, 2, 3]
 
     steps:
       - uses: actions/checkout@v7
@@ -444,7 +454,7 @@ jobs:
 
       - name: Check released crates are bumped large enough
         if: steps.plan.outputs.found == 'true'
-        run: python3 scripts/check-semver-bumps.py
+        run: python3 scripts/check-semver-bumps.py --shard ${{ matrix.shard }}/4
 
   msrv:
     name: Published Crate MSRV
@@ -753,11 +763,21 @@ jobs:
   # Keeps server compilation in the integration job that already builds it.
   unit-test:
     name: Unit Tests (Pure)
-    runs-on: ubuntu-latest
+    # Opt-in larger runners via the CI_RUNNER_LABEL repo variable
+    # (e.g. ubuntu-latest-8-core); defaults to standard runners.
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 30
 
+
+    # Sharded: ~27 sequential `cargo test` invocations were ~20 min of
+    # compilation on one runner (tests themselves are seconds). Four legs
+    # split by compile weight; the shared rust-cache key keeps dep reuse.
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [llm-core, provider-engine, host-mcp, facade-cli]
     steps:
       - uses: actions/checkout@v7
 
@@ -781,8 +801,11 @@ jobs:
         with:
           shared-key: "test"
 
-      - name: Run pure unit tests
+      - name: Run pure unit tests (${{ matrix.shard }})
+        shell: bash
         run: |
+          case "${{ matrix.shard }}" in
+            llm-core)
           # Driver suites include local HTTP contracts. Credentialed live cases
           # are explicitly ignored; ordinary cargo test never executes them.
           cargo test -p everruns-anthropic -p everruns-openai -p everruns-gemini \
@@ -801,6 +824,8 @@ jobs:
           # Production-safe deterministic simulator plus its optional host
           # extension. Pure llmsim; no credentials or network.
           cargo test -p everruns-llmsim --all-features
+              ;;
+            provider-engine)
           # The provider SPI and the crates below reach CI here for the first
           # time: none of them had ever appeared in a `cargo test -p` line in
           # any workflow, so their tests/ files had never run. everruns-provider
@@ -820,6 +845,8 @@ jobs:
           # Test-support (EVE-875): in-memory loop, test doubles, fixture
           # capabilities, and llmsim-driven suites that moved out of core.
           cargo test -p everruns-test-support --all-features
+              ;;
+            host-mcp)
           # mcp: whole crate (lib + http_transport + stdio_transport + doctests).
           # Was not tested in CI at all. --all-features enables the `stdio` transport
           # (off in hosted builds) so its transport test runs here. All in-process,
@@ -840,6 +867,8 @@ jobs:
           # the feature-specific MCP target runs immediately afterward.
           cargo test -p everruns-host --features lua,bashkit -- --test-threads=1
           cargo test -p everruns-host --features mcp --test mcp_runtime_test -- --test-threads=1
+              ;;
+            facade-cli)
           # everruns facade (EVE-830): whole crate across every optional facade
           # feature, including local history/resume acceptance paths, plus a
           # bare-facade compile so public configuration cannot accidentally
@@ -864,6 +893,8 @@ jobs:
           cargo test -p everruns-integrations-github
           cargo test -p everruns-integrations-sprites
 
+              ;;
+          esac
   # Durable-worker PR coverage. Catches regressions in the worker crate's
   # durable execution paths (act/reason/input task handling, DLQ emission,
   # session.idled, org_id roundtripping, task error mapping) before merge.
@@ -1068,10 +1099,20 @@ jobs:
   # Tests API endpoints, repositories, and durable execution against real database
   integration-test:
     name: Integration Tests (PostgreSQL)
-    runs-on: ubuntu-latest
+    # Opt-in larger runners via the CI_RUNNER_LABEL repo variable
+    # (e.g. ubuntu-latest-8-core); defaults to standard runners.
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
     timeout-minutes: 40
+
+    # Sharded: 8 sequential test steps were ~26 min on one runner with a
+    # warm cache. Three legs split by suite; each leg gets its own
+    # postgres service and runs migrations against it.
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [server, domain, durable]
     services:
       postgres:
         image: postgres:17-alpine
@@ -1129,14 +1170,17 @@ jobs:
         run: sqlx migrate run --source crates/server/migrations
 
       - name: Run server unit tests (require DB for storage layer)
+        if: ${{ matrix.shard == 'server' }}
         run: cargo test -p everruns-server --lib
 
       - name: Run server integration tests (API + repository)
+        if: ${{ matrix.shard == 'server' }}
         run: cargo test -p everruns-server --test api_integration_test --test repository_integration_test --test repository_conformance_test -- --test-threads=1
 
       # These contracts use in-memory TestServer instances, but share the server
       # compilation above instead of rebuilding it in the pure-test job.
       - name: Run in-memory server API contracts
+        if: ${{ matrix.shard == 'server' }}
         run: cargo test -p everruns-server --test mcp_url_consent_test --test mcp_url_elicitation_test --test sse_replay_test
 
       # Blob-offload suite against the in-memory object_store backend (no S3
@@ -1146,6 +1190,7 @@ jobs:
       # The dedicated `s3-integration-test` job re-runs the
       # identical suite with STORAGE_BLOB_BACKEND=s3 against SeaweedFS.
       - name: Run blob offload integration tests (in-memory backend)
+        if: ${{ matrix.shard == 'domain' }}
         run: cargo test -p everruns-server --test blob_offload_integration_test -- --test-threads=1
 
       # Domain-focused integration tests that previously only ran manually.
@@ -1153,6 +1198,7 @@ jobs:
       # exercises a cohesive slice (auth, org lifecycle, schedules, git sessions,
       # evals, ag_ui, client-side tools, llm defaults, org isolation).
       - name: Run domain integration tests
+        if: ${{ matrix.shard == 'domain' }}
         run: |
           cargo test -p everruns-server \
             --test ag_ui_integration_test \
@@ -1183,6 +1229,7 @@ jobs:
       # (EVE-667). The Test Enumeration job enforces that every crate test
       # file is either run here or explicitly allowlisted.
       - name: Run previously-unenumerated domain integration tests
+        if: ${{ matrix.shard == 'domain' }}
         run: |
           cargo test -p everruns-server \
             --test app_api_integration_test \
@@ -1206,35 +1253,37 @@ jobs:
             -- --test-threads=1
 
       - name: Run durable integration tests
+        if: ${{ matrix.shard == 'durable' }}
         run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --features postgres-tests -- --test-threads=1
 
       # `agent_reliability_test` was audited for EVE-349 but still fails on a
       # clean PostgreSQL-backed run; keep it out of required CI until its
       # restart/reclaim scenarios are stabilized.
       - name: Run durable failpoint tests
+        if: ${{ matrix.shard == 'durable' }}
         run: cargo test -p everruns-durable --test failure_injection_test --features "failpoints,postgres-tests" -- --test-threads=1
 
       # Slack live tests need DOPPLER_TOKEN. Restrict to push events so the
       # token is never instantiated in a fork-PR context where untrusted
       # code (build.rs, proc-macros, test bodies) would see it via env.
       - name: Install Doppler CLI
+        if: ${{ matrix.shard == 'durable' && github.event_name == 'push' }}
         id: doppler_install
         # Absorbs one transient installer failure; see
         # scripts/test-doppler-install-retry.sh for why.
         continue-on-error: true
-        if: github.event_name == 'push'
         uses: dopplerhq/cli-action@v4
 
       - name: Pause before Doppler CLI retry
-        if: steps.doppler_install.outcome == 'failure'
+        if: ${{ matrix.shard == 'durable' && steps.doppler_install.outcome == 'failure' }}
         run: sleep 15
 
       - name: Install Doppler CLI (retry)
-        if: steps.doppler_install.outcome == 'failure'
+        if: ${{ matrix.shard == 'durable' && steps.doppler_install.outcome == 'failure' }}
         uses: dopplerhq/cli-action@v4
 
       - name: Run Slack integration tests (real API via Doppler)
-        if: github.event_name == 'push'
+        if: ${{ matrix.shard == 'durable' && github.event_name == 'push' }}
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run --preserve-env="DATABASE_URL" -- cargo test -p everruns-server --test slack_integration_test -- --test-threads=1
@@ -1454,7 +1503,9 @@ jobs:
   # Build release binaries and upload as artifacts for E2E jobs and openapi-check
   build-binaries:
     name: Build Release Binaries
-    runs-on: ubuntu-latest
+    # Opt-in larger runners via the CI_RUNNER_LABEL repo variable
+    # (e.g. ubuntu-latest-8-core); defaults to standard runners.
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
     timeout-minutes: 40

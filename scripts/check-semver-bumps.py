@@ -29,9 +29,13 @@ network access, so the gate's own correctness is guarded deterministically.
 from __future__ import annotations
 
 import argparse
+import io
 import json
+import os
 import subprocess
 import sys
+import tarfile
+import tempfile
 import urllib.error
 import urllib.request
 
@@ -98,6 +102,166 @@ def plan(
     return check, skipped
 
 
+def shard_slice(packages: list[str], index: int, total: int) -> list[str]:
+    """The INDEX-th deterministic slice of TOTAL over the sorted candidates."""
+    return sorted(packages)[index::total]
+
+
+def parse_version_tuple(version: str):
+    """Comparable key: numeric release tuple, pre-releases sort below the release."""
+    core = version.split("+", 1)[0]
+    base, dash, _pre = core.partition("-")
+    try:
+        nums = tuple(int(part) for part in base.split("."))
+    except ValueError:
+        return (0, ())
+    return ((2, nums) if not dash else (1, nums))
+
+
+def index_records(name: str) -> list[tuple[str, bool]]:
+    """(version, yanked) pairs from the sparse index; [] when never published."""
+    try:
+        body = urllib.request.urlopen(
+            f"https://index.crates.io/{index_path(name)}", timeout=30
+        ).read().decode()
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return []
+        raise
+    return [
+        (entry["vers"], bool(entry.get("yanked")))
+        for line in body.splitlines()
+        if line.strip()
+        for entry in [json.loads(line)]
+    ]
+
+
+def latest_published_version(records: list[tuple[str, bool]]) -> str | None:
+    """Highest non-yanked version -- the baseline cargo-semver-checks uses."""
+    best: str | None = None
+    for version, yanked in records:
+        if yanked:
+            continue
+        if best is None or parse_version_tuple(version) > parse_version_tuple(best):
+            best = version
+    return best
+
+
+def normalize_package_version(text: str) -> str:
+    """Neutralize only the `[package] version = ...` line (a pure bump)."""
+    out, section = [], None
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped.startswith("["):
+            section = stripped.strip("[]").split()[0]
+        if section == "package" and stripped.startswith("version") and "=" in stripped:
+            out.append('version = "0.0.0"\n')
+        else:
+            out.append(line)
+    return "".join(out)
+
+
+def trees_equal(workspace_dir: str, baseline_dir: str) -> bool:
+    """True when the packaged baseline tree matches the workspace crate.
+
+    Every file shipped in the .crate must match (with only the package
+    version line neutralized); any content difference, or any extra
+    workspace file outside target/, means "not equal" and the crate falls
+    through to the full semver check. Cargo.toml.orig / .cargo_vcs_info.json
+    exist only in the packaged tree and are ignored.
+    """
+    packaged_only = {"Cargo.toml.orig", ".cargo_vcs_info.json"}
+    baseline_files: set[str] = set()
+    for root, _dirs, files in os.walk(baseline_dir):
+        for name in files:
+            rel = os.path.relpath(os.path.join(root, name), baseline_dir)
+            if rel not in packaged_only:
+                baseline_files.add(rel)
+    workspace_files: set[str] = set()
+    for root, dirs, files in os.walk(workspace_dir):
+        dirs[:] = [d for d in dirs if d != "target"]
+        for name in files:
+            workspace_files.add(os.path.relpath(os.path.join(root, name), workspace_dir))
+    if baseline_files - workspace_files:
+        return False
+    if workspace_files - baseline_files - packaged_only:
+        return False
+    for rel in baseline_files:
+        with open(os.path.join(baseline_dir, rel), "rb") as fh:
+            baseline_bytes = fh.read()
+        with open(os.path.join(workspace_dir, rel), "rb") as fh:
+            workspace_bytes = fh.read()
+        if rel == "Cargo.toml":
+            try:
+                baseline_text = normalize_package_version(baseline_bytes.decode("utf-8"))
+                workspace_text = normalize_package_version(workspace_bytes.decode("utf-8"))
+            except UnicodeDecodeError:
+                return False
+            if baseline_text != workspace_text:
+                return False
+        elif baseline_bytes != workspace_bytes:
+            return False
+    return True
+
+
+_manifest_dirs: dict[str, str] | None = None
+
+
+def manifest_dirs() -> dict[str, str]:
+    """Workspace package name -> crate directory (one cached cargo metadata)."""
+    global _manifest_dirs
+    if _manifest_dirs is None:
+        meta = json.loads(
+            subprocess.check_output(
+                ["cargo", "metadata", "--no-deps", "--format-version", "1"], text=True
+            )
+        )
+        _manifest_dirs = {
+            p["name"]: os.path.dirname(p["manifest_path"]) for p in meta["packages"]
+        }
+    return _manifest_dirs
+
+
+def identical_to_baseline(name: str) -> tuple[bool, str]:
+    """Whether a candidate's source is identical to its published baseline.
+
+    Downloads the baseline .crate and compares trees. Returns (True, reason)
+    only on a byte-level match (modulo the package version line); every other
+    outcome -- including any infrastructure failure -- returns False so the
+    crate gets the full semver check. This function must never turn the gate
+    green by itself.
+    """
+    baseline = latest_published_version(index_records(name))
+    if baseline is None:
+        return False, "no published baseline to compare against"
+    try:
+        crate_dir = manifest_dirs()[name]
+    except KeyError:
+        return False, "crate not in workspace metadata"
+    url = f"https://static.crates.io/crates/{name}/{name}-{baseline}.crate"
+    try:
+        request = urllib.request.Request(url)
+        with tempfile.TemporaryDirectory(prefix="semver-baseline-") as tmp:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                payload = response.read()
+            with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
+                try:
+                    archive.extractall(tmp, filter="data")
+                except TypeError:
+                    # Python < 3.12 predates the filter= parameter; the
+                    # tarball comes from crates.io over TLS, so plain
+                    # extraction is acceptable here.
+                    archive.extractall(tmp)
+            unpacked = os.path.join(tmp, f"{name}-{baseline}")
+            if not os.path.isdir(unpacked):
+                return False, "baseline archive layout unexpected"
+            if trees_equal(crate_dir, unpacked):
+                return True, f"source identical to published {name} {baseline}"
+            return False, f"source differs from published {name} {baseline}"
+    except Exception as exc:  # noqa: BLE001 -- fail open by design
+        return False, f"baseline comparison unavailable ({exc}); running full check"
+
+
 def run_semver_checks(packages: list[str]) -> int:
     """Run cargo-semver-checks over the release candidates in one invocation.
 
@@ -129,7 +293,7 @@ def run_semver_checks(packages: list[str]) -> int:
     return subprocess.call(argv)
 
 
-def run_check(plan_only: bool, candidates_only: bool) -> int:
+def run_check(plan_only: bool, candidates_only: bool, shard=None) -> int:
     current = workspace_versions()
     published = {name: published_versions(name) for name in current}
     packages, skipped = plan(current, published)
@@ -158,6 +322,27 @@ def run_check(plan_only: bool, candidates_only: bool) -> int:
     for name in packages:
         print(f"  - {name} {current[name]}")
     if plan_only:
+        return 0
+
+    # Crates whose packaged source is byte-identical to the published
+    # baseline cannot have changed API; anything else (including any
+    # comparison failure) falls through to the full check below.
+    remaining: list[str] = []
+    for name in packages:
+        identical, reason = identical_to_baseline(name)
+        if identical:
+            print(f"  - {name} (skipped: {reason})")
+        else:
+            if not reason.startswith("source differs"):
+                print(f"  - {name}: {reason}")
+            remaining.append(name)
+    packages = remaining
+    if shard is not None:
+        index, total = shard
+        packages = shard_slice(packages, index, total)
+        print(f"Shard {index}/{total}: checking {len(packages)} candidate(s).")
+    if not packages:
+        print("No candidates left to check in this shard; nothing to do.")
         return 0
 
     code = run_semver_checks(packages)
@@ -231,6 +416,75 @@ def self_test() -> int:
     expect("3-char shard", index_path("abc"), "3/a/abc")
     expect("4+-char shard", index_path("everruns-host"), "ev/er/everruns-host")
 
+    expect("shard 0/2", shard_slice(["c", "a", "b", "d", "e"], 0, 2), ["a", "c", "e"])
+    expect("shard 1/2", shard_slice(["c", "a", "b", "d", "e"], 1, 2), ["b", "d"])
+    expect("empty shard", shard_slice(["a"], 1, 4), [])
+    expect(
+        "shards partition",
+        sorted(
+            shard_slice(["a", "b", "c", "d"], 0, 4)
+            + shard_slice(["a", "b", "c", "d"], 1, 4)
+            + shard_slice(["a", "b", "c", "d"], 2, 4)
+            + shard_slice(["a", "b", "c", "d"], 3, 4)
+        ),
+        ["a", "b", "c", "d"],
+    )
+
+    expect(
+        "latest skips yanked",
+        latest_published_version([("0.2.0", True), ("0.1.0", False)]),
+        "0.1.0",
+    )
+    expect(
+        "latest picks max",
+        latest_published_version([("0.1.0", False), ("0.2.0", False)]),
+        "0.2.0",
+    )
+    expect("no baseline", latest_published_version([]), None)
+    expect(
+        "prerelease below release",
+        parse_version_tuple("1.2.3") > parse_version_tuple("1.2.3-alpha"),
+        True,
+    )
+
+    before = '[package]\nname = "demo"\nversion = "0.18.2"\nedition = "2021"\n'
+    after = '[package]\nname = "demo"\nversion = "0.19.0"\nedition = "2021"\n'
+    expect(
+        "pure bump compares equal",
+        normalize_package_version(before) == normalize_package_version(after),
+        True,
+    )
+    dep_change = '[package]\nname = "demo"\nversion = "0.19.0"\n[dependencies]\nfoo = "3"\n'
+    dep_same = '[package]\nname = "demo"\nversion = "0.18.2"\n[dependencies]\nfoo = "2"\n'
+    expect(
+        "dep requirement change is visible",
+        normalize_package_version(dep_change) == normalize_package_version(dep_same),
+        False,
+    )
+
+    with tempfile.TemporaryDirectory() as work, tempfile.TemporaryDirectory() as base:
+        os.makedirs(os.path.join(work, "src"))
+        os.makedirs(os.path.join(base, "src"))
+        with open(os.path.join(work, "Cargo.toml"), "w") as fh:
+            fh.write(after)
+        with open(os.path.join(base, "Cargo.toml"), "w") as fh:
+            fh.write(before)
+        with open(os.path.join(base, "Cargo.toml.orig"), "w") as fh:
+            fh.write("orig\n")
+        with open(os.path.join(work, "src", "lib.rs"), "w") as fh:
+            fh.write("pub fn f() {}\n")
+        with open(os.path.join(base, "src", "lib.rs"), "w") as fh:
+            fh.write("pub fn f() {}\n")
+        expect("identical trees", trees_equal(work, base), True)
+        with open(os.path.join(base, "src", "lib.rs"), "w") as fh:
+            fh.write("pub fn g() {}\n")
+        expect("content change detected", trees_equal(work, base), False)
+        with open(os.path.join(base, "src", "lib.rs"), "w") as fh:
+            fh.write("pub fn f() {}\n")
+        with open(os.path.join(work, "extra.rs"), "w") as fh:
+            fh.write("// new\n")
+        expect("extra workspace file detected", trees_equal(work, base), False)
+
     for failure in failures:
         print(f"  FAIL {failure}")
     if failures:
@@ -257,10 +511,27 @@ def main() -> int:
         action="store_true",
         help="run the network-free checks of the planning logic",
     )
+    parser.add_argument(
+        "--shard",
+        default=None,
+        metavar="INDEX/COUNT",
+        help="check only the INDEX-th slice (0-based) of COUNT candidate shards",
+    )
     args = parser.parse_args()
     if args.self_test:
         return self_test()
-    return run_check(plan_only=args.plan, candidates_only=args.candidates)
+    shard = None
+    if args.shard:
+        try:
+            index_s, count_s = args.shard.split("/")
+            shard = (int(index_s), int(count_s))
+        except ValueError:
+            print(f"--shard must look like INDEX/COUNT, got {args.shard!r}", file=sys.stderr)
+            return 2
+        if not 0 <= shard[0] < shard[1]:
+            print(f"--shard index out of range: {args.shard!r}", file=sys.stderr)
+            return 2
+    return run_check(plan_only=args.plan, candidates_only=args.candidates, shard=shard)
 
 
 if __name__ == "__main__":
