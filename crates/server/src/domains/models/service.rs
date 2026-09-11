@@ -56,10 +56,22 @@ impl IntelligenceBootstrap {
 const BOOTSTRAP_ENABLE_LIMIT: usize = 8;
 const BOOTSTRAP_FAVORITE_LIMIT: usize = 3;
 
-/// Default-model preference order: newest release first, then the model with the
-/// fewest missing agent-relevant traits. Lower sorts better.
+/// Curated first pick per vendor, by model family. Recency alone elects the
+/// newest flagship the day it ships, which is the wrong default for everyday
+/// agent work: GPT-6 Astra is four times the price of GPT-5.6 Terra without
+/// being the better fit for most runs. Terra is also the platform fallback
+/// (`platform::PLATFORM_DEFAULT_MODEL_ID`), so a freshly credentialed org lands
+/// on the same model the default org already uses. Families not listed here
+/// keep falling back to the recency order below.
+const PREFERRED_DEFAULT_FAMILIES: &[&str] = &["gpt-5.6-terra"];
+
+/// Default-model preference order: the curated pick first, then newest release,
+/// then the model with the fewest missing agent-relevant traits. Lower sorts
+/// better.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct ModelRank {
+    /// 0 for a curated family, 1 otherwise, so the curated pick sorts first.
+    curated: u8,
     /// `Reverse` so a later date — and a known date over an unknown one — wins.
     release: std::cmp::Reverse<String>,
     capability_gaps: u8,
@@ -71,6 +83,7 @@ impl ModelRank {
             + u8::from(!profile.attachment)
             + u8::from(!profile.structured_output);
         Self {
+            curated: u8::from(!PREFERRED_DEFAULT_FAMILIES.contains(&profile.family.as_str())),
             release: std::cmp::Reverse(profile.release_date.clone().unwrap_or_default()),
             capability_gaps: gaps,
         }
@@ -979,6 +992,33 @@ mod tests {
                 assert!(row.is_favorite, "{} should be starred", row.model_id);
             }
         }
+    }
+
+    /// The newest OpenAI flagship must not win the default election just by
+    /// being newest: GPT-5.6 Terra is the curated everyday default, GPT-6 Astra
+    /// is the pricier flagship an operator opts into.
+    #[tokio::test]
+    async fn bootstrap_elects_terra_over_the_newer_astra_flagship() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let org_id = create_second_org(&db).await;
+        let service = ModelService::new(db.clone());
+        let provider_id = create_keyed_provider(&db, org_id).await;
+
+        for model_id in ["gpt-6-astra", "gpt-5.6-terra", "gpt-5.6-sol"] {
+            discover_model(&db, org_id, provider_id, model_id, &["chat"]).await;
+        }
+
+        service
+            .bootstrap_intelligence(org_id, provider_id.uuid())
+            .await
+            .unwrap();
+
+        let default = db
+            .get_default_model(org_id)
+            .await
+            .unwrap()
+            .expect("default elected");
+        assert_eq!(default.model_id, "gpt-5.6-terra");
     }
 
     #[tokio::test]
