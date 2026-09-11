@@ -2259,7 +2259,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-bedrock"
-version = "0.18.3"
+version = "0.18.4"
 dependencies = [
  "async-trait",
  "aws-sdk-bedrockruntime",
@@ -2305,7 +2305,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli"
-version = "0.18.3"
+version = "0.18.4"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -2449,7 +2449,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-fireworks"
-version = "0.18.3"
+version = "0.18.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2493,7 +2493,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-gemini"
-version = "0.18.3"
+version = "0.18.4"
 dependencies = [
  "async-trait",
  "eventsource-stream",
@@ -2946,7 +2946,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.18.5"
+version = "0.18.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2969,7 +2969,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-mai"
-version = "0.18.3"
+version = "0.18.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3009,7 +3009,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-meta"
-version = "0.18.3"
+version = "0.18.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3032,7 +3032,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openai"
-version = "0.18.3"
+version = "0.18.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3047,7 +3047,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openrouter"
-version = "0.18.3"
+version = "0.18.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3104,7 +3104,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-provider"
-version = "0.20.2"
+version = "0.21.0"
 dependencies = [
  "anyhow",
  "async-trait",

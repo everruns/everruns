@@ -58,26 +58,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Crate Releases
 
-Independently versioned crates published this cycle, classified with `cargo-semver-checks`. The
-capability lifecycle work added a `Retired` variant to the non-`#[non_exhaustive]` public enum
-`CapabilityStatus` (`everruns-core`) and removed the `platform_management` tool structs from
-`everruns-platform`, so both take a breaking `0.x` minor bump; `everruns-integrations-deno` takes a
-breaking bump for a removed Cargo feature; every other change is additive or a compatibility re-pin
-(patch).
+Independently versioned crates published this cycle, classified with `cargo-semver-checks` (computed
+deterministically by `scripts/plan-crate-release.py`). Three crates took breaking public-contract
+changes — `everruns-core` (a new `CapabilityStatus::Retired` variant on a non-`#[non_exhaustive]`
+enum), `everruns-platform` (removed `platform_management` tool structs), and `everruns-provider` (a
+new `LlmErrorKind::AttestationRequired` variant on an exhaustive enum) — plus `everruns-integrations-deno`
+for a removed Cargo feature; each takes a breaking `0.x` minor bump. Everything else is additive or a
+compatibility re-pin (patch), including the `everruns-provider` cone cascade across the wire-protocol
+drivers.
 
 Breaking (minor):
 - `everruns-core` 0.19.1 → 0.20.0 (new `CapabilityStatus::Retired` variant; new public conversation-context fields/methods)
 - `everruns-platform` 0.19.2 → 0.20.0 (removed the `platform_management` tool structs; added harness `icon` fields)
+- `everruns-provider` 0.20.1 → 0.21.0 (new `LlmErrorKind::AttestationRequired` variant on an exhaustive enum; attestation-requirement parsing helpers)
 - `everruns-integrations-deno` 0.18.2 → 0.19.0 (removed the `deno-live-tests` Cargo feature)
 
 Additive / behavior (patch):
-- `everruns-provider` 0.20.1 → 0.20.2 (new attestation-requirement parsing helpers)
 - `everruns-anthropic` 0.18.3 → 0.18.4 (classify Models API errors at the boundary)
 - `everruns-engine` 0.18.3 → 0.18.4 (collect conversation-context contributions)
 - `everruns-builtins` 0.18.6 → 0.18.7 (hierarchical AGENTS.md; write_todos gating)
 
-Cone cascade — compatibility patch republish to re-pin `everruns-core`/`everruns-platform` at their new `0.20` requirement (own contract unchanged):
+Cone cascade — compatibility patch republish to re-pin `everruns-core`/`everruns-platform`/`everruns-provider` at their new requirements (own contract unchanged):
 - `everruns` 0.20.0 → 0.20.1, `everruns-ard` 0.18.2 → 0.18.3, `everruns-host` 0.20.5 → 0.20.6, `everruns-mcp` 0.19.3 → 0.19.4, `everruns-test-support` 0.18.5 → 0.18.6, `everruns-turbopuffer` 0.18.3 → 0.18.4
+- wire-protocol drivers re-pinning `everruns-provider` `0.21`: `everruns-bedrock`, `everruns-fireworks`, `everruns-gemini`, `everruns-mai`, `everruns-meta`, `everruns-openai`, `everruns-openrouter` 0.18.3 → 0.18.4; `everruns-llmsim` 0.18.5 → 0.18.6; `everruns-cli` 0.18.3 → 0.18.4
 - `everruns-integrations-*` 0.18.2 → 0.18.3 (`bashkit`, `brave-search`, `browserless`, `cursor`, `daytona`, `docker`, `duckduckgo`, `e2b`, `github`, `lua`, `openai-image`, `openrouter-workspace`, `parallel`, `sprites`, `web-fetch`; `filesystem` 0.18.3 → 0.18.4; `deno` takes a breaking bump above)
 
 No crates were deleted or absorbed this cycle.
@@ -86,6 +89,7 @@ No crates were deleted or absorbed this cycle.
 
 - Downstream consumers of `everruns-core` that exhaustively `match` on `CapabilityStatus` must add a `Retired` arm; the enum is not `#[non_exhaustive]`.
 - Consumers of `everruns-platform` that referenced the `platform_management` tool structs (`ReadHarnessesTool`, `ManageHarnessesTool`, `ReadAgentsTool`, etc.) must migrate — the `platform_management` capability has been retired.
+- Downstream consumers of `everruns-provider` that exhaustively `match` on `LlmErrorKind` must add an `AttestationRequired` arm; the enum is not `#[non_exhaustive]`.
 
 ## [0.24.0] - 2026-09-09
 

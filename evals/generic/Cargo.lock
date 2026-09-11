@@ -848,7 +848,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.18.5"
+version = "0.18.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -877,7 +877,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openai"
-version = "0.18.3"
+version = "0.18.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -891,7 +891,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openrouter"
-version = "0.18.3"
+version = "0.18.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -903,7 +903,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-provider"
-version = "0.20.2"
+version = "0.21.0"
 dependencies = [
  "anyhow",
  "async-trait",
