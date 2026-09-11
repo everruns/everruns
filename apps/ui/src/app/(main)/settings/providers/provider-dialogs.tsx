@@ -31,6 +31,8 @@ import {
   defaultCredentialValues,
   nonEmptyCredentials,
 } from "./credential-fields";
+import { useCredentialCheck } from "./use-credential-check";
+import { CredentialCheckStatus } from "./credential-check-status";
 
 // Ordered list of provider types for the picker. Labels and descriptions come
 // from the centralized `getProviderLabel` / `getProviderDescription` mappings so
@@ -106,6 +108,16 @@ export function AddProviderDialog({
 
   const { schema, supportsOAuth } = useDriverCredentialSchema(providerType);
   const createProvider = useCreateProvider();
+
+  // Probe the entered credential as it is typed. Advisory only: a verdict never
+  // gates the submit, because multi-field drivers can be valid in ways the probe
+  // cannot reach (private endpoints, assumed roles).
+  const { state: credentialCheck } = useCredentialCheck({
+    providerType,
+    credentials,
+    baseUrl,
+    enabled: open,
+  });
 
   // Reset credential inputs to the selected driver's declared defaults whenever
   // the driver (or its schema) changes.
@@ -216,13 +228,16 @@ export function AddProviderDialog({
             ) : null}
           </div>
           {schema ? (
-            <CredentialFields
-              schema={schema}
-              values={credentials}
-              onChange={updateCredential}
-              idPrefix="add-provider"
-              allowEmptySubmit={supportsOAuth}
-            />
+            <div className="space-y-2">
+              <CredentialFields
+                schema={schema}
+                values={credentials}
+                onChange={updateCredential}
+                idPrefix="add-provider"
+                allowEmptySubmit={supportsOAuth}
+              />
+              <CredentialCheckStatus state={credentialCheck} />
+            </div>
           ) : null}
           {supportsOAuth ? (
             <div className="space-y-2">
@@ -266,6 +281,15 @@ export function SetApiKeyDialog({
   const { schema, supportsOAuth } = useDriverCredentialSchema(provider?.provider_type);
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const updateProvider = useUpdateProvider(provider?.id || "");
+
+  // Same button-free probe as the add flows: a replacement key is checked before
+  // it overwrites a working one, without a separate "test" step.
+  const { state: credentialCheck } = useCredentialCheck({
+    providerType: provider?.provider_type,
+    credentials,
+    baseUrl: provider?.base_url,
+    enabled: open,
+  });
 
   const oauthLabel = provider ? getProviderLabel(provider.provider_type) : "";
 
@@ -326,12 +350,15 @@ export function SetApiKeyDialog({
         ) : null}
         <form onSubmit={handleSubmit} className="space-y-4">
           {schema ? (
-            <CredentialFields
-              schema={schema}
-              values={credentials}
-              onChange={updateCredential}
-              idPrefix="set-credentials"
-            />
+            <div className="space-y-2">
+              <CredentialFields
+                schema={schema}
+                values={credentials}
+                onChange={updateCredential}
+                idPrefix="set-credentials"
+              />
+              <CredentialCheckStatus state={credentialCheck} />
+            </div>
           ) : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

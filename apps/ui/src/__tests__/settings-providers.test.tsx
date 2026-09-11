@@ -107,6 +107,7 @@ jest.mock("@/hooks/use-organizations", () => ({
 
 jest.mock("@/lib/api/providers", () => ({
   updateModel: jest.fn(),
+  checkProviderCredentials: jest.fn(),
   providerSupportsOAuth: jest.fn(() => false),
   providerOAuthAuthorizeUrl: jest.fn((id: string) => `/api/v1/providers/${id}/oauth/authorize`),
 }));
@@ -243,7 +244,9 @@ describe("ProvidersPage", () => {
 
     expect(screen.getByText("LLM Providers")).toBeInTheDocument();
     expect(
-      screen.getByText("Configure the LLM providers that your agents can use."),
+      screen.getByText(
+        "Configure the LLM providers that your agents can use. Keys are encrypted at rest.",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -313,7 +316,9 @@ describe("ProvidersPage", () => {
 
     expect(screen.getByText("No providers configured")).toBeInTheDocument();
     expect(
-      screen.getByText("Add an LLM provider to start using AI models with your agents."),
+      screen.getByText(
+        "Pick one above. Agents stay idle until at least one provider has an enabled model.",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -339,8 +344,9 @@ describe("ProvidersPage", () => {
   it("shows API key status correctly", () => {
     render(<ProvidersPage />, { wrapper });
 
-    // Both cards render the shared "API key" detail row.
-    expect(screen.getAllByText("API key")).toHaveLength(2);
+    // Both cards render the shared "API key" detail row (the quick-connect
+    // tiles above label their method the same way, hence the lower bound).
+    expect(screen.getAllByText("API key").length).toBeGreaterThanOrEqual(2);
     // OpenAI has API key set
     expect(screen.getByText("Configured")).toBeInTheDocument();
     // Anthropic does not have API key set
@@ -368,7 +374,7 @@ describe("ProvidersPage", () => {
     render(<ProvidersPage />, { wrapper });
 
     expect(screen.getByText("Managed")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /key/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^(Set|Update) key$/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete provider" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "More provider actions" })).not.toBeInTheDocument();
   });
