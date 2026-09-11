@@ -23,7 +23,10 @@ import yaml
 # the ones that compile Rust or download browsers have a cache-miss cliff — ui-e2e
 # has been measured at 16m on a cold Playwright cache — so their ceilings are sized
 # off the cold path. A job that trips this ceiling is wedged, not slow.
-CEILING_MINUTES = 45
+# The known outlier is semver-bumps: on release PRs it compiles cargo-semver-checks
+# from source and builds rustdoc for ~27 candidates (measured ~53m), so the ceiling
+# must stay at or above its 60m timeout.
+CEILING_MINUTES = 60
 
 # Commands that reach a package mirror and can hang rather than fail.
 APT_MARKERS = ("apt-get", "apt install", "--with-deps")

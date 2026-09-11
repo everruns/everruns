@@ -401,7 +401,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
-    timeout-minutes: 45
+    # Release PRs check ~27 candidates: ~5m compiling cargo-semver-checks
+    # from source plus ~47m of sequential rustdoc builds (measured ~53m).
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v7
