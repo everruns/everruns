@@ -307,10 +307,10 @@ pub fn merge_preview_layer(
         return (system_prompt.to_string(), capabilities.to_vec());
     };
     let draft = Harness {
-        icon: None,
         id: HarnessId::new(),
         name: "preview".to_string(),
         display_name: Some("Preview".to_string()),
+        icon: None,
         description: None,
         system_prompt: (!system_prompt.trim().is_empty()).then(|| system_prompt.to_string()),
         parent_harness_id: None,

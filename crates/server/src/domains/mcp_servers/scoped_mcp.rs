@@ -404,10 +404,10 @@ mod tests {
 
     fn test_harness() -> Harness {
         Harness {
-            icon: None,
             id: HarnessId::new(),
             name: "test-harness".to_string(),
             display_name: None,
+            icon: None,
             description: None,
             system_prompt: Some("harness".to_string()),
             parent_harness_id: None,

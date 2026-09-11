@@ -1,6 +1,11 @@
 // Harness glyphs: built-in harnesses declare an `icon` name in their backend
 // definition (crates/server/src/harnesses/*.rs). Custom harnesses carry no icon
 // and fall back to the neutral shield used across harness surfaces.
+//
+// The stored name is only ever a key into this map; unknown names fall back.
+// Unlike `CapabilityIcon`, this renderer has no embedded-SVG branch, so a
+// database-sourced icon can never put attacker-controlled markup on the page
+// (TM-WEB-001).
 
 import { forwardRef, type SVGProps } from "react";
 import { BarChart3, Shield, SquareDashed } from "lucide-react";

@@ -464,10 +464,10 @@ mod tests {
 
     fn test_harness(id_seed: u128, system_prompt: &str) -> Harness {
         Harness {
-            icon: None,
             id: HarnessId::from_uuid(uuid::Uuid::from_u128(id_seed)),
             name: format!("harness-{id_seed}"),
             display_name: Some(format!("Harness {id_seed}")),
+            icon: None,
             description: None,
             system_prompt: Some(system_prompt.to_string()),
             parent_harness_id: None,

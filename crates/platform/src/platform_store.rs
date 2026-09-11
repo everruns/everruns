@@ -482,10 +482,10 @@ pub mod tests {
         pub fn new() -> Self {
             Self {
                 harness: Harness {
-                    icon: None,
                     id: HarnessId::new(),
                     name: "test-harness".to_string(),
                     display_name: Some("Test Harness".to_string()),
+                    icon: None,
                     description: Some("test harness".to_string()),
                     system_prompt: Some("You are helpful.".to_string()),
                     parent_harness_id: None,

@@ -222,10 +222,10 @@ async fn load_harness_chain(
 
         cursor = row.parent_harness_id;
         chain.push(Harness {
-            icon: None,
             id: row.id,
             name: row.name,
             display_name: row.display_name,
+            icon: None,
             description: row.description,
             system_prompt: row.system_prompt,
             parent_harness_id: row.parent_harness_id,
