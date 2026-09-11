@@ -254,6 +254,7 @@ impl Command for CreateHarness {
         let input = CreateHarnessRow {
             name: req.name,
             display_name: req.display_name,
+            icon: None,
             description: req.description,
             // Normalize an empty/whitespace-only prompt to "no base prompt" so
             // storage matches the documented semantics (the composition layer
@@ -1147,6 +1148,7 @@ mod tests {
             CreateHarnessRow {
                 name: "seeded-system".to_string(),
                 display_name: None,
+                icon: None,
                 description: None,
                 system_prompt: None,
                 parent_harness_id: None,

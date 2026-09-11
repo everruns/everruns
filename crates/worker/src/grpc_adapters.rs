@@ -1552,6 +1552,8 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
         id: id.into(),
         name: proto_harness.name,
         display_name: proto_harness.display_name,
+        // UI-only presentation field; not carried on the execution proto.
+        icon: None,
         description: non_empty_string(proto_harness.description),
         // proto carries a plain string; empty/whitespace means no base prompt.
         system_prompt: Some(proto_harness.system_prompt).filter(|s| !s.trim().is_empty()),

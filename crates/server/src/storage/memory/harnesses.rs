@@ -17,6 +17,7 @@ impl InMemoryDatabase {
         let now = Self::now();
         let id = HarnessId::new();
         let row = HarnessRow {
+            icon: input.icon,
             id,
             org_id,
             name: input.name,
@@ -56,6 +57,7 @@ impl InMemoryDatabase {
         if let Some(existing) = harnesses.get(&id) {
             if existing.name == input.name
                 && existing.display_name == input.display_name
+                && existing.icon == input.icon
                 && existing.description == input.description
                 && existing.system_prompt == input.system_prompt
                 && existing.parent_harness_id == input.parent_harness_id
@@ -68,6 +70,7 @@ impl InMemoryDatabase {
             let row = HarnessRow {
                 name: input.name,
                 display_name: input.display_name,
+                icon: input.icon,
                 description: input.description,
                 system_prompt: input.system_prompt,
                 parent_harness_id: input.parent_harness_id,
@@ -83,6 +86,7 @@ impl InMemoryDatabase {
         }
 
         let row = HarnessRow {
+            icon: input.icon,
             id,
             org_id,
             name: input.name,

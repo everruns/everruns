@@ -4382,6 +4382,7 @@ mod tests {
                 CreateHarnessRow {
                     name: "coding-container".to_string(),
                     display_name: Some("Coding (Container)".to_string()),
+                    icon: None,
                     description: None,
                     system_prompt: Some("coding".to_string()),
                     parent_harness_id: None,
@@ -4438,6 +4439,7 @@ mod tests {
                 CreateHarnessRow {
                     name: "restricted-harness".to_string(),
                     display_name: Some("Restricted Harness".to_string()),
+                    icon: None,
                     description: None,
                     system_prompt: Some("restricted".to_string()),
                     parent_harness_id: None,
@@ -4521,6 +4523,7 @@ mod tests {
                 CreateHarnessRow {
                     name: "declarative-harness".to_string(),
                     display_name: Some("Declarative Harness".to_string()),
+                    icon: None,
                     description: None,
                     system_prompt: Some("declarative".to_string()),
                     parent_harness_id: None,
@@ -5184,6 +5187,7 @@ mod tests {
                 CreateHarnessRow {
                     name: name.to_string(),
                     display_name: Some(name.to_string()),
+                    icon: None,
                     description: None,
                     system_prompt: Some("hooked".to_string()),
                     parent_harness_id: None,

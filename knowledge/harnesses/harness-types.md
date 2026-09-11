@@ -27,6 +27,12 @@ Every harness has two name fields:
 | `name` | URL/CLI-friendly addressable identifier | `[a-z0-9]+(-[a-z0-9]+)*`, max 64 chars, unique per org | `deep-research` |
 | `display_name` | Human-readable label shown in UI | Free-form string, max 2 KB | `Deep Research` |
 
+Harnesses also carry an optional `icon`: a glyph name the UI renders on harness cards, detail pages,
+and the example gallery. Icons are code-defined — every built-in and example harness declares one in
+its definition (`crates/server/src/harnesses/*.rs`), and the UI resolves the name against its icon
+map (`apps/ui/src/lib/harness-icons.tsx`). The API does not accept an icon on create/update, so
+user-created harnesses render the neutral fallback glyph.
+
 The `name` field works like a GitHub repository name: lowercase alphanumeric with hyphens, no consecutive hyphens, no leading/trailing hyphens. It is unique per organization (among non-deleted harnesses) and can be used for API lookups, CLI references, and URL routing.
 
 ### Name-based access
@@ -100,7 +106,7 @@ The recommended default harness. Bundles the core capabilities needed for genera
 
 ### Platform Chat
 
-Conversational harness for the global chat interface. Parents on Base and declares an explicit,
+Conversational harness for the Everruns Platform chat. Parents on Base and declares an explicit,
 focused capability set, so its effective surface is exactly what it lists. It is tagged separately to
 support the per-user singleton session pattern.
 

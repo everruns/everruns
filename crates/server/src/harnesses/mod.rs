@@ -80,6 +80,23 @@ mod tests {
     }
 
     #[test]
+    fn every_harness_definition_declares_an_icon() {
+        // Icons are code-defined: the UI renders `Harness.icon` and only falls
+        // back to a generic glyph for user-created harnesses.
+        let definitions = built_in_harnesses()
+            .into_iter()
+            .chain(std::iter::once(coding_session_sandbox::definition()))
+            .chain(harness_examples().into_iter().map(|ex| ex.definition));
+        for definition in definitions {
+            assert!(
+                definition.icon.is_some(),
+                "harness {} must declare an icon",
+                definition.name
+            );
+        }
+    }
+
+    #[test]
     fn built_in_list_excludes_example_harnesses() {
         let _lock = lock_env();
         let _env_guard = EnvVarGuard::capture(&[

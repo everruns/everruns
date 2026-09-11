@@ -29,6 +29,7 @@ fn fixture_records() -> (Harness, Agent, ExecutionSession) {
         id: harness_id,
         name: "hoster".into(),
         display_name: None,
+        icon: None,
         description: None,
         system_prompt: Some("Harness instructions.".into()),
         parent_harness_id: None,

@@ -2100,6 +2100,7 @@ impl DirectWorkerAdapters {
                 id: row.id,
                 name: row.name,
                 display_name: row.display_name,
+                icon: None,
                 description: row.description,
                 system_prompt: row.system_prompt,
                 parent_harness_id: row.parent_harness_id,
@@ -4008,6 +4009,7 @@ mod tests {
             CreateHarnessRow {
                 name: name.to_string(),
                 display_name: None,
+                icon: None,
                 description: None,
                 system_prompt: Some("test prompt".to_string()),
                 parent_harness_id: None,

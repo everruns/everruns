@@ -81,6 +81,13 @@ pub struct Harness {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(example = "Generic Harness"))]
     pub display_name: Option<String>,
+    /// Display glyph name rendered by the UI (e.g. "message-circle").
+    ///
+    /// Built-in harnesses declare it in their definition; custom harnesses
+    /// leave it unset and fall back to the UI's generic harness glyph.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "message-circle"))]
+    pub icon: Option<String>,
     /// Human-readable description of what the harness does.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(
@@ -277,6 +284,7 @@ pub fn merge_harness(parent: &Harness, child: &Harness) -> Harness {
         id: child.id,
         name: child.name.clone(),
         display_name: child.display_name.clone(),
+        icon: child.icon.clone(),
         description: child.description.clone(),
         parent_harness_id: child.parent_harness_id,
         tags: child.tags.clone(),
@@ -361,6 +369,8 @@ pub struct BuiltInHarnessDefinition {
     pub display_name: String,
     /// Human-readable description.
     pub description: String,
+    /// Display glyph name rendered by the UI (e.g. "message-circle").
+    pub icon: Option<String>,
     /// Base system prompt for the harness.
     pub system_prompt: String,
     /// Optional parent harness name to inherit from during provisioning.
@@ -385,6 +395,7 @@ impl BuiltInHarnessDefinition {
             name: name.into(),
             display_name: display_name.into(),
             description: description.into(),
+            icon: None,
             system_prompt: system_prompt.into(),
             parent_name: None,
             tags: Vec::new(),
@@ -400,6 +411,12 @@ impl BuiltInHarnessDefinition {
         S: Into<String>,
     {
         self.tags = tags.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Set the UI glyph name for the harness.
+    pub fn with_icon(mut self, icon: impl Into<String>) -> Self {
+        self.icon = Some(icon.into());
         self
     }
 
@@ -450,6 +467,7 @@ mod tests {
             id: HarnessId::from_uuid(uuid::Uuid::from_u128(id_seed)),
             name: format!("harness-{id_seed}"),
             display_name: Some(format!("Harness {id_seed}")),
+            icon: None,
             description: None,
             system_prompt: Some(system_prompt.to_string()),
             parent_harness_id: None,

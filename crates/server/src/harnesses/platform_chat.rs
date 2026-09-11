@@ -10,9 +10,10 @@ pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "platform-chat",
         "Platform Chat",
-        "Conversational harness for the global chat interface.",
+        "Conversational harness for the Everruns Platform chat.",
         SYSTEM_PROMPT,
     )
+    .with_icon("everruns")
     .with_parent_name("base")
     .with_tags(["chat", "built-in"])
     .with_roles([BuiltInHarnessRole::Chat])

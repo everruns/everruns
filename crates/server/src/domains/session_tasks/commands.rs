@@ -721,6 +721,7 @@ mod tests {
             CreateHarnessRow {
                 name: "base".to_string(),
                 display_name: Some("Base".to_string()),
+                icon: None,
                 description: None,
                 system_prompt: Some(String::new()),
                 parent_harness_id: None,
@@ -1727,6 +1728,7 @@ mod tests {
                 CreateHarnessRow {
                     name: "acl-test-harness".to_string(),
                     display_name: None,
+                    icon: None,
                     description: None,
                     system_prompt: Some(String::new()),
                     parent_harness_id: None,

@@ -7,6 +7,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Import } from "lucide-react";
 import type { Capability, CapabilityId, HarnessExample } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
+import { HarnessIcon } from "@/lib/harness-icons";
+import { IconTile } from "@/components/layout/page-layout";
 import {
   localizedCapabilityDescription,
   localizedCapabilityName,
@@ -32,6 +34,7 @@ export function HarnessExampleCard({
 
   return (
     <EntityCard
+      icon={<IconTile size="md" icon={<HarnessIcon icon={example.icon} />} />}
       title={example.display_name}
       headerActions={
         example.dev_only && (
