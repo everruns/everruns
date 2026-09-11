@@ -2097,6 +2097,7 @@ impl DirectWorkerAdapters {
 
             cursor = row.parent_harness_id;
             chain.push(Harness {
+                icon: None,
                 id: row.id,
                 name: row.name,
                 display_name: row.display_name,
@@ -4008,6 +4009,7 @@ mod tests {
             CreateHarnessRow {
                 name: name.to_string(),
                 display_name: None,
+                icon: None,
                 description: None,
                 system_prompt: Some("test prompt".to_string()),
                 parent_harness_id: None,

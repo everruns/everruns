@@ -343,6 +343,8 @@ export interface Harness {
   name: string;
   /** Human-readable display name shown in UI. Falls back to name when absent. */
   display_name: string | null;
+  /** Display glyph name (e.g. "message-circle"). Set for built-in harnesses; absent otherwise. */
+  icon?: string | null;
   description: string | null;
   /** Base system prompt. Null/absent means the harness contributes no base prompt. */
   system_prompt?: string | null;
@@ -409,6 +411,8 @@ export interface HarnessExample {
   name: string;
   display_name: string;
   description: string;
+  /** Display glyph name (e.g. "bar-chart"). */
+  icon?: string | null;
   tags: string[];
   /** Name of the parent harness (e.g. `generic`) the example will inherit from when imported. */
   parent_name?: string;

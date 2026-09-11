@@ -12,6 +12,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
         "Data analysis harness with SQL databases, persistent memory, interactive charts, and a structured analysis pipeline. Learns from corrections across sessions.",
         SYSTEM_PROMPT,
     )
+    .with_icon("bar-chart")
     .with_parent_name("generic")
     .with_tags(["data", "sql", "analytics", "built-in"])
     .with_capabilities([

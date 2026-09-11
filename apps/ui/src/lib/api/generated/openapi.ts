@@ -8097,6 +8097,14 @@ export interface components {
         [key: string]: string;
       };
       /**
+       * @description Display glyph name rendered by the UI (e.g. "message-circle").
+       *
+       *     Built-in harnesses declare it in their definition; custom harnesses
+       *     leave it unset and fall back to the UI's generic harness glyph.
+       * @example message-circle
+       */
+      icon?: string | null;
+      /**
        * @description Unique identifier for the harness (format: harness_{32-hex}).
        * @example harness_01933b5a00007000800000000000001
        */
@@ -8171,6 +8179,8 @@ export interface components {
       dev_only: boolean;
       /** @description Human-readable display name (e.g. `Data Analyst`). */
       display_name: string;
+      /** @description Display glyph name rendered by the UI (e.g. `bar-chart`). */
+      icon?: string | null;
       /** @description Unique slug (e.g. `data-analyst`). */
       name: string;
       /**
@@ -9446,6 +9456,14 @@ export interface components {
           [key: string]: string;
         };
         /**
+         * @description Display glyph name rendered by the UI (e.g. "message-circle").
+         *
+         *     Built-in harnesses declare it in their definition; custom harnesses
+         *     leave it unset and fall back to the UI's generic harness glyph.
+         * @example message-circle
+         */
+        icon?: string | null;
+        /**
          * @description Unique identifier for the harness (format: harness_{32-hex}).
          * @example harness_01933b5a00007000800000000000001
          */
@@ -10677,6 +10695,14 @@ export interface components {
         embedder_metadata?: {
           [key: string]: string;
         };
+        /**
+         * @description Display glyph name rendered by the UI (e.g. "message-circle").
+         *
+         *     Built-in harnesses declare it in their definition; custom harnesses
+         *     leave it unset and fall back to the UI's generic harness glyph.
+         * @example message-circle
+         */
+        icon?: string | null;
         /**
          * @description Unique identifier for the harness (format: harness_{32-hex}).
          * @example harness_01933b5a00007000800000000000001
@@ -17763,6 +17789,14 @@ export interface components {
         [key: string]: string;
       };
       /**
+       * @description Display glyph name rendered by the UI (e.g. "message-circle").
+       *
+       *     Built-in harnesses declare it in their definition; custom harnesses
+       *     leave it unset and fall back to the UI's generic harness glyph.
+       * @example message-circle
+       */
+      icon?: string | null;
+      /**
        * @description Unique identifier for the harness (format: harness_{32-hex}).
        * @example harness_01933b5a00007000800000000000001
        */
@@ -18197,6 +18231,14 @@ export interface components {
       embedder_metadata?: {
         [key: string]: string;
       };
+      /**
+       * @description Display glyph name rendered by the UI (e.g. "message-circle").
+       *
+       *     Built-in harnesses declare it in their definition; custom harnesses
+       *     leave it unset and fall back to the UI's generic harness glyph.
+       * @example message-circle
+       */
+      icon?: string | null;
       /**
        * @description Unique identifier for the harness (format: harness_{32-hex}).
        * @example harness_01933b5a00007000800000000000001

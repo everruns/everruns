@@ -86,6 +86,7 @@ impl DbHarnessStore {
 
             cursor = row.parent_harness_id;
             chain.push(Harness {
+                icon: None,
                 id: row.id,
                 name: row.name,
                 display_name: row.display_name,

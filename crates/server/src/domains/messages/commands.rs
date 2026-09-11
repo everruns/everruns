@@ -486,6 +486,7 @@ mod tests {
                 CreateHarnessRow {
                     name: "routing-harness".to_string(),
                     display_name: None,
+                    icon: None,
                     description: None,
                     system_prompt: Some("You are helpful.".to_string()),
                     parent_harness_id: None,
@@ -640,6 +641,7 @@ mod tests {
                 CreateHarnessRow {
                     name: "platform-chat".to_string(),
                     display_name: Some("Platform Chat".to_string()),
+                    icon: None,
                     description: None,
                     system_prompt: None,
                     parent_harness_id: None,

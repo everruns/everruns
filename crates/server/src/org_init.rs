@@ -262,6 +262,7 @@ pub async fn initialize_org_harnesses_with_definitions(
         let input = CreateHarnessRow {
             name: harness.name.to_string(),
             display_name: Some(harness.display_name.to_string()),
+            icon: harness.icon.clone(),
             description: Some(harness.description.to_string()),
             system_prompt: Some(harness.system_prompt.to_string()),
             parent_harness_id,
@@ -878,6 +879,7 @@ mod tests {
                 crate::storage::models::CreateHarnessRow {
                     name: "data-analyst".to_string(),
                     display_name: Some("Data Analyst".to_string()),
+                    icon: None,
                     description: Some("legacy".to_string()),
                     system_prompt: Some("legacy prompt".to_string()),
                     parent_harness_id: None,

@@ -16,6 +16,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
         "Coding harness with Daytona cloud sandboxes. Provides real filesystem, full process execution, git integration, GitHub Scout subagents, and all Generic capabilities for software development tasks.",
         SYSTEM_PROMPT,
     )
+    .with_icon("daytona")
     .with_parent_name("generic")
     .with_tags(["coding", "daytona", "built-in"])
     .with_capabilities([

@@ -26,6 +26,7 @@ fn fixture_records() -> (Harness, Agent, ExecutionSession) {
     // Stored (pre-merged) platform record, as transported by WorkerAdapters
     // (EVE-881): the host itself only ever sees the projected definition.
     let harness = Harness {
+        icon: None,
         id: harness_id,
         name: "hoster".into(),
         display_name: None,

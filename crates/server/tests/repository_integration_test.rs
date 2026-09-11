@@ -833,6 +833,7 @@ async fn test_session_crud() {
             CreateHarnessRow {
                 name: format!("repo-test-app-harness-{}", Uuid::now_v7()),
                 display_name: Some("Repo Test App Harness".to_string()),
+                icon: None,
                 description: None,
                 system_prompt: Some("Test".to_string()),
                 parent_harness_id: None,
@@ -937,6 +938,7 @@ async fn test_session_crud() {
             CreateHarnessRow {
                 name: format!("repo-test-harness-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Repo Test Harness".to_string()),
+                icon: None,
                 description: None,
                 system_prompt: Some("Test".to_string()),
                 parent_harness_id: None,

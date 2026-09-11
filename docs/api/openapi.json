@@ -23070,6 +23070,14 @@
               "team": "platform"
             }
           },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display glyph name rendered by the UI (e.g. \"message-circle\").\n\nBuilt-in harnesses declare it in their definition; custom harnesses\nleave it unset and fall back to the UI's generic harness glyph.",
+            "example": "message-circle"
+          },
           "id": {
             "type": "string",
             "description": "Unique identifier for the harness (format: harness_{32-hex}).",
@@ -23184,6 +23192,13 @@
           "display_name": {
             "type": "string",
             "description": "Human-readable display name (e.g. `Data Analyst`)."
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display glyph name rendered by the UI (e.g. `bar-chart`)."
           },
           "name": {
             "type": "string",
@@ -25414,6 +25429,14 @@
                     "env": "production",
                     "team": "platform"
                   }
+                },
+                "icon": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Display glyph name rendered by the UI (e.g. \"message-circle\").\n\nBuilt-in harnesses declare it in their definition; custom harnesses\nleave it unset and fall back to the UI's generic harness glyph.",
+                  "example": "message-circle"
                 },
                 "id": {
                   "type": "string",
@@ -27740,6 +27763,14 @@
                             "env": "production",
                             "team": "platform"
                           }
+                        },
+                        "icon": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "Display glyph name rendered by the UI (e.g. \"message-circle\").\n\nBuilt-in harnesses declare it in their definition; custom harnesses\nleave it unset and fall back to the UI's generic harness glyph.",
+                          "example": "message-circle"
                         },
                         "id": {
                           "type": "string",
@@ -40260,6 +40291,14 @@
                   "team": "platform"
                 }
               },
+              "icon": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Display glyph name rendered by the UI (e.g. \"message-circle\").\n\nBuilt-in harnesses declare it in their definition; custom harnesses\nleave it unset and fall back to the UI's generic harness glyph.",
+                "example": "message-circle"
+              },
               "id": {
                 "type": "string",
                 "description": "Unique identifier for the harness (format: harness_{32-hex}).",
@@ -40966,6 +41005,14 @@
                       "env": "production",
                       "team": "platform"
                     }
+                  },
+                  "icon": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Display glyph name rendered by the UI (e.g. \"message-circle\").\n\nBuilt-in harnesses declare it in their definition; custom harnesses\nleave it unset and fall back to the UI's generic harness glyph.",
+                    "example": "message-circle"
                   },
                   "id": {
                     "type": "string",

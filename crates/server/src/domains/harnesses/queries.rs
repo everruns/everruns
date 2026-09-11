@@ -24,6 +24,7 @@ pub fn row_to_harness(row: HarnessRow, capabilities: Vec<AgentCapabilityConfig>)
         id: row.id,
         name: row.name,
         display_name: row.display_name,
+        icon: row.icon,
         description: row.description,
         system_prompt: row.system_prompt,
         parent_harness_id: row.parent_harness_id,
@@ -306,6 +307,7 @@ pub fn merge_preview_layer(
         return (system_prompt.to_string(), capabilities.to_vec());
     };
     let draft = Harness {
+        icon: None,
         id: HarnessId::new(),
         name: "preview".to_string(),
         display_name: Some("Preview".to_string()),
@@ -458,6 +460,7 @@ mod tests {
         CreateHarnessRow {
             name: name.to_string(),
             display_name: Some(name.to_string()),
+            icon: None,
             description: None,
             system_prompt: None,
             parent_harness_id,

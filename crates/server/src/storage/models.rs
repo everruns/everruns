@@ -671,6 +671,9 @@ pub struct HarnessRow {
     pub name: String,
     #[sqlx(default)]
     pub display_name: Option<String>,
+    /// Display glyph name rendered by the UI. Set from built-in definitions.
+    #[sqlx(default)]
+    pub icon: Option<String>,
     pub description: Option<String>,
     /// Base system prompt. Nullable: a harness may contribute no base prompt
     /// and rely entirely on inheritance, agent, session, and capability layers.
@@ -702,6 +705,8 @@ pub struct HarnessRow {
 pub struct CreateHarnessRow {
     pub name: String,
     pub display_name: Option<String>,
+    /// Display glyph name rendered by the UI.
+    pub icon: Option<String>,
     pub description: Option<String>,
     /// Base system prompt; `None` means the harness contributes no base prompt.
     pub system_prompt: Option<String>,

@@ -1478,6 +1478,7 @@ mod tests {
                 CreateHarnessRow {
                     name: "generic".to_string(),
                     display_name: Some("Generic".to_string()),
+                    icon: None,
                     description: Some("Generic".to_string()),
                     system_prompt: Some("You are helpful.".to_string()),
                     parent_harness_id: None,
