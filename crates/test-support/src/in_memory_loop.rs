@@ -909,6 +909,7 @@ impl InMemoryAgenticLoop {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::MessageRole;
 
     #[tokio::test]
     async fn test_simple_turn() {
@@ -931,58 +932,7 @@ mod tests {
         let result = runner.run_turn("Test message").await.unwrap();
 
         assert!(result.success);
-        assert!(result.response.contains("Test message"));
-    }
-
-    #[tokio::test]
-    async fn test_sequence_turns() {
-        let runner = InMemoryAgenticLoop::with_sequence(vec!["First", "Second", "Third"])
-            .await
-            .unwrap();
-
-        let r1 = runner.run_turn("msg1").await.unwrap();
-        let r2 = runner.run_turn("msg2").await.unwrap();
-        let r3 = runner.run_turn("msg3").await.unwrap();
-
-        assert_eq!(r1.response, "First");
-        assert_eq!(r2.response, "Second");
-        assert_eq!(r3.response, "Third");
-    }
-
-    #[tokio::test]
-    async fn test_conversation() {
-        let runner = InMemoryAgenticLoop::with_sequence(vec!["Hello!", "How can I help?"])
-            .await
-            .unwrap();
-
-        let results = runner
-            .run_conversation(&["Hi", "I need help"])
-            .await
-            .unwrap();
-
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].response, "Hello!");
-        assert_eq!(results[1].response, "How can I help?");
-
-        // Check message history
-        let messages = runner.messages().await.unwrap();
-        assert_eq!(messages.len(), 4); // 2 user + 2 assistant
-    }
-
-    #[tokio::test]
-    async fn test_events_captured() {
-        let runner = InMemoryAgenticLoop::with_fixed_response("Response")
-            .await
-            .unwrap();
-
-        runner.run_turn("Test").await.unwrap();
-
-        let events = runner.events().await;
-        assert!(!events.is_empty());
-
-        // Should have reason.* events (input.message is emitted by API layer, not InputAtom)
-        let reason_events = runner.events_by_type("reason.started").await;
-        assert_eq!(reason_events.len(), 1);
+        assert_eq!(result.response, "Echo: Test message");
     }
 
     #[tokio::test]
@@ -996,47 +946,18 @@ mod tests {
             .await
             .unwrap();
 
-        let result = runner.run_turn("What time is it?").await.unwrap();
+        for prompt in ["What time is it?", "And now?"] {
+            let result = runner.run_turn(prompt).await.unwrap();
 
-        assert_eq!(result.llm_generations.len(), 1);
-        assert_eq!(
-            result.llm_generations[0].available_tools,
-            ["get_current_time"]
-        );
-        assert_eq!(result.llm_generations[0].output_tool_calls_count, 0);
-        assert_eq!(result.llm_generations[0].finish_reasons, ["stop"]);
-        assert!(result.llm_generations[0].success);
-    }
-
-    #[tokio::test]
-    async fn conversation_messages_are_projected_from_single_canonical_writes() {
-        let runner = InMemoryAgenticLoop::with_fixed_response("Response")
-            .await
-            .unwrap();
-
-        runner.run_turn("Question").await.unwrap();
-
-        let messages = runner.messages().await.unwrap();
-        assert_eq!(messages.len(), 2);
-        assert_eq!(messages[0].text(), Some("Question"));
-        assert_eq!(messages[1].text(), Some("Response"));
-
-        let events = runner.events().await;
-        assert_eq!(
-            events
-                .iter()
-                .filter(|event| event.event_type == everruns_core::events::INPUT_MESSAGE)
-                .count(),
-            1
-        );
-        assert_eq!(
-            events
-                .iter()
-                .filter(|event| event.event_type == everruns_core::events::OUTPUT_MESSAGE_COMPLETED)
-                .count(),
-            1
-        );
-        assert!(events.iter().all(|event| event.sequence.is_some()));
+            assert_eq!(result.llm_generations.len(), 1);
+            assert_eq!(
+                result.llm_generations[0].available_tools,
+                ["get_current_time"]
+            );
+            assert_eq!(result.llm_generations[0].output_tool_calls_count, 0);
+            assert_eq!(result.llm_generations[0].finish_reasons, ["stop"]);
+            assert!(result.llm_generations[0].success);
+        }
     }
 
     #[tokio::test]
@@ -1058,23 +979,82 @@ mod tests {
         .unwrap()
         .unwrap();
         assert_eq!(configured_agent.max_iterations, Some(5));
+        assert_eq!(
+            configured_agent.display_name.as_deref(),
+            Some("Custom Agent")
+        );
+        assert_eq!(
+            configured_agent.system_prompt,
+            "You are a custom assistant."
+        );
 
         let result = runner.run_turn("Test").await.unwrap();
         assert_eq!(result.response, "Custom response");
     }
 
     #[tokio::test]
-    async fn test_conversation_string() {
-        let runner = InMemoryAgenticLoop::with_fixed_response("Hello!")
+    async fn conversation_preserves_order_history_events_and_exact_rendering() {
+        let runner = InMemoryAgenticLoop::with_sequence(vec!["First", "Second", "Third"])
             .await
             .unwrap();
-
-        runner.run_turn("Hi").await.unwrap();
-
-        let conv = runner.conversation_string().await.unwrap();
-        assert!(conv.contains("[User]"));
-        assert!(conv.contains("[Agent]"));
-        assert!(conv.contains("Hi"));
-        assert!(conv.contains("Hello!"));
+        let mut results = runner.run_conversation(&["one", "two"]).await.unwrap();
+        results.push(runner.run_turn("three").await.unwrap());
+        assert_eq!(
+            results
+                .iter()
+                .map(|r| r.response.as_str())
+                .collect::<Vec<_>>(),
+            ["First", "Second", "Third"]
+        );
+        for result in &results {
+            assert!(result.success);
+            assert!(result.error.is_none());
+            assert_eq!(result.iterations, 1);
+            assert_eq!(result.tool_calls_count, 0);
+        }
+        assert_eq!(
+            results
+                .iter()
+                .map(|r| r.turn_id)
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            3
+        );
+        let messages = runner.messages().await.unwrap();
+        assert_eq!(
+            messages
+                .iter()
+                .map(|m| (m.role.clone(), m.text()))
+                .collect::<Vec<_>>(),
+            [
+                (MessageRole::User, Some("one")),
+                (MessageRole::Agent, Some("First")),
+                (MessageRole::User, Some("two")),
+                (MessageRole::Agent, Some("Second")),
+                (MessageRole::User, Some("three")),
+                (MessageRole::Agent, Some("Third")),
+            ]
+        );
+        assert_eq!(runner.message_count().await.unwrap(), 6);
+        assert_eq!(
+            runner.conversation_string().await.unwrap(),
+            "[User] one\n[Agent] First\n[User] two\n[Agent] Second\n[User] three\n[Agent] Third\n"
+        );
+        let events = runner.events().await;
+        assert_eq!(runner.event_count().await, events.len());
+        for kind in [
+            "input.message",
+            "output.message.completed",
+            "reason.started",
+        ] {
+            let filtered = runner.events_by_type(kind).await;
+            assert_eq!(filtered.len(), 3, "{kind}");
+            assert!(filtered.iter().all(|event| event.event_type == kind));
+        }
+        let sequences = events
+            .iter()
+            .map(|event| event.sequence.expect("canonical event sequence"))
+            .collect::<Vec<_>>();
+        assert!(sequences.windows(2).all(|pair| pair[0] < pair[1]));
     }
 }
