@@ -5,7 +5,7 @@
 [package]
 name = "everruns-integrations-docker"
 readme = "README.md"
-version = "0.18.2"
+version = "0.18.3"
 rust-version.workspace = true
 homepage.workspace = true
 repository.workspace = true

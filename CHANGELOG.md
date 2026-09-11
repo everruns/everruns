@@ -7,6 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-09-11
+
+### Highlights
+
+- **Hierarchical AGENTS.md as conversation context** - Agent instructions now resolve `AGENTS.md` files hierarchically and are injected as the leading user-role message of each turn, keeping untrusted workspace instructions below harness safety instructions in the instruction hierarchy ([#3501](https://github.com/everruns/everruns/pull/3501)).
+- **Platform Chat for every user** - Each user gets a precreated, pinned Platform Chat thread, and the Platform Chat capability set is widened so it can drive more of the control plane ([#3508](https://github.com/everruns/everruns/pull/3508), [#3507](https://github.com/everruns/everruns/pull/3507)).
+- **Capability deprecation lifecycle** - Capabilities can now be marked `Deprecated` (still functional, surfaces warn) or `Retired` (inert and hidden), and the `platform_management` capability was retired via the new lifecycle ([#3513](https://github.com/everruns/everruns/pull/3513)).
+- **Unified `everruns` command tree for MCP and CLI** - A noun-verb command tree is now exposed over MCP, and a host can name the root token of its own command tree from the CLI ([#3490](https://github.com/everruns/everruns/pull/3490), [#3496](https://github.com/everruns/everruns/pull/3496)).
+- **Safer provider onboarding and model management** - Provider API keys are validated before being stored, a configured key reliably produces a usable org, discovered models are adopted instead of conflicting on explicit create, and disabled models can be re-enabled ([#3516](https://github.com/everruns/everruns/pull/3516), [#3515](https://github.com/everruns/everruns/pull/3515), [#3517](https://github.com/everruns/everruns/pull/3517), [#3512](https://github.com/everruns/everruns/pull/3512)).
+
+### What's Changed
+
+- chore(deps): bump the npm_and_yarn group across 2 directories with 5 updates ([#3482](https://github.com/everruns/everruns/pull/3482)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump marked from 18.0.9 to 18.0.11 in /apps/docs ([#3459](https://github.com/everruns/everruns/pull/3459)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump zod from 4.4.3 to 4.5.4 in /apps/ui ([#3464](https://github.com/everruns/everruns/pull/3464)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump zod from 4.4.3 to 4.5.4 in /apps/docs ([#3460](https://github.com/everruns/everruns/pull/3460)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump the cargo group across 1 directory with 2 updates ([#3489](https://github.com/everruns/everruns/pull/3489)) by [@dependabot](https://github.com/apps/dependabot)
+- feat(mcp): add the everruns noun-verb command tree ([#3490](https://github.com/everruns/everruns/pull/3490)) by [@chaliy](https://github.com/chaliy)
+- feat(examples): add a bashkit-backed repo release agent example ([#3491](https://github.com/everruns/everruns/pull/3491)) by [@chaliy](https://github.com/chaliy)
+- docs(framework): show the essential code on each example page ([#3492](https://github.com/everruns/everruns/pull/3492)) by [@chaliy](https://github.com/chaliy)
+- refactor(examples): share one terminal observer across the agent examples ([#3493](https://github.com/everruns/everruns/pull/3493)) by [@chaliy](https://github.com/chaliy)
+- fix(release): republish the everruns facade and close the under-bump hole ([#3494](https://github.com/everruns/everruns/pull/3494)) by [@chaliy](https://github.com/chaliy)
+- fix(deps): clear the high advisories in the UI and docs dependency trees ([#3497](https://github.com/everruns/everruns/pull/3497)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump @astrojs/markdown-satteri to 0.4.0 in /apps/docs ([#3461](https://github.com/everruns/everruns/pull/3461)) by [@dependabot](https://github.com/apps/dependabot)
+- fix(cli): stop the command tree making a wrong guess look valid ([#3495](https://github.com/everruns/everruns/pull/3495)) by [@chaliy](https://github.com/chaliy)
+- feat(cli): let a host name the root token of its own command tree ([#3496](https://github.com/everruns/everruns/pull/3496)) by [@chaliy](https://github.com/chaliy)
+- refactor(mcp): make --help the single source of truth for tree command flags ([#3498](https://github.com/everruns/everruns/pull/3498)) by [@chaliy](https://github.com/chaliy)
+- refactor(builtins): use write_todos only for substantial multi-step work ([#3499](https://github.com/everruns/everruns/pull/3499)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): stop dropping Responses tool calls the added frame missed ([#3500](https://github.com/everruns/everruns/pull/3500)) by [@chaliy](https://github.com/chaliy)
+- test(gemini): stop asserting that no stream reconnect happened ([#3502](https://github.com/everruns/everruns/pull/3502)) by [@chaliy](https://github.com/chaliy)
+- feat(agent-instructions): resolve AGENTS.md hierarchically as conversation context ([#3501](https://github.com/everruns/everruns/pull/3501)) by [@chaliy](https://github.com/chaliy)
+- docs(readme): move Everruns banner before Build an agent ([#3504](https://github.com/everruns/everruns/pull/3504)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump bashkit 0.17 to 0.18 ([#3505](https://github.com/everruns/everruns/pull/3505)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): align provider cards with the standard card anatomy ([#3506](https://github.com/everruns/everruns/pull/3506)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): precreate and pin a Platform Chat thread for every user ([#3508](https://github.com/everruns/everruns/pull/3508)) by [@chaliy](https://github.com/chaliy)
+- docs: point readers at Everruns Cloud ([#3509](https://github.com/everruns/everruns/pull/3509)) by [@chaliy](https://github.com/chaliy)
+- feat(harnesses): widen Platform Chat capability set ([#3507](https://github.com/everruns/everruns/pull/3507)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): move manual test cases into the OKF bundle ([#3514](https://github.com/everruns/everruns/pull/3514)) by [@chaliy](https://github.com/chaliy)
+- fix(models): allow enabling a disabled model ([#3512](https://github.com/everruns/everruns/pull/3512)) by [@chaliy](https://github.com/chaliy)
+- chore: move test fixtures into their owning crates ([#3510](https://github.com/everruns/everruns/pull/3510)) by [@chaliy](https://github.com/chaliy)
+- fix(providers): make a configured provider key actually produce a usable org ([#3515](https://github.com/everruns/everruns/pull/3515)) by [@chaliy](https://github.com/chaliy)
+- fix(models): adopt a discovered model instead of conflicting on explicit create ([#3517](https://github.com/everruns/everruns/pull/3517)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): report the account-attestation gate as its own error ([#3518](https://github.com/everruns/everruns/pull/3518)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): report failed Models page actions instead of rejecting unhandled ([#3521](https://github.com/everruns/everruns/pull/3521)) by [@chaliy](https://github.com/chaliy)
+- feat(harnesses): code-defined icons for built-in harnesses ([#3519](https://github.com/everruns/everruns/pull/3519)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities)!: deprecation lifecycle, and retire platform_management ([#3513](https://github.com/everruns/everruns/pull/3513)) by [@chaliy](https://github.com/chaliy)
+- feat(onboarding): validate provider API key before storing it ([#3516](https://github.com/everruns/everruns/pull/3516)) by [@chaliy](https://github.com/chaliy)
+- ci: shard compile-bound jobs across matrix legs ([#3511](https://github.com/everruns/everruns/pull/3511)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+Independently versioned crates published this cycle, classified with `cargo-semver-checks`. The
+capability lifecycle work added a `Retired` variant to the non-`#[non_exhaustive]` public enum
+`CapabilityStatus` (`everruns-core`) and removed the `platform_management` tool structs from
+`everruns-platform`, so both take a breaking `0.x` minor bump; every other change is additive or a
+compatibility re-pin (patch).
+
+Breaking (minor):
+- `everruns-core` 0.19.1 → 0.20.0 (new `CapabilityStatus::Retired` variant; new public conversation-context fields/methods)
+- `everruns-platform` 0.19.2 → 0.20.0 (removed the `platform_management` tool structs; added harness `icon` fields)
+
+Additive / behavior (patch):
+- `everruns-provider` 0.20.1 → 0.20.2 (new attestation-requirement parsing helpers)
+- `everruns-anthropic` 0.18.3 → 0.18.4 (classify Models API errors at the boundary)
+- `everruns-engine` 0.18.3 → 0.18.4 (collect conversation-context contributions)
+- `everruns-builtins` 0.18.6 → 0.18.7 (hierarchical AGENTS.md; write_todos gating)
+
+Cone cascade — compatibility patch republish to re-pin `everruns-core`/`everruns-platform` at their new `0.20` requirement (own contract unchanged):
+- `everruns` 0.20.0 → 0.20.1, `everruns-ard` 0.18.2 → 0.18.3, `everruns-host` 0.20.5 → 0.20.6, `everruns-mcp` 0.19.3 → 0.19.4, `everruns-test-support` 0.18.5 → 0.18.6, `everruns-turbopuffer` 0.18.3 → 0.18.4
+- `everruns-integrations-*` 0.18.2 → 0.18.3 (`bashkit`, `brave-search`, `browserless`, `cursor`, `daytona`, `deno`, `docker`, `duckduckgo`, `e2b`, `github`, `lua`, `openai-image`, `openrouter-workspace`, `parallel`, `sprites`, `web-fetch`; `filesystem` 0.18.3 → 0.18.4)
+
+No crates were deleted or absorbed this cycle.
+
+### Migration Notes
+
+- Downstream consumers of `everruns-core` that exhaustively `match` on `CapabilityStatus` must add a `Retired` arm; the enum is not `#[non_exhaustive]`.
+- Consumers of `everruns-platform` that referenced the `platform_management` tool structs (`ReadHarnessesTool`, `ManageHarnessesTool`, `ReadAgentsTool`, etc.) must migrate — the `platform_management` capability has been retired.
+
 ## [0.24.0] - 2026-09-09
 
 ### Highlights
