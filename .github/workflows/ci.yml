@@ -1275,11 +1275,11 @@ jobs:
         uses: dopplerhq/cli-action@v4
 
       - name: Pause before Doppler CLI retry
-        if: ${{ matrix.shard == 'durable' && steps.doppler_install.outcome == 'failure' }}
+        if: steps.doppler_install.outcome == 'failure'
         run: sleep 15
 
       - name: Install Doppler CLI (retry)
-        if: ${{ matrix.shard == 'durable' && steps.doppler_install.outcome == 'failure' }}
+        if: steps.doppler_install.outcome == 'failure'
         uses: dopplerhq/cli-action@v4
 
       - name: Run Slack integration tests (real API via Doppler)
