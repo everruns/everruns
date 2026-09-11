@@ -1,0 +1,3 @@
+# ARD discovery (UI)
+
+* [TC001: ARD Discovery - Discover and Attach MCP Resource](TC001_discover_and_attach.md) - Verify that an agent with the `resource_discovery` capability can discover an un-provisioned capability from an ARD registry, attach an MCP server via `attach_resource`, have the newly attached MCP tools (`mcp_<name>_...

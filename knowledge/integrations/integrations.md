@@ -25,7 +25,7 @@ Every sandbox/execution integration crate must ship with the following artifacts
 | **CI: change detection** | Path filter in `changes` job: `<name>: integrations/<name>/**`. |
 | **CI: live-test job** | Live API or real-API coverage must follow the repo trigger policy: cheap/path-local API smoke may run on `pull_request`; costly or stateful live jobs stay on `push` to `main`; path-filtered workflows must also be covered by the weekly/on-demand backstop in `.github/workflows/integration-live-sweep.yml`. New integrations: dedicated `.github/workflows/<name>-integration.yml` workflow for change-scoped runs plus inclusion in the full sweep. Legacy integrations (Daytona, Browserless, etc.) may still use a job in `ci.yml` for change-scoped runs. |
 | **User docs** | `docs/integrations/<name>.md`, quick start, tool table, lifecycle, security. |
-| **UI test case** | `test_cases/ui/<name>_connection/TC001_*.md`, manual test for connection + sandbox lifecycle. |
+| **UI test case** | `knowledge/test-cases/ui/<name>_connection/TC001_*.md`, manual test for connection + sandbox lifecycle. |
 | **Seed agent** | Entry in `crates/server/src/seed.rs` with capabilities wired. |
 | **Threat model** | Section in `knowledge/security/threat-model.md` covering integration-specific threats. |
 

@@ -1244,7 +1244,7 @@ binds an encrypted dummy MCP credential to the created Agent, and verifies that
 hourly autonomy is owned by an Agent Trigger rather than Platform Chat's
 Session. Resource-grounding coverage verifies a bounded plugin/capability/Agent/
 connection preflight. Manual UI coverage remains in the Platform Chat cases
-under `test_cases/agents/platform_chat/`.
+under `knowledge/test-cases/agents/platform_chat/`.
 
 #### PlatformManagement (compatibility)
 

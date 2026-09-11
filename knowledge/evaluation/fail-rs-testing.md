@@ -139,4 +139,4 @@ integration coverage runs; do not leave them as manual-only coverage.
 
 ## Related Testing Specs
 
-See also: [agent-reliability-tests.md](../runtime-resources/agent-reliability-tests.md) (E2E reliability), [load-testing.md](../operations/load-testing.md) (performance), [test-cases.md](test-cases.md) (manual tests), [evals.md](evals.md) (behavioral evals)
+See also: [agent-reliability-tests.md](../runtime-resources/agent-reliability-tests.md) (E2E reliability), [load-testing.md](../operations/load-testing.md) (performance), [format.md](../test-cases/format.md) (manual tests), [evals.md](evals.md) (behavioral evals)

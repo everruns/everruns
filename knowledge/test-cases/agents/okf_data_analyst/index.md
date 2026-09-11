@@ -1,0 +1,3 @@
+# OKF data analyst (Agent workflow)
+
+* [TC001: OKF-Grounded Data Analyst Answer](TC001_okf_grounded_answer.md) - Showcase the end-to-end OKF use case: seed a Knowledge Base by importing an OKF bundle of curated data context (a table doc and a business-metric definition), then have a Data Analyst agent answer a question that depe...
