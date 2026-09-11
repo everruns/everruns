@@ -106,8 +106,15 @@ pub fn models_url_for_api_url(api_url: &str) -> String {
 
 /// Build the error returned when the `/models` endpoint responds with a
 /// non-success status.
+///
+/// The status is classified here, at the provider boundary, so callers that
+/// act on the *kind* of failure (credential checks distinguishing a rejected
+/// key from an unreachable provider) do not have to re-parse the message.
 pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
-    AgentLoopError::llm(format!("Models API returned status {status}"))
+    AgentLoopError::llm_kind(
+        LlmErrorKind::from_provider_status(status.as_u16(), ""),
+        format!("Models API returned status {status}"),
+    )
 }
 
 /// OpenAI Protocol Chat Driver
@@ -1846,5 +1853,23 @@ mod tests {
         ] {
             assert_eq!(models_url_for_api_url(input), expected, "{input}");
         }
+    }
+
+    #[test]
+    fn models_status_error_classifies_auth_separately_from_outage() {
+        // Credential checks branch on the kind, so a rejected key and a dead
+        // provider must not collapse into the same classification.
+        assert_eq!(
+            models_api_status_error(reqwest::StatusCode::UNAUTHORIZED).llm_error_kind(),
+            Some(LlmErrorKind::Authentication)
+        );
+        assert_eq!(
+            models_api_status_error(reqwest::StatusCode::FORBIDDEN).llm_error_kind(),
+            Some(LlmErrorKind::Authentication)
+        );
+        assert_eq!(
+            models_api_status_error(reqwest::StatusCode::SERVICE_UNAVAILABLE).llm_error_kind(),
+            Some(LlmErrorKind::Unavailable)
+        );
     }
 }

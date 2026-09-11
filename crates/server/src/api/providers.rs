@@ -4,8 +4,9 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::providers::{
-    CreateProvider, DeleteProvider, GetProvider, LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW,
-    ListProviders, ProviderService, SyncProviderModels, UpdateProvider,
+    CheckProviderCredentials, CreateProvider, CredentialCheckResult, DeleteProvider, GetProvider,
+    LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW, ListProviders, ProviderService, SyncProviderModels,
+    UpdateProvider,
 };
 use crate::kernel_imports::{
     Caller, Policy, evaluate_policies_with, everruns_provider::driver_registry::DriverOAuthFlow,
@@ -233,6 +234,67 @@ pub async fn create_provider(
             request_options: req.request_options,
         })
         .await
+}
+
+/// Request to check a provider credential without storing it.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CheckCredentialsRequest {
+    /// The type of LLM provider (e.g., openai, anthropic).
+    pub provider_type: DriverId,
+    /// Single-field credential. Mutually exclusive with `credentials`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    /// Typed multi-field credential, validated against the driver's schema
+    /// exactly as on create.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credentials: Option<std::collections::BTreeMap<String, String>>,
+    /// Base URL for the provider's API, when not the driver default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+}
+
+/// Check whether a provider accepts an API key, without storing it
+///
+/// Used by org setup so a key the provider will reject is caught at entry
+/// instead of at the first agent run. Nothing is persisted.
+#[utoipa::path(
+    post,
+    path = "/v1/providers/check-credentials",
+    request_body = CheckCredentialsRequest,
+    responses(
+        (status = 200, description = "Check completed", body = CredentialCheckResult),
+        (status = 400, description = "Invalid request"),
+        (status = 500, description = "Internal error")
+    ),
+    tag = "providers"
+)]
+pub async fn check_credentials(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Json(req): Json<CheckCredentialsRequest>,
+) -> Result<Json<CredentialCheckResult>, (StatusCode, Json<ErrorResponse>)> {
+    let api_key = resolve_credential_document(
+        &state.driver_registry,
+        Some(&req.provider_type),
+        req.credentials.as_ref(),
+        req.api_key,
+    )?
+    .ok_or_else(|| {
+        ErrorResponse::new("An API key is required").into_response(StatusCode::BAD_REQUEST)
+    })?;
+
+    let result = CheckProviderCredentials {
+        provider_type: req.provider_type,
+        api_key,
+        base_url: req.base_url,
+    }
+    .run(&state.ctx(&org))
+    .await
+    // Uses the HTTP adapter conversion so an internal error is redacted rather
+    // than echoed back with provider detail.
+    .map_err(<(StatusCode, Json<ErrorResponse>)>::from)?;
+
+    Ok(Json(result))
 }
 
 /// Resolve the credential document to store from a request.
@@ -893,6 +955,7 @@ pub fn routes(state: AppState) -> Router {
                 .patch(update_provider)
                 .delete(delete_provider),
         )
+        .route("/v1/providers/check-credentials", post(check_credentials))
         .route("/v1/providers/{id}/sync-models", post(sync_models))
         .route("/v1/providers/{id}/oauth/authorize", get(oauth_authorize))
         .route("/v1/providers/{id}/oauth/callback", get(oauth_callback))

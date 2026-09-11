@@ -502,7 +502,7 @@ fn render_trace_template_for_validation(template: &str) -> Result<String> {
     Ok(rendered)
 }
 
-fn validate_provider_type(provider_type: &DriverId) -> Result<()> {
+pub(crate) fn validate_provider_type(provider_type: &DriverId) -> Result<()> {
     let raw = provider_type.as_str();
     if raw.trim().is_empty() {
         return Err(BadRequestError::new("Provider type cannot be empty").into());
@@ -519,7 +519,10 @@ fn validate_provider_type(provider_type: &DriverId) -> Result<()> {
     Ok(())
 }
 
-fn validate_provider_base_url(provider_type: DriverId, base_url: Option<&str>) -> Result<()> {
+pub(crate) fn validate_provider_base_url(
+    provider_type: DriverId,
+    base_url: Option<&str>,
+) -> Result<()> {
     let parsed = match base_url {
         Some(url) => Some(
             validate_safe_url(url)

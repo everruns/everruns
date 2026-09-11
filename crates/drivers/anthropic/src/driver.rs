@@ -1287,10 +1287,12 @@ impl ChatDriver for AnthropicChatDriver {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(AgentLoopError::llm(format!(
-                "Models API returned {}: {}",
-                status, body
-            )));
+            // Classified at the boundary so credential checks can tell a
+            // rejected key (401/403) from an outage without parsing strings.
+            return Err(AgentLoopError::llm_kind(
+                LlmErrorKind::from_provider_status(status.as_u16(), &body),
+                format!("Models API returned {}: {}", status, body),
+            ));
         }
 
         let models_response: AnthropicModelsResponse = response

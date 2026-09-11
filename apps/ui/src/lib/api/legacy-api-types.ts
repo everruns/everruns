@@ -3675,6 +3675,25 @@ export interface CreateProviderRequest {
   request_options?: ProviderRequestOptions;
 }
 
+export interface CheckCredentialsRequest {
+  provider_type: DriverId;
+  api_key?: string;
+  /** Typed credential fields keyed by the driver's credential-schema field names. */
+  credentials?: Record<string, string>;
+  base_url?: string;
+}
+
+/**
+ * Outcome of probing a candidate API key against the provider. Only
+ * `rejected` proves the key is bad: `unsupported` (driver has no check) and
+ * `unreachable` (outage/network) must not block the user.
+ */
+export type CredentialCheckResult =
+  | { status: "valid"; models: number }
+  | { status: "rejected"; message: string }
+  | { status: "unsupported" }
+  | { status: "unreachable"; message: string };
+
 export interface UpdateProviderRequest {
   name?: string;
   provider_type?: DriverId;

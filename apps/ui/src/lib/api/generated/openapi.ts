@@ -2451,6 +2451,27 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/providers/check-credentials": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Check whether a provider accepts an API key, without storing it
+     * @description Used by org setup so a key the provider will reject is caught at entry
+     *     instead of at the first agent run. Nothing is persisted.
+     */
+    post: operations["check_credentials"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/providers/config": {
     parameters: {
       query?: never;
@@ -5295,6 +5316,22 @@ export interface components {
       /** @description Whether the name is available for use. */
       available: boolean;
     };
+    /** @description Request to check a provider credential without storing it. */
+    CheckCredentialsRequest: {
+      /** @description Single-field credential. Mutually exclusive with `credentials`. */
+      api_key?: string | null;
+      /** @description Base URL for the provider's API, when not the driver default. */
+      base_url?: string | null;
+      /**
+       * @description Typed multi-field credential, validated against the driver's schema
+       *     exactly as on create.
+       */
+      credentials?: {
+        [key: string]: string;
+      } | null;
+      /** @description The type of LLM provider (e.g., openai, anthropic). */
+      provider_type: components["schemas"]["DriverId"];
+    };
     /** @description Response for name availability check. */
     CheckNameResponse: {
       /** @description Whether the name is available for use. */
@@ -6729,6 +6766,30 @@ export interface components {
       /** @example team-research */
       name: string;
     };
+    /** @description Outcome of checking a candidate provider credential. */
+    CredentialCheckResult:
+      | {
+          /** @description Number of models the provider listed for this credential. */
+          models: number;
+          /** @enum {string} */
+          status: "valid";
+        }
+      | {
+          /** @description User-facing reason. Never carries the provider's response body. */
+          message: string;
+          /** @enum {string} */
+          status: "rejected";
+        }
+      | {
+          /** @enum {string} */
+          status: "unsupported";
+        }
+      | {
+          /** @description User-facing reason. Never carries the provider's response body. */
+          message: string;
+          /** @enum {string} */
+          status: "unreachable";
+        };
     /** @description Describes the form fields and instructions for entering a credential. */
     CredentialFormSchema: {
       /** @description Input fields to render. */
@@ -26867,6 +26928,44 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["WithUrls_Provider"];
+        };
+      };
+      /** @description Invalid request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  check_credentials: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CheckCredentialsRequest"];
+      };
+    };
+    responses: {
+      /** @description Check completed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CredentialCheckResult"];
         };
       };
       /** @description Invalid request */

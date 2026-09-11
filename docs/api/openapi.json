@@ -10174,6 +10174,44 @@
         }
       }
     },
+    "/v1/providers/check-credentials": {
+      "post": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "Check whether a provider accepts an API key, without storing it",
+        "description": "Used by org setup so a key the provider will reject is caught at entry\ninstead of at the first agent run. Nothing is persisted.",
+        "operationId": "check_credentials",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckCredentialsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Check completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialCheckResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        }
+      }
+    },
     "/v1/providers/config": {
       "get": {
         "tags": [
@@ -18213,6 +18251,46 @@
           }
         }
       },
+      "CheckCredentialsRequest": {
+        "type": "object",
+        "description": "Request to check a provider credential without storing it.",
+        "required": [
+          "provider_type"
+        ],
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Single-field credential. Mutually exclusive with `credentials`."
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base URL for the provider's API, when not the driver default."
+          },
+          "credentials": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Typed multi-field credential, validated against the driver's schema\nexactly as on create.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "provider_type": {
+            "$ref": "#/components/schemas/DriverId",
+            "description": "The type of LLM provider (e.g., openai, anthropic)."
+          }
+        }
+      },
       "CheckNameResponse": {
         "type": "object",
         "description": "Response for name availability check.",
@@ -20657,6 +20735,87 @@
             "example": "team-research"
           }
         }
+      },
+      "CredentialCheckResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "The provider accepted the credential.",
+            "required": [
+              "models",
+              "status"
+            ],
+            "properties": {
+              "models": {
+                "type": "integer",
+                "description": "Number of models the provider listed for this credential.",
+                "minimum": 0
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "valid"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The provider rejected the credential (401/403). Hard stop.",
+            "required": [
+              "message",
+              "status"
+            ],
+            "properties": {
+              "message": {
+                "type": "string",
+                "description": "User-facing reason. Never carries the provider's response body."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "rejected"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "This driver has no credential-checking endpoint (custom base URL,\nsimulator, or a driver without model discovery).",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "unsupported"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The provider could not be reached, so the credential is unproven.",
+            "required": [
+              "message",
+              "status"
+            ],
+            "properties": {
+              "message": {
+                "type": "string",
+                "description": "User-facing reason. Never carries the provider's response body."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "unreachable"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Outcome of checking a candidate provider credential."
       },
       "CredentialFormSchema": {
         "type": "object",

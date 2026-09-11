@@ -7,6 +7,8 @@ import type {
   Model,
   ModelWithProvider,
   CreateProviderRequest,
+  CheckCredentialsRequest,
+  CredentialCheckResult,
   UpdateProviderRequest,
   CreateModelRequest,
   UpdateModelRequest,
@@ -28,6 +30,15 @@ export async function getProvider(providerId: string): Promise<Provider> {
 
 export async function createProvider(data: CreateProviderRequest): Promise<Provider> {
   const response = await api.post<Provider>("/v1/providers", data);
+  return response.data;
+}
+
+// Probes the key against the provider without storing anything, so org setup
+// can reject a bad key at entry instead of at the first agent run.
+export async function checkProviderCredentials(
+  data: CheckCredentialsRequest,
+): Promise<CredentialCheckResult> {
+  const response = await api.post<CredentialCheckResult>("/v1/providers/check-credentials", data);
   return response.data;
 }
 
