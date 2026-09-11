@@ -132,4 +132,4 @@ PostgreSQL-backed run.
 
 ## Related Testing Specs
 
-See also: [fail-rs-testing.md](../evaluation/fail-rs-testing.md) (failure injection), [load-testing.md](../operations/load-testing.md) (performance), [test-cases.md](../evaluation/test-cases.md) (manual tests), [evals.md](../evaluation/evals.md) (behavioral evals)
+See also: [fail-rs-testing.md](../evaluation/fail-rs-testing.md) (failure injection), [load-testing.md](../operations/load-testing.md) (performance), [format.md](../test-cases/format.md) (manual tests), [evals.md](../evaluation/evals.md) (behavioral evals)

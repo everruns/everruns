@@ -279,7 +279,7 @@ agent or harness.
   KBs are rejected.
 * API CRUD permissions and org scoping.
 * OpenAPI export updated when API surface changes.
-* Manual test cases (`test_cases/knowledge-bases/`), added with the UI PR.
+* Manual test cases (`knowledge/test-cases/ui/knowledge_indexes/`), added with the UI PR.
 
 ## Embedding Configuration
 

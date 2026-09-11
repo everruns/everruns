@@ -204,8 +204,8 @@ A demonstrable end-to-end use case for the landing announcement:
 * An agent bound to `knowledge_base` (and/or `data_knowledge` rendering that KB)
   answers a business question, citing entries by `kbe_` ID and traversing a
   join-path link between concept documents.
-* Captured as a manual UI test under `test_cases/okf/` per
-  `knowledge/evaluation/test-cases.md`, and as a screen recording for the announcement.
+* Captured as a manual UI test under `knowledge/test-cases/agents/okf_data_analyst/` per
+  `knowledge/test-cases/format.md`, and as a screen recording for the announcement.
 
 ## Landing Announcement
 

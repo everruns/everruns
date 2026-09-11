@@ -15,6 +15,15 @@
   path is left dangling on purpose, and the canonical design is
   [External results publishing](evaluation/external-results-publishing.md).
 
+* **Manual test cases became knowledge.** `test_cases/` moved to
+  `knowledge/test-cases/`, so cases are OKF concepts reached by the same
+  progressive disclosure as every other concept: domain index, target index,
+  feature index, case. Each case carries `type: Test Case` frontmatter with its
+  title and a one-sentence description, and every folder has an index. The
+  format specification moved from `evaluation/test-cases.md` to
+  [Test Cases Specification](test-cases/format.md). Manual run results now land
+  outside the bundle, in `.local/test-results/`.
+
 ## 2026-09-09
 
 * **One command grammar, several hosts.** Operations reached through the

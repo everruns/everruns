@@ -1,0 +1,32 @@
+---
+type: Test Case
+title: "TC004: Verify Harnesses Exist After Org Setup"
+description: "Verify that built-in harnesses are provisioned for the new organisation by navigating to the Harnesses page after setup."
+tags:
+  - everruns
+  - test-case
+  - ui
+  - org-creation
+---
+# TC004: Verify Harnesses Exist After Org Setup
+
+## Description
+
+Verify that built-in harnesses are provisioned for the new organisation by navigating to the Harnesses page after setup. Harnesses now use addressable names (slugs) with separate display names.
+
+## Preconditions
+
+- User just completed org setup (all four steps show checkmarks)
+
+## Steps
+
+1. On the setup page, click "Skip for now" or finish provider setup and click "Continue"
+2. Navigate to the Harnesses page via the sidebar
+3. Review the list of harnesses displayed
+
+## Expected Result
+
+- Dashboard loads without errors
+- Harnesses page shows at least three built-in harnesses with names: `base`, `generic`, `platform-chat`
+- Each harness card shows a "Built-in" badge
+- Each harness card is clickable and links to a detail page

@@ -1,0 +1,3 @@
+# Cross org resolution (UI)
+
+* [TC001: Auto-Switch Organisation from Direct Resource Link](TC001_auto_switch_org_from_link.md) - Verify that following a direct link to a top-level resource (session, agent, app, harness, eval, agent identity) owned by an organisation the user is a member of but has **not** currently selected causes the UI to tra...

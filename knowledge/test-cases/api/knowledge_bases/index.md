@@ -1,0 +1,3 @@
+# Knowledge bases (API)
+
+* [TC001: OKF Import / Export Round-Trip](TC001_okf_import_export_round_trip.md) - Verify a Knowledge Base round-trips through Open Knowledge Format (OKF): import a bundle of concept documents, confirm entries are created with the correct `kind`/`resource`/`tags`, confirm a re-import is idempotent (...

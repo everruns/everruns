@@ -9,13 +9,13 @@ allowed-tools: Bash(npx agent-browser:*), Bash(agent-browser:*), Bash(just:*), B
 
 # Manual UI Testing
 
-Execute the test cases in `test_cases/ui/` against a running stack with `agent-browser`, record
-results, and file issues for failures. [`knowledge/evaluation/test-cases.md`](../../../knowledge/evaluation/test-cases.md) defines
+Execute the test cases in `knowledge/test-cases/ui/` against a running stack with `agent-browser`, record
+results, and file issues for failures. [`knowledge/test-cases/format.md`](../../../knowledge/test-cases/format.md) defines
 the test case format.
 
 ## Scope
 
-Each subdirectory of `test_cases/ui/` is a category — list the directory rather than assuming a
+Each subdirectory of `knowledge/test-cases/ui/` is a category — list the directory rather than assuming a
 fixed set. Every case states its own preconditions (auth mode, existing data), test data, steps, and
 expected result; read them before running. With no scope given, run everything in dependency order:
 auth → org → features.
@@ -57,7 +57,7 @@ Hints that cost time to rediscover:
 
 ## Recording
 
-Write or update `test_cases/ui/MANUAL_TEST_RESULTS_<YYYY-MM-DD>.md` using
+Write or update `.local/test-results/MANUAL_TEST_RESULTS_<YYYY-MM-DD>.md` using
 [`references/results-template.md`](references/results-template.md). Partial or re-test runs append to
 (or update) the existing file for that date.
 

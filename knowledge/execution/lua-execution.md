@@ -269,7 +269,7 @@ superseding bash.
 ### Evaluation harness
 
 Lives in **`research/lua-vs-bash`** (a standalone crate over `everruns-host`,
-excluded from the workspace), **not** `test_cases/`, which is for manual UI
+excluded from the workspace), **not** `knowledge/test-cases/`, which is for manual UI
 testing.
 
 - **A/B design.** Identical agent/model/prompt-scaffolding; swap only the
