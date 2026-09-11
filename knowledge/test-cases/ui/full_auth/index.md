@@ -10,4 +10,4 @@
 * [TC008: Full Auth - Reachability Dead-End & Trap Recovery](TC008_reachability_dead_end_recovery.md) - Walk the scenarios the reachability model (`apps/ui/src/lib/auth-flow/machine.ts`) exists to protect: situations where a screen historically offered a way forward that silently no-ops or dead-ends for a particular hid...
 * [TC009 — Invited user signs up and accepts invitation](TC009_invited_user_signup_resume.md) - Verifies that an organization invite link preserves its target through the login → signup → email verification path and resumes invitation acceptance for a brand-new user.
 * [TC010: Full Auth - External Login Origin](TC010_external_login_origin.md) - Verify that protected routes can delegate the login page to a trusted remote origin while preserving a safe relative `return_to` continuation.
-* [Full Auth — State-Machine Coverage Map](coverage-map.md) - Full Auth — State-Machine Coverage Map.
+* [Full Auth — State-Machine Coverage Map](coverage-map.md) - Maps each auth-flow state-machine scenario in machine.ts to the manual case that walks it.

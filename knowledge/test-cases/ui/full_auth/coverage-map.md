@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: "Full Auth — State-Machine Coverage Map"
-description: "Full Auth — State-Machine Coverage Map."
+description: "Maps each auth-flow state-machine scenario in machine.ts to the manual case that walks it."
 tags:
   - everruns
   - test-case
