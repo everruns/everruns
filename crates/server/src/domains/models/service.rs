@@ -113,6 +113,38 @@ impl ModelService {
         let provider = self.get_provider(caller.org_id, provider_id).await?;
         Self::require_unmanaged_provider(&provider)?;
 
+        // Discovery populates a provider's catalog the moment it gains a
+        // credential, so an explicit create now routinely names a model the
+        // system itself just wrote. The caller means "this model should exist
+        // with these settings", so adopt the discovered row instead of
+        // answering 409 for something they never created. A collision with a
+        // row the user added themselves is a real duplicate and still conflicts
+        // on the unique index.
+        if let Some(discovered) = self
+            .db
+            .list_models_for_provider(caller.org_id, provider_id)
+            .await?
+            .into_iter()
+            .find(|row| row.model_id == req.model_id && row.source == "discovered")
+        {
+            let update = UpdateModel {
+                display_name: Some(req.display_name),
+                // An omitted `capabilities` must not blank what discovery
+                // learned from the provider — resolution depends on it.
+                capabilities: (!req.capabilities.is_empty()).then_some(req.capabilities),
+                enabled: Some(req.enabled),
+                is_favorite: Some(req.is_favorite),
+                ..Default::default()
+            };
+            let row = self
+                .db
+                .update_model(caller.org_id, discovered.id.uuid(), update)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("discovered model vanished while being adopted"))?;
+            self.invalidate_resolver_cache(caller.org_id).await;
+            return Ok(Self::row_to_model(&row));
+        }
+
         let input = CreateModelRow {
             provider_id: provider.id,
             model_id: req.model_id,
@@ -762,6 +794,94 @@ mod tests {
 
     fn assert_managed_policy_error(err: anyhow::Error) {
         assert!(err.downcast_ref::<PolicyError>().is_some(), "{err:#}");
+    }
+
+    /// Regression: provider creation now discovers a catalog inline, so an
+    /// explicit `POST /v1/providers/{id}/models` naming a discovered model used
+    /// to hit the `(provider_id, model_id)` unique index and 409. Six live
+    /// workflow tests do exactly that. The caller's settings must win, and the
+    /// capabilities discovery learned must survive an omitted field.
+    #[tokio::test]
+    async fn create_adopts_a_discovered_model_instead_of_conflicting() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = ModelService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
+        let discovered = db
+            .create_model(
+                DEFAULT_ORG_ID,
+                CreateModelRow {
+                    provider_id,
+                    model_id: "test-model".to_string(),
+                    display_name: "test-model".to_string(),
+                    capabilities: vec!["chat".to_string()],
+                    enabled: false,
+                    is_favorite: false,
+                    source: "discovered".to_string(),
+                    provider_metadata: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        let created = service
+            .create(
+                &caller,
+                provider_id.uuid(),
+                CreateModelRequest {
+                    model_id: "test-model".to_string(),
+                    display_name: "Chosen Name".to_string(),
+                    capabilities: vec![],
+                    enabled: true,
+                    is_favorite: true,
+                },
+            )
+            .await
+            .expect("an explicit create must adopt the discovered row");
+
+        assert_eq!(created.id, discovered.id, "adopted, not duplicated");
+        assert_eq!(created.display_name, "Chosen Name");
+        assert!(created.enabled);
+        assert!(created.is_favorite);
+        assert_eq!(
+            created.capabilities,
+            vec!["chat".to_string()],
+            "an omitted capabilities list must not blank what discovery found"
+        );
+        assert_eq!(
+            db.list_models_for_provider(DEFAULT_ORG_ID, provider_id.uuid())
+                .await
+                .unwrap()
+                .len(),
+            1,
+            "adoption must not leave a second row"
+        );
+    }
+
+    /// A second explicit create of the same id is a genuine duplicate and must
+    /// still fail — adoption only ever absorbs a system-discovered row.
+    #[tokio::test]
+    async fn create_still_rejects_a_duplicate_of_a_manual_model() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = ModelService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
+        service
+            .create(&caller, provider_id.uuid(), build_create_request())
+            .await
+            .unwrap();
+
+        let err = service
+            .create(&caller, provider_id.uuid(), build_create_request())
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string().contains("duplicate")
+                || err.to_string().contains("already")
+                || err.to_string().contains("Unique"),
+            "expected a duplicate error, got: {err:#}"
+        );
     }
 
     // --- first-run intelligence bootstrap ---
