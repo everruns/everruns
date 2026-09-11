@@ -603,16 +603,18 @@ mod tests {
             .iter()
             .map(|cap| cap.capability_id.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(
-            chat_cap_ids,
-            vec![
-                "platform",
-                "btw",
-                "loop_detection",
-                "error_disclosure",
-                "compaction"
-            ]
-        );
+        // Derive from the definition rather than a second literal: the list is
+        // already pinned by `platform_chat_has_a_focused_tool_surface`, and this
+        // test's job is that provisioning persists it verbatim and in order.
+        let expected_chat_cap_ids = harnesses()
+            .into_iter()
+            .find(|definition| definition.name == "platform-chat")
+            .expect("platform-chat definition")
+            .capabilities
+            .iter()
+            .map(|capability| capability.capability_id().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(chat_cap_ids, expected_chat_cap_ids);
     }
 
     #[tokio::test]

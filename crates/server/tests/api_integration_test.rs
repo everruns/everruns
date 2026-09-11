@@ -3886,6 +3886,13 @@ async fn test_chat_harness_includes_platform_capability() {
         vec![
             "platform",
             "btw",
+            "human_intent",
+            "current_time",
+            "message_metadata",
+            "parallel_tool_calls",
+            "stateless_todo_list",
+            "prompt_caching",
+            "tool_call_repair",
             "loop_detection",
             "error_disclosure",
             "compaction"
