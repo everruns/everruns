@@ -266,8 +266,8 @@ describe("ProvidersPage", () => {
   it("shows provider model counts and links to filtered models", () => {
     render(<ProvidersPage />, { wrapper });
 
-    expect(screen.getByText("1 model available, 1 enabled")).toBeInTheDocument();
-    expect(screen.getByText("0 models available, 0 enabled")).toBeInTheDocument();
+    expect(screen.getByText("1 available, 1 enabled")).toBeInTheDocument();
+    expect(screen.getByText("0 available, 0 enabled")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /OpenAI Production/i })).toHaveAttribute(
       "href",
       "/settings/providers/provider-1",
@@ -336,13 +336,41 @@ describe("ProvidersPage", () => {
     expect(addButtons.length).toBeGreaterThan(0);
   });
 
-  it("shows API Key status correctly", () => {
+  it("shows API key status correctly", () => {
     render(<ProvidersPage />, { wrapper });
 
+    // Both cards render the shared "API key" detail row.
+    expect(screen.getAllByText("API key")).toHaveLength(2);
     // OpenAI has API key set
-    expect(screen.getByText(/API Key: Configured/i)).toBeInTheDocument();
+    expect(screen.getByText("Configured")).toBeInTheDocument();
     // Anthropic does not have API key set
-    expect(screen.getByText(/API Key: Not set/i)).toBeInTheDocument();
+    expect(screen.getByText("Not set")).toBeInTheDocument();
+  });
+
+  it("offers the credential action per provider and a delete overflow action", () => {
+    render(<ProvidersPage />, { wrapper });
+
+    // Neither fixture provider supports model sync, so the credential action is
+    // the visible primary action on each card.
+    expect(screen.getByRole("button", { name: "Update key" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Set key" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Delete provider" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "More provider actions" })).toHaveLength(2);
+  });
+
+  it("hides credential and delete actions for host-managed providers", () => {
+    mockUseProviders.mockReturnValue({
+      data: [{ ...mockProviders[0], id: "provider-3", name: "Managed OpenAI", managed: true }],
+      isLoading: false,
+      error: null,
+    });
+
+    render(<ProvidersPage />, { wrapper });
+
+    expect(screen.getByText("Managed")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /key/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete provider" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "More provider actions" })).not.toBeInTheDocument();
   });
 
   it("opens Add Provider dialog when clicking Add Provider button", async () => {

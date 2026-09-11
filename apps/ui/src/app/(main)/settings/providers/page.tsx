@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Notice, NoticeDescription } from "@/components/ui/notice";
 import {
   useModels,
   useProviders,
@@ -101,21 +102,20 @@ export default function ProvidersPage() {
         </div>
 
         {providersError && (
-          <div className="bg-destructive/10 text-destructive p-4 mb-4">
-            Failed to load providers: {providersError.message}
-          </div>
+          <Notice variant="destructive" className="mb-4">
+            <NoticeDescription>
+              Failed to load providers: {providersError.message}
+            </NoticeDescription>
+          </Notice>
         )}
 
         {syncMessage && (
-          <div
-            className={`p-4 mb-4 ${
-              syncMessage.type === "success"
-                ? "bg-green-100 text-green-800"
-                : "bg-destructive/10 text-destructive"
-            }`}
+          <Notice
+            variant={syncMessage.type === "success" ? "success" : "destructive"}
+            className="mb-4"
           >
-            {syncMessage.text}
-          </div>
+            <NoticeDescription>{syncMessage.text}</NoticeDescription>
+          </Notice>
         )}
 
         {providersLoading ? (
