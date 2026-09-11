@@ -2,13 +2,21 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
+import { Card, CardActions, CardContent, CardHeader } from "@/components/ui/card";
+import { EntityCard, EntityCardDetail, EntityCardFooter } from "@/components/ui/entity-card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuPositioner,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Key, Trash2, RefreshCw, Boxes, ExternalLink } from "lucide-react";
+import { IconTile } from "@/components/layout/page-layout";
+import { Key, Trash2, RefreshCw, Boxes, Ellipsis, ExternalLink, Link2 } from "lucide-react";
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
-import { formatCountLabel } from "@/lib/formatting";
+import { getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import type { Provider } from "@/lib/api/types";
 
 type ProviderModelCounts = {
@@ -36,111 +44,159 @@ export function ProviderCard({
   const canSync =
     provider.api_key_set && (!provider.base_url || isOpenRouterUrl(provider.base_url));
   const modelsHref = `/models?provider=${encodeURIComponent(provider.id)}`;
+  const keyActionLabel = provider.api_key_set ? "Update key" : "Set key";
+  // Host-managed providers are read-only to org admins (EVE-810): no credential
+  // edits, no deletion. Model sync stays available.
+  const canEdit = !provider.managed;
+
+  const syncButton = canSync ? (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => onSyncModels(provider.id)}
+      disabled={isSyncing}
+      title="Discover available models from provider API"
+    >
+      <RefreshCw className={`icon-sharp h-4 w-4 mr-1 ${isSyncing ? "animate-spin" : ""}`} />
+      {isSyncing ? "Syncing…" : "Sync models"}
+    </Button>
+  ) : null;
+
+  const keyButton = canEdit ? (
+    <Button variant="outline" size="sm" onClick={() => onSetApiKey(provider)}>
+      <Key className="icon-sharp h-4 w-4 mr-1" />
+      {keyActionLabel}
+    </Button>
+  ) : null;
+
+  // Highest-priority action stays visible at every card width; the rest collapse
+  // into an overflow menu when the card is too narrow for the full row.
+  const primaryAction = syncButton ?? keyButton;
+  const hasOverflow = canEdit && primaryAction !== keyButton;
 
   return (
     <EntityCard
-      icon={<ProviderIcon providerType={provider.provider_type} size="md" />}
+      icon={
+        <IconTile
+          size="md"
+          icon={
+            <ProviderIcon
+              providerType={provider.provider_type}
+              size="sm"
+              showBackground={false}
+              className="p-0"
+            />
+          }
+        />
+      }
       title={provider.name}
       href={`/settings/providers/${provider.id}`}
       copyValue={provider.id}
       subtitle={
-        <span className="text-sm text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           {getProviderLabel(provider.provider_type)}
         </span>
       }
       headerActions={
-        <div className="flex items-center gap-2">
+        <>
           {provider.managed && (
-            <Badge
-              variant="outline"
-              className="bg-blue-100 text-blue-800"
-              title="Managed by the host"
-            >
+            <Badge variant="outline" title="Managed by the host">
               Managed
             </Badge>
           )}
-          <Badge
-            variant="outline"
-            className={
-              provider.status === "active"
-                ? "bg-green-100 text-green-800"
-                : "bg-gray-100 text-gray-800"
-            }
-          >
-            {provider.status}
-          </Badge>
-        </div>
+          <Badge variant={getEntityStatusBadgeVariant(provider.status)}>{provider.status}</Badge>
+        </>
       }
       footer={
         <EntityCardFooter
           className="mt-4"
           actions={
-            <div className="flex items-center gap-2">
-              {canSync && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onSyncModels(provider.id)}
-                  disabled={isSyncing}
-                  title="Discover available models from provider API"
-                >
-                  <RefreshCw className={`h-4 w-4 mr-1 ${isSyncing ? "animate-spin" : ""}`} />
-                  {isSyncing ? "Syncing..." : "Sync Models"}
-                </Button>
-              )}
-              {/* Host-managed providers are read-only to org admins (EVE-810):
-                  no credential edits, no deletion. Model sync stays available. */}
-              {!provider.managed && (
-                <>
-                  <Button variant="outline" size="sm" onClick={() => onSetApiKey(provider)}>
-                    <Key className="h-4 w-4 mr-1" />
-                    {provider.api_key_set ? "Update Key" : "Set Key"}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive"
-                    onClick={() => onDelete(provider.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </>
-              )}
-            </div>
+            (primaryAction || canEdit) && (
+              <CardActions
+                primary={primaryAction}
+                expanded={
+                  hasOverflow || canEdit ? (
+                    <>
+                      {hasOverflow && keyButton}
+                      {canEdit && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-destructive"
+                          aria-label="Delete provider"
+                          onClick={() => onDelete(provider.id)}
+                        >
+                          <Trash2 className="icon-sharp h-4 w-4" />
+                        </Button>
+                      )}
+                    </>
+                  ) : null
+                }
+                collapsed={
+                  canEdit ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={<Button variant="outline" size="icon-sm" />}
+                        aria-label="More provider actions"
+                      >
+                        <Ellipsis className="icon-sharp" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuPositioner align="end">
+                        <DropdownMenuContent>
+                          {hasOverflow && (
+                            <DropdownMenuItem onClick={() => onSetApiKey(provider)}>
+                              <Key />
+                              {keyActionLabel}
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => onDelete(provider.id)}
+                          >
+                            <Trash2 />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenuPositioner>
+                    </DropdownMenu>
+                  ) : null
+                }
+              />
+            )
           }
         />
       }
     >
-      <div className="space-y-2 text-sm">
+      <div className="space-y-1.5">
         {provider.base_url && (
-          <p className="text-muted-foreground truncate">URL: {provider.base_url}</p>
+          <EntityCardDetail icon={<Link2 className="icon-sharp size-3.5" />} label="Endpoint">
+            <span className="min-w-0 truncate font-mono" title={provider.base_url}>
+              {provider.base_url}
+            </span>
+          </EntityCardDetail>
         )}
-        <div className="flex items-center gap-2">
-          <Key className="h-4 w-4 text-muted-foreground" />
-          <span className="text-muted-foreground">
-            API Key: {provider.api_key_set ? "Configured" : "Not set"}
-          </span>
-        </div>
-        <div className="flex items-start gap-2">
-          <Boxes className="h-4 w-4 text-muted-foreground mt-0.5" />
+        <EntityCardDetail icon={<Key className="icon-sharp size-3.5" />} label="API key">
+          <span className="truncate">{provider.api_key_set ? "Configured" : "Not set"}</span>
+        </EntityCardDetail>
+        <EntityCardDetail icon={<Boxes className="icon-sharp size-3.5" />} label="Models">
           {modelsLoading ? (
             <Skeleton className="h-4 w-40" />
           ) : (
-            <div className="text-muted-foreground">
+            // Wraps instead of truncating so the count stays readable in a narrow card.
+            <span className="flex min-w-0 flex-wrap items-center gap-x-1.5">
               <span>
-                {formatCountLabel(modelCounts.total, "model")} available, {modelCounts.enabled}{" "}
-                enabled
+                {modelCounts.total} available, {modelCounts.enabled} enabled
               </span>
               <Link
                 href={modelsHref}
-                className="ml-2 inline-flex items-center gap-1 text-foreground hover:underline"
+                className="inline-flex items-center gap-1 text-foreground hover:underline"
               >
                 View models
-                <ExternalLink className="h-3 w-3" />
+                <ExternalLink className="icon-sharp h-3 w-3" />
               </Link>
-            </div>
+            </span>
           )}
-        </div>
+        </EntityCardDetail>
       </div>
     </EntityCard>
   );
@@ -155,23 +211,28 @@ function isOpenRouterUrl(baseUrl: string): boolean {
   }
 }
 
+/** Mirrors {@link ProviderCard}'s EntityCard anatomy so loading does not shift layout. */
 export function ProviderCardSkeleton() {
   return (
-    <Card>
+    <Card className="bg-background">
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <div className="flex items-center gap-3">
-          <Skeleton className="h-9 w-9" />
-          <div className="space-y-2">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <Skeleton className="size-8 flex-shrink-0" />
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <Skeleton className="h-5 w-32" />
-            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-3 w-24" />
           </div>
         </div>
-        <Skeleton className="h-5 w-16" />
+        <Skeleton className="h-5 w-16 flex-shrink-0" />
       </CardHeader>
       <CardContent>
-        <Skeleton className="h-4 w-full mb-4" />
-        <Skeleton className="h-4 w-2/3 mb-4" />
-        <Skeleton className="h-8 w-24 ml-auto" />
+        <div className="space-y-1.5">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-4 w-56" />
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Skeleton className="h-8 w-28" />
+        </div>
       </CardContent>
     </Card>
   );

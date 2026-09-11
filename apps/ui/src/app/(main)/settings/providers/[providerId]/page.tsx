@@ -17,6 +17,7 @@ import { ResourceNotFound } from "@/components/resource-not-found";
 import { useModels, useProvider, useUpdateProvider } from "@/hooks/use-providers";
 import { usePageTitle } from "@/hooks";
 import { formatCountLabel } from "@/lib/formatting";
+import { getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import type { Provider } from "@/lib/api/types";
 import { ApiError } from "@/lib/api/client";
 
@@ -106,24 +107,11 @@ export default function ProviderDetailPage({
             <ProviderIcon providerType={provider.provider_type} size="md" />
             <EntityIdentity value={provider.id}>{provider.name}</EntityIdentity>
             {provider.managed && (
-              <Badge
-                variant="outline"
-                className="bg-blue-100 text-blue-800"
-                title="Managed by the host"
-              >
+              <Badge variant="outline" title="Managed by the host">
                 Managed
               </Badge>
             )}
-            <Badge
-              variant="outline"
-              className={
-                provider.status === "active"
-                  ? "bg-green-100 text-green-800"
-                  : "bg-gray-100 text-gray-800"
-              }
-            >
-              {provider.status}
-            </Badge>
+            <Badge variant={getEntityStatusBadgeVariant(provider.status)}>{provider.status}</Badge>
           </>
         }
         description={getProviderLabel(provider.provider_type)}
