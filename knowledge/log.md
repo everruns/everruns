@@ -2,6 +2,20 @@
 
 ## 2026-09-11
 
+* **Session schedules are now safe to poll from more than one server
+  instance.** `claim_due_session_schedules` selected due rows with
+  `FOR UPDATE SKIP LOCKED` but ran the statement on the pool, so the implicit
+  transaction committed and released the row locks before the caller advanced
+  `next_trigger_at`, and nothing recorded that a row had been picked up. Two
+  instances both saw the same schedules as due and both fired them: duplicate
+  agent turns, duplicate monitor probes, duplicate model spend. `mark_triggered`
+  was no backstop either, being an unguarded read-then-write with no
+  compare-and-swap. The claim is now a single atomic statement that stamps
+  `claimed_by`/`claimed_at`, the shape `durable_schedules` already used, and it
+  is a lease so an instance that dies mid-fire does not strand its schedules.
+  Both storage backends implement it. Found while validating a downstream
+  zero-downtime rollout that wanted two server replicas.
+
 * **Test fixtures live with the crate that owns them, and never ship.** The
   root `testdata/` and `tests/` trees each held a single fixture set. Plugin
   marketplace fixtures moved to `crates/core/testdata/plugins/` (core owns the

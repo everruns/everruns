@@ -202,19 +202,51 @@ impl Database {
 
     /// Claim due session schedules for processing.
     /// Uses SELECT FOR UPDATE SKIP LOCKED for multi-instance safety.
-    pub async fn claim_due_session_schedules(&self, limit: i32) -> Result<Vec<SessionScheduleRow>> {
+    /// Claim due session schedules for this instance.
+    ///
+    /// Selecting and stamping in ONE statement is the whole point. The previous
+    /// implementation ran a bare `SELECT ... FOR UPDATE SKIP LOCKED` straight on
+    /// the pool: its implicit transaction committed as soon as the query
+    /// returned, releasing the row locks long before the caller advanced
+    /// `next_trigger_at`, and nothing recorded that a row had been picked up. A
+    /// second server instance polling in that window saw the same schedules as
+    /// still due and fired them again -- duplicate agent turns and duplicate
+    /// model spend. Mirrors the durable scheduler's claim in
+    /// `crates/durable/src/persistence/postgres.rs`.
+    ///
+    /// The claim is a lease, not a permanent mark: an instance that dies between
+    /// claiming and firing releases its schedules once the lease ages out.
+    pub async fn claim_due_session_schedules(
+        &self,
+        scheduler_id: &str,
+        limit: i32,
+    ) -> Result<Vec<SessionScheduleRow>> {
         let rows = sqlx::query_as::<_, SessionScheduleRow>(
             r#"
-            SELECT * FROM session_schedules
-            WHERE enabled = true
-              AND next_trigger_at IS NOT NULL
-              AND next_trigger_at <= NOW()
-            ORDER BY next_trigger_at ASC
-            LIMIT $1
-            FOR UPDATE SKIP LOCKED
+            WITH due AS (
+                SELECT id FROM session_schedules
+                WHERE enabled = true
+                  AND next_trigger_at IS NOT NULL
+                  AND next_trigger_at <= NOW()
+                  AND (
+                      claimed_by IS NULL
+                      OR claimed_at IS NULL
+                      OR claimed_at < NOW() - ($3 * INTERVAL '1 second')
+                  )
+                ORDER BY next_trigger_at ASC
+                LIMIT $2
+                FOR UPDATE SKIP LOCKED
+            )
+            UPDATE session_schedules s
+            SET claimed_by = $1, claimed_at = NOW()
+            FROM due d
+            WHERE s.id = d.id
+            RETURNING s.*
             "#,
         )
+        .bind(scheduler_id)
         .bind(limit)
+        .bind(SESSION_SCHEDULE_CLAIM_LEASE_SECONDS)
         .fetch_all(&self.pool)
         .await?;
 

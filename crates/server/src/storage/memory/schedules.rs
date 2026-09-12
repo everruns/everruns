@@ -37,6 +37,8 @@ impl InMemoryDatabase {
             next_trigger_at: input.next_trigger_at,
             last_triggered_at: None,
             trigger_count: 0,
+            claimed_by: None,
+            claimed_at: None,
             created_at: now,
             updated_at: now,
         };
@@ -83,6 +85,8 @@ impl InMemoryDatabase {
             next_trigger_at: input.next_trigger_at,
             last_triggered_at: None,
             trigger_count: 0,
+            claimed_by: None,
+            claimed_at: None,
             created_at: now,
             updated_at: now,
         };
@@ -179,16 +183,39 @@ impl InMemoryDatabase {
         Ok(count as u32)
     }
 
-    pub async fn claim_due_session_schedules(&self, limit: i32) -> Result<Vec<SessionScheduleRow>> {
+    /// Claim due session schedules, stamping a lease exactly as the Postgres
+    /// backend does so the two cannot diverge in behaviour.
+    pub async fn claim_due_session_schedules(
+        &self,
+        scheduler_id: &str,
+        limit: i32,
+    ) -> Result<Vec<SessionScheduleRow>> {
         let now = Self::now();
-        let schedules = self.session_schedules.read();
+        let lease_cutoff =
+            now - chrono::Duration::seconds(SESSION_SCHEDULE_CLAIM_LEASE_SECONDS as i64);
+
+        let mut schedules = self.session_schedules.write();
         let mut due: Vec<_> = schedules
             .values()
-            .filter(|r| r.enabled && r.next_trigger_at.is_some_and(|t| t <= now))
+            .filter(|r| {
+                r.enabled
+                    && r.next_trigger_at.is_some_and(|t| t <= now)
+                    && (r.claimed_by.is_none() || r.claimed_at.is_none_or(|at| at < lease_cutoff))
+            })
             .cloned()
             .collect();
         due.sort_by_key(|schedule| schedule.next_trigger_at);
         due.truncate(limit as usize);
+
+        for schedule in &mut due {
+            schedule.claimed_by = Some(scheduler_id.to_string());
+            schedule.claimed_at = Some(now);
+            if let Some(stored) = schedules.get_mut(&schedule.id) {
+                stored.claimed_by = schedule.claimed_by.clone();
+                stored.claimed_at = schedule.claimed_at;
+            }
+        }
+
         Ok(due)
     }
 
