@@ -161,5 +161,4 @@ mod tests {
         .unwrap();
         assert_eq!(config.strategy, PromptCacheStrategy::Explicit);
     }
-
 }
