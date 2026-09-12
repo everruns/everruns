@@ -602,6 +602,13 @@ everruns_core::execution_snapshot	module
 everruns_core::execution_snapshot::ResolvedExecutionSnapshot	struct
 everruns_core::execution_snapshot::ResolvedExecutionSnapshot::project	function
 everruns_core::execution_snapshot::SnapshotMcpServer	struct
+everruns_core::file_services	module
+everruns_core::file_services::CreateStoredFile	struct
+everruns_core::file_services::FileArtifactStore	trait
+everruns_core::file_services::FileResolver	trait
+everruns_core::file_services::ResolvedFile	struct
+everruns_core::file_services::StoredFile	struct
+everruns_core::file_services::StoredFileInfo	struct
 everruns_core::finalized_tool_calls	module
 everruns_core::finalized_tool_calls::FinalizedToolCallsContext	struct
 everruns_core::finalized_tool_calls::FinalizedToolCallsHook	trait
@@ -705,11 +712,14 @@ everruns_core::lifecycle_hooks::run_session_lifecycle_hooks	function
 everruns_core::lifecycle_hooks::run_turn_end_hooks	function
 everruns_core::lifecycle_hooks::run_user_prompt_submit_hooks	function
 everruns_core::llm_conversions	module
+everruns_core::llm_conversions::extract_file_ids	function
 everruns_core::llm_conversions::extract_image_file_ids	function
 everruns_core::llm_conversions::llm_call_config_builder_from_agent	function
 everruns_core::llm_conversions::llm_call_config_from_agent	function
 everruns_core::llm_conversions::llm_message_from_message	function
+everruns_core::llm_conversions::llm_message_from_message_with_attachments	function
 everruns_core::llm_conversions::llm_message_from_message_with_images	function
+everruns_core::llm_conversions::message_has_files	function
 everruns_core::llm_conversions::message_has_image_files	function
 everruns_core::llm_error_hook	module
 everruns_core::llm_error_hook::LlmErrorContext	struct
@@ -809,6 +819,7 @@ everruns_core::mcp_server::scoped_mcp_servers_is_empty	function
 everruns_core::message	module
 everruns_core::message::AnnotationSource	struct
 everruns_core::message::ContentPart	enum
+everruns_core::message::ContentPart::File	variant
 everruns_core::message::ContentPart::Image	variant
 everruns_core::message::ContentPart::ImageFile	variant
 everruns_core::message::ContentPart::Reasoning	variant
@@ -816,6 +827,7 @@ everruns_core::message::ContentPart::Text	variant
 everruns_core::message::ContentPart::ToolCall	variant
 everruns_core::message::ContentPart::ToolResult	variant
 everruns_core::message::ContentType	enum
+everruns_core::message::ContentType::File	variant
 everruns_core::message::ContentType::Image	variant
 everruns_core::message::ContentType::ImageFile	variant
 everruns_core::message::ContentType::Reasoning	variant
@@ -824,9 +836,11 @@ everruns_core::message::ContentType::ToolCall	variant
 everruns_core::message::ContentType::ToolResult	variant
 everruns_core::message::Controls	struct
 everruns_core::message::ExternalActor	struct
+everruns_core::message::FileContentPart	struct
 everruns_core::message::ImageContentPart	struct
 everruns_core::message::ImageFileContentPart	struct
 everruns_core::message::InputContentPart	enum
+everruns_core::message::InputContentPart::File	variant
 everruns_core::message::InputContentPart::Image	variant
 everruns_core::message::InputContentPart::ImageFile	variant
 everruns_core::message::InputContentPart::Text	variant

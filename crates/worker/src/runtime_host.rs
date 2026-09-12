@@ -11,9 +11,10 @@ use everruns_core::{
 use everruns_core::{
     connection_services::ProviderCredentialStore, delegation_services::SessionCreationAuthority,
     event_emitter::EventEmitter, execution_loading::AgentStore, execution_loading::HarnessStore,
-    execution_loading::SessionStore, image_services::ImageArtifactStore,
-    image_services::ImageResolver, provider_resolution::ProviderStore,
-    session_files::SessionFileSystem, tool_execution::PaymentAuthority,
+    execution_loading::SessionStore, file_services::FileResolver,
+    image_services::ImageArtifactStore, image_services::ImageResolver,
+    provider_resolution::ProviderStore, session_files::SessionFileSystem,
+    tool_execution::PaymentAuthority,
 };
 use everruns_host::{ResolvedTurnInputs, RuntimeHostAdapter};
 use everruns_mcp::{
@@ -267,6 +268,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     }
 
     fn image_resolver(&self, org_id: i64) -> Option<Arc<dyn ImageResolver>> {
+        Some(Arc::new(OrgAdapter::new(self.adapters.clone(), org_id)))
+    }
+
+    fn file_resolver(&self, org_id: i64) -> Option<Arc<dyn FileResolver>> {
         Some(Arc::new(OrgAdapter::new(self.adapters.clone(), org_id)))
     }
 

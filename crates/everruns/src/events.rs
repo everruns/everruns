@@ -741,6 +741,7 @@ impl EventStream {
 #[derive(Clone, Default)]
 pub struct RunOptions {
     pub(crate) cancel: Option<CancellationToken>,
+    pub(crate) timeout: Option<std::time::Duration>,
 }
 
 impl RunOptions {
@@ -752,6 +753,16 @@ impl RunOptions {
     /// Attach a cancellation token. Cancelling it stops the turn in flight.
     pub fn cancel_token(mut self, token: CancellationToken) -> Self {
         self.cancel = Some(token);
+        self
+    }
+
+    /// Bound how long [`run_with`](crate::Session::run_with) waits for the
+    /// turn. On expiry the turn is cancelled (like [`cancel_token`](Self::cancel_token))
+    /// and the cancelled [`Turn`](crate::Turn) is returned. This mirrors the
+    /// server `POST /v1/sessions/{id}/messages` `timeout_ms` query, except the
+    /// in-process turn is stopped rather than left running.
+    pub fn timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 }

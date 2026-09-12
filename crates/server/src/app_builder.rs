@@ -1431,6 +1431,7 @@ impl ServerAppBuilder {
         );
         let skills_state =
             api::skills::AppState::new(db.clone(), capability_service.clone(), auth_state.clone());
+        let files_state = api::files::AppState::new(db.clone(), auth_state.clone());
         let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
         let mut organizations_state = api::organizations::AppState::with_harnesses(
             db.clone(),
@@ -1601,6 +1602,7 @@ impl ServerAppBuilder {
             .merge(api::resolver::routes(resolver_state))
             .merge(api::durable::routes(durable_state))
             .merge(schedules_state)
+            .merge(api::files::routes(files_state))
             .merge(api::images::routes(images_state))
             .merge({
                 // Only mount presigned image routes when WORKER_GRPC_AUTH_TOKEN is set.

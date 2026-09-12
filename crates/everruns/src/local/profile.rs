@@ -16,8 +16,6 @@ pub struct LocalProfile {
     pub data_dir: PathBuf,
     /// Root directory for the session workspace filesystem.
     pub workspace_root: PathBuf,
-    /// Base URL used to build UI links in tool results.
-    pub base_url: String,
     /// Public organization id for created records.
     pub org_public_id: String,
     /// Owning principal stamped on schedules/sessions created locally.
@@ -30,7 +28,6 @@ impl Default for LocalProfile {
         Self {
             workspace_root: data_dir.join("workspace"),
             data_dir,
-            base_url: "http://localhost:9300".to_string(),
             org_public_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
             owner_principal_id: PrincipalId::from_seed(1),
         }
@@ -57,12 +54,6 @@ impl LocalProfile {
     /// Override the directory exposed as the local workspace root.
     pub fn with_workspace_root(mut self, root: impl Into<PathBuf>) -> Self {
         self.workspace_root = root.into();
-        self
-    }
-
-    /// Override the base URL used in locally projected platform records.
-    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
-        self.base_url = base_url.into();
         self
     }
 

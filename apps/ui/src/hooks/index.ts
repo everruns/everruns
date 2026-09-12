@@ -12,6 +12,7 @@ export * from "./use-mcp-servers";
 export * from "./use-auth";
 export * from "./use-durable";
 export * from "./use-image-attachments";
+export * from "./use-file-attachments";
 export * from "./use-session-resources";
 export * from "./use-session-participants";
 export * from "./use-session-tasks";

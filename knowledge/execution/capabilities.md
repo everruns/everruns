@@ -1314,9 +1314,14 @@ The `PlatformStore` trait and its management capabilities live in
 `everruns-platform`. `DirectPlatformStore` (in `everruns-server`) implements it
 using the existing `StorageBackend` and `SessionService`; core carries only the
 type-keyed extension boundary and the narrow neutral subagent delegate contract.
-Its legacy org-scoped CRUD methods outlived `platform_management` because
-`subagents`, `agent_handoff`, and `a2a_agent_delegation` still call parts of
-them; the unused remainder is a follow-up cleanup.
+Its legacy org-scoped CRUD methods outlived `platform_management`; the unused
+remainder was removed in EVE-953. What is left is the catalog-backed
+`platform_discover`/`platform_query`/`platform_execute` surface plus exactly the
+reads and writes delegation needs: `get_harness`, `get_harness_chain`,
+`get_agent_by_id`, `create_session_with_options`, `get_session_by_id`,
+`add_agent_session_participant`, `send_message`, `get_messages`, and
+`wait_for_idle`. Management flows go through the command catalog, not this
+trait; anything that wants harness/agent/app/session CRUD belongs there.
 
 ### Experimental Capabilities
 

@@ -2269,6 +2269,13 @@ mod tests {
             {
                 unimplemented!()
             }
+            async fn resolve_files_batch(
+                &self,
+                _org_id: i64,
+                _file_ids: &[Uuid],
+            ) -> CoreResult<HashMap<Uuid, everruns_core::file_services::ResolvedFile>> {
+                unimplemented!()
+            }
             async fn read_file(
                 &self,
                 _session_id: Uuid,

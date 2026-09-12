@@ -25,12 +25,13 @@ use everruns_core::{
     connection_services::ProviderCredentialStore, connection_services::UserConnectionResolver,
     delegation_services::SessionCreationAuthority, event_emitter::EventEmitter,
     execution_loading::AgentStore, execution_loading::HarnessStore,
-    execution_loading::SessionStore, image_services::ImageArtifactStore,
-    image_services::ImageResolver, provider_resolution::ProviderStore,
-    session_files::SessionFileSystem, session_services::LeasedResourceStore,
-    session_services::SessionResourceRegistry, session_services::SessionScheduleStore,
-    session_services::SessionStorageStore, tool_context::ToolContextServices,
-    tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
+    execution_loading::SessionStore, file_services::FileResolver,
+    image_services::ImageArtifactStore, image_services::ImageResolver,
+    provider_resolution::ProviderStore, session_files::SessionFileSystem,
+    session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
+    session_services::SessionScheduleStore, session_services::SessionStorageStore,
+    tool_context::ToolContextServices, tool_execution::BudgetChecker,
+    tool_execution::PaymentAuthority,
 };
 use everruns_engine::{
     ActAtom, ActInput, ActResult, InputAtom, InputAtomInput, InputAtomResult, ReasonAtom,
@@ -189,6 +190,10 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     fn file_store(&self) -> Arc<dyn SessionFileSystem>;
 
     fn image_resolver(&self, _org_id: i64) -> Option<Arc<dyn ImageResolver>> {
+        None
+    }
+
+    fn file_resolver(&self, _org_id: i64) -> Option<Arc<dyn FileResolver>> {
         None
     }
 
@@ -1444,6 +1449,9 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
     );
     if let Some(image_resolver) = adapter.image_resolver(org_id) {
         atom = atom.with_image_resolver(image_resolver);
+    }
+    if let Some(file_resolver) = adapter.file_resolver(org_id) {
+        atom = atom.with_file_resolver(file_resolver);
     }
     if let Some(hb) = adapter.stream_heartbeater() {
         atom = atom.with_stream_heartbeater(hb);

@@ -966,7 +966,7 @@ pub(super) async fn apply_reactive_compaction(
 
             match context
                 .chat_driver
-                .chat_completion(
+                .chat_completion_non_streaming(
                     &crate::ProviderEndpoint::default(),
                     summary_messages,
                     &summary_config,

@@ -835,4 +835,53 @@ describe("Create Organization dialog", () => {
     });
     expect(warningBtn).not.toBeInTheDocument();
   });
+
+  // Sentry EVERRUNS-1Z: a rejected logout escaped the async click handler, so
+  // nothing rendered, the user stayed on an authenticated page, and the
+  // rejection was reported to Sentry as unhandled.
+  describe("logout failure", () => {
+    const renderMenuWithFailingLogout = (reason: unknown) => {
+      const logout = jest.fn().mockRejectedValue(reason);
+      mockUseAuth.mockReturnValue({
+        user: { email: "test@example.com", name: "Test User" },
+        requiresAuth: true,
+        isAuthenticated: true,
+        config: { mode: "builtin" },
+        isLoading: false,
+        logout,
+        logoutPending: false,
+        createOrganization: undefined,
+      });
+      render(<Sidebar />);
+      fireEvent.click(screen.getByRole("button", { name: /test user/i }));
+      fireEvent.click(screen.getByText("Sign out"));
+      return logout;
+    };
+
+    it("navigates to /login and reports the failure instead of rejecting unhandled", async () => {
+      const unhandled = jest.fn();
+      window.addEventListener("unhandledrejection", unhandled);
+      const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+
+      const logout = renderMenuWithFailingLogout(new Error("Logout failed"));
+
+      await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/login"));
+      expect(logout).toHaveBeenCalled();
+      expect(consoleError).toHaveBeenCalledWith("Logout failed", expect.any(Error));
+      expect(unhandled).not.toHaveBeenCalled();
+
+      consoleError.mockRestore();
+      window.removeEventListener("unhandledrejection", unhandled);
+    });
+
+    it("still navigates when the rejection is not an Error", async () => {
+      const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+
+      renderMenuWithFailingLogout("boom");
+
+      await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/login"));
+
+      consoleError.mockRestore();
+    });
+  });
 });

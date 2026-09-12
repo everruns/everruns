@@ -164,6 +164,10 @@ export default function DevChatComponentsPage() {
                     )
                   }
                   addFiles={() => undefined}
+                  pendingFiles={[]}
+                  hasFiles={false}
+                  removeFileAttachment={() => undefined}
+                  supportsPdf={false}
                   isDraggingOver={false}
                   dropZoneProps={{}}
                   handlePaste={() => undefined}

@@ -390,6 +390,11 @@ pub mod content {
                 "modality": "image",
                 "uri": format!("image_file:{}", file.image_id),
             })),
+            ContentPart::File(file) => Some(json!({
+                "type": gen_ai::part_type::URI,
+                "modality": "file",
+                "uri": format!("file:{}", file.file_id),
+            })),
             ContentPart::Reasoning(reasoning) => {
                 let text = match reasoning.text.as_ref()? {
                     ReasoningText::Plain { text } => text.clone(),
