@@ -335,6 +335,13 @@ impl OpenAIProtocolChatDriver {
                                 format: "wav".to_string(),
                             },
                         },
+                        LlmContentPart::File { url, filename } => OpenAiContentPart::File {
+                            r#type: "file".to_string(),
+                            file: OpenAiFile {
+                                filename: filename.clone(),
+                                file_data: url.clone(),
+                            },
+                        },
                     })
                     .collect();
                 OpenAiContent::Parts(openai_parts)
@@ -876,6 +883,17 @@ enum OpenAiContentPart {
         r#type: String,
         input_audio: OpenAiInputAudio,
     },
+    File {
+        r#type: String,
+        file: OpenAiFile,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct OpenAiFile {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filename: Option<String>,
+    file_data: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1871,5 +1889,23 @@ mod tests {
             models_api_status_error(reqwest::StatusCode::SERVICE_UNAVAILABLE).llm_error_kind(),
             Some(LlmErrorKind::Unavailable)
         );
+    }
+
+    #[test]
+    fn file_part_serializes_to_openai_file() {
+        let part = OpenAiContentPart::File {
+            r#type: "file".to_string(),
+            file: OpenAiFile {
+                filename: Some("report.pdf".to_string()),
+                file_data: "data:application/pdf;base64,JVBERi0=".to_string(),
+            },
+        };
+        let v = serde_json::to_value(&part).unwrap();
+        assert_eq!(v["type"], serde_json::json!("file"));
+        assert_eq!(
+            v["file"]["file_data"],
+            serde_json::json!("data:application/pdf;base64,JVBERi0=")
+        );
+        assert_eq!(v["file"]["filename"], serde_json::json!("report.pdf"));
     }
 }

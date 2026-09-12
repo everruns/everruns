@@ -211,6 +211,7 @@ pub mod delegation_services;
 pub mod durability;
 pub mod event_emitter;
 pub mod execution_loading;
+pub mod file_services;
 pub mod image_services;
 pub mod outline;
 pub mod output_guardrail;

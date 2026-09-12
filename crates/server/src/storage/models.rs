@@ -3,13 +3,14 @@
 use crate::kernel_imports::{
     everruns_provider::driver_registry::ServiceKind, everruns_provider::typed_id::AgentId,
     everruns_provider::typed_id::AgentIdentityId, everruns_provider::typed_id::EventId,
-    everruns_provider::typed_id::HarnessId, everruns_provider::typed_id::ImageId,
-    everruns_provider::typed_id::LeasedResourceId, everruns_provider::typed_id::McpServerId,
-    everruns_provider::typed_id::MessageId, everruns_provider::typed_id::ModelId,
-    everruns_provider::typed_id::NotificationId, everruns_provider::typed_id::PrincipalId,
-    everruns_provider::typed_id::ProviderId, everruns_provider::typed_id::ScheduleId,
-    everruns_provider::typed_id::SessionId, everruns_provider::typed_id::SessionParticipantId,
-    everruns_provider::typed_id::SkillId, everruns_provider::typed_id::TriggerId,
+    everruns_provider::typed_id::FileId, everruns_provider::typed_id::HarnessId,
+    everruns_provider::typed_id::ImageId, everruns_provider::typed_id::LeasedResourceId,
+    everruns_provider::typed_id::McpServerId, everruns_provider::typed_id::MessageId,
+    everruns_provider::typed_id::ModelId, everruns_provider::typed_id::NotificationId,
+    everruns_provider::typed_id::PrincipalId, everruns_provider::typed_id::ProviderId,
+    everruns_provider::typed_id::ScheduleId, everruns_provider::typed_id::SessionId,
+    everruns_provider::typed_id::SessionParticipantId, everruns_provider::typed_id::SkillId,
+    everruns_provider::typed_id::TriggerId,
 };
 use chrono::{DateTime, Utc};
 use everruns_durable::UpdateField;
@@ -1908,6 +1909,46 @@ pub struct CreateImageRow {
     pub data: Vec<u8>,
     pub thumbnail_data: Option<Vec<u8>>,
     pub thumbnail_content_type: Option<String>,
+    pub metadata: serde_json::Value,
+}
+
+// ============================================
+// File models (model-input file attachments, e.g. PDFs)
+// ============================================
+
+/// File row from database
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct FileRow {
+    pub id: FileId,
+    pub org_id: i64,
+    pub filename: Option<String>,
+    pub content_type: String,
+    pub size_bytes: i64,
+    pub data: Vec<u8>,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+/// File info without binary data (for listing)
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct FileInfoRow {
+    pub id: FileId,
+    pub org_id: i64,
+    pub filename: Option<String>,
+    pub content_type: String,
+    pub size_bytes: i64,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Input for creating a file
+#[derive(Debug, Clone)]
+pub struct CreateFileRow {
+    pub org_id: i64,
+    pub filename: Option<String>,
+    pub content_type: String,
+    pub size_bytes: i64,
+    pub data: Vec<u8>,
     pub metadata: serde_json::Value,
 }
 

@@ -24,10 +24,11 @@ use everruns_core::{
 use everruns_core::{
     connection_services::ProviderCredentialStore, event_emitter::EventEmitter,
     execution_loading::AgentStore, execution_loading::HarnessStore,
-    execution_loading::SessionStore, image_services::CreateStoredImage,
-    image_services::ImageArtifactStore, image_services::ResolvedImage, image_services::StoredImage,
-    image_services::StoredImageInfo, provider_resolution::ProviderStore,
-    session_files::SessionFileSystem, session_services::LeasedResourceStore,
+    execution_loading::SessionStore, file_services::ResolvedFile,
+    image_services::CreateStoredImage, image_services::ImageArtifactStore,
+    image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
+    provider_resolution::ProviderStore, session_files::SessionFileSystem,
+    session_services::LeasedResourceStore,
 };
 use everruns_provider::error::{AgentLoopError, Result};
 use everruns_provider::model_spec::ModelSpec;
@@ -2340,8 +2341,8 @@ fn proto_mcp_tool_def_to_tool_definition(
 // ============================================================================
 
 use everruns_core::{
-    image_services::ImageResolver, session_services::KeyInfo, session_services::SecretInfo,
-    session_services::SessionStorageStore,
+    file_services::FileResolver, image_services::ImageResolver, session_services::KeyInfo,
+    session_services::SecretInfo, session_services::SessionStorageStore,
 };
 use std::collections::HashMap;
 
@@ -2385,6 +2386,52 @@ impl GrpcOrgAdapter {
 
         Ok(result)
     }
+
+    /// Resolve multiple files in a batch (more efficient)
+    ///
+    /// Returns a HashMap mapping file_id to ResolvedFile for all found files.
+    /// Missing files are silently skipped. Files are always returned inline
+    /// as base64 (no presigned-URL variant, unlike images).
+    pub async fn resolve_files_batch(
+        &self,
+        file_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, ResolvedFile>> {
+        if file_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let mut client = self.client.inner.lock().await;
+
+        let request = proto::ResolveFilesRequest {
+            file_ids: file_ids.iter().map(|id| uuid_to_proto(*id)).collect(),
+            org_id: self.org_id,
+        };
+
+        let response = client
+            .resolve_files(request)
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        let mut result = HashMap::new();
+        for (id_str, data) in response.into_inner().files {
+            if let Ok(id) = Uuid::parse_str(&id_str) {
+                result.insert(
+                    id,
+                    ResolvedFile {
+                        base64: data.base64,
+                        media_type: data.media_type,
+                        filename: if data.filename.is_empty() {
+                            None
+                        } else {
+                            Some(data.filename)
+                        },
+                    },
+                );
+            }
+        }
+
+        Ok(result)
+    }
 }
 
 #[async_trait]
@@ -2418,6 +2465,14 @@ impl ImageResolver for GrpcOrgAdapter {
         } else {
             Ok(Some(ResolvedImage::new(inner.base64, inner.media_type)))
         }
+    }
+}
+
+#[async_trait]
+impl FileResolver for GrpcOrgAdapter {
+    /// Resolve file attachments by ID via the ResolveFiles batch RPC.
+    async fn resolve_files(&self, file_ids: &[Uuid]) -> Result<HashMap<Uuid, ResolvedFile>> {
+        self.resolve_files_batch(file_ids).await
     }
 }
 

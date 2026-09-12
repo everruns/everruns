@@ -659,6 +659,11 @@ pub enum LlmContentPart {
     Image { url: String },
     /// Audio content (base64 data URL)
     Audio { url: String },
+    /// File content, e.g. a PDF document (base64 data URL or file URL)
+    File {
+        url: String,
+        filename: Option<String>,
+    },
 }
 
 impl LlmContentPart {
@@ -675,6 +680,14 @@ impl LlmContentPart {
     /// Create an audio content part from URL (typically a data URL)
     pub fn audio(url: impl Into<String>) -> Self {
         LlmContentPart::Audio { url: url.into() }
+    }
+
+    /// Create a file content part from URL (typically a data URL)
+    pub fn file(url: impl Into<String>, filename: Option<String>) -> Self {
+        LlmContentPart::File {
+            url: url.into(),
+            filename,
+        }
     }
 }
 
@@ -2030,6 +2043,7 @@ mod tests {
                     LlmContentPart::Text { text } => ("text", text.as_str()),
                     LlmContentPart::Image { url } => ("image", url.as_str()),
                     LlmContentPart::Audio { url } => ("audio", url.as_str()),
+                    LlmContentPart::File { url, .. } => ("file", url.as_str()),
                 })
                 .collect();
             assert_eq!(actual, expected);

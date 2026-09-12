@@ -21,9 +21,10 @@ use everruns_core::{
 };
 use everruns_core::{
     connection_services::ProviderCredentialStore, delegation_services::SessionCreationAuthority,
-    image_services::ImageArtifactStore, image_services::ImageResolver,
-    image_services::ResolvedImage, session_services::LeasedResourceStore,
-    tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
+    file_services::FileResolver, file_services::ResolvedFile, image_services::ImageArtifactStore,
+    image_services::ImageResolver, image_services::ResolvedImage,
+    session_services::LeasedResourceStore, tool_execution::BudgetChecker,
+    tool_execution::PaymentAuthority,
 };
 use everruns_provider::error::Result;
 use everruns_provider::typed_id::{
@@ -139,6 +140,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         org_id: i64,
         image_ids: &[Uuid],
     ) -> Result<HashMap<Uuid, ResolvedImage>>;
+
+    async fn resolve_files_batch(
+        &self,
+        org_id: i64,
+        file_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, ResolvedFile>>;
 
     // =========================================================================
     // Session File Operations
@@ -688,6 +695,15 @@ impl<A: WorkerAdapters> everruns_core::provider_resolution::ProviderStore for Or
 impl<A: WorkerAdapters> ImageResolver for OrgAdapter<A> {
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>> {
         self.adapters.resolve_image(self.org_id, image_id).await
+    }
+}
+
+#[async_trait]
+impl<A: WorkerAdapters> FileResolver for OrgAdapter<A> {
+    async fn resolve_files(&self, file_ids: &[Uuid]) -> Result<HashMap<Uuid, ResolvedFile>> {
+        self.adapters
+            .resolve_files_batch(self.org_id, file_ids)
+            .await
     }
 }
 

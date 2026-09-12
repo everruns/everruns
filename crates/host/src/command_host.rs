@@ -12,6 +12,7 @@ use everruns_core::command_host::{
     SessionCompletionRequest, SessionCompletionStream,
 };
 use everruns_core::execution_loading::{AgentStore, HarnessStore, SessionStore};
+use everruns_core::file_services::{FileResolver, ResolvedFile};
 use everruns_core::image_services::{ImageResolver, ResolvedImage};
 use everruns_core::message::{Controls, Message, MessageRole, patch_dangling_tool_calls};
 use everruns_core::message_retriever::MessageRetriever;
@@ -42,6 +43,7 @@ pub struct StoreCommandHost {
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
     image_resolver: Option<Arc<dyn ImageResolver>>,
+    file_resolver: Option<Arc<dyn FileResolver>>,
     file_store: Option<Arc<dyn SessionFileSystem>>,
     assembled: tokio::sync::OnceCell<AssembledTurnContext>,
 }
@@ -69,6 +71,7 @@ impl StoreCommandHost {
             capability_registry,
             driver_registry,
             image_resolver: None,
+            file_resolver: None,
             file_store: None,
             assembled: tokio::sync::OnceCell::new(),
         }
@@ -77,6 +80,11 @@ impl StoreCommandHost {
     /// Resolve `image_file` references for provider conversion.
     pub fn with_image_resolver(mut self, image_resolver: Arc<dyn ImageResolver>) -> Self {
         self.image_resolver = Some(image_resolver);
+        self
+    }
+
+    pub fn with_file_resolver(mut self, file_resolver: Arc<dyn FileResolver>) -> Self {
+        self.file_resolver = Some(file_resolver);
         self
     }
 
@@ -129,6 +137,26 @@ impl StoreCommandHost {
         resolved
     }
 
+    async fn resolve_files(&self, messages: &[Message]) -> HashMap<Uuid, ResolvedFile> {
+        let Some(resolver) = &self.file_resolver else {
+            return HashMap::new();
+        };
+        let file_ids: HashSet<Uuid> = messages
+            .iter()
+            .flat_map(everruns_core::llm_conversions::extract_file_ids)
+            .collect();
+        match resolver
+            .resolve_files(&file_ids.into_iter().collect::<Vec<_>>())
+            .await
+        {
+            Ok(map) => map,
+            Err(e) => {
+                tracing::warn!("Failed to resolve file attachments: {e}");
+                HashMap::new()
+            }
+        }
+    }
+
     async fn resolve_completion_model(
         &self,
         controls: Option<&Controls>,
@@ -176,6 +204,7 @@ impl StoreCommandHost {
             .with_model_id(model.model.clone());
         let messages = patch_dangling_tool_calls(&request.messages);
         let resolved_images = self.resolve_images(&messages).await;
+        let resolved_files = self.resolve_files(&messages).await;
         let mut llm_messages: Vec<LlmMessage> = request
             .system_prompts
             .iter()
@@ -184,9 +213,10 @@ impl StoreCommandHost {
             .collect();
         for message in &messages {
             let mut llm_message =
-                everruns_core::llm_conversions::llm_message_from_message_with_images(
+                everruns_core::llm_conversions::llm_message_from_message_with_attachments(
                     message,
                     &resolved_images,
+                    &resolved_files,
                 );
             if message.role == MessageRole::User
                 && let Some(actor) = &message.external_actor

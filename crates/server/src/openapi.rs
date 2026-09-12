@@ -383,6 +383,10 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::images::get_image,
         api::images::delete_image,
         api::images::get_thumbnail,
+        api::files::upload_file,
+        api::files::list_files,
+        api::files::get_file,
+        api::files::delete_file,
         // Session Databases
         api::session_databases::create_database,
         api::session_databases::list_databases,
