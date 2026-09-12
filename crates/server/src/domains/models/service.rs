@@ -441,10 +441,18 @@ impl ModelService {
         Ok(())
     }
 
-    /// Elect a new default model from enabled models
+    /// Elect a new default model from enabled models.
+    ///
+    /// Chat models only: an embedding model is enabled like any other row, and
+    /// electing one leaves the org with a default that chat cannot use while
+    /// still *resolving* — so `bootstrap_intelligence` sees a healthy default
+    /// and never repairs it. Found by disabling the org default on a stack
+    /// whose only other enabled model was `text-embedding-3-small`.
     async fn elect_new_default(&self, org_id: i64) -> Result<()> {
         let all_models = self.db.list_all_models(org_id).await?;
-        let new_default = all_models.iter().find(|m| m.enabled);
+        let new_default = all_models
+            .iter()
+            .find(|m| m.enabled && Self::row_is_chat_model(&m.capabilities));
 
         let new_default_id = new_default.map(|m| m.id.uuid());
         self.db
@@ -1019,6 +1027,76 @@ mod tests {
             .unwrap()
             .expect("default elected");
         assert_eq!(default.model_id, "gpt-5.6-terra");
+    }
+
+    /// Disabling the org default must hand the org another *chat* model. An
+    /// embedding model is enabled like any other row, and electing one leaves a
+    /// default that resolves but no chat can use.
+    #[tokio::test]
+    async fn electing_a_new_default_skips_embedding_models() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let org_id = create_second_org(&db).await;
+        let service = ModelService::new(db.clone());
+        let provider_id = create_keyed_provider(&db, org_id).await;
+
+        let chat = discover_model(&db, org_id, provider_id, "gpt-5.6-terra", &["chat"]).await;
+        let embedding = discover_model(
+            &db,
+            org_id,
+            provider_id,
+            "text-embedding-3-small",
+            &["embeddings"],
+        )
+        .await;
+        let doomed = discover_model(&db, org_id, provider_id, "gpt-5.4", &["chat"]).await;
+        // `text-embedding-3-small` is seeded as an enabled favorite, and the
+        // catalog lists favorites first — which is exactly how it won the
+        // election on a real stack.
+        for (id, favorite) in [
+            (chat.id.uuid(), false),
+            (embedding.id.uuid(), true),
+            (doomed.id.uuid(), false),
+        ] {
+            db.update_model(
+                org_id,
+                id,
+                UpdateModel {
+                    enabled: Some(true),
+                    is_favorite: favorite.then_some(true),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        }
+        service.set_default(org_id, doomed.id.uuid()).await.unwrap();
+
+        // Disabling the current default forces a re-election.
+        service
+            .update(
+                &Caller::internal(org_id),
+                doomed.id.uuid(),
+                UpdateModelRequest {
+                    provider_id: None,
+                    model_id: None,
+                    display_name: None,
+                    capabilities: None,
+                    enabled: Some(false),
+                    is_favorite: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        let elected = db
+            .get_default_model(org_id)
+            .await
+            .unwrap()
+            .expect("a new default must be elected");
+        assert_eq!(
+            elected.model_id, "gpt-5.6-terra",
+            "election must skip the embedding model"
+        );
     }
 
     #[tokio::test]
