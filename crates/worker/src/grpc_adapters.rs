@@ -1415,6 +1415,10 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         name: proto_agent.name.clone(),
         display_name: proto_agent.display_name,
         description: non_empty_string(proto_agent.description),
+        // UI-only Platform Chat presentation; not carried on the execution proto.
+        intro_markdown: None,
+        short_description: None,
+        starters: Vec::new(),
         system_prompt: proto_agent.system_prompt,
         default_model_id: default_model_id.map(|u| u.into()),
         harness_id: harness_id.into(),
@@ -1543,6 +1547,10 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
         // UI-only presentation field; not carried on the execution proto.
         icon: None,
         description: non_empty_string(proto_harness.description),
+        // UI-only Platform Chat presentation; not carried on the execution proto.
+        intro_markdown: None,
+        short_description: None,
+        starters: Vec::new(),
         // proto carries a plain string; empty/whitespace means no base prompt.
         system_prompt: Some(proto_harness.system_prompt).filter(|s| !s.trim().is_empty()),
         parent_harness_id: parent_harness_id.map(|u| u.into()),

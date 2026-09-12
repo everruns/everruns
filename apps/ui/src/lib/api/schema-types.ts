@@ -85,6 +85,7 @@ export type OpenApiContextCompactionSkippedData = Schemas["ContextCompactionSkip
 export type OpenApiContextReportContribution = Schemas["ContextReportContribution"];
 export type OpenApiContextReportSection = Schemas["ContextReportSection"];
 export type OpenApiControls = Schemas["Controls"];
+export type OpenApiConversationStarter = Schemas["ConversationStarter"];
 export type OpenApiCopyFileRequest = Schemas["CopyFileRequest"];
 export type OpenApiCostTier = Schemas["CostTier"];
 export type OpenApiCreateAgentCredentialBinding = Schemas["CreateAgentCredentialBinding"];

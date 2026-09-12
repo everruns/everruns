@@ -48,6 +48,8 @@ import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { normalizeCapabilityConfigs } from "@/components/agents/capability-config";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
 import { HarnessSelect } from "@/components/harness/harness-select";
+import type { ConversationStarter } from "@/lib/api/legacy-api-types";
+import { StartersEditor } from "@/components/starters-editor";
 import { HarnessPreview } from "@/components/harnesses/harness-preview";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { NetworkAccessEditor, normalizeNetworkAccess } from "@/components/network-access-editor";
@@ -67,6 +69,8 @@ interface FormData {
   display_name: string;
   name: string;
   description: string;
+  intro_markdown: string;
+  short_description: string;
   system_prompt: string;
   parent_harness_id: string;
   tags: string;
@@ -100,6 +104,8 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
         display_name: "",
         name: "",
         description: "",
+        intro_markdown: "",
+        short_description: "",
         system_prompt: "",
         parent_harness_id: "",
         tags: "",
@@ -110,6 +116,8 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
       display_name: harness.display_name || "",
       name: harness.name,
       description: harness.description || "",
+      intro_markdown: harness.intro_markdown || "",
+      short_description: harness.short_description || "",
       system_prompt: harness.system_prompt || "",
       parent_harness_id: harness.parent_harness_id || "",
       tags: joinTags(harness.tags),
@@ -142,6 +150,9 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
     return normalizeCapabilityConfigs(harness?.capabilities);
   }, [harness?.capabilities]);
 
+  const initialStarters = useMemo(() => harness?.starters ?? [], [harness?.starters]);
+  const [localStarters, setLocalStarters] = useState<ConversationStarter[] | null>(null);
+  const selectedStarters = localStarters ?? initialStarters;
   const [localCapabilities, setLocalCapabilities] = useState<AgentCapabilityConfig[] | null>(null);
   const selectedCapabilities = localCapabilities ?? initialCapabilities;
   const initialFiles = useMemo(() => harness?.initial_files ?? [], [harness?.initial_files]);
@@ -156,7 +167,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const parsed = harnessFormSchema.safeParse(formData);
+    const parsed = harnessFormSchema.safeParse({ ...formData, starters: selectedStarters });
     if (!parsed.success) {
       setFieldErrors(getFieldErrors(parsed.error));
       return;
@@ -183,6 +194,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
       const initialPrompt = (harness?.system_prompt ?? "").trim();
       const nextPrompt = parsed.data.system_prompt ?? "";
       const systemPromptChanged = nextPrompt.trim() !== initialPrompt;
+      const startersChanged = JSON.stringify(selectedStarters) !== JSON.stringify(initialStarters);
 
       await updateHarness.mutateAsync({
         harnessId,
@@ -190,6 +202,9 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
           name: parsed.data.name,
           display_name: parsed.data.display_name,
           description: parsed.data.description,
+          intro_markdown: parsed.data.intro_markdown || null,
+          short_description: parsed.data.short_description || null,
+          ...(startersChanged && { starters: selectedStarters }),
           parent_harness_id: parsed.data.parent_harness_id || null,
           tags,
           default_model_id: parsed.data.default_model_id,
@@ -424,6 +439,65 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                       Press Enter or comma to add a tag. Backspace removes the last tag.
                     </p>
                   </div>
+                </CardContent>
+              </Card>
+
+              <Card id="platform-chat" className="scroll-mt-6">
+                <CardHeader>
+                  <CardTitle>Platform Chat</CardTitle>
+                  <CardDescription>
+                    Intro box, header description, and starters for fresh Platform Chat threads.
+                    Applies when the bound agent leaves the field empty.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="intro_markdown">Intro (Markdown)</Label>
+                    <Textarea
+                      id="intro_markdown"
+                      value={formData.intro_markdown}
+                      onChange={(event) => handleFormChange("intro_markdown", event.target.value)}
+                      placeholder={
+                        "I can triage incidents, dig through logs, and draft the update."
+                      }
+                      disabled={isSaving || isReadOnly}
+                      rows={4}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Shown as an intro box on a fresh thread. Images are allowed. Hidden once the
+                      user inputs.
+                    </p>
+                    {fieldErrors.intro_markdown && (
+                      <p className="text-sm text-destructive">{fieldErrors.intro_markdown}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="short_description">Short description</Label>
+                    <Input
+                      id="short_description"
+                      value={formData.short_description}
+                      onChange={(event) =>
+                        handleFormChange("short_description", event.target.value)
+                      }
+                      placeholder="Triage incidents, dig through logs, draft the update."
+                      disabled={isSaving || isReadOnly}
+                      maxLength={2048}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      One line in simplified Markdown, shown below the chat title once the intro
+                      hides.
+                    </p>
+                    {fieldErrors.short_description && (
+                      <p className="text-sm text-destructive">{fieldErrors.short_description}</p>
+                    )}
+                  </div>
+
+                  <StartersEditor
+                    value={selectedStarters}
+                    onChange={setLocalStarters}
+                    error={fieldErrors.starters}
+                  />
                 </CardContent>
               </Card>
 

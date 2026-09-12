@@ -27,6 +27,7 @@ use utoipa::ToSchema;
 use crate::api::validation::{
     MAX_AGENT_CAPABILITIES, MAX_AGENT_DESCRIPTION_BYTES, MAX_AGENT_NAME_BYTES,
     MAX_AGENT_SYSTEM_PROMPT_BYTES, MAX_INITIAL_FILES, MAX_INITIAL_FILES_TOTAL_BYTES,
+    check_platform_chat_content,
 };
 use everruns_core::InitialFile;
 
@@ -62,6 +63,12 @@ fn validate_create_limits(req: &CreateHarnessRequest) -> Result<(), CommandError
     {
         return Err(CommandError::bad_request("Input exceeds allowed limits"));
     }
+    check_platform_chat_content(
+        req.intro_markdown.as_deref(),
+        req.short_description.as_deref(),
+        &req.starters,
+    )
+    .map_err(CommandError::bad_request)?;
     validate_embedder_metadata_limits(&req.embedder_metadata)?;
     Ok(())
 }
@@ -94,6 +101,12 @@ fn validate_update_limits(req: &UpdateHarnessRequest) -> Result<(), CommandError
     {
         return Err(CommandError::bad_request("Input exceeds allowed limits"));
     }
+    check_platform_chat_content(
+        req.intro_markdown.as_ref().and_then(|v| v.as_deref()),
+        req.short_description.as_ref().and_then(|v| v.as_deref()),
+        req.starters.as_deref().unwrap_or_default(),
+    )
+    .map_err(CommandError::bad_request)?;
     if let Some(metadata) = &req.embedder_metadata {
         validate_embedder_metadata_limits(metadata)?;
     }
@@ -256,6 +269,9 @@ impl Command for CreateHarness {
             display_name: req.display_name,
             icon: None,
             description: req.description,
+            intro_markdown: req.intro_markdown,
+            short_description: req.short_description,
+            starters: serde_json::to_value(&req.starters).unwrap_or(serde_json::json!([])),
             // Normalize an empty/whitespace-only prompt to "no base prompt" so
             // storage matches the documented semantics (the composition layer
             // trims it anyway).
@@ -532,6 +548,11 @@ impl Command for UpdateHarnessCmd {
             name: req.name,
             display_name: req.display_name,
             description: req.description,
+            intro_markdown: req.intro_markdown,
+            short_description: req.short_description,
+            starters: req
+                .starters
+                .map(|starters| serde_json::to_value(&starters).unwrap_or(serde_json::json!([]))),
             // Omitted = leave unchanged; present empty/whitespace = clear to no
             // base prompt; present text = set. Mirrors create-path normalization.
             system_prompt: req
@@ -782,6 +803,9 @@ impl Command for CopyHarness {
             name: copy_name,
             display_name: source.display_name.as_ref().map(|d| format!("{d} (copy)")),
             description: source.description,
+            intro_markdown: None,
+            short_description: None,
+            starters: Vec::new(),
             system_prompt: source.system_prompt,
             parent_harness_id: source.parent_harness_id,
             default_model_id: source.default_model_id,
@@ -993,6 +1017,9 @@ mod tests {
             name: name.to_string(),
             display_name: None,
             description: None,
+            intro_markdown: None,
+            short_description: None,
+            starters: Vec::new(),
             system_prompt: Some("prompt".to_string()),
             parent_harness_id: None,
             default_model_id: None,
@@ -1005,6 +1032,59 @@ mod tests {
         }
     }
 
+    #[test]
+    fn create_rejects_oversize_platform_chat_content() {
+        let mut req = basic_request("intro-limits");
+        req.intro_markdown = Some("x".repeat(25 * 1024));
+        assert!(validate_create_limits(&req).is_err());
+
+        let mut req = basic_request("intro-limits");
+        req.short_description = Some("x".repeat(3 * 1024));
+        assert!(validate_create_limits(&req).is_err());
+
+        let mut req = basic_request("intro-limits");
+        req.starters = (0..9)
+            .map(|i| everruns_platform::ConversationStarter {
+                icon: None,
+                text: format!("starter {i}"),
+            })
+            .collect();
+        assert!(validate_create_limits(&req).is_err());
+
+        let mut req = basic_request("intro-limits");
+        req.starters = vec![everruns_platform::ConversationStarter {
+            icon: None,
+            text: "   ".to_string(),
+        }];
+        assert!(validate_create_limits(&req).is_err());
+    }
+
+    #[test]
+    fn update_accepts_clearing_platform_chat_content() {
+        let req = UpdateHarnessRequest {
+            name: None,
+            display_name: None,
+            description: None,
+            intro_markdown: Some(None),
+            short_description: Some(None),
+            starters: Some(vec![everruns_platform::ConversationStarter {
+                icon: Some("zap".to_string()),
+                text: "Triage the newest P1".to_string(),
+            }]),
+            system_prompt: None,
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: None,
+            capabilities: None,
+            initial_files: None,
+            mcp_servers: None,
+            network_access: None,
+            embedder_metadata: None,
+            status: None,
+        };
+        assert!(validate_update_limits(&req).is_ok());
+    }
+
     fn update_request_with_metadata(
         embedder_metadata: std::collections::HashMap<String, String>,
     ) -> UpdateHarnessRequest {
@@ -1012,6 +1092,9 @@ mod tests {
             name: None,
             display_name: None,
             description: None,
+            intro_markdown: None,
+            short_description: None,
+            starters: None,
             system_prompt: None,
             parent_harness_id: None,
             default_model_id: None,
@@ -1150,6 +1233,9 @@ mod tests {
                 display_name: None,
                 icon: None,
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: None,
                 parent_harness_id: None,
                 default_model_id: None,

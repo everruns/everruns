@@ -54,6 +54,18 @@ export interface AgentHarnessSummary {
   status: "active" | "archived" | "deleted" | "unresolved";
 }
 
+/**
+ * A conversation starter shown on a fresh Platform Chat thread. Selecting one
+ * inserts its text into the composer. `icon` reuses the harness icon name set
+ * (`HarnessIcon`); unknown names fall back to the default glyph.
+ */
+export interface ConversationStarter {
+  /** Optional icon name from the harness icon set (e.g. "zap"). */
+  icon?: string | null;
+  /** Prompt text inserted into the composer when selected. */
+  text: string;
+}
+
 export interface Agent {
   id: string;
   /** Addressable name (slug): lowercase alphanumeric and hyphens (e.g. "customer-support") */
@@ -61,6 +73,22 @@ export interface Agent {
   /** Human-readable display name shown in UI. Falls back to name when absent. */
   display_name: string | null;
   description: string | null;
+  /**
+   * Optional Markdown intro rendered as an intro box at the top of a fresh
+   * Platform Chat thread. Images are allowed. Wins over the harness intro.
+   * Hidden once the user inputs.
+   */
+  intro_markdown?: string | null;
+  /**
+   * Optional one-line description in simplified Markdown, shown below the chat
+   * title once the intro is hidden. Wins over the harness value.
+   */
+  short_description?: string | null;
+  /**
+   * Conversation starters for a fresh Platform Chat thread. Win over the
+   * harness starters when non-empty.
+   */
+  starters?: ConversationStarter[];
   system_prompt: string;
   /** Base execution harness this agent runs on. Required; defaults to the org's built-in `generic` harness. */
   harness_id: string;
@@ -168,6 +196,12 @@ export interface CreateAgentRequest {
   /** Human-readable display name shown in UI */
   display_name?: string;
   description?: string;
+  /** Markdown intro for fresh Platform Chat threads (agent wins). */
+  intro_markdown?: string | null;
+  /** One-line description in simplified Markdown (agent wins). */
+  short_description?: string | null;
+  /** Conversation starters (agent wins when non-empty). */
+  starters?: ConversationStarter[];
   system_prompt: string;
   /** Base execution harness (id). Mutually exclusive with `harness_name`. Omit both to default to the org's built-in `generic` harness. */
   harness_id?: string;
@@ -190,6 +224,12 @@ export interface UpdateAgentRequest {
   /** Human-readable display name shown in UI */
   display_name?: string;
   description?: string;
+  /** Markdown intro; omit to leave unchanged, null clears. */
+  intro_markdown?: string | null;
+  /** One-line description; omit to leave unchanged, null clears. */
+  short_description?: string | null;
+  /** Conversation starters; omit to leave unchanged, empty clears. */
+  starters?: ConversationStarter[] | null;
   system_prompt?: string;
   /** Base execution harness (id). Omit to leave unchanged; never clearable to null. Mutually exclusive with `harness_name`. */
   harness_id?: string;
@@ -346,6 +386,22 @@ export interface Harness {
   /** Display glyph name (e.g. "message-circle"). Set for built-in harnesses; absent otherwise. */
   icon?: string | null;
   description: string | null;
+  /**
+   * Optional Markdown intro rendered as an intro box at the top of a fresh
+   * Platform Chat thread. Images are allowed. The agent intro wins over the
+   * harness intro. Hidden once the user inputs.
+   */
+  intro_markdown?: string | null;
+  /**
+   * Optional one-line description in simplified Markdown, shown below the chat
+   * title once the intro is hidden. The agent value wins.
+   */
+  short_description?: string | null;
+  /**
+   * Conversation starters for a fresh Platform Chat thread. The agent's
+   * starters win when non-empty, otherwise the harness's apply.
+   */
+  starters?: ConversationStarter[];
   /** Base system prompt. Null/absent means the harness contributes no base prompt. */
   system_prompt?: string | null;
   parent_harness_id: string | null;
@@ -376,6 +432,12 @@ export interface CreateHarnessRequest {
   /** Human-readable display name shown in UI */
   display_name?: string;
   description?: string;
+  /** Markdown intro for fresh Platform Chat threads (agent wins). */
+  intro_markdown?: string | null;
+  /** One-line description in simplified Markdown (agent wins). */
+  short_description?: string | null;
+  /** Conversation starters (agent wins when non-empty). */
+  starters?: ConversationStarter[];
   /** Optional base system prompt. Omit for a harness with no base prompt. */
   system_prompt?: string;
   parent_harness_id?: string;
@@ -394,6 +456,12 @@ export interface UpdateHarnessRequest {
   /** Human-readable display name shown in UI */
   display_name?: string;
   description?: string;
+  /** Markdown intro; omit to leave unchanged, null clears. */
+  intro_markdown?: string | null;
+  /** One-line description; omit to leave unchanged, null clears. */
+  short_description?: string | null;
+  /** Conversation starters; omit to leave unchanged, empty clears. */
+  starters?: ConversationStarter[] | null;
   system_prompt?: string;
   parent_harness_id?: string | null;
   default_model_id?: string;

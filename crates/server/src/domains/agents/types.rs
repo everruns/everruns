@@ -35,6 +35,21 @@ pub struct CreateAgentRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Handles customer inquiries and support tickets")]
     pub description: Option<String>,
+    /// Markdown intro shown as an intro box on a fresh Platform Chat thread.
+    /// Images are allowed. Wins over the harness intro. Hidden once the user
+    /// inputs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Hey, I'm Ava. Ask me anything about your account.")]
+    pub intro_markdown: Option<String>,
+    /// One-line description in simplified Markdown, shown below the chat title
+    /// once the intro is hidden. Wins over the harness value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Answers account questions in seconds.")]
+    pub short_description: Option<String>,
+    /// Conversation starters for a fresh Platform Chat thread. Win over the
+    /// harness starters when non-empty. `icon` reuses the harness icon set.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub starters: Vec<everruns_platform::ConversationStarter>,
     /// The system prompt that defines the agent's behavior and capabilities.
     /// This is sent as the first message in every conversation.
     #[schema(example = "You are a helpful customer support agent. Be polite and professional.")]
@@ -111,6 +126,20 @@ pub struct UpdateAgentRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Updated description for the agent")]
     pub description: Option<String>,
+    /// Markdown intro for fresh Platform Chat threads. Outer `None` leaves
+    /// unchanged; inner `None` clears.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Hey, I'm Ava. Ask me anything about your account.")]
+    pub intro_markdown: Option<Option<String>>,
+    /// One-line description in simplified Markdown. Outer `None` leaves
+    /// unchanged; inner `None` clears.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Answers account questions in seconds.")]
+    pub short_description: Option<Option<String>>,
+    /// Conversation starters; omit to leave unchanged, send empty to clear.
+    /// `icon` reuses the harness icon name set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub starters: Option<Vec<everruns_platform::ConversationStarter>>,
     /// The system prompt that defines the agent's behavior and capabilities.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "You are an updated helpful assistant.")]

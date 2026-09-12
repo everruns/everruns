@@ -132,8 +132,9 @@ pub use agent::{
 #[cfg(feature = "openapi")]
 pub use capability_schema::CapabilityRefSchema;
 pub use harness::{
-    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, Harness,
-    HarnessStatus, harness_for_role, merge_harness, merge_harness_chain, resolve_execution_harness,
+    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, ConversationStarter,
+    Harness, HarnessStatus, harness_for_role, merge_harness, merge_harness_chain,
+    resolve_execution_harness,
 };
 pub use host_extension::{PlatformHostBackendsExt, PlatformStoreFactory, PlatformToolAugmentor};
 pub use knowledge_store::{

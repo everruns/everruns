@@ -4,7 +4,7 @@
 //! platform tool execution path, not in harness amputation.
 
 use everruns_platform::{
-    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole,
+    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, ConversationStarter,
 };
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
@@ -17,6 +17,24 @@ pub fn definition() -> BuiltInHarnessDefinition {
     .with_parent_name("base")
     .with_tags(["chat", "built-in"])
     .with_roles([BuiltInHarnessRole::Chat])
+    .with_intro(
+        "Hey, I'm **Platform Chat**. I know your agents, harnesses, models, and runs —\nask me anything, or start with one of these:",
+    )
+    .with_short_description("Knows your agents, harnesses, models, and runs.")
+    .with_starters([
+        ConversationStarter {
+            icon: Some("zap".to_string()),
+            text: "What can you do?".to_string(),
+        },
+        ConversationStarter {
+            icon: Some("bot".to_string()),
+            text: "Show me my agents".to_string(),
+        },
+        ConversationStarter {
+            icon: Some("activity".to_string()),
+            text: "What ran recently?".to_string(),
+        },
+    ])
     .with_capabilities([
         BuiltInCapabilityDefinition::new("platform"),
         BuiltInCapabilityDefinition::new("btw"),

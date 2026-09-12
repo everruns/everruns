@@ -22,6 +22,8 @@ import { ChatPinButton } from "@/components/chat/chat-pin-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useUpdateSession } from "@/hooks/use-sessions";
+import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
+import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 
 function ThreadTitle({ session, title }: { session: Session; title: string }) {
   const [editing, setEditing] = useState(false);
@@ -108,6 +110,8 @@ export function ChatThreadHeader({
   title,
   counterpart,
   counterpartHref,
+  platformIntro,
+  platformDescription,
 }: {
   session: Session;
   /** Display title, already resolved through the thread-title fallbacks. */
@@ -116,7 +120,20 @@ export function ChatThreadHeader({
   counterpart?: string;
   /** Optional linked rendering of the counterpart, e.g. through to the agent. */
   counterpartHref?: ReactNode;
+  /**
+   * Platform Chat intro (Markdown). While it is visible in the intro box
+   * below, the header keeps the counterpart line; once the intro hides (the
+   * user inputs), the header swaps to the short description.
+   */
+  platformIntro?: string | null;
+  /** One-line Platform Chat description in simplified Markdown (agent wins). */
+  platformDescription?: string | null;
 }) {
+  // The intro box shows on a fresh thread; once the user inputs it hides and
+  // the header takes over with the short description, animated below.
+  const { chatEvents } = useSessionContext();
+  const introVisible = !!platformIntro && chatEvents.length === 0;
+  const showDescription = !!platformDescription && !introVisible;
   return (
     <div className="flex items-center gap-3 border-b border-border/70 bg-background/70 px-4 py-3 backdrop-blur-[1px] sm:px-6">
       <AgentAvatar name={counterpart} />
@@ -129,9 +146,23 @@ export function ChatThreadHeader({
             </span>
           )}
         </span>
-        <span className="truncate text-xs text-muted-foreground">
-          {counterpartHref ?? counterpart ?? "No agent bound"}
+        <span
+          className="grid transition-[grid-template-rows] duration-300 ease-out"
+          style={{ gridTemplateRows: showDescription ? "1fr" : "0fr" }}
+        >
+          <span className="min-h-0 overflow-hidden">
+            {platformDescription ? (
+              <InlineStreamdownMessage className="truncate text-xs text-muted-foreground">
+                {platformDescription}
+              </InlineStreamdownMessage>
+            ) : null}
+          </span>
         </span>
+        {!showDescription ? (
+          <span className="truncate text-xs text-muted-foreground">
+            {counterpartHref ?? counterpart ?? "No agent bound"}
+          </span>
+        ) : null}
       </div>
       <div className="ml-auto flex items-center gap-2">
         <ChatPinButton session={session} showLabel />

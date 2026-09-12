@@ -62,6 +62,8 @@ import {
   parseTagList,
 } from "@/lib/form-validation";
 import type { AgentCapabilityConfig, InitialFile, NetworkAccessList } from "@/lib/api/types";
+import type { ConversationStarter } from "@/lib/api/legacy-api-types";
+import { StartersEditor } from "@/components/starters-editor";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 import { joinTags } from "@/lib/tags";
 
@@ -69,6 +71,8 @@ interface FormData {
   display_name: string;
   name: string;
   description: string;
+  intro_markdown: string;
+  short_description: string;
   system_prompt: string;
   tags: string;
   harness_id: string;
@@ -107,6 +111,8 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
         display_name: "",
         name: "",
         description: "",
+        intro_markdown: "",
+        short_description: "",
         system_prompt: "",
         tags: "",
         harness_id: "",
@@ -117,6 +123,8 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
       display_name: agent.display_name || "",
       name: agent.name,
       description: agent.description || "",
+      intro_markdown: agent.intro_markdown || "",
+      short_description: agent.short_description || "",
       system_prompt: agent.system_prompt,
       tags: joinTags(agent.tags),
       harness_id: agent.effective_harness?.id || agent.harness_id || "",
@@ -147,6 +155,9 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
 
   const [localCapabilities, setLocalCapabilities] = useState<AgentCapabilityConfig[] | null>(null);
   const selectedCapabilities = localCapabilities ?? initialCapabilities;
+  const initialStarters = useMemo(() => agent?.starters ?? [], [agent?.starters]);
+  const [localStarters, setLocalStarters] = useState<ConversationStarter[] | null>(null);
+  const selectedStarters = localStarters ?? initialStarters;
   const initialFiles = useMemo(() => agent?.initial_files ?? [], [agent?.initial_files]);
   const [localInitialFiles, setLocalInitialFiles] = useState<InitialFile[] | null>(null);
   const selectedInitialFiles = localInitialFiles ?? initialFiles;
@@ -161,7 +172,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
   // Submit handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const parsed = agentFormSchema.safeParse(formData);
+    const parsed = agentFormSchema.safeParse({ ...formData, starters: selectedStarters });
     if (!parsed.success) {
       setFieldErrors(getFieldErrors(parsed.error));
       return;
@@ -184,6 +195,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
         JSON.stringify(normalizeNetworkAccess(localNetworkAccess)) !==
           JSON.stringify(normalizeNetworkAccess(initialNetworkAccess));
 
+      const startersChanged = JSON.stringify(selectedStarters) !== JSON.stringify(initialStarters);
       // Update agent (capabilities are now part of the agent resource)
       await updateAgent.mutateAsync({
         agentId,
@@ -191,6 +203,9 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
           name: parsed.data.name,
           display_name: parsed.data.display_name,
           description: parsed.data.description,
+          intro_markdown: parsed.data.intro_markdown || null,
+          short_description: parsed.data.short_description || null,
+          ...(startersChanged && { starters: selectedStarters }),
           system_prompt: parsed.data.system_prompt,
           tags,
           ...(formChanges.harness_id !== undefined && {
@@ -424,6 +439,63 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                       Press Enter or comma to add a tag. Backspace removes the last tag.
                     </p>
                   </div>
+                </CardContent>
+              </Card>
+
+              <Card id="platform-chat" className="scroll-mt-6">
+                <CardHeader>
+                  <CardTitle>Platform Chat</CardTitle>
+                  <CardDescription>
+                    Intro box, header description, and starters for fresh Platform Chat threads. The
+                    agent values win over the harness values.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="intro_markdown">Intro (Markdown)</Label>
+                    <Textarea
+                      id="intro_markdown"
+                      value={formData.intro_markdown}
+                      onChange={(event) => handleFormChange("intro_markdown", event.target.value)}
+                      placeholder={"Hey, I'm Ava. Ask me anything about your account."}
+                      disabled={isSaving || isReadOnly}
+                      rows={4}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Shown as an intro box on a fresh thread. Images are allowed. Hidden once the
+                      user inputs.
+                    </p>
+                    {fieldErrors.intro_markdown && (
+                      <p className="text-sm text-destructive">{fieldErrors.intro_markdown}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="short_description">Short description</Label>
+                    <Input
+                      id="short_description"
+                      value={formData.short_description}
+                      onChange={(event) =>
+                        handleFormChange("short_description", event.target.value)
+                      }
+                      placeholder="Answers account questions in seconds."
+                      disabled={isSaving || isReadOnly}
+                      maxLength={2048}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      One line in simplified Markdown, shown below the chat title once the intro
+                      hides.
+                    </p>
+                    {fieldErrors.short_description && (
+                      <p className="text-sm text-destructive">{fieldErrors.short_description}</p>
+                    )}
+                  </div>
+
+                  <StartersEditor
+                    value={selectedStarters}
+                    onChange={setLocalStarters}
+                    error={fieldErrors.starters}
+                  />
                 </CardContent>
               </Card>
 

@@ -30,6 +30,21 @@ pub struct CreateHarnessRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Research harness with planning and web capabilities")]
     pub description: Option<String>,
+    /// Markdown intro shown as an intro box on a fresh Platform Chat thread.
+    /// Images are allowed. The agent intro wins. Hidden once the user inputs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "I triage incidents, dig through logs, and draft the update.")]
+    pub intro_markdown: Option<String>,
+    /// One-line description in simplified Markdown, shown below the chat title
+    /// once the intro is hidden. The agent value wins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Triage incidents, dig through logs, draft the update.")]
+    pub short_description: Option<String>,
+    /// Conversation starters for a fresh Platform Chat thread. Selecting one
+    /// inserts its text into the composer. The agent starters win when
+    /// non-empty. `icon` reuses the harness icon name set.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub starters: Vec<everruns_platform::ConversationStarter>,
     /// Base system prompt defining the harness's behavior. Optional: omit (or
     /// send an empty string) to contribute no base prompt, in which case the
     /// effective prompt comes from the parent harness, agent, session, and
@@ -83,6 +98,20 @@ pub struct UpdateHarnessRequest {
     /// Human-readable description. Safe to render in user-facing messages.
     #[schema(example = "Research harness with web tools")]
     pub description: Option<String>,
+    /// Markdown intro shown as an intro box on a fresh Platform Chat thread.
+    /// Outer `None` leaves unchanged; inner `None` clears.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "I triage incidents, dig through logs, and draft the update.")]
+    pub intro_markdown: Option<Option<String>>,
+    /// One-line description in simplified Markdown. Outer `None` leaves
+    /// unchanged; inner `None` clears.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Triage incidents, dig through logs, draft the update.")]
+    pub short_description: Option<Option<String>>,
+    /// Conversation starters; omit to leave unchanged, send empty to clear.
+    /// `icon` reuses the harness icon name set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub starters: Option<Vec<everruns_platform::ConversationStarter>>,
     /// New system prompt the harness contributes to sessions; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "You are a research assistant. Cite sources verbatim.")]
