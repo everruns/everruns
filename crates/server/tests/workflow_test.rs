@@ -1667,6 +1667,14 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
 
     // Cleanup
     println!("\nCleaning up...");
+    // `sessions.model_id` pins the model, so the session goes first or the
+    // model/provider delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
     cleanup_agent(&client, &agent.public_id).await;
 
     cleanup_delete(
@@ -2231,6 +2239,12 @@ async fn test_post_message_wait_returns_completed_turn() {
         .await
         .expect("Failed to create LlmSim model");
     assert_eq!(model_create.status(), 201);
+    // Keep the platform model id: `model_id` above is the provider-side model
+    // string, which the delete endpoint does not accept.
+    let model: Model = model_create
+        .json()
+        .await
+        .expect("Failed to parse LlmSim model");
 
     let agent_name = "wait-test-agent";
     let agent_response = client
@@ -2288,6 +2302,29 @@ async fn test_post_message_wait_returns_completed_turn() {
     let messages = body["messages"].as_array().expect("messages array");
     assert!(!messages.is_empty(), "waited turn returns assistant output");
     println!("✓ POST /messages?wait=true returns completed turn");
+
+    // Cleanup: this test created a provider, a model, an agent and a session,
+    // and cleaned up none of them — so a second run against the same database
+    // failed on a 409 for the agent name it had already taken (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/models/{}", API_BASE_URL, model.id),
+        "model",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 }
 
 /// Test that tool calls are not duplicated during workflow execution.
@@ -2539,6 +2576,14 @@ async fn test_no_duplicate_tool_calls() {
 
     // Cleanup
     println!("\nCleaning up...");
+    // `sessions.model_id` pins the model, so the session goes first or the
+    // model/provider delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
     cleanup_agent(&client, &agent.public_id).await;
     cleanup_delete(
         &client,
@@ -4120,6 +4165,14 @@ async fn test_agent_execution_openai_with_tool_calls() {
 
     // Cleanup first before assertions
     println!("\nCleaning up...");
+    // `sessions.model_id` pins the model, so the session goes first or the
+    // model/provider delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
     cleanup_agent(&client, &agent.public_id).await;
     cleanup_delete(
         &client,
@@ -4374,6 +4427,14 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
 
     // Cleanup first before assertions
     println!("\nCleaning up...");
+    // `sessions.model_id` pins the model, so the session goes first or the
+    // model/provider delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
     cleanup_agent(&client, &agent.public_id).await;
     cleanup_delete(
         &client,
@@ -5406,6 +5467,14 @@ async fn test_anthropic_extended_thinking() {
 
     // Cleanup
     println!("\nCleaning up...");
+    // `sessions.model_id` pins the model, so the session goes first or the
+    // model/provider delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
     cleanup_agent(&client, &agent.public_id).await;
     cleanup_delete(
         &client,
@@ -5773,6 +5842,14 @@ async fn test_anthropic_extended_thinking_with_tools() {
 
     // Cleanup
     println!("\nCleaning up...");
+    // `sessions.model_id` pins the model, so the session goes first or the
+    // model/provider delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
     cleanup_agent(&client, &agent.public_id).await;
     cleanup_delete(
         &client,
