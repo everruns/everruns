@@ -18804,6 +18804,7 @@
             ],
             "format": "int64",
             "description": "Tokens of headroom remaining when the install completed, when measurable.",
+            "example": 8192,
             "minimum": 0
           },
           "bytes_after": {
@@ -18831,6 +18832,7 @@
             ],
             "format": "int32",
             "description": "Cache-creation tokens written after compaction, when reported.",
+            "example": 1024,
             "minimum": 0
           },
           "cache_read_tokens": {
@@ -18840,6 +18842,7 @@
             ],
             "format": "int32",
             "description": "Cached input tokens read after compaction, when reported.",
+            "example": 90210,
             "minimum": 0
           },
           "checkpoint_id": {
@@ -18847,14 +18850,16 @@
               "string",
               "null"
             ],
-            "description": "Durable checkpoint installed by this compaction, when applicable."
+            "description": "Durable checkpoint installed by this compaction, when applicable.",
+            "example": "01934c2f-9f2e-7c1b-8d3e-4f5a6b7c8d9e"
           },
           "driver": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Local driver identifier, when known."
+            "description": "Local driver identifier, when known.",
+            "example": "openai-chat"
           },
           "duration_ms": {
             "type": "integer",
@@ -18870,18 +18875,21 @@
           "messages_before": {
             "type": "integer",
             "description": "Number of messages before compaction.",
+            "example": 120,
             "minimum": 0
           },
           "model": {
             "type": "string",
-            "description": "Model that performed the compaction."
+            "description": "Model that performed the compaction.",
+            "example": "gpt-5-mini"
           },
           "provider": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Provider backend (e.g. \"openai\"), when known."
+            "description": "Provider backend (e.g. \"openai\"), when known.",
+            "example": "openai"
           },
           "source_sequence": {
             "type": [
@@ -18889,7 +18897,8 @@
               "null"
             ],
             "format": "int64",
-            "description": "Source message sequence the compaction ran at, when known."
+            "description": "Source message sequence the compaction ran at, when known.",
+            "example": 481
           },
           "steps": {
             "type": "array",
@@ -18918,6 +18927,7 @@
             ],
             "format": "int64",
             "description": "Estimated or provider-reported input tokens before compaction.",
+            "example": 184320,
             "minimum": 0
           },
           "trigger": {
@@ -18942,6 +18952,7 @@
             ],
             "format": "int64",
             "description": "Tokens of headroom remaining when the attempt started, when measurable.",
+            "example": 8192,
             "minimum": 0
           },
           "bytes_before": {
@@ -18960,6 +18971,7 @@
             ],
             "format": "int32",
             "description": "Cache-creation tokens written before compaction, when reported.",
+            "example": 1024,
             "minimum": 0
           },
           "cache_read_tokens": {
@@ -18969,6 +18981,7 @@
             ],
             "format": "int32",
             "description": "Cached input tokens read before compaction, when reported.",
+            "example": 90210,
             "minimum": 0
           },
           "driver": {
@@ -18976,23 +18989,27 @@
               "string",
               "null"
             ],
-            "description": "Local driver identifier, when known."
+            "description": "Local driver identifier, when known.",
+            "example": "openai-chat"
           },
           "messages_before": {
             "type": "integer",
             "description": "Number of messages before compaction.",
+            "example": 120,
             "minimum": 0
           },
           "model": {
             "type": "string",
-            "description": "Model performing the compaction."
+            "description": "Model performing the compaction.",
+            "example": "gpt-5-mini"
           },
           "provider": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Provider backend (e.g. \"openai\"), when known."
+            "description": "Provider backend (e.g. \"openai\"), when known.",
+            "example": "openai"
           },
           "reason": {
             "$ref": "#/components/schemas/CompactionReason",
@@ -19004,11 +19021,13 @@
               "null"
             ],
             "format": "int64",
-            "description": "Source message sequence the attempt ran at, when known."
+            "description": "Source message sequence the attempt ran at, when known.",
+            "example": 481
           },
           "strategy": {
             "type": "string",
-            "description": "Strategy requested (may differ from strategy_used in the completed event)."
+            "description": "Strategy requested (may differ from strategy_used in the completed event).",
+            "example": "summary_then_trim"
           },
           "tokens_before": {
             "type": [
@@ -19017,6 +19036,7 @@
             ],
             "format": "int64",
             "description": "Estimated or provider-reported input tokens before compaction.",
+            "example": 184320,
             "minimum": 0
           },
           "trigger": {
@@ -19046,6 +19066,7 @@
             ],
             "format": "int64",
             "description": "Tokens of headroom remaining, when measurable.",
+            "example": 8192,
             "minimum": 0
           },
           "checkpoint_id": {
@@ -19053,34 +19074,40 @@
               "string",
               "null"
             ],
-            "description": "Durable checkpoint being installed when the failure hit, if any."
+            "description": "Durable checkpoint being installed when the failure hit, if any.",
+            "example": "01934c2f-9f2e-7c1b-8d3e-4f5a6b7c8d9e"
           },
           "driver": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Local driver identifier, when known."
+            "description": "Local driver identifier, when known.",
+            "example": "openai-chat"
           },
           "error": {
             "type": "string",
-            "description": "Human-readable failure."
+            "description": "Human-readable failure.",
+            "example": "summarizer request failed: upstream timed out"
           },
           "messages_before": {
             "type": "integer",
             "description": "Number of messages before the attempt.",
+            "example": 120,
             "minimum": 0
           },
           "model": {
             "type": "string",
-            "description": "Model the attempt ran under."
+            "description": "Model the attempt ran under.",
+            "example": "gpt-5-mini"
           },
           "provider": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Provider backend (e.g. \"openai\"), when known."
+            "description": "Provider backend (e.g. \"openai\"), when known.",
+            "example": "openai"
           },
           "reason": {
             "$ref": "#/components/schemas/CompactionReason",
@@ -19092,7 +19119,8 @@
               "null"
             ],
             "format": "int64",
-            "description": "Source message sequence the attempt ran at, when known."
+            "description": "Source message sequence the attempt ran at, when known.",
+            "example": 481
           },
           "stage": {
             "$ref": "#/components/schemas/CompactionFailStage",
@@ -19100,12 +19128,14 @@
           },
           "strategy": {
             "type": "string",
-            "description": "Strategy requested."
+            "description": "Strategy requested.",
+            "example": "summary_then_trim"
           },
           "tokens_before": {
             "type": "integer",
             "format": "int64",
             "description": "Estimated or provider-reported input tokens before the attempt.",
+            "example": 184320,
             "minimum": 0
           },
           "trigger": {
@@ -19134,6 +19164,7 @@
             ],
             "format": "int64",
             "description": "Tokens of headroom remaining, when measurable.",
+            "example": 8192,
             "minimum": 0
           },
           "driver": {
@@ -19141,23 +19172,27 @@
               "string",
               "null"
             ],
-            "description": "Local driver identifier, when known."
+            "description": "Local driver identifier, when known.",
+            "example": "openai-chat"
           },
           "messages_observed": {
             "type": "integer",
             "description": "Number of messages observed.",
+            "example": 120,
             "minimum": 0
           },
           "model": {
             "type": "string",
-            "description": "Model the evaluation ran under."
+            "description": "Model the evaluation ran under.",
+            "example": "gpt-5-mini"
           },
           "provider": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Provider backend (e.g. \"openai\"), when known."
+            "description": "Provider backend (e.g. \"openai\"), when known.",
+            "example": "openai"
           },
           "reason": {
             "$ref": "#/components/schemas/CompactionReason",
@@ -19173,16 +19208,19 @@
               "null"
             ],
             "format": "int64",
-            "description": "Source message sequence the evaluation ran at, when known."
+            "description": "Source message sequence the evaluation ran at, when known.",
+            "example": 481
           },
           "strategy": {
             "type": "string",
-            "description": "Strategy requested."
+            "description": "Strategy requested.",
+            "example": "summary_then_trim"
           },
           "tokens_observed": {
             "type": "integer",
             "format": "int64",
             "description": "Estimated input tokens observed at evaluation time.",
+            "example": 184320,
             "minimum": 0
           },
           "trigger": {

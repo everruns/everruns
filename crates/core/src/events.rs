@@ -2499,30 +2499,41 @@ pub enum CompactionFailStage {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ContextCompactionSkippedData {
     /// Why compaction was evaluated.
+    #[cfg_attr(feature = "openapi", schema(example = "proactive_budget"))]
     pub reason: CompactionReason,
     /// Whether window/budget or cost pressure triggered the evaluation.
+    #[cfg_attr(feature = "openapi", schema(example = "context_budget"))]
     pub trigger: CompactionTrigger,
     /// Why nothing was installed.
+    #[cfg_attr(feature = "openapi", schema(example = "cooldown_active"))]
     pub skip_reason: CompactionSkipReason,
     /// Strategy requested.
+    #[cfg_attr(feature = "openapi", schema(example = "summary_then_trim"))]
     pub strategy: String,
     /// Model the evaluation ran under.
+    #[cfg_attr(feature = "openapi", schema(example = "gpt-5-mini"))]
     pub model: String,
     /// Provider backend (e.g. "openai"), when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "openai"))]
     pub provider: Option<String>,
     /// Local driver identifier, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "openai-chat"))]
     pub driver: Option<String>,
     /// Estimated input tokens observed at evaluation time.
+    #[cfg_attr(feature = "openapi", schema(example = 184320))]
     pub tokens_observed: u64,
     /// Tokens of headroom remaining, when measurable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 8192))]
     pub budget_remaining_tokens: Option<u64>,
     /// Source message sequence the evaluation ran at, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 481))]
     pub source_sequence: Option<i64>,
     /// Number of messages observed.
+    #[cfg_attr(feature = "openapi", schema(example = 120))]
     pub messages_observed: usize,
 }
 
@@ -2534,35 +2545,54 @@ pub struct ContextCompactionSkippedData {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ContextCompactionFailedData {
     /// Why compaction was attempted.
+    #[cfg_attr(feature = "openapi", schema(example = "proactive_budget"))]
     pub reason: CompactionReason,
     /// Whether window/budget or cost pressure triggered the attempt.
+    #[cfg_attr(feature = "openapi", schema(example = "context_budget"))]
     pub trigger: CompactionTrigger,
     /// Which stage failed.
+    #[cfg_attr(feature = "openapi", schema(example = "summarization"))]
     pub stage: CompactionFailStage,
     /// Human-readable failure.
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "summarizer request failed: upstream timed out")
+    )]
     pub error: String,
     /// Strategy requested.
+    #[cfg_attr(feature = "openapi", schema(example = "summary_then_trim"))]
     pub strategy: String,
     /// Model the attempt ran under.
+    #[cfg_attr(feature = "openapi", schema(example = "gpt-5-mini"))]
     pub model: String,
     /// Provider backend (e.g. "openai"), when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "openai"))]
     pub provider: Option<String>,
     /// Local driver identifier, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "openai-chat"))]
     pub driver: Option<String>,
     /// Estimated or provider-reported input tokens before the attempt.
+    #[cfg_attr(feature = "openapi", schema(example = 184320))]
     pub tokens_before: u64,
     /// Tokens of headroom remaining, when measurable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 8192))]
     pub budget_remaining_tokens: Option<u64>,
     /// Source message sequence the attempt ran at, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 481))]
     pub source_sequence: Option<i64>,
     /// Number of messages before the attempt.
+    #[cfg_attr(feature = "openapi", schema(example = 120))]
     pub messages_before: usize,
     /// Durable checkpoint being installed when the failure hit, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "01934c2f-9f2e-7c1b-8d3e-4f5a6b7c8d9e")
+    )]
     pub checkpoint_id: Option<String>,
 }
 
@@ -2571,40 +2601,52 @@ pub struct ContextCompactionFailedData {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ContextCompactingData {
     /// Why compaction was triggered.
+    #[cfg_attr(feature = "openapi", schema(example = "proactive_budget"))]
     pub reason: CompactionReason,
     /// Strategy requested (may differ from strategy_used in the completed event).
+    #[cfg_attr(feature = "openapi", schema(example = "summary_then_trim"))]
     pub strategy: String,
     /// Number of messages before compaction.
+    #[cfg_attr(feature = "openapi", schema(example = 120))]
     pub messages_before: usize,
     /// Estimated or provider-reported input tokens before compaction.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 184320))]
     pub tokens_before: Option<u64>,
     /// Serialized request-context bytes before compaction, when measurable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bytes_before: Option<u64>,
     /// What triggered this attempt: context-window budget or cost pressure.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(example = "context_budget"))]
     pub trigger: CompactionTrigger,
     /// Model performing the compaction.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(example = "gpt-5-mini"))]
     pub model: String,
     /// Provider backend (e.g. "openai"), when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "openai"))]
     pub provider: Option<String>,
     /// Local driver identifier, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "openai-chat"))]
     pub driver: Option<String>,
     /// Tokens of headroom remaining when the attempt started, when measurable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 8192))]
     pub budget_remaining_tokens: Option<u64>,
     /// Source message sequence the attempt ran at, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 481))]
     pub source_sequence: Option<i64>,
     /// Cached input tokens read before compaction, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 90210))]
     pub cache_read_tokens: Option<u32>,
     /// Cache-creation tokens written before compaction, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 1024))]
     pub cache_creation_tokens: Option<u32>,
 }
 
@@ -2626,15 +2668,21 @@ pub struct CompactionStepData {
 pub struct ContextCompactedData {
     /// Durable checkpoint installed by this compaction, when applicable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "01934c2f-9f2e-7c1b-8d3e-4f5a6b7c8d9e")
+    )]
     pub checkpoint_id: Option<String>,
     /// Combined strategy description (e.g., "observation_masking+native").
     pub strategy_used: String,
     /// Number of messages before compaction.
+    #[cfg_attr(feature = "openapi", schema(example = 120))]
     pub messages_before: usize,
     /// Number of messages after compaction.
     pub messages_after: usize,
     /// Estimated or provider-reported input tokens before compaction.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 184320))]
     pub tokens_before: Option<u64>,
     /// Provider-reported output tokens after compaction, when available.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2652,27 +2700,35 @@ pub struct ContextCompactedData {
     pub steps: Vec<CompactionStepData>,
     /// What triggered this compaction: context-window budget or cost pressure.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(example = "context_budget"))]
     pub trigger: CompactionTrigger,
     /// Model that performed the compaction.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(example = "gpt-5-mini"))]
     pub model: String,
     /// Provider backend (e.g. "openai"), when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "openai"))]
     pub provider: Option<String>,
     /// Local driver identifier, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "openai-chat"))]
     pub driver: Option<String>,
     /// Tokens of headroom remaining when the install completed, when measurable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 8192))]
     pub budget_remaining_tokens: Option<u64>,
     /// Source message sequence the compaction ran at, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 481))]
     pub source_sequence: Option<i64>,
     /// Cached input tokens read after compaction, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 90210))]
     pub cache_read_tokens: Option<u32>,
     /// Cache-creation tokens written after compaction, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 1024))]
     pub cache_creation_tokens: Option<u32>,
 }
 
