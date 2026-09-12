@@ -324,7 +324,7 @@ impl ModelService {
         // Admin reads must see disabled rows: `get_model` is the resolution
         // path and filters `enabled = TRUE`, so using it here made enabling a
         // disabled model 404 (every discovered model starts disabled).
-        let existing = match self.db.get_model_with_provider(caller.org_id, id).await? {
+        let existing = match self.db.get_model_for_mutation(caller.org_id, id).await? {
             Some(row) => row,
             None => return Ok(None),
         };
@@ -387,14 +387,16 @@ impl ModelService {
     }
 
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
-        // Disabled rows included on purpose, see `update`: otherwise the
-        // managed-catalog guard below is silently skipped for them.
-        if let Some(model) = self.db.get_model_with_provider(caller.org_id, id).await? {
-            let provider = self
-                .get_provider(caller.org_id, model.provider_id.uuid())
-                .await?;
-            Self::require_unmanaged_provider(&provider)?;
-        }
+        // Read the model independently of its provider so a missing or foreign
+        // provider cannot hide an org-owned row from the policy precondition.
+        let model = match self.db.get_model_for_mutation(caller.org_id, id).await? {
+            Some(row) => row,
+            None => return Ok(false),
+        };
+        let provider = self
+            .get_provider(caller.org_id, model.provider_id.uuid())
+            .await?;
+        Self::require_unmanaged_provider(&provider)?;
 
         // Before deleting, check if this was the org default
         let was_default = self.is_org_default(caller.org_id, id).await?;
@@ -803,6 +805,26 @@ mod tests {
         .await
         .unwrap()
         .id
+    }
+
+    async fn create_model_with_foreign_provider(db: &StorageBackend) -> ModelRow {
+        let foreign_org_id = create_second_org(db).await;
+        let foreign_provider_id = create_provider(db, foreign_org_id).await;
+        db.create_model(
+            DEFAULT_ORG_ID,
+            CreateModelRow {
+                provider_id: foreign_provider_id,
+                model_id: "cross-org-model".to_string(),
+                display_name: "Cross-org Model".to_string(),
+                capabilities: vec!["chat".to_string()],
+                enabled: true,
+                is_favorite: false,
+                source: "manual".to_string(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap()
     }
 
     async fn mark_provider_managed(db: &StorageBackend, provider_id: ProviderId) {
@@ -1312,6 +1334,64 @@ mod tests {
 
         let err = service.delete(&caller, model.id.uuid()).await.unwrap_err();
         assert_managed_policy_error(err);
+        assert!(
+            db.get_model_for_mutation(DEFAULT_ORG_ID, model.id.uuid())
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn model_with_foreign_provider_link_cannot_be_deleted() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = ModelService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let model = create_model_with_foreign_provider(&db).await;
+
+        let err = service.delete(&caller, model.id.uuid()).await.unwrap_err();
+
+        assert_eq!(err.to_string(), "Provider not found");
+        assert!(
+            db.get_model_for_mutation(DEFAULT_ORG_ID, model.id.uuid())
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn model_with_foreign_provider_link_cannot_be_updated() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = ModelService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let model = create_model_with_foreign_provider(&db).await;
+
+        let err = service
+            .update(
+                &caller,
+                model.id.uuid(),
+                UpdateModelRequest {
+                    provider_id: None,
+                    model_id: None,
+                    display_name: Some("Renamed".to_string()),
+                    capabilities: None,
+                    enabled: None,
+                    is_favorite: None,
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.to_string(), "Provider not found");
+        assert_eq!(
+            db.get_model_for_mutation(DEFAULT_ORG_ID, model.id.uuid())
+                .await
+                .unwrap()
+                .unwrap()
+                .display_name,
+            "Cross-org Model"
+        );
     }
 
     #[tokio::test]

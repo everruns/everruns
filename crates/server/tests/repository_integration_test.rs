@@ -3043,6 +3043,13 @@ async fn test_model_org_isolation_postgres() {
     );
     assert!(
         backend
+            .get_model_for_mutation(TEST_ORG_ID, model.id.uuid())
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        backend
             .get_model_with_provider(TEST_ORG_ID, model.id.uuid())
             .await
             .unwrap()
@@ -3053,6 +3060,13 @@ async fn test_model_org_isolation_postgres() {
     assert!(
         backend
             .get_model(org2, model.id.uuid())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        backend
+            .get_model_for_mutation(org2, model.id.uuid())
             .await
             .unwrap()
             .is_none()
@@ -3128,6 +3142,13 @@ async fn test_model_provider_reads_fail_closed_on_cross_org_provider_postgres() 
     assert!(
         backend
             .get_model(TEST_ORG_ID, corrupt_model.id.uuid())
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        backend
+            .get_model_for_mutation(TEST_ORG_ID, corrupt_model.id.uuid())
             .await
             .unwrap()
             .is_some()

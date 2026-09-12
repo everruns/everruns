@@ -390,6 +390,20 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    pub async fn get_model_for_mutation(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<ModelRow>> {
+        let id = ModelId::from_uuid(id);
+        Ok(self
+            .models
+            .read()
+            .get(&id)
+            .filter(|model| model.org_id == org_id)
+            .cloned())
+    }
+
     pub async fn get_model_with_provider(
         &self,
         org_id: i64,
