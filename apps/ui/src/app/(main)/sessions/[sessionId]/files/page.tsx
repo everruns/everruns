@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api/client";
 import { useQuery } from "@tanstack/react-query";
+import { SessionEnvironmentPanel } from "@/components/session/session-environment-panel";
 import { useSessionContext } from "../session-context";
 
 function useSessionStorage(sessionId: string, enabled: boolean) {
@@ -149,6 +150,8 @@ export default function WorkspacePage() {
             </div>
           )}
         </div>
+
+        <SessionEnvironmentPanel sessionId={sessionId} />
 
         <StoragePanel sessionId={sessionId} enabled={hasStorage} />
       </div>

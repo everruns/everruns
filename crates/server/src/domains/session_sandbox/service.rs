@@ -4,25 +4,21 @@
 // - Server owns auto-start and idle-pause orchestration; providers stay focused
 //   on sandbox operations.
 // - This is intentionally best-effort and in-process for the experimental flag.
-// - Capability config is resolved from effective harness + agent + session layers,
-//   matching normal capability merge behavior.
+// - Capability config is resolved through the environment domain, which owns
+//   the effective harness + agent + session merge.
 
-use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
-use crate::org_init;
 use crate::storage::{DbLeasedResourceStore, DbSessionResourceRegistry, StorageBackend};
-use anyhow::Context;
 use async_trait::async_trait;
 use everruns_core::{
     Event, EventData, EventListener, connection_services::UserConnectionResolver,
-    merge_capabilities, session_services::LeasedResourceStore,
-    session_services::SessionResourceRegistry, session_services::SessionStorageStore,
-    tool_context::ToolContext,
+    session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
+    session_services::SessionStorageStore, tool_context::ToolContext,
 };
 use everruns_platform::session_sandbox::{
     SessionSandboxConfig, ensure_session_sandbox_running, pause_session_sandbox,
     session_sandbox_config_from_capabilities,
 };
-use everruns_provider::typed_id::{AgentId, SessionId};
+use everruns_provider::typed_id::SessionId;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -151,67 +147,17 @@ impl SessionSandboxService {
         &self,
         session_id: SessionId,
     ) -> anyhow::Result<Option<SessionSandboxConfig>> {
-        let Some(org_id) = self
-            .db
-            .get_session_organization_id(session_id)
-            .await
-            .context("failed to resolve session org")?
+        // Effective capabilities are the environment domain's answer; sharing it
+        // keeps "what is this session actually configured with" in one place.
+        let Some(capabilities) =
+            crate::domains::environments::queries::effective_session_capabilities(
+                &self.db, session_id,
+            )
+            .await?
         else {
             return Ok(None);
         };
-        let Some(session_row) = self
-            .db
-            .get_session(org_id, session_id)
-            .await
-            .context("failed to load session")?
-        else {
-            return Ok(None);
-        };
-
-        let harness_id = match session_row.harness_id {
-            Some(id) => id,
-            None => org_init::base_harness_id(&self.db, org_id)
-                .await
-                .context("failed to resolve base harness for session without harness_id")?,
-        };
-        let Some(harness) = resolve_effective_harness(self.db.as_ref(), org_id, harness_id)
-            .await
-            .context("failed to resolve effective harness")?
-        else {
-            return Ok(None);
-        };
-        let agent_capabilities = if let Some(agent_id) = session_row.agent_id {
-            self.agent_capabilities(agent_id).await?
-        } else {
-            Vec::new()
-        };
-        let session_capabilities: Vec<everruns_capability::CapabilityRef> =
-            serde_json::from_value(session_row.capabilities)
-                .context("failed to parse session capabilities")?;
-
-        let merged = merge_capabilities(&harness.capabilities, &agent_capabilities);
-        let merged = merge_capabilities(&merged, &session_capabilities);
-        session_sandbox_config_from_capabilities(&merged).map_err(|err| anyhow::anyhow!(err))
-    }
-
-    async fn agent_capabilities(
-        &self,
-        agent_id: AgentId,
-    ) -> anyhow::Result<Vec<everruns_capability::CapabilityRef>> {
-        self.db
-            .get_agent_capabilities(agent_id.uuid())
-            .await
-            .context("failed to load agent capabilities")
-            .map(|rows| {
-                rows.into_iter()
-                    .map(|row| {
-                        everruns_capability::CapabilityRef::with_config(
-                            row.capability_id,
-                            row.config,
-                        )
-                    })
-                    .collect()
-            })
+        session_sandbox_config_from_capabilities(&capabilities).map_err(|err| anyhow::anyhow!(err))
     }
 
     pub(crate) fn tool_context(&self, session_id: SessionId) -> ToolContext {

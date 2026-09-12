@@ -985,6 +985,11 @@ impl ServerAppBuilder {
         // (forward-progress guard, EVE-534). `sessions_state` is moved into the
         // router later, so grab a clone of the service now.
         let reclaim_session_service = sessions_state.session_service.clone();
+        let environments_state = api::environments::AppState::new(
+            db.clone(),
+            sessions_state.session_service.clone(),
+            auth_state.clone(),
+        );
         let session_sandbox_state = session_sandbox_service.as_ref().map(|sandbox_service| {
             api::session_sandbox::AppState::new(
                 db.clone(),
@@ -1671,6 +1676,9 @@ impl ServerAppBuilder {
             tracing::info!("Observers disabled via feature flag");
         }
 
+        // Environments describe every session, including the ones with no
+        // sandbox at all, so they are not gated on the sandbox feature flag.
+        api_routes = api_routes.merge(api::environments::routes(environments_state));
         if let Some(session_sandbox_state) = session_sandbox_state {
             api_routes = api_routes.merge(api::session_sandbox::routes(session_sandbox_state));
         }

@@ -1455,6 +1455,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/environment-targets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List the environment targets this deployment can offer, with the capabilities each one actually has. */
+    get: operations["list_environment_targets"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/harness-examples": {
     parameters: {
       query?: never;
@@ -2899,6 +2916,23 @@ export interface paths {
     };
     /** GET /v1/sessions/{session_id}/databases/{name}/schema */
     get: operations["get_schema"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/environment": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Get the environment a session runs in: target, containment, and what it can actually do. */
+    get: operations["get_session_environment"];
     put?: never;
     post?: never;
     delete?: never;
@@ -7025,6 +7059,52 @@ export interface components {
        * @description Durable task's identifier.
        */
       task_id: string;
+    };
+    /**
+     * @description What the environment can actually do.
+     *
+     *     Read this before assuming a shell behaves like Linux. Bashkit reports
+     *     `native_processes: false`, which is why a build fails there; the answer is
+     *     available before the first turn rather than after a confusing tool error.
+     */
+    EnvironmentCapabilities: {
+      native_processes: boolean;
+      network_enforced: boolean;
+      packages: boolean;
+      portable_checkpoint: boolean;
+      ports: boolean;
+      pty: boolean;
+    };
+    /** @description What commands may touch, and who enforces it. */
+    EnvironmentContainment: {
+      /** @description `none`, `native`, or `isolated`. */
+      level: string;
+      /** @description Outbound network policy: `deny`, `allowlist`, or `allow`. */
+      network: string;
+    };
+    /** @description Where a session's commands run. */
+    EnvironmentTarget: {
+      /** @description Shape of the target: `host`, `machine`, `vfs`, `container`, `managed`. */
+      kind: string;
+      /** @description Concrete provider, when the kind has one (`bashkit`, `daytona`, ...). */
+      provider?: string | null;
+    };
+    /** @description One target this deployment can offer, and what it can do. */
+    EnvironmentTargetDescriptor: {
+      /** @description Whether this deployment can actually run it right now. */
+      available: boolean;
+      capabilities: components["schemas"]["EnvironmentCapabilities"];
+      /** @description Containment levels this target supports, weakest first. */
+      containment_levels: string[];
+      durability: string;
+      kind: string;
+      provider?: string | null;
+      /** @description Why it is unavailable. Present only when `available` is false. */
+      reason?: string | null;
+    };
+    /** @description Response body for the `list_environment_targets` operation. */
+    EnvironmentTargetsResponse: {
+      items: components["schemas"]["EnvironmentTargetDescriptor"][];
     };
     /**
      * @description Standard error response.
@@ -14791,6 +14871,25 @@ export interface components {
       sections: components["schemas"]["ContextReportSection"][];
       /** @description Prefixed session identifier this report describes. */
       session_id: string;
+    };
+    /** @description The environment a session is running in. */
+    SessionEnvironmentResponse: {
+      capabilities: components["schemas"]["EnvironmentCapabilities"];
+      containment: components["schemas"]["EnvironmentContainment"];
+      /**
+       * @description `checkpointed`, `provider_snapshot`, or `none`. Declared per target, so a
+       *     session on somebody else's machine is never reported as recoverable.
+       */
+      durability: string;
+      /**
+       * @description How this view was produced. `capabilities` means it was derived from the
+       *     session's effective capability set rather than read from a stored
+       *     environment profile.
+       */
+      resolved_from: string;
+      /** @description Capability that supplied the compute, for operators tracing a surprise. */
+      source_capability?: string | null;
+      target?: null | components["schemas"]["EnvironmentTarget"];
     };
     /** @description One bucket of a sessions facet dimension. */
     SessionFacetCount: {
@@ -23180,6 +23279,26 @@ export interface operations {
       };
     };
   };
+  list_environment_targets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Available environment targets */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EnvironmentTargetsResponse"];
+        };
+      };
+    };
+  };
   list_examples: {
     parameters: {
       query?: never;
@@ -28346,6 +28465,59 @@ export interface operations {
         };
       };
       /** @description Database not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_session_environment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Resolved session environment */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "capabilities": {
+           *         "native_processes": false,
+           *         "network_enforced": true,
+           *         "packages": false,
+           *         "portable_checkpoint": true,
+           *         "ports": false,
+           *         "pty": false
+           *       },
+           *       "containment": {
+           *         "level": "isolated",
+           *         "network": "deny"
+           *       },
+           *       "durability": "checkpointed",
+           *       "resolved_from": "capabilities",
+           *       "source_capability": "bashkit_shell",
+           *       "target": {
+           *         "kind": "vfs",
+           *         "provider": "bashkit"
+           *       }
+           *     }
+           */
+          "application/json": components["schemas"]["SessionEnvironmentResponse"];
+        };
+      };
+      /** @description Session not found */
       404: {
         headers: {
           [name: string]: unknown;

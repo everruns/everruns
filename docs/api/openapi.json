@@ -5535,6 +5535,27 @@
         }
       }
     },
+    "/v1/environment-targets": {
+      "get": {
+        "tags": [
+          "environments"
+        ],
+        "description": "List the environment targets this deployment can offer, with the capabilities each one actually has.",
+        "operationId": "list_environment_targets",
+        "responses": {
+          "200": {
+            "description": "Available environment targets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentTargetsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/harness-examples": {
       "get": {
         "tags": [
@@ -11951,6 +11972,62 @@
           },
           "404": {
             "description": "Database not found"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/environment": {
+      "get": {
+        "tags": [
+          "environments"
+        ],
+        "description": "Get the environment a session runs in: target, containment, and what it can actually do.",
+        "operationId": "get_session_environment",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resolved session environment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionEnvironmentResponse"
+                },
+                "example": {
+                  "capabilities": {
+                    "native_processes": false,
+                    "network_enforced": true,
+                    "packages": false,
+                    "portable_checkpoint": true,
+                    "ports": false,
+                    "pty": false
+                  },
+                  "containment": {
+                    "level": "isolated",
+                    "network": "deny"
+                  },
+                  "durability": "checkpointed",
+                  "resolved_from": "capabilities",
+                  "source_capability": "bashkit_shell",
+                  "target": {
+                    "kind": "vfs",
+                    "provider": "bashkit"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
           }
         }
       }
@@ -21171,6 +21248,137 @@
             "type": "string",
             "format": "uuid",
             "description": "Durable task's identifier."
+          }
+        }
+      },
+      "EnvironmentCapabilities": {
+        "type": "object",
+        "description": "What the environment can actually do.\n\nRead this before assuming a shell behaves like Linux. Bashkit reports\n`native_processes: false`, which is why a build fails there; the answer is\navailable before the first turn rather than after a confusing tool error.",
+        "required": [
+          "native_processes",
+          "packages",
+          "pty",
+          "ports",
+          "portable_checkpoint",
+          "network_enforced"
+        ],
+        "properties": {
+          "native_processes": {
+            "type": "boolean"
+          },
+          "network_enforced": {
+            "type": "boolean"
+          },
+          "packages": {
+            "type": "boolean"
+          },
+          "portable_checkpoint": {
+            "type": "boolean"
+          },
+          "ports": {
+            "type": "boolean"
+          },
+          "pty": {
+            "type": "boolean"
+          }
+        }
+      },
+      "EnvironmentContainment": {
+        "type": "object",
+        "description": "What commands may touch, and who enforces it.",
+        "required": [
+          "level",
+          "network"
+        ],
+        "properties": {
+          "level": {
+            "type": "string",
+            "description": "`none`, `native`, or `isolated`."
+          },
+          "network": {
+            "type": "string",
+            "description": "Outbound network policy: `deny`, `allowlist`, or `allow`."
+          }
+        }
+      },
+      "EnvironmentTarget": {
+        "type": "object",
+        "description": "Where a session's commands run.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "Shape of the target: `host`, `machine`, `vfs`, `container`, `managed`."
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Concrete provider, when the kind has one (`bashkit`, `daytona`, ...)."
+          }
+        }
+      },
+      "EnvironmentTargetDescriptor": {
+        "type": "object",
+        "description": "One target this deployment can offer, and what it can do.",
+        "required": [
+          "kind",
+          "available",
+          "capabilities",
+          "containment_levels",
+          "durability"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Whether this deployment can actually run it right now."
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/EnvironmentCapabilities"
+          },
+          "containment_levels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Containment levels this target supports, weakest first."
+          },
+          "durability": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it is unavailable. Present only when `available` is false."
+          }
+        }
+      },
+      "EnvironmentTargetsResponse": {
+        "type": "object",
+        "description": "Response body for the `list_environment_targets` operation.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentTargetDescriptor"
+            }
           }
         }
       },
@@ -34651,6 +34859,50 @@
           "session_id": {
             "type": "string",
             "description": "Prefixed session identifier this report describes."
+          }
+        }
+      },
+      "SessionEnvironmentResponse": {
+        "type": "object",
+        "description": "The environment a session is running in.",
+        "required": [
+          "containment",
+          "durability",
+          "capabilities",
+          "resolved_from"
+        ],
+        "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/EnvironmentCapabilities"
+          },
+          "containment": {
+            "$ref": "#/components/schemas/EnvironmentContainment"
+          },
+          "durability": {
+            "type": "string",
+            "description": "`checkpointed`, `provider_snapshot`, or `none`. Declared per target, so a\nsession on somebody else's machine is never reported as recoverable."
+          },
+          "resolved_from": {
+            "type": "string",
+            "description": "How this view was produced. `capabilities` means it was derived from the\nsession's effective capability set rather than read from a stored\nenvironment profile."
+          },
+          "source_capability": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Capability that supplied the compute, for operators tracing a surprise."
+          },
+          "target": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EnvironmentTarget",
+                "description": "Target, absent when the session has no compute at all and only reads and\nwrites files. That is a real configuration, not a misconfiguration."
+              }
+            ]
           }
         }
       },
