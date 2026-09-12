@@ -79,10 +79,11 @@ const PROMPT_CACHE_KEY_PREFIX: &str = "everruns:";
 ///
 /// The Open Responses request shape this driver builds is vendor-neutral.
 /// Providers reached through it (e.g. OpenRouter) layer extra top-level fields
-/// onto the outgoing JSON or HTTP headers via this seam, so the core driver
-/// stays free of provider branching. `decorate` and `decorate_headers` run once
-/// per request, after the base body is serialized and before it is sent; either
-/// may return an error to abort the request (e.g. failed routing validation).
+/// onto the outgoing JSON or HTTP headers and classify provider-specific error
+/// bodies via this seam, so the core driver stays free of provider branching.
+/// `decorate` and `decorate_headers` run once per request, after the base body
+/// is serialized and before it is sent; either may return an error to abort the
+/// request (e.g. failed routing validation).
 pub trait OpenResponsesRequestExtension: Send + Sync {
     fn decorate(&self, body: &mut Value, config: &LlmCallConfig) -> Result<()>;
 
@@ -103,6 +104,17 @@ pub trait OpenResponsesRequestExtension: Send + Sync {
         _headers: &HeaderMap,
         _error_body: &str,
     ) {
+    }
+
+    /// Classify a provider-specific terminal HTTP error while its structured
+    /// response fields are still available.
+    fn classify_error(
+        &self,
+        _status: u16,
+        _headers: &HeaderMap,
+        _error_body: &str,
+    ) -> Option<LlmErrorKind> {
+        None
     }
 }
 
@@ -302,6 +314,7 @@ impl OpenResponsesProtocolChatDriver {
                     }
 
                     // Non-retryable error or max retries exceeded
+                    let response_headers = response.headers().clone();
                     let error_text = response.text().await.unwrap_or_default();
 
                     // Check if this is a model-not-found error
@@ -321,7 +334,19 @@ impl OpenResponsesProtocolChatDriver {
 
                     // Attach the semantic error kind while the HTTP status and
                     // body are still available (see LlmErrorKind).
-                    let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
+                    let kind = self
+                        .request_extension
+                        .as_ref()
+                        .and_then(|extension| {
+                            extension.classify_error(
+                                status.as_u16(),
+                                &response_headers,
+                                &error_text,
+                            )
+                        })
+                        .unwrap_or_else(|| {
+                            LlmErrorKind::from_provider_status(status.as_u16(), &error_text)
+                        });
 
                     if attempts > 0 {
                         return RetryDecision::Terminal(AgentLoopError::llm_kind(

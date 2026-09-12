@@ -76,8 +76,8 @@ pub use driver_registry::{
     ProviderMetadata, ProviderOpaqueContext, ServiceKind, fold_system_messages,
 };
 pub use error::{
-    AgentLoopError, FileSystemError, FileSystemErrorClass, LlmError, LlmErrorKind, Result,
-    StoreResultExt, classify_fs_error, from_json, json_val,
+    AgentLoopError, BillingPressureReason, FileSystemError, FileSystemErrorClass, LlmError,
+    LlmErrorKind, Result, StoreResultExt, classify_fs_error, from_json, json_val,
 };
 pub use execution_phase::{ExecutionPhase, PhaseSource};
 pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata};
