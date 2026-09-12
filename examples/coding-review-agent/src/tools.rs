@@ -6,9 +6,9 @@ use tokio::{
 
 fn source(path: &str) -> Result<&'static str, String> {
     match path {
-        "sample_payment.rs" => Ok(include_str!("../sample_payment.rs")),
-        "contract.md" => Ok(include_str!("../contract.md")),
-        "regression.rs" => Ok(include_str!("../regression.rs")),
+        "sample_payment.rs" => Ok(include_str!("sample_payment.rs")),
+        "contract.md" => Ok(include_str!("contract.md")),
+        "regression.rs" => Ok(include_str!("regression.rs")),
         _ => Err("Only sample_payment.rs, contract.md, and regression.rs are exposed.".into()),
     }
 }
@@ -22,7 +22,7 @@ pub async fn inspect_change(path: String) -> Result<String, String> {
 async fn reproduce() -> Result<String, String> {
     let directory = tempfile::tempdir().map_err(|e| e.to_string())?;
     let binary = directory.path().join("refund-regression");
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     // Fixed trusted fixture only: no model-supplied commands, source, or paths.
     let compile = timeout(
         Duration::from_secs(30),
@@ -31,7 +31,7 @@ async fn reproduce() -> Result<String, String> {
             .arg("regression.rs")
             .arg("-o")
             .arg(&binary)
-            .current_dir(root)
+            .current_dir(fixtures)
             .kill_on_drop(true)
             .output(),
     )

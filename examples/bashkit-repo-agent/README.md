@@ -4,7 +4,7 @@ Cut a release in a bundled repository through the sandboxed
 [Bashkit](https://bashkit.sh) shell, then verify the claimed changes on disk.
 This is a real `gpt-5.6-terra` agent, not a scripted turn.
 
-![Bashkit Repo Agent terminal demo](demo.gif)
+![Bashkit Repo Agent terminal demo](src/demo.gif)
 
 ## What you learn
 
@@ -14,7 +14,7 @@ state independently of the model's final answer.
 
 ## Scenario and expected outcome
 
-The bundled `sample-repo/` is a two-crate Cargo workspace with changelog
+The bundled `src/sample-repo/` is a two-crate Cargo workspace with changelog
 fragments. The agent must cut release `0.2.0`: update both manifests and the
 path-dependency pin, create a dated changelog section, retain the previous
 release, and remove the folded fragments. The host then re-reads the working
@@ -46,14 +46,14 @@ about: the agent may change anything inside the mounted workspace.
 
 ## Build the agent
 
-The editable system prompt lives in `instructions.md`. The workspace is a real
+The editable system prompt lives in `src/instructions.md`. The workspace is a real
 host directory, but the policy and Bashkit runtime clamp agent access to its
 mounted `/workspace` tree.
 
 ```rust
 let agent = Agent::builder()
     .name("bashkit-repo-agent")
-    .instructions(include_str!("../instructions.md"))
+    .instructions(include_str!("instructions.md"))
     .provider(provider)
     .model(MODEL)
     .workspace(workspace)
@@ -93,7 +93,7 @@ uses the portable `-exec rm -f {} \;` form.
 
 ```bash
 cargo test -p everruns-bashkit-repo-agent
-python3 examples/bashkit-repo-agent/render_demo.py --check
+python3 examples/bashkit-repo-agent/src/render_demo.py --check
 ```
 
 Tests validate agent construction, the fixture's starting state, and the
@@ -102,13 +102,13 @@ quality.
 
 ## Demo and recording
 
-`demo.txt` is output from a successful live run. `render_demo.py` automatically
+`src/demo.txt` is output from a successful live run. `src/render_demo.py` automatically
 creates readable pages and durations; VHS replays them without another API
 call.
 
 ```bash
 cd examples/bashkit-repo-agent
-bash record.sh
+bash src/record.sh
 ```
 
 Recording needs Python 3, VHS, ffmpeg, a VHS-compatible browser, and funded
@@ -118,7 +118,7 @@ example to private repositories.
 
 ## Adapt it
 
-Replace `sample-repo/`, `release_request`, and `verify` with a disposable fixture
+Replace `src/sample-repo/`, `release_request`, and `verify` with a disposable fixture
 and independent assertions for your workflow. Keep the mounted root narrow,
 start read-only unless mutation is required, and validate important claims from
 host state after the turn.
@@ -132,9 +132,9 @@ The session itself is in-memory.
 ## Source map
 
 `src/main.rs`: agent, run, and verification; `src/sample_repo.rs`: fixture
-materialization; `sample-repo/`: input repository; `instructions.md`: agent
+materialization; `src/sample-repo/`: input repository; `src/instructions.md`: agent
 instructions. `examples/demo-support::shell` handles terminal presentation;
-`record.sh` and `render_demo.py` handle recording.
+`src/record.sh` and `src/render_demo.py` handle recording.
 
 ## See also
 

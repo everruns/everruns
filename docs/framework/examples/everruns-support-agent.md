@@ -39,12 +39,12 @@ cargo run -p everruns-framework-support-agent -- "How can a tool return a struct
 
 ## Build the agent
 
-This is the actual builder from `src/main.rs`. The prompt is an editable `instructions.md` file. Tools/capabilities supply evidence and actions; the model chooses how to use them.
+This is the actual builder from `src/main.rs`. The prompt is `src/instructions.md`. Tools/capabilities supply evidence and actions; the model chooses how to use them.
 
 ```rust
 let agent = Agent::builder()
     .name("everruns-support-agent")
-    .instructions(include_str!("../instructions.md"))
+    .instructions(include_str!("instructions.md"))
     .provider(everruns_anthropic::provider("anthropic", api_key))
     .model(MODEL)
     .max_iterations(12)
@@ -74,7 +74,7 @@ This engine is in-memory. It does not demonstrate durable session storage; the E
 
 ```bash
 cargo test -p everruns-framework-support-agent
-python3 examples/everruns-support-agent/render_demo.py --check
+python3 examples/everruns-support-agent/src/render_demo.py --check
 ```
 
 Tests exercise content-based search, no-match and empty-query behavior, complete citable page reads, and path rejection. A live run is still needed to evaluate whether the answer faithfully reflects those pages.
@@ -83,9 +83,9 @@ CI runs these offline checks without provider credentials. Live model behavior i
 
 ## Demo and recording
 
-![Everruns Support Agent recorded run](https://raw.githubusercontent.com/everruns/everruns/main/examples/everruns-support-agent/demo.gif)
+![Everruns Support Agent recorded run](https://raw.githubusercontent.com/everruns/everruns/main/examples/everruns-support-agent/src/demo.gif)
 
-Read the [captured transcript](https://github.com/everruns/everruns/blob/main/examples/everruns-support-agent/demo.txt) at your own pace. The GIF is a paginated
+Read the [captured transcript](https://github.com/everruns/everruns/blob/main/examples/everruns-support-agent/src/demo.txt) at your own pace. The GIF is a paginated
 replay of an actual provider run, with waiting time removed. It is not
 interactive and does not show model reasoning. Result excerpts are shortened
 only for display.
@@ -94,10 +94,10 @@ With credentials exported and Python 3, VHS, ffmpeg, and a VHS-compatible browse
 
 ```bash
 cd examples/everruns-support-agent
-bash record.sh
+bash src/record.sh
 ```
 
-The script captures a successful run, generates correctly wrapped pages and page durations, and renders `demo.gif`. It preserves the previous transcript when the provider run fails. To replay an existing transcript without another model call, run `python3 render_demo.py && vhs demo.tape`. `demo.txt` retains the displayed output; `.demo-pages/` is generated and ignored. Inspect results before sharing: public/demo data is safe here, but adapting tools may expose private data.
+The script captures a successful run, generates correctly wrapped pages and page durations, and renders `src/demo.gif`. It preserves the previous transcript when the provider run fails. To replay an existing transcript without another model call, run `(cd src && python3 render_demo.py && vhs demo.tape)`. `src/demo.txt` retains the displayed output; `.demo-pages/` is generated and ignored. Inspect results before sharing: public/demo data is safe here, but adapting tools may expose private data.
 
 ## Adapt it
 
@@ -109,4 +109,4 @@ The corpus is a five-page snapshot from 2026-09-08, not a live website search. P
 
 ## Source map
 
-`src/main.rs`: agent and session; `src/tools.rs`: lexical search and safe page reads; `docs/`: complete official page snapshots and provenance; `instructions.md`: evidence and citation rules. `examples/demo-support` handles shared terminal presentation; `record.sh` and `render_demo.py` handle recording.
+`src/main.rs`: agent and session; `src/tools.rs`: lexical search and safe page reads; `src/docs/`: complete official page snapshots and provenance; `src/instructions.md`: evidence and citation rules. `examples/demo-support` handles shared terminal presentation; `src/record.sh` and `src/render_demo.py` handle recording.

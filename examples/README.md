@@ -14,10 +14,12 @@ repository: these Cargo packages depend on local workspace crates.
 | [Bashkit Repo](bashkit-repo-agent/) | Modify and verify a repository through a sandboxed shell | `cargo run -p everruns-bashkit-repo-agent` |
 
 Each README lists credentials, contrasting scenarios, expected outcomes, and
-limits. Live runs incur provider/search charges. Offline tests exercise tool
-behavior, not model quality. The default engine is in-memory, not durable storage.
+limits. Every example root contains only crate metadata, its README, and `src/`;
+all example-specific prompts, fixtures, and demo assets live in `src/`. Live runs
+incur provider/search charges. Offline tests exercise tool behavior, not model
+quality. The default engine is in-memory, not durable storage.
 
-`src/main.rs` shows build → create session → run → verify. `instructions.md` is
+`src/main.rs` shows build → create session → run → verify. `src/instructions.md` is
 the editable prompt. Shared terminal presentation lives in `demo-support`; it
 does not change agent behavior.
 

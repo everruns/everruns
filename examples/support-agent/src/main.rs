@@ -15,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let question = if input.is_empty() { QUESTION } else { &input };
     let agent = Agent::builder()
         .name("support-agent")
-        .instructions(include_str!("../instructions.md"))
+        .instructions(include_str!("instructions.md"))
         .provider(OpenAI::new(api_key))
         .model(MODEL)
         .max_iterations(12)

@@ -2,10 +2,10 @@ use std::{io::Write, path::Path};
 
 fn evidence(kind: &str) -> Result<&'static str, String> {
     match kind {
-        "metrics" => Ok(include_str!("../metrics.txt")),
-        "deployments" => Ok(include_str!("../deployments.txt")),
-        "logs" => Ok(include_str!("../logs.txt")),
-        "runbook" => Ok(include_str!("../runbook.md")),
+        "metrics" => Ok(include_str!("metrics.txt")),
+        "deployments" => Ok(include_str!("deployments.txt")),
+        "logs" => Ok(include_str!("logs.txt")),
+        "runbook" => Ok(include_str!("runbook.md")),
         _ => Err("Choose metrics, deployments, logs, or runbook.".into()),
     }
 }
@@ -35,7 +35,7 @@ fn append_update(path: &Path, update: &str) -> Result<String, String> {
 /// Append an evidence-backed status update to the local exercise log. No production actions.
 pub async fn record_incident_update(update: String) -> Result<String, String> {
     append_update(
-        &Path::new(env!("CARGO_MANIFEST_DIR")).join("incident.log"),
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("src/incident.log"),
         &update,
     )
 }

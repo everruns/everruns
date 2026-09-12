@@ -38,12 +38,12 @@ cargo run -p everruns-incident-commander-agent -- "Investigate checkout and expl
 
 ## Build the agent
 
-This is the actual builder from `src/main.rs`. The prompt is an editable `instructions.md` file. Tools/capabilities supply evidence and actions; the model chooses how to use them.
+This is the actual builder from `src/main.rs`. The prompt is `src/instructions.md`. Tools/capabilities supply evidence and actions; the model chooses how to use them.
 
 ```rust
 let agent = Agent::builder()
     .name("incident-commander-agent")
-    .instructions(include_str!("../instructions.md"))
+    .instructions(include_str!("instructions.md"))
     .provider(everruns_meta::provider("meta", api_key))
     .model(MODEL)
     .max_iterations(12)
@@ -67,13 +67,13 @@ This engine is in-memory. It does not demonstrate durable session storage; the E
 
 ## How the tools work
 
-`inspect_evidence` exposes only four named fixture categories. `record_incident_update` appends a non-empty update of at most 500 UTF-8 bytes to this example's `incident.log`, normalizing newlines. There is deliberately no production rollback tool.
+`inspect_evidence` exposes only four named fixture categories. `record_incident_update` appends a non-empty update of at most 500 UTF-8 bytes to this example's `src/incident.log`, normalizing newlines. There is deliberately no production rollback tool.
 
 ## Validate the behavior
 
 ```bash
 cargo test -p everruns-incident-commander-agent
-python3 examples/incident-commander-agent/render_demo.py --check
+python3 examples/incident-commander-agent/src/render_demo.py --check
 ```
 
 Tests verify that updates survive multiple writes, oversized/empty updates are rejected before a file is created, and evidence access is scoped. A live run should show all evidence reads followed by a persisted update that matches the observed facts.
@@ -82,18 +82,18 @@ CI runs these offline checks without provider credentials. Live model behavior i
 
 ## Demo and recording
 
-![Incident Commander Agent recorded run](https://raw.githubusercontent.com/everruns/everruns/main/examples/incident-commander-agent/demo.gif)
+![Incident Commander Agent recorded run](https://raw.githubusercontent.com/everruns/everruns/main/examples/incident-commander-agent/src/demo.gif)
 
-Read the [captured transcript](https://github.com/everruns/everruns/blob/main/examples/incident-commander-agent/demo.txt) at your own pace. The GIF is a paginated replay of an actual provider run, with waiting time removed. It is not interactive and does not show model reasoning. Result excerpts are shortened only for display.
+Read the [captured transcript](https://github.com/everruns/everruns/blob/main/examples/incident-commander-agent/src/demo.txt) at your own pace. The GIF is a paginated replay of an actual provider run, with waiting time removed. It is not interactive and does not show model reasoning. Result excerpts are shortened only for display.
 
 With credentials exported and Python 3, VHS, ffmpeg, and a VHS-compatible browser installed:
 
 ```bash
 cd examples/incident-commander-agent
-bash record.sh
+bash src/record.sh
 ```
 
-The script captures a successful run, generates correctly wrapped pages and page durations, and renders `demo.gif`. It preserves the previous transcript when the provider run fails. To replay an existing transcript without another model call, run `python3 render_demo.py && vhs demo.tape`. `demo.txt` retains the displayed output; `.demo-pages/` is generated and ignored. Inspect results before sharing: public/demo data is safe here, but adapting tools may expose private data.
+The script captures a successful run, generates correctly wrapped pages and page durations, and renders `src/demo.gif`. It preserves the previous transcript when the provider run fails. To replay an existing transcript without another model call, run `(cd src && python3 render_demo.py && vhs demo.tape)`. `src/demo.txt` retains the displayed output; `.demo-pages/` is generated and ignored. Inspect results before sharing: public/demo data is safe here, but adapting tools may expose private data.
 
 ## Adapt it
 
@@ -105,4 +105,4 @@ All telemetry is fictional. The log is a real local append-only artifact, ignore
 
 ## Source map
 
-`src/main.rs`: agent and session; `src/tools.rs`: evidence allowlist and local recording; `metrics.txt`, `deployments.txt`, `logs.txt`, `runbook.md`: inspectable incident data. `examples/demo-support` handles shared terminal presentation; `record.sh` and `render_demo.py` handle recording.
+`src/main.rs`: agent and session; `src/tools.rs`: evidence allowlist and local recording; `src/metrics.txt`, `src/deployments.txt`, `src/logs.txt`, `src/runbook.md`: inspectable incident data. `examples/demo-support` handles shared terminal presentation; `src/record.sh` and `src/render_demo.py` handle recording.

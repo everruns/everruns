@@ -821,7 +821,14 @@ jobs:
             -p everruns-framework-support-agent -p everruns-bashkit-repo-agent \
             -p everruns-example-demo
           for example in support-agent everruns-support-agent coding-review-agent research-agent incident-commander-agent bashkit-repo-agent; do
-            python3 "examples/$example/render_demo.py" --check
+            unexpected="$(find "examples/$example" -mindepth 1 -maxdepth 1 \
+              ! -name .gitignore ! -name Cargo.toml ! -name README.md ! -name src -print)"
+            if [[ -n "$unexpected" ]]; then
+              echo "Unexpected files outside examples/$example/src/:"
+              echo "$unexpected"
+              exit 1
+            fi
+            python3 "examples/$example/src/render_demo.py" --check
           done
           # Production-safe deterministic simulator plus its optional host
           # extension. Pure llmsim; no credentials or network.
