@@ -5601,6 +5601,7 @@ export interface components {
       /**
        * Format: int64
        * @description Tokens of headroom remaining when the install completed, when measurable.
+       * @example 8192
        */
       budget_remaining_tokens?: number | null;
       /**
@@ -5616,16 +5617,24 @@ export interface components {
       /**
        * Format: int32
        * @description Cache-creation tokens written after compaction, when reported.
+       * @example 1024
        */
       cache_creation_tokens?: number | null;
       /**
        * Format: int32
        * @description Cached input tokens read after compaction, when reported.
+       * @example 90210
        */
       cache_read_tokens?: number | null;
-      /** @description Durable checkpoint installed by this compaction, when applicable. */
+      /**
+       * @description Durable checkpoint installed by this compaction, when applicable.
+       * @example 01934c2f-9f2e-7c1b-8d3e-4f5a6b7c8d9e
+       */
       checkpoint_id?: string | null;
-      /** @description Local driver identifier, when known. */
+      /**
+       * @description Local driver identifier, when known.
+       * @example openai-chat
+       */
       driver?: string | null;
       /**
        * Format: int64
@@ -5634,15 +5643,25 @@ export interface components {
       duration_ms: number;
       /** @description Number of messages after compaction. */
       messages_after: number;
-      /** @description Number of messages before compaction. */
+      /**
+       * @description Number of messages before compaction.
+       * @example 120
+       */
       messages_before: number;
-      /** @description Model that performed the compaction. */
+      /**
+       * @description Model that performed the compaction.
+       * @example gpt-5-mini
+       */
       model?: string;
-      /** @description Provider backend (e.g. "openai"), when known. */
+      /**
+       * @description Provider backend (e.g. "openai"), when known.
+       * @example openai
+       */
       provider?: string | null;
       /**
        * Format: int64
        * @description Source message sequence the compaction ran at, when known.
+       * @example 481
        */
       source_sequence?: number | null;
       /** @description Individual steps in the cascade. */
@@ -5657,6 +5676,7 @@ export interface components {
       /**
        * Format: int64
        * @description Estimated or provider-reported input tokens before compaction.
+       * @example 184320
        */
       tokens_before?: number | null;
       /** @description What triggered this compaction: context-window budget or cost pressure. */
@@ -5667,6 +5687,7 @@ export interface components {
       /**
        * Format: int64
        * @description Tokens of headroom remaining when the attempt started, when measurable.
+       * @example 8192
        */
       budget_remaining_tokens?: number | null;
       /**
@@ -5677,33 +5698,52 @@ export interface components {
       /**
        * Format: int32
        * @description Cache-creation tokens written before compaction, when reported.
+       * @example 1024
        */
       cache_creation_tokens?: number | null;
       /**
        * Format: int32
        * @description Cached input tokens read before compaction, when reported.
+       * @example 90210
        */
       cache_read_tokens?: number | null;
-      /** @description Local driver identifier, when known. */
+      /**
+       * @description Local driver identifier, when known.
+       * @example openai-chat
+       */
       driver?: string | null;
-      /** @description Number of messages before compaction. */
+      /**
+       * @description Number of messages before compaction.
+       * @example 120
+       */
       messages_before: number;
-      /** @description Model performing the compaction. */
+      /**
+       * @description Model performing the compaction.
+       * @example gpt-5-mini
+       */
       model?: string;
-      /** @description Provider backend (e.g. "openai"), when known. */
+      /**
+       * @description Provider backend (e.g. "openai"), when known.
+       * @example openai
+       */
       provider?: string | null;
       /** @description Why compaction was triggered. */
       reason: components["schemas"]["CompactionReason"];
       /**
        * Format: int64
        * @description Source message sequence the attempt ran at, when known.
+       * @example 481
        */
       source_sequence?: number | null;
-      /** @description Strategy requested (may differ from strategy_used in the completed event). */
+      /**
+       * @description Strategy requested (may differ from strategy_used in the completed event).
+       * @example summary_then_trim
+       */
       strategy: string;
       /**
        * Format: int64
        * @description Estimated or provider-reported input tokens before compaction.
+       * @example 184320
        */
       tokens_before?: number | null;
       /** @description What triggered this attempt: context-window budget or cost pressure. */
@@ -5719,34 +5759,58 @@ export interface components {
       /**
        * Format: int64
        * @description Tokens of headroom remaining, when measurable.
+       * @example 8192
        */
       budget_remaining_tokens?: number | null;
-      /** @description Durable checkpoint being installed when the failure hit, if any. */
+      /**
+       * @description Durable checkpoint being installed when the failure hit, if any.
+       * @example 01934c2f-9f2e-7c1b-8d3e-4f5a6b7c8d9e
+       */
       checkpoint_id?: string | null;
-      /** @description Local driver identifier, when known. */
+      /**
+       * @description Local driver identifier, when known.
+       * @example openai-chat
+       */
       driver?: string | null;
-      /** @description Human-readable failure. */
+      /**
+       * @description Human-readable failure.
+       * @example summarizer request failed: upstream timed out
+       */
       error: string;
-      /** @description Number of messages before the attempt. */
+      /**
+       * @description Number of messages before the attempt.
+       * @example 120
+       */
       messages_before: number;
-      /** @description Model the attempt ran under. */
+      /**
+       * @description Model the attempt ran under.
+       * @example gpt-5-mini
+       */
       model: string;
-      /** @description Provider backend (e.g. "openai"), when known. */
+      /**
+       * @description Provider backend (e.g. "openai"), when known.
+       * @example openai
+       */
       provider?: string | null;
       /** @description Why compaction was attempted. */
       reason: components["schemas"]["CompactionReason"];
       /**
        * Format: int64
        * @description Source message sequence the attempt ran at, when known.
+       * @example 481
        */
       source_sequence?: number | null;
       /** @description Which stage failed. */
       stage: components["schemas"]["CompactionFailStage"];
-      /** @description Strategy requested. */
+      /**
+       * @description Strategy requested.
+       * @example summary_then_trim
+       */
       strategy: string;
       /**
        * Format: int64
        * @description Estimated or provider-reported input tokens before the attempt.
+       * @example 184320
        */
       tokens_before: number;
       /** @description Whether window/budget or cost pressure triggered the attempt. */
@@ -5764,15 +5828,28 @@ export interface components {
       /**
        * Format: int64
        * @description Tokens of headroom remaining, when measurable.
+       * @example 8192
        */
       budget_remaining_tokens?: number | null;
-      /** @description Local driver identifier, when known. */
+      /**
+       * @description Local driver identifier, when known.
+       * @example openai-chat
+       */
       driver?: string | null;
-      /** @description Number of messages observed. */
+      /**
+       * @description Number of messages observed.
+       * @example 120
+       */
       messages_observed: number;
-      /** @description Model the evaluation ran under. */
+      /**
+       * @description Model the evaluation ran under.
+       * @example gpt-5-mini
+       */
       model: string;
-      /** @description Provider backend (e.g. "openai"), when known. */
+      /**
+       * @description Provider backend (e.g. "openai"), when known.
+       * @example openai
+       */
       provider?: string | null;
       /** @description Why compaction was evaluated. */
       reason: components["schemas"]["CompactionReason"];
@@ -5781,13 +5858,18 @@ export interface components {
       /**
        * Format: int64
        * @description Source message sequence the evaluation ran at, when known.
+       * @example 481
        */
       source_sequence?: number | null;
-      /** @description Strategy requested. */
+      /**
+       * @description Strategy requested.
+       * @example summary_then_trim
+       */
       strategy: string;
       /**
        * Format: int64
        * @description Estimated input tokens observed at evaluation time.
+       * @example 184320
        */
       tokens_observed: number;
       /** @description Whether window/budget or cost pressure triggered the evaluation. */
