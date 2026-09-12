@@ -879,6 +879,11 @@ impl OpenResponsesProtocolChatDriver {
                 // encrypted content, are dropped rather than reconstructed —
                 // a synthesized id is not one the API can resolve.
                 for item in &msg.reasoning {
+                    // Reasoning replay tokens are provider-specific. Never send
+                    // another provider's artifact to the Responses API.
+                    if item.provider != "openai" {
+                        continue;
+                    }
                     let (Some(id), Some(encrypted_content)) = (&item.item_id, &item.encrypted)
                     else {
                         tracing::debug!(
