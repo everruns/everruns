@@ -13,6 +13,10 @@ check_contains() { # check_contains <desc> <file> <pattern>
   local desc="$1" file="$2" pattern="$3"
   if grep -q "$pattern" "$file" 2>/dev/null; then echo "ok   - $desc"; else echo "FAIL - $desc"; fail=1; fi
 }
+check_absent() { # check_absent <desc> <file> <pattern>
+  local desc="$1" file="$2" pattern="$3"
+  if grep -q "$pattern" "$file" 2>/dev/null; then echo "FAIL - $desc"; fail=1; else echo "ok   - $desc"; fi
+}
 
 json_field() { python3 -c "import json,sys; print(json.load(open('$1'))$2)"; }
 
@@ -43,11 +47,11 @@ for m in "$ROOT/.claude-plugin/marketplace.json" "$ROOT/.agents/plugins/marketpl
   check "$(basename "$(dirname "$m")") marketplace is valid JSON" python3 -c "import json; json.load(open('$m'))"
 done
 check_contains "everruns in Claude marketplace" "$ROOT/.claude-plugin/marketplace.json" '"everruns"'
-check_contains "resend in Claude marketplace" "$ROOT/.claude-plugin/marketplace.json" '"resend"'
+check_absent "resend not in Claude marketplace" "$ROOT/.claude-plugin/marketplace.json" '"resend"'
 check_contains "everruns in Codex marketplace" "$ROOT/.agents/plugins/marketplace.json" '"everruns"'
-check_contains "resend in Codex marketplace" "$ROOT/.agents/plugins/marketplace.json" '"resend"'
+check_absent "resend not in Codex marketplace" "$ROOT/.agents/plugins/marketplace.json" '"resend"'
 check_contains "everruns in Cursor marketplace" "$ROOT/.cursor-plugin/marketplace.json" '"everruns"'
-check_contains "resend in Cursor marketplace" "$ROOT/.cursor-plugin/marketplace.json" '"resend"'
+check_absent "resend not in Cursor marketplace" "$ROOT/.cursor-plugin/marketplace.json" '"resend"'
 
 echo "== MCP endpoints =="
 check_contains "everruns host MCP default" "$ROOT/plugins/everruns/.mcp.json" 'https://app.everruns.com/mcp'
