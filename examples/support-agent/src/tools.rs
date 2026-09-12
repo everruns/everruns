@@ -1,8 +1,8 @@
 use everruns::capability::serde_json::{self, Value};
 
 fn customer(id: &str) -> Result<Value, String> {
-    let customers: Value = serde_json::from_str(include_str!("../customers.json"))
-        .map_err(|error| error.to_string())?;
+    let customers: Value =
+        serde_json::from_str(include_str!("customers.json")).map_err(|error| error.to_string())?;
     customers
         .get(id)
         .cloned()
@@ -18,7 +18,7 @@ pub async fn lookup_customer(customer_id: String) -> Result<String, String> {
 #[everruns::tool]
 /// Read the service's account-recovery rules before recommending a next step.
 pub async fn read_support_policy() -> Result<String, String> {
-    Ok(include_str!("../policy.md").into())
+    Ok(include_str!("policy.md").into())
 }
 
 #[cfg(test)]

@@ -46,7 +46,7 @@ fn release_request(release_date: &str) -> String {
 fn build_agent(provider: OpenAI, workspace: &Path) -> Result<Agent, everruns::BuildError> {
     Agent::builder()
         .name("bashkit-repo-agent")
-        .instructions(include_str!("../instructions.md"))
+        .instructions(include_str!("instructions.md"))
         .provider(provider)
         .model(MODEL)
         // One real host directory becomes the session's /workspace. The

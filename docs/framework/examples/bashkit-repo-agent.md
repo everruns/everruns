@@ -8,7 +8,7 @@ cuts a release in a bundled repository through the sandboxed [Bashkit
 Shell](/capabilities/bashkit-shell/), then verifies the claimed changes on disk.
 This is a real `gpt-5.6-terra` agent, not a scripted turn.
 
-![Bashkit Repo Agent terminal demo](https://raw.githubusercontent.com/everruns/everruns/main/examples/bashkit-repo-agent/demo.gif)
+![Bashkit Repo Agent terminal demo](https://raw.githubusercontent.com/everruns/everruns/main/examples/bashkit-repo-agent/src/demo.gif)
 
 ## What you learn
 
@@ -46,13 +46,13 @@ unsuccessful turns, or failed host assertions exit nonzero.
 
 ## Build the agent
 
-The editable prompt lives in `instructions.md`. Writing is an explicit policy
+The editable prompt lives in `src/instructions.md`. Writing is an explicit policy
 choice; the default workspace policy is read-only.
 
 ```rust
 let agent = Agent::builder()
     .name("bashkit-repo-agent")
-    .instructions(include_str!("../instructions.md"))
+    .instructions(include_str!("instructions.md"))
     .provider(provider)
     .model("gpt-5.6-terra")
     .workspace(workspace)
@@ -91,7 +91,7 @@ size are bounded. The recording shows the model encountering an unsupported
 
 ```bash
 cargo test -p everruns-bashkit-repo-agent
-python3 examples/bashkit-repo-agent/render_demo.py --check
+python3 examples/bashkit-repo-agent/src/render_demo.py --check
 ```
 
 These checks are offline. They validate construction, fixture state, host-side
@@ -99,13 +99,13 @@ assertions, and recording pagination; they do not grade model quality.
 
 ## Recording workflow
 
-[`demo.txt`](https://github.com/everruns/everruns/blob/main/examples/bashkit-repo-agent/demo.txt)
-is a successful live transcript. `render_demo.py` automatically paginates it,
+[`src/demo.txt`](https://github.com/everruns/everruns/blob/main/examples/bashkit-repo-agent/src/demo.txt)
+is a successful live transcript. `src/render_demo.py` automatically paginates it,
 and VHS replays those pages without another provider call:
 
 ```bash
 cd examples/bashkit-repo-agent
-bash record.sh
+bash src/record.sh
 ```
 
 The script preserves the previous successful transcript if the live run fails.

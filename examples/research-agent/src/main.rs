@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let question = if input.is_empty() { QUESTION } else { &input };
     let agent = Agent::builder()
         .name("research-agent")
-        .instructions(include_str!("../instructions.md"))
+        .instructions(include_str!("instructions.md"))
         .provider(everruns_openrouter::provider("openrouter", api_key))
         .model(MODEL)
         .max_iterations(12)
