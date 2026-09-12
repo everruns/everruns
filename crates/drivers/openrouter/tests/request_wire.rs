@@ -7,13 +7,14 @@
 // assert the exact JSON sent.
 
 use everruns_openrouter::OpenRouterChatDriver;
-use everruns_provider::driver_registry::{
-    LlmCallConfig, LlmMessage, LlmMessageRole, OpenRouterDataCollection, OpenRouterMaxPrice,
-    OpenRouterPluginConfig, OpenRouterProviderRouting, OpenRouterProviderSort,
-    OpenRouterProviderSortBy, OpenRouterProviderSortOptions, OpenRouterRoute,
-    OpenRouterRoutingConfig, OpenRouterServerTool, OpenRouterServerToolKind,
-    OpenRouterSortPartition, OpenRouterWebSearchPlugin,
+use everruns_openrouter::options::{
+    OpenRouterDataCollection, OpenRouterMaxPrice, OpenRouterPluginConfig,
+    OpenRouterProviderRouting, OpenRouterProviderSort, OpenRouterProviderSortBy,
+    OpenRouterProviderSortOptions, OpenRouterRoute, OpenRouterRoutingConfig, OpenRouterServerTool,
+    OpenRouterServerToolKind, OpenRouterSortPartition, OpenRouterWebSearchPlugin,
+    insert_routing_option,
 };
+use everruns_provider::driver_registry::{LlmCallConfig, LlmMessage, LlmMessageRole};
 use everruns_provider::model::ReasoningEffort;
 use everruns_provider::{BearerAuth, Provider};
 use serde_json::json;
@@ -34,7 +35,7 @@ fn base_config(model: &str) -> LlmCallConfig {
         provider_opaque_context: None,
         tool_search: None,
         prompt_cache: None,
-        openrouter_routing: None,
+        driver_options: Default::default(),
         parallel_tool_calls: None,
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
@@ -85,33 +86,36 @@ async fn sends_routing_controls_and_session_id() {
     config
         .metadata
         .insert("session_id".to_string(), "session_abc123".to_string());
-    config.openrouter_routing = Some(OpenRouterRoutingConfig {
-        models: vec![
-            "openai/gpt-5-mini".to_string(),
-            "anthropic/claude-sonnet-4.5".to_string(),
-        ],
-        route: Some(OpenRouterRoute::Fallback),
-        provider: Some(OpenRouterProviderRouting {
-            order: vec!["openai".to_string()],
-            allow_fallbacks: Some(false),
-            require_parameters: Some(true),
-            data_collection: Some(OpenRouterDataCollection::Deny),
-            zdr: Some(true),
-            sort: Some(OpenRouterProviderSort::Advanced(
-                OpenRouterProviderSortOptions {
-                    by: OpenRouterProviderSortBy::Latency,
-                    partition: Some(OpenRouterSortPartition::None),
-                },
-            )),
-            max_price: Some(OpenRouterMaxPrice {
-                prompt: Some(1.0),
-                completion: Some(2.0),
+    insert_routing_option(
+        &mut config.driver_options,
+        &OpenRouterRoutingConfig {
+            models: vec![
+                "openai/gpt-5-mini".to_string(),
+                "anthropic/claude-sonnet-4.5".to_string(),
+            ],
+            route: Some(OpenRouterRoute::Fallback),
+            provider: Some(OpenRouterProviderRouting {
+                order: vec!["openai".to_string()],
+                allow_fallbacks: Some(false),
+                require_parameters: Some(true),
+                data_collection: Some(OpenRouterDataCollection::Deny),
+                zdr: Some(true),
+                sort: Some(OpenRouterProviderSort::Advanced(
+                    OpenRouterProviderSortOptions {
+                        by: OpenRouterProviderSortBy::Latency,
+                        partition: Some(OpenRouterSortPartition::None),
+                    },
+                )),
+                max_price: Some(OpenRouterMaxPrice {
+                    prompt: Some(1.0),
+                    completion: Some(2.0),
+                    ..Default::default()
+                }),
                 ..Default::default()
             }),
             ..Default::default()
-        }),
-        ..Default::default()
-    });
+        },
+    );
 
     let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
     let _ = driver.chat_completion_stream(messages, &config).await;
@@ -384,11 +388,14 @@ async fn rejects_invalid_routing_before_dispatch() {
 
     // Primary model absent from the fallback list.
     let mut mismatch = base_config("openai/gpt-5-mini");
-    mismatch.openrouter_routing = Some(OpenRouterRoutingConfig {
-        models: vec!["anthropic/claude-sonnet-4.5".to_string()],
-        route: Some(OpenRouterRoute::Fallback),
-        ..Default::default()
-    });
+    insert_routing_option(
+        &mut mismatch.driver_options,
+        &OpenRouterRoutingConfig {
+            models: vec!["anthropic/claude-sonnet-4.5".to_string()],
+            route: Some(OpenRouterRoute::Fallback),
+            ..Default::default()
+        },
+    );
     let err = match driver
         .chat_completion_stream(
             vec![LlmMessage::text(LlmMessageRole::User, "hi")],
@@ -403,11 +410,14 @@ async fn rejects_invalid_routing_before_dispatch() {
 
     // Fallback route with no models.
     let mut empty_fallback = base_config("openai/gpt-5-mini");
-    empty_fallback.openrouter_routing = Some(OpenRouterRoutingConfig {
-        models: vec![],
-        route: Some(OpenRouterRoute::Fallback),
-        ..Default::default()
-    });
+    insert_routing_option(
+        &mut empty_fallback.driver_options,
+        &OpenRouterRoutingConfig {
+            models: vec![],
+            route: Some(OpenRouterRoute::Fallback),
+            ..Default::default()
+        },
+    );
     let err = match driver
         .chat_completion_stream(
             vec![LlmMessage::text(LlmMessageRole::User, "hi")],
@@ -442,16 +452,19 @@ async fn includes_plugins_in_request() {
     let driver = provider(api_url);
 
     let mut config = base_config("openai/gpt-5-mini");
-    config.openrouter_routing = Some(OpenRouterRoutingConfig {
-        plugins: Some(OpenRouterPluginConfig {
-            web: Some(OpenRouterWebSearchPlugin {
-                max_results: Some(5),
-                search_prompt: None,
+    insert_routing_option(
+        &mut config.driver_options,
+        &OpenRouterRoutingConfig {
+            plugins: Some(OpenRouterPluginConfig {
+                web: Some(OpenRouterWebSearchPlugin {
+                    max_results: Some(5),
+                    search_prompt: None,
+                }),
+                file: None,
             }),
-            file: None,
-        }),
-        ..Default::default()
-    });
+            ..Default::default()
+        },
+    );
 
     let messages = vec![LlmMessage::text(LlmMessageRole::User, "search the web")];
     let _ = driver.chat_completion_stream(messages, &config).await;
@@ -474,16 +487,19 @@ async fn includes_plugins_in_request() {
 #[tokio::test]
 async fn server_tools_are_appended_to_tools_array() {
     let mut config = base_config("openai/gpt-5-mini");
-    config.openrouter_routing = Some(OpenRouterRoutingConfig {
-        server_tools: vec![
-            OpenRouterServerTool::with_parameters(
-                OpenRouterServerToolKind::WebSearch,
-                json!({ "max_results": 3 }),
-            ),
-            OpenRouterServerTool::new(OpenRouterServerToolKind::Datetime),
-        ],
-        ..Default::default()
-    });
+    insert_routing_option(
+        &mut config.driver_options,
+        &OpenRouterRoutingConfig {
+            server_tools: vec![
+                OpenRouterServerTool::with_parameters(
+                    OpenRouterServerToolKind::WebSearch,
+                    json!({ "max_results": 3 }),
+                ),
+                OpenRouterServerTool::new(OpenRouterServerToolKind::Datetime),
+            ],
+            ..Default::default()
+        },
+    );
 
     let body = capture_request_body(&config).await;
 
@@ -511,15 +527,18 @@ async fn server_tools_are_appended_to_tools_array() {
 
 #[tokio::test]
 async fn max_price_preset_reaches_provider_in_usd_per_million() {
-    use everruns_provider::driver_registry::OpenRouterRoutingPreset;
+    use everruns_openrouter::options::OpenRouterRoutingPreset;
     let mut config = base_config("openai/gpt-5-mini");
-    config.openrouter_routing = Some(OpenRouterRoutingConfig {
-        presets: vec![OpenRouterRoutingPreset::MaxPrice {
-            prompt_usd_per_million: Some(5.0),
-            completion_usd_per_million: Some(15.0),
-        }],
-        ..Default::default()
-    });
+    insert_routing_option(
+        &mut config.driver_options,
+        &OpenRouterRoutingConfig {
+            presets: vec![OpenRouterRoutingPreset::MaxPrice {
+                prompt_usd_per_million: Some(5.0),
+                completion_usd_per_million: Some(15.0),
+            }],
+            ..Default::default()
+        },
+    );
     let body = capture_request_body(&config).await;
     assert_eq!(
         body["provider"],

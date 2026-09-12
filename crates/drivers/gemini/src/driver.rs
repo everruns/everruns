@@ -1370,7 +1370,7 @@ mod tests {
                         gemini_cached_content: handle.map(str::to_string),
                     }
                 }),
-                openrouter_routing: None,
+                driver_options: Default::default(),
                 parallel_tool_calls: parallel,
                 volatile_suffix_len: 0,
                 extra_headers: vec![],

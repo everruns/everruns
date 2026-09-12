@@ -16,7 +16,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::driver_registry::OpenRouterRoutingConfig;
 use crate::typed_id::{ModelId, ModelRouterId};
 
 #[cfg(feature = "openapi")]
@@ -280,9 +279,12 @@ pub fn validate_route_shape(route: &ModelRouterRoute) -> Result<(), String> {
 pub struct OpenRouterRoutePlan {
     /// The concrete model slug to place in the required `model` request field.
     pub primary_model: String,
-    /// Optional OpenRouter fallback routing fields. `None` means the route is a
-    /// direct single-model invocation and no provider-specific fields are needed.
-    pub routing: Option<OpenRouterRoutingConfig>,
+    /// Optional OpenRouter fallback routing payload, as opaque JSON. `None` means
+    /// the route is a direct single-model invocation and no provider-specific
+    /// fields are needed. The payload shape is owned by the OpenRouter driver
+    /// crate; stash it in `LlmCallConfig::driver_options` under that crate's
+    /// routing option key.
+    pub routing: Option<serde_json::Value>,
 }
 
 /// Compile the currently executable Model Router strategies into OpenRouter's
@@ -336,7 +338,7 @@ pub fn compile_openrouter_route_plan(
                 .ok_or_else(|| format!("route '{}' has no candidates", route.key))?;
             Ok(OpenRouterRoutePlan {
                 primary_model,
-                routing: Some(OpenRouterRoutingConfig::fallback_models(models)),
+                routing: Some(serde_json::json!({"models": models, "route": "fallback"})),
             })
         }
         ModelRouterStrategy::Weighted
@@ -579,21 +581,11 @@ mod tests {
         .unwrap();
 
         assert_eq!(plan.primary_model, "openai/gpt-5-mini");
-        let routing = plan.routing.unwrap();
         assert_eq!(
-            serde_json::to_value(&routing).unwrap(),
-            serde_json::json!({"models":["openai/gpt-5-mini","anthropic/claude-sonnet-4.5"],"route":"fallback"})
-        );
-        assert_eq!(
-            routing.models,
-            vec![
-                "openai/gpt-5-mini".to_string(),
-                "anthropic/claude-sonnet-4.5".to_string(),
-            ]
-        );
-        assert_eq!(
-            routing.route,
-            Some(crate::driver_registry::OpenRouterRoute::Fallback)
+            plan.routing,
+            Some(
+                serde_json::json!({"models":["openai/gpt-5-mini","anthropic/claude-sonnet-4.5"],"route":"fallback"})
+            )
         );
     }
 

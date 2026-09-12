@@ -188,7 +188,7 @@ pub fn llm_call_config_from_agent(runtime_agent: &RuntimeAgent) -> LlmCallConfig
         provider_opaque_context: None,
         tool_search: runtime_agent.tool_search.clone(),
         prompt_cache: runtime_agent.prompt_cache.clone(),
-        openrouter_routing: runtime_agent.openrouter_routing.clone(),
+        driver_options: runtime_agent.driver_options.clone(),
         parallel_tool_calls: runtime_agent.parallel_tool_calls,
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
@@ -205,10 +205,7 @@ pub fn llm_call_config_builder_from_agent(runtime_agent: &RuntimeAgent) -> LlmCa
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::driver_registry::{
-        LlmContentPart, LlmMessageContent, LlmMessageRole, OpenRouterRoutingConfig,
-        OpenRouterServerTool, OpenRouterServerToolKind,
-    };
+    use crate::driver_registry::{LlmContentPart, LlmMessageContent, LlmMessageRole};
     use crate::message::TextContentPart;
     use everruns_provider::model::ReasoningEffort;
 
@@ -242,7 +239,7 @@ mod tests {
         assert!(llm_config.tools.is_empty());
         assert!(llm_config.metadata.is_empty());
         // No server tools configured on the agent → none on the call config.
-        assert!(llm_config.openrouter_routing.is_none());
+        assert!(llm_config.driver_options.is_empty());
         let mut populated = RuntimeAgent::new("prompt", "custom-model");
         populated.temperature = Some(0.25);
         populated.max_tokens = Some(321);
@@ -282,26 +279,20 @@ mod tests {
     }
 
     #[test]
-    fn runtime_agent_openrouter_routing_flows_into_call_config() {
-        // Closes the assembly loop: a capability sets RuntimeAgent.openrouter_routing
-        // (server tools), and the From<&RuntimeAgent> conversion the reason atom
-        // uses must carry it through to the OpenRouter driver.
+    fn runtime_agent_driver_options_flow_into_call_config() {
+        // Closes the assembly loop: a capability stashes driver-namespaced
+        // options on the agent, and the conversion the reason atom uses must
+        // carry them through to the driver untouched.
         let mut runtime_agent = RuntimeAgent::new("You are helpful", "openai/gpt-5-mini");
-        runtime_agent.openrouter_routing = Some(OpenRouterRoutingConfig {
-            server_tools: vec![OpenRouterServerTool::new(
-                OpenRouterServerToolKind::WebSearch,
-            )],
-            ..Default::default()
-        });
+        let stashed = serde_json::json!({"server_tools": [{"type": "web_search"}]});
+        runtime_agent
+            .driver_options
+            .insert("test/routing".to_string(), stashed.clone());
 
         let llm_config = llm_call_config_from_agent(&runtime_agent);
-        let routing = llm_config
-            .openrouter_routing
-            .expect("server-tool routing survives into the call config");
-        assert_eq!(routing.server_tools.len(), 1);
         assert_eq!(
-            routing.server_tools[0].kind.wire_type(),
-            "openrouter:web_search"
+            llm_config.driver_options.get("test/routing"),
+            Some(&stashed)
         );
     }
 
@@ -338,18 +329,16 @@ mod tests {
     }
 
     #[test]
-    fn test_llm_call_config_builder_with_openrouter_routing() {
+    fn test_llm_call_config_builder_with_driver_option() {
         let runtime_agent = RuntimeAgent::new("You are helpful", "openai/gpt-5-mini");
-        let routing = OpenRouterRoutingConfig::fallback_models([
-            "openai/gpt-5-mini",
-            "anthropic/claude-sonnet-4.5",
-        ]);
+        let value =
+            serde_json::json!({"models": ["openai/gpt-5-mini", "anthropic/claude-sonnet-4.5"]});
 
         let llm_config = llm_call_config_builder_from_agent(&runtime_agent)
-            .openrouter_routing(routing.clone())
+            .driver_option("test/routing", value.clone())
             .build();
 
-        assert_eq!(llm_config.openrouter_routing, Some(routing));
+        assert_eq!(llm_config.driver_options.get("test/routing"), Some(&value));
     }
 
     #[test]

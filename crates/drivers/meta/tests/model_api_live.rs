@@ -52,7 +52,7 @@ fn config(tools: Vec<ToolDefinition>, parallel_tool_calls: Option<bool>) -> LlmC
         provider_opaque_context: None,
         tool_search: None,
         prompt_cache: None,
-        openrouter_routing: None,
+        driver_options: Default::default(),
         parallel_tool_calls,
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
