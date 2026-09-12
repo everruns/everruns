@@ -14,7 +14,6 @@ use axum_extra::extract::Multipart;
 use chrono::{DateTime, Utc};
 use everruns_provider::typed_id::FileId;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
