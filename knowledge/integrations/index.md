@@ -13,6 +13,5 @@
 * [A2A Capability](a2a-capability.md) - A2A outbound delegation capability.
 * [FCP (Free Communication Protocol) channel](fcp-channel.md) - FCP inbound channel.
 * [Messaging Integrations](messaging-integrations.md) - Messaging integrations.
-* [Everruns Plugins](everruns-dev-plugin.md) - Everruns(Dev) plugin sync contract.
 * [Plugins](plugins.md) - Plugin host: marketplaces and cross-host plugin packages installed as capabilities.
 * [Model Router Specification](model-router.md) - Model Routers.

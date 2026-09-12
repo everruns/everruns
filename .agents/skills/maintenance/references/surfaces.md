@@ -130,6 +130,6 @@ Agent instructions, commands, and skills still match reality and do not contradi
 - Release and maintenance instructions point at the canonical workflow rather than duplicating it.
 - Check plugin surfaces against recent upstream platform changes across
   `.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`,
-  `.cursor-plugin/marketplace.json`, and the per-host manifests under `plugins/everruns-dev/`
-  (see [`plugins/AGENTS.md`](../../../../plugins/AGENTS.md)); prove parity with
-  `scripts/test-everruns-dev-plugin.sh`.
+  `.cursor-plugin/marketplace.json`, and the per-host manifests under `plugins/everruns/`
+  and `plugins/resend/` (see [`plugins/AGENTS.md`](../../../../plugins/AGENTS.md));
+  prove parity with `scripts/test-plugins.sh`.

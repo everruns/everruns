@@ -36,7 +36,7 @@ someone answers. See [URL mode elicitation](/features/mcp-url-elicitation/).
 
 ## Use Everruns from your AI tools
 
-To connect Claude Code, Codex, or Cursor to a deployment via the `everruns-dev` plugin, see [Use in AI tools](/getting-started/use-in-ai-tools/).
+To connect Claude Code, Codex, or Cursor to a deployment via the `everruns` plugin, see [Use in AI tools](/getting-started/use-in-ai-tools/).
 
 ## Related
 

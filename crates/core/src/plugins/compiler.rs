@@ -957,7 +957,6 @@ mod tests {
     fn compile_first_party_portable_plugins() {
         for (name, url) in [
             ("everruns", "https://app.everruns.com/mcp"),
-            ("everruns-dev", "https://dev.everruns.com/mcp"),
             ("resend", "https://mcp.resend.com/mcp"),
         ] {
             let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

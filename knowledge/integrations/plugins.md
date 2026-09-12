@@ -37,11 +37,11 @@ code.
 
 Direction matters relative to existing specs:
 
-- [everruns-dev-plugin.md](everruns-dev-plugin.md) is **outbound**: Everruns
-  packaged as a plugin for Claude Code/Codex/Cursor (`plugins/everruns*`).
+- `plugins/everruns/` is **outbound**: Everruns packaged as a plugin for
+  Claude Code/Codex/Cursor (see [the `everruns` plugin contract](#the-everruns-plugin-contract)).
 - This spec is **inbound**: Everruns consuming plugins in the same format.
-  The outbound plugins double as the first dogfood content: `everruns` and
-  `everruns-dev` must install cleanly into Everruns itself.
+  The outbound plugin doubles as the first dogfood content: `everruns`
+  must install cleanly into Everruns itself.
 
 ## Why not just declarative capabilities
 
@@ -322,7 +322,7 @@ capability threat model:
    skills/commands/agents/MCP, stable installation refs, capability registry and
    picker integration, marketplace/plugin management UI, core-owned compiler
    with `InProcessRuntimeBuilder` local-directory loading, dogfood by
-   installing `everruns`/`everruns-dev` and the `microsoft-docs` fixture.
+   installing `everruns` and the `microsoft-docs` fixture.
 2. **Shipped**: Agent Plugins v1 portable manifest, skills, Streamable HTTP
    MCP, version matching, narrow failure isolation, and `com.everruns` auth
    extension, alongside the legacy host dialects.
