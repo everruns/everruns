@@ -29,10 +29,10 @@ Type "clear; cat .demo-pages/04.txt"
 Enter
 Sleep 300ms
 Show
-Sleep 25s
+Sleep 23s
 Hide
 Type "clear; cat .demo-pages/05.txt"
 Enter
 Sleep 300ms
 Show
-Sleep 8s
+Sleep 25s

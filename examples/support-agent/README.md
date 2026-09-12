@@ -2,6 +2,8 @@
 
 Diagnose a sign-in problem by combining account facts with an explicit recovery policy. The interesting decision is whether the user needs MFA recovery, must wait for a lockout, or should try a clean browser session.
 
+![Support Agent terminal demo](demo.gif)
+
 ## What you learn
 
 Typed read-only tools, separating facts from policy, and choosing different answers for different inputs.
@@ -78,7 +80,8 @@ CI runs these offline checks without provider credentials. Live model behavior i
 
 ## Demo and recording
 
-The earlier recording covered a simpler scenario and is not embedded here as evidence for this workflow. Use the command above to exercise this version, or record it with the script below.
+The screencast is a paged replay of a successful live run of this workflow,
+with provider wait time removed. Read `demo.txt` at your own pace.
 
 With credentials exported and Python 3, VHS, ffmpeg, and a VHS-compatible browser installed:
 

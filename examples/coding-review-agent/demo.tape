@@ -11,7 +11,7 @@ Type "clear; cat .demo-pages/01.txt"
 Enter
 Sleep 300ms
 Show
-Sleep 25s
+Sleep 22s
 Hide
 Type "clear; cat .demo-pages/02.txt"
 Enter
@@ -23,7 +23,7 @@ Type "clear; cat .demo-pages/03.txt"
 Enter
 Sleep 300ms
 Show
-Sleep 14s
+Sleep 23s
 Hide
 Type "clear; cat .demo-pages/04.txt"
 Enter

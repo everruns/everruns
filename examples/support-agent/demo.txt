@@ -1,24 +1,38 @@
-Model: gpt-5.6-terra
+MODEL: gpt-5.6-terra
 
 QUESTION
-cust_demo cannot sign in after resetting their password. What should they do next?
+Customer cust_mfa reset their password but still cannot sign in. Diagnose the next safe step; do not ask for secrets.
 
-[Calling model]
+> lookup_customer
+  customer_id: cust_mfa
 
-TOOL: lookup_customer
-{"customer_id":"cust_demo"}
+< lookup_customer: OK
+authenticator_available: false
+lockout_minutes: 0
+mfa_enabled: true
+password_reset: "completed"
+recovery_codes_available: false
+verified: true
 
-lookup_customer: OK
-cust_demo: verified account; password reset completed; no active lockout; next safe action
-is to retry in a private browser window.
+> read_support_policy
 
-[Calling model]
+< read_support_policy: OK
+# Account recovery policy (fictional service)
+- Never request passwords, one-time codes, or recovery-code contents.
+- A password reset does not disable MFA.
+- When MFA is enabled and neither authenticator nor recovery codes are available,
+  direct the customer to verified identity recovery at https://support.example.com/recovery.
+  Support must not disable MFA based solely on a chat request.
+- An active lockout must expire before retrying. Repeated reset requests do not clear it.
+- With no MFA blocker or lockout, retry in a private browser window to exclude stale
+  cookies/autofill; escalate to support if that fails.
 
 ANSWER
-The password reset completed successfully, and there’s no active account lockout.
 
-Next, try signing in again in a private/incognito browser window to avoid saved cookies or
-autofill issues. If it still fails, use the “Forgot password” link once more and sign in
-with the newest reset link.
+Your password reset completed, but MFA is still enabled. The account has no active lockout; however, no authenticator or recovery codes are available.
 
-Completed: 2 iterations, 1 tool calls
+Next safe step: start verified identity recovery at https://support.example.com/recovery to restore access. Do not share passwords or codes.
+
+If recovery cannot be completed, contact support through the recovery process; chat support cannot disable MFA based only on a request.
+
+Completed: 2 iterations, 2 tool calls

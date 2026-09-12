@@ -23,8 +23,15 @@ def pages(transcript):
     groups = [sections[0].splitlines()]
     if len(sections) == 2:
         groups.append(["ANSWER", ""] + sections[1].strip("\n").splitlines())
-    return [group[start:start + 26] for group in groups
-            for start in range(0, len(group), 26) if any(group[start:start + 26])]
+    output = []
+    for group in groups:
+        if not any(group):
+            continue
+        page_count = math.ceil(len(group) / 26)
+        page_size = math.ceil(len(group) / page_count)
+        output.extend(group[start:start + page_size]
+                      for start in range(0, len(group), page_size))
+    return output
 
 def render():
     root = Path(__file__).resolve().parent
@@ -51,6 +58,7 @@ if __name__ == "__main__":
         assert len(result) == 2
         assert sum("Done" in page for page in result) == 1
         assert all(len(page) <= 26 for page in pages("\n".join(str(n) for n in range(100))))
+        assert [len(page) for page in pages("\n".join(str(n) for n in range(27)))] == [14, 13]
         print("Recording pagination checks passed")
     else:
         render()
