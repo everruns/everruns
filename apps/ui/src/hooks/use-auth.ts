@@ -143,7 +143,12 @@ export function useLogout() {
 
   return useMutation({
     mutationFn: logout,
-    onSuccess: () => {
+    // `onSettled`, not `onSuccess`: a logout that fails server-side is exactly
+    // when the client-side cache must still go. Clearing only on success left
+    // every org-sensitive query (durable, admin, sessions) in memory for
+    // whoever logged in next, on the one path where the user had already
+    // declared they were done (EVERRUNS-1Z).
+    onSettled: () => {
       // Clear ALL cached queries to prevent data leaking across users.
       // Selective removal (only auth keys) left org-sensitive data
       // (durable, admin, sessions, etc.) cached for the next user.

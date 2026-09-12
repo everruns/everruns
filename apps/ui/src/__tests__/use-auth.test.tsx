@@ -436,6 +436,34 @@ describe("Auth Hooks", () => {
       expect(localStorage.getItem("everruns_current_org")).toBeNull();
     });
 
+    // Sentry EVERRUNS-1Z: the cache clear used to hang off `onSuccess`, so a
+    // logout that failed server-side left every org-sensitive query in memory
+    // for whoever logged in next — on the one path where the user had already
+    // declared they were done.
+    it("clears cached data even when the logout request fails", async () => {
+      queryClient.setQueryData(authKeys.user(), {
+        id: "user-1",
+        email: "test@example.com",
+        name: "Test User",
+        roles: ["user"],
+        email_verified: true,
+      });
+      queryClient.setQueryData(["durable", "workflows"], [{ id: "wf-1" }]);
+      localStorage.setItem("everruns_current_org", "org_123");
+
+      mockLogout.mockRejectedValueOnce(new Error("Logout failed"));
+
+      const { result } = renderHook(() => useLogout(), { wrapper });
+
+      await act(async () => {
+        await expect(result.current.mutateAsync()).rejects.toThrow("Logout failed");
+      });
+
+      expect(queryClient.getQueryData(authKeys.user())).toBeUndefined();
+      expect(queryClient.getQueryData(["durable", "workflows"])).toBeUndefined();
+      expect(localStorage.getItem("everruns_current_org")).toBeNull();
+    });
+
     it("should clear user cache even if user was previously set", async () => {
       // Set initial user
       queryClient.setQueryData(authKeys.user(), {
