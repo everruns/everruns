@@ -86,7 +86,6 @@ const MESSAGE_CACHE_BREAKPOINTS: usize = 2;
 /// ```
 #[derive(Clone)]
 pub struct AnthropicChatDriver {
-    client: Client,
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
 }
@@ -106,10 +105,22 @@ struct SendMessagesOptions<'a> {
 impl AnthropicChatDriver {
     /// Create a new provider with the given API key
     pub fn new() -> Self {
+        // EVE-924: choose the rustls backend on the startup path. The shared
+        // client installs it as well, but that now happens on the first
+        // request, and products expect the process-wide choice to be settled
+        // while providers are being constructed.
+        everruns_provider::install_default_crypto_provider();
         Self {
-            client: driver_helpers::shared_streaming_http_client(),
             retry_config: LlmRetryConfig::default(),
         }
+    }
+
+    /// The process-wide streaming HTTP client, resolved per request rather than
+    /// held as a field. Building it loads the platform trust store (~1.3 ms),
+    /// which would otherwise land in `Agent::build` on the startup path; after
+    /// the first request this is a `OnceLock` read and an `Arc` clone.
+    fn client(&self) -> Client {
+        driver_helpers::shared_streaming_http_client()
     }
 
     /// Configure retry behavior for rate limit errors
@@ -209,7 +220,7 @@ impl AnthropicChatDriver {
                         })?;
                     let resolved = endpoint.resolve("POST", url, &body).await.map_err(SendOutcome::Fatal)?;
                     driver_headers.extend(resolved.headers);
-                    let mut request_builder = self.client.post(&resolved.url);
+                    let mut request_builder = self.client().post(&resolved.url);
                     for (name, value) in
                         driver_helpers::merge_request_headers(driver_headers, extra_headers)
                     {
@@ -397,6 +408,29 @@ impl AnthropicChatDriver {
                         text: AUDIO_CONTENT_PLACEHOLDER.to_string(),
                         cache_control: None,
                     }),
+                    LlmContentPart::File { url, .. } => {
+                        if let Some(parsed) = parse_data_url(url) {
+                            Some(AnthropicContentBlock::Document {
+                                source: AnthropicDocumentSource::Base64 {
+                                    media_type: parsed.media_type,
+                                    data: parsed.data,
+                                },
+                            })
+                        } else if url.starts_with("data:") {
+                            // Malformed data URL — fall back to application/pdf
+                            Some(AnthropicContentBlock::Document {
+                                source: AnthropicDocumentSource::Base64 {
+                                    media_type: "application/pdf".to_string(),
+                                    data: url.clone(),
+                                },
+                            })
+                        } else {
+                            // File URL
+                            Some(AnthropicContentBlock::Document {
+                                source: AnthropicDocumentSource::Url { url: url.clone() },
+                            })
+                        }
+                    }
                 })
                 .collect(),
         }
@@ -1262,7 +1296,7 @@ impl ChatDriver for AnthropicChatDriver {
             .ok_or_else(|| AgentLoopError::config("Anthropic provider has no base URL"))?;
         let resolved = endpoint.resolve("GET", url, &[]).await?;
         let mut request = self
-            .client
+            .client()
             .get(&resolved.url)
             .header("anthropic-version", ANTHROPIC_VERSION);
         for (name, value) in resolved.headers {
@@ -1276,10 +1310,12 @@ impl ChatDriver for AnthropicChatDriver {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(AgentLoopError::llm(format!(
-                "Models API returned {}: {}",
-                status, body
-            )));
+            // Classified at the boundary so credential checks can tell a
+            // rejected key (401/403) from an outage without parsing strings.
+            return Err(AgentLoopError::llm_kind(
+                LlmErrorKind::from_provider_status(status.as_u16(), &body),
+                format!("Models API returned {}: {}", status, body),
+            ));
         }
 
         let models_response: AnthropicModelsResponse = response
@@ -1661,6 +1697,8 @@ enum AnthropicContentBlock {
     },
     #[serde(rename = "image")]
     Image { source: AnthropicImageSource },
+    #[serde(rename = "document")]
+    Document { source: AnthropicDocumentSource },
     #[serde(rename = "thinking")]
     Thinking {
         thinking: String,
@@ -1711,6 +1749,17 @@ enum AnthropicToolResultBlock {
 enum AnthropicImageSource {
     #[serde(rename = "base64")]
     Base64 { media_type: String, data: String },
+    #[serde(rename = "url")]
+    Url { url: String },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+enum AnthropicDocumentSource {
+    #[serde(rename = "base64")]
+    Base64 { media_type: String, data: String },
+    #[serde(rename = "text")]
+    Text { media_type: String, data: String },
     #[serde(rename = "url")]
     Url { url: String },
 }
@@ -2244,7 +2293,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: vec![],
@@ -2671,6 +2720,31 @@ mod tests {
     }
 
     #[test]
+    fn file_pdf_serializes_to_document_block() {
+        let content = LlmMessageContent::Parts(vec![
+            LlmContentPart::Text {
+                text: "summarize".into(),
+            },
+            LlmContentPart::File {
+                url: "data:application/pdf;base64,JVBERi0=".into(),
+                filename: Some("report.pdf".into()),
+            },
+            LlmContentPart::File {
+                url: "https://example.com/report.pdf".into(),
+                filename: None,
+            },
+        ]);
+        assert_eq!(
+            serde_json::to_value(AnthropicChatDriver::convert_content(&content)).unwrap(),
+            json!([
+                {"type":"text","text":"summarize"},
+                {"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"JVBERi0="}},
+                {"type":"document","source":{"type":"url","url":"https://example.com/report.pdf"}},
+            ])
+        );
+    }
+
+    #[test]
     fn test_uses_adaptive_thinking_by_family() {
         // Adaptive-only / adaptive-recommended families, with and without
         // dated suffixes.
@@ -2859,7 +2933,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: vec![],

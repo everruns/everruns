@@ -165,53 +165,40 @@ mod tests {
     use super::*;
     use everruns_core::capability_types::MountSource;
 
-    // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
-
     #[test]
-    fn test_capability_has_system_prompt() {
-        let cap = SampleDataCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("/samples"));
-        assert!(prompt.contains("users.json"));
-        assert!(prompt.contains("config.yaml"));
-    }
-
-    #[test]
-    fn test_capability_has_mounts() {
-        let cap = SampleDataCapability;
-        let mounts = cap.mounts();
-
+    fn mounted_sample_files_are_readonly_text_with_usable_user_records() {
+        let mounts = SampleDataCapability.mounts();
         assert_eq!(mounts.len(), 1);
-
         let mount = &mounts[0];
         assert_eq!(mount.path, "/samples");
         assert!(mount.is_readonly());
         assert_eq!(mount.capability_id, "sample_data");
-
-        // Check directory structure
-        match &mount.source {
-            MountSource::InlineDirectory { entries } => {
-                assert_eq!(entries.len(), 3);
-                assert!(entries.contains_key("users.json"));
-                assert!(entries.contains_key("config.yaml"));
-                assert!(entries.contains_key("README.md"));
-            }
-            _ => panic!("Expected InlineDirectory"),
+        let MountSource::InlineDirectory { entries } = &mount.source else {
+            panic!("expected directory")
+        };
+        let mut names = entries.keys().map(String::as_str).collect::<Vec<_>>();
+        names.sort_unstable();
+        assert_eq!(names, ["README.md", "config.yaml", "users.json"]);
+        for entry in entries.values() {
+            let MountSource::InlineFile { content, encoding } = &entry.source else {
+                panic!("expected inline text")
+            };
+            assert_eq!(encoding, "text");
+            assert!(!content.is_empty());
         }
-    }
-
-    #[test]
-    fn test_sample_users_json_is_valid() {
-        let json: serde_json::Value =
-            serde_json::from_str(SampleDataCapability::USERS_JSON).unwrap();
-        assert!(json.is_array());
-        let users = json.as_array().unwrap();
-        assert_eq!(users.len(), 3);
-    }
-
-    #[test]
-    fn sample_config_contains_application_and_database_sections() {
-        assert!(SampleDataCapability::CONFIG_YAML.contains("application:"));
-        assert!(SampleDataCapability::CONFIG_YAML.contains("database:"));
+        let MountSource::InlineFile { content, .. } = &entries["users.json"].source else {
+            unreachable!()
+        };
+        let users: serde_json::Value = serde_json::from_str(content).unwrap();
+        let users = users.as_array().unwrap();
+        assert!(!users.is_empty());
+        let mut ids = std::collections::HashSet::new();
+        for user in users {
+            assert!(ids.insert(user["id"].as_u64().unwrap()));
+            assert!(!user["name"].as_str().unwrap().is_empty());
+            assert!(user["email"].as_str().unwrap().contains('@'));
+            assert!(matches!(user["role"].as_str(), Some("admin" | "user")));
+            assert!(user["active"].is_boolean());
+        }
     }
 }

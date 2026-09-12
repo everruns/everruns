@@ -20,3 +20,28 @@ OPENROUTER_API_KEY=... BRAVE_SEARCH_API_KEY=... cargo run -p everruns-research-a
 
 The example caps each query at five results. Use a web-fetch integration when a
 research task needs to inspect the contents of a particular source.
+
+## The important part
+
+```rust
+// Brave Search arrives as a capability, not a hand-written tool: a capability
+// packages one or more tools, their schemas, and their configuration behind a
+// single value you attach to the agent.
+let search = BraveSearch::from_env()?; // reads BRAVE_SEARCH_API_KEY
+
+let agent = Agent::builder()
+    .name("research-agent")
+    // The citation discipline lives in the instructions: use the tool first,
+    // cite what it returned, and label anything that goes beyond it.
+    .instructions("You are a research agent. Use brave_web_search before \
+        answering factual questions. Cite the returned source URLs, distinguish \
+        facts from inferences, and say when the evidence is incomplete.")
+    // The model is an OpenRouter slug; the provider is its own driver crate.
+    .provider(everruns_openrouter::provider("openrouter", api_key))
+    .model("z-ai/glm-5.2")
+    .capability(search) // `.capability(..)` for packaged tools, `.tool(..)` for one function
+    .build()?;
+```
+
+Capabilities and typed tools compose freely on the same builder, so an agent
+can carry a search integration and a bespoke function side by side.

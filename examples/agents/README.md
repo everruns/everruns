@@ -1,7 +1,9 @@
 # Runnable and importable agent examples
 
-Every Framework example is a self-contained Cargo package with its own source,
-test, README, typed tool or capability, and model profile. `cargo run` makes a
+Every Framework example is a Cargo package with its own source, test, README,
+typed tool or capability, and model profile. Each package contains only its
+agent; the terminal observer they all print through lives once in
+[`demo-support`](../demo-support). `cargo run` makes a
 real provider call; CI validates that the agent can be constructed without
 credentials and never makes a billed network call.
 

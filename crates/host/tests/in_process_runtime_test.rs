@@ -228,7 +228,7 @@ async fn default_runtime_uses_runtime_safe_capability_preset() {
         .llm_sim_as_default(LlmSimConfig::fixed("ok"))
         .single_session(|s| {
             s.harness("platform", "You manage the platform.")
-                .with_capability("platform_management")
+                .with_capability("platform")
                 .agent("platform-agent", "Use tools when helpful.")
         })
         .build()
@@ -1231,7 +1231,7 @@ async fn injected_resolver_reaches_tool_context_during_a_turn() {
 /// Fixture path for the microsoft-docs plugin used by plugin loading tests.
 const MICROSOFT_DOCS_PLUGIN_DIR: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../testdata/plugins/microsoft-docs"
+    "/../core/testdata/plugins/microsoft-docs"
 );
 
 /// Build a minimal runtime with the microsoft-docs plugin loaded and a single

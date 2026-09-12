@@ -23,13 +23,14 @@ import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
 import { useResourceOrgFallback } from "./use-resource-org-fallback";
 
-export function useCapabilities(options: { enabled?: boolean } = {}) {
+export function useCapabilities(options: { enabled?: boolean; includeRetired?: boolean } = {}) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
+  const includeRetired = options.includeRetired ?? false;
 
   const query = useQuery({
-    queryKey: ["capabilities", org],
-    queryFn: () => listCapabilities(),
+    queryKey: ["capabilities", org, includeRetired],
+    queryFn: () => listCapabilities(includeRetired),
     enabled: !!org && (options.enabled ?? true),
   });
 

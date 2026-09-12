@@ -16,7 +16,7 @@ use everruns_provider::credential_schema::CredentialFormSchema;
 use everruns_provider::driver_helpers::fetch_models;
 use everruns_provider::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
-    LlmMessage, LlmResponseStream,
+    LlmMessage, LlmResponse, LlmResponseStream,
 };
 use everruns_provider::error::Result;
 use everruns_provider::openai_protocol::{models_url_for_api_url, url_host_eq};
@@ -72,6 +72,21 @@ impl ChatDriver for OpenRouterChatDriver {
         self.inner.supports_parallel_tool_calls(model)
     }
 
+    fn supports_native_non_streaming(&self) -> bool {
+        self.inner.supports_native_non_streaming()
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &everruns_provider::ProviderEndpoint,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponse> {
+        self.inner
+            .chat_completion_non_streaming(endpoint, messages, config)
+            .await
+    }
+
     async fn list_models(
         &self,
         endpoint: &ProviderEndpoint,
@@ -86,7 +101,7 @@ impl ChatDriver for OpenRouterChatDriver {
         }
 
         let models_url = models_url_for_api_url(&api_url);
-        list_openrouter_models(self.inner.client(), endpoint, &models_url).await
+        list_openrouter_models(&self.inner.client(), endpoint, &models_url).await
     }
 }
 
@@ -212,7 +227,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),

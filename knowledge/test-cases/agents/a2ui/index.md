@@ -1,0 +1,3 @@
+# A2UI (Agent workflow)
+
+* [TC001: A2UI Form Rendering and Submission](TC001_form_submission.md) - Verify that an agent with the **A2UI** capability enabled can emit a ```a2ui fenced JSON block describing a `Form` with multiple fields, that the chat UI renders the form using native shadcn/ui primitives, and that su...

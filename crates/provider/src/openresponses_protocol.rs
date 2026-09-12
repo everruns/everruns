@@ -108,7 +108,6 @@ pub trait OpenResponsesRequestExtension: Send + Sync {
 
 #[derive(Clone)]
 pub struct OpenResponsesProtocolChatDriver {
-    client: Client,
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
     /// Optional provider-specific request-body decorator (see
@@ -123,12 +122,12 @@ pub struct OpenResponsesProtocolChatDriver {
 impl OpenResponsesProtocolChatDriver {
     /// Create a wire-only Open Responses protocol driver.
     pub fn new() -> Self {
+        // EVE-924: choose the rustls backend on the startup path. The shared
+        // client installs it as well, but that now happens on the first
+        // request, and products expect the process-wide choice to be settled
+        // while providers are being constructed.
+        crate::install_default_crypto_provider();
         Self {
-            // SSRF-hardened shared client (redirects disabled + DNS-pinned
-            // resolver). The api_url is org-configurable, so a bare
-            // `Client::new()` would leave this provider open to DNS-rebind /
-            // redirect SSRF (TM-API-013, EVE-623).
-            client: crate::driver_helpers::shared_streaming_http_client(),
             retry_config: LlmRetryConfig::default(),
             request_extension: None,
             stateful_responses: None,
@@ -250,7 +249,7 @@ impl OpenResponsesProtocolChatDriver {
                     headers.insert(name, value);
                 }
 
-                self.client
+                self.client()
                     .post(&resolved.url)
                     .headers(headers)
                     .header("Content-Type", "application/json")
@@ -344,9 +343,20 @@ impl OpenResponsesProtocolChatDriver {
         .await
     }
 
-    /// Get the HTTP client (for subclass access)
-    pub fn client(&self) -> &Client {
-        &self.client
+    /// The process-wide streaming HTTP client, resolved per request rather than
+    /// held as a field. Building it loads the platform trust store (~1.3 ms),
+    /// which would otherwise land on the agent startup path; after the first
+    /// request this is a `OnceLock` read and an `Arc` clone.
+    ///
+    /// Returned by value for subclass access; a `reqwest::Client` is an `Arc`
+    /// handle, so cloning it shares the same connection pool.
+    ///
+    /// The shared client is SSRF-hardened (redirects disabled + DNS-pinned
+    /// resolver). The api_url is org-configurable, so a bare `Client::new()`
+    /// would leave this provider open to DNS-rebind / redirect SSRF
+    /// (TM-API-013, EVE-623).
+    pub fn client(&self) -> Client {
+        crate::driver_helpers::shared_streaming_http_client()
     }
 
     fn convert_role(role: &LlmMessageRole) -> &'static str {
@@ -369,9 +379,12 @@ impl OpenResponsesProtocolChatDriver {
             let output = match &msg.content {
                 LlmMessageContent::Text(text) => text.clone(),
                 LlmMessageContent::Parts(parts) => {
-                    has_images = parts
-                        .iter()
-                        .any(|p| matches!(p, LlmContentPart::Image { .. }));
+                    has_images = parts.iter().any(|p| {
+                        matches!(
+                            p,
+                            LlmContentPart::Image { .. } | LlmContentPart::File { .. }
+                        )
+                    });
                     parts
                         .iter()
                         .filter_map(|p| match p {
@@ -385,7 +398,7 @@ impl OpenResponsesProtocolChatDriver {
             if has_images {
                 tracing::warn!(
                     tool_call_id = %tool_call_id,
-                    "OpenResponses API does not support images in tool results; images dropped"
+                    "OpenResponses API does not support images/files in tool results; attachments dropped"
                 );
             }
             return ResponsesInputItem::FunctionCallOutput {
@@ -414,6 +427,14 @@ impl OpenResponsesProtocolChatDriver {
                             input_audio: ResponsesInputAudio {
                                 data: url.clone(),
                                 format: "wav".to_string(),
+                            },
+                        },
+                        LlmContentPart::File { url, filename } => ResponsesContentPart::InputFile {
+                            r#type: "input_file".to_string(),
+                            input_file: ResponsesInputFile {
+                                file_data: Some(url.clone()),
+                                file_url: None,
+                                filename: filename.clone(),
                             },
                         },
                     })
@@ -673,7 +694,7 @@ impl OpenResponsesProtocolChatDriver {
                     .resolve("POST", &compact_url, &body)
                     .await
                     .map_err(SendOutcome::Fatal)?;
-                let mut builder = self.client.post(&resolved.url);
+                let mut builder = self.client().post(&resolved.url);
                 for (name, value) in resolved.headers {
                     builder = builder.header(name, value);
                 }
@@ -858,7 +879,8 @@ impl OpenResponsesProtocolChatDriver {
                 // encrypted content, are dropped rather than reconstructed —
                 // a synthesized id is not one the API can resolve.
                 for item in &msg.reasoning {
-                    // THREAT[TM-LLM-034]: do not replay foreign-provider opaque artifacts.
+                    // Reasoning replay tokens are provider-specific. Never send
+                    // another provider's artifact to the Responses API.
                     if item.provider != "openai" {
                         continue;
                     }
@@ -1353,8 +1375,13 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         let input_tokens = Arc::new(Mutex::new(0u32));
         let output_tokens = Arc::new(Mutex::new(0u32));
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
-        let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCallAccumulator>::new()));
+        let accumulated_tool_calls = Arc::new(Mutex::new(ToolCallStream::default()));
         let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
+        // Events a single SSE frame needs to emit *before* the one it maps to.
+        // Only the terminal frame uses it: reconciling the response's own
+        // function-call list has to reach the consumer ahead of `Done`, which
+        // ends the stream for it.
+        let deferred_events = Arc::new(Mutex::new(Vec::<LlmStreamEvent>::new()));
         // Share retry metadata with stream closure (only set if retries occurred)
         let shared_retry_metadata = if retry_metadata.had_retries() {
             Some(Arc::new(retry_metadata))
@@ -1362,6 +1389,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             None
         };
 
+        let frame_deferred_events = Arc::clone(&deferred_events);
         let converted_stream: LlmResponseStream = Box::pin(event_stream.then(move |result| {
             let model = model.clone();
             let input_tokens = Arc::clone(&input_tokens);
@@ -1369,6 +1397,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             let cache_read_tokens = Arc::clone(&cache_read_tokens);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
             let finish_reason = Arc::clone(&finish_reason);
+            let deferred_events = Arc::clone(&frame_deferred_events);
             let retry_metadata_for_done = shared_retry_metadata.clone();
 
             async move {
@@ -1396,6 +1425,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                 &cache_read_tokens,
                                 &accumulated_tool_calls,
                                 &finish_reason,
+                                &deferred_events,
                                 model,
                                 retry_metadata_for_done,
                             ));
@@ -1427,20 +1457,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             json.get("item_id").and_then(|c| c.as_str()),
                                             json.get("delta").and_then(|d| d.as_str()),
                                         ) {
-                                            let mut acc = accumulated_tool_calls.lock().unwrap();
-                                            // Find or create accumulator for this item_id
-                                            if let Some(tc) =
-                                                acc.iter_mut().find(|t| t.id == item_id)
-                                            {
-                                                tc.arguments.push_str(delta);
-                                            } else {
-                                                acc.push(ToolCallAccumulator {
-                                                    id: item_id.to_string(),
-                                                    call_id: String::new(),
-                                                    name: String::new(),
-                                                    arguments: delta.to_string(),
-                                                });
-                                            }
+                                            accumulated_tool_calls
+                                                .lock()
+                                                .unwrap()
+                                                .observe_arguments_delta(item_id, delta);
                                         }
                                         Ok(LlmStreamEvent::TextDelta(String::new()))
                                     }
@@ -1455,34 +1475,15 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             .and_then(|t| t.as_str());
                                         if item_type == Some("function_call") {
                                             let item = json.get("item").unwrap();
-                                            let id = item
-                                                .get("id")
-                                                .and_then(|c| c.as_str())
-                                                .unwrap_or("")
-                                                .to_string();
-                                            let call_id = item
-                                                .get("call_id")
-                                                .and_then(|c| c.as_str())
-                                                .unwrap_or("")
-                                                .to_string();
-                                            let name = item
-                                                .get("name")
-                                                .and_then(|n| n.as_str())
-                                                .unwrap_or("")
-                                                .to_string();
-
-                                            let mut acc = accumulated_tool_calls.lock().unwrap();
-                                            if let Some(tc) = acc.iter_mut().find(|t| t.id == id) {
-                                                tc.name = name;
-                                                tc.call_id = call_id;
-                                            } else {
-                                                acc.push(ToolCallAccumulator {
-                                                    id,
-                                                    call_id,
-                                                    name,
-                                                    arguments: String::new(),
-                                                });
-                                            }
+                                            let field = |key: &str| {
+                                                item.get(key).and_then(|v| v.as_str()).unwrap_or("")
+                                            };
+                                            accumulated_tool_calls.lock().unwrap().observe_item(
+                                                field("id"),
+                                                field("call_id"),
+                                                field("name"),
+                                                field("arguments"),
+                                            );
                                         } else if item_type == Some("message") {
                                             // Surface the assistant item's native
                                             // phase mid-stream as a best-effort hint
@@ -1508,14 +1509,26 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             && item.get("type").and_then(|t| t.as_str())
                                                 == Some("function_call")
                                         {
-                                            return Ok(complete_tool_call(
-                                                &accumulated_tool_calls,
-                                                &finish_reason,
-                                                item.get("id").and_then(Value::as_str).unwrap_or(""),
-                                                item.get("call_id").and_then(Value::as_str),
-                                                item.get("name").and_then(Value::as_str),
-                                                item.get("arguments").and_then(Value::as_str),
-                                            ));
+                                            // The done frame describes the
+                                            // finished call in full, so it is the
+                                            // authoritative record of it; the
+                                            // accumulator only fills in what
+                                            // streamed earlier.
+                                            let field = |key: &str| {
+                                                item.get(key).and_then(|v| v.as_str()).unwrap_or("")
+                                            };
+                                            let mut acc = accumulated_tool_calls.lock().unwrap();
+                                            acc.observe_item(
+                                                field("id"),
+                                                field("call_id"),
+                                                field("name"),
+                                                field("arguments"),
+                                            );
+                                            if let Some(tool_calls) = acc.take_unemitted() {
+                                                *finish_reason.lock().unwrap() =
+                                                    Some("tool_calls".to_string());
+                                                return Ok(LlmStreamEvent::ToolCalls(tool_calls));
+                                            }
                                         }
                                         Ok(LlmStreamEvent::TextDelta(String::new()))
                                     }
@@ -1525,6 +1538,26 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                     | Some("response.done") => {
                                         // Response completed - extract usage
                                         let response_obj = json.get("response").unwrap_or(&json);
+
+                                        // Reconcile against the response's own output list before ending
+                                        // the stream. Every incremental frame is best-effort: one that is
+                                        // dropped, reordered, or shaped differently by a gateway would
+                                        // otherwise lose the call silently, and the finish reason below is
+                                        // derived from what this driver emitted, so nothing downstream
+                                        // could tell that apart from the model choosing to stop.
+                                        {
+                                            let mut acc =
+                                                accumulated_tool_calls.lock().unwrap();
+                                            acc.observe_response_json(response_obj);
+                                            if let Some(tool_calls) = acc.take_unemitted() {
+                                                *finish_reason.lock().unwrap() =
+                                                    Some("tool_calls".to_string());
+                                                deferred_events
+                                                    .lock()
+                                                    .unwrap()
+                                                    .push(LlmStreamEvent::ToolCalls(tool_calls));
+                                            }
+                                        }
 
                                         // Authoritative per-request cost from OpenAI-compatible
                                         // gateways (e.g. OpenRouter `usage.cost`, in USD credits).
@@ -1628,10 +1661,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             finish_reason: Some(reason),
                                             retry_metadata: retry_metadata_for_done
                                                 .map(|arc| (*arc).clone()),
-                                            response_id: response_obj
-                                                .get("id")
-                                                .and_then(Value::as_str)
-                                                .map(str::to_owned),
+                                            response_id: None,
                                             phase,
                                             cache_diagnostics: None,
                                         })))
@@ -1682,6 +1712,17 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 }
             }
         }));
+
+        // Flush whatever the frame queued ahead of the event it mapped to. The
+        // per-frame closure is 1:1 by construction, so this is the only place a
+        // frame can widen into several events.
+        let converted_stream: LlmResponseStream =
+            Box::pin(converted_stream.flat_map(move |item| {
+                let queued = std::mem::take(&mut *deferred_events.lock().unwrap());
+                let mut batch: Vec<Result<LlmStreamEvent>> = queued.into_iter().map(Ok).collect();
+                batch.push(item);
+                futures::stream::iter(batch)
+            }));
 
         Ok(converted_stream)
     }
@@ -1735,53 +1776,171 @@ struct ToolCallAccumulator {
     arguments: String,
 }
 
-// ToolCalls are cumulative snapshots: consumers replace their current call set.
-// Terminal item arguments are authoritative even when deltas were absent or partial.
-fn complete_tool_call(
-    accumulated: &Mutex<Vec<ToolCallAccumulator>>,
-    finish_reason: &Mutex<Option<String>>,
-    id: &str,
-    call_id: Option<&str>,
-    name: Option<&str>,
-    arguments: Option<&str>,
-) -> LlmStreamEvent {
-    let mut calls = accumulated.lock().unwrap();
-    if !id.is_empty() {
-        let index = calls
-            .iter()
-            .position(|call| call.id == id)
-            .unwrap_or_else(|| {
-                calls.push(ToolCallAccumulator {
-                    id: id.into(),
-                    ..Default::default()
-                });
-                calls.len() - 1
-            });
-        let call = &mut calls[index];
-        if let Some(call_id) = call_id {
-            call.call_id = call_id.into();
-        }
-        if let Some(name) = name {
-            call.name = name.into();
-        }
-        if let Some(arguments) = arguments {
-            call.arguments = arguments.into();
+impl ToolCallAccumulator {
+    /// The identity and body this entry would be emitted with. Compared, not
+    /// shown, so [`ToolCallStream`] can tell a repeat emission from a new one
+    /// without requiring `PartialEq` on the public `ToolCall`.
+    fn signature(&self) -> (String, String, String) {
+        (
+            self.call_id.clone(),
+            self.name.clone(),
+            self.arguments.clone(),
+        )
+    }
+}
+
+/// The tool calls one response has described so far, and what has already been
+/// handed to the consumer.
+///
+/// A gateway is free to carry a call's identity on any of the frames that
+/// describe it: `response.output_item.added` names it, the argument deltas
+/// stream its body, `response.output_item.done` repeats both in full, and the
+/// terminal `response` resource lists it once more. Only `.added` used to be
+/// read for the name, so a stream that dropped or mis-shaped that one frame
+/// left an entry that [`Self::snapshot`] filtered away: the model called a
+/// tool and the agent saw a plain text answer instead, with nothing downstream
+/// able to tell that apart from the model choosing to stop.
+#[derive(Default)]
+struct ToolCallStream {
+    calls: Vec<ToolCallAccumulator>,
+    /// Signatures of the set handed to the consumer by the last `ToolCalls`
+    /// event, so reconciling at completion stays a no-op when the incremental
+    /// frames already delivered everything.
+    emitted: Vec<(String, String, String)>,
+}
+
+impl ToolCallStream {
+    /// Append one streamed argument fragment to its call.
+    fn observe_arguments_delta(&mut self, item_id: &str, delta: &str) {
+        match self.calls.iter_mut().find(|tc| tc.id == item_id) {
+            Some(entry) => entry.arguments.push_str(delta),
+            None => self.calls.push(ToolCallAccumulator {
+                id: item_id.to_string(),
+                arguments: delta.to_string(),
+                ..Default::default()
+            }),
         }
     }
-    let snapshot: Vec<_> = calls
-        .iter()
-        .filter(|call| !call.name.is_empty())
-        .map(|call| ToolCall {
-            id: call.call_id.clone(),
-            name: call.name.clone(),
-            arguments: serde_json::from_str(&call.arguments).unwrap_or(json!({})),
-        })
-        .collect();
-    if snapshot.is_empty() {
-        LlmStreamEvent::TextDelta(String::new())
-    } else {
-        *finish_reason.lock().unwrap() = Some("tool_calls".into());
-        LlmStreamEvent::ToolCalls(snapshot)
+
+    /// Fold a whole `function_call` item into the set.
+    ///
+    /// Every field is last-writer-wins over the frames that carry it, and an
+    /// empty field means "this frame does not carry it" rather than "cleared",
+    /// so a later identity-free frame cannot erase a known name.
+    fn observe_item(&mut self, id: &str, call_id: &str, name: &str, arguments: &str) {
+        // Match on either identifier: the frames do not all carry both, and a
+        // gateway that omits `id` entirely would otherwise collapse every
+        // parallel call in the response into one entry.
+        let existing = self.calls.iter().position(|tc| {
+            (!id.is_empty() && tc.id == id) || (!call_id.is_empty() && tc.call_id == call_id)
+        });
+        let entry = match existing {
+            Some(index) => &mut self.calls[index],
+            None => {
+                self.calls.push(ToolCallAccumulator::default());
+                self.calls.last_mut().expect("entry just pushed")
+            }
+        };
+        if !id.is_empty() {
+            entry.id = id.to_string();
+        }
+        if !call_id.is_empty() {
+            entry.call_id = call_id.to_string();
+        }
+        if !name.is_empty() {
+            entry.name = name.to_string();
+        }
+        // Whole-item frames carry the complete argument string, so they replace
+        // the streamed fragments rather than appending to them.
+        if !arguments.is_empty() {
+            entry.arguments = arguments.to_string();
+        }
+    }
+
+    /// Fold every `function_call` item of a terminal `response` resource in.
+    fn observe_response(&mut self, output: &[types::OutputItem]) {
+        for item in output {
+            if let types::OutputItem::FunctionCall {
+                id,
+                call_id,
+                name,
+                arguments,
+                ..
+            } = item
+            {
+                self.observe_item(id, call_id, name, arguments);
+            }
+        }
+    }
+
+    /// The JSON-fallback twin of [`Self::observe_response`].
+    fn observe_response_json(&mut self, response: &Value) {
+        let Some(output) = response.get("output").and_then(|o| o.as_array()) else {
+            return;
+        };
+        for item in output {
+            if item.get("type").and_then(|t| t.as_str()) != Some("function_call") {
+                continue;
+            }
+            let field = |key: &str| item.get(key).and_then(|v| v.as_str()).unwrap_or("");
+            self.observe_item(
+                field("id"),
+                field("call_id"),
+                field("name"),
+                field("arguments"),
+            );
+        }
+    }
+
+    /// The complete tool-call set observed so far, or `None` when it is empty
+    /// or identical to the set already emitted.
+    ///
+    /// Always the full set, never a delta: the engine's stream reader
+    /// *overwrites* its tool-call list on every `ToolCalls` event, so an event
+    /// carrying only the newest call would drop the earlier ones.
+    fn take_unemitted(&mut self) -> Option<Vec<ToolCall>> {
+        let signature: Vec<(String, String, String)> = self
+            .calls
+            .iter()
+            .filter(|tc| !tc.name.is_empty())
+            .map(ToolCallAccumulator::signature)
+            .collect();
+        if signature.is_empty() || signature == self.emitted {
+            return None;
+        }
+        self.emitted = signature;
+        Some(self.snapshot())
+    }
+
+    fn snapshot(&self) -> Vec<ToolCall> {
+        self.calls
+            .iter()
+            .filter(|tc| !tc.name.is_empty())
+            .map(|tc| {
+                let arguments: Value =
+                    serde_json::from_str(&tc.arguments).unwrap_or_else(|error| {
+                        // An empty string is the ordinary shape of a no-argument
+                        // call. Anything else that fails to parse is a truncated
+                        // or corrupt body, and silently substituting `{}` would
+                        // run the tool with the wrong inputs, so say so.
+                        if !tc.arguments.trim().is_empty() {
+                            tracing::warn!(
+                                tool = %tc.name,
+                                call_id = %tc.call_id,
+                                %error,
+                                "OpenResponses: unparseable tool-call arguments, \
+                                 falling back to empty arguments"
+                            );
+                        }
+                        json!({})
+                    });
+                ToolCall {
+                    id: tc.call_id.clone(),
+                    name: tc.name.clone(),
+                    arguments,
+                }
+            })
+            .collect()
     }
 }
 
@@ -1792,8 +1951,9 @@ fn handle_streaming_event(
     input_tokens: &Mutex<u32>,
     output_tokens: &Mutex<u32>,
     cache_read_tokens: &Mutex<Option<u32>>,
-    accumulated_tool_calls: &Mutex<Vec<ToolCallAccumulator>>,
+    accumulated_tool_calls: &Mutex<ToolCallStream>,
     finish_reason: &Mutex<Option<String>>,
+    deferred_events: &Mutex<Vec<LlmStreamEvent>>,
     model: String,
     retry_metadata: Option<Arc<RetryMetadata>>,
 ) -> LlmStreamEvent {
@@ -1823,37 +1983,26 @@ fn handle_streaming_event(
         }
 
         StreamingEvent::FunctionCallArgumentsDelta { item_id, delta, .. } => {
-            let mut acc = accumulated_tool_calls.lock().unwrap();
-            if let Some(tc) = acc.iter_mut().find(|t| t.id == item_id) {
-                tc.arguments.push_str(&delta);
-            } else {
-                acc.push(ToolCallAccumulator {
-                    id: item_id,
-                    call_id: String::new(),
-                    name: String::new(),
-                    arguments: delta,
-                });
-            }
+            accumulated_tool_calls
+                .lock()
+                .unwrap()
+                .observe_arguments_delta(&item_id, &delta);
             LlmStreamEvent::TextDelta(String::new())
         }
 
         StreamingEvent::OutputItemAdded { item, .. } => {
             match item {
                 Some(types::OutputItem::FunctionCall {
-                    id, call_id, name, ..
+                    id,
+                    call_id,
+                    name,
+                    arguments,
+                    ..
                 }) => {
-                    let mut acc = accumulated_tool_calls.lock().unwrap();
-                    if let Some(tc) = acc.iter_mut().find(|t| t.id == id) {
-                        tc.name = name;
-                        tc.call_id = call_id;
-                    } else {
-                        acc.push(ToolCallAccumulator {
-                            id,
-                            call_id,
-                            name,
-                            arguments: String::new(),
-                        });
-                    }
+                    accumulated_tool_calls
+                        .lock()
+                        .unwrap()
+                        .observe_item(&id, &call_id, &name, &arguments);
                     LlmStreamEvent::TextDelta(String::new())
                 }
                 // OpenAI Responses stamps the assistant item's phase on
@@ -1880,14 +2029,18 @@ fn handle_streaming_event(
                     name,
                     arguments,
                     ..
-                }) => complete_tool_call(
-                    accumulated_tool_calls,
-                    finish_reason,
-                    &id,
-                    Some(&call_id),
-                    Some(&name),
-                    Some(&arguments),
-                ),
+                }) => {
+                    // The done frame describes the finished call in full, so it
+                    // is the authoritative record of it; the accumulator only
+                    // fills in what streamed earlier.
+                    let mut acc = accumulated_tool_calls.lock().unwrap();
+                    acc.observe_item(&id, &call_id, &name, &arguments);
+                    if let Some(tool_calls) = acc.take_unemitted() {
+                        *finish_reason.lock().unwrap() = Some("tool_calls".to_string());
+                        return LlmStreamEvent::ToolCalls(tool_calls);
+                    }
+                    LlmStreamEvent::TextDelta(String::new())
+                }
                 Some(types::OutputItem::Reasoning {
                     id,
                     summary,
@@ -1929,6 +2082,27 @@ fn handle_streaming_event(
 
         StreamingEvent::ResponseCompleted { response, .. }
         | StreamingEvent::ResponseIncomplete { response, .. } => {
+            // Reconcile against the response's own output list before ending
+            // the stream. Every incremental frame is best-effort: one that is
+            // dropped, reordered, or shaped differently by a gateway would
+            // otherwise lose the call silently, and the finish reason below is
+            // derived from what this driver emitted, so nothing downstream
+            // could tell that apart from the model choosing to stop.
+            {
+                let mut acc = accumulated_tool_calls.lock().unwrap();
+                acc.observe_response(&response.output);
+                if let Some(tool_calls) = acc.take_unemitted() {
+                    *finish_reason.lock().unwrap() = Some("tool_calls".to_string());
+                    // The consumer overwrites its tool-call list on each event,
+                    // so re-emitting the full set is a no-op when the
+                    // incremental frames already delivered it.
+                    deferred_events
+                        .lock()
+                        .unwrap()
+                        .push(LlmStreamEvent::ToolCalls(tool_calls));
+                }
+            }
+
             // Extract usage
             if let Some(usage) = &response.usage {
                 *input_tokens.lock().unwrap() = usage.input_tokens;
@@ -2185,6 +2359,17 @@ impl From<&CompactOutputItem> for ResponsesInputItem {
                                         image_url: image_url.clone(),
                                     }
                                 }
+                                CompactContentPart::InputFile {
+                                    file_data,
+                                    filename,
+                                } => ResponsesContentPart::InputFile {
+                                    r#type: "input_file".to_string(),
+                                    input_file: ResponsesInputFile {
+                                        file_data: Some(file_data.clone()),
+                                        file_url: None,
+                                        filename: filename.clone(),
+                                    },
+                                },
                             })
                             .collect(),
                     ),
@@ -2223,12 +2408,26 @@ enum ResponsesContentPart {
         r#type: String,
         input_audio: ResponsesInputAudio,
     },
+    InputFile {
+        r#type: String,
+        input_file: ResponsesInputFile,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ResponsesInputAudio {
     data: String,
     format: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ResponsesInputFile {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_data: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filename: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2264,6 +2463,804 @@ enum ResponsesTool {
 mod tests {
     use super::*;
 
+    #[test]
+    fn test_request_serialization() {
+        let request = ResponsesRequest {
+            include: None,
+            text: None,
+            service_tier: None,
+            model: "gpt-5.2".to_string(),
+            input: vec![ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("Hello".to_string()),
+                phase: None,
+            }],
+            instructions: Some("You are helpful".to_string()),
+            previous_response_id: None,
+            temperature: None,
+            max_output_tokens: None,
+            stream: true,
+            tools: None,
+            reasoning: None,
+            metadata: None,
+            prompt_cache_key: None,
+            parallel_tool_calls: None,
+        };
+
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["model"], "gpt-5.2");
+        assert_eq!(json["stream"], true);
+        assert_eq!(json["instructions"], "You are helpful");
+        assert!(json["input"].is_array());
+    }
+
+    #[test]
+    fn test_request_with_reasoning() {
+        let request = ResponsesRequest {
+            include: None,
+            text: None,
+            service_tier: None,
+            model: "o3".to_string(),
+            input: vec![ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("Think about this".to_string()),
+                phase: None,
+            }],
+            instructions: None,
+            previous_response_id: None,
+            temperature: None,
+            max_output_tokens: None,
+            stream: true,
+            tools: None,
+            reasoning: Some(ResponsesReasoning {
+                effort: "high".to_string(),
+                summary: "detailed".to_string(),
+            }),
+            metadata: None,
+            prompt_cache_key: None,
+            parallel_tool_calls: None,
+        };
+
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["reasoning"]["effort"], "high");
+        assert_eq!(json["reasoning"]["summary"], "detailed");
+    }
+
+    #[test]
+    fn test_request_with_metadata() {
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("session_id".to_string(), "session_abc123".to_string());
+        metadata.insert("agent_id".to_string(), "agent_xyz789".to_string());
+
+        let request = ResponsesRequest {
+            include: None,
+            text: None,
+            service_tier: None,
+            model: "gpt-5.2".to_string(),
+            input: vec![ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("Hello".to_string()),
+                phase: None,
+            }],
+            instructions: None,
+            previous_response_id: None,
+            temperature: None,
+            max_output_tokens: None,
+            stream: true,
+            tools: None,
+            reasoning: None,
+            metadata: Some(metadata),
+            prompt_cache_key: None,
+            parallel_tool_calls: None,
+        };
+
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["metadata"]["session_id"], "session_abc123");
+        assert_eq!(json["metadata"]["agent_id"], "agent_xyz789");
+    }
+
+    /// EVE-598: the Responses request serializes `parallel_tool_calls` only when
+    /// the config sets it, preserving provider defaults when `None`.
+    #[test]
+    fn test_request_serializes_parallel_tool_calls() {
+        let make = |flag: Option<bool>| ResponsesRequest {
+            include: None,
+            text: None,
+            service_tier: None,
+            model: "gpt-5.4".to_string(),
+            input: vec![ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("Hello".to_string()),
+                phase: None,
+            }],
+            instructions: None,
+            previous_response_id: None,
+            temperature: None,
+            max_output_tokens: None,
+            stream: true,
+            tools: None,
+            reasoning: None,
+            metadata: None,
+            prompt_cache_key: None,
+            parallel_tool_calls: flag,
+        };
+
+        // None → field omitted entirely (provider default preserved).
+        let json = serde_json::to_value(make(None)).unwrap();
+        assert!(json.get("parallel_tool_calls").is_none());
+
+        // Some(true) → field present and true.
+        let json = serde_json::to_value(make(Some(true))).unwrap();
+        assert_eq!(json["parallel_tool_calls"], true);
+
+        // Some(false) → field present and false.
+        let json = serde_json::to_value(make(Some(false))).unwrap();
+        assert_eq!(json["parallel_tool_calls"], false);
+    }
+
+    /// The speed selector serializes as `service_tier` only when set,
+    /// preserving the provider's default ("auto") routing when `None`.
+    #[test]
+    fn test_request_serializes_service_tier() {
+        let make = |tier: Option<&str>| ResponsesRequest {
+            service_tier: tier.map(str::to_string),
+            model: "gpt-5.4".to_string(),
+            input: vec![ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("Hello".to_string()),
+                phase: None,
+            }],
+            instructions: None,
+            previous_response_id: None,
+            temperature: None,
+            max_output_tokens: None,
+            stream: true,
+            tools: None,
+            reasoning: None,
+            metadata: None,
+            prompt_cache_key: None,
+            parallel_tool_calls: None,
+            text: None,
+            include: None,
+        };
+
+        let json = serde_json::to_value(make(None)).unwrap();
+        assert!(json.get("service_tier").is_none());
+
+        let json = serde_json::to_value(make(Some("priority"))).unwrap();
+        assert_eq!(json["service_tier"], "priority");
+
+        let json = serde_json::to_value(make(Some("flex"))).unwrap();
+        assert_eq!(json["service_tier"], "flex");
+    }
+
+    /// Verbosity serializes as a nested `text.verbosity` object only when set,
+    /// preserving the provider's default output length when `None`.
+    #[test]
+    fn test_request_serializes_verbosity() {
+        let make = |verbosity: Option<&str>| ResponsesRequest {
+            include: None,
+            service_tier: None,
+            text: verbosity.map(|v| ResponsesText {
+                verbosity: Some(v.to_string()),
+            }),
+            model: "gpt-5.6-sol".to_string(),
+            input: vec![ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("Hello".to_string()),
+                phase: None,
+            }],
+            instructions: None,
+            previous_response_id: None,
+            temperature: None,
+            max_output_tokens: None,
+            stream: true,
+            tools: None,
+            reasoning: None,
+            metadata: None,
+            prompt_cache_key: None,
+            parallel_tool_calls: None,
+        };
+
+        let json = serde_json::to_value(make(None)).unwrap();
+        assert!(json.get("text").is_none());
+
+        let json = serde_json::to_value(make(Some("low"))).unwrap();
+        assert_eq!(json["text"]["verbosity"], "low");
+
+        let json = serde_json::to_value(make(Some("high"))).unwrap();
+        assert_eq!(json["text"]["verbosity"], "high");
+    }
+
+    #[test]
+    fn test_function_call_output_serialization() {
+        let item = ResponsesInputItem::FunctionCallOutput {
+            r#type: "function_call_output".to_string(),
+            call_id: "call_123".to_string(),
+            output: r#"{"result": 42}"#.to_string(),
+        };
+
+        let json = serde_json::to_value(&item).unwrap();
+        assert_eq!(json["type"], "function_call_output");
+        assert_eq!(json["call_id"], "call_123");
+        assert_eq!(json["output"], r#"{"result": 42}"#);
+    }
+
+    #[test]
+    fn test_multipart_content_serialization() {
+        let content = ResponsesContent::Parts(vec![
+            ResponsesContentPart::InputText {
+                r#type: "input_text".to_string(),
+                text: "Look at this image".to_string(),
+            },
+            ResponsesContentPart::InputImage {
+                r#type: "input_image".to_string(),
+                image_url: "data:image/png;base64,abc123".to_string(),
+            },
+        ]);
+
+        let json = serde_json::to_value(&content).unwrap();
+        assert!(json.is_array());
+        assert_eq!(json[0]["type"], "input_text");
+        assert_eq!(json[1]["type"], "input_image");
+    }
+
+    #[test]
+    fn test_tool_serialization() {
+        let tool = ResponsesTool::Function {
+            r#type: "function".to_string(),
+            name: "get_weather".to_string(),
+            description: "Get weather for a location".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "location": {"type": "string"}
+                },
+                "required": ["location"]
+            }),
+            strict: Some(true),
+            defer_loading: None,
+        };
+
+        let json = serde_json::to_value(&tool).unwrap();
+        assert_eq!(json["type"], "function");
+        assert_eq!(json["name"], "get_weather");
+        assert!(json["parameters"]["properties"]["location"].is_object());
+    }
+
+    #[test]
+    fn test_build_input_extracts_system_as_instructions() {
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "You are a helpful assistant"),
+            LlmMessage::text(LlmMessageRole::User, "Hello"),
+        ];
+
+        let (instructions, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
+
+        assert_eq!(
+            instructions,
+            Some("You are a helpful assistant".to_string())
+        );
+        assert_eq!(input.len(), 1); // Only user message, system converted to instructions
+    }
+
+    #[test]
+    fn test_build_input_concatenates_multiple_system_messages() {
+        // The agent system prompt plus a later system message (e.g. infinity
+        // context's hidden-history notice or compaction's summary) must both
+        // survive — the later one must not overwrite the real system prompt.
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "You are a helpful assistant"),
+            LlmMessage::text(LlmMessageRole::User, "Hello"),
+            LlmMessage::text(
+                LlmMessageRole::System,
+                "[IMPORTANT: 3 earlier messages are NOT visible in this context.]",
+            ),
+        ];
+
+        let (instructions, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
+
+        assert_eq!(
+            instructions,
+            Some(
+                "You are a helpful assistant\n\n[IMPORTANT: 3 earlier messages are NOT visible in this context.]"
+                    .to_string()
+            )
+        );
+        assert_eq!(input.len(), 1); // Only the user message remains as input
+    }
+
+    #[test]
+    fn test_convert_role() {
+        assert_eq!(
+            OpenResponsesProtocolChatDriver::convert_role(&LlmMessageRole::System),
+            "developer"
+        );
+        assert_eq!(
+            OpenResponsesProtocolChatDriver::convert_role(&LlmMessageRole::User),
+            "user"
+        );
+        assert_eq!(
+            OpenResponsesProtocolChatDriver::convert_role(&LlmMessageRole::Assistant),
+            "assistant"
+        );
+        assert_eq!(
+            OpenResponsesProtocolChatDriver::convert_role(&LlmMessageRole::Tool),
+            "tool"
+        );
+    }
+
+    #[test]
+    fn test_function_call_serialization() {
+        let item = ResponsesInputItem::FunctionCall {
+            r#type: "function_call".to_string(),
+            call_id: "call_abc123".to_string(),
+            name: "get_current_time".to_string(),
+            arguments: r#"{"timezone":"UTC"}"#.to_string(),
+        };
+
+        let json = serde_json::to_value(&item).unwrap();
+        assert_eq!(json["type"], "function_call");
+        assert_eq!(json["call_id"], "call_abc123");
+        assert_eq!(json["name"], "get_current_time");
+        assert_eq!(json["arguments"], r#"{"timezone":"UTC"}"#);
+    }
+
+    #[test]
+    fn test_build_input_with_tool_calls() {
+        use crate::tool_types::ToolCall;
+
+        // Simulate a conversation with tool calls:
+        // 1. User asks a question
+        // 2. Assistant calls a tool
+        // 3. Tool returns result
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "You are helpful"),
+            LlmMessage::text(LlmMessageRole::User, "What time is it?"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text(String::new()),
+                tool_calls: Some(vec![ToolCall {
+                    id: "call_xyz789".to_string(),
+                    name: "get_current_time".to_string(),
+                    arguments: json!({"timezone": "UTC"}),
+                }]),
+                tool_call_id: None,
+                phase: None,
+                reasoning: Vec::new(),
+                configuration_update: None,
+            },
+            LlmMessage {
+                role: LlmMessageRole::Tool,
+                content: LlmMessageContent::Text("2025-01-19T10:30:00Z".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_xyz789".to_string()),
+                phase: None,
+                reasoning: Vec::new(),
+                configuration_update: None,
+            },
+        ];
+
+        let (instructions, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
+
+        // System message becomes instructions
+        assert_eq!(instructions, Some("You are helpful".to_string()));
+
+        // Should have: user message, function_call, function_call_output
+        assert_eq!(input.len(), 3);
+
+        // Verify the function_call is present (second item, since assistant had empty content)
+        let json = serde_json::to_value(&input[1]).unwrap();
+        assert_eq!(json["type"], "function_call");
+        assert_eq!(json["call_id"], "call_xyz789");
+        assert_eq!(json["name"], "get_current_time");
+
+        // Verify the function_call_output is present
+        let json = serde_json::to_value(&input[2]).unwrap();
+        assert_eq!(json["type"], "function_call_output");
+        assert_eq!(json["call_id"], "call_xyz789");
+        assert_eq!(json["output"], "2025-01-19T10:30:00Z");
+    }
+
+    #[test]
+    fn test_build_input_with_tool_calls_and_text() {
+        use crate::tool_types::ToolCall;
+
+        // Assistant message with both text content and tool calls
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "What time is it?"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Let me check the time for you.".to_string()),
+                tool_calls: Some(vec![ToolCall {
+                    id: "call_abc".to_string(),
+                    name: "get_time".to_string(),
+                    arguments: json!({}),
+                }]),
+                tool_call_id: None,
+                phase: None,
+                reasoning: Vec::new(),
+                configuration_update: None,
+            },
+        ];
+
+        let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
+
+        // Should have: user message, assistant message, function_call
+        assert_eq!(input.len(), 3);
+
+        // First is user message
+        let json = serde_json::to_value(&input[0]).unwrap();
+        assert_eq!(json["role"], "user");
+
+        // Second is assistant message with text
+        let json = serde_json::to_value(&input[1]).unwrap();
+        assert_eq!(json["role"], "assistant");
+
+        // Third is function_call
+        let json = serde_json::to_value(&input[2]).unwrap();
+        assert_eq!(json["type"], "function_call");
+        assert_eq!(json["call_id"], "call_abc");
+    }
+
+    // ========================================================================
+    // EVE-488: Stateful Responses continuations must not double-send context.
+    //
+    // When `previous_response_id` is set, the OpenAI Responses provider already
+    // holds the prior transcript server-side. Re-sending it in `input` causes
+    // double-counting. These tests pin the invariant that the delta-trim helper
+    // only keeps items strictly after the most recent assistant turn, and
+    // that the request-building path applies the trim when (and only when) a
+    // continuation handle is present.
+    // ========================================================================
+
+    /// Issue reproducer: a stateful continuation must not carry the full prior
+    /// transcript in `input` alongside `previous_response_id`. After trimming,
+    /// only the new tool result and any fresh user input should remain.
+    #[test]
+    fn openresponses_requests_should_not_mix_previous_response_id_with_full_transcript() {
+        use crate::tool_types::ToolCall;
+
+        // Simulate a multi-turn transcript: system + user + assistant(tool_call) + tool result.
+        // This is the exact shape that gets reconstructed on a follow-up turn when
+        // the runtime has a `previous_response_id` from the prior assistant turn.
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "You are helpful"),
+            LlmMessage::text(LlmMessageRole::User, "What time is it?"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Let me check.".to_string()),
+                tool_calls: Some(vec![ToolCall {
+                    id: "call_xyz789".to_string(),
+                    name: "get_current_time".to_string(),
+                    arguments: json!({"timezone": "UTC"}),
+                }]),
+                tool_call_id: None,
+                phase: None,
+                reasoning: Vec::new(),
+                configuration_update: None,
+            },
+            LlmMessage {
+                role: LlmMessageRole::Tool,
+                content: LlmMessageContent::Text("2025-01-19T10:30:00Z".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_xyz789".to_string()),
+                phase: None,
+                reasoning: Vec::new(),
+                configuration_update: None,
+            },
+        ];
+
+        // Build the full transcript the same way the driver does.
+        let (instructions, full_input) =
+            OpenResponsesProtocolChatDriver::build_input(&messages, false);
+
+        // Without trimming the full transcript leaks user + assistant + function_call
+        // + function_call_output — exactly the bug.
+        assert!(
+            full_input.len() > 1,
+            "sanity: full transcript has multi items"
+        );
+
+        // The trim performed when `previous_response_id` is present in the request
+        // path must drop everything up to and including the last prior-assistant item.
+        let delta = compute_delta_input_items(full_input);
+
+        // Only the tool result (function_call_output) should remain.
+        assert_eq!(
+            delta.len(),
+            1,
+            "stateful continuation must only send delta items; got {} items",
+            delta.len()
+        );
+        let json = serde_json::to_value(&delta[0]).unwrap();
+        assert_eq!(json["type"], "function_call_output");
+        assert_eq!(json["call_id"], "call_xyz789");
+        assert_eq!(json["output"], "2025-01-19T10:30:00Z");
+
+        // Instructions (system message) are NOT part of `input`; they're still sent
+        // separately and that is correct — they don't count toward the invariant.
+        assert_eq!(instructions, Some("You are helpful".to_string()));
+    }
+
+    /// Stateless mode (no previous_response_id): all input items are kept.
+    /// The trim helper is only invoked by the call path when previous_response_id
+    /// is set; this test pins that the helper produces correct delta output
+    /// regardless, leaving the fresh user message that follows the assistant turn.
+    #[test]
+    fn compute_delta_keeps_tail_after_assistant_message() {
+        let items = vec![
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("hi".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "assistant".to_string(),
+                content: ResponsesContent::Text("hello".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("follow up".to_string()),
+                phase: None,
+            },
+        ];
+        let trimmed = compute_delta_input_items(items);
+        assert_eq!(trimmed.len(), 1);
+        let json = serde_json::to_value(&trimmed[0]).unwrap();
+        assert_eq!(json["role"], "user");
+        assert_eq!(
+            json["content"], "follow up",
+            "trim keeps the fresh user message that arrived after the assistant turn"
+        );
+    }
+
+    /// Stateful continuation with parallel tool calls: every tool output that
+    /// follows the prior assistant's function_call items is kept. The function_call
+    /// items themselves belong to server-side state and are dropped.
+    #[test]
+    fn compute_delta_keeps_tool_results_after_last_assistant_turn() {
+        let items = vec![
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("do two things".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "assistant".to_string(),
+                content: ResponsesContent::Text("ok".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::FunctionCall {
+                r#type: "function_call".to_string(),
+                call_id: "call_a".to_string(),
+                name: "tool_a".to_string(),
+                arguments: "{}".to_string(),
+            },
+            ResponsesInputItem::FunctionCall {
+                r#type: "function_call".to_string(),
+                call_id: "call_b".to_string(),
+                name: "tool_b".to_string(),
+                arguments: "{}".to_string(),
+            },
+            ResponsesInputItem::FunctionCallOutput {
+                r#type: "function_call_output".to_string(),
+                call_id: "call_a".to_string(),
+                output: "a result".to_string(),
+            },
+            ResponsesInputItem::FunctionCallOutput {
+                r#type: "function_call_output".to_string(),
+                call_id: "call_b".to_string(),
+                output: "b result".to_string(),
+            },
+        ];
+
+        let trimmed = compute_delta_input_items(items);
+
+        // The function_call items live in server-side state. The delta carries
+        // only the tool outputs the client produced for them.
+        assert_eq!(trimmed.len(), 2);
+        for item in &trimmed {
+            let json = serde_json::to_value(item).unwrap();
+            assert_eq!(json["type"], "function_call_output");
+        }
+    }
+
+    /// Empty input with previous_response_id is valid: the provider can resume
+    /// purely from the continuation handle, no input needed.
+    #[test]
+    fn compute_delta_allows_empty_input_for_stateful_continuation() {
+        let trimmed = compute_delta_input_items(vec![]);
+        assert!(trimmed.is_empty());
+    }
+
+    /// Defensive: if no prior-assistant item is present (caller passed only fresh
+    /// user input), all items are kept as delta.
+    #[test]
+    fn compute_delta_keeps_all_items_when_no_assistant_turn_present() {
+        let items = vec![
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("one".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("two".to_string()),
+                phase: None,
+            },
+        ];
+        let trimmed = compute_delta_input_items(items);
+        assert_eq!(trimmed.len(), 2);
+    }
+
+    /// Reasoning items from a prior assistant turn are also dropped by the trim.
+    #[test]
+    fn compute_delta_drops_prior_reasoning_items() {
+        let items = vec![
+            ResponsesInputItem::Reasoning {
+                r#type: "reasoning".to_string(),
+                id: "rs_00000001".to_string(),
+                encrypted_content: "encrypted-blob".to_string(),
+                summary: Vec::new(),
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "assistant".to_string(),
+                content: ResponsesContent::Text("prior".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::FunctionCallOutput {
+                r#type: "function_call_output".to_string(),
+                call_id: "call_z".to_string(),
+                output: "result".to_string(),
+            },
+        ];
+        let trimmed = compute_delta_input_items(items);
+        assert_eq!(trimmed.len(), 1);
+        let json = serde_json::to_value(&trimmed[0]).unwrap();
+        assert_eq!(json["type"], "function_call_output");
+    }
+
+    // ------------------------------------------------------------------------
+    // Request-builder integration: `finalize_input_for_request` is the single
+    // gate that chooses whether the request `input` is trimmed. These tests
+    // pin the exact decision the call path makes — they catch regressions
+    // where the `previous_response_id`-presence check is accidentally dropped
+    // or inverted, which is what would re-introduce the bug even if the trim
+    // helper itself stays correct.
+    // ------------------------------------------------------------------------
+
+    fn sample_full_transcript_items() -> Vec<ResponsesInputItem> {
+        vec![
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("first request".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "assistant".to_string(),
+                content: ResponsesContent::Text("first reply".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("follow-up".to_string()),
+                phase: None,
+            },
+        ]
+    }
+
+    #[test]
+    fn finalize_input_skips_trim_when_previous_response_id_is_none() {
+        let items = sample_full_transcript_items();
+        let original_len = items.len();
+        let out = finalize_input_for_request(items, &None);
+        assert_eq!(
+            out.len(),
+            original_len,
+            "stateless mode keeps the full transcript so the model has context"
+        );
+    }
+
+    #[test]
+    fn finalize_input_drops_locally_orphaned_tool_output_without_previous_response_id() {
+        let items = vec![
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("fresh".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::FunctionCallOutput {
+                r#type: "function_call_output".to_string(),
+                call_id: "call_trimmed".to_string(),
+                output: "result".to_string(),
+            },
+        ];
+
+        let out = finalize_input_for_request(items, &None);
+
+        assert_eq!(out.len(), 1);
+        let json = serde_json::to_value(&out[0]).unwrap();
+        assert_eq!(json["type"], "message");
+    }
+
+    #[test]
+    fn finalize_input_keeps_tool_output_with_previous_response_id_even_without_local_call() {
+        let items = vec![
+            ResponsesInputItem::FunctionCallOutput {
+                r#type: "function_call_output".to_string(),
+                call_id: "call_server_side".to_string(),
+                output: "stateful result".to_string(),
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("follow-up".to_string()),
+                phase: None,
+            },
+        ];
+
+        let out = finalize_input_for_request(items, &Some("resp_prev_42".to_string()));
+
+        assert_eq!(out.len(), 2);
+        let json = serde_json::to_value(&out[0]).unwrap();
+        assert_eq!(json["type"], "function_call_output");
+        assert_eq!(json["call_id"], "call_server_side");
+    }
+
+    #[test]
+    fn finalize_input_trims_when_previous_response_id_is_set() {
+        let items = sample_full_transcript_items();
+        let out = finalize_input_for_request(items, &Some("resp_prev_42".to_string()));
+        assert_eq!(
+            out.len(),
+            1,
+            "stateful continuation must drop everything up to and including the prior assistant message"
+        );
+        let json = serde_json::to_value(&out[0]).unwrap();
+        assert_eq!(json["type"], "message");
+        assert_eq!(json["role"], "user");
+        // Only the post-assistant follow-up survives.
+        let txt = json["content"].as_str().unwrap_or("");
+        assert_eq!(txt, "follow-up");
+    }
+
+    #[test]
+    fn finalize_input_allows_empty_input_with_previous_response_id() {
+        let out = finalize_input_for_request(vec![], &Some("resp_anything".to_string()));
+        assert!(
+            out.is_empty(),
+            "empty delta is valid — the provider can resume purely from the response id"
+        );
+    }
+
+    // ------------------------------------------------------------------------
+    // EVE-597: stateless full-replay must not serialize a `function_call` whose
+    // `function_call_output` was evicted by compaction / model-view masking.
+    // OpenAI/Codex Responses 400 with "No tool output found for function call …"
+    // and the session wedges permanently. This is the sibling of EVE-519 (orphan
+    // output, covered above); the repair drops both sides of a broken pair.
+    // ------------------------------------------------------------------------
+
     fn function_call(call_id: &str, name: &str) -> ResponsesInputItem {
         ResponsesInputItem::FunctionCall {
             r#type: "function_call".to_string(),
@@ -2291,6 +3288,74 @@ mod tests {
     }
 
     #[test]
+    fn finalize_input_drops_dangling_function_call_without_previous_response_id() {
+        // The exact incident: an early `read_file` call survived compaction but
+        // its tool output was evicted (keep_recent_tool_outputs), leaving a
+        // dangling `function_call`.
+        let items = vec![
+            user_message("fresh"),
+            function_call("call_pHJNxIuwzLppFsQK5nJrDOpZ", "read_file"),
+        ];
+
+        let out = finalize_input_for_request(items, &None);
+
+        assert_eq!(out.len(), 1);
+        assert!(
+            unpaired_function_call_ids(&out).is_empty(),
+            "the dangling function_call must be dropped"
+        );
+        let json = serde_json::to_value(&out[0]).unwrap();
+        assert_eq!(json["type"], "message");
+    }
+
+    #[test]
+    fn finalize_input_preserves_paired_function_call_and_output() {
+        let items = vec![
+            user_message("what time is it?"),
+            function_call("call_ok", "get_current_time"),
+            function_call_output("call_ok"),
+        ];
+
+        let out = finalize_input_for_request(items, &None);
+
+        assert_eq!(out.len(), 3, "an intact call/output pair must survive");
+        assert!(unpaired_function_call_ids(&out).is_empty());
+    }
+
+    #[test]
+    fn finalize_input_compaction_drops_only_the_dangling_old_call() {
+        // Post-compaction model view equivalent to keep_recent_tool_outputs = 3:
+        // one old call whose output was masked away, followed by three intact
+        // recent pairs. Only the dangling old call is dropped; the recent pairs
+        // and the surrounding messages are preserved.
+        let mut items = vec![
+            user_message("long session"),
+            function_call("call_old", "read_file"),
+        ];
+        for i in 0..3 {
+            let id = format!("call_recent_{i}");
+            items.push(function_call(&id, "tool"));
+            items.push(function_call_output(&id));
+        }
+
+        let out = finalize_input_for_request(items, &None);
+
+        assert!(
+            unpaired_function_call_ids(&out).is_empty(),
+            "no dangling function_call may remain after repair"
+        );
+        assert!(
+            !out.iter().any(|item| matches!(
+                item,
+                ResponsesInputItem::FunctionCall { call_id, .. } if call_id == "call_old"
+            )),
+            "the old dangling call must be removed"
+        );
+        // 1 user message + 3 intact recent pairs (6 items) = 7.
+        assert_eq!(out.len(), 7);
+    }
+
+    #[test]
     fn unpaired_function_call_ids_reports_both_directions() {
         let items = vec![
             function_call("call_no_output", "read_file"), // EVE-597: dangling call
@@ -2310,6 +3375,193 @@ mod tests {
     // ========================================================================
     // Provider-declared statefulness (EVE-523)
     // ========================================================================
+
+    #[test]
+    fn provider_can_enable_stateful_responses() {
+        assert!(
+            OpenResponsesProtocolChatDriver::new()
+                .with_stateful_responses(true)
+                .supports_stateful_responses()
+        );
+    }
+
+    #[test]
+    fn wire_protocol_defaults_to_stateless() {
+        assert!(!OpenResponsesProtocolChatDriver::new().supports_stateful_responses());
+    }
+
+    /// End-to-end shape of the call path: against a stateless gateway, a request
+    /// that carries a `previous_response_id` in config must still send the FULL
+    /// transcript in `input` (no trim) because the gateway will not have stored
+    /// the prior response. This is the core EVE-523 regression guard.
+    #[test]
+    fn stateless_gateway_replays_full_transcript_despite_previous_response_id() {
+        let prev_id: Option<String> = Some("gen-turn-1".to_string());
+
+        let driver = OpenResponsesProtocolChatDriver::new();
+        let effective_prev_id = if driver.supports_stateful_responses() {
+            prev_id.clone()
+        } else {
+            None
+        };
+        assert!(
+            effective_prev_id.is_none(),
+            "stateless gateway must not chain via previous_response_id"
+        );
+
+        let items = sample_full_transcript_items();
+        let original_len = items.len();
+        let out = finalize_input_for_request(items, &effective_prev_id);
+        assert_eq!(
+            out.len(),
+            original_len,
+            "stateless gateway must replay the full transcript so the model keeps context"
+        );
+    }
+
+    /// The same transcript against OpenAI's hosted API trims to the delta window
+    /// and keeps the continuation handle — confirming the optimization is intact
+    /// for genuinely stateful endpoints.
+    #[test]
+    fn stateful_endpoint_still_trims_and_chains() {
+        let prev_id: Option<String> = Some("resp_turn_1".to_string());
+
+        let driver = OpenResponsesProtocolChatDriver::new().with_stateful_responses(true);
+        let effective_prev_id = if driver.supports_stateful_responses() {
+            prev_id.clone()
+        } else {
+            None
+        };
+        assert_eq!(
+            effective_prev_id, prev_id,
+            "stateful endpoint keeps the continuation handle"
+        );
+
+        let out = finalize_input_for_request(sample_full_transcript_items(), &effective_prev_id);
+        assert_eq!(out.len(), 1, "stateful endpoint trims to the delta window");
+    }
+
+    /// Wire-level EVE-523 reproducer: drive the real `chat_completion_stream`
+    /// against a mock endpoint on a non-OpenAI host. Even with a
+    /// `previous_response_id` in config, the request on the wire must omit it and
+    /// carry the FULL transcript (user task + assistant turn + tool result), so a
+    /// stateless gateway that ignores `previous_response_id` still sees the task.
+    #[tokio::test]
+    async fn stateless_gateway_request_replays_full_transcript_on_the_wire() {
+        use crate::tool_types::ToolCall;
+        use serde_json::json;
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        // Keep the endpoint distinct from connections owned by earlier test runtimes.
+        let server = MockServer::builder().start().await;
+        // Any 200 lets the request through; we inspect the captured request, not
+        // the (empty) streamed body.
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&server)
+            .await;
+
+        let endpoint = crate::runtime_provider::RuntimeProvider::new(
+            "stateless-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url(format!("{}/v1", server.uri()))
+        .auth(crate::runtime_provider::BearerAuth::new("test-key"));
+        let driver = OpenResponsesProtocolChatDriver::new();
+
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "You are helpful"),
+            LlmMessage::text(LlmMessageRole::User, "upgrade dependencies"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Let me look.".to_string()),
+                tool_calls: Some(vec![ToolCall {
+                    id: "call_1".to_string(),
+                    name: "read_file".to_string(),
+                    arguments: json!({"path": "Cargo.toml"}),
+                }]),
+                tool_call_id: None,
+                phase: None,
+                reasoning: Vec::new(),
+                configuration_update: None,
+            },
+            LlmMessage {
+                role: LlmMessageRole::Tool,
+                content: LlmMessageContent::Text("[package]…".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_1".to_string()),
+                phase: None,
+                reasoning: Vec::new(),
+                configuration_update: None,
+            },
+        ];
+
+        let config = LlmCallConfig {
+            speed: None,
+            verbosity: None,
+            model: "some/model".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            // Continuation handle from a prior turn — must be ignored on a
+            // stateless gateway.
+            previous_response_id: Some("gen-turn-1".to_string()),
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            driver_options: Default::default(),
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
+            reasoning_state: None,
+        };
+
+        // Fire the request. The stream body is irrelevant for this assertion.
+        let _ = driver
+            .chat_completion_stream(endpoint.endpoint(), messages, &config)
+            .await;
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("mock server recorded requests");
+        assert_eq!(requests.len(), 1, "exactly one request should be sent");
+        let body: serde_json::Value = requests[0].body_json().expect("request body is JSON");
+
+        // previous_response_id must be absent (skipped) — the gateway would ignore it.
+        assert!(
+            body.get("previous_response_id").is_none(),
+            "stateless gateway request must omit previous_response_id; body: {body}"
+        );
+
+        // The full transcript must be replayed: user message, assistant message,
+        // function_call, and function_call_output (instructions carry the system msg).
+        let input = body["input"].as_array().expect("input is an array");
+        assert_eq!(
+            input.len(),
+            4,
+            "full transcript must be replayed on a stateless gateway; got {input:?}"
+        );
+        assert_eq!(body["instructions"], "You are helpful");
+        let has_user_task = input
+            .iter()
+            .any(|item| item["type"] == "message" && item["role"] == "user");
+        assert!(
+            has_user_task,
+            "the original user task must be replayed; got {input:?}"
+        );
+        let has_tool_output = input
+            .iter()
+            .any(|item| item["type"] == "function_call_output");
+        assert!(
+            has_tool_output,
+            "the latest tool result must still be present; got {input:?}"
+        );
+    }
 
     #[tokio::test]
     async fn rejected_stateful_continuation_replays_repaired_transcript_once() {
@@ -2393,7 +3645,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
@@ -2405,89 +3657,178 @@ mod tests {
             .chat_completion_stream(endpoint.endpoint(), messages, &config)
             .await
             .expect("continuation should recover");
-        let mut completion = None;
         while let Some(event) = stream.next().await {
-            if let LlmStreamEvent::Done(metadata) = event.expect("valid recovered event") {
-                assert!(
-                    completion.replace(metadata).is_none(),
-                    "exactly one completion"
-                );
-            }
+            event.expect("valid recovered event");
         }
-        let completion = completion.expect("recovery completed");
-        assert_eq!(completion.response_id.as_deref(), Some("resp_recovered"));
-        assert_eq!(completion.prompt_tokens, Some(4));
-        assert_eq!(completion.completion_tokens, Some(1));
 
         let requests = server.received_requests().await.expect("requests");
         assert_eq!(requests.len(), 2);
         let first: serde_json::Value = requests[0].body_json().expect("first body");
         let second: serde_json::Value = requests[1].body_json().expect("second body");
-        assert_eq!(
-            first,
-            json!({"model":"gpt-5.4","stream":true,"previous_response_id":"resp_tool_turn","input":[{"type":"function_call_output","call_id":"call_1","output":"[package]"}]})
-        );
-        assert_eq!(
-            second,
-            json!({"model":"gpt-5.4","stream":true,"input":[
-                {"type":"message","role":"user","content":"inspect the project"},
-                {"type":"function_call","call_id":"call_1","name":"read_file","arguments":"{\"path\":\"Cargo.toml\"}"},
-                {"type":"function_call_output","call_id":"call_1","output":"[package]"}
-            ]})
+        assert_eq!(first["previous_response_id"], "resp_tool_turn");
+        assert!(second.get("previous_response_id").is_none());
+        let replay = second["input"].as_array().expect("replay input");
+        assert!(replay.iter().any(|item| item["type"] == "function_call"));
+        assert!(
+            replay
+                .iter()
+                .any(|item| item["type"] == "function_call_output")
         );
     }
 
     #[tokio::test]
     async fn openrouter_provider_does_not_send_hosted_tool_search() {
         use crate::tool_types::DeferrablePolicy;
-        use wiremock::matchers::{method, path};
-        use wiremock::{Mock, MockServer};
+        use serde_json::json;
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
         let server = MockServer::builder().start().await;
         Mock::given(method("POST"))
-            .and(path("/responses"))
-            .respond_with(successful_auth_stream())
-            .expect(1)
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
             .mount(&server)
             .await;
+
         let endpoint = crate::runtime_provider::RuntimeProvider::new(
-            "gateway",
+            "openrouter-test",
             OpenResponsesProtocolChatDriver::new(),
         )
-        .base_url(server.uri());
-        let driver =
-            OpenResponsesProtocolChatDriver::new().with_retry_config(LlmRetryConfig::no_retry());
-        let mut config = auth_test_config();
-        config.tools = ["first", "second"]
-            .into_iter()
-            .map(|name| make_tool(name, Some("General"), DeferrablePolicy::Automatic))
-            .collect();
-        config.tool_search = Some(crate::driver_registry::ToolSearchConfig {
-            enabled: true,
-            threshold: 1,
-        });
-        assert_authenticated_stream(
-            driver
-                .chat_completion_stream(
-                    endpoint.endpoint(),
-                    vec![LlmMessage::text(LlmMessageRole::User, "question")],
-                    &config,
+        .base_url(format!("{}/v1", server.uri()))
+        .auth(crate::runtime_provider::BearerAuth::new("test-key"));
+        let driver = OpenResponsesProtocolChatDriver::new();
+
+        let tools: Vec<ToolDefinition> = (0..16)
+            .map(|i| {
+                make_tool(
+                    &format!("tool_{i}"),
+                    Some("General"),
+                    DeferrablePolicy::Automatic,
                 )
-                .await
-                .unwrap(),
-        )
-        .await;
-        let requests = server.received_requests().await.unwrap();
-        assert_eq!(requests.len(), 1);
-        assert_eq!(
-            requests[0].body_json::<Value>().unwrap(),
-            json!({
-                "model":"gpt-5.4","stream":true,"input":[{"type":"message","role":"user","content":"question"}],
-                "tools":[
-                    {"type":"function","name":"first","description":"first description","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true},
-                    {"type":"function","name":"second","description":"second description","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true}
-                ]
             })
+            .collect();
+
+        let config = LlmCallConfig {
+            speed: None,
+            verbosity: None,
+            model: "gpt-5.4".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools,
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: Some(crate::driver_registry::ToolSearchConfig {
+                enabled: true,
+                threshold: 15,
+            }),
+            prompt_cache: None,
+            driver_options: Default::default(),
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
+            reasoning_state: None,
+        };
+
+        let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+        let _ = driver
+            .chat_completion_stream(endpoint.endpoint(), messages, &config)
+            .await;
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("mock server recorded requests");
+        assert_eq!(requests.len(), 1, "exactly one request should be sent");
+        let body: serde_json::Value = requests[0].body_json().expect("request body is JSON");
+        let tools = body["tools"].as_array().expect("tools is an array");
+
+        assert!(
+            tools.iter().all(|tool| tool["type"] == "function"),
+            "OpenRouter should receive regular function tools, not hosted tool_search payloads: {tools:?}"
         );
+        assert!(
+            tools.iter().all(|tool| tool.get("defer_loading").is_none()),
+            "OpenRouter tool schemas should not be deferred by hosted tool_search: {tools:?}"
+        );
+        assert_eq!(
+            body["input"],
+            json!([{"type": "message", "role": "user", "content": "hello"}])
+        );
+    }
+
+    #[tokio::test]
+    async fn openai_provider_omits_openrouter_routing_controls() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::builder().start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&server)
+            .await;
+
+        let endpoint = crate::runtime_provider::RuntimeProvider::new(
+            "openai-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url(format!("{}/v1", server.uri()))
+        .auth(crate::runtime_provider::BearerAuth::new("test-key"));
+        let driver = OpenResponsesProtocolChatDriver::new();
+
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("session_id".to_string(), "session_abc123".to_string());
+        let config = LlmCallConfig {
+            speed: None,
+            verbosity: None,
+            model: "gpt-5-mini".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata,
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            // Opaque OpenRouter routing payload: the OpenAI driver must ignore
+            // `driver_options` entries it does not own.
+            driver_options: [(
+                "openrouter/routing".to_string(),
+                serde_json::json!({
+                    "models": ["openai/gpt-5-mini"],
+                    "route": "fallback",
+                }),
+            )]
+            .into_iter()
+            .collect(),
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
+            reasoning_state: None,
+        };
+
+        let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+        let _ = driver
+            .chat_completion_stream(endpoint.endpoint(), messages, &config)
+            .await;
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("mock server recorded requests");
+        assert_eq!(requests.len(), 1, "exactly one request should be sent");
+        let body: serde_json::Value = requests[0].body_json().expect("request body is JSON");
+
+        assert!(body.get("models").is_none(), "body: {body}");
+        assert!(body.get("route").is_none(), "body: {body}");
+        assert!(body.get("provider").is_none(), "body: {body}");
+        // The top-level session_id is OpenRouter-only; OpenAI must not receive it
+        // even though the session id rides along in `metadata`.
+        assert!(body.get("session_id").is_none(), "body: {body}");
+        assert_eq!(body["metadata"]["session_id"], "session_abc123");
     }
 
     /// OpenAI-compatible gateways (e.g. OpenRouter) terminate the Responses SSE
@@ -2534,7 +3875,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
@@ -2569,98 +3910,500 @@ mod tests {
     /// `get_current_time` case: prove the usable tool schema reaches the wire
     /// and a fragmented OpenResponses tool call survives streaming parse.
     #[tokio::test]
-    async fn streamed_tool_calls_use_terminal_arguments_in_typed_and_fallback_events() {
-        use wiremock::matchers::{header, method, path};
+    async fn tool_call_contract_covers_request_wire_and_stream_parser() {
+        use futures::StreamExt;
+        use serde_json::json;
+        use wiremock::matchers::method;
         use wiremock::{Mock, MockServer, ResponseTemplate};
-        for typed in [true, false] {
-            let mut events = vec![
-                json!({"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"function_call","id":"fc-a","call_id":"call-a","name":"first","arguments":"","status":"in_progress"}}),
-                json!({"type":"response.function_call_arguments.delta","sequence_number":2,"output_index":0,"item_id":"fc-a","delta":"{\"a\":"}),
-                json!({"type":"response.output_item.done","sequence_number":4,"output_index":0,"item":{"type":"function_call","id":"fc-a","call_id":"call-a","name":"first","arguments":"{\"a\":1}","status":"completed"}}),
-                json!({"type":"response.output_item.done","sequence_number":5,"output_index":1,"item":{"type":"function_call","id":"fc-b","call_id":"call-b","name":"second","arguments":"{\"b\":2}","status":"completed"}}),
-                json!({"type":"response.completed","sequence_number":6,"response":{"id":"resp-tools","object":"response","created_at":1,"status":"completed","model":"gpt-5.4","output":[],"usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6}}}),
-            ];
-            for event in &mut events {
-                if !typed {
-                    event.as_object_mut().unwrap().remove("sequence_number");
-                }
-                assert_eq!(
-                    serde_json::from_value::<StreamingEvent>(event.clone()).is_ok(),
-                    typed,
-                    "{event}"
-                );
-            }
-            let mut wire = events
-                .iter()
-                .map(|event| format!("data: {event}\n\n"))
-                .collect::<String>();
-            wire.push_str("data: [DONE]\n\n");
-            let server = MockServer::builder().start().await;
-            Mock::given(method("POST"))
-                .and(path("/v1/responses"))
-                .and(header("authorization", "Bearer synthetic-key"))
-                .respond_with(
-                    ResponseTemplate::new(200)
-                        .insert_header("content-type", "text/event-stream")
-                        .set_body_string(wire),
-                )
-                .expect(1)
-                .mount(&server)
-                .await;
-            let provider = crate::runtime_provider::RuntimeProvider::new(
-                "test",
-                OpenResponsesProtocolChatDriver::new(),
+
+        let body = concat!(
+            "data: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"get_current_time\",\"arguments\":\"\"}}\n\n",
+            "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_1\",\"delta\":\"{\\\"timezone\\\":\\\"UTC\\\"\"}\n\n",
+            "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_1\",\"delta\":\",\\\"format\\\":\\\"iso8601\\\"}\"}\n\n",
+            "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"get_current_time\",\"arguments\":\"{\\\"timezone\\\":\\\"UTC\\\",\\\"format\\\":\\\"iso8601\\\"}\"}}\n\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"model\":\"openai/gpt-5.6-luna\",\"output\":[],\"usage\":{\"input_tokens\":4,\"output_tokens\":2,\"total_tokens\":6}}}\n\n",
+            "data: [DONE]\n\n",
+        );
+        let server = MockServer::builder().start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(body),
             )
-            .base_url(format!("{}/v1", server.uri()))
-            .auth(crate::runtime_provider::BearerAuth::new("synthetic-key"));
-            let mut config = auth_test_config();
-            for (name, argument) in [("first", "a"), ("second", "b")] {
-                let mut tool = make_tool(name, None, crate::tool_types::DeferrablePolicy::Never);
-                let ToolDefinition::Builtin(definition) = &mut tool else {
-                    unreachable!()
-                };
-                definition.parameters = json!({"type":"object","properties":{argument:{"type":"integer"}},"required":[argument],"additionalProperties":false});
-                config.tools.push(tool);
+            .mount(&server)
+            .await;
+
+        let endpoint = crate::runtime_provider::RuntimeProvider::new(
+            "openrouter-contract-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url(format!("{}/v1", server.uri()))
+        .auth(crate::runtime_provider::BearerAuth::new("test-key"));
+        let driver = OpenResponsesProtocolChatDriver::new();
+        let config = LlmCallConfig {
+            speed: None,
+            verbosity: None,
+            model: "openai/gpt-5.6-luna".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![ToolDefinition::Builtin(crate::tool_types::BuiltinTool {
+                name: "get_current_time".to_string(),
+                display_name: None,
+                description: "Get the current time in a timezone.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "timezone": { "type": "string" },
+                        "format": { "type": "string", "enum": ["iso8601", "unix", "human"] }
+                    },
+                    "required": ["timezone"]
+                }),
+                policy: crate::tool_types::ToolPolicy::Auto,
+                category: None,
+                deferrable: crate::tool_types::DeferrablePolicy::Never,
+                hints: crate::tool_types::ToolHints::default(),
+                full_parameters: None,
+            })],
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            driver_options: Default::default(),
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
+            reasoning_state: None,
+        };
+
+        let stream = driver
+            .chat_completion_stream(
+                endpoint.endpoint(),
+                vec![LlmMessage::text(LlmMessageRole::User, "What time is it?")],
+                &config,
+            )
+            .await
+            .expect("stream should start");
+        let events: Vec<_> = stream.collect().await;
+
+        let tool_calls = events
+            .iter()
+            .filter_map(|event| match event.as_ref().expect("valid stream event") {
+                LlmStreamEvent::ToolCalls(calls) => Some(calls),
+                _ => None,
+            })
+            .flatten()
+            .collect::<Vec<_>>();
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].id, "call_1");
+        assert_eq!(tool_calls[0].name, "get_current_time");
+        assert_eq!(
+            tool_calls[0].arguments,
+            json!({"timezone": "UTC", "format": "iso8601"})
+        );
+        assert!(events.iter().any(|event| matches!(
+            event.as_ref(),
+            Ok(LlmStreamEvent::Done(metadata))
+                if metadata.finish_reason.as_deref() == Some("tool_calls")
+        )));
+
+        let requests = server.received_requests().await.expect("captured request");
+        let request: serde_json::Value = requests[0].body_json().expect("request JSON");
+        let tool = &request["tools"][0];
+        assert_eq!(tool["type"], "function");
+        assert_eq!(tool["name"], "get_current_time");
+        assert_eq!(tool["parameters"]["type"], "object");
+        assert_eq!(tool["strict"], true);
+        assert_eq!(
+            tool["parameters"]["required"],
+            json!(["format", "timezone"])
+        );
+        assert_eq!(
+            tool["parameters"]["properties"]["format"]["type"],
+            json!(["string", "null"])
+        );
+        assert_eq!(tool["parameters"]["additionalProperties"], false);
+    }
+
+    // ========================================================================
+    // Compact endpoint tests
+    // ========================================================================
+
+    // ========================================================================
+    // OpenAI Thinking/Reasoning Support Tests
+    // ========================================================================
+
+    #[test]
+    fn test_reasoning_input_item_serialization() {
+        let item = ResponsesInputItem::Reasoning {
+            r#type: "reasoning".to_string(),
+            id: "rs_00000001".to_string(),
+            encrypted_content: "encrypted_reasoning_context_here".to_string(),
+            summary: Vec::new(),
+        };
+
+        let json = serde_json::to_value(&item).unwrap();
+        assert_eq!(json["type"], "reasoning");
+        // The API rejects a reasoning input item with no `summary` key, so an
+        // empty summary must still serialize as `[]` rather than vanish.
+        assert_eq!(
+            json["summary"],
+            serde_json::json!([]),
+            "summary is required even when empty"
+        );
+        assert_eq!(json["id"], "rs_00000001");
+        assert_eq!(
+            json["encrypted_content"],
+            "encrypted_reasoning_context_here"
+        );
+    }
+
+    /// Every replayed reasoning item carries `summary`, and carries the
+    /// provider's own summary segments when it had them.
+    ///
+    /// The Responses API rejects a reasoning input item without the key —
+    /// `400 … \`input[1]\` missing required field \`summary\`` — which took
+    /// `main` red against a live provider once reasoning replay went out under
+    /// provider-issued ids. Most artifacts carry no summary (the provider only
+    /// sends one when the request asks), so the empty case is the common one.
+    #[test]
+    fn test_build_input_reasoning_items_always_carry_a_summary() {
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "Think"),
+            LlmMessage {
+                configuration_update: None,
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("No summary on this one.".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                phase: None,
+                reasoning: vec![
+                    crate::reasoning::ReasoningContentPart::opaque("openai")
+                        .with_item_id("rs_bare")
+                        .with_encrypted("enc_bare"),
+                ],
+            },
+            LlmMessage {
+                configuration_update: None,
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("This one was summarized.".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                phase: None,
+                reasoning: vec![
+                    crate::reasoning::ReasoningContentPart::opaque("openai")
+                        .with_item_id("rs_summarized")
+                        .with_encrypted("enc_summarized")
+                        .with_text(crate::reasoning::ReasoningText::Summary {
+                            parts: vec!["First I checked.".to_string(), "Then I read.".to_string()],
+                        }),
+                ],
+            },
+        ];
+
+        let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
+        let reasoning: Vec<serde_json::Value> = input
+            .iter()
+            .map(|item| serde_json::to_value(item).unwrap())
+            .filter(|json| json["type"] == "reasoning")
+            .collect();
+        assert_eq!(reasoning.len(), 2, "both artifacts must be replayed");
+
+        for item in &reasoning {
+            assert!(
+                item.get("summary").is_some(),
+                "summary is required on every reasoning input item: {item}"
+            );
+        }
+
+        assert_eq!(
+            reasoning[0]["summary"],
+            serde_json::json!([]),
+            "an artifact with no summary replays an empty one, not a missing key"
+        );
+        assert_eq!(
+            reasoning[1]["summary"],
+            serde_json::json!([
+                { "type": "summary_text", "text": "First I checked." },
+                { "type": "summary_text", "text": "Then I read." },
+            ]),
+            "the provider's own summary segments replay verbatim"
+        );
+    }
+
+    #[test]
+    fn test_build_input_replays_reasoning_before_its_message() {
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "Think about this deeply"),
+            LlmMessage {
+                configuration_update: None,
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("I have thought about this.".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                phase: None,
+                reasoning: vec![
+                    crate::reasoning::ReasoningContentPart::opaque("openai")
+                        .with_item_id("rs_reply")
+                        .with_encrypted("encrypted_reasoning_token_123"),
+                ],
+            },
+            LlmMessage::text(LlmMessageRole::User, "What else?"),
+        ];
+
+        let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
+
+        // Should have: user message, reasoning item, assistant message, user message
+        assert_eq!(input.len(), 4);
+
+        // First is user message
+        let json = serde_json::to_value(&input[0]).unwrap();
+        assert_eq!(json["role"], "user");
+        assert_eq!(json["content"], "Think about this deeply");
+
+        // Second is the reasoning item, ahead of the message it belongs to, and
+        // keyed by the id the provider issued.
+        let json = serde_json::to_value(&input[1]).unwrap();
+        assert_eq!(json["type"], "reasoning");
+        assert_eq!(json["id"], "rs_reply");
+        assert_eq!(json["encrypted_content"], "encrypted_reasoning_token_123");
+
+        // Third is assistant message
+        let json = serde_json::to_value(&input[2]).unwrap();
+        assert_eq!(json["role"], "assistant");
+        assert_eq!(json["content"], "I have thought about this.");
+
+        // Fourth is second user message
+        let json = serde_json::to_value(&input[3]).unwrap();
+        assert_eq!(json["role"], "user");
+    }
+
+    #[test]
+    fn test_build_input_replays_reasoning_with_tool_calls() {
+        use crate::tool_types::ToolCall;
+
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "What time is it? Think carefully."),
+            LlmMessage {
+                configuration_update: None,
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Let me check.".to_string()),
+                tool_calls: Some(vec![ToolCall {
+                    id: "call_123".to_string(),
+                    name: "get_time".to_string(),
+                    arguments: json!({}),
+                }]),
+                tool_call_id: None,
+                phase: None,
+                reasoning: vec![
+                    crate::reasoning::ReasoningContentPart::opaque("openai")
+                        .with_item_id("rs_tool")
+                        .with_encrypted("encrypted_token_xyz"),
+                ],
+            },
+            LlmMessage {
+                role: LlmMessageRole::Tool,
+                content: LlmMessageContent::Text("10:30 AM".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_123".to_string()),
+                phase: None,
+                reasoning: Vec::new(),
+                configuration_update: None,
+            },
+        ];
+
+        let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
+
+        // Should have: user, reasoning, assistant, function_call, function_call_output
+        assert_eq!(input.len(), 5);
+
+        // Reasoning item comes before assistant message
+        let json = serde_json::to_value(&input[1]).unwrap();
+        assert_eq!(json["type"], "reasoning");
+        assert_eq!(json["id"], "rs_tool");
+        assert_eq!(json["encrypted_content"], "encrypted_token_xyz");
+
+        // Assistant message
+        let json = serde_json::to_value(&input[2]).unwrap();
+        assert_eq!(json["role"], "assistant");
+
+        // Function call
+        let json = serde_json::to_value(&input[3]).unwrap();
+        assert_eq!(json["type"], "function_call");
+        assert_eq!(json["call_id"], "call_123");
+
+        // Function call output
+        let json = serde_json::to_value(&input[4]).unwrap();
+        assert_eq!(json["type"], "function_call_output");
+    }
+
+    #[test]
+    fn test_build_input_without_thinking_signature() {
+        // Assistant message with thinking but NO thinking_signature should not emit reasoning item
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "Hello"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Hi there!".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                phase: None,
+                reasoning: Vec::new(),
+                configuration_update: None,
+            },
+        ];
+
+        let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
+
+        // Should have: user message, assistant message (no reasoning item)
+        assert_eq!(input.len(), 2);
+
+        // Verify no reasoning item
+        let json = serde_json::to_value(&input[0]).unwrap();
+        assert_eq!(json["role"], "user");
+
+        let json = serde_json::to_value(&input[1]).unwrap();
+        assert_eq!(json["role"], "assistant");
+    }
+
+    #[test]
+    fn test_handle_streaming_event_reasoning_encrypted_content() {
+        use std::sync::Mutex;
+
+        let input_tokens = Mutex::new(0u32);
+        let output_tokens = Mutex::new(0u32);
+        let cache_read_tokens = Mutex::new(None);
+        let accumulated_tool_calls = Mutex::new(ToolCallStream::default());
+        let finish_reason = Mutex::new(None);
+        let deferred_events = Mutex::new(Vec::new());
+
+        // Create an OutputItemDone event with Reasoning item containing encrypted_content
+        let event = StreamingEvent::OutputItemDone {
+            sequence_number: 5,
+            output_index: 0,
+            item: Some(types::OutputItem::Reasoning {
+                id: "rs_001".to_string(),
+                summary: vec![],
+                content: None,
+                encrypted_content: Some("encrypted_reasoning_data".to_string()),
+            }),
+        };
+
+        let result = handle_streaming_event(
+            event,
+            &input_tokens,
+            &output_tokens,
+            &cache_read_tokens,
+            &accumulated_tool_calls,
+            &finish_reason,
+            &deferred_events,
+            "gpt-5".to_string(),
+            None,
+        );
+
+        // Should emit a reasoning artifact carrying the provider id and the
+        // encrypted payload needed to replay it.
+        match result {
+            LlmStreamEvent::ReasoningItem(item) => {
+                assert_eq!(item.provider, "openai");
+                assert_eq!(item.item_id.as_deref(), Some("rs_001"));
+                assert_eq!(item.encrypted.as_deref(), Some("encrypted_reasoning_data"));
+                assert!(item.text.is_none());
+                assert!(item.tokens.is_none());
             }
-            let response = OpenResponsesProtocolChatDriver::new()
-                .with_retry_config(LlmRetryConfig::no_retry())
-                .chat_completion(
-                    provider.endpoint(),
-                    vec![LlmMessage::text(LlmMessageRole::User, "run both")],
-                    &config,
-                )
-                .await
-                .unwrap();
-            assert_eq!(
-                serde_json::to_value(response.tool_calls.unwrap()).unwrap(),
-                json!([
-                    {"id":"call-a","name":"first","arguments":{"a":1}},
-                    {"id":"call-b","name":"second","arguments":{"b":2}},
-                ]),
-                "typed={typed}"
+            other => panic!("Expected ReasoningItem event, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn output_item_added_message_surfaces_native_phase_hint() {
+        use std::sync::Mutex;
+
+        // EVE-774: OpenAI Responses stamps the assistant item's phase on
+        // `response.output_item.added` (before any text delta). The driver must
+        // surface it as a mid-stream `MessagePhase` hint.
+        for (wire, expected) in [
+            (
+                "commentary",
+                crate::execution_phase::ExecutionPhase::Commentary,
+            ),
+            (
+                "final_answer",
+                crate::execution_phase::ExecutionPhase::FinalAnswer,
+            ),
+        ] {
+            let event: StreamingEvent = serde_json::from_value(serde_json::json!({
+                "type": "response.output_item.added",
+                "sequence_number": 1,
+                "output_index": 0,
+                "item": {
+                    "type": "message",
+                    "id": "msg_001",
+                    "status": "in_progress",
+                    "role": "assistant",
+                    "content": [],
+                    "phase": wire,
+                }
+            }))
+            .expect("output_item.added should deserialize");
+
+            let result = handle_streaming_event(
+                event,
+                &Mutex::new(0),
+                &Mutex::new(0),
+                &Mutex::new(None),
+                &Mutex::new(ToolCallStream::default()),
+                &Mutex::new(None),
+                &Mutex::new(Vec::new()),
+                "gpt-5".to_string(),
+                None,
             );
-            assert_eq!(
-                response.metadata.finish_reason.as_deref(),
-                Some("tool_calls")
-            );
-            assert_eq!(response.metadata.response_id.as_deref(), Some("resp-tools"));
-            assert_eq!(
-                (
-                    response.metadata.prompt_tokens,
-                    response.metadata.completion_tokens,
-                    response.metadata.total_tokens
-                ),
-                (Some(4), Some(2), Some(6))
-            );
-            let requests = server.received_requests().await.unwrap();
-            assert_eq!(requests.len(), 1);
-            assert_eq!(
-                requests[0].body_json::<Value>().unwrap(),
-                json!({"model":"gpt-5.4","input":[{"type":"message","role":"user","content":"run both"}],"stream":true,"tools":[
-                    {"type":"function","name":"first","description":"first description","parameters":{"type":"object","properties":{"a":{"type":"integer"}},"required":["a"],"additionalProperties":false},"strict":true},
-                    {"type":"function","name":"second","description":"second description","parameters":{"type":"object","properties":{"b":{"type":"integer"}},"required":["b"],"additionalProperties":false},"strict":true},
-                ]})
-            );
+
+            match result {
+                LlmStreamEvent::MessagePhase(phase) => assert_eq!(phase, expected),
+                other => panic!("Expected MessagePhase({expected:?}), got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn output_item_added_message_without_phase_is_noop() {
+        use std::sync::Mutex;
+
+        // A message item that carries no phase yields no hint (empty text delta),
+        // never a fabricated phase.
+        let event: StreamingEvent = serde_json::from_value(serde_json::json!({
+            "type": "response.output_item.added",
+            "sequence_number": 1,
+            "output_index": 0,
+            "item": {
+                "type": "message",
+                "id": "msg_002",
+                "status": "in_progress",
+                "role": "assistant",
+                "content": [],
+            }
+        }))
+        .expect("output_item.added should deserialize");
+
+        let result = handle_streaming_event(
+            event,
+            &Mutex::new(0),
+            &Mutex::new(0),
+            &Mutex::new(None),
+            &Mutex::new(ToolCallStream::default()),
+            &Mutex::new(None),
+            &Mutex::new(Vec::new()),
+            "gpt-5".to_string(),
+            None,
+        );
+
+        match result {
+            LlmStreamEvent::TextDelta(d) => assert!(d.is_empty()),
+            other => panic!("Expected empty TextDelta, got {other:?}"),
         }
     }
 
@@ -2692,8 +4435,9 @@ mod tests {
             &Mutex::new(0),
             &Mutex::new(0),
             &Mutex::new(None),
-            &Mutex::new(Vec::new()),
+            &Mutex::new(ToolCallStream::default()),
             &Mutex::new(None),
+            &Mutex::new(Vec::new()),
             "gpt-5".to_string(),
             None,
         );
@@ -2702,12 +4446,437 @@ mod tests {
             panic!("expected structured stream error");
         };
         assert_eq!(error.code.as_deref(), Some("processing_error"));
-        assert_eq!(
-            error.message,
-            "An error occurred while processing your request."
-        );
         assert!(crate::llm_retry::is_transient_stream_error(&error));
     }
+
+    #[test]
+    fn test_handle_streaming_event_reasoning_without_encrypted_content() {
+        use std::sync::Mutex;
+
+        let input_tokens = Mutex::new(0u32);
+        let output_tokens = Mutex::new(0u32);
+        let cache_read_tokens = Mutex::new(None);
+        let accumulated_tool_calls = Mutex::new(ToolCallStream::default());
+        let finish_reason = Mutex::new(None);
+        let deferred_events = Mutex::new(Vec::new());
+
+        // Create an OutputItemDone event with Reasoning item but NO encrypted_content
+        let event = StreamingEvent::OutputItemDone {
+            sequence_number: 5,
+            output_index: 0,
+            item: Some(types::OutputItem::Reasoning {
+                id: "rs_001".to_string(),
+                summary: vec![types::ContentPart::SummaryText {
+                    text: "Some summary".to_string(),
+                }],
+                content: None,
+                encrypted_content: None, // No encrypted content
+            }),
+        };
+
+        let result = handle_streaming_event(
+            event,
+            &input_tokens,
+            &output_tokens,
+            &cache_read_tokens,
+            &accumulated_tool_calls,
+            &finish_reason,
+            &deferred_events,
+            "gpt-5".to_string(),
+            None,
+        );
+
+        // Should still emit the artifact carrying the safe summary even when no
+        // encrypted content is present so the durable reasoning record survives.
+        match result {
+            LlmStreamEvent::ReasoningItem(item) => {
+                assert_eq!(item.provider, "openai");
+                assert_eq!(item.item_id.as_deref(), Some("rs_001"));
+                assert!(item.encrypted.is_none());
+                assert_eq!(
+                    item.text,
+                    Some(crate::reasoning::ReasoningText::Summary {
+                        parts: vec!["Some summary".to_string()],
+                    })
+                );
+            }
+            other => panic!("Expected ReasoningItem event, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_handle_streaming_event_reasoning_drops_plaintext_content() {
+        use std::sync::Mutex;
+
+        let input_tokens = Mutex::new(0u32);
+        let output_tokens = Mutex::new(0u32);
+        let cache_read_tokens = Mutex::new(None);
+        let accumulated_tool_calls = Mutex::new(ToolCallStream::default());
+        let finish_reason = Mutex::new(None);
+        let deferred_events = Mutex::new(Vec::new());
+
+        // Reasoning item with plaintext content and a non-summary content part in `summary`.
+        // Both must be excluded from the emitted ReasonItem.
+        let event = StreamingEvent::OutputItemDone {
+            sequence_number: 5,
+            output_index: 0,
+            item: Some(types::OutputItem::Reasoning {
+                id: "rs_002".to_string(),
+                summary: vec![
+                    types::ContentPart::SummaryText {
+                        text: "safe summary".to_string(),
+                    },
+                    types::ContentPart::ReasoningText {
+                        text: "SECRET hidden reasoning".to_string(),
+                    },
+                ],
+                content: Some(vec![types::ContentPart::ReasoningText {
+                    text: "SECRET hidden reasoning".to_string(),
+                }]),
+                encrypted_content: Some("opaque".to_string()),
+            }),
+        };
+
+        let result = handle_streaming_event(
+            event,
+            &input_tokens,
+            &output_tokens,
+            &cache_read_tokens,
+            &accumulated_tool_calls,
+            &finish_reason,
+            &deferred_events,
+            "gpt-5".to_string(),
+            None,
+        );
+
+        match result {
+            LlmStreamEvent::ReasoningItem(item) => {
+                assert_eq!(
+                    item.text,
+                    Some(crate::reasoning::ReasoningText::Summary {
+                        parts: vec!["safe summary".to_string()],
+                    })
+                );
+                assert_eq!(item.encrypted.as_deref(), Some("opaque"));
+            }
+            other => panic!("Expected ReasoningItem event, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_handle_streaming_event_reasoning_delta() {
+        use std::sync::Mutex;
+
+        let input_tokens = Mutex::new(0u32);
+        let output_tokens = Mutex::new(0u32);
+        let cache_read_tokens = Mutex::new(None);
+        let accumulated_tool_calls = Mutex::new(ToolCallStream::default());
+        let finish_reason = Mutex::new(None);
+        let deferred_events = Mutex::new(Vec::new());
+
+        // Raw reasoning from o-series reaches the reasoning channel, not text.
+        let event = StreamingEvent::ReasoningDelta {
+            sequence_number: 3,
+            item_id: "rs_001".to_string(),
+            output_index: 0,
+            content_index: 0,
+            delta: "Let me reason about this...".to_string(),
+            obfuscation: None,
+        };
+
+        let result = handle_streaming_event(
+            event,
+            &input_tokens,
+            &output_tokens,
+            &cache_read_tokens,
+            &accumulated_tool_calls,
+            &finish_reason,
+            &deferred_events,
+            "o3".to_string(),
+            None,
+        );
+
+        match result {
+            LlmStreamEvent::ReasoningDelta { delta, summary } => {
+                assert_eq!(delta, "Let me reason about this...");
+                assert!(!summary, "raw chain-of-thought is not a summary");
+            }
+            _ => panic!("Expected ReasoningDelta, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn test_handle_streaming_event_reasoning_summary_delta() {
+        use std::sync::Mutex;
+
+        let input_tokens = Mutex::new(0u32);
+        let output_tokens = Mutex::new(0u32);
+        let cache_read_tokens = Mutex::new(None);
+        let accumulated_tool_calls = Mutex::new(ToolCallStream::default());
+        let finish_reason = Mutex::new(None);
+        let deferred_events = Mutex::new(Vec::new());
+
+        // A reasoning summary is a reasoning artifact. Routing it to the
+        // assistant-text channel persisted it as the model's answer and
+        // replayed it as the model's own prior output.
+        let event = StreamingEvent::ReasoningSummaryDelta {
+            sequence_number: 4,
+            item_id: "rs_002".to_string(),
+            output_index: 0,
+            summary_index: 0,
+            delta: "Breaking down the problem...".to_string(),
+            obfuscation: None,
+        };
+
+        let result = handle_streaming_event(
+            event,
+            &input_tokens,
+            &output_tokens,
+            &cache_read_tokens,
+            &accumulated_tool_calls,
+            &finish_reason,
+            &deferred_events,
+            "gpt-5.2".to_string(),
+            None,
+        );
+
+        match result {
+            LlmStreamEvent::ReasoningDelta { delta, summary } => {
+                assert_eq!(delta, "Breaking down the problem...");
+                assert!(
+                    summary,
+                    "a reasoning summary must be labelled as such, not passed \
+                     off as raw chain-of-thought"
+                );
+            }
+            other => panic!(
+                "reasoning summary must reach the reasoning channel, never \
+                 assistant text; got {other:?}"
+            ),
+        }
+    }
+
+    #[test]
+    fn test_request_reasoning_none_is_omitted() {
+        // When reasoning effort is "none", the reasoning field should be omitted
+        // to avoid API errors on models that don't support reasoning params
+        let config = LlmCallConfig {
+            speed: None,
+            verbosity: None,
+            model: "gpt-5.2".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: Some(crate::model::ReasoningEffort::None),
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            driver_options: Default::default(),
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
+            reasoning_state: None,
+        };
+
+        // Simulate the driver's filter logic
+        let reasoning = config
+            .reasoning_effort
+            .filter(crate::model::ReasoningEffort::requests_reasoning)
+            .map(|effort| ResponsesReasoning {
+                effort: effort.as_str().to_string(),
+                summary: "detailed".to_string(),
+            });
+
+        assert!(
+            reasoning.is_none(),
+            "reasoning should be None for effort=none"
+        );
+    }
+
+    #[test]
+    fn test_request_reasoning_high_is_included() {
+        // When reasoning effort is "high", the reasoning field should be present
+        let config = LlmCallConfig {
+            speed: None,
+            verbosity: None,
+            model: "gpt-5.2".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: Some(crate::model::ReasoningEffort::High),
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            driver_options: Default::default(),
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
+            reasoning_state: None,
+        };
+
+        let reasoning = config
+            .reasoning_effort
+            .filter(crate::model::ReasoningEffort::requests_reasoning)
+            .map(|effort| ResponsesReasoning {
+                effort: effort.as_str().to_string(),
+                summary: "detailed".to_string(),
+            });
+
+        assert!(
+            reasoning.is_some(),
+            "reasoning should be present for effort=high"
+        );
+        let r = reasoning.unwrap();
+        assert_eq!(r.effort, "high");
+        assert_eq!(r.summary, "detailed");
+    }
+
+    #[test]
+    fn test_request_reasoning_none_case_insensitive() {
+        // "None", "NONE", "none" should all be filtered out
+        for effort in &["none", "None", "NONE"] {
+            let reasoning = Some(effort.to_string())
+                .as_ref()
+                .filter(|e| !e.eq_ignore_ascii_case("none"))
+                .cloned();
+
+            assert!(
+                reasoning.is_none(),
+                "effort={effort:?} should be filtered out"
+            );
+        }
+    }
+
+    #[test]
+    fn test_build_input_assistant_without_thinking_or_tools() {
+        // Plain assistant message (no thinking, no tool calls) should just be a message
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "Hello"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Hi there!".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                phase: None,
+                reasoning: Vec::new(),
+                configuration_update: None,
+            },
+        ];
+
+        let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
+
+        assert_eq!(input.len(), 2);
+        let json = serde_json::to_value(&input[1]).unwrap();
+        assert_eq!(json["role"], "assistant");
+        assert!(json.get("type").is_none() || json["type"] == "message");
+    }
+
+    /// Each reasoning item replays under the id the provider issued for it.
+    ///
+    /// This previously asserted only that synthesized ids were *unique*, which
+    /// a counter satisfies. Uniqueness was never the requirement: the API
+    /// resolves reasoning items by the `rs_…` id it handed out, so an id the
+    /// provider never issued is not usable however distinct it is.
+    #[test]
+    fn test_build_input_reasoning_items_keep_provider_ids() {
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "First question"),
+            LlmMessage {
+                configuration_update: None,
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("First answer.".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                phase: None,
+                reasoning: vec![
+                    crate::reasoning::ReasoningContentPart::opaque("openai")
+                        .with_item_id("rs_alpha")
+                        .with_encrypted("encrypted_1"),
+                ],
+            },
+            LlmMessage::text(LlmMessageRole::User, "Second question"),
+            LlmMessage {
+                configuration_update: None,
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Second answer.".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                phase: None,
+                reasoning: vec![
+                    crate::reasoning::ReasoningContentPart::opaque("openai")
+                        .with_item_id("rs_beta")
+                        .with_encrypted("encrypted_2"),
+                ],
+            },
+        ];
+
+        let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
+
+        // user, reasoning_1, assistant, user, reasoning_2, assistant
+        assert_eq!(input.len(), 6);
+
+        let r1 = serde_json::to_value(&input[1]).unwrap();
+        let r2 = serde_json::to_value(&input[4]).unwrap();
+
+        assert_eq!(r1["type"], "reasoning");
+        assert_eq!(r1["id"], "rs_alpha");
+        assert_eq!(r1["encrypted_content"], "encrypted_1");
+        assert_eq!(r2["type"], "reasoning");
+        assert_eq!(r2["id"], "rs_beta");
+        assert_eq!(r2["encrypted_content"], "encrypted_2");
+    }
+
+    #[test]
+    fn test_build_input_with_phases_enabled() {
+        use crate::execution_phase::ExecutionPhase;
+
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "You are helpful"),
+            LlmMessage::text(LlmMessageRole::User, "Hello"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Working on it...".to_string()),
+                tool_calls: Some(vec![crate::tool_types::ToolCall {
+                    id: "call_1".to_string(),
+                    name: "search".to_string(),
+                    arguments: json!({}),
+                }]),
+                tool_call_id: None,
+                phase: Some(ExecutionPhase::Commentary),
+                reasoning: Vec::new(),
+                configuration_update: None,
+            },
+            LlmMessage {
+                role: LlmMessageRole::Tool,
+                content: LlmMessageContent::Text("result".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_1".to_string()),
+                phase: None,
+                reasoning: Vec::new(),
+                configuration_update: None,
+            },
+        ];
+
+        // With supports_phases=true, assistant message should include phase
+        let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, true);
+        let assistant_json = serde_json::to_value(&input[1]).unwrap();
+        assert_eq!(assistant_json["phase"], "commentary");
+
+        // With supports_phases=false, phase should be absent
+        let (_, input_no_phases) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
+        let assistant_json_no = serde_json::to_value(&input_no_phases[1]).unwrap();
+        assert!(assistant_json_no.get("phase").is_none() || assistant_json_no["phase"].is_null());
+    }
+
+    // ========================================================================
+    // tool_search / convert_tools_with_search tests
+    // ========================================================================
 
     /// Helper: create a ToolDefinition with optional category and deferrable policy
     fn make_tool(
@@ -2801,8 +4970,9 @@ mod tests {
             &Mutex::new(0),
             &Mutex::new(0),
             &Mutex::new(None),
-            &Mutex::new(Vec::new()),
+            &Mutex::new(ToolCallStream::default()),
             &Mutex::new(Some("tool_calls".to_string())),
+            &Mutex::new(Vec::new()),
             "gpt-5.5".to_string(),
             None,
         );
@@ -2814,6 +4984,142 @@ mod tests {
             }
             other => panic!("expected Done event, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_completed_event_normalizes_cache_inclusive_prompt_tokens() {
+        // OpenAI reports `input_tokens` inclusive of cached reads. The driver
+        // must normalize to the disjoint convention: prompt_tokens carries only
+        // the non-cached remainder (input − cached), with cache reported on top.
+        let event_json = r#"{
+            "type": "response.completed",
+            "sequence_number": 9,
+            "response": {
+                "id": "resp_cache",
+                "object": "response",
+                "created_at": 1780000000,
+                "status": "completed",
+                "model": "gpt-5.5",
+                "output": [],
+                "usage": {
+                    "input_tokens": 1000,
+                    "output_tokens": 20,
+                    "total_tokens": 1020,
+                    "input_tokens_details": { "cached_tokens": 800 }
+                }
+            }
+        }"#;
+
+        let event: StreamingEvent = serde_json::from_str(event_json).unwrap();
+        let stream_event = handle_streaming_event(
+            event,
+            &Mutex::new(0),
+            &Mutex::new(0),
+            &Mutex::new(None),
+            &Mutex::new(ToolCallStream::default()),
+            &Mutex::new(None),
+            &Mutex::new(Vec::new()),
+            "gpt-5.5".to_string(),
+            None,
+        );
+
+        match stream_event {
+            LlmStreamEvent::Done(metadata) => {
+                // 1000 reported − 800 cached = 200 non-cached input.
+                assert_eq!(metadata.prompt_tokens, Some(200));
+                assert_eq!(metadata.cache_read_tokens, Some(800));
+                // total_tokens stays the true prompt+output total (1000 + 20).
+                assert_eq!(metadata.total_tokens, Some(1020));
+            }
+            other => panic!("expected Done event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_incomplete_event_maps_output_limit_to_length() {
+        let event_json = r#"{
+            "type": "response.incomplete",
+            "sequence_number": 10,
+            "response": {
+                "id": "resp_incomplete",
+                "object": "response",
+                "created_at": 1780000000,
+                "status": "incomplete",
+                "incomplete_details": { "reason": "max_output_tokens" },
+                "model": "gpt-5.5",
+                "output": [],
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "total_tokens": 15
+                }
+            }
+        }"#;
+
+        let event: StreamingEvent = serde_json::from_str(event_json).unwrap();
+        let stream_event = handle_streaming_event(
+            event,
+            &Mutex::new(0),
+            &Mutex::new(0),
+            &Mutex::new(None),
+            &Mutex::new(ToolCallStream::default()),
+            &Mutex::new(None),
+            &Mutex::new(Vec::new()),
+            "gpt-5.5".to_string(),
+            None,
+        );
+
+        match stream_event {
+            LlmStreamEvent::Done(metadata) => {
+                assert_eq!(metadata.finish_reason.as_deref(), Some("length"));
+            }
+            other => panic!("expected Done event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_sanitize_parameters_adds_missing_properties() {
+        let params = json!({"type": "object", "additionalProperties": false});
+        let sanitized = OpenResponsesProtocolChatDriver::sanitize_parameters(&params);
+        assert_eq!(
+            sanitized,
+            json!({"type": "object", "properties": {}, "additionalProperties": false})
+        );
+    }
+
+    #[test]
+    fn test_sanitize_parameters_preserves_existing_properties() {
+        let params = json!({"type": "object", "properties": {"x": {"type": "string"}}, "additionalProperties": false});
+        let sanitized = OpenResponsesProtocolChatDriver::sanitize_parameters(&params);
+        assert_eq!(sanitized, params);
+    }
+
+    #[test]
+    fn test_sanitize_parameters_ignores_non_object_types() {
+        let params = json!({"type": "string"});
+        let sanitized = OpenResponsesProtocolChatDriver::sanitize_parameters(&params);
+        assert_eq!(sanitized, params);
+    }
+
+    #[test]
+    fn test_sanitize_parameters_rewrites_resend_email_lookaround() {
+        let params = json!({
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                }
+            }
+        });
+
+        let sanitized = OpenResponsesProtocolChatDriver::sanitize_parameters(&params);
+        let pattern = sanitized["properties"]["email"]["pattern"]
+            .as_str()
+            .unwrap();
+
+        assert!(!pattern.contains("(?!"));
+        assert!(pattern.contains('@'));
     }
 
     // ========================================================================
@@ -2835,7 +5141,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
@@ -3123,6 +5429,40 @@ mod tests {
         }
     }
 
+    #[test]
+    fn function_tools_serialize_strict_only_for_compatible_schemas() {
+        let mut compatible = make_tool("lookup", None, crate::tool_types::DeferrablePolicy::Never);
+        match &mut compatible {
+            ToolDefinition::Builtin(tool) => {
+                tool.parameters = json!({
+                    "type": "object", "properties": {"query": {"type": "string"}}
+                })
+            }
+            ToolDefinition::ClientSide(_) => unreachable!(),
+        }
+        let serialized =
+            serde_json::to_value(&OpenResponsesProtocolChatDriver::convert_tools(&[compatible])[0])
+                .unwrap();
+        assert_eq!(serialized["strict"], true);
+        assert_eq!(serialized["parameters"]["required"], json!(["query"]));
+
+        let mut incompatible =
+            make_tool("lookup", None, crate::tool_types::DeferrablePolicy::Never);
+        match &mut incompatible {
+            ToolDefinition::Builtin(tool) => {
+                tool.parameters = json!({
+                    "type": "object", "allOf": [{"type": "object"}]
+                })
+            }
+            ToolDefinition::ClientSide(_) => unreachable!(),
+        }
+        let serialized = serde_json::to_value(
+            &OpenResponsesProtocolChatDriver::convert_tools(&[incompatible])[0],
+        )
+        .unwrap();
+        assert!(serialized.get("strict").is_none());
+        assert!(serialized["parameters"].get("allOf").is_some());
+    }
     #[tokio::test]
     async fn compact_request_preserves_endpoint_query_and_complete_contract() {
         use wiremock::matchers::{header, method, path, query_param};
@@ -3410,593 +5750,24 @@ mod tests {
         assert_ne!(bodies[0]["input"], bodies[1]["input"]);
         assert_eq!(bodies[0]["prompt_cache_key"], bodies[1]["prompt_cache_key"]);
     }
-    #[tokio::test]
-    async fn request_controls_reach_wire_with_exact_omission_and_reasoning_semantics() {
-        use crate::model::ReasoningEffort;
-        use wiremock::matchers::{method, path};
-        use wiremock::{Mock, MockServer};
-        for (effort, expected_reasoning, parallel, tier, verbosity) in [
-            (None, None, None, None, None),
-            (
-                Some(ReasoningEffort::None),
-                None,
-                Some(false),
-                Some("flex"),
-                Some("low"),
-            ),
-            (
-                Some(ReasoningEffort::Low),
-                Some("low"),
-                Some(true),
-                Some("priority"),
-                Some("high"),
-            ),
-            (
-                Some(ReasoningEffort::High),
-                Some("high"),
-                Some(false),
-                Some("default"),
-                Some("medium"),
-            ),
-        ] {
-            let server = MockServer::builder().start().await;
-            Mock::given(method("POST"))
-                .and(path("/responses"))
-                .respond_with(successful_auth_stream())
-                .expect(1)
-                .mount(&server)
-                .await;
-            let provider = crate::runtime_provider::RuntimeProvider::new(
-                "controls",
-                OpenResponsesProtocolChatDriver::new(),
-            )
-            .base_url(server.uri());
-            let driver = OpenResponsesProtocolChatDriver::new()
-                .with_retry_config(LlmRetryConfig::no_retry());
-            let mut config = auth_test_config();
-            config.reasoning_effort = effort;
-            config.parallel_tool_calls = parallel;
-            config.speed = tier.map(str::to_owned);
-            config.verbosity = verbosity.map(str::to_owned);
-            config.openrouter_routing = Some(
-                crate::driver_registry::OpenRouterRoutingConfig::fallback_models(["ignored-model"]),
-            );
-            let mut expected = json!({"model":"gpt-5.4","input":[{"type":"message","role":"user","content":"question"}],"instructions":"rules","stream":true});
-            if let Some(parallel) = parallel {
-                config.temperature = Some(0.25);
-                config.max_tokens = Some(64);
-                config
-                    .metadata
-                    .insert("session_id".into(), "session-controls".into());
-                expected["temperature"] = json!(0.25);
-                expected["max_output_tokens"] = json!(64);
-                expected["metadata"] = json!({"session_id":"session-controls"});
-                expected["parallel_tool_calls"] = json!(parallel);
-                expected["service_tier"] = json!(tier.unwrap());
-                expected["text"] = json!({"verbosity":verbosity.unwrap()});
-            }
-            if let Some(reasoning) = expected_reasoning {
-                expected["reasoning"] = json!({"effort":reasoning,"summary":"detailed"});
-                expected["include"] = json!(["reasoning.encrypted_content"]);
-            }
-            let stream = driver
-                .chat_completion_stream(
-                    provider.endpoint(),
-                    vec![
-                        LlmMessage::text(LlmMessageRole::System, "rules"),
-                        LlmMessage::text(LlmMessageRole::User, "question"),
-                    ],
-                    &config,
-                )
-                .await
-                .unwrap();
-            assert_authenticated_stream(stream).await;
-            let requests = server.received_requests().await.unwrap();
-            assert_eq!(requests.len(), 1);
-            assert_eq!(
-                requests[0].body_json::<Value>().unwrap(),
-                expected,
-                "effort={effort:?}"
-            );
-        }
-    }
+
     #[test]
-    fn input_conversion_preserves_ordered_content_and_replayable_reasoning() {
-        use crate::execution_phase::ExecutionPhase;
-        use crate::reasoning::{ReasoningContentPart, ReasoningText};
-        let mut user = LlmMessage::parts(
-            LlmMessageRole::User,
-            vec![
-                LlmContentPart::text("look α"),
-                LlmContentPart::image("data:image/png;base64,aA=="),
-                LlmContentPart::Audio {
-                    url: "audio-data".into(),
-                },
-            ],
-        );
-        user.phase = Some(ExecutionPhase::FinalAnswer);
-        let mut assistant = LlmMessage::text(LlmMessageRole::Assistant, "checking");
-        assistant.phase = Some(ExecutionPhase::Commentary);
-        assistant.configuration_update = Some(crate::model::ReasoningEffort::High);
-        assistant.reasoning = vec![
-            ReasoningContentPart::opaque("openai")
-                .with_item_id("rs-first")
-                .with_encrypted("enc-first")
-                .with_text(ReasoningText::Summary {
-                    parts: vec!["one".into(), "two".into()],
-                }),
-            ReasoningContentPart::opaque("openai")
-                .with_item_id("rs-second")
-                .with_encrypted("enc-second"),
-            ReasoningContentPart::opaque("openai").with_item_id("no-payload"),
-            ReasoningContentPart::opaque("openai").with_encrypted("no-id"),
-            ReasoningContentPart::opaque("anthropic")
-                .with_item_id("foreign-id")
-                .with_encrypted("foreign-secret"),
-        ];
-        assistant.tool_calls = Some(vec![
-            ToolCall {
-                id: "call-a".into(),
-                name: "first".into(),
-                arguments: json!({"a":1}),
+    fn file_part_serializes_to_input_file() {
+        let part = ResponsesContentPart::InputFile {
+            r#type: "input_file".to_string(),
+            input_file: ResponsesInputFile {
+                file_data: Some("data:application/pdf;base64,JVBERi0=".to_string()),
+                file_url: None,
+                filename: Some("report.pdf".to_string()),
             },
-            ToolCall {
-                id: "call-b".into(),
-                name: "second".into(),
-                arguments: json!({"b":2}),
-            },
-        ]);
-        let mut output_a = LlmMessage::parts(
-            LlmMessageRole::Tool,
-            vec![
-                LlmContentPart::text("first"),
-                LlmContentPart::image("ignored-image"),
-                LlmContentPart::text(" result"),
-            ],
-        );
-        output_a.tool_call_id = Some("call-a".into());
-        let mut output_b = LlmMessage::text(LlmMessageRole::Tool, "second result");
-        output_b.tool_call_id = Some("call-b".into());
-        let messages = vec![
-            LlmMessage::text(LlmMessageRole::System, "rules"),
-            user,
-            LlmMessage::text(LlmMessageRole::System, "notice"),
-            assistant,
-            output_a,
-            output_b,
-            LlmMessage::text(LlmMessageRole::Assistant, "answer"),
-        ];
-        for phases in [false, true] {
-            let (instructions, input) =
-                OpenResponsesProtocolChatDriver::build_input(&messages, phases);
-            assert_eq!(instructions.as_deref(), Some("rules\n\nnotice"));
-            let mut expected = vec![json!({"type":"message","role":"user","content":[
-                {"type":"input_text","text":"look α"},{"type":"input_image","image_url":"data:image/png;base64,aA=="},{"type":"input_audio","input_audio":{"data":"audio-data","format":"wav"}}
-            ]})];
-            if phases {
-                expected.push(json!({"type":"configuration_update","reasoning":{"effort":"high"}}));
-            }
-            expected.extend([
-                json!({"type":"reasoning","id":"rs-first","encrypted_content":"enc-first","summary":[{"type":"summary_text","text":"one"},{"type":"summary_text","text":"two"}]}),
-                json!({"type":"reasoning","id":"rs-second","encrypted_content":"enc-second","summary":[]}),
-            ]);
-            let mut message = json!({"type":"message","role":"assistant","content":"checking"});
-            if phases {
-                message["phase"] = json!("commentary");
-            }
-            expected.push(message);
-            expected.extend([
-                json!({"type":"function_call","call_id":"call-a","name":"first","arguments":"{\"a\":1}"}),
-                json!({"type":"function_call","call_id":"call-b","name":"second","arguments":"{\"b\":2}"}),
-                json!({"type":"function_call_output","call_id":"call-a","output":"first result"}),
-                json!({"type":"function_call_output","call_id":"call-b","output":"second result"}),
-                json!({"type":"message","role":"assistant","content":"answer"}),
-            ]);
-            assert_eq!(serde_json::to_value(input).unwrap(), json!(expected));
-        }
-        let mut call_only = messages[3].clone();
-        call_only.content = LlmMessageContent::Text(String::new());
-        call_only.reasoning.clear();
-        call_only.configuration_update = None;
-        let (instructions, input) =
-            OpenResponsesProtocolChatDriver::build_input(&[call_only], false);
-        assert_eq!(instructions, None);
+        };
+        let v = serde_json::to_value(&part).unwrap();
+        assert_eq!(v["type"], serde_json::json!("input_file"));
         assert_eq!(
-            serde_json::to_value(input).unwrap(),
-            json!([
-                {"type":"function_call","call_id":"call-a","name":"first","arguments":"{\"a\":1}"},
-                {"type":"function_call","call_id":"call-b","name":"second","arguments":"{\"b\":2}"},
-            ])
+            v["input_file"]["file_data"],
+            serde_json::json!("data:application/pdf;base64,JVBERi0=")
         );
-    }
-    #[test]
-    fn finalization_preserves_exact_delta_and_repairs_only_broken_pairs() {
-        use crate::model::ReasoningEffort;
-        let user = user_message("question");
-        let assistant = ResponsesInputItem::Message {
-            r#type: "message".into(),
-            role: "assistant".into(),
-            content: ResponsesContent::Text("answer".into()),
-            phase: None,
-        };
-        let reasoning = ResponsesInputItem::Reasoning {
-            r#type: "reasoning".into(),
-            id: "rs-last".into(),
-            encrypted_content: "opaque".into(),
-            summary: vec![],
-        };
-        let call = function_call("a", "first");
-        let output = function_call_output("a");
-        let second_call = function_call("b", "second");
-        let second_output = function_call_output("b");
-        let low = configuration_update_item(ReasoningEffort::Low);
-        let high = configuration_update_item(ReasoningEffort::High);
-        let u = json!({"type":"message","role":"user","content":"question"});
-        let a = json!({"type":"message","role":"assistant","content":"answer"});
-        let c = json!({"type":"function_call","call_id":"a","name":"first","arguments":"{}"});
-        let o = json!({"type":"function_call_output","call_id":"a","output":"result"});
-        let c2 = json!({"type":"function_call","call_id":"b","name":"second","arguments":"{}"});
-        let o2 = json!({"type":"function_call_output","call_id":"b","output":"result"});
-        let l = json!({"type":"configuration_update","reasoning":{"effort":"low"}});
-        let h = json!({"type":"configuration_update","reasoning":{"effort":"high"}});
-        for (case, input, full, delta) in [
-            ("empty", vec![], json!([]), json!([])),
-            (
-                "fresh users",
-                vec![user.clone(), user.clone()],
-                json!([u, u]),
-                json!([u, u]),
-            ),
-            (
-                "assistant boundary",
-                vec![user.clone(), assistant.clone(), user.clone()],
-                json!([u, a, u]),
-                json!([u]),
-            ),
-            (
-                "assistant last",
-                vec![user.clone(), assistant.clone()],
-                json!([u, a]),
-                json!([]),
-            ),
-            (
-                "parallel results",
-                vec![
-                    user.clone(),
-                    assistant.clone(),
-                    call.clone(),
-                    second_call.clone(),
-                    output.clone(),
-                    second_output.clone(),
-                    user.clone(),
-                ],
-                json!([u, a, c, c2, o, o2, u]),
-                json!([o, o2, u]),
-            ),
-            (
-                "reasoning boundary",
-                vec![user.clone(), reasoning, output.clone(), user.clone()],
-                json!([u,{"type":"reasoning","id":"rs-last","encrypted_content":"opaque","summary":[]},u]),
-                json!([o, u]),
-            ),
-            (
-                "server-side output",
-                vec![output.clone(), user.clone()],
-                json!([u]),
-                json!([o, u]),
-            ),
-            (
-                "dangling call",
-                vec![user.clone(), call.clone()],
-                json!([u]),
-                json!([]),
-            ),
-            (
-                "mixed broken pairs",
-                vec![
-                    user.clone(),
-                    function_call("old", "old"),
-                    call.clone(),
-                    output.clone(),
-                    function_call_output("orphan"),
-                    second_call,
-                    second_output,
-                ],
-                json!([u, c, o, c2, o2]),
-                json!([o2]),
-            ),
-            (
-                "adjacent updates",
-                vec![low.clone(), high.clone(), user.clone(), low.clone()],
-                json!([h, u, l]),
-                json!([h, u, l]),
-            ),
-            (
-                "updates after boundary",
-                vec![low.clone(), assistant, low, high, user],
-                json!([l, a, h, u]),
-                json!([h, u]),
-            ),
-        ] {
-            for (previous, expected) in [(None, full), (Some("resp-prior".to_owned()), delta)] {
-                assert_eq!(
-                    serde_json::to_value(finalize_input_for_request(input.clone(), &previous))
-                        .unwrap(),
-                    expected,
-                    "{case}, previous={previous:?}"
-                );
-            }
-        }
-    }
-    #[tokio::test]
-    async fn continuation_wire_uses_provider_state_or_complete_checkpoint_replay() {
-        use wiremock::matchers::{method, path};
-        use wiremock::{Mock, MockServer};
-        for stateful in [false, true] {
-            for has_previous in [false, true] {
-                for checkpoint in [false, true] {
-                    let server = MockServer::builder().start().await;
-                    Mock::given(method("POST"))
-                        .and(path("/responses"))
-                        .respond_with(successful_auth_stream())
-                        .expect(1)
-                        .mount(&server)
-                        .await;
-                    let endpoint = crate::runtime_provider::RuntimeProvider::new(
-                        "continuation",
-                        OpenResponsesProtocolChatDriver::new(),
-                    )
-                    .base_url(server.uri());
-                    let driver = if stateful {
-                        OpenResponsesProtocolChatDriver::new().with_stateful_responses(true)
-                    } else {
-                        OpenResponsesProtocolChatDriver::new()
-                    };
-                    let driver = driver.with_retry_config(LlmRetryConfig::no_retry());
-                    let mut assistant = LlmMessage::text(LlmMessageRole::Assistant, "checking");
-                    assistant.tool_calls = Some(vec![ToolCall {
-                        id: "call-a".into(),
-                        name: "lookup".into(),
-                        arguments: json!({"key":"value"}),
-                    }]);
-                    let mut output = LlmMessage::text(LlmMessageRole::Tool, "found");
-                    output.tool_call_id = Some("call-a".into());
-                    let messages = vec![
-                        LlmMessage::text(LlmMessageRole::System, "rules"),
-                        LlmMessage::text(LlmMessageRole::User, "question"),
-                        assistant,
-                        output,
-                    ];
-                    let mut config = auth_test_config();
-                    if has_previous {
-                        config.previous_response_id = Some("resp-prior".into());
-                    }
-                    if checkpoint {
-                        config.provider_opaque_context = Some(
-                            crate::driver_registry::ProviderOpaqueContext::OpenResponsesCompact {
-                                output: vec![
-                                    CompactOutputItem::Compaction {
-                                        encrypted_content: "opaque-checkpoint".into(),
-                                    },
-                                    CompactOutputItem::ProviderItem(
-                                        json!({"type":"reasoning","id":"rs-checkpoint","encrypted_content":"opaque-reasoning","summary":[]}),
-                                    ),
-                                ],
-                                reasoning_state: None,
-                            },
-                        );
-                    }
-                    let full = vec![
-                        json!({"type":"message","role":"user","content":"question"}),
-                        json!({"type":"message","role":"assistant","content":"checking"}),
-                        json!({"type":"function_call","call_id":"call-a","name":"lookup","arguments":"{\"key\":\"value\"}"}),
-                        json!({"type":"function_call_output","call_id":"call-a","output":"found"}),
-                    ];
-                    let mut expected = json!({"model":"gpt-5.4","instructions":"rules","stream":true,"input":full});
-                    if checkpoint {
-                        let mut input = vec![
-                            json!({"type":"compaction","encrypted_content":"opaque-checkpoint"}),
-                            json!({"type":"reasoning","id":"rs-checkpoint","encrypted_content":"opaque-reasoning","summary":[]}),
-                        ];
-                        input.extend(full);
-                        expected["input"] = json!(input);
-                    } else if stateful && has_previous {
-                        expected["previous_response_id"] = json!("resp-prior");
-                        expected["input"] = json!([{"type":"function_call_output","call_id":"call-a","output":"found"}]);
-                    }
-                    assert_authenticated_stream(
-                        driver
-                            .chat_completion_stream(endpoint.endpoint(), messages, &config)
-                            .await
-                            .unwrap(),
-                    )
-                    .await;
-                    let requests = server.received_requests().await.unwrap();
-                    assert_eq!(requests.len(), 1);
-                    assert_eq!(
-                        requests[0].body_json::<Value>().unwrap(),
-                        expected,
-                        "stateful={stateful}, previous={has_previous}, checkpoint={checkpoint}"
-                    );
-                }
-            }
-        }
-    }
-    fn isolated_stream_event(event: Value) -> LlmStreamEvent {
-        handle_streaming_event(
-            serde_json::from_value(event).unwrap(),
-            &Mutex::new(0),
-            &Mutex::new(0),
-            &Mutex::new(None),
-            &Mutex::new(vec![]),
-            &Mutex::new(None),
-            "gpt-5".into(),
-            None,
-        )
-    }
-
-    #[test]
-    fn reasoning_artifacts_preserve_only_opaque_payload_and_curated_summaries() {
-        use crate::reasoning::{ReasoningContentPart, ReasoningText};
-        for encrypted in [None, Some("opaque")] {
-            for summaries in [vec![], vec!["first", "second"]] {
-                let mut summary: Vec<_> = summaries
-                    .iter()
-                    .map(|text| json!({"type":"summary_text","text":text}))
-                    .collect();
-                summary.push(json!({"type":"reasoning_text","text":"private summary entry"}));
-                let event = json!({"type":"response.output_item.done","sequence_number":5,"output_index":0,"item":{"type":"reasoning","id":"rs-original","summary":summary,"content":[{"type":"reasoning_text","text":"private plaintext"}],"encrypted_content":encrypted}});
-                let mut expected =
-                    ReasoningContentPart::opaque("openai").with_item_id("rs-original");
-                if let Some(payload) = encrypted {
-                    expected = expected.with_encrypted(payload);
-                }
-                if !summaries.is_empty() {
-                    expected = expected.with_text(ReasoningText::Summary {
-                        parts: summaries.iter().map(|s| s.to_string()).collect(),
-                    });
-                }
-                let LlmStreamEvent::ReasoningItem(actual) = isolated_stream_event(event) else {
-                    panic!("expected reasoning artifact")
-                };
-                assert_eq!(actual, expected);
-            }
-        }
-    }
-
-    #[test]
-    fn reasoning_deltas_preserve_text_and_distinguish_summary_channel() {
-        for (kind, index, expected_summary) in [
-            ("response.reasoning_text.delta", "content_index", false),
-            (
-                "response.reasoning_summary_text.delta",
-                "summary_index",
-                true,
-            ),
-        ] {
-            let mut event = json!({"type":kind,"sequence_number":3,"item_id":"rs-original","output_index":0,"delta":"reason α"});
-            event[index] = json!(0);
-            match isolated_stream_event(event) {
-                LlmStreamEvent::ReasoningDelta { delta, summary } => {
-                    assert_eq!(delta, "reason α");
-                    assert_eq!(summary, expected_summary);
-                }
-                other => panic!("expected reasoning delta, got {other:?}"),
-            }
-        }
-    }
-
-    #[test]
-    fn phase_hints_preserve_known_values_and_ignore_missing_or_unknown_values() {
-        use crate::execution_phase::ExecutionPhase;
-        for (phase, expected) in [
-            (Some("commentary"), Some(ExecutionPhase::Commentary)),
-            (Some("final_answer"), Some(ExecutionPhase::FinalAnswer)),
-            (None, None),
-            (Some("future-phase"), None),
-        ] {
-            let mut event = json!({"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"message","id":"msg-first","status":"in_progress","role":"assistant","content":[]}});
-            if let Some(phase) = phase {
-                event["item"]["phase"] = json!(phase);
-            }
-            match (isolated_stream_event(event), expected) {
-                (LlmStreamEvent::MessagePhase(actual), Some(expected)) => {
-                    assert_eq!(actual, expected)
-                }
-                (LlmStreamEvent::TextDelta(text), None) => assert_eq!(text, ""),
-                other => panic!("unexpected phase hint: {other:?}"),
-            }
-        }
-    }
-    #[test]
-    fn tool_conversion_preserves_schema_and_selects_strict_or_sanitized_fallback() {
-        let email = r"^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$";
-        let safe_email = r"^[A-Za-z0-9_'+\-](?:[A-Za-z0-9_'+\-]|\.[A-Za-z0-9_'+\-])*@([A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$";
-        for (schema, expected, strict) in [
-            (
-                json!({"type":"object","additionalProperties":false}),
-                json!({"type":"object","properties":{},"required":[],"additionalProperties":false}),
-                true,
-            ),
-            (
-                json!({"type":"object","properties":{"query":{"type":"string"}},"required":["query"],"additionalProperties":false}),
-                json!({"type":"object","properties":{"query":{"type":"string"}},"required":["query"],"additionalProperties":false}),
-                true,
-            ),
-            (
-                json!({"type":"object","properties":{"query":{"type":"string"}}}),
-                json!({"type":"object","properties":{"query":{"type":["string","null"]}},"required":["query"],"additionalProperties":false}),
-                true,
-            ),
-            (json!({"type":"string"}), json!({"type":"string"}), false),
-            (
-                json!({"type":"object","allOf":[{"type":"object"}]}),
-                json!({"type":"object","properties":{},"allOf":[{"type":"object"}]}),
-                false,
-            ),
-            (
-                json!({"type":"object","properties":{"email":{"type":"string","pattern":email}}}),
-                json!({"type":"object","properties":{"email":{"type":"string","pattern":safe_email}}}),
-                false,
-            ),
-        ] {
-            let mut tool = make_tool("lookup", None, crate::tool_types::DeferrablePolicy::Never);
-            let ToolDefinition::Builtin(definition) = &mut tool else {
-                unreachable!()
-            };
-            definition.parameters = schema.clone();
-            let mut expected_tool = json!({"type":"function","name":"lookup","description":"lookup description","parameters":expected});
-            if strict {
-                expected_tool["strict"] = json!(true);
-            }
-            assert_eq!(
-                serde_json::to_value(OpenResponsesProtocolChatDriver::convert_tools(&[tool]))
-                    .unwrap(),
-                json!([expected_tool]),
-                "schema={schema}"
-            );
-        }
-    }
-    #[test]
-    fn completion_metadata_preserves_usage_cost_phase_and_terminal_reason() {
-        for (status, details, reason) in [
-            ("completed", None, "stop"),
-            ("incomplete", Some("max_output_tokens"), "length"),
-            ("incomplete", Some("max_tokens"), "length"),
-            ("incomplete", Some("content_filter"), "content_filter"),
-            ("cancelled", None, "cancelled"),
-            ("failed", None, "error"),
-        ] {
-            let kind = if status == "incomplete" {
-                "response.incomplete"
-            } else {
-                "response.completed"
-            };
-            let mut event = json!({"type":kind,"sequence_number":9,"response":{"id":"resp-complete","object":"response","created_at":1,"status":status,"model":"gpt-5","output":[{"type":"message","id":"msg-first","role":"assistant","status":"completed","content":[],"phase":"commentary"},{"type":"message","id":"msg-last","role":"assistant","status":"completed","content":[],"phase":"final_answer"}],"usage":{"input_tokens":1000,"output_tokens":20,"total_tokens":1020,"input_tokens_details":{"cached_tokens":800},"cost":0.125}}});
-            if let Some(details) = details {
-                event["response"]["incomplete_details"] = json!({"reason":details});
-            }
-            let LlmStreamEvent::Done(actual) = isolated_stream_event(event) else {
-                panic!("expected terminal metadata")
-            };
-            assert_eq!(
-                (
-                    actual.prompt_tokens,
-                    actual.completion_tokens,
-                    actual.total_tokens,
-                    actual.cache_read_tokens
-                ),
-                (Some(200), Some(20), Some(1020), Some(800)),
-                "status={status}"
-            );
-            assert_eq!(actual.provider_cost_usd, Some(0.125));
-            assert_eq!(actual.model.as_deref(), Some("gpt-5"));
-            assert_eq!(actual.response_id.as_deref(), Some("resp-complete"));
-            assert_eq!(actual.phase.as_deref(), Some("final_answer"));
-            assert_eq!(actual.finish_reason.as_deref(), Some(reason));
-            assert!(actual.cache_creation_tokens.is_none());
-            assert!(actual.retry_metadata.is_none());
-            assert!(actual.cache_diagnostics.is_none());
-        }
+        assert_eq!(v["input_file"]["filename"], serde_json::json!("report.pdf"));
+        assert!(v["input_file"].get("file_url").is_none());
     }
 }

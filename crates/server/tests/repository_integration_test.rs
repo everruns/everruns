@@ -833,6 +833,7 @@ async fn test_session_crud() {
             CreateHarnessRow {
                 name: format!("repo-test-app-harness-{}", Uuid::now_v7()),
                 display_name: Some("Repo Test App Harness".to_string()),
+                icon: None,
                 description: None,
                 system_prompt: Some("Test".to_string()),
                 parent_harness_id: None,
@@ -937,6 +938,7 @@ async fn test_session_crud() {
             CreateHarnessRow {
                 name: format!("repo-test-harness-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Repo Test Harness".to_string()),
+                icon: None,
                 description: None,
                 system_prompt: Some("Test".to_string()),
                 parent_harness_id: None,
@@ -4227,5 +4229,175 @@ async fn eval_case_results_detach_from_deleted_sessions() {
     assert_eq!(
         delete_action, "n",
         "eval_case_results.session_id must be ON DELETE SET NULL, not restricting"
+    );
+}
+
+// ============================================
+// Session Schedule Claim Lease
+// ============================================
+
+/// Create a session plus `count` schedules that are already overdue.
+///
+/// `next_trigger_at` is set far in the past so these rows sort ahead of any
+/// other due schedule left behind by another test, which keeps them inside the
+/// first claim batch regardless of what else is in the table.
+async fn seed_overdue_schedules(
+    backend: &StorageBackend,
+    label: &str,
+    count: usize,
+) -> Vec<everruns_provider::typed_id::ScheduleId> {
+    let owner_principal_id = create_test_principal(backend, TEST_ORG_ID).await;
+    let session = backend
+        .create_session(CreateSessionRow {
+            source: everruns_platform::SessionSource::Api,
+            workspace_id: None,
+            org_id: TEST_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
+            agent_identity_id: None,
+            owner_principal_id,
+            resolved_owner_user_id: None,
+            title: Some(format!("{label}-{}", Uuid::now_v7())),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+        })
+        .await
+        .expect("Failed to create test session");
+
+    let mut ids = Vec::with_capacity(count);
+    for index in 0..count {
+        let schedule = backend
+            .create_session_schedule(CreateSessionScheduleRow {
+                org_id: TEST_ORG_ID,
+                session_id: session.id,
+                owner_principal_id,
+                resolved_owner_user_id: None,
+                description: format!("{label}-{index}-{}", Uuid::now_v7()),
+                cron_expression: Some("0 * * * *".to_string()),
+                scheduled_at: None,
+                timezone: "UTC".to_string(),
+                next_trigger_at: Some(Utc::now() - chrono::Duration::days(3650)),
+            })
+            .await
+            .expect("Failed to create overdue schedule");
+        ids.push(schedule.id);
+    }
+    ids
+}
+
+/// A schedule handed to one instance must not also be handed to another.
+///
+/// The poller runs inside the server process, so two server replicas poll the
+/// same table with no coordination outside the database. Before the claim
+/// lease, `claim_due_session_schedules` selected with `FOR UPDATE SKIP LOCKED`
+/// but ran on the pool, so the implicit transaction committed and dropped the
+/// row locks before the caller advanced `next_trigger_at` -- and both instances
+/// fired the same schedule. That is a duplicate agent turn and duplicate
+/// (customer-funded) model spend, so it is asserted directly.
+///
+/// Sequential calls are enough: the defect is the absence of any recorded
+/// claim, not a narrow interleaving.
+#[tokio::test]
+async fn claim_due_session_schedules_is_exclusive_across_instances_pg() {
+    use std::collections::HashSet;
+
+    let backend = create_test_backend().await;
+    let seeded: HashSet<_> = seed_overdue_schedules(&backend, "claim-exclusive", 3)
+        .await
+        .into_iter()
+        .collect();
+
+    let first: HashSet<_> = backend
+        .claim_due_session_schedules("instance-a", 500)
+        .await
+        .expect("first claim failed")
+        .into_iter()
+        .map(|row| row.id)
+        .filter(|id| seeded.contains(id))
+        .collect();
+    assert_eq!(
+        first.len(),
+        seeded.len(),
+        "the first instance should claim every overdue schedule this test seeded"
+    );
+
+    let second: Vec<_> = backend
+        .claim_due_session_schedules("instance-b", 500)
+        .await
+        .expect("second claim failed")
+        .into_iter()
+        .map(|row| row.id)
+        .filter(|id| first.contains(id))
+        .collect();
+
+    assert!(
+        second.is_empty(),
+        "schedules {second:?} were claimed by two instances at once; each would fire \
+         its session turn twice"
+    );
+}
+
+/// A claim is a lease, not a permanent mark.
+///
+/// An instance that dies between claiming a schedule and firing it must not
+/// strand that schedule forever. Once the lease ages out, another instance
+/// takes it over.
+#[tokio::test]
+async fn expired_session_schedule_claim_is_reclaimable_pg() {
+    let backend = create_test_backend().await;
+    let pool = create_test_pool().await;
+    let seeded = seed_overdue_schedules(&backend, "claim-lease-expiry", 1).await;
+    let schedule_id = seeded[0];
+
+    let claimed: Vec<_> = backend
+        .claim_due_session_schedules("instance-a", 500)
+        .await
+        .expect("first claim failed")
+        .into_iter()
+        .map(|row| row.id)
+        .filter(|id| *id == schedule_id)
+        .collect();
+    assert_eq!(claimed.len(), 1, "the schedule should be claimed once");
+
+    // Simulate an instance that took the claim and then died.
+    sqlx::query(
+        "UPDATE session_schedules SET claimed_at = NOW() - INTERVAL '1 hour' WHERE id = $1",
+    )
+    .bind(schedule_id)
+    .execute(&pool)
+    .await
+    .expect("failed to age the claim");
+
+    let reclaimed: Vec<_> = backend
+        .claim_due_session_schedules("instance-b", 500)
+        .await
+        .expect("reclaim failed")
+        .into_iter()
+        .map(|row| row.id)
+        .filter(|id| *id == schedule_id)
+        .collect();
+
+    assert_eq!(
+        reclaimed.len(),
+        1,
+        "a schedule whose claim lease expired must be reclaimable, or an instance \
+         that died mid-fire strands it forever"
     );
 }

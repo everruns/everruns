@@ -113,28 +113,38 @@ impl Capability for PromptCachingCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
-
-    #[test]
-    fn test_default_strategy() {
-        let cap = PromptCachingCapability::new();
-        let config = cap.prompt_cache_config();
-        assert!(config.enabled);
-        assert_eq!(config.strategy, PromptCacheStrategy::Auto);
-        assert!(config.gemini_cached_content.is_none());
-    }
+    use serde_json::json;
 
     #[test]
-    fn test_capability_with_gemini_cached_content() {
-        let cap = PromptCachingCapability::with_gemini_cached_content(
-            PromptCacheStrategy::Auto,
-            "cachedContents/example",
-        );
-        let config = cap.prompt_cache_config();
-        assert_eq!(
-            config.gemini_cached_content.as_deref(),
-            Some("cachedContents/example")
-        );
+    fn runtime_cache_configuration_overrides_constructor_and_preserves_fallback() {
+        for fallback in [None, Some("cachedContents/constructor")] {
+            let cap = match fallback {
+                Some(value) => PromptCachingCapability::with_gemini_cached_content(
+                    PromptCacheStrategy::Auto,
+                    value,
+                ),
+                None => PromptCachingCapability::new(),
+            };
+            for (config, expected) in [
+                (json!(null), fallback),
+                (json!({}), fallback),
+                (
+                    json!({"gemini_cached_content":"cachedContents/runtime"}),
+                    Some("cachedContents/runtime"),
+                ),
+                (json!({"gemini_cached_content":false}), fallback),
+                (json!({"gemini_cached_content":null}), fallback),
+            ] {
+                assert_eq!(
+                    Capability::prompt_cache_config(&cap, &config),
+                    Some(PromptCacheConfig {
+                        enabled: true,
+                        strategy: PromptCacheStrategy::Auto,
+                        gemini_cached_content: expected.map(str::to_owned)
+                    }),
+                    "config={config}, fallback={fallback:?}"
+                );
+            }
+        }
     }
 }

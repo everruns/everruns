@@ -42,7 +42,7 @@ Pick only what matches the scope:
 - `cd apps/ui && pnpm run lint && pnpm run build`
 - `cd apps/docs && pnpm run build`
 - `./scripts/export-openapi.sh`
-- `scripts/test-everruns-dev-plugin.sh` — plugin metadata, registration, and version parity
+- `scripts/test-plugins.sh` — plugin metadata, registration, and version parity
 - Security alerts. **Do not call the alert APIs directly from a scheduled cloud-agent session** —
   `dependabot/alerts`, `secret-scanning/alerts` and `code-scanning/alerts` all answer `403` there,
   and no token changes that: the agent egress proxy rewrites `Authorization` for `api.github.com`,

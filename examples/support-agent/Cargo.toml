@@ -7,4 +7,5 @@ publish = false
 
 [dependencies]
 everruns = { path = "../../crates/everruns", features = ["openai"] }
+everruns-example-demo = { path = "../demo-support" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -15,11 +15,13 @@
 use std::borrow::Cow;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use everruns_provider::OpenResponsesRequestExtension;
-use everruns_provider::driver_registry::{
-    LlmCallConfig, OPENROUTER_HTTP_REFERER_METADATA_KEY, OPENROUTER_X_TITLE_METADATA_KEY,
-    OpenRouterCapacityStrategy, OpenRouterPluginConfig, OpenRouterRoutingConfig,
+use crate::options::{
+    OPENROUTER_HTTP_REFERER_METADATA_KEY, OPENROUTER_ROUTING_OPTION_KEY,
+    OPENROUTER_X_TITLE_METADATA_KEY, OpenRouterCapacityStrategy, OpenRouterPluginConfig,
+    OpenRouterRoutingConfig,
 };
+use everruns_provider::OpenResponsesRequestExtension;
+use everruns_provider::driver_registry::LlmCallConfig;
 use everruns_provider::error::{AgentLoopError, Result};
 use everruns_provider::llm_retry::{RateLimitInfo, RateLimitType};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
@@ -51,7 +53,7 @@ impl OpenResponsesRequestExtension for OpenRouterRequestExtension {
 
         apply_private_reasoning_policy(obj, config);
 
-        let Some(routing) = config.openrouter_routing.as_ref() else {
+        let Some(routing) = effective_routing(config)? else {
             return Ok(());
         };
 
@@ -61,7 +63,7 @@ impl OpenResponsesRequestExtension for OpenRouterRequestExtension {
 
         // Apply routing presets, then capacity strategy. Avoid cloning when both
         // are no-ops by resolving to an owned `effective` config only as needed.
-        let effective = resolve_effective_routing(routing)?;
+        let effective = resolve_effective_routing(&routing)?;
 
         if !effective.models.is_empty() {
             obj.insert("models".to_string(), json!(effective.models));
@@ -273,6 +275,18 @@ fn apply_private_reasoning_policy(
 /// Apply routing presets, then the capacity strategy, returning the resolved
 /// config used to build the wire request. Borrows the original when both steps
 /// are no-ops (the common case) and only allocates when a step changes routing.
+/// Resolve the typed routing config stashed opaquely in `driver_options`.
+/// A missing or empty routing option means "no routing" (this preserves the old
+/// builder behavior of dropping empty routing configs instead of sending them).
+fn effective_routing(config: &LlmCallConfig) -> Result<Option<OpenRouterRoutingConfig>> {
+    let Some(raw) = config.driver_options.get(OPENROUTER_ROUTING_OPTION_KEY) else {
+        return Ok(None);
+    };
+    let routing: OpenRouterRoutingConfig =
+        serde_json::from_value(raw.clone()).map_err(|e| AgentLoopError::llm(e.to_string()))?;
+    Ok((!routing.is_empty()).then_some(routing))
+}
+
 fn resolve_effective_routing(
     routing: &OpenRouterRoutingConfig,
 ) -> Result<Cow<'_, OpenRouterRoutingConfig>> {
@@ -326,7 +340,7 @@ fn plugins_to_wire(config: &OpenRouterPluginConfig) -> Option<Vec<Value>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::driver_registry::{OpenRouterFilePlugin, OpenRouterWebSearchPlugin};
+    use crate::options::{OpenRouterFilePlugin, OpenRouterWebSearchPlugin, insert_routing_option};
     fn base_config(model: &str) -> LlmCallConfig {
         LlmCallConfig {
             speed: None,
@@ -342,7 +356,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
@@ -389,10 +403,13 @@ mod tests {
             ),
         ] {
             let mut config = base_config("vendor/model");
-            config.openrouter_routing = Some(OpenRouterRoutingConfig {
-                plugins,
-                ..Default::default()
-            });
+            insert_routing_option(
+                &mut config.driver_options,
+                &OpenRouterRoutingConfig {
+                    plugins,
+                    ..Default::default()
+                },
+            );
             let mut body = json!({"model":"vendor/model","input":[{"role":"user","content":"hello"}],"tools":[{"type":"function","name":"lookup"}],"stream":true});
             OpenRouterRequestExtension
                 .decorate(&mut body, &config)

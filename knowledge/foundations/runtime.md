@@ -343,8 +343,8 @@ continuations pinned to the snapshot their first page captured, and polling
 cursors that deliberately start a new snapshot. The log stays append-only;
 there is no truncate, rewind, or mutation contract.
 
-`tests/fixtures/external-consumer/event-log` is an out-of-workspace
-implementation exercised by CI, so the SPI cannot silently stop being
+`crates/everruns/tests/fixtures/external-consumer/event-log` is an
+out-of-workspace implementation exercised by CI, so the SPI cannot silently stop being
 externally implementable.
 
 ### Optional host-backend slots

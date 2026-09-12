@@ -1,0 +1,3 @@
+# Deno connection (UI)
+
+* [TC001: Deno OpenUI Connection - Sandbox Lifecycle](TC001_deno_openui_connection_sandbox.md) - Verify that an agent with Deno capability prompts for a Deno access token via the inline OpenUI connection dialog when no connection exists, creates a sandbox after connecting, executes a command, and deletes the sand...

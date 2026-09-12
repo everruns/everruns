@@ -130,6 +130,10 @@ service WorkerService {
     // Resolve multiple images in a batch (more efficient for multimodal messages)
     rpc ResolveImages(ResolveImagesRequest) returns (ResolveImagesResponse);
 
+    // Resolve multiple files (e.g. PDFs) in a batch. Files are always
+    // returned inline as base64 (no presigned-URL variant).
+    rpc ResolveFiles(ResolveFilesRequest) returns (ResolveFilesResponse);
+
     // Persist and read image artifacts for tool-side image generation/editing.
     rpc CreateImageArtifact(CreateImageArtifactRequest) returns (CreateImageArtifactResponse);
     rpc GetImageArtifact(GetImageArtifactRequest) returns (GetImageArtifactResponse);
@@ -248,7 +252,7 @@ service WorkerService {
     rpc SessionSqlDbSchema(SessionSqlDbSchemaRequest) returns (SessionSqlDbSchemaResponse);
 
     // === Platform management operations ===
-    // Used by the platform_management capability tools to manage org-wide entities
+    // Used by the platform capability to manage org-wide entities
     // via gRPC workers (mirrors PlatformStore trait in core)
 
     // Generic domain command transport for inventory-registered CRUD.
@@ -1112,6 +1116,26 @@ message ResolveImagesResponse {
     // Map from image_id string to resolved image
     // Only contains entries for found images
     map<string, ResolvedImageData> images = 1;
+}
+
+message ResolveFilesRequest {
+    repeated Uuid file_ids = 1;
+    int64 org_id = 2;
+}
+
+message ResolveFilesResponse {
+    // Map from file_id string to resolved file
+    // Only contains entries for found files
+    map<string, ResolvedFileData> files = 1;
+}
+
+message ResolvedFileData {
+    // Base64-encoded file bytes
+    string base64 = 1;
+    // MIME type, e.g. application/pdf
+    string media_type = 2;
+    // Original filename, when known
+    string filename = 3;
 }
 
 message StoredImageInfo {

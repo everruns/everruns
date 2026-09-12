@@ -44,7 +44,7 @@ export default function HarnessesPageClient() {
   const router = useRouter();
   const { locale } = useLocale();
   const { data: harnesses, isLoading, error } = useHarnesses({ includeArchived: true });
-  const { data: allCapabilities } = useCapabilities();
+  const { data: allCapabilities } = useCapabilities({ includeRetired: true });
   const { data: examples, isLoading: examplesLoading, error: examplesError } = useHarnessExamples();
   const importExample = useImportHarnessExample();
   const [importingName, setImportingName] = useState<string | null>(null);

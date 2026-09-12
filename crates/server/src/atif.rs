@@ -1287,6 +1287,14 @@ fn build_content_value(
             ContentPart::Text(t) => {
                 atif_parts.push(json!({ "type": "text", "text": redacted(&t.text) }));
             }
+            ContentPart::File(_) => match file_source(part, redact) {
+                Some(source) => {
+                    atif_parts.push(json!({ "type": "file", "source": source }));
+                }
+                None => {
+                    atif_parts.push(json!({ "type": "text", "text": "[file]" }));
+                }
+            },
             ContentPart::Image(_) | ContentPart::ImageFile(_) => match image_source(part, redact) {
                 Some(source) => {
                     has_image = true;
@@ -1373,6 +1381,32 @@ fn image_source(part: &ContentPart, redact: bool) -> Option<Value> {
         _ => return None,
     }
     Some(Value::Object(source))
+}
+
+/// Resolve a file (e.g. PDF) attachment to its ATIF `source`: a lean
+/// reference to the file bytes via the files API.
+fn file_source(part: &ContentPart, redact: bool) -> Option<Value> {
+    let redacted = |s: &str| {
+        if redact {
+            REDACTED.to_string()
+        } else {
+            s.to_string()
+        }
+    };
+    match part {
+        ContentPart::File(f) => {
+            let mut source = Map::new();
+            source.insert(
+                "path".to_string(),
+                json!(format!("/v1/files/{}", f.file_id)),
+            );
+            if let Some(filename) = &f.filename {
+                source.insert("filename".to_string(), json!(redacted(filename)));
+            }
+            Some(Value::Object(source))
+        }
+        _ => None,
+    }
 }
 
 /// The child session id of a subagent spawn, if this tool result is one.

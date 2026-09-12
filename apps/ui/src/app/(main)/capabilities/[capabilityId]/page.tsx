@@ -49,6 +49,8 @@ function getStatusLabel(status: CapabilityStatus): string {
       return "Coming Soon";
     case "deprecated":
       return "Deprecated";
+    case "retired":
+      return "Removed";
   }
 }
 

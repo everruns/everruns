@@ -1,7 +1,7 @@
 // Workspace CRUD command implementations.
 //
 // These commands implement the unified Command framework so they're
-// surfaced in the MCP catalog, the platform_management capability tools,
+// surfaced in the MCP catalog, the platform capability,
 // the everruns dev plugin sync, and the OpenAPI docs through a single
 // registration site.
 

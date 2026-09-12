@@ -88,6 +88,11 @@ const STARTUP_API_ALLOWLIST = new Set([
   "/api/v1/capabilities",
   "/api/v1/models",
   "/api/v1/providers",
+  // Chats reads the provider policy map to decide whether the "no intelligence
+  // available" notice may link to Settings. Only fetched when the org actually
+  // has no usable chat model — which is this suite's mocked state, since the
+  // API mock answers every list with `{ data: [] }`.
+  "/api/v1/providers/config",
   "/api/v1/sessions",
   "/api/v1/sessions/stats",
   "/api/v1/feature-flags",

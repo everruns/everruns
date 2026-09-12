@@ -5,10 +5,18 @@
 //
 // Configure: provisioning checklist + inline LLM provider setup (provider type +
 //   API key). Polling queries drive the checklist; "Skip for now" is preserved.
+//   Creating the provider with a key also discovers its models and elects the
+//   org default model server-side (see `provision_provider_models`), so the key
+//   entered here is enough to leave chat usable — the form waits for that call.
 // Done: shown after the provider form is submitted OR skipped (replaces the old
 //   redirect straight to /chats). The Done subline is conditional — it only
 //   claims a provider is connected when one actually exists; a skip shows a
-//   gentle nudge instead. The user proceeds from Done into a real first action.
+//   gentle nudge instead. The user proceeds from Done into a real first action,
+//   and that action is the Platform Chat thread: onboarding ends in a
+//   conversation that can do the next steps (create an agent, add a provider)
+//   for the user, not on an empty form. The thread is ensured here because the
+//   onboarding surfaces render without the sidebar that ensures it everywhere
+//   else.
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -22,6 +30,7 @@ import {
   ArrowRight,
   Plus,
   LayoutGrid,
+  MessageCircle,
   Users,
   BookOpen,
 } from "lucide-react";
@@ -31,12 +40,14 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getOrganization, completeOrgOnboarding } from "@/lib/api/organizations";
+import { checkProviderCredentials } from "@/lib/api/providers";
 import { listHarnesses } from "@/lib/api/harnesses";
 import { useCreateProvider, useProviders } from "@/hooks/use-providers";
 import { usePageTitle } from "@/hooks";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
+import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
 import { OnboardingShell } from "@/components/onboarding/onboarding-shell";
 import { useOnboardingArc } from "@/components/onboarding/onboarding-arc-context";
 import type { ApiError } from "@/lib/api/client";
@@ -119,6 +130,8 @@ export default function OrgSetupPage() {
   // (e.g. SaaS with a prepended "Verify") shifts indices/labels via context so
   // the stepper stays continuous across the whole journey.
   const arc = useOnboardingArc();
+  // Precreated, pinned Platform Chat thread — the landing place after Done.
+  const { thread: platformChatThread } = usePlatformChatThread({ ensure: true });
 
   const {
     data: org,
@@ -209,6 +222,7 @@ export default function OrgSetupPage() {
   const [apiKey, setApiKey] = useState("");
   const createProvider = useCreateProvider();
   const [providerError, setProviderError] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
 
   // --- Done step state ---
   // `done` flips when the user finishes the provider form or skips. We track
@@ -235,12 +249,37 @@ export default function OrgSetupPage() {
     setDone(true);
   }, [orgId, queryClient]);
 
+  // Validate the key with the provider before storing it. A key the provider
+  // rejects would otherwise be encrypted into the org and only surface at the
+  // first agent run, far from where the user can fix it. Only an outright
+  // rejection blocks: "unsupported" (driver has no check) and "unreachable"
+  // (outage, offline, air-gapped install) say nothing about the key, so setup
+  // continues rather than stranding the user behind an unprovable check.
   const handleContinue = async () => {
     if (!apiKey.trim()) {
       setProviderError("Please enter an API key");
       return;
     }
     setProviderError(null);
+    setVerifying(true);
+    try {
+      const check = await checkProviderCredentials({
+        provider_type: selectedProvider,
+        api_key: apiKey,
+      });
+      if (check.status === "rejected") {
+        setProviderError(
+          `${getProviderName(selectedProvider)} rejected this API key. Check the key and try again.`,
+        );
+        return;
+      }
+    } catch {
+      // The check itself failed — that is not evidence about the key, so fall
+      // through to creation rather than blocking setup.
+    } finally {
+      setVerifying(false);
+    }
+
     try {
       await createProvider.mutateAsync({
         name: getProviderName(selectedProvider),
@@ -253,6 +292,8 @@ export default function OrgSetupPage() {
       setProviderError("Failed to configure provider. Please try again.");
     }
   };
+
+  const busy = verifying || createProvider.isPending;
 
   // --- Loading skeleton ---
   if (orgLoading && !org) {
@@ -341,23 +382,35 @@ export default function OrgSetupPage() {
               )}
             </p>
 
+            {/* Land in the chat. Falls back to the Chats list while the thread
+                is still being created — it is pinned at the top there. */}
             <Link
-              href="/agents/new"
+              href={platformChatThread ? `/chats/${platformChatThread.id}` : "/chats"}
               className="mt-6 flex items-center gap-3.5 bg-primary px-5 py-4 text-primary-foreground transition-colors hover:bg-primary/90"
             >
               <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center border border-accent/50 bg-accent/[0.15] text-accent">
-                <Plus className="icon-sharp h-[18px] w-[18px]" strokeWidth={2} />
+                <MessageCircle className="icon-sharp h-[18px] w-[18px]" strokeWidth={2} />
               </span>
               <span className="flex-1">
-                <span className="block text-[15px] font-semibold">Create your first agent</span>
+                <span className="block text-[15px] font-semibold">Open Platform Chat</span>
                 <span className="block text-xs text-primary-foreground/60">
-                  Start from a template or a blank harness
+                  Ask it to create your first agent, or just start talking
                 </span>
               </span>
               <ArrowRight className="icon-sharp h-[18px] w-[18px] text-accent" strokeWidth={2} />
             </Link>
 
             <div className="mt-3.5 flex gap-2.5">
+              <Link
+                href="/agents/new"
+                className="flex flex-1 flex-col gap-2 border p-3.5 text-foreground transition-colors hover:bg-muted"
+              >
+                <Plus
+                  className="icon-sharp h-[18px] w-[18px] text-muted-foreground"
+                  strokeWidth={1.8}
+                />
+                <span className="text-[13px] font-medium">Create an agent</span>
+              </Link>
               <Link
                 href="/agents/examples"
                 className="flex flex-1 flex-col gap-2 border p-3.5 text-foreground transition-colors hover:bg-muted"
@@ -592,14 +645,18 @@ export default function OrgSetupPage() {
                   <button
                     type="button"
                     onClick={() => void finishOnboarding()}
-                    disabled={createProvider.isPending}
+                    disabled={busy}
                     className="text-sm text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
                   >
                     Skip for now
                   </button>
-                  <Button onClick={handleContinue} disabled={createProvider.isPending}>
-                    {createProvider.isPending ? "Configuring..." : "Finish setup"}
-                    {!createProvider.isPending && <ArrowRight className="ml-2 h-4 w-4" />}
+                  <Button onClick={handleContinue} disabled={busy}>
+                    {verifying
+                      ? "Checking key..."
+                      : createProvider.isPending
+                        ? "Discovering models..."
+                        : "Finish setup"}
+                    {!busy && <ArrowRight className="ml-2 h-4 w-4" />}
                   </Button>
                 </div>
               </div>

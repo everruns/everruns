@@ -262,6 +262,7 @@ pub async fn initialize_org_harnesses_with_definitions(
         let input = CreateHarnessRow {
             name: harness.name.to_string(),
             display_name: Some(harness.display_name.to_string()),
+            icon: harness.icon.clone(),
             description: Some(harness.description.to_string()),
             system_prompt: Some(harness.system_prompt.to_string()),
             parent_harness_id,
@@ -603,16 +604,18 @@ mod tests {
             .iter()
             .map(|cap| cap.capability_id.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(
-            chat_cap_ids,
-            vec![
-                "platform",
-                "btw",
-                "loop_detection",
-                "error_disclosure",
-                "compaction"
-            ]
-        );
+        // Derive from the definition rather than a second literal: the list is
+        // already pinned by `platform_chat_has_a_focused_tool_surface`, and this
+        // test's job is that provisioning persists it verbatim and in order.
+        let expected_chat_cap_ids = harnesses()
+            .into_iter()
+            .find(|definition| definition.name == "platform-chat")
+            .expect("platform-chat definition")
+            .capabilities
+            .iter()
+            .map(|capability| capability.capability_id().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(chat_cap_ids, expected_chat_cap_ids);
     }
 
     #[tokio::test]
@@ -876,6 +879,7 @@ mod tests {
                 crate::storage::models::CreateHarnessRow {
                     name: "data-analyst".to_string(),
                     display_name: Some("Data Analyst".to_string()),
+                    icon: None,
                     description: Some("legacy".to_string()),
                     system_prompt: Some("legacy prompt".to_string()),
                     parent_harness_id: None,

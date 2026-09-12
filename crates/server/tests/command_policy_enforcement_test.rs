@@ -448,6 +448,7 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
             CreateHarnessRow {
                 name: format!("harness-{name}"),
                 display_name: None,
+                icon: None,
                 description: None,
                 system_prompt: Some("test prompt".to_string()),
                 parent_harness_id: None,

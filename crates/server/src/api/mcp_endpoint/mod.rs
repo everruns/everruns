@@ -65,6 +65,7 @@ use std::sync::Arc;
 use super::common::impl_auth_state;
 
 pub(crate) mod catalog;
+pub(crate) mod cli_tree;
 pub(crate) mod positional;
 
 // ============================================================================
@@ -135,8 +136,8 @@ impl JsonRpcResponse {
 // MCP Tool definitions
 // ============================================================================
 
-const MCP_SERVER_NAME: &str = "everruns";
-const MCP_SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const MCP_SERVER_NAME: &str = "everruns";
+pub const MCP_SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 const MCP_PROTOCOL_VERSION_FALLBACK: &str = "2025-03-26";
 const MCP_PROTOCOL_VERSION_2025_06: &str = "2025-06-18";
 const MCP_PROTOCOL_VERSION_LATEST: &str = "2026-07-28";
@@ -878,6 +879,7 @@ async fn read_capabilities(org: &ResolvedOrg, state: &AppState) -> Result<String
         search: None,
         offset: Some(0),
         limit: Some(200),
+        include_retired: false,
     }
     .run(&ctx)
     .await

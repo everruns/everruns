@@ -137,55 +137,64 @@ impl Capability for AutoToolSearchCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capabilities::{
-        CLAUDE_TOOL_SEARCH_CAPABILITY_ID, OPENAI_TOOL_SEARCH_CAPABILITY_ID,
-        TOOL_SEARCH_CAPABILITY_ID,
-    };
-
-    // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
+    use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy};
+    use serde_json::json;
 
     #[test]
-    fn test_resolves_to_generic_without_model() {
-        // No model known → safe provider-agnostic client-side mechanism.
-        let cap = AutoToolSearchCapability::new();
-        let resolved = cap.resolve_for_model(None).expect("dispatches");
-        assert_eq!(resolved.id(), TOOL_SEARCH_CAPABILITY_ID);
-        // The generic mechanism carries the client-side tool + hook.
-        assert_eq!(resolved.tools().len(), 1);
-        assert_eq!(resolved.tool_definition_hooks().len(), 1);
-    }
-
-    #[test]
-    fn test_resolves_to_generic_on_non_native_model() {
-        // A model with no hosted tool_search support on either provider (here a
-        // retired pre-4 Claude, no longer in the profile registry) falls back to
-        // the safe client-side mechanism.
-        let cap = AutoToolSearchCapability::new();
-        let resolved = cap
-            .resolve_for_model(Some("claude-3-5-haiku"))
-            .expect("dispatches");
-        assert_eq!(resolved.id(), TOOL_SEARCH_CAPABILITY_ID);
-    }
-
-    #[test]
-    fn test_resolves_to_hosted_on_native_openai_model() {
-        let cap = AutoToolSearchCapability::new();
-        let resolved = cap.resolve_for_model(Some("gpt-5.4")).expect("dispatches");
-        assert_eq!(resolved.id(), OPENAI_TOOL_SEARCH_CAPABILITY_ID);
-        // The hosted mechanism contributes no client-side tool or hook.
-        assert!(resolved.tools().is_empty());
-        assert!(resolved.tool_definition_hooks().is_empty());
-    }
-
-    #[test]
-    fn test_resolves_to_hosted_on_native_claude_model() {
-        let cap = AutoToolSearchCapability::new();
-        let resolved = cap
-            .resolve_for_model(Some("claude-opus-4-8"))
-            .expect("dispatches");
-        assert_eq!(resolved.id(), CLAUDE_TOOL_SEARCH_CAPABILITY_ID);
-        // Hosted: no client-side tool or hook contributed.
-        assert!(resolved.tools().is_empty());
-        assert!(resolved.tool_definition_hooks().is_empty());
+    fn model_dispatch_preserves_hosted_configuration_or_generic_deferral_behavior() {
+        let cap = AutoToolSearchCapability::with_threshold(2).with_never_defer(["keep"]);
+        for (model, expected_id) in [
+            (None, "tool_search"),
+            (Some("unknown-model"), "tool_search"),
+            (Some("claude-3-5-haiku"), "tool_search"),
+            (Some("gpt-5.4"), "openai_tool_search"),
+            (Some("claude-opus-4-8"), "claude_tool_search"),
+        ] {
+            let resolved = cap.resolve_for_model(model).expect("resolved capability");
+            assert_eq!(resolved.id(), expected_id, "model={model:?}");
+            if expected_id != "tool_search" {
+                for (config, threshold) in [(json!({}), 2), (json!({"threshold":4}), 4)] {
+                    let actual = resolved
+                        .tool_search_config(&config)
+                        .expect("hosted configuration");
+                    assert!(actual.enabled);
+                    assert_eq!(actual.threshold, threshold);
+                }
+                assert!(resolved.tools().is_empty());
+                assert!(resolved.tool_definition_hooks().is_empty());
+            } else {
+                assert!(resolved.tool_search_config(&json!({})).is_none());
+                assert_eq!(
+                    resolved
+                        .tools()
+                        .iter()
+                        .map(|t| t.name())
+                        .collect::<Vec<_>>(),
+                    vec!["tool_search"]
+                );
+                let hooks = resolved.tool_definition_hooks();
+                assert_eq!(hooks.len(), 1);
+                assert!(!hooks[0].applies_with_native_tool_search());
+                let tools:Vec<_>=["keep","defer"].into_iter().map(|name|ToolDefinition::Builtin(BuiltinTool {
+                    name:name.into(),display_name:None,description:format!("{name} description"),parameters:json!({"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}),policy:ToolPolicy::Auto,category:None,deferrable:DeferrablePolicy::Automatic,hints:ToolHints::default(),full_parameters:None,
+                })).collect();
+                // Below the forwarded threshold, even a non-allowlisted schema survives.
+                assert_eq!(
+                    serde_json::to_value(hooks[0].transform(vec![tools[1].clone()])).unwrap(),
+                    serde_json::to_value(vec![tools[1].clone()]).unwrap()
+                );
+                let actual = hooks[0].transform(tools.clone());
+                let mut expected = tools;
+                let ToolDefinition::Builtin(deferred) = &mut expected[1] else {
+                    unreachable!()
+                };
+                deferred.full_parameters = Some(deferred.parameters.clone());
+                deferred.parameters = json!({"type":"object","additionalProperties":true});
+                assert_eq!(
+                    serde_json::to_value(actual).unwrap(),
+                    serde_json::to_value(expected).unwrap()
+                );
+            }
+        }
     }
 }

@@ -8,6 +8,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
         "Empty harness with no capabilities. Provides a blank canvas for custom configurations.",
         "You are a helpful assistant.",
     )
+    .with_icon("square-dashed")
     .with_tags(["base", "built-in"])
     .with_roles([BuiltInHarnessRole::Base])
 }

@@ -8,7 +8,7 @@
 
 [package]
 name = "everruns"
-version = "0.19.1"
+version = "0.20.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -20,6 +20,9 @@ description = "Build and run durable AI agents in Rust — the application-facin
 readme = "README.md"
 keywords = ["agent", "agentic", "coding-agent", "llm", "ai"]
 categories = ["development-tools", "asynchronous"]
+# The out-of-workspace downstream-consumer fixtures are a CI harness, not part
+# of the library; keep them out of the published package.
+exclude = ["tests/fixtures/external-consumer/"]
 
 [[example]]
 name = "lifecycle_hooks"

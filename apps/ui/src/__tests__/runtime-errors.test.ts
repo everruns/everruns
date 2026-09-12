@@ -50,6 +50,53 @@ describe("runtime error localization", () => {
     expect(text).not.toContain("misconfiguration");
   });
 
+  it("surfaces the attestation confirm URL and gate types as linkable prose", () => {
+    const text = localizeRuntimeError(
+      "en",
+      {
+        code: "provider_attestation_required",
+        fields: {
+          provider: "openrouter",
+          missing_types: ["age_18plus", "identity_verified"],
+          confirm_url: "https://openrouter.ai/settings/preferences",
+        },
+      },
+      "backend fallback",
+    );
+
+    expect(text).toContain("https://openrouter.ai/settings/preferences");
+    expect(text).toContain("age_18plus, identity_verified");
+    // The gate is not a bad key: the misconfiguration copy would send the
+    // reader to support instead of to the page that clears it.
+    expect(text).not.toContain("misconfiguration");
+    expect(text).not.toContain("backend fallback");
+  });
+
+  it("omits the gate list when the payload carried none, and keeps the URL", () => {
+    const text = localizeRuntimeError(
+      "uk",
+      {
+        code: "provider_attestation_required",
+        fields: { confirm_url: "https://openrouter.ai/settings/preferences" },
+      },
+      "backend fallback",
+    );
+
+    expect(text).toContain("https://openrouter.ai/settings/preferences");
+    expect(text).not.toContain("()");
+    expect(text).not.toContain("backend fallback");
+  });
+
+  it("keeps the backend copy when an attestation error carries no confirm URL", () => {
+    const text = localizeRuntimeError(
+      "en",
+      { code: "provider_attestation_required", fields: { provider: "openrouter" } },
+      "backend fallback with its own URL",
+    );
+
+    expect(text).toBe("backend fallback with its own URL");
+  });
+
   it("appends the detail field from detailed disclosure mode to localized copy", () => {
     const text = localizeRuntimeError(
       "en",

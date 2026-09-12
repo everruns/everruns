@@ -11,26 +11,28 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::messages::{
-    CreateMessage, ExportSessionMessages, ListMessages, SessionExportFormat,
+    CreateMessage, ExportSessionMessages, ListMessages, SessionExportFormat, queries as q,
 };
 use crate::middleware::RequestId;
 use crate::storage::StorageBackend;
 use axum::{
     Extension, Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
 };
 use chrono::{DateTime, Utc};
+use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};
 use everruns_provider::typed_id::{MessageId, SessionId, SessionParticipantId};
 use everruns_provider::{ExecutionPhase, PhaseSource};
+use std::time::{Duration, Instant};
 
-use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
+use super::common::{ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state};
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 use everruns_core::Caller;
 
@@ -143,6 +145,59 @@ pub struct InputMessage {
 
 fn default_user_role() -> MessageRole {
     MessageRole::User
+}
+
+/// Query options for `POST /v1/sessions/{session_id}/messages`.
+///
+/// By default the endpoint enqueues the turn and returns `201` immediately.
+/// Pass `wait=true` to block until the triggered turn reaches a terminal
+/// state (`turn.completed` / `turn.failed`) instead of polling `GET events`
+/// or opening the SSE stream.
+#[derive(Debug, Default, Deserialize, ToSchema, IntoParams)]
+pub struct CreateMessageQuery {
+    /// Wait for turn completion and return the turn result.
+    #[serde(default)]
+    #[schema(example = true)]
+    pub wait: bool,
+    /// Max wait budget in milliseconds (default 120000, capped at 600000).
+    /// Only used with `wait=true`. On expiry the endpoint returns `202`
+    /// with the messages produced so far.
+    #[schema(example = 120000)]
+    pub timeout_ms: Option<u64>,
+}
+
+/// Terminal-or-pending outcome of a waited turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[schema(example = "completed")]
+#[serde(rename_all = "snake_case")]
+pub enum TurnWaitStatus {
+    Completed,
+    Failed,
+    /// Deadline expired before a terminal turn event arrived.
+    Timeout,
+}
+
+/// Waited result for `POST /v1/sessions/{session_id}/messages?wait=true`.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TurnWaitResponse {
+    /// Wait outcome for the triggered turn.
+    pub status: TurnWaitStatus,
+    /// The accepted user message (same body as the `201` path).
+    pub message: Message,
+    /// Messages appended after the accepted message: assistant output on
+    /// completion, whatever exists so far on timeout, empty on failure.
+    pub messages: Vec<Message>,
+    /// Turn failure detail when `status` is `failed`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "turn failed: upstream model error")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(untagged)]
+pub enum CreateMessageResult {
+    Accepted(Message),
+    Waited(TurnWaitResponse),
 }
 
 /// Request to create a message
@@ -271,30 +326,101 @@ pub fn routes(state: AppState) -> Router {
 // HTTP Handlers
 // ============================================
 
+/// Default wait budget for `?wait=true` (2 minutes).
+pub const DEFAULT_WAIT_TIMEOUT_MS: u64 = 120_000;
+/// Upper bound for `timeout_ms` (10 minutes).
+pub const MAX_WAIT_TIMEOUT_MS: u64 = 600_000;
+const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(500);
+
+fn wait_timeout(timeout_ms: Option<u64>) -> Duration {
+    Duration::from_millis(
+        timeout_ms
+            .unwrap_or(DEFAULT_WAIT_TIMEOUT_MS)
+            .clamp(1, MAX_WAIT_TIMEOUT_MS),
+    )
+}
+
+async fn wait_for_turn(
+    ctx: &Ctx,
+    session_id: SessionId,
+    baseline_seq: i32,
+    deadline: Instant,
+) -> Result<(TurnWaitStatus, Option<String>), (StatusCode, Json<ErrorResponse>)> {
+    // Mirrors the eval/health wait loops: sessions run one turn at a time
+    // (the service reserves the active turn slot), so the first terminal
+    // turn event after the baseline is ours.
+    let filter = vec![TURN_COMPLETED.to_string(), TURN_FAILED.to_string()];
+    let mut last_seq = baseline_seq;
+    loop {
+        if Instant::now() >= deadline {
+            return Ok((TurnWaitStatus::Timeout, None));
+        }
+        tokio::time::sleep(WAIT_POLL_INTERVAL).await;
+        let events = ctx
+            .db
+            .list_events(session_id, Some(last_seq), None, &filter, &[], None, None)
+            .await
+            .map_policy_or_internal("poll turn events")?;
+        for event in &events {
+            last_seq = last_seq.max(event.sequence);
+            if event.event_type == TURN_COMPLETED {
+                return Ok((TurnWaitStatus::Completed, None));
+            }
+            if event.event_type == TURN_FAILED {
+                let detail = event
+                    .data
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("turn failed")
+                    .to_string();
+                return Ok((TurnWaitStatus::Failed, Some(detail)));
+            }
+        }
+    }
+}
 /// POST /v1/sessions/{session_id}/messages - Create message (user message triggers workflow)
 #[utoipa::path(
     post,
     path = "/v1/sessions/{session_id}/messages",
     params(
-        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
+        CreateMessageQuery
     ),
     request_body = CreateMessageRequest,
     responses(
-        (status = 201, description = "Message created successfully", body = Message),
+        (status = 201, description = "Message accepted; turn runs in background", body = CreateMessageResult),
+        (status = 200, description = "Waited turn reached a terminal state (?wait=true)", body = CreateMessageResult),
+        (status = 202, description = "Wait deadline expired; turn still running (?wait=true)", body = CreateMessageResult),
         (status = 400, description = "Invalid ID format"),
         (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
     ),
     tag = "messages"
 )]
+
 pub async fn create_message(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
+    Query(query): Query<CreateMessageQuery>,
     req_id: Option<Extension<RequestId>>,
     Json(req): Json<CreateMessageRequest>,
-) -> Result<(StatusCode, Json<Message>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<CreateMessageResult>), (StatusCode, Json<ErrorResponse>)> {
     let request_id = req_id.map(|Extension(r)| r.0);
+    let ctx = state.ctx(&org);
+    let parsed = if query.wait {
+        Some(q::parse_session_id(&session_id)?)
+    } else {
+        None
+    };
+    let baseline_seq = if let Some(parsed) = parsed {
+        ctx.db
+            .count_events(parsed, &[])
+            .await
+            .map_policy_or_internal("count session events")? as i32
+    } else {
+        0
+    };
     let message = CreateMessage {
         session_id,
         message: req.message,
@@ -305,10 +431,42 @@ pub async fn create_message(
         external_actor: req.external_actor,
         request_id,
     }
-    .run(&state.ctx(&org))
+    .run(&ctx)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(message)))
+    if !query.wait {
+        return Ok((
+            StatusCode::CREATED,
+            Json(CreateMessageResult::Accepted(message)),
+        ));
+    }
+    // Session runs one turn at a time, so `parsed` is still valid: no other
+    // turn can interleave between the baseline above and this wait.
+    let parsed = parsed.expect("parsed when query.wait");
+    let deadline = Instant::now() + wait_timeout(query.timeout_ms);
+    let (status, error) = wait_for_turn(&ctx, parsed, baseline_seq, deadline).await?;
+    let service = q::message_service(&ctx)?;
+    let messages = service
+        .list(parsed.uuid())
+        .await
+        .map_policy_or_internal("list session messages")?
+        .into_iter()
+        .filter(|m| m.sequence > message.sequence)
+        .collect();
+    let code = if status == TurnWaitStatus::Timeout {
+        StatusCode::ACCEPTED
+    } else {
+        StatusCode::OK
+    };
+    Ok((
+        code,
+        Json(CreateMessageResult::Waited(TurnWaitResponse {
+            status,
+            message,
+            messages,
+            error,
+        })),
+    ))
 }
 
 /// GET /v1/sessions/{session_id}/messages - List messages (PRIMARY data)

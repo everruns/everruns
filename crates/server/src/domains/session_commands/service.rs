@@ -192,6 +192,7 @@ impl SessionCommandService {
             self.driver_registry.clone(),
         )
         .with_image_resolver(Arc::new(OrgAdapter::new(adapters.clone(), org_id)))
+        .with_file_resolver(Arc::new(OrgAdapter::new(adapters.clone(), org_id)))
         .with_file_store(Arc::new(SessionAdapter::new(adapters)))
     }
 

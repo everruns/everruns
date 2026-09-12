@@ -15,6 +15,7 @@ use crate::driver_registry::{
     LlmCallConfig, LlmCallConfigBuilder, LlmContentPart, LlmMessage, LlmMessageContent,
     LlmMessageRole, truncate_tool_result,
 };
+use crate::file_services::ResolvedFile;
 use crate::image_services::ResolvedImage;
 use crate::message::{ContentPart, Message, MessageRole};
 use crate::runtime_agent::RuntimeAgent;
@@ -61,12 +62,24 @@ pub fn llm_message_from_message(msg: &Message) -> LlmMessage {
 /// - text parts -> `LlmContentPart::Text`
 /// - inline image parts -> `LlmContentPart::Image` (data URL)
 /// - image_file parts -> resolved to a data URL, or a placeholder if missing
+/// - file parts (e.g. PDFs) -> resolved to `LlmContentPart::File`, or a placeholder if missing
 /// - tool_call parts -> extracted to the `tool_calls` field
 /// - tool_result parts -> text representation (truncated by the same backstop
 ///   the tool scheduler applies)
 pub fn llm_message_from_message_with_images(
     msg: &Message,
     resolved_images: &HashMap<Uuid, ResolvedImage>,
+) -> LlmMessage {
+    llm_message_from_message_with_attachments(msg, resolved_images, &HashMap::new())
+}
+
+/// Convert a [`Message`] into an [`LlmMessage`], resolving image and file parts.
+///
+/// `resolved_files` maps file IDs to resolved base64 file content (e.g. PDFs).
+pub fn llm_message_from_message_with_attachments(
+    msg: &Message,
+    resolved_images: &HashMap<Uuid, ResolvedImage>,
+    resolved_files: &HashMap<Uuid, ResolvedFile>,
 ) -> LlmMessage {
     let role = match msg.role {
         MessageRole::System => LlmMessageRole::System,
@@ -105,6 +118,18 @@ pub fn llm_message_from_message_with_images(
                 } else {
                     parts.push(LlmContentPart::Text {
                         text: format!("[Image not found: {}]", img_file.image_id),
+                    });
+                }
+            }
+            ContentPart::File(file_part) => {
+                if let Some(resolved) = resolved_files.get(&file_part.file_id.uuid()) {
+                    parts.push(LlmContentPart::file(
+                        resolved.to_data_url(),
+                        resolved.filename.clone().or(file_part.filename.clone()),
+                    ));
+                } else {
+                    parts.push(LlmContentPart::Text {
+                        text: format!("[File not found: {}]", file_part.file_id),
                     });
                 }
             }
@@ -161,6 +186,22 @@ pub fn message_has_image_files(msg: &Message) -> bool {
     msg.content.iter().any(|p| p.is_image_file())
 }
 
+/// Returns true if the message has any file (e.g. PDF) attachment parts.
+pub fn message_has_files(msg: &Message) -> bool {
+    msg.content.iter().any(|p| p.is_file())
+}
+
+/// Extract all image_file IDs from a message.
+pub fn extract_file_ids(msg: &Message) -> Vec<Uuid> {
+    msg.content
+        .iter()
+        .filter_map(|p| match p {
+            ContentPart::File(f) => Some(f.file_id.uuid()),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Extract all image_file IDs from a message.
 pub fn extract_image_file_ids(msg: &Message) -> Vec<Uuid> {
     msg.content
@@ -188,7 +229,7 @@ pub fn llm_call_config_from_agent(runtime_agent: &RuntimeAgent) -> LlmCallConfig
         provider_opaque_context: None,
         tool_search: runtime_agent.tool_search.clone(),
         prompt_cache: runtime_agent.prompt_cache.clone(),
-        openrouter_routing: runtime_agent.openrouter_routing.clone(),
+        driver_options: runtime_agent.driver_options.clone(),
         parallel_tool_calls: runtime_agent.parallel_tool_calls,
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
@@ -205,10 +246,7 @@ pub fn llm_call_config_builder_from_agent(runtime_agent: &RuntimeAgent) -> LlmCa
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::driver_registry::{
-        LlmContentPart, LlmMessageContent, LlmMessageRole, OpenRouterRoutingConfig,
-        OpenRouterServerTool, OpenRouterServerToolKind,
-    };
+    use crate::driver_registry::{LlmContentPart, LlmMessageContent, LlmMessageRole};
     use crate::message::TextContentPart;
     use everruns_provider::model::ReasoningEffort;
 
@@ -242,7 +280,7 @@ mod tests {
         assert!(llm_config.tools.is_empty());
         assert!(llm_config.metadata.is_empty());
         // No server tools configured on the agent → none on the call config.
-        assert!(llm_config.openrouter_routing.is_none());
+        assert!(llm_config.driver_options.is_empty());
         let mut populated = RuntimeAgent::new("prompt", "custom-model");
         populated.temperature = Some(0.25);
         populated.max_tokens = Some(321);
@@ -282,26 +320,20 @@ mod tests {
     }
 
     #[test]
-    fn runtime_agent_openrouter_routing_flows_into_call_config() {
-        // Closes the assembly loop: a capability sets RuntimeAgent.openrouter_routing
-        // (server tools), and the From<&RuntimeAgent> conversion the reason atom
-        // uses must carry it through to the OpenRouter driver.
+    fn runtime_agent_driver_options_flow_into_call_config() {
+        // Closes the assembly loop: a capability stashes driver-namespaced
+        // options on the agent, and the conversion the reason atom uses must
+        // carry them through to the driver untouched.
         let mut runtime_agent = RuntimeAgent::new("You are helpful", "openai/gpt-5-mini");
-        runtime_agent.openrouter_routing = Some(OpenRouterRoutingConfig {
-            server_tools: vec![OpenRouterServerTool::new(
-                OpenRouterServerToolKind::WebSearch,
-            )],
-            ..Default::default()
-        });
+        let stashed = serde_json::json!({"server_tools": [{"type": "web_search"}]});
+        runtime_agent
+            .driver_options
+            .insert("test/routing".to_string(), stashed.clone());
 
         let llm_config = llm_call_config_from_agent(&runtime_agent);
-        let routing = llm_config
-            .openrouter_routing
-            .expect("server-tool routing survives into the call config");
-        assert_eq!(routing.server_tools.len(), 1);
         assert_eq!(
-            routing.server_tools[0].kind.wire_type(),
-            "openrouter:web_search"
+            llm_config.driver_options.get("test/routing"),
+            Some(&stashed)
         );
     }
 
@@ -338,18 +370,16 @@ mod tests {
     }
 
     #[test]
-    fn test_llm_call_config_builder_with_openrouter_routing() {
+    fn test_llm_call_config_builder_with_driver_option() {
         let runtime_agent = RuntimeAgent::new("You are helpful", "openai/gpt-5-mini");
-        let routing = OpenRouterRoutingConfig::fallback_models([
-            "openai/gpt-5-mini",
-            "anthropic/claude-sonnet-4.5",
-        ]);
+        let value =
+            serde_json::json!({"models": ["openai/gpt-5-mini", "anthropic/claude-sonnet-4.5"]});
 
         let llm_config = llm_call_config_builder_from_agent(&runtime_agent)
-            .openrouter_routing(routing.clone())
+            .driver_option("test/routing", value.clone())
             .build();
 
-        assert_eq!(llm_config.openrouter_routing, Some(routing));
+        assert_eq!(llm_config.driver_options.get("test/routing"), Some(&value));
     }
 
     #[test]
@@ -382,6 +412,51 @@ mod tests {
             vec![first.uuid(), second.uuid(), first.uuid()]
         );
         assert!(extract_image_file_ids(&Message::user("text")).is_empty());
+    }
+
+    #[test]
+    fn test_file_part_resolves_to_llm_file() {
+        use crate::file_services::ResolvedFile;
+
+        let file_id = crate::typed_id::FileId::new();
+        let mut message = Message::user("summarize this");
+        message.content.push(ContentPart::file(file_id));
+        assert!(message_has_files(&message));
+        assert_eq!(extract_file_ids(&message), vec![file_id.uuid()]);
+
+        let resolved = HashMap::from([(
+            file_id.uuid(),
+            ResolvedFile {
+                base64: "JVBERi0=".to_string(),
+                media_type: "application/pdf".to_string(),
+                filename: Some("stored.pdf".to_string()),
+            },
+        )]);
+        let llm = llm_message_from_message_with_attachments(&message, &HashMap::new(), &resolved);
+        match &llm.content {
+            LlmMessageContent::Parts(parts) => {
+                assert_eq!(parts.len(), 2);
+                match &parts[1] {
+                    LlmContentPart::File { url, filename } => {
+                        assert_eq!(url, "data:application/pdf;base64,JVBERi0=");
+                        assert_eq!(filename.as_deref(), Some("stored.pdf"));
+                    }
+                    other => panic!("expected file part, got {:?}", other),
+                }
+            }
+            other => panic!("expected parts, got {:?}", other),
+        }
+
+        // Missing file resolves to a placeholder, like missing images.
+        let llm =
+            llm_message_from_message_with_attachments(&message, &HashMap::new(), &HashMap::new());
+        match &llm.content {
+            LlmMessageContent::Parts(parts) => match &parts[1] {
+                LlmContentPart::Text { text } => assert!(text.contains("File not found")),
+                other => panic!("expected placeholder text, got {:?}", other),
+            },
+            other => panic!("expected parts, got {:?}", other),
+        }
     }
 
     #[test]

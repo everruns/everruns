@@ -29,7 +29,7 @@ pub fn row_to_declarative_capability(row: &DeclarativeCapabilityRow) -> Declarat
     definition.display_name = row.display_name.clone();
     definition.description = row.description.clone();
     definition.status = match row.status.as_str() {
-        "disabled" | "archived" => everruns_core::CapabilityStatus::Deprecated,
+        "disabled" | "archived" => everruns_core::CapabilityStatus::Retired,
         _ => everruns_core::CapabilityStatus::Available,
     };
     DeclarativeCapability {
@@ -72,7 +72,7 @@ pub async fn hydrate_declarative_capability_configs(
             definition.status = if row.status == "active" {
                 everruns_core::CapabilityStatus::Available
             } else {
-                everruns_core::CapabilityStatus::Deprecated
+                everruns_core::CapabilityStatus::Retired
             };
             hydrated.push(AgentCapabilityConfig::with_config(
                 cap_id,

@@ -1,7 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
 import ModelsPage from "@/app/(main)/models/page";
+import { updateModel } from "@/lib/api/providers";
+import { ApiError } from "@/lib/api/client";
 
 const mockUseSearchParams = jest.fn();
 
@@ -423,5 +425,48 @@ describe("ModelsPage", () => {
 
     expect(screen.getByText("Organization Settings")).toBeInTheDocument();
     expect(screen.getByText("Default Model")).toBeInTheDocument();
+  });
+
+  // EVE-954 / Sentry EVERRUNS-1Y: a rejected action used to escape the async
+  // handler unhandled — nothing on screen, the control silently reverting, and
+  // the rejection reported to Sentry as an unhandled promise rejection.
+  it("reports a failed toggle to the operator instead of rejecting unhandled", async () => {
+    const rejection = new ApiError(404, "Not Found", "Model not found");
+    (updateModel as jest.Mock).mockRejectedValueOnce(rejection);
+    const unhandled = jest.fn();
+    window.addEventListener("unhandledrejection", unhandled);
+
+    render(<ModelsPage />, { wrapper });
+    fireEvent.click(screen.getByRole("button", { name: /Disable/i }));
+
+    // The server's own reason reaches the reader — not a generic string.
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Failed to disable model: Model not found");
+    expect(unhandled).not.toHaveBeenCalled();
+    window.removeEventListener("unhandledrejection", unhandled);
+  });
+
+  it("clears a previous failure when the next action succeeds", async () => {
+    (updateModel as jest.Mock)
+      .mockRejectedValueOnce(new ApiError(404, "Not Found", "Model not found"))
+      .mockResolvedValueOnce(undefined);
+
+    render(<ModelsPage />, { wrapper });
+    fireEvent.click(screen.getByRole("button", { name: /Disable/i }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Disable/i }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  it("reports a non-Error rejection without rendering [object Object]", async () => {
+    (updateModel as jest.Mock).mockRejectedValueOnce({ nope: true });
+
+    render(<ModelsPage />, { wrapper });
+    fireEvent.click(screen.getByRole("button", { name: /Disable/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Failed to disable model: Unexpected error",
+    );
   });
 });

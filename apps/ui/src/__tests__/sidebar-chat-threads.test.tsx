@@ -19,6 +19,12 @@ jest.mock("@/hooks/use-chat-threads", () => ({
   useChatThreads: jest.fn(),
 }));
 
+// The Platform Chat thread is ensured here (see the component's header); its
+// own suite covers that behaviour.
+jest.mock("@/hooks/use-platform-chat-thread", () => ({
+  usePlatformChatThread: () => ({ thread: undefined, isLoading: false }),
+}));
+
 const mockUseChatThreads = jest.mocked(useChatThreads);
 
 function thread(id: string, title: string): Session {

@@ -35,7 +35,7 @@ fn config(model: &str) -> LlmCallConfig {
         provider_opaque_context: None,
         tool_search: None,
         prompt_cache: None,
-        openrouter_routing: None,
+        driver_options: Default::default(),
         parallel_tool_calls: None,
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
@@ -122,6 +122,33 @@ async fn drain_golden(mut stream: LlmResponseStream) -> Vec<Golden> {
     out
 }
 
+/// The one request the driver made, tolerating a reconnect that replayed it.
+///
+/// `connect_sse_with_reconnect` peeks the first SSE item and, when opening the
+/// body fails transiently, reconnects (see `stream_reconnect.rs`). That is
+/// correct driver behaviour and nothing the test controls: a loaded CI runner
+/// produces it, and asserting `requests.len() == 1` turned it into a failure
+/// of whichever test happened to hit it.
+///
+/// So assert what actually matters instead, and rather more than the count
+/// did: every attempt must be a byte-identical replay, since a reconnect that
+/// re-sent a *different* request would be a real bug.
+async fn replayed_request(server: &MockServer) -> wiremock::Request {
+    let requests = server
+        .received_requests()
+        .await
+        .expect("wiremock records requests");
+    let (first, retries) = requests.split_first().expect("driver sent a request");
+    for retry in retries {
+        assert_eq!(
+            (&retry.method, &retry.url, &retry.body),
+            (&first.method, &first.url, &first.body),
+            "a reconnect must replay the same request, not a different one"
+        );
+    }
+    requests.into_iter().next_back().expect("checked non-empty")
+}
+
 async fn mount_sse(server: &MockServer, body: String) {
     Mock::given(method("POST"))
         .and(path_regex(r"^/models/.+:streamGenerateContent$"))
@@ -159,13 +186,12 @@ async fn text_stream_golden_events() {
         .await
         .expect("gemini stream should start");
 
-    let requests = server.received_requests().await.unwrap();
-    assert_eq!(requests.len(), 1);
+    let request = replayed_request(&server).await;
     assert_eq!(
-        requests[0].url.path(),
+        request.url.path(),
         "/models/gemini-2.5-flash:streamGenerateContent"
     );
-    assert_eq!(requests[0].url.query(), Some("alt=sse"));
+    assert_eq!(request.url.query(), Some("alt=sse"));
     let events = drain_golden(stream).await;
     assert_eq!(
         events,
@@ -396,9 +422,8 @@ async fn tool_results_replay_function_names_and_object_payloads_on_wire() {
             finish: Some("stop".into())
         }]
     );
-    let requests = server.received_requests().await.unwrap();
-    assert_eq!(requests.len(), 1);
-    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    let request = replayed_request(&server).await;
+    let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
     assert_eq!(
         body["contents"],
         serde_json::json!([
@@ -481,4 +506,64 @@ async fn rejected_terminal_frame_never_releases_pending_tool_calls() {
             "{reason}"
         );
     }
+}
+
+/// A reconnect leaves the mock server holding two identical records, which is
+/// exactly what two identical calls produce. This does not reproduce a live
+/// transport failure (wiremock cannot sever a body mid-read, and only
+/// `EventStreamError::Transport` reconnects), but it is the state
+/// `replayed_request` has to tolerate, and the state that used to fail CI.
+#[tokio::test]
+async fn replayed_request_tolerates_an_identical_replay() {
+    let server = MockServer::start().await;
+    mount_sse(
+        &server,
+        "data: {\"candidates\":[{\"content\":{\"parts\":[]},\"finishReason\":\"STOP\"}]}\n\n"
+            .into(),
+    )
+    .await;
+    for _ in 0..2 {
+        let stream = provider(&server)
+            .chat_completion_stream(
+                vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+                &config("gemini-2.5-flash"),
+            )
+            .await
+            .expect("stream should start");
+        drain_golden(stream).await;
+    }
+
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+    let request = replayed_request(&server).await;
+    assert_eq!(
+        request.url.path(),
+        "/models/gemini-2.5-flash:streamGenerateContent"
+    );
+}
+
+/// The count assertion was not worthless, only aimed wrong: a second attempt
+/// that sent *different* bytes would be a real bug, and that is what
+/// `replayed_request` still catches.
+#[tokio::test]
+#[should_panic(expected = "a reconnect must replay the same request")]
+async fn replayed_request_rejects_a_replay_that_changed_the_request() {
+    let server = MockServer::start().await;
+    mount_sse(
+        &server,
+        "data: {\"candidates\":[{\"content\":{\"parts\":[]},\"finishReason\":\"STOP\"}]}\n\n"
+            .into(),
+    )
+    .await;
+    for prompt in ["hi", "something else entirely"] {
+        let stream = provider(&server)
+            .chat_completion_stream(
+                vec![LlmMessage::text(LlmMessageRole::User, prompt)],
+                &config("gemini-2.5-flash"),
+            )
+            .await
+            .expect("stream should start");
+        drain_golden(stream).await;
+    }
+
+    replayed_request(&server).await;
 }

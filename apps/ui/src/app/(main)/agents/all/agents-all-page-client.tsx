@@ -22,7 +22,7 @@ import {
 export default function AgentsAllPageClient() {
   const [showArchived, setShowArchived] = useState(false);
   const { data: agents, isLoading, error } = useAgents({ includeArchived: showArchived });
-  const { data: allCapabilities } = useCapabilities();
+  const { data: allCapabilities } = useCapabilities({ includeRetired: true });
 
   return (
     <PageContainer>

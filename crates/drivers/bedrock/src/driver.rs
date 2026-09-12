@@ -14,9 +14,9 @@ use aws_sdk_bedrockruntime::config::{
 };
 use aws_sdk_bedrockruntime::types::{
     ContentBlock, ContentBlockDelta, ContentBlockStart, ConversationRole, ConverseStreamOutput,
-    ImageBlock, ImageFormat, ImageSource, InferenceConfiguration, Message, SystemContentBlock,
-    Tool, ToolConfiguration, ToolInputSchema, ToolResultBlock, ToolResultContentBlock,
-    ToolSpecification, ToolUseBlock,
+    DocumentBlock, DocumentFormat, DocumentSource, ImageBlock, ImageFormat, ImageSource,
+    InferenceConfiguration, Message, SystemContentBlock, Tool, ToolConfiguration, ToolInputSchema,
+    ToolResultBlock, ToolResultContentBlock, ToolSpecification, ToolUseBlock,
 };
 use aws_smithy_types::Document;
 use base64::prelude::*;
@@ -477,6 +477,11 @@ fn build_user_content(msg: &LlmMessage) -> Result<Vec<ContentBlock>> {
                     LlmContentPart::Audio { .. } => {
                         warn!("Audio content is not supported by Bedrock ConverseStream; skipping");
                     }
+                    LlmContentPart::File { url, filename } => {
+                        if let Some(block) = parse_file_url(url, filename.as_deref()) {
+                            blocks.push(block);
+                        }
+                    }
                 }
             }
         }
@@ -631,6 +636,62 @@ fn parse_image_url(url: &str) -> Option<ContentBlock> {
         .ok()?;
 
     Some(ContentBlock::Image(image_block))
+}
+
+fn parse_file_url(url: &str, filename: Option<&str>) -> Option<ContentBlock> {
+    if !url.starts_with("data:") {
+        warn!("HTTP file URLs are not supported by Bedrock ConverseStream (use base64 data URLs)");
+        return None;
+    }
+
+    let rest = url.strip_prefix("data:")?;
+    let (mime_b64, data) = rest.split_once(',')?;
+    let mime = mime_b64.split(';').next()?;
+
+    // Bedrock Converse documents only supports PDF for the document block.
+    if mime != "application/pdf" {
+        warn!("Unsupported file MIME type for Bedrock document: {mime}; skipping");
+        return None;
+    }
+
+    let bytes = BASE64_STANDARD.decode(data).ok()?;
+    let name = sanitize_document_name(filename);
+
+    let source = DocumentSource::Bytes(aws_sdk_bedrockruntime::primitives::Blob::new(bytes));
+    let document_block = DocumentBlock::builder()
+        .format(DocumentFormat::Pdf)
+        .name(name)
+        .source(source)
+        .build()
+        .ok()?;
+
+    Some(ContentBlock::Document(document_block))
+}
+
+/// Bedrock document names allow alphanumerics, whitespace, hyphens, and a few
+/// punctuation marks. Sanitize anything else to underscores.
+fn sanitize_document_name(filename: Option<&str>) -> String {
+    // Drop a trailing extension-like suffix, keep the stem readable while
+    // staying within Bedrock's document-name charset.
+    let stem = filename
+        .map(|n| n.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(n))
+        .unwrap_or("document");
+    let sanitized: String = stem
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' || c == '(' || c == ')' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let trimmed = sanitized.trim();
+    if trimmed.is_empty() {
+        "document".to_string()
+    } else {
+        trimmed.chars().take(100).collect()
+    }
 }
 
 // ============================================================================
@@ -892,7 +953,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: vec![],
@@ -927,5 +988,26 @@ mod tests {
             requests[0].body_json::<Value>().unwrap(),
             serde_json::json!({"messages":[{"role":"assistant","content":[{"toolUse":{"toolUseId":"exact-id","name":"inspect","input":arguments}}]}],"inferenceConfig":{"temperature":0.25,"maxTokens":32}})
         );
+    }
+
+    #[test]
+    fn file_pdf_builds_document_block() {
+        use aws_sdk_bedrockruntime::types::{ContentBlock, DocumentFormat};
+        let msg = LlmMessage::parts(
+            LlmMessageRole::User,
+            vec![LlmContentPart::File {
+                url: "data:application/pdf;base64,JVBERi0=".into(),
+                filename: Some("report.pdf".into()),
+            }],
+        );
+        let blocks = build_user_content(&msg).unwrap();
+        assert_eq!(blocks.len(), 1);
+        match &blocks[0] {
+            ContentBlock::Document(doc) => {
+                assert_eq!(doc.format, DocumentFormat::Pdf);
+                assert_eq!(doc.name, "report");
+            }
+            other => panic!("expected document block, got {:?}", other),
+        }
     }
 }

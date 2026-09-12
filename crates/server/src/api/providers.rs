@@ -4,8 +4,9 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::providers::{
-    CreateProvider, DeleteProvider, GetProvider, LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW,
-    ListProviders, ProviderService, SyncProviderModels, UpdateProvider,
+    CheckProviderCredentials, CreateProvider, CredentialCheckResult, DeleteProvider, GetProvider,
+    LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW, ListProviders, ProviderService, SyncProviderModels,
+    UpdateProvider,
 };
 use crate::kernel_imports::{
     Caller, Policy, evaluate_policies_with, everruns_provider::driver_registry::DriverOAuthFlow,
@@ -44,6 +45,11 @@ pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub service: Arc<ProviderService>,
     pub sync_service: Arc<ModelSyncService>,
+    /// Model service, so a provider that gains a credential can bootstrap the
+    /// org's enabled models and default model in the same request. Carries the
+    /// provider resolver when one exists, so the cache is invalidated after the
+    /// bootstrap writes.
+    pub model_service: Arc<crate::domains::models::ModelService>,
     pub auth: AuthState,
     /// Driver registry, used to discover whether a provider's driver declares an
     /// interactive OAuth connect flow.
@@ -60,6 +66,12 @@ impl AppState {
         auth: AuthState,
         provider_resolver: Option<Arc<ProviderResolverService>>,
     ) -> Self {
+        let model_service = match provider_resolver.clone() {
+            Some(resolver) => {
+                crate::domains::models::ModelService::with_resolver(db.clone(), resolver)
+            }
+            None => crate::domains::models::ModelService::new(db.clone()),
+        };
         let service = if let Some(resolver) = provider_resolver {
             ProviderService::with_resolver(db.clone(), encryption.clone(), resolver)
         } else {
@@ -68,6 +80,7 @@ impl AppState {
         Self {
             db: db.clone(),
             service: Arc::new(service),
+            model_service: Arc::new(model_service),
             sync_service: Arc::new(ModelSyncService::new(
                 db,
                 driver_registry.clone(),
@@ -88,6 +101,7 @@ impl AppState {
         )
         .with_provider_service(self.service.clone())
         .with_model_sync_service(self.sync_service.clone())
+        .with_model_service(self.model_service.clone())
     }
 }
 
@@ -220,6 +234,69 @@ pub async fn create_provider(
             request_options: req.request_options,
         })
         .await
+}
+
+/// Request to check a provider credential without storing it.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CheckCredentialsRequest {
+    /// The type of LLM provider (e.g., openai, anthropic).
+    pub provider_type: DriverId,
+    /// Single-field credential. Mutually exclusive with `credentials`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "sk-proj-...")]
+    pub api_key: Option<String>,
+    /// Typed multi-field credential, validated against the driver's schema
+    /// exactly as on create.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credentials: Option<std::collections::BTreeMap<String, String>>,
+    /// Base URL for the provider's API, when not the driver default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "https://api.openai.com/v1")]
+    pub base_url: Option<String>,
+}
+
+/// Check whether a provider accepts an API key, without storing it
+///
+/// Used by org setup so a key the provider will reject is caught at entry
+/// instead of at the first agent run. Nothing is persisted.
+#[utoipa::path(
+    post,
+    path = "/v1/providers/check-credentials",
+    request_body = CheckCredentialsRequest,
+    responses(
+        (status = 200, description = "Check completed", body = CredentialCheckResult),
+        (status = 400, description = "Invalid request"),
+        (status = 500, description = "Internal error")
+    ),
+    tag = "providers"
+)]
+pub async fn check_credentials(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Json(req): Json<CheckCredentialsRequest>,
+) -> Result<Json<CredentialCheckResult>, (StatusCode, Json<ErrorResponse>)> {
+    let api_key = resolve_credential_document(
+        &state.driver_registry,
+        Some(&req.provider_type),
+        req.credentials.as_ref(),
+        req.api_key,
+    )?
+    .ok_or_else(|| {
+        ErrorResponse::new("An API key is required").into_response(StatusCode::BAD_REQUEST)
+    })?;
+
+    let result = CheckProviderCredentials {
+        provider_type: req.provider_type,
+        api_key,
+        base_url: req.base_url,
+    }
+    .run(&state.ctx(&org))
+    .await
+    // Uses the HTTP adapter conversion so an internal error is redacted rather
+    // than echoed back with provider detail.
+    .map_err(<(StatusCode, Json<ErrorResponse>)>::from)?;
+
+    Ok(Json(result))
 }
 
 /// Resolve the credential document to store from a request.
@@ -880,6 +957,7 @@ pub fn routes(state: AppState) -> Router {
                 .patch(update_provider)
                 .delete(delete_provider),
         )
+        .route("/v1/providers/check-credentials", post(check_credentials))
         .route("/v1/providers/{id}/sync-models", post(sync_models))
         .route("/v1/providers/{id}/oauth/authorize", get(oauth_authorize))
         .route("/v1/providers/{id}/oauth/callback", get(oauth_callback))
@@ -1075,6 +1153,41 @@ mod tests {
 #[cfg(test)]
 mod creation_tests {
     use super::*;
+
+    /// The provider command context must carry both the sync service *and* the
+    /// model service: `provision_provider_models` bootstraps the org's enabled
+    /// models and default model through the latter, and its best-effort
+    /// `if let Some(..)` would otherwise skip that silently — discovery would
+    /// run, every model would stay disabled, and chat would still resolve
+    /// nothing. Regression guard for exactly that wiring gap.
+    #[tokio::test]
+    async fn provider_ctx_carries_the_services_provisioning_needs() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let state = AppState::new(
+            db.clone(),
+            None,
+            Arc::new(DriverRegistry::new()),
+            AuthState::builtin(crate::auth::AuthConfig::default(), db),
+            None,
+        );
+        let org = ResolvedOrg {
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            public_id: "org_test".into(),
+            name: "Test".into(),
+            user_id: None,
+            role: everruns_core::OrgRole::Owner,
+            is_platform_user: false,
+            feature_flags: Default::default(),
+        };
+
+        let ctx = state.ctx(&org);
+
+        assert!(
+            ctx.model_sync_service.is_some(),
+            "model sync service missing"
+        );
+        assert!(ctx.model_service.is_some(), "model service missing");
+    }
 
     #[tokio::test]
     async fn create_rejects_invalid_base_urls_as_client_errors() {

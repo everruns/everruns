@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ModelEffortMenu } from "@/components/chat/model-effort-menu";
 import { ImageAttachments } from "@/components/chat/image-attachments";
+import { FileAttachments } from "@/components/chat/file-attachments";
+import type { PendingFile } from "@/lib/api/files";
 import {
   CommandAutocomplete,
   shouldShowCommandAutocomplete,
@@ -28,6 +30,7 @@ import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { COMPOSER_AUTOCOMPLETE_LISTBOX_ID } from "@/components/chat/composer-autocomplete";
 import { cn } from "@/lib/utils";
 import { ALLOWED_IMAGE_TYPES } from "@/lib/api/types";
+import { ALLOWED_FILE_EXTENSIONS } from "@/lib/api/files";
 import type {
   CommandDescriptor,
   Controls,
@@ -53,6 +56,10 @@ export function ChatComposer({
   hasImages,
   removeImage,
   addFiles,
+  pendingFiles,
+  hasFiles,
+  removeFileAttachment,
+  supportsPdf,
   isDraggingOver,
   dropZoneProps,
   handlePaste,
@@ -100,6 +107,10 @@ export function ChatComposer({
   hasImages: boolean;
   removeImage: (tempId: string) => void;
   addFiles: (files: File[]) => void;
+  pendingFiles: PendingFile[];
+  hasFiles: boolean;
+  removeFileAttachment: (tempId: string) => void;
+  supportsPdf: boolean;
   isDraggingOver: boolean;
   dropZoneProps: React.HTMLAttributes<HTMLDivElement>;
   handlePaste: React.ClipboardEventHandler<HTMLTextAreaElement>;
@@ -219,7 +230,11 @@ export function ChatComposer({
         <input
           ref={fileInputRef}
           type="file"
-          accept={ALLOWED_IMAGE_TYPES.join(",")}
+          accept={
+            supportsPdf
+              ? [...ALLOWED_IMAGE_TYPES, ...ALLOWED_FILE_EXTENSIONS].join(",")
+              : ALLOWED_IMAGE_TYPES.join(",")
+          }
           multiple
           className="hidden"
           onChange={handleFileChange}
@@ -227,6 +242,7 @@ export function ChatComposer({
         />
 
         {hasImages && <ImageAttachments images={pendingImages} onRemove={removeImage} />}
+        {hasFiles && <FileAttachments files={pendingFiles} onRemove={removeFileAttachment} />}
 
         <div
           className={cn(

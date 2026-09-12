@@ -6,6 +6,12 @@
  * bounded. And the order is frozen while the pointer or keyboard focus is inside
  * the list, so an arriving turn cannot re-sort a row out from under a click;
  * the pending order is adopted as soon as the user leaves.
+ *
+ * This is also where the user's pinned Platform Chat thread is ensured: the
+ * list is rendered on every app route in both the OSS app and its wrappers, so
+ * a user who never passes through onboarding (an invited member, say) still
+ * finds the thread waiting. The onboarding surfaces, which render without the
+ * sidebar, ensure it themselves.
  */
 "use client";
 
@@ -13,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Pin, Plus } from "lucide-react";
 import { useChatThreads } from "@/hooks/use-chat-threads";
+import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
 import { SIDEBAR_THREAD_LIMIT, threadTitle } from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
@@ -36,6 +43,7 @@ function useFrozen<T>(value: T, frozen: boolean): T {
 
 export function SidebarChatThreads({ pathname }: { pathname: string }) {
   const { threads, isLoading } = useChatThreads();
+  usePlatformChatThread({ ensure: true });
   const [interacting, setInteracting] = useState(false);
   const stableThreads = useFrozen<Session[]>(threads, interacting);
   const visible = stableThreads.slice(0, SIDEBAR_THREAD_LIMIT);

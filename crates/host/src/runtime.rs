@@ -138,7 +138,9 @@ pub struct TurnResult {
 ///
 /// The caller creates this value before dispatch so it can acknowledge the
 /// stable message id without waiting for execution to begin.
-#[doc(hidden)]
+///
+/// Part of the steering contract this crate owes the published `everruns`
+/// facade; see the module note on [`TurnSteering`].
 #[derive(Clone, Debug)]
 pub struct AcceptedTurnInput {
     message_id: MessageId,
@@ -171,16 +173,31 @@ impl AcceptedTurnInput {
 /// Closing and observing an empty queue is one atomic operation. A sender can
 /// therefore never be told that it steered a turn after that turn committed to
 /// completion; rejected input belongs to the next turn instead.
-#[doc(hidden)]
+///
+/// This type, [`AcceptedTurnInput`], [`TurnSteeringPushError`],
+/// [`InProcessRuntime::run_steerable_turn`] and
+/// [`InProcessRuntime::append_accepted_inputs`] form the steering surface the
+/// separately published `everruns` facade drives. It was `#[doc(hidden)]`
+/// while that was treated as internal plumbing, which is what let a signature
+/// change ship under a host patch release and break the published facade
+/// (everruns/yolop#665) -- `#[doc(hidden)]` hides an item from rustdoc and from
+/// `cargo-semver-checks`, but it does not make it private, and a contract
+/// crossing a crates.io boundary is public whatever it is annotated with.
+/// Change these together with a host minor bump and a facade release.
 #[derive(Clone, Debug)]
 pub struct TurnSteering {
     state: Arc<Mutex<TurnSteeringState>>,
 }
 
-#[doc(hidden)]
+/// Why a steered message could not join the running turn.
+///
+/// Either way the input is handed back so the caller can requeue it; see the
+/// note on [`TurnSteering`].
 #[derive(Debug)]
 pub enum TurnSteeringPushError {
+    /// The turn already committed to completion; the input belongs to the next one.
     Closed(Box<AcceptedTurnInput>),
+    /// The steering queue is at capacity and is rejecting overflow.
     Full(Box<AcceptedTurnInput>),
 }
 
@@ -1034,9 +1051,19 @@ impl InProcessRuntime {
                 capability.capability_id()
             ))
         })?;
-        if registered.status() != CapabilityStatus::Available {
+        // A `Deprecated` capability still works, so session-scoped activation
+        // stays allowed; only inert statuses are rejected here. Already-attached
+        // retired capabilities resolve to a no-op instead (see
+        // `collect_capabilities_with_configs`), which is what keeps existing
+        // agents from failing when a capability is retired.
+        if !registered.status().is_active() {
+            let reason = if registered.status() == CapabilityStatus::Retired {
+                "capability has been removed"
+            } else {
+                "capability is not available"
+            };
             return Err(AgentLoopError::config(format!(
-                "capability is not available: {}",
+                "{reason}: {}",
                 capability.capability_id()
             )));
         }
@@ -1165,7 +1192,8 @@ impl InProcessRuntime {
 
     /// Execute one turn while accepting additional user messages at reason
     /// boundaries.
-    #[doc(hidden)]
+    ///
+    /// Part of the steering contract described on [`TurnSteering`].
     pub async fn run_steerable_turn(
         &self,
         session_id: SessionId,
@@ -1433,7 +1461,10 @@ impl InProcessRuntime {
     }
 
     /// Persist accepted steering that could not reach another reason boundary.
-    #[doc(hidden)]
+    ///
+    /// Part of the steering contract described on [`TurnSteering`]. Adding the
+    /// `turn_id` parameter here under a host patch release is what broke the
+    /// published facade (everruns/yolop#665).
     pub async fn append_accepted_inputs(
         &self,
         session_id: SessionId,

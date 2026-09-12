@@ -101,7 +101,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const sessions = sessionsResponse?.data ?? [];
   const totalSessions = sessionsResponse?.total ?? 0;
   const hasMoreSessions = totalSessions > 10;
-  const { data: allCapabilities } = useCapabilities();
+  const { data: allCapabilities } = useCapabilities({ includeRetired: true });
   const { data: models } = useModels();
   const { data: stats, isLoading: statsLoading, error: statsError } = useAgentStats(agentId);
   const createSession = useCreateSession();

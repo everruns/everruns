@@ -343,6 +343,8 @@ export interface Harness {
   name: string;
   /** Human-readable display name shown in UI. Falls back to name when absent. */
   display_name: string | null;
+  /** Display glyph name (e.g. "message-circle"). Set for built-in harnesses; absent otherwise. */
+  icon?: string | null;
   description: string | null;
   /** Base system prompt. Null/absent means the harness contributes no base prompt. */
   system_prompt?: string | null;
@@ -409,6 +411,8 @@ export interface HarnessExample {
   name: string;
   display_name: string;
   description: string;
+  /** Display glyph name (e.g. "bar-chart"). */
+  icon?: string | null;
   tags: string[];
   /** Name of the parent harness (e.g. `generic`) the example will inherit from when imported. */
   parent_name?: string;
@@ -1127,7 +1131,7 @@ export interface UpdateBudgetRequest {
 
 // From legacy capability-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 // NOTE: CapabilityId is defined in common-types for proper ordering
-export type CapabilityStatus = "available" | "coming_soon" | "deprecated";
+export type CapabilityStatus = "available" | "coming_soon" | "deprecated" | "retired";
 
 export interface Capability {
   id: CapabilityId;
@@ -2785,6 +2789,36 @@ export type AllowedImageType = (typeof ALLOWED_IMAGE_TYPES)[number];
 /** Maximum image size in bytes (100 MB) */
 export const MAX_IMAGE_SIZE = 100 * 1024 * 1024;
 
+/** File metadata (returned from upload; for model-input files such as PDFs) */
+export interface FileInfo {
+  id: string;
+  filename: string | null;
+  content_type: string;
+  size_bytes: number;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+/** File upload response */
+export interface FileUploadResponse {
+  id: string;
+  filename: string | null;
+  content_type: string;
+  size_bytes: number;
+  created_at: string;
+}
+
+/** Allowed model-input file content types (PDF only for now) */
+export const ALLOWED_FILE_TYPES = ["application/pdf"] as const;
+
+export type AllowedFileType = (typeof ALLOWED_FILE_TYPES)[number];
+
+/** Allowed model-input file extensions */
+export const ALLOWED_FILE_EXTENSIONS = [".pdf"] as const;
+
+/** Maximum model-input file size in bytes (32 MB, matches the server cap) */
+export const MAX_FILE_SIZE = 32 * 1024 * 1024;
+
 // From legacy knowledge-index-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 // Knowledge Index types
 //
@@ -3038,6 +3072,11 @@ export type ContentPart =
       filename?: string;
     }
   | {
+      type: "file";
+      file_id: string;
+      filename?: string;
+    }
+  | {
       type: "resource";
       uri?: string;
       mimeType?: string;
@@ -3096,6 +3135,14 @@ export function isImageFilePart(part: ContentPart): part is {
   filename?: string;
 } {
   return part.type === "image_file";
+}
+
+export function isFilePart(part: ContentPart): part is {
+  type: "file";
+  file_id: string;
+  filename?: string;
+} {
+  return part.type === "file";
 }
 
 export function isResourcePart(part: ContentPart): part is Extract<
@@ -3671,6 +3718,25 @@ export interface CreateProviderRequest {
   request_options?: ProviderRequestOptions;
 }
 
+export interface CheckCredentialsRequest {
+  provider_type: DriverId;
+  api_key?: string;
+  /** Typed credential fields keyed by the driver's credential-schema field names. */
+  credentials?: Record<string, string>;
+  base_url?: string;
+}
+
+/**
+ * Outcome of probing a candidate API key against the provider. Only
+ * `rejected` proves the key is bad: `unsupported` (driver has no check) and
+ * `unreachable` (outage/network) must not block the user.
+ */
+export type CredentialCheckResult =
+  | { status: "valid"; models: number }
+  | { status: "rejected"; message: string }
+  | { status: "unsupported" }
+  | { status: "unreachable"; message: string };
+
 export interface UpdateProviderRequest {
   name?: string;
   provider_type?: DriverId;
@@ -4028,6 +4094,10 @@ export interface ResourceStats {
 }
 
 export interface CreateSessionRequest {
+  /** How the session was started. Clients may declare only `chat` (an
+   *  interactive thread) or `api` (the default); every other source is
+   *  server-owned. */
+  source?: SessionSource;
   /** Harness ID for this session. If omitted, the harness is derived from the agent (when one is supplied), else the org default harness. */
   harness_id?: string;
   /** Harness name, resolved within the org. Mutually exclusive with `harness_id`. */

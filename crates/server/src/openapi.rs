@@ -294,6 +294,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agents::diff_agent_versions,
         // LLM Providers - additional
         api::providers::sync_models,
+        api::providers::check_credentials,
         api::providers::provider_config,
         api::models::model_config,
         api::mcp_servers::mcp_server_config,
@@ -382,6 +383,10 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::images::get_image,
         api::images::delete_image,
         api::images::get_thumbnail,
+        api::files::upload_file,
+        api::files::list_files,
+        api::files::get_file,
+        api::files::delete_file,
         // Session Databases
         api::session_databases::create_database,
         api::session_databases::list_databases,
@@ -520,6 +525,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             Provider, ProviderTraceConfig, ProviderRequestOptions, ProviderRequestHeader, DriverId, ProviderStatus,
             Model, ModelWithProvider,
             api::providers::CreateProviderRequest,
+            api::providers::CheckCredentialsRequest,
+            domains::providers::CredentialCheckResult,
             api::providers::UpdateProviderRequest,
             api::providers::ProvidersConfigResponse,
             api::providers::DriverCredentialInfo,

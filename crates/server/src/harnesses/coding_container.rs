@@ -17,6 +17,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
         "Coding harness with self-hosted container sandboxes. Provides real filesystem, full process execution, network access, GitHub Scout subagents, and all Generic capabilities for software development tasks.",
         SYSTEM_PROMPT,
     )
+    .with_icon("container")
     .with_parent_name("generic")
     .with_tags(["coding", "container", "built-in"])
     .with_capabilities([

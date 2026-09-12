@@ -2299,6 +2299,42 @@ impl WorkerService for WorkerServiceImpl {
         Ok(Response::new(ResolveImagesResponse { images }))
     }
 
+    async fn resolve_files(
+        &self,
+        request: Request<ResolveFilesRequest>,
+    ) -> Result<Response<ResolveFilesResponse>, Status> {
+        let req = request.into_inner();
+
+        let mut files = std::collections::HashMap::new();
+
+        // Files are always returned inline as base64 (no presigned-URL
+        // variant): prompt-attached files are size-capped at upload.
+        for proto_id in req.file_ids {
+            let file_id = parse_uuid(Some(&proto_id))?;
+            match self.db.get_file(req.org_id, file_id).await {
+                Ok(Some(row)) => {
+                    let base64_data = base64::engine::general_purpose::STANDARD.encode(&row.data);
+                    files.insert(
+                        file_id.to_string(),
+                        ResolvedFileData {
+                            base64: base64_data,
+                            media_type: row.content_type,
+                            filename: row.filename.unwrap_or_default(),
+                        },
+                    );
+                }
+                Ok(None) => {
+                    tracing::debug!(%file_id, "File not found during batch resolution");
+                }
+                Err(e) => {
+                    tracing::warn!(%file_id, error = %e, "Failed to get file during batch resolution");
+                }
+            }
+        }
+
+        Ok(Response::new(ResolveFilesResponse { files }))
+    }
+
     async fn create_image_artifact(
         &self,
         request: Request<CreateImageArtifactRequest>,

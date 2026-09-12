@@ -37,11 +37,11 @@ code.
 
 Direction matters relative to existing specs:
 
-- [everruns-dev-plugin.md](everruns-dev-plugin.md) is **outbound**: Everruns
-  packaged as a plugin for Claude Code/Codex/Cursor (`plugins/everruns*`).
+- `plugins/everruns/` is **outbound**: Everruns packaged as a plugin for
+  Claude Code/Codex/Cursor (see [the `everruns` plugin contract](#the-everruns-plugin-contract)).
 - This spec is **inbound**: Everruns consuming plugins in the same format.
-  The outbound plugins double as the first dogfood content: `everruns` and
-  `everruns-dev` must install cleanly into Everruns itself.
+  The outbound plugin doubles as the first dogfood content: `everruns`
+  must install cleanly into Everruns itself.
 
 ## Why not just declarative capabilities
 
@@ -269,17 +269,16 @@ The plugins subsystem must work in the in-process runtime
 
 ## Test fixture
 
-`testdata/plugins/` is a local marketplace fixture used by server and runtime
-tests:
+`crates/core/testdata/plugins/` is a local marketplace fixture used by
+server and runtime tests:
 
-- `testdata/plugins/.claude-plugin/marketplace.json`, valid marketplace
-  manifest with relative-path plugin sources.
-- `testdata/plugins/microsoft-docs/`, an Everruns-authored variant of the
-  public Microsoft Docs plugin (`MicrosoftDocs/mcp`), pointing at the same
+- `.claude-plugin/marketplace.json`, valid marketplace manifest with
+  relative-path plugin sources.
+- `microsoft-docs/`, an Everruns-authored variant of the public Microsoft Docs plugin (`MicrosoftDocs/mcp`), pointing at the same
   public MCP server (`https://learn.microsoft.com/api/mcp`). It exercises
   every v1 mapping: manifest metadata, `skills/`, `commands/`, `agents/`,
   and `.mcp.json`, plus an `interface` block that v1 ignores with a warning.
-- `testdata/plugins/oauth-mail/`, minimal fixture whose `.mcp.json` sets
+- `oauth-mail/`, minimal fixture whose `.mcp.json` sets
   `"auth": "oauth"`. It exercises the OAuth-anchor install path: install
   creates a disabled anchor row, assigns a host-owned `mcp_oauth_*` provider,
   and lists it in the connections API; uninstall removes it. The URL is a
@@ -323,7 +322,7 @@ capability threat model:
    skills/commands/agents/MCP, stable installation refs, capability registry and
    picker integration, marketplace/plugin management UI, core-owned compiler
    with `InProcessRuntimeBuilder` local-directory loading, dogfood by
-   installing `everruns`/`everruns-dev` and the `microsoft-docs` fixture.
+   installing `everruns` and the `microsoft-docs` fixture.
 2. **Shipped**: Agent Plugins v1 portable manifest, skills, Streamable HTTP
    MCP, version matching, narrow failure isolation, and `com.everruns` auth
    extension, alongside the legacy host dialects.

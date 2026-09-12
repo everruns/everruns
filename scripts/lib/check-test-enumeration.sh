@@ -14,6 +14,9 @@
 # never run, and one of them was failing against committed code while CI stayed
 # green.
 #
+# Out of scope: crates under a `tests/fixtures/` path. Those are downstream
+# consumer fixtures in their own workspace, covered by the shell CI job.
+#
 # Coverage rules, per crate that has a tests/ directory:
 #   1. No workflow runs `cargo test -p <package>`      -> every file is a violation.
 #   2. Some invocation runs the crate with neither
@@ -69,6 +72,14 @@ checked=0
 drivers=0
 
 while IFS= read -r manifest; do
+  # Fixture crates under a crate's tests/fixtures/ form their own cargo
+  # workspace and are never workspace members, so no `cargo test -p <package>`
+  # can reach them. They are not unrun tests: the `shell` CI job runs them
+  # through scripts/test-external-consumer.sh, which owns their coverage.
+  case "$manifest" in
+    */tests/fixtures/*) continue ;;
+  esac
+
   manifest="$PROJECT_ROOT/$manifest"
   crate_dir="$(dirname "$manifest")"
   tests_dir="$crate_dir/tests"

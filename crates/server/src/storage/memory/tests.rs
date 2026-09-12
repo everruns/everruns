@@ -610,6 +610,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
             CreateHarnessRow {
                 name: "stats-harness".to_string(),
                 display_name: Some("Stats Harness".to_string()),
+                icon: None,
                 description: None,
                 system_prompt: Some(String::new()),
                 parent_harness_id: None,

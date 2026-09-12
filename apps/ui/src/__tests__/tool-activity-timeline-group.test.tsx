@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { ToolActivityTimelineGroup } from "@/components/chat/tool-activity-timeline-group";
 import { LocaleProvider } from "@/providers/locale-provider";
@@ -103,5 +103,49 @@ describe("ToolActivityTimelineGroup", () => {
     );
     expect(screen.queryByText("sk-live-secret")).not.toBeInTheDocument();
     expect(screen.getByText(/value: \[hidden\]/)).toBeInTheDocument();
+  });
+
+  it("renders label, preview, and details toggle on one line", () => {
+    renderWithLocale(
+      <ToolActivityTimelineGroup
+        headline="Read secret"
+        completedHeadline="Read secret"
+        rows={[
+          {
+            id: "tool-1",
+            label: "Read secret",
+            state: "completed",
+            result: {
+              tool_call_id: "call-1",
+              tool_name: "secret_store",
+              success: true,
+              status: "success",
+              result: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    operation: "get",
+                    name: "OPENAI_API_KEY",
+                    found: true,
+                  }),
+                },
+              ],
+            },
+          },
+        ]}
+      />,
+    );
+
+    const label = screen.getByText("Read secret");
+    const preview = screen.getByText("OPENAI_API_KEY found");
+    const toggle = screen.getByRole("button", { name: /details/i });
+    // Label, preview, and toggle share a single line container.
+    expect(preview.parentElement).toBe(label.parentElement);
+    expect(toggle.parentElement).toBe(label.parentElement);
+
+    // Expanding hides the one-line preview and reveals the details.
+    fireEvent.click(toggle);
+    expect(screen.queryByText("OPENAI_API_KEY found")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /hide/i })).toBeInTheDocument();
   });
 });

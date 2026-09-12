@@ -706,7 +706,7 @@ pub(super) async fn apply_reactive_compaction(
                 provider_opaque_context: None,
                 tool_search: None,
                 prompt_cache: None,
-                openrouter_routing: None,
+                driver_options: Default::default(),
                 parallel_tool_calls: None,
                 volatile_suffix_len: 0,
                 extra_headers: Vec::new(),
@@ -716,7 +716,7 @@ pub(super) async fn apply_reactive_compaction(
 
             match context
                 .chat_driver
-                .chat_completion(
+                .chat_completion_non_streaming(
                     &crate::ProviderEndpoint::default(),
                     summary_messages,
                     &summary_config,

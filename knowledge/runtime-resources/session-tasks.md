@@ -204,6 +204,39 @@ or the API cancel endpoint), the session scheduler's periodic reconciliation swe
 (`state_detail: "schedule canceled"`). Prefer `cancel_task` or `POST …/cancel`
 when both atomicity and immediacy matter.
 
+## Session scheduler multi-instance safety
+
+The session schedule poller runs inside the server process, so every server
+instance polls the same `session_schedules` table and they coordinate only
+through the database. A schedule firing twice is not a cosmetic duplicate: it
+starts a second agent turn or re-runs a monitor probe, and the model spend is
+the operator's or tenant's.
+
+Exclusivity therefore rests on one property: a due schedule is selected and
+stamped in a **single** statement, which sets `claimed_by` to the polling
+instance's identity and `claimed_at` to now. `FOR UPDATE SKIP LOCKED` alone is
+not enough — run on a pool rather than inside an open transaction, its row
+locks release as soon as the statement commits, which is before the poller has
+advanced `next_trigger_at`. A second instance polling in that window sees the
+same rows as still due. This is the shape
+[the durable execution engine](../operations/durable-execution-engine.md)
+already uses for `durable_schedules`.
+
+The claim is a **lease**, not a permanent mark. An instance that claims a
+schedule and then dies must not strand it, so a claim older than
+`SESSION_SCHEDULE_CLAIM_LEASE_SECONDS` is reclaimable by any instance. The
+lease is deliberately short, because a claim only has to survive until the
+poller advances `next_trigger_at` — the first thing it does with a claimed row.
+Once `next_trigger_at` moves into the future the row is no longer due and the
+stale claim is inert.
+
+Both storage backends implement the lease, so the in-memory backend cannot
+drift from Postgres semantics under test. Exclusivity and lease takeover are
+covered by `claim_due_session_schedules_is_exclusive_across_instances_pg` and
+`expired_session_schedule_claim_is_reclaimable_pg`; the equivalent contract for
+durable schedules is
+[TC008](../test-cases/api/scheduled_tasks/TC008_horizontal_scaling.md).
+
 ## Results and artifacts
 
 Results are modeled apart from status:

@@ -3062,6 +3062,26 @@ impl StorageBackend {
         dispatch!(self, list_images, org_id, limit, offset)
     }
 
+    pub async fn create_file(&self, org_id: i64, input: CreateFileRow) -> Result<FileRow> {
+        dispatch!(self, create_file, org_id, input)
+    }
+
+    pub async fn get_file(&self, org_id: i64, id: Uuid) -> Result<Option<FileRow>> {
+        dispatch!(self, get_file, org_id, id)
+    }
+
+    pub async fn get_file_info(&self, org_id: i64, id: Uuid) -> Result<Option<FileInfoRow>> {
+        dispatch!(self, get_file_info, org_id, id)
+    }
+
+    pub async fn delete_file(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_file, org_id, id)
+    }
+
+    pub async fn list_files(&self, org_id: i64, limit: i64) -> Result<Vec<FileInfoRow>> {
+        dispatch!(self, list_files, org_id, limit)
+    }
+
     // ============================================
     // Organizations
     // ============================================
@@ -3635,8 +3655,12 @@ impl StorageBackend {
         dispatch!(self, count_active_org_session_schedules, org_id)
     }
 
-    pub async fn claim_due_session_schedules(&self, limit: i32) -> Result<Vec<SessionScheduleRow>> {
-        dispatch!(self, claim_due_session_schedules, limit)
+    pub async fn claim_due_session_schedules(
+        &self,
+        scheduler_id: &str,
+        limit: i32,
+    ) -> Result<Vec<SessionScheduleRow>> {
+        dispatch!(self, claim_due_session_schedules, scheduler_id, limit)
     }
 
     // ============================================

@@ -18,6 +18,7 @@ pub use budgets::BudgetSubjectLookup;
 mod declarative_capabilities;
 mod evals;
 mod events;
+mod files;
 mod harnesses;
 mod knowledge_bases;
 mod knowledge_indexes;

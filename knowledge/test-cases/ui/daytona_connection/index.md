@@ -1,0 +1,3 @@
+# Daytona connection (UI)
+
+* [TC001: Daytona OpenUI Connection - Sandbox Lifecycle](TC001_daytona_openui_connection_sandbox.md) - Verify that the Daytona Coder agent prompts for a Daytona API key via the inline OpenUI connection dialog when no connection exists, creates a sandbox after connecting, executes a command, and deletes the sandbox on r...

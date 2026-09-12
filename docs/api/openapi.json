@@ -3434,6 +3434,15 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "include_retired",
+            "in": "query",
+            "description": "Include retired capabilities (default: false)",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -5531,6 +5540,140 @@
           },
           "503": {
             "description": "Durable store not available"
+          }
+        }
+      }
+    },
+    "/v1/files": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "List uploaded files, newest first.",
+        "operationId": "list_files",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of files to return.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List files",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FileInfo"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Upload a PDF file for use as model input.",
+        "operationId": "upload_file",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "description": "Optional session to attribute the upload to.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "File uploaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileUploadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid file"
+          },
+          "413": {
+            "description": "File too large"
+          }
+        }
+      }
+    },
+    "/v1/files/{file_id}": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Download a stored file's bytes.",
+        "operationId": "get_file",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File bytes"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Delete a stored file.",
+        "operationId": "delete_file",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File deleted"
           }
         }
       }
@@ -10174,6 +10317,44 @@
         }
       }
     },
+    "/v1/providers/check-credentials": {
+      "post": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "Check whether a provider accepts an API key, without storing it",
+        "description": "Used by org setup so a key the provider will reject is caught at entry\ninstead of at the first agent run. Nothing is persisted.",
+        "operationId": "check_credentials",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckCredentialsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Check completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialCheckResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        }
+      }
+    },
     "/v1/providers/config": {
       "get": {
         "tags": [
@@ -12812,6 +12993,29 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "wait",
+            "in": "query",
+            "description": "Wait for turn completion and return the turn result.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "timeout_ms",
+            "in": "query",
+            "description": "Max wait budget in milliseconds (default 120000, capped at 600000).\nOnly used with `wait=true`. On expiry the endpoint returns `202`\nwith the messages produced so far.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
           }
         ],
         "requestBody": {
@@ -12825,12 +13029,32 @@
           "required": true
         },
         "responses": {
-          "201": {
-            "description": "Message created successfully",
+          "200": {
+            "description": "Waited turn reached a terminal state (?wait=true)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Message"
+                  "$ref": "#/components/schemas/CreateMessageResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Message accepted; turn runs in background",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateMessageResult"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Wait deadline expired; turn still running (?wait=true)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateMessageResult"
                 }
               }
             }
@@ -18213,6 +18437,48 @@
           }
         }
       },
+      "CheckCredentialsRequest": {
+        "type": "object",
+        "description": "Request to check a provider credential without storing it.",
+        "required": [
+          "provider_type"
+        ],
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Single-field credential. Mutually exclusive with `credentials`.",
+            "example": "sk-proj-..."
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base URL for the provider's API, when not the driver default.",
+            "example": "https://api.openai.com/v1"
+          },
+          "credentials": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Typed multi-field credential, validated against the driver's schema\nexactly as on create.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "provider_type": {
+            "$ref": "#/components/schemas/DriverId",
+            "description": "The type of LLM provider (e.g., openai, anthropic)."
+          }
+        }
+      },
       "CheckNameResponse": {
         "type": "object",
         "description": "Response for name availability check.",
@@ -18595,6 +18861,29 @@
               }
             ],
             "description": "Image file content (reference to uploaded image by ID)"
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FileContentPart",
+                "description": "File content (reference to uploaded file, e.g. PDF, by ID)"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "file"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "File content (reference to uploaded file, e.g. PDF, by ID)"
           },
           {
             "allOf": [
@@ -19944,6 +20233,16 @@
           }
         }
       },
+      "CreateMessageResult": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/Message"
+          },
+          {
+            "$ref": "#/components/schemas/TurnWaitResponse"
+          }
+        ]
+      },
       "CreateModelRequest": {
         "type": "object",
         "description": "Request to create a new LLM model for a provider",
@@ -20657,6 +20956,90 @@
             "example": "team-research"
           }
         }
+      },
+      "CredentialCheckResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "The provider accepted the credential.",
+            "required": [
+              "models",
+              "status"
+            ],
+            "properties": {
+              "models": {
+                "type": "integer",
+                "description": "Number of models the provider listed for this credential.",
+                "example": 42,
+                "minimum": 0
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "valid"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The provider rejected the credential (401/403). Hard stop.",
+            "required": [
+              "message",
+              "status"
+            ],
+            "properties": {
+              "message": {
+                "type": "string",
+                "description": "User-facing reason. Never carries the provider's response body.",
+                "example": "The provider rejected this API key."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "rejected"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "This driver has no credential-checking endpoint (custom base URL,\nsimulator, or a driver without model discovery).",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "unsupported"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The provider could not be reached, so the credential is unproven.",
+            "required": [
+              "message",
+              "status"
+            ],
+            "properties": {
+              "message": {
+                "type": "string",
+                "description": "User-facing reason. Never carries the provider's response body.",
+                "example": "Could not reach the provider to verify this API key."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "unreachable"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Outcome of checking a candidate provider credential."
       },
       "CredentialFormSchema": {
         "type": "object",
@@ -21928,70 +22311,70 @@
           "url"
         ]
       },
-      "FileInfo": {
+      "FileContentPart": {
         "type": "object",
-        "description": "File metadata without content",
+        "description": "File content part (reference to an uploaded file, e.g. a PDF)\n\nThis is used for files uploaded via the /files API.\nThe file data is stored separately and referenced by ID.",
         "required": [
-          "id",
-          "session_id",
-          "path",
-          "name",
-          "is_directory",
-          "is_readonly",
-          "size_bytes",
-          "created_at",
-          "updated_at"
+          "file_id"
         ],
         "properties": {
+          "file_id": {
+            "type": "string",
+            "description": "ID of the uploaded file (format: file_{32-hex})",
+            "example": "file_01933b5a00007000800000000000001"
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Original filename (for display and provider file parts)"
+          }
+        }
+      },
+      "FileInfo": {
+        "type": "object",
+        "description": "Stored file metadata (no binary data).",
+        "required": [
+          "id",
+          "content_type",
+          "size_bytes",
+          "metadata",
+          "created_at"
+        ],
+        "properties": {
+          "content_type": {
+            "type": "string",
+            "description": "MIME type of the stored file (currently always application/pdf).",
+            "example": "application/pdf"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this entry was created (RFC 3339).",
-            "example": "2026-05-25T10:14:00Z"
+            "description": "Upload timestamp.",
+            "example": "2026-01-04T11:23:00Z"
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Original filename supplied at upload, if known.",
+            "example": "report.pdf"
           },
           "id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Internal database UUID for this file entry.",
-            "example": "550e8400-e29b-41d4-a716-446655440000"
+            "example": "file_01933b5a00007000800000000000001"
           },
-          "is_directory": {
-            "type": "boolean",
-            "description": "`true` when this entry represents a directory; `false` for a regular file.",
-            "example": false
-          },
-          "is_readonly": {
-            "type": "boolean",
-            "description": "Whether the entry was marked read-only at creation. Read-only entries cannot be edited or deleted by the session.",
-            "example": false
-          },
-          "name": {
-            "type": "string",
-            "description": "File or directory name (the last segment of `path`).",
-            "example": "notes.md"
-          },
-          "path": {
-            "type": "string",
-            "description": "Absolute path within the session workspace (e.g. `/notes.md`).",
-            "example": "/notes.md"
-          },
-          "session_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUID of the owning session.",
-            "example": "01933b5a-0000-7000-8000-000000000001"
+          "metadata": {
+            "type": "object",
+            "description": "Caller-supplied metadata captured at upload."
           },
           "size_bytes": {
             "type": "integer",
             "format": "int64",
-            "description": "File size in bytes. `0` for directories.",
-            "example": 4096
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this entry was last updated (RFC 3339).",
-            "example": "2026-05-25T10:15:30Z"
+            "description": "Size of the stored file in bytes.",
+            "example": 1048576
           }
         }
       },
@@ -22038,6 +22421,47 @@
             "type": "string",
             "format": "date-time",
             "description": "Timestamp when this entry was last updated (RFC 3339)."
+          }
+        }
+      },
+      "FileUploadResponse": {
+        "type": "object",
+        "description": "File metadata returned after a successful upload (no binary data).",
+        "required": [
+          "id",
+          "content_type",
+          "size_bytes",
+          "created_at"
+        ],
+        "properties": {
+          "content_type": {
+            "type": "string",
+            "description": "MIME type of the stored file (currently always application/pdf).",
+            "example": "application/pdf"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Upload timestamp.",
+            "example": "2026-01-04T11:23:00Z"
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Original filename supplied at upload, if known.",
+            "example": "report.pdf"
+          },
+          "id": {
+            "type": "string",
+            "example": "file_01933b5a00007000800000000000001"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Size of the stored file in bytes.",
+            "example": 1048576
           }
         }
       },
@@ -23070,6 +23494,14 @@
               "team": "platform"
             }
           },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display glyph name rendered by the UI (e.g. \"message-circle\").\n\nBuilt-in harnesses declare it in their definition; custom harnesses\nleave it unset and fall back to the UI's generic harness glyph.",
+            "example": "message-circle"
+          },
           "id": {
             "type": "string",
             "description": "Unique identifier for the harness (format: harness_{32-hex}).",
@@ -23184,6 +23616,13 @@
           "display_name": {
             "type": "string",
             "description": "Human-readable display name (e.g. `Data Analyst`)."
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display glyph name rendered by the UI (e.g. `bar-chart`)."
           },
           "name": {
             "type": "string",
@@ -23828,6 +24267,29 @@
               }
             ],
             "description": "Image file content (reference to uploaded image by ID)"
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FileContentPart",
+                "description": "File content (reference to uploaded file, e.g. PDF, by ID)"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "file"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "File content (reference to uploaded file, e.g. PDF, by ID)"
           }
         ],
         "description": "Input content part - text, image, and image_file (for user input)\n\nThis is a subset of ContentPart that users can send.\nTool calls and results are system-generated."
@@ -25414,6 +25876,14 @@
                     "env": "production",
                     "team": "platform"
                   }
+                },
+                "icon": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Display glyph name rendered by the UI (e.g. \"message-circle\").\n\nBuilt-in harnesses declare it in their definition; custom harnesses\nleave it unset and fall back to the UI's generic harness glyph.",
+                  "example": "message-circle"
                 },
                 "id": {
                   "type": "string",
@@ -27740,6 +28210,14 @@
                             "env": "production",
                             "team": "platform"
                           }
+                        },
+                        "icon": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "Display glyph name rendered by the UI (e.g. \"message-circle\").\n\nBuilt-in harnesses declare it in their definition; custom harnesses\nleave it unset and fall back to the UI's generic harness glyph.",
+                          "example": "message-circle"
                         },
                         "id": {
                           "type": "string",
@@ -37324,6 +37802,50 @@
           }
         }
       },
+      "TurnWaitResponse": {
+        "type": "object",
+        "description": "Waited result for `POST /v1/sessions/{session_id}/messages?wait=true`.",
+        "required": [
+          "status",
+          "message",
+          "messages"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Turn failure detail when `status` is `failed`.",
+            "example": "turn failed: upstream model error"
+          },
+          "message": {
+            "$ref": "#/components/schemas/Message",
+            "description": "The accepted user message (same body as the `201` path)."
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "description": "Messages appended after the accepted message: assistant output on\ncompletion, whatever exists so far on timeout, empty on failure."
+          },
+          "status": {
+            "$ref": "#/components/schemas/TurnWaitStatus",
+            "description": "Wait outcome for the triggered turn."
+          }
+        }
+      },
+      "TurnWaitStatus": {
+        "type": "string",
+        "description": "Terminal-or-pending outcome of a waited turn.",
+        "enum": [
+          "completed",
+          "failed",
+          "timeout"
+        ],
+        "example": "completed"
+      },
       "UpdateAgentRequest": {
         "type": "object",
         "description": "Request to update an agent. Only provided fields will be updated.",
@@ -40260,6 +40782,14 @@
                   "team": "platform"
                 }
               },
+              "icon": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Display glyph name rendered by the UI (e.g. \"message-circle\").\n\nBuilt-in harnesses declare it in their definition; custom harnesses\nleave it unset and fall back to the UI's generic harness glyph.",
+                "example": "message-circle"
+              },
               "id": {
                 "type": "string",
                 "description": "Unique identifier for the harness (format: harness_{32-hex}).",
@@ -40966,6 +41496,14 @@
                       "env": "production",
                       "team": "platform"
                     }
+                  },
+                  "icon": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Display glyph name rendered by the UI (e.g. \"message-circle\").\n\nBuilt-in harnesses declare it in their definition; custom harnesses\nleave it unset and fall back to the UI's generic harness glyph.",
+                    "example": "message-circle"
                   },
                   "id": {
                     "type": "string",

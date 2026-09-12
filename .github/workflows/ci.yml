@@ -148,11 +148,15 @@ jobs:
               - 'examples/research-agent/**'
               - 'examples/incident-commander-agent/**'
               - 'examples/coding-cli/**'
+              - 'examples/bashkit-repo-agent/**'
+              - 'examples/demo-support/**'
               - 'scripts/cli-e2e-test.sh'
               - 'scripts/lib/check-everruns-examples.sh'
-              # The lockfile job runs the publish-cone gate; re-run it when the
-              # gate or the pin-sync script it pairs with changes.
+              # The lockfile job runs the publish-cone gate and the semver-bumps
+              # job the bump gate; re-run them when either gate or the pin-sync
+              # script they pair with changes.
               - 'scripts/check-publish-cone.py'
+              - 'scripts/check-semver-bumps.py'
               - 'scripts/sync-publish-pin-versions.py'
               - 'Cargo.toml'
               - 'Cargo.lock'
@@ -172,7 +176,7 @@ jobs:
             shell:
               - 'scripts/run-shell-tests.sh'
               - 'scripts/test-*.sh'
-              - 'tests/fixtures/external-consumer/**'
+              - 'crates/everruns/tests/fixtures/external-consumer/**'
               - 'scripts/check_okf.py'
               # The report generators are covered by scripts/test-*.sh, so a
               # change to one has to run those tests. Without this a rewrite of
@@ -202,7 +206,6 @@ jobs:
               # scripts/test-no-everruns-runtime.sh scans these trees too.
               - 'knowledge/**'
               - 'skills/**'
-              - 'plugins/everruns-dev/**'
               - '.agents/plugins/**'
               - '.claude-plugin/**'
               - 'local/Caddyfile'
@@ -381,6 +384,76 @@ jobs:
 
       - name: Check publish cone has no unhealed strands
         run: python3 scripts/check-publish-cone.py --pre-merge
+
+  # Companion guard to the publish cone, covering the class it structurally
+  # cannot see. check-publish-cone.py compares version *requirements*, so a
+  # breaking change released in the patch slot looks healthy: everruns-host
+  # 0.20.4 shipped API breakage while still satisfying every published
+  # dependant's `^0.20.3` pin, and downstream builds resolved the new host into
+  # an older facade that no longer compiled. This job compares *API*, on the
+  # crates a change is actually releasing; run against that release it demands
+  # the breaking slot. It does not see `#[doc(hidden)]` items, which
+  # cargo-semver-checks excludes by design, so nothing another published crate
+  # calls may carry that attribute -- see knowledge/project/release-process.md.
+  semver-bumps:
+    name: Crate Semver Bumps
+    # Opt-in larger runners via the CI_RUNNER_LABEL repo variable
+    # (e.g. ubuntu-latest-8-core); defaults to standard runners.
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 45
+
+    # Sharded: one check-release over ~28 candidates was ~45 min of serial
+    # rustdoc builds (current + baseline per crate). Four legs partition the
+    # sorted candidate list deterministically; fail-fast stops the burn on red.
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [0, 1, 2, 3]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Self-test the semver-bump gate
+        run: python3 scripts/check-semver-bumps.py --self-test
+
+      # Crate versions move only in a release change, so ordinary PRs have no
+      # candidates and skip the expensive half of this job entirely.
+      - name: Resolve release candidates
+        id: plan
+        run: |
+          set -euo pipefail
+          candidates="$(python3 scripts/check-semver-bumps.py --candidates)"
+          if [ -n "$candidates" ]; then
+            echo "Releasing: $candidates"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No crate versions are being released in this change."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache Rust
+        if: steps.plan.outputs.found == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "semver-checks"
+
+      # Pinned against rust-toolchain.toml, not independently: cargo-semver-checks
+      # parses rustdoc JSON and rejects a format version it does not know, so a
+      # toolchain bump can outrun an older pin (0.44.0 cannot read the v57 JSON
+      # that 1.96.0 emits). Bump this alongside the toolchain.
+      - name: Install cargo-semver-checks
+        if: steps.plan.outputs.found == 'true'
+        timeout-minutes: 15
+        run: cargo install cargo-semver-checks --version 0.50.0 --locked
+
+      - name: Check released crates are bumped large enough
+        if: steps.plan.outputs.found == 'true'
+        run: python3 scripts/check-semver-bumps.py --shard ${{ matrix.shard }}/4
 
   msrv:
     name: Published Crate MSRV
@@ -689,11 +762,21 @@ jobs:
   # Keeps server compilation in the integration job that already builds it.
   unit-test:
     name: Unit Tests (Pure)
-    runs-on: ubuntu-latest
+    # Opt-in larger runners via the CI_RUNNER_LABEL repo variable
+    # (e.g. ubuntu-latest-8-core); defaults to standard runners.
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 30
 
+
+    # Sharded: ~27 sequential `cargo test` invocations were ~20 min of
+    # compilation on one runner (tests themselves are seconds). Four legs
+    # split by compile weight; the shared rust-cache key keeps dep reuse.
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [llm-core, provider-engine, host-mcp, facade-cli]
     steps:
       - uses: actions/checkout@v7
 
@@ -717,8 +800,11 @@ jobs:
         with:
           shared-key: "test"
 
-      - name: Run pure unit tests
+      - name: Run pure unit tests (${{ matrix.shard }})
+        shell: bash
         run: |
+          case "${{ matrix.shard }}" in
+            llm-core)
           # Driver suites include local HTTP contracts. Credentialed live cases
           # are explicitly ignored; ordinary cargo test never executes them.
           cargo test -p everruns-anthropic -p everruns-openai -p everruns-gemini \
@@ -732,10 +818,13 @@ jobs:
           # turns, proving every catalog entry remains runnable without secrets.
           cargo test -p everruns-support-agent -p everruns-coding-review-agent \
             -p everruns-research-agent -p everruns-incident-commander-agent \
-            -p everruns-framework-support-agent
+            -p everruns-framework-support-agent -p everruns-bashkit-repo-agent \
+            -p everruns-example-demo
           # Production-safe deterministic simulator plus its optional host
           # extension. Pure llmsim; no credentials or network.
           cargo test -p everruns-llmsim --all-features
+              ;;
+            provider-engine)
           # The provider SPI and the crates below reach CI here for the first
           # time: none of them had ever appeared in a `cargo test -p` line in
           # any workflow, so their tests/ files had never run. everruns-provider
@@ -755,6 +844,8 @@ jobs:
           # Test-support (EVE-875): in-memory loop, test doubles, fixture
           # capabilities, and llmsim-driven suites that moved out of core.
           cargo test -p everruns-test-support --all-features
+              ;;
+            host-mcp)
           # mcp: whole crate (lib + http_transport + stdio_transport + doctests).
           # Was not tested in CI at all. --all-features enables the `stdio` transport
           # (off in hosted builds) so its transport test runs here. All in-process,
@@ -775,6 +866,8 @@ jobs:
           # the feature-specific MCP target runs immediately afterward.
           cargo test -p everruns-host --features lua,bashkit -- --test-threads=1
           cargo test -p everruns-host --features mcp --test mcp_runtime_test -- --test-threads=1
+              ;;
+            facade-cli)
           # everruns facade (EVE-830): whole crate across every optional facade
           # feature, including local history/resume acceptance paths, plus a
           # bare-facade compile so public configuration cannot accidentally
@@ -799,6 +892,8 @@ jobs:
           cargo test -p everruns-integrations-github
           cargo test -p everruns-integrations-sprites
 
+              ;;
+          esac
   # Durable-worker PR coverage. Catches regressions in the worker crate's
   # durable execution paths (act/reason/input task handling, DLQ emission,
   # session.idled, org_id roundtripping, task error mapping) before merge.
@@ -1002,11 +1097,21 @@ jobs:
   # Integration tests requiring PostgreSQL
   # Tests API endpoints, repositories, and durable execution against real database
   integration-test:
-    name: Integration Tests (PostgreSQL)
-    runs-on: ubuntu-latest
+    name: Integration Tests (PostgreSQL Shards)
+    # Opt-in larger runners via the CI_RUNNER_LABEL repo variable
+    # (e.g. ubuntu-latest-8-core); defaults to standard runners.
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
     timeout-minutes: 40
+
+    # Sharded: 8 sequential test steps were ~26 min on one runner with a
+    # warm cache. Three legs split by suite; each leg gets its own
+    # postgres service and runs migrations against it.
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [server, domain, durable]
     services:
       postgres:
         image: postgres:17-alpine
@@ -1064,14 +1169,17 @@ jobs:
         run: sqlx migrate run --source crates/server/migrations
 
       - name: Run server unit tests (require DB for storage layer)
+        if: ${{ matrix.shard == 'server' }}
         run: cargo test -p everruns-server --lib
 
       - name: Run server integration tests (API + repository)
+        if: ${{ matrix.shard == 'server' }}
         run: cargo test -p everruns-server --test api_integration_test --test repository_integration_test --test repository_conformance_test -- --test-threads=1
 
       # These contracts use in-memory TestServer instances, but share the server
       # compilation above instead of rebuilding it in the pure-test job.
       - name: Run in-memory server API contracts
+        if: ${{ matrix.shard == 'server' }}
         run: cargo test -p everruns-server --test mcp_url_consent_test --test mcp_url_elicitation_test --test sse_replay_test
 
       # Blob-offload suite against the in-memory object_store backend (no S3
@@ -1081,6 +1189,7 @@ jobs:
       # The dedicated `s3-integration-test` job re-runs the
       # identical suite with STORAGE_BLOB_BACKEND=s3 against SeaweedFS.
       - name: Run blob offload integration tests (in-memory backend)
+        if: ${{ matrix.shard == 'domain' }}
         run: cargo test -p everruns-server --test blob_offload_integration_test -- --test-threads=1
 
       # Domain-focused integration tests that previously only ran manually.
@@ -1088,6 +1197,7 @@ jobs:
       # exercises a cohesive slice (auth, org lifecycle, schedules, git sessions,
       # evals, ag_ui, client-side tools, llm defaults, org isolation).
       - name: Run domain integration tests
+        if: ${{ matrix.shard == 'domain' }}
         run: |
           cargo test -p everruns-server \
             --test ag_ui_integration_test \
@@ -1102,6 +1212,7 @@ jobs:
             --test observers_integration_test \
             --test prometheus_metrics_test \
             --test llm_model_default_test \
+            --test mcp_oauth_user_switch_test \
             --test org_creation_test \
             --test org_isolation_test \
             --test org_lifecycle_test \
@@ -1118,6 +1229,7 @@ jobs:
       # (EVE-667). The Test Enumeration job enforces that every crate test
       # file is either run here or explicitly allowlisted.
       - name: Run previously-unenumerated domain integration tests
+        if: ${{ matrix.shard == 'domain' }}
         run: |
           cargo test -p everruns-server \
             --test app_api_integration_test \
@@ -1141,23 +1253,25 @@ jobs:
             -- --test-threads=1
 
       - name: Run durable integration tests
+        if: ${{ matrix.shard == 'durable' }}
         run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --features postgres-tests -- --test-threads=1
 
       # `agent_reliability_test` was audited for EVE-349 but still fails on a
       # clean PostgreSQL-backed run; keep it out of required CI until its
       # restart/reclaim scenarios are stabilized.
       - name: Run durable failpoint tests
+        if: ${{ matrix.shard == 'durable' }}
         run: cargo test -p everruns-durable --test failure_injection_test --features "failpoints,postgres-tests" -- --test-threads=1
 
       # Slack live tests need DOPPLER_TOKEN. Restrict to push events so the
       # token is never instantiated in a fork-PR context where untrusted
       # code (build.rs, proc-macros, test bodies) would see it via env.
       - name: Install Doppler CLI
+        if: ${{ matrix.shard == 'durable' && github.event_name == 'push' }}
         id: doppler_install
         # Absorbs one transient installer failure; see
         # scripts/test-doppler-install-retry.sh for why.
         continue-on-error: true
-        if: github.event_name == 'push'
         uses: dopplerhq/cli-action@v4
 
       - name: Pause before Doppler CLI retry
@@ -1169,7 +1283,7 @@ jobs:
         uses: dopplerhq/cli-action@v4
 
       - name: Run Slack integration tests (real API via Doppler)
-        if: github.event_name == 'push'
+        if: ${{ matrix.shard == 'durable' && github.event_name == 'push' }}
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run --preserve-env="DATABASE_URL" -- cargo test -p everruns-server --test slack_integration_test -- --test-threads=1
@@ -1189,6 +1303,31 @@ jobs:
   # Doppler vault via env (build.rs, proc-macros, test bodies) — the same
   # TM-CI-001/TM-CI-002 boundary the step carried before the split. PR coverage
   # of the LLM matrix is still mocked in `unit-test`.
+
+  integration-test-gate:
+    # Reports the bare required-check name. Matrix legs report as
+    # "Integration Tests (PostgreSQL Shards) (server|domain|durable)",
+    # which never satisfies the branch rule expecting exactly
+    # "Integration Tests (PostgreSQL)" (it waits forever: "Expected --
+    # Waiting for status to be reported"). This gate mirrors the aggregate
+    # leg result under that name: success/skipped pass, anything else fails.
+    name: Integration Tests (PostgreSQL)
+    needs: [integration-test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate integration shard results
+        run: |
+          case "${{ needs.integration-test.result }}" in
+            success|skipped)
+              echo "Integration shards: ${{ needs.integration-test.result }}"
+              ;;
+            *)
+              echo "Integration shards result: ${{ needs.integration-test.result }}"
+              exit 1
+              ;;
+          esac
   live-provider-matrix:
     name: Live Provider Matrix
     runs-on: ubuntu-latest
@@ -1389,7 +1528,9 @@ jobs:
   # Build release binaries and upload as artifacts for E2E jobs and openapi-check
   build-binaries:
     name: Build Release Binaries
-    runs-on: ubuntu-latest
+    # Opt-in larger runners via the CI_RUNNER_LABEL repo variable
+    # (e.g. ubuntu-latest-8-core); defaults to standard runners.
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
     timeout-minutes: 40
@@ -2218,6 +2359,7 @@ jobs:
       - changes
       - format
       - lockfile
+      - semver-bumps
       - msrv
       - knowledge
       - clippy

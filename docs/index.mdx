@@ -4,18 +4,25 @@ description: Everruns is a durable agentic harness engine built on Rust. Find tu
 template: splash
 ---
 
-import { Card, CardGrid, LinkCard, Steps } from '@astrojs/starlight/components';
+import { Card, CardGrid, LinkCard, Steps } from "@astrojs/starlight/components";
 
 Everruns is a **durable agentic harness engine** built on Rust. It provides APIs for managing agents, sessions, and long-running tasks, with real-time SSE event streaming and PostgreSQL-backed durability.
 
 Build directly inside a Rust application with the [Everruns Framework](/framework/),
 or use the Platform and SDK documentation for a durable deployment and remote clients.
+To skip operating the Platform entirely, use the hosted edition at
+[Everruns Cloud](https://app.everruns.com).
 
 ## What kind of help do you need?
 
 The documentation is organised by what you're trying to do.
 
 <CardGrid>
+  <LinkCard
+    title="Everruns Cloud"
+    description="Use the hosted Platform without running it yourself. Open in early access, free for now, bring your own model provider keys."
+    href="https://app.everruns.com"
+  />
   <LinkCard
     title="Framework"
     description="Build and run agents in a Rust process with the application-facing everruns crate."
@@ -46,9 +53,12 @@ The documentation is organised by what you're trying to do.
 ## Getting started fast
 
 <Steps>
-1. Choose the [Framework](/framework/) for an in-process Rust application or [Docker Compose](/getting-started/docker-compose/) for the full Platform.
-2. Run the [Framework quickstart](/framework/quickstart/) or follow the [SDK tutorial](/tutorials/building-agents-using-sdk/).
-3. Browse [How-to guides](/how-to/) to do something specific.
+  1. Choose [Everruns Cloud](https://app.everruns.com) for the hosted Platform,
+  the [Framework](/framework/) for an in-process Rust application, or [Docker
+  Compose](/getting-started/docker-compose/) to run the full Platform yourself.
+  2. Run the [Framework quickstart](/framework/quickstart/) or follow the [SDK
+  tutorial](/tutorials/building-agents-using-sdk/). 3. Browse [How-to
+  guides](/how-to/) to do something specific.
 </Steps>
 
 ## Popular destinations

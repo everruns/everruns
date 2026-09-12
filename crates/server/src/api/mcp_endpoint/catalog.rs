@@ -51,6 +51,16 @@ static INVENTORY_TOOL_DEFS: LazyLock<HashMap<&'static str, ToolDef>> = LazyLock:
         .collect()
 });
 
+/// Original (un-rewritten) input schemas, keyed by command name. The tree's
+/// leaf help renders exact flag names from these via `bash_usage`.
+static INVENTORY_SCHEMAS: LazyLock<HashMap<&'static str, serde_json::Value>> =
+    LazyLock::new(|| {
+        inventory::iter::<crate::domains::common::CommandDescriptor>
+            .into_iter()
+            .map(|desc| ((desc.meta)().name, (desc.param_schema)()))
+            .collect()
+    });
+
 impl CatalogContext {
     /// Convert to a domain Ctx for inventory-registered command dispatch.
     pub fn to_domain_ctx(&self) -> crate::domains::common::Ctx {
@@ -61,9 +71,22 @@ impl CatalogContext {
 /// Build one scripted tool from inventory-registered commands only.
 pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptedTool {
     let mut builder = ScriptedTool::builder("everruns")
+        // Discoverability is the whole game for a command surface: unlike a
+        // tool schema, a CLI does not advertise itself. State the tree, its
+        // help, and the fact that flat names still work, once, here.
         .short_description(match mode {
-            ToolsetMode::Full => "Everruns API operations as bash builtins",
-            ToolsetMode::ReadOnly => "Read-only Everruns API operations as bash builtins",
+            ToolsetMode::Full => {
+                "Everruns operations as bash builtins. Type `everruns <noun> <verb> --flags` \
+                 (e.g. `everruns agents list --limit 10`). Run `everruns --help` for the nouns \
+                 and `everruns <noun> --help` for its verbs. Flat names (`list_agents`) remain \
+                 valid aliases."
+            }
+            ToolsetMode::ReadOnly => {
+                "Read-only Everruns operations as bash builtins. Type \
+                 `everruns <noun> <verb> --flags` (e.g. `everruns agents list --limit 10`). Run \
+                 `everruns --help` for the nouns. Flat names (`list_agents`) remain valid \
+                 aliases."
+            }
         })
         .limits(
             bashkit::ExecutionLimits::new()
@@ -96,7 +119,57 @@ pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptedTool {
         builder = builder.async_tool_fn(def, callback);
     }
 
+    builder = builder.async_tool_fn(help_tool_def(), make_help_callback());
+
     builder.build()
+}
+
+/// `everruns_help` renders the noun-verb tree. The rewriter emits it for every
+/// help or unresolved invocation, and a caller may run it directly.
+pub(crate) fn help_tool_def() -> ToolDef {
+    ToolDef::new(
+        super::cli_tree::HELP_BUILTIN,
+        "Show commands available under an `everruns` tree path, or the flags of one command.",
+    )
+    .with_schema(serde_json::json!({
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Tree path, e.g. \"agents\" or \"agents versions list\". Empty lists the top level."
+            },
+            "unknown": {
+                "type": "string",
+                "description": "Reserved for the rewriter: the unrecognized word to report."
+            }
+        },
+        "additionalProperties": false
+    }))
+    .with_category("system")
+}
+
+pub(crate) fn make_help_callback()
+-> impl Fn(ToolArgs) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send>>
++ Send
++ Sync
++ 'static {
+    move |args: ToolArgs| {
+        Box::pin(async move {
+            let path = args.param_str("path").unwrap_or_default().to_string();
+            let unknown = args.param_str("unknown").map(ToOwned::to_owned);
+            super::cli_tree::render_help(
+                super::cli_tree::tree(),
+                &path,
+                unknown.as_deref(),
+                |wire, display| {
+                    INVENTORY_SCHEMAS
+                        .get(wire)
+                        .map(|schema| bash_usage(display, schema))
+                        .unwrap_or_else(|| format!("Usage: {display} [--flags]\n"))
+                },
+            )
+        })
+    }
 }
 
 fn command_descriptor_to_def(desc: &crate::domains::common::CommandDescriptor) -> ToolDef {
@@ -491,7 +564,12 @@ pub(crate) fn bash_usage(command_name: &str, schema: &serde_json::Value) -> Stri
                     .map(|example| format!("'{}'", example.replace('\'', "'\"'\"'")))
                     .unwrap_or_else(|| "'<json>'".to_string())
             } else if property_has_type(property, defs, "boolean", 0) {
-                "<true|false>".to_string()
+                // A boolean is a switch, not a flag that takes a value. The
+                // interpreter inserts `true` on sight and consumes nothing, so
+                // the next token is parsed as a flag: `--include_archived true`
+                // fails with "expected --flag, got: true". Rendering a
+                // `<true|false>` placeholder documents a form that cannot work.
+                String::new()
             } else if property_has_type(property, defs, "integer", 0)
                 || property_has_type(property, defs, "number", 0)
             {
@@ -499,7 +577,11 @@ pub(crate) fn bash_usage(command_name: &str, schema: &serde_json::Value) -> Stri
             } else {
                 "'<string>'".to_string()
             };
-            let flag = format!("--{name} {placeholder}");
+            let flag = if placeholder.is_empty() {
+                format!("--{name}")
+            } else {
+                format!("--{name} {placeholder}")
+            };
             (required.contains(name), name, flag)
         })
         .collect::<Vec<_>>();
@@ -732,6 +814,40 @@ fn decorate_mcp_capability_refs(value: &mut serde_json::Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bash_usage_renders_booleans_as_switches() {
+        // The interpreter parses a boolean flag as a valueless switch, so a
+        // usage string promising `<true|false>` documents a form that errors
+        // with "expected --flag, got: true". A live model followed exactly
+        // that advertised form and lost the result.
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "include_archived": { "type": "boolean" },
+                "nullable_flag": { "type": ["boolean", "null"] },
+                "limit": { "type": "integer" },
+                "search": { "type": "string" },
+            }
+        });
+
+        let usage = bash_usage("list_agents", &schema);
+
+        assert!(
+            usage.contains("[--include_archived]"),
+            "boolean must render as a bare switch: {usage}"
+        );
+        assert!(
+            usage.contains("[--nullable_flag]"),
+            "a nullable boolean is still a switch: {usage}"
+        );
+        assert!(
+            !usage.contains("true|false"),
+            "no boolean may advertise a value: {usage}"
+        );
+        assert!(usage.contains("[--limit <number>]"), "{usage}");
+        assert!(usage.contains("[--search '<string>']"), "{usage}");
+    }
 
     #[test]
     fn inventory_command_defs_expose_structured_param_schemas() {

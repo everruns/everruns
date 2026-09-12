@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Notice, NoticeDescription } from "@/components/ui/notice";
 import {
   useModels,
   useProviders,
@@ -15,6 +16,7 @@ import type { Provider } from "@/lib/api/types";
 
 import { ProviderCard, ProviderCardSkeleton } from "./provider-card";
 import { AddProviderDialog, SetApiKeyDialog } from "./provider-dialogs";
+import { QuickConnect } from "./quick-connect";
 import { ServiceDefaultsCard } from "./service-defaults-card";
 
 export default function ProvidersPage() {
@@ -86,37 +88,51 @@ export default function ProvidersPage() {
 
   return (
     <div className="space-y-8">
-      <section>
+      <div>
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-xl font-semibold">LLM Providers</h2>
             <p className="text-sm text-muted-foreground">
-              Configure the LLM providers that your agents can use.
+              Configure the LLM providers that your agents can use. Keys are encrypted at rest.
             </p>
           </div>
-          <Button onClick={() => setAddProviderOpen(true)}>
+          <Button variant="outline" onClick={() => setAddProviderOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Provider
           </Button>
         </div>
 
         {providersError && (
-          <div className="bg-destructive/10 text-destructive p-4 mb-4">
-            Failed to load providers: {providersError.message}
-          </div>
+          <Notice variant="destructive" className="mb-4">
+            <NoticeDescription>
+              Failed to load providers: {providersError.message}
+            </NoticeDescription>
+          </Notice>
         )}
 
         {syncMessage && (
-          <div
-            className={`p-4 mb-4 ${
-              syncMessage.type === "success"
-                ? "bg-green-100 text-green-800"
-                : "bg-destructive/10 text-destructive"
-            }`}
+          <Notice
+            variant={syncMessage.type === "success" ? "success" : "destructive"}
+            className="mb-4"
           >
-            {syncMessage.text}
-          </div>
+            <NoticeDescription>{syncMessage.text}</NoticeDescription>
+          </Notice>
         )}
+      </div>
+
+      {/* Fast path first: the providers most orgs connect are one paste away,
+          and the full driver catalog stays reachable behind "Another provider". */}
+      <QuickConnect providers={providers} onOpenAdvanced={() => setAddProviderOpen(true)} />
+
+      <section>
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
+          <h3 className="text-lg font-semibold">Connected</h3>
+          {!providersLoading && providers.length > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {providers.length} {providers.length === 1 ? "provider" : "providers"}
+            </p>
+          )}
+        </div>
 
         {providersLoading ? (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -128,13 +144,9 @@ export default function ProvidersPage() {
           <Card className="p-8 text-center">
             <Server className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2">No providers configured</h3>
-            <p className="text-muted-foreground mb-4">
-              Add an LLM provider to start using AI models with your agents.
+            <p className="text-muted-foreground">
+              Pick one above. Agents stay idle until at least one provider has an enabled model.
             </p>
-            <Button onClick={() => setAddProviderOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Provider
-            </Button>
           </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

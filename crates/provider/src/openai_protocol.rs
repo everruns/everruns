@@ -23,7 +23,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage,
-    LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent, disjoint_prompt_tokens,
+    LlmMessageContent, LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent,
+    disjoint_prompt_tokens,
 };
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_retry::{
@@ -33,7 +34,7 @@ use crate::llm_retry::{
 use crate::runtime_provider::ProviderEndpoint;
 use crate::stream_accumulator::StreamToolCallAccumulator;
 use crate::stream_reconnect::connect_sse_with_reconnect;
-use crate::tool_types::ToolDefinition;
+use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::user_facing_error::is_provider_quota_message;
 
 pub fn is_azure_openai_api_url(api_url: &str) -> bool {
@@ -106,8 +107,15 @@ pub fn models_url_for_api_url(api_url: &str) -> String {
 
 /// Build the error returned when the `/models` endpoint responds with a
 /// non-success status.
+///
+/// The status is classified here, at the provider boundary, so callers that
+/// act on the *kind* of failure (credential checks distinguishing a rejected
+/// key from an unreachable provider) do not have to re-parse the message.
 pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
-    AgentLoopError::llm(format!("Models API returned status {status}"))
+    AgentLoopError::llm_kind(
+        LlmErrorKind::from_provider_status(status.as_u16(), ""),
+        format!("Models API returned status {status}"),
+    )
 }
 
 /// OpenAI Protocol Chat Driver
@@ -134,7 +142,6 @@ pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
 /// ```
 #[derive(Clone)]
 pub struct OpenAIProtocolChatDriver {
-    client: Client,
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
 }
@@ -142,8 +149,12 @@ pub struct OpenAIProtocolChatDriver {
 impl OpenAIProtocolChatDriver {
     /// Create a wire-only OpenAI Chat Completions protocol driver.
     pub fn new() -> Self {
+        // EVE-924: choose the rustls backend on the startup path. The shared
+        // client installs it as well, but that now happens on the first
+        // request, and products expect the process-wide choice to be settled
+        // while providers are being constructed.
+        crate::install_default_crypto_provider();
         Self {
-            client: crate::driver_helpers::shared_streaming_http_client(),
             retry_config: LlmRetryConfig::default(),
         }
     }
@@ -154,9 +165,15 @@ impl OpenAIProtocolChatDriver {
         self
     }
 
-    /// Get the HTTP client (for subclass access)
-    pub fn client(&self) -> &Client {
-        &self.client
+    /// The process-wide streaming HTTP client, resolved per request rather than
+    /// held as a field. Building it loads the platform trust store (~1.3 ms),
+    /// which would otherwise land on the agent startup path; after the first
+    /// request this is a `OnceLock` read and an `Arc` clone.
+    ///
+    /// Returned by value for subclass access; a `reqwest::Client` is an `Arc`
+    /// handle, so cloning it shares the same connection pool.
+    pub fn client(&self) -> Client {
+        crate::driver_helpers::shared_streaming_http_client()
     }
 
     /// Send one streaming chat-completion request, applying the shared
@@ -190,7 +207,7 @@ impl OpenAIProtocolChatDriver {
                     .resolve("POST", api_url, &body)
                     .await
                     .map_err(SendOutcome::Fatal)?;
-                let mut request_builder = self.client.post(&resolved.url);
+                let mut request_builder = self.client().post(&resolved.url);
                 let mut headers = resolved.headers;
                 headers.push(("Content-Type".to_string(), "application/json".to_string()));
                 for (name, value) in
@@ -319,6 +336,13 @@ impl OpenAIProtocolChatDriver {
                                 format: "wav".to_string(),
                             },
                         },
+                        LlmContentPart::File { url, filename } => OpenAiContentPart::File {
+                            r#type: "file".to_string(),
+                            file: OpenAiFile {
+                                filename: filename.clone(),
+                                file_data: url.clone(),
+                            },
+                        },
                     })
                     .collect();
                 OpenAiContent::Parts(openai_parts)
@@ -427,8 +451,182 @@ fn drop_orphaned_tool_messages(messages: &[LlmMessage]) -> Vec<LlmMessage> {
         .collect()
 }
 
+/// Non-streaming `chat/completions` response (`stream: false`).
+#[derive(Debug, Deserialize)]
+struct OpenAiChatCompletionResponse {
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    choices: Vec<OpenAiChatChoice>,
+    #[serde(default)]
+    usage: Option<OpenAiUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiChatChoice {
+    message: OpenAiChatMessage,
+    #[serde(default)]
+    finish_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiChatMessage {
+    #[serde(default)]
+    content: Option<OpenAiContent>,
+    #[serde(default)]
+    tool_calls: Vec<OpenAiToolCall>,
+    /// DeepSeek-style non-streamed reasoning payload.
+    #[serde(default)]
+    reasoning_content: Option<String>,
+}
+
 #[async_trait]
 impl ChatDriver for OpenAIProtocolChatDriver {
+    fn supports_native_non_streaming(&self) -> bool {
+        true
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &ProviderEndpoint,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponse> {
+        // Same request as the streaming path, but with streaming disabled so
+        // the provider answers with one JSON body instead of SSE.
+        let openai_messages: Vec<OpenAiMessage> =
+            messages.iter().map(Self::convert_message).collect();
+        let tools = if config.tools.is_empty() {
+            None
+        } else {
+            Some(Self::convert_tools(&config.tools))
+        };
+        let metadata = if config.metadata.is_empty() {
+            None
+        } else {
+            Some(config.metadata.clone())
+        };
+        let request = OpenAiRequest {
+            model: config.model.clone(),
+            messages: openai_messages,
+            temperature: config.temperature,
+            max_tokens: config.max_tokens,
+            stream: false,
+            stream_options: None,
+            tools,
+            parallel_tool_calls: config
+                .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
+            // An explicit "no reasoning" omits the field: sending it to a
+            // non-thinking model is an API error.
+            reasoning_effort: config
+                .reasoning_effort
+                .filter(crate::model::ReasoningEffort::requests_reasoning)
+                .map(|effort| effort.as_str().to_string()),
+            service_tier: config.speed.clone(),
+            verbosity: config.verbosity.clone(),
+            metadata,
+        };
+        let api_url = endpoint.url("chat/completions").ok_or_else(|| {
+            AgentLoopError::Configuration(
+                "OpenAI Chat Completions provider has no base URL".to_string(),
+            )
+        })?;
+        let (response, retry_metadata) = self
+            .send_chat_completion_request(
+                endpoint,
+                &api_url,
+                &request,
+                &config.model,
+                &config.extra_headers,
+                0,
+            )
+            .await?;
+        let body: OpenAiChatCompletionResponse = response.json().await.map_err(|error| {
+            AgentLoopError::llm(format!("failed to decode non-streaming response: {error}"))
+        })?;
+        let (text, tool_calls, reasoning, finish_reason) = match body.choices.into_iter().next() {
+            Some(choice) => {
+                let text = match choice.message.content {
+                    Some(OpenAiContent::Text(text)) => text,
+                    Some(OpenAiContent::Parts(parts)) => parts
+                        .into_iter()
+                        .filter_map(|part| match part {
+                            OpenAiContentPart::Text { text, .. } => Some(text),
+                            _ => None,
+                        })
+                        .collect(),
+                    None => String::new(),
+                };
+                // Mirror the streaming path: tool calls whose arguments are not
+                // complete JSON values cannot execute, so drop them.
+                let tool_calls: Vec<ToolCall> = choice
+                    .message
+                    .tool_calls
+                    .into_iter()
+                    .filter_map(|tool_call| {
+                        let arguments = serde_json::from_str(&tool_call.function.arguments).ok()?;
+                        Some(ToolCall {
+                            id: tool_call.id,
+                            name: tool_call.function.name,
+                            arguments,
+                        })
+                    })
+                    .collect();
+                let reasoning = choice.message.reasoning_content.map(|text| {
+                    crate::reasoning::ReasoningContentPart::opaque("openai-protocol")
+                        .with_text(crate::reasoning::ReasoningText::Plain { text })
+                });
+                (text, tool_calls, reasoning, choice.finish_reason)
+            }
+            None => (String::new(), Vec::new(), None, None),
+        };
+        let (prompt_tokens, completion_tokens, cached_tokens, cost) = body
+            .usage
+            .map(|usage| {
+                let cached = usage
+                    .prompt_tokens_details
+                    .as_ref()
+                    .and_then(|details| details.cached_tokens);
+                let prompt = usage.prompt_tokens.unwrap_or(0);
+                (
+                    Some(prompt),
+                    usage.completion_tokens,
+                    Some(disjoint_prompt_tokens(prompt, cached)),
+                    usage.cost,
+                )
+            })
+            .unwrap_or((None, None, None, None));
+        Ok(LlmResponse {
+            text,
+            reasoning: reasoning.into_iter().collect(),
+            tool_calls: if tool_calls.is_empty() {
+                None
+            } else {
+                Some(tool_calls)
+            },
+            metadata: LlmCompletionMetadata {
+                total_tokens: prompt_tokens
+                    .unwrap_or(0)
+                    .checked_add(completion_tokens.unwrap_or(0)),
+                prompt_tokens,
+                completion_tokens,
+                cache_read_tokens: cached_tokens,
+                cache_creation_tokens: None,
+                provider_cost_usd: cost,
+                model: Some(config.model.clone()),
+                finish_reason,
+                retry_metadata: if retry_metadata.had_retries() {
+                    Some(retry_metadata)
+                } else {
+                    None
+                },
+                response_id: body.id,
+                phase: None,
+                cache_diagnostics: None,
+            },
+        })
+    }
+
     async fn chat_completion_stream(
         &self,
         endpoint: &ProviderEndpoint,
@@ -860,6 +1058,17 @@ enum OpenAiContentPart {
         r#type: String,
         input_audio: OpenAiInputAudio,
     },
+    File {
+        r#type: String,
+        file: OpenAiFile,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct OpenAiFile {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filename: Option<String>,
+    file_data: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1419,7 +1628,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
@@ -1452,6 +1661,108 @@ mod tests {
         .base_url(format!("{}/v1", server.uri()))
         .auth(crate::BearerAuth::new("synthetic-key"));
         (server, provider)
+    }
+
+    async fn mock_json_provider(
+        body: serde_json::Value,
+    ) -> (wiremock::MockServer, crate::Provider) {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::builder().start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(header("authorization", "Bearer synthetic-key"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/json")
+                    .set_body_json(body),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let provider = crate::Provider::new(
+            "test",
+            OpenAIProtocolChatDriver::new().with_retry_config(LlmRetryConfig {
+                max_retries: 0,
+                ..Default::default()
+            }),
+        )
+        .base_url(format!("{}/v1", server.uri()))
+        .auth(crate::BearerAuth::new("synthetic-key"));
+        (server, provider)
+    }
+
+    #[tokio::test]
+    async fn non_streaming_completion_waits_for_full_json_response() {
+        let (server, provider) = mock_json_provider(json!({
+            "id": "chatcmpl-123",
+            "choices": [{
+                "message": {"role": "assistant", "content": "done"},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 3}
+        }))
+        .await;
+        assert!(provider.supports_native_non_streaming());
+        let messages = vec![LlmMessage::text(LlmMessageRole::User, "Hello")];
+        let response = provider
+            .chat_completion_non_streaming(messages, &call_config())
+            .await
+            .unwrap();
+        assert_eq!(response.text, "done");
+        assert_eq!(response.metadata.finish_reason.as_deref(), Some("stop"));
+        assert_eq!(
+            response.metadata.response_id.as_deref(),
+            Some("chatcmpl-123")
+        );
+        assert_eq!(response.metadata.prompt_tokens, Some(10));
+        assert_eq!(response.metadata.completion_tokens, Some(3));
+        assert!(response.tool_calls.is_none());
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        let sent = requests[0].body_json::<Value>().unwrap();
+        assert_eq!(sent["stream"], json!(false));
+        assert!(sent.get("stream_options").is_none());
+    }
+
+    #[tokio::test]
+    async fn non_streaming_completion_maps_tool_calls_and_drops_malformed_arguments() {
+        let (server, provider) = mock_json_provider(json!({
+            "id": "chatcmpl-456",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [
+                        {"id": "call_1", "type": "function",
+                         "function": {"name": "get_weather", "arguments": "{\"city\":\"Oslo\"}"}},
+                        {"id": "call_2", "type": "function",
+                         "function": {"name": "broken", "arguments": "{oops"}}
+                    ]
+                },
+                "finish_reason": "tool_calls"
+            }],
+            "usage": {"prompt_tokens": 20, "completion_tokens": 15}
+        }))
+        .await;
+        let messages = vec![LlmMessage::text(LlmMessageRole::User, "Weather?")];
+        let response = provider
+            .chat_completion_non_streaming(messages, &call_config())
+            .await
+            .unwrap();
+        let tool_calls = response.tool_calls.expect("tool calls survive");
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].name, "get_weather");
+        assert_eq!(tool_calls[0].arguments, json!({"city": "Oslo"}));
+        assert_eq!(
+            response.metadata.finish_reason.as_deref(),
+            Some("tool_calls")
+        );
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(
+            requests[0].body_json::<Value>().unwrap()["stream"],
+            json!(false)
+        );
     }
 
     #[tokio::test]
@@ -1837,5 +2148,41 @@ mod tests {
         ] {
             assert_eq!(models_url_for_api_url(input), expected, "{input}");
         }
+    }
+
+    #[test]
+    fn models_status_error_classifies_auth_separately_from_outage() {
+        // Credential checks branch on the kind, so a rejected key and a dead
+        // provider must not collapse into the same classification.
+        assert_eq!(
+            models_api_status_error(reqwest::StatusCode::UNAUTHORIZED).llm_error_kind(),
+            Some(LlmErrorKind::Authentication)
+        );
+        assert_eq!(
+            models_api_status_error(reqwest::StatusCode::FORBIDDEN).llm_error_kind(),
+            Some(LlmErrorKind::Authentication)
+        );
+        assert_eq!(
+            models_api_status_error(reqwest::StatusCode::SERVICE_UNAVAILABLE).llm_error_kind(),
+            Some(LlmErrorKind::Unavailable)
+        );
+    }
+
+    #[test]
+    fn file_part_serializes_to_openai_file() {
+        let part = OpenAiContentPart::File {
+            r#type: "file".to_string(),
+            file: OpenAiFile {
+                filename: Some("report.pdf".to_string()),
+                file_data: "data:application/pdf;base64,JVBERi0=".to_string(),
+            },
+        };
+        let v = serde_json::to_value(&part).unwrap();
+        assert_eq!(v["type"], serde_json::json!("file"));
+        assert_eq!(
+            v["file"]["file_data"],
+            serde_json::json!("data:application/pdf;base64,JVBERi0=")
+        );
+        assert_eq!(v["file"]["filename"], serde_json::json!("report.pdf"));
     }
 }

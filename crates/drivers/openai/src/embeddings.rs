@@ -5,15 +5,24 @@ use everruns_provider::{EmbedRequest, EmbedResponse, EmbeddingsDriver, Embedding
 use serde::{Deserialize, Serialize};
 
 /// Embeddings driver for OpenAI's `/v1/embeddings` endpoint.
-pub struct OpenAIEmbeddingsDriver {
-    client: reqwest::Client,
-}
+pub struct OpenAIEmbeddingsDriver;
 
 impl OpenAIEmbeddingsDriver {
     pub fn new() -> Self {
-        Self {
-            client: shared_request_http_client(),
-        }
+        // EVE-924: choose the rustls backend on the startup path. The shared
+        // client installs it as well, but that now happens on the first
+        // request, and products expect the process-wide choice to be settled
+        // while providers are being constructed.
+        everruns_provider::install_default_crypto_provider();
+        Self
+    }
+
+    /// The process-wide request HTTP client, resolved per request rather than
+    /// held as a field. Building it loads the platform trust store (~1.3 ms),
+    /// which would otherwise land on the agent startup path; after the first
+    /// request this is a `OnceLock` read and an `Arc` clone.
+    fn client(&self) -> reqwest::Client {
+        shared_request_http_client()
     }
 }
 
@@ -73,7 +82,7 @@ impl EmbeddingsDriver for OpenAIEmbeddingsDriver {
                 .await
                 .map_err(|error| EmbeddingsDriverError::Provider(error.to_string()))?;
             let mut builder = self
-                .client
+                .client()
                 .post(&resolved.url)
                 .header("content-type", "application/json");
             for (name, value) in resolved.headers {

@@ -7,17 +7,23 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { MessageCircle, Plus } from "lucide-react";
+import { MessageCircle, Plus, Sparkles } from "lucide-react";
 import { AgentAvatar } from "@/components/chat/agent-avatar";
 import { ChatArchiveButton } from "@/components/chat/chat-archive-button";
 import { ChatPinButton } from "@/components/chat/chat-pin-button";
 import { NewChatForm } from "@/components/chat/new-chat-form";
+import {
+  NO_INTELLIGENCE_DESCRIPTION,
+  NO_INTELLIGENCE_TITLE,
+  NoIntelligenceAction,
+} from "@/components/chat/no-intelligence-notice";
 import { EmptyState, PageContainer, PageMasthead } from "@/components/layout";
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArchiveFilter } from "@/components/archive-filter";
 import { useAgents, useHarnesses } from "@/hooks";
 import { useChatThreads } from "@/hooks/use-chat-threads";
+import { useIntelligenceStatus } from "@/hooks/use-intelligence";
 import { isArchivedThread, threadTitle } from "@/lib/chat-threads";
 import { formatRelativeTime } from "@/lib/formatting";
 import { cn } from "@/lib/utils";
@@ -75,6 +81,12 @@ export default function ChatsPageClient() {
   const { threads, isLoading } = useChatThreads({ includeArchived: showArchived });
   const { data: agents = [] } = useAgents();
   const { data: harnesses = [] } = useHarnesses();
+  // The empty state is this page's only centred message, so when the org has no
+  // model to chat with it *becomes* that message — "No chats yet / pick an agent
+  // and start talking" would otherwise sit above it giving advice that cannot
+  // work.
+  const intelligence = useIntelligenceStatus();
+  const noIntelligence = !intelligence.isLoading && !intelligence.available;
   // Hold the starting state open once the user commits, so the new thread landing
   // in the list cannot unmount the form mid-navigation.
   const [starting, setStarting] = useState(false);
@@ -111,14 +123,23 @@ export default function ChatsPageClient() {
             <Skeleton key={index} className="h-[58px] w-full" />
           ))}
 
-        {!isLoading && (threads.length === 0 || starting) && (
-          <EmptyState
-            icon={<MessageCircle />}
-            title="No chats yet"
-            description="Pick an agent or harness and start talking. The thread is saved as a session you can come back to."
-            action={<NewChatForm onStartingChange={setStarting} />}
-          />
-        )}
+        {!isLoading &&
+          (threads.length === 0 || starting) &&
+          (noIntelligence ? (
+            <EmptyState
+              icon={<Sparkles />}
+              title={NO_INTELLIGENCE_TITLE}
+              description={NO_INTELLIGENCE_DESCRIPTION}
+              action={<NoIntelligenceAction canManage={intelligence.canManage} />}
+            />
+          ) : (
+            <EmptyState
+              icon={<MessageCircle />}
+              title="No chats yet"
+              description="Pick an agent or harness and start talking. The thread is saved as a session you can come back to."
+              action={<NewChatForm onStartingChange={setStarting} />}
+            />
+          ))}
 
         {!starting &&
           threads.map((thread) => (

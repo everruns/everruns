@@ -115,6 +115,10 @@ const messages = {
       "There is a misconfiguration with the AI provider. Please contact support.",
     runtime_error_provider_quota_exhausted:
       "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",
+    runtime_error_provider_attestation_required:
+      "The AI provider account has not completed a confirmation this model requires. Complete it at {confirm_url}, then try again.",
+    runtime_error_provider_attestation_required_types:
+      "The AI provider account has not completed a confirmation this model requires ({missing_types}). Complete it at {confirm_url}, then try again.",
     runtime_error_details_label: "Details",
     runtime_error_provider_unavailable:
       "The AI provider is experiencing issues. Please try again shortly.",
@@ -333,6 +337,10 @@ const messages = {
       "AI-провайдер налаштований некоректно. Зверніться до підтримки.",
     runtime_error_provider_quota_exhausted:
       "На обліковому записі AI-провайдера закінчилися кредити або квота. Поповніть рахунок або збільште ліміти, щоб продовжити.",
+    runtime_error_provider_attestation_required:
+      "Обліковий запис AI-провайдера не пройшов підтвердження, якого вимагає ця модель. Завершіть його на {confirm_url} і спробуйте ще раз.",
+    runtime_error_provider_attestation_required_types:
+      "Обліковий запис AI-провайдера не пройшов підтвердження, якого вимагає ця модель ({missing_types}). Завершіть його на {confirm_url} і спробуйте ще раз.",
     runtime_error_details_label: "Деталі",
     runtime_error_provider_unavailable:
       "AI-провайдер зараз недоступний. Спробуйте ще раз трохи пізніше.",

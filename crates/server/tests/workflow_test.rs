@@ -31,6 +31,67 @@ const API_BASE_URL: &str = "http://localhost:9000/api";
 /// and no longer stable). Passed via `harness_name` on session creation.
 const SEED_HARNESS_NAME: &str = "base";
 
+// === Teardown =============================================================
+//
+// `client.delete(..).send().await.expect("...")` only asserts the request was
+// *sent*. A refused delete answers 4xx/5xx and is still `Ok`, so teardown
+// written that way reports success while leaving rows behind in the shared
+// test database. Models, providers, agents and sessions accumulated that way
+// for weeks before anyone noticed, because nothing ever failed (EVE-955).
+//
+// These helpers assert the server actually did the work, and release the
+// references that would otherwise make a delete impossible to satisfy.
+
+/// Send a teardown `DELETE` and assert the server accepted it.
+///
+/// `404` passes: teardown is idempotent and the row may already be gone.
+async fn cleanup_delete(client: &reqwest::Client, url: String, what: &str) {
+    let response = client
+        .delete(&url)
+        .send()
+        .await
+        .unwrap_or_else(|e| panic!("cleanup: DELETE {url} ({what}) could not be sent: {e}"));
+    let status = response.status();
+    if status.is_success() || status == reqwest::StatusCode::NOT_FOUND {
+        return;
+    }
+    let body = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "<unreadable body>".to_string());
+    panic!("cleanup: DELETE {url} ({what}) returned {status}: {body}");
+}
+
+/// Remove an agent for real.
+///
+/// `DELETE /v1/agents/{id}` only *archives* it: the row survives and keeps its
+/// `default_model_id`, so a later model delete is refused on
+/// `agents_default_model_id_fkey`. `POST /v1/agents/{id}/delete` is what
+/// actually removes the row, and it requires the archive first.
+async fn cleanup_agent(client: &reqwest::Client, agent_public_id: impl std::fmt::Display) {
+    cleanup_delete(
+        client,
+        format!("{}/v1/agents/{}", API_BASE_URL, agent_public_id),
+        "agent",
+    )
+    .await;
+
+    let url = format!("{}/v1/agents/{}/delete", API_BASE_URL, agent_public_id);
+    let response =
+        client.post(&url).send().await.unwrap_or_else(|e| {
+            panic!("cleanup: POST {url} (destroy agent) could not be sent: {e}")
+        });
+    let status = response.status();
+    if status.is_success() || status == reqwest::StatusCode::NOT_FOUND {
+        return;
+    }
+    let body = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "<unreadable body>".to_string());
+    panic!("cleanup: POST {url} (destroy agent) returned {status}: {body}");
+}
+
 /// Live Anthropic model ids used by the tests in this file that talk to the
 /// real provider.
 ///
@@ -523,6 +584,20 @@ async fn test_full_agent_session_workflow() {
     // Events are created when messages are processed by the workflow
     // For this basic test, we just verify the endpoint works
 
+    // Cleanup
+    //
+    // This test used to create an agent and a session and delete neither, so a
+    // second run against the same database failed on a 409 for the `test-agent`
+    // name it had already taken (EVE-955).
+    println!("\nCleaning up...");
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
+
     println!("\nAll tests passed!");
 }
 
@@ -622,17 +697,19 @@ async fn test_provider_and_model_workflow() {
     // Cleanup
     println!("\nCleaning up...");
 
-    client
-        .delete(format!("{}/v1/models/{}", API_BASE_URL, model.id))
-        .send()
-        .await
-        .expect("Failed to delete model");
+    cleanup_delete(
+        &client,
+        format!("{}/v1/models/{}", API_BASE_URL, model.id),
+        "model",
+    )
+    .await;
 
-    client
-        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
-        .send()
-        .await
-        .expect("Failed to delete provider");
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 
     println!("All LLM provider and model tests passed!");
 }
@@ -733,17 +810,19 @@ async fn test_model_profile() {
 
     // Cleanup
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/models/{}", API_BASE_URL, model_id))
-        .send()
-        .await
-        .expect("Failed to delete model");
+    cleanup_delete(
+        &client,
+        format!("{}/v1/models/{}", API_BASE_URL, model_id),
+        "model",
+    )
+    .await;
 
-    client
-        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
-        .send()
-        .await
-        .expect("Failed to delete provider");
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 
     println!("LLM Model Profile tests passed!");
 }
@@ -897,27 +976,42 @@ async fn test_session_inherits_agent_default_model() {
     );
 
     // Cleanup
+    //
+    // Order matters: `sessions.model_id` and the agent's `default_model_id`
+    // both reference these models, so the sessions and the agent have to go
+    // first or the model deletes are refused (EVE-955).
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
-    client
-        .delete(format!("{}/v1/models/{}", API_BASE_URL, model.id))
-        .send()
-        .await
-        .expect("Failed to delete model");
-    client
-        .delete(format!("{}/v1/models/{}", API_BASE_URL, model2.id))
-        .send()
-        .await
-        .expect("Failed to delete model2");
-    client
-        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
-        .send()
-        .await
-        .expect("Failed to delete provider");
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session2.id),
+        "session2",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/models/{}", API_BASE_URL, model.id),
+        "model",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/models/{}", API_BASE_URL, model2.id),
+        "model",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 
     println!("Session model_id inheritance test passed!");
 }
@@ -1164,11 +1258,13 @@ async fn test_session_filesystem() {
 
     // Cleanup
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
 
     println!("Session filesystem test passed!");
 }
@@ -1297,11 +1393,13 @@ async fn test_session_filesystem_workspace_prefix() {
     println!("/workspace/demo/a.txt returned file content successfully");
 
     // Cleanup
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
 
     println!("Filesystem workspace prefix test passed!");
 }
@@ -1569,17 +1667,22 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
 
     // Cleanup
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
+    // `sessions.model_id` pins the model, so the session goes first or the
+    // model/provider delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
 
-    client
-        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
-        .send()
-        .await
-        .expect("Failed to delete provider");
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 
     println!("Agent filesystem and bash workspace integration test passed!");
 }
@@ -1773,24 +1876,30 @@ async fn test_agent_execution_llmsim_with_edit_file_tool() {
 
     // Cleanup
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
-    client
-        .delete(format!(
+    // `sessions.model_id` references the model below, so the session has to go
+    // first or the model delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
+    cleanup_delete(
+        &client,
+        format!(
             "{}/v1/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
-        ))
-        .send()
-        .await
-        .expect("Failed to delete model");
-    client
-        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
-        .send()
-        .await
-        .expect("Failed to delete provider");
+        ),
+        "model",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 
     println!("LlmSim edit_file integration test passed!");
 }
@@ -2057,23 +2166,165 @@ async fn test_message_triggers_agent_workflow() {
 
     // Cleanup
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
-    client
-        .delete(format!("{}/v1/models/{}", API_BASE_URL, model.id))
-        .send()
-        .await
-        .expect("Failed to delete model");
-    client
-        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
-        .send()
-        .await
-        .expect("Failed to delete provider");
+    // `sessions.model_id` references the model below, so the session has to go
+    // first or the model delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/models/{}", API_BASE_URL, model.id),
+        "model",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 
     println!("Message triggers agent workflow test passed!");
+}
+
+// ============================================================================
+// POST /v1/sessions/:id/messages?wait=true (workflow test)
+// ============================================================================
+
+/// Tests POST /messages?wait=true blocks until the worker completes the turn (workflow test):
+/// with server+worker running, the request must return 200 with a completed status and the
+/// assistant output produced by the LlmSim scripted model.
+#[tokio::test]
+async fn test_post_message_wait_returns_completed_turn() {
+    use std::time::Duration;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(70))
+        .build()
+        .expect("Failed to create client");
+
+    // Step 1: Register LlmSim provider + model and create agent.
+    let provider_name = "wait-test-llmsim";
+    let provider_response = client
+        .post(format!("{}/v1/providers", API_BASE_URL))
+        .json(&json!({
+            "name": provider_name,
+            "provider_type": "llmsim",
+            "config": {"base_url": "http://localhost:1", "api_key": "test-key"}
+        }))
+        .send()
+        .await
+        .expect("Failed to create LlmSim provider");
+    assert_eq!(provider_response.status(), 201);
+    let provider: Provider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+
+    let model_id = "llmsim-wait-test";
+    let model_create = client
+        .post(format!(
+            "{}/v1/providers/{}/models",
+            API_BASE_URL, provider.id
+        ))
+        .json(&json!({
+            "model_id": model_id,
+            "display_name": "LlmSim Wait Test Model"
+        }))
+        .send()
+        .await
+        .expect("Failed to create LlmSim model");
+    assert_eq!(model_create.status(), 201);
+    // Keep the platform model id: `model_id` above is the provider-side model
+    // string, which the delete endpoint does not accept.
+    let model: Model = model_create
+        .json()
+        .await
+        .expect("Failed to parse LlmSim model");
+
+    let agent_name = "wait-test-agent";
+    let agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "provider_id": provider.id,
+            "model_id": model_id,
+            "name": agent_name,
+            "system_prompt": "You are a helpful test assistant."
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+    assert_eq!(agent_response.status(), 201);
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+
+    // Step 2: Create a session for the agent.
+    let session_response = client
+        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .json(&json!({
+            "harness_name": SEED_HARNESS_NAME,
+            "agent_id": agent.public_id,
+            "title": "Wait test"
+        }))
+        .send()
+        .await
+        .expect("Failed to create session");
+    assert_eq!(session_response.status(), 201);
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+
+    // Step 3: POST with wait=true; the worker completes the turn, expect 200 completed.
+    let message_response = client
+        .post(format!(
+            "{}/v1/sessions/{}/messages?wait=true&timeout_ms=60000",
+            API_BASE_URL, session.id
+        ))
+        .json(&json!({
+            "message": {
+                "role": "user",
+                "content": [{ "type": "text", "text": "Reply to this workflow test message." }]
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to post message");
+    assert_eq!(message_response.status(), 200);
+    let body: Value = message_response
+        .json()
+        .await
+        .expect("Failed to parse wait response");
+    assert_eq!(body["status"], "completed");
+    let messages = body["messages"].as_array().expect("messages array");
+    assert!(!messages.is_empty(), "waited turn returns assistant output");
+    println!("✓ POST /messages?wait=true returns completed turn");
+
+    // Cleanup: this test created a provider, a model, an agent and a session,
+    // and cleaned up none of them — so a second run against the same database
+    // failed on a 409 for the agent name it had already taken (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/models/{}", API_BASE_URL, model.id),
+        "model",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 }
 
 /// Test that tool calls are not duplicated during workflow execution.
@@ -2325,21 +2576,27 @@ async fn test_no_duplicate_tool_calls() {
 
     // Cleanup
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
-    client
-        .delete(format!("{}/v1/models/{}", API_BASE_URL, model.id))
-        .send()
-        .await
-        .expect("Failed to delete model");
-    client
-        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
-        .send()
-        .await
-        .expect("Failed to delete provider");
+    // `sessions.model_id` pins the model, so the session goes first or the
+    // model/provider delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/models/{}", API_BASE_URL, model.id),
+        "model",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 
     println!("No duplicate tool calls test completed!");
 }
@@ -2368,6 +2625,7 @@ async fn test_sessions_pagination() {
 
     // Create 15 sessions
     println!("Creating 15 sessions...");
+    let mut session_ids = Vec::with_capacity(15);
     for i in 1..=15 {
         let response = client
             .post(format!("{}/v1/sessions", API_BASE_URL))
@@ -2376,6 +2634,8 @@ async fn test_sessions_pagination() {
             .await
             .expect("Failed to create session");
         assert_eq!(response.status(), 201, "Failed to create session {}", i);
+        let session: Session = response.json().await.expect("Failed to parse session");
+        session_ids.push(session.id);
     }
     println!("Created 15 sessions");
 
@@ -2509,11 +2769,15 @@ async fn test_sessions_pagination() {
 
     // Cleanup
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
+    for session_id in session_ids {
+        cleanup_delete(
+            &client,
+            format!("{}/v1/sessions/{}", API_BASE_URL, session_id),
+            "session",
+        )
+        .await;
+    }
+    cleanup_agent(&client, &agent.public_id).await;
 
     println!("Sessions pagination test completed!");
 }
@@ -2830,21 +3094,27 @@ async fn test_second_message_triggers_workflow() {
 
     // Cleanup
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
-    client
-        .delete(format!("{}/v1/models/{}", API_BASE_URL, model.id))
-        .send()
-        .await
-        .expect("Failed to delete model");
-    client
-        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
-        .send()
-        .await
-        .expect("Failed to delete provider");
+    // `sessions.model_id` references the model below, so the session has to go
+    // first or the model delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/models/{}", API_BASE_URL, model.id),
+        "model",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 
     println!("Second message workflow test passed!");
 }
@@ -3062,11 +3332,19 @@ async fn test_capability_mounts_applied_on_session_creation() {
 
     // Cleanup
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session2.id),
+        "session2",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
 
     println!("Capability mounts test passed!");
 }
@@ -3320,11 +3598,12 @@ async fn test_mcp_server_crud() {
 
     // Cleanup
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/mcp-servers/{}", API_BASE_URL, server.id))
-        .send()
-        .await
-        .expect("Failed to delete MCP server");
+    cleanup_delete(
+        &client,
+        format!("{}/v1/mcp-servers/{}", API_BASE_URL, server.id),
+        "MCP server",
+    )
+    .await;
     client
         .post(format!(
             "{}/v1/mcp-servers/{}/delete",
@@ -3333,14 +3612,12 @@ async fn test_mcp_server_crud() {
         .send()
         .await
         .expect("Failed to permanently delete MCP server");
-    client
-        .delete(format!(
-            "{}/v1/mcp-servers/{}",
-            API_BASE_URL, server_with_key.id
-        ))
-        .send()
-        .await
-        .expect("Failed to delete MCP server with key");
+    cleanup_delete(
+        &client,
+        format!("{}/v1/mcp-servers/{}", API_BASE_URL, server_with_key.id),
+        "MCP server with key",
+    )
+    .await;
     client
         .post(format!(
             "{}/v1/mcp-servers/{}/delete",
@@ -3349,14 +3626,12 @@ async fn test_mcp_server_crud() {
         .send()
         .await
         .expect("Failed to permanently delete MCP server with key");
-    client
-        .delete(format!(
-            "{}/v1/mcp-servers/{}",
-            API_BASE_URL, server_with_headers.id
-        ))
-        .send()
-        .await
-        .expect("Failed to delete MCP server with headers");
+    cleanup_delete(
+        &client,
+        format!("{}/v1/mcp-servers/{}", API_BASE_URL, server_with_headers.id),
+        "MCP server with headers",
+    )
+    .await;
     client
         .post(format!(
             "{}/v1/mcp-servers/{}/delete",
@@ -3646,24 +3921,30 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
 
     // Cleanup
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
-    client
-        .delete(format!(
+    // `sessions.model_id` references the model below, so the session has to go
+    // first or the model delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
+    cleanup_delete(
+        &client,
+        format!(
             "{}/v1/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
-        ))
-        .send()
-        .await
-        .expect("Failed to delete model");
-    client
-        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
-        .send()
-        .await
-        .expect("Failed to delete provider");
+        ),
+        "model",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 
     println!("LlmSim agent execution with tool calls test passed!");
 }
@@ -3884,24 +4165,30 @@ async fn test_agent_execution_openai_with_tool_calls() {
 
     // Cleanup first before assertions
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
-    client
-        .delete(format!(
+    // `sessions.model_id` pins the model, so the session goes first or the
+    // model/provider delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
+    cleanup_delete(
+        &client,
+        format!(
             "{}/v1/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
-        ))
-        .send()
-        .await
-        .expect("Failed to delete model");
-    client
-        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
-        .send()
-        .await
-        .expect("Failed to delete provider");
+        ),
+        "model",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 
     skip_on_provider_account_block!(account_block);
 
@@ -4140,24 +4427,30 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
 
     // Cleanup first before assertions
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
-    client
-        .delete(format!(
+    // `sessions.model_id` pins the model, so the session goes first or the
+    // model/provider delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
+    cleanup_delete(
+        &client,
+        format!(
             "{}/v1/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
-        ))
-        .send()
-        .await
-        .expect("Failed to delete model");
-    client
-        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
-        .send()
-        .await
-        .expect("Failed to delete provider");
+        ),
+        "model",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 
     skip_on_provider_account_block!(account_block);
 
@@ -4332,24 +4625,30 @@ async fn test_agent_execution_multiple_tool_calls() {
 
     // Cleanup
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
-    client
-        .delete(format!(
+    // `sessions.model_id` references the model below, so the session has to go
+    // first or the model delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
+    cleanup_delete(
+        &client,
+        format!(
             "{}/v1/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
-        ))
-        .send()
-        .await
-        .expect("Failed to delete model");
-    client
-        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
-        .send()
-        .await
-        .expect("Failed to delete provider");
+        ),
+        "model",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 
     println!("Multiple tool calls test passed!");
 }
@@ -4670,21 +4969,27 @@ async fn test_streaming_events_emitted() {
 
     // Cleanup
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
-    client
-        .delete(format!("{}/v1/models/{}", API_BASE_URL, model.id))
-        .send()
-        .await
-        .expect("Failed to delete model");
-    client
-        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
-        .send()
-        .await
-        .expect("Failed to delete provider");
+    // `sessions.model_id` references the model below, so the session has to go
+    // first or the model delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/models/{}", API_BASE_URL, model.id),
+        "model",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 
     println!("Streaming events test passed!");
 }
@@ -4819,17 +5124,22 @@ async fn test_cancel_turn_endpoint() {
 
     // Cleanup
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
+    // `sessions.model_id` references the model below, so the session has to go
+    // first or the model delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
 
-    client
-        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
-        .send()
-        .await
-        .expect("Failed to delete provider");
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 
     println!("Cancel turn endpoint test passed!");
 }
@@ -5157,24 +5467,30 @@ async fn test_anthropic_extended_thinking() {
 
     // Cleanup
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
-    client
-        .delete(format!(
+    // `sessions.model_id` pins the model, so the session goes first or the
+    // model/provider delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
+    cleanup_delete(
+        &client,
+        format!(
             "{}/v1/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
-        ))
-        .send()
-        .await
-        .expect("Failed to delete model");
-    client
-        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
-        .send()
-        .await
-        .expect("Failed to delete provider");
+        ),
+        "model",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 
     skip_on_provider_account_block!(account_block);
 
@@ -5526,24 +5842,30 @@ async fn test_anthropic_extended_thinking_with_tools() {
 
     // Cleanup
     println!("\nCleaning up...");
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
-    client
-        .delete(format!(
+    // `sessions.model_id` pins the model, so the session goes first or the
+    // model/provider delete is refused (EVE-955).
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
+    cleanup_delete(
+        &client,
+        format!(
             "{}/v1/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
-        ))
-        .send()
-        .await
-        .expect("Failed to delete model");
-    client
-        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
-        .send()
-        .await
-        .expect("Failed to delete provider");
+        ),
+        "model",
+    )
+    .await;
+    cleanup_delete(
+        &client,
+        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        "provider",
+    )
+    .await;
 
     skip_on_provider_account_block!(account_block);
 
@@ -5679,11 +6001,13 @@ async fn test_events_api_contract() {
     }
 
     // Cleanup
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
 
     println!("Events API contract test passed!");
 }
@@ -5768,11 +6092,13 @@ async fn test_events_sse_contract() {
     );
 
     // Cleanup
-    client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
-        .send()
-        .await
-        .expect("Failed to delete agent");
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
 
     println!("SSE contract test passed!");
 }
@@ -6441,4 +6767,13 @@ async fn test_reasoning_reaches_api_sanitized_and_classified() {
             "reason.item should identify the artifact: {data}"
         );
     }
+
+    // Cleanup
+    cleanup_delete(
+        &client,
+        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        "session",
+    )
+    .await;
+    cleanup_agent(&client, &agent.public_id).await;
 }

@@ -64,6 +64,7 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_provider::typ
             CreateHarnessRow {
                 name: "trigger-harness".to_string(),
                 display_name: Some("Trigger Harness".to_string()),
+                icon: None,
                 description: None,
                 system_prompt: Some(String::new()),
                 parent_harness_id: None,
@@ -214,6 +215,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
             CreateHarnessRow {
                 name: "preserved-app-harness".to_string(),
                 display_name: None,
+                icon: None,
                 description: None,
                 system_prompt: Some(String::new()),
                 parent_harness_id: None,

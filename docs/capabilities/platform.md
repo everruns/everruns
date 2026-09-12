@@ -10,6 +10,7 @@ description: Discover, inspect, and manage Everruns resources through the author
 | **Risk** | High |
 | **Tools** | `discover`, `query`, `execute` |
 | **Dependencies** | `session_file_system` when embedded docs are enabled |
+| **Mounts** | `/workspace/docs`, the Everruns documentation, read-only, when embedded docs are enabled |
 
 The Platform capability gives an agent the same catalog-backed command surface
 as Everruns' `/mcp` endpoint. Operations come from the server's registered
@@ -105,10 +106,27 @@ Credentials are not transferred from Platform Chat session secrets into a new
 Agent. Configure integrations through their supported Agent-scoped credential
 or connection flow; do not paste credentials into command scripts.
 
+## Platform documentation
+
+When the build embeds the product documentation, this capability mounts it at
+`/workspace/docs` as a read-only virtual filesystem, served from memory with no
+database writes per session. Agents browse it with the standard file tools
+(`read_file`, `list_directory`, `grep`) or with `cat`, `ls`, and `grep` through
+Bashkit Shell.
+
+Key sections:
+
+- `/workspace/docs/getting-started/`, introduction, concepts, architecture
+- `/workspace/docs/features/`, SDK, CLI, UI, events, harnesses, capabilities
+- `/workspace/docs/capabilities/`, per-capability reference
+- `/workspace/docs/integrations/`, external integrations (Slack, Daytona, etc.)
+- `/workspace/docs/advanced/`, budgets, compaction, embedding, network access
+- `/workspace/docs/sre/`, environment variables, runbooks
+
 ## See also
 
 - [Platform Chat harness](/built-ins/harnesses/platform-chat/)
 - [MCP](/features/mcp/)
 - [Agent Triggers](/features/agent-triggers/)
-- [Platform Management](/capabilities/platform-management/), legacy
-  handwritten compatibility capability
+- [Platform Management](/capabilities/platform-management/), the removed
+  predecessor
