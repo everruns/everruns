@@ -9,7 +9,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::typed_id::{ImageId, MessageId, ModelId};
+use crate::typed_id::{FileId, ImageId, MessageId, ModelId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -240,6 +240,8 @@ pub enum ContentType {
     Text,
     Image,
     ImageFile,
+    /// Generic file attachment (for example a PDF).
+    File,
     ToolCall,
     ToolResult,
     Reasoning,
@@ -251,6 +253,7 @@ impl std::fmt::Display for ContentType {
             ContentType::Text => write!(f, "text"),
             ContentType::Image => write!(f, "image"),
             ContentType::ImageFile => write!(f, "image_file"),
+            ContentType::File => write!(f, "file"),
             ContentType::ToolCall => write!(f, "tool_call"),
             ContentType::ToolResult => write!(f, "tool_result"),
             ContentType::Reasoning => write!(f, "reasoning"),
@@ -453,6 +456,39 @@ impl ImageFileContentPart {
     }
 }
 
+/// File content part (reference to an uploaded file, e.g. a PDF)
+///
+/// This is used for files uploaded via the /files API.
+/// The file data is stored separately and referenced by ID.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct FileContentPart {
+    /// ID of the uploaded file (format: file_{32-hex})
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "file_01933b5a00007000800000000000001"))]
+    pub file_id: FileId,
+    /// Original filename (for display and provider file parts)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
+}
+
+impl FileContentPart {
+    /// Create a file content part that references an already-stored file.
+    pub fn new(file_id: FileId) -> Self {
+        Self {
+            file_id,
+            filename: None,
+        }
+    }
+
+    /// Create a file content part with its original filename attached.
+    pub fn with_filename(file_id: FileId, filename: impl Into<String>) -> Self {
+        Self {
+            file_id,
+            filename: Some(filename.into()),
+        }
+    }
+}
+
 /// Tool call content part (assistant requesting tool execution)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -536,6 +572,8 @@ pub enum ContentPart {
     Image(ImageContentPart),
     /// Image file content (reference to uploaded image by ID)
     ImageFile(ImageFileContentPart),
+    /// File content (reference to uploaded file, e.g. PDF, by ID)
+    File(FileContentPart),
     /// Tool call content (assistant requesting tool execution)
     ToolCall(ToolCallContentPart),
     /// Tool result content (result of tool execution)
@@ -568,6 +606,11 @@ impl ContentPart {
     /// Create an image file content part (reference to uploaded image)
     pub fn image_file(image_id: ImageId) -> Self {
         ContentPart::ImageFile(ImageFileContentPart::new(image_id))
+    }
+
+    /// Create a generic file content part (reference to an uploaded file).
+    pub fn file(file_id: FileId) -> Self {
+        ContentPart::File(FileContentPart::new(file_id))
     }
 
     /// Create a tool call content part
@@ -619,12 +662,18 @@ impl ContentPart {
         matches!(self, ContentPart::ImageFile(_))
     }
 
+    /// Returns true when this is a generic file part.
+    pub fn is_file(&self) -> bool {
+        matches!(self, ContentPart::File(_))
+    }
+
     /// Get the content type
     pub fn content_type(&self) -> ContentType {
         match self {
             ContentPart::Text(_) => ContentType::Text,
             ContentPart::Image(_) => ContentType::Image,
             ContentPart::ImageFile(_) => ContentType::ImageFile,
+            ContentPart::File(_) => ContentType::File,
             ContentPart::ToolCall(_) => ContentType::ToolCall,
             ContentPart::ToolResult(_) => ContentType::ToolResult,
             ContentPart::Reasoning(_) => ContentType::Reasoning,
@@ -677,6 +726,8 @@ pub enum InputContentPart {
     Image(ImageContentPart),
     /// Image file content (reference to uploaded image by ID)
     ImageFile(ImageFileContentPart),
+    /// File content (reference to uploaded file, e.g. PDF, by ID)
+    File(FileContentPart),
 }
 
 impl From<InputContentPart> for ContentPart {
@@ -685,6 +736,7 @@ impl From<InputContentPart> for ContentPart {
             InputContentPart::Text(t) => ContentPart::Text(t),
             InputContentPart::Image(i) => ContentPart::Image(i),
             InputContentPart::ImageFile(f) => ContentPart::ImageFile(f),
+            InputContentPart::File(f) => ContentPart::File(f),
         }
     }
 }
@@ -705,6 +757,11 @@ impl InputContentPart {
         InputContentPart::ImageFile(ImageFileContentPart::new(image_id))
     }
 
+    /// Create a generic file input part (reference to an uploaded file).
+    pub fn file(file_id: FileId) -> Self {
+        InputContentPart::File(FileContentPart::new(file_id))
+    }
+
     /// Get text content if this is a Text part
     pub fn as_text(&self) -> Option<&str> {
         match self {
@@ -719,6 +776,7 @@ impl InputContentPart {
             InputContentPart::Text(_) => ContentType::Text,
             InputContentPart::Image(_) => ContentType::Image,
             InputContentPart::ImageFile(_) => ContentType::ImageFile,
+            InputContentPart::File(_) => ContentType::File,
         }
     }
 }
@@ -972,6 +1030,11 @@ impl Message {
                 ContentPart::Reasoning(_) => String::new(),
                 ContentPart::Image(_) => "[Image]".to_string(),
                 ContentPart::ImageFile(_) => "[Image File]".to_string(),
+                ContentPart::File(part) => part
+                    .filename
+                    .clone()
+                    .map(|n| format!("[PDF File: {}]", n))
+                    .unwrap_or_else(|| "[PDF File]".to_string()),
                 ContentPart::ToolCall(tc) => {
                     format!(
                         "Tool call: {} with arguments: {}",
@@ -1567,5 +1630,17 @@ mod tests {
                 Some(expected)
             );
         }
+    }
+    #[test]
+    fn file_content_part_serde_roundtrip() {
+        let part = ContentPart::File(FileContentPart::with_filename(FileId::new(), "report.pdf"));
+        let v = serde_json::to_value(&part).unwrap();
+        assert_eq!(v["type"], serde_json::json!("file"));
+        assert_eq!(v["filename"], serde_json::json!("report.pdf"));
+        let back: ContentPart = serde_json::from_value(v).unwrap();
+        assert_eq!(back, part);
+        assert!(back.is_file());
+        assert_eq!(back.content_type(), ContentType::File);
+        assert_eq!(ContentType::File.to_string(), "file");
     }
 }

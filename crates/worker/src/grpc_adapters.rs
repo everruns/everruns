@@ -24,10 +24,11 @@ use everruns_core::{
 use everruns_core::{
     connection_services::ProviderCredentialStore, event_emitter::EventEmitter,
     execution_loading::AgentStore, execution_loading::HarnessStore,
-    execution_loading::SessionStore, image_services::CreateStoredImage,
-    image_services::ImageArtifactStore, image_services::ResolvedImage, image_services::StoredImage,
-    image_services::StoredImageInfo, provider_resolution::ProviderStore,
-    session_files::SessionFileSystem, session_services::LeasedResourceStore,
+    execution_loading::SessionStore, file_services::ResolvedFile,
+    image_services::CreateStoredImage, image_services::ImageArtifactStore,
+    image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
+    provider_resolution::ProviderStore, session_files::SessionFileSystem,
+    session_services::LeasedResourceStore,
 };
 use everruns_provider::error::{AgentLoopError, Result};
 use everruns_provider::model_spec::ModelSpec;
@@ -55,12 +56,6 @@ use uuid::Uuid;
 use crate::grpc_durable_store::GrpcClientAuth;
 
 const COMMAND_API_VERSION_V1: &str = "v1";
-
-#[derive(Debug, serde::Deserialize)]
-struct CommandPage<T> {
-    data: Vec<T>,
-    total: u32,
-}
 
 /// Map a tonic gRPC status to the appropriate AgentLoopError variant.
 ///
@@ -117,13 +112,6 @@ fn grpc_command_error_to_error(error: proto::CommandError) -> AgentLoopError {
         4 => AgentLoopError::store(format!("Conflict: {}", error.message)),
         _ => AgentLoopError::store(error.message),
     }
-}
-
-fn capability_refs_to_configs(capabilities: &[String]) -> Vec<serde_json::Value> {
-    capabilities
-        .iter()
-        .map(|capability| serde_json::json!({ "ref": capability, "config": {} }))
-        .collect()
 }
 
 /// Fetch image binary from a presigned URL and return as base64-encoded ResolvedImage.
@@ -2340,8 +2328,8 @@ fn proto_mcp_tool_def_to_tool_definition(
 // ============================================================================
 
 use everruns_core::{
-    image_services::ImageResolver, session_services::KeyInfo, session_services::SecretInfo,
-    session_services::SessionStorageStore,
+    file_services::FileResolver, image_services::ImageResolver, session_services::KeyInfo,
+    session_services::SecretInfo, session_services::SessionStorageStore,
 };
 use std::collections::HashMap;
 
@@ -2385,6 +2373,52 @@ impl GrpcOrgAdapter {
 
         Ok(result)
     }
+
+    /// Resolve multiple files in a batch (more efficient)
+    ///
+    /// Returns a HashMap mapping file_id to ResolvedFile for all found files.
+    /// Missing files are silently skipped. Files are always returned inline
+    /// as base64 (no presigned-URL variant, unlike images).
+    pub async fn resolve_files_batch(
+        &self,
+        file_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, ResolvedFile>> {
+        if file_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let mut client = self.client.inner.lock().await;
+
+        let request = proto::ResolveFilesRequest {
+            file_ids: file_ids.iter().map(|id| uuid_to_proto(*id)).collect(),
+            org_id: self.org_id,
+        };
+
+        let response = client
+            .resolve_files(request)
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        let mut result = HashMap::new();
+        for (id_str, data) in response.into_inner().files {
+            if let Ok(id) = Uuid::parse_str(&id_str) {
+                result.insert(
+                    id,
+                    ResolvedFile {
+                        base64: data.base64,
+                        media_type: data.media_type,
+                        filename: if data.filename.is_empty() {
+                            None
+                        } else {
+                            Some(data.filename)
+                        },
+                    },
+                );
+            }
+        }
+
+        Ok(result)
+    }
 }
 
 #[async_trait]
@@ -2418,6 +2452,14 @@ impl ImageResolver for GrpcOrgAdapter {
         } else {
             Ok(Some(ResolvedImage::new(inner.base64, inner.media_type)))
         }
+    }
+}
+
+#[async_trait]
+impl FileResolver for GrpcOrgAdapter {
+    /// Resolve file attachments by ID via the ResolveFiles batch RPC.
+    async fn resolve_files(&self, file_ids: &[Uuid]) -> Result<HashMap<Uuid, ResolvedFile>> {
+        self.resolve_files_batch(file_ids).await
     }
 }
 
@@ -3138,11 +3180,6 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
     // Harness Operations
     // =========================================================================
 
-    async fn list_harnesses(&self) -> Result<Vec<Harness>> {
-        self.execute_platform_command("list_harnesses", serde_json::json!({}))
-            .await
-    }
-
     async fn get_harness(
         &self,
         id: everruns_provider::typed_id::HarnessId,
@@ -3151,511 +3188,22 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
             .await
     }
 
-    async fn create_harness(
-        &self,
-        name: &str,
-        display_name: Option<&str>,
-        description: Option<&str>,
-        system_prompt: Option<&str>,
-        parent_harness_id: Option<everruns_provider::typed_id::HarnessId>,
-        capabilities: &[String],
-    ) -> Result<Harness> {
-        self.execute_platform_command(
-            "create_harness",
-            serde_json::json!({
-                "name": name,
-                "display_name": display_name,
-                "description": description,
-                // Omit when absent so the harness contributes no base prompt.
-                "system_prompt": system_prompt,
-                "parent_harness_id": parent_harness_id.map(|id| id.to_string()),
-                "capabilities": capability_refs_to_configs(capabilities),
-            }),
-        )
-        .await
-    }
-
-    async fn update_harness(
-        &self,
-        id: everruns_provider::typed_id::HarnessId,
-        name: Option<&str>,
-        display_name: Option<&str>,
-        description: Option<&str>,
-        system_prompt: Option<&str>,
-        parent_harness_id: Option<Option<everruns_provider::typed_id::HarnessId>>,
-    ) -> Result<Harness> {
-        let mut params = serde_json::Map::from_iter([(
-            "id".to_string(),
-            serde_json::Value::String(id.to_string()),
-        )]);
-        if let Some(name) = name {
-            params.insert(
-                "name".to_string(),
-                serde_json::Value::String(name.to_string()),
-            );
-        }
-        if let Some(display_name) = display_name {
-            params.insert(
-                "display_name".to_string(),
-                serde_json::Value::String(display_name.to_string()),
-            );
-        }
-        if let Some(description) = description {
-            params.insert(
-                "description".to_string(),
-                serde_json::Value::String(description.to_string()),
-            );
-        }
-        if let Some(system_prompt) = system_prompt {
-            params.insert(
-                "system_prompt".to_string(),
-                serde_json::Value::String(system_prompt.to_string()),
-            );
-        }
-        match parent_harness_id {
-            Some(Some(parent_id)) => {
-                params.insert(
-                    "parent_harness_id".to_string(),
-                    serde_json::Value::String(parent_id.to_string()),
-                );
-            }
-            Some(None) => {
-                params.insert("parent_harness_id".to_string(), serde_json::Value::Null);
-            }
-            None => {}
-        }
-
-        self.execute_platform_command("update_harness", serde_json::Value::Object(params))
-            .await
-    }
-
-    async fn delete_harness(&self, id: everruns_provider::typed_id::HarnessId) -> Result<()> {
-        let _: serde_json::Value = self
-            .execute_platform_command(
-                "delete_harness",
-                serde_json::json!({ "id": id.to_string() }),
-            )
-            .await?;
-        Ok(())
-    }
-
-    async fn copy_harness(
-        &self,
-        id: everruns_provider::typed_id::HarnessId,
-        new_name: Option<&str>,
-    ) -> Result<Harness> {
-        let harness: Harness = self
-            .execute_platform_command("copy_harness", serde_json::json!({ "id": id.to_string() }))
-            .await?;
-
-        if let Some(new_name) = new_name {
-            self.update_harness(harness.id, Some(new_name), None, None, None, None)
-                .await
-        } else {
-            Ok(harness)
-        }
-    }
-
     // =========================================================================
     // Agent Operations
     // =========================================================================
-
-    async fn list_agents(&self) -> Result<Vec<Agent>> {
-        let mut agents = Vec::new();
-        let mut offset = 0usize;
-        let limit = 100usize;
-
-        loop {
-            let page: CommandPage<Agent> = self
-                .execute_platform_command(
-                    "list_agents",
-                    serde_json::json!({ "offset": offset, "limit": limit }),
-                )
-                .await?;
-            let page_len = page.data.len();
-            let total = page.total as usize;
-            agents.extend(page.data);
-
-            if page_len == 0 || agents.len() >= total {
-                break;
-            }
-
-            offset = agents.len();
-        }
-
-        Ok(agents)
-    }
 
     async fn get_agent_by_id(&self, id: AgentId) -> Result<Option<Agent>> {
         self.execute_platform_lookup("get_agent", serde_json::json!({ "id": id.to_string() }))
             .await
     }
 
-    async fn create_agent(
-        &self,
-        name: &str,
-        display_name: Option<&str>,
-        description: Option<&str>,
-        system_prompt: &str,
-        capabilities: &[String],
-    ) -> Result<Agent> {
-        self.execute_platform_command(
-            "create_agent",
-            serde_json::json!({
-                "name": name,
-                "display_name": display_name,
-                "description": description,
-                "system_prompt": system_prompt,
-                "capabilities": capability_refs_to_configs(capabilities),
-            }),
-        )
-        .await
-    }
-
-    async fn update_agent(
-        &self,
-        id: AgentId,
-        name: Option<&str>,
-        display_name: Option<&str>,
-        description: Option<&str>,
-        system_prompt: Option<&str>,
-    ) -> Result<Agent> {
-        let mut params = serde_json::Map::from_iter([(
-            "id".to_string(),
-            serde_json::Value::String(id.to_string()),
-        )]);
-        if let Some(name) = name {
-            params.insert(
-                "name".to_string(),
-                serde_json::Value::String(name.to_string()),
-            );
-        }
-        if let Some(display_name) = display_name {
-            params.insert(
-                "display_name".to_string(),
-                serde_json::Value::String(display_name.to_string()),
-            );
-        }
-        if let Some(description) = description {
-            params.insert(
-                "description".to_string(),
-                serde_json::Value::String(description.to_string()),
-            );
-        }
-        if let Some(system_prompt) = system_prompt {
-            params.insert(
-                "system_prompt".to_string(),
-                serde_json::Value::String(system_prompt.to_string()),
-            );
-        }
-
-        self.execute_platform_command("update_agent", serde_json::Value::Object(params))
-            .await
-    }
-
-    async fn delete_agent(&self, id: AgentId) -> Result<()> {
-        let _: serde_json::Value = self
-            .execute_platform_command("delete_agent", serde_json::json!({ "id": id.to_string() }))
-            .await?;
-        Ok(())
-    }
-
     // =========================================================================
     // App Operations
     // =========================================================================
 
-    async fn list_apps(
-        &self,
-        search: Option<&str>,
-        include_archived: bool,
-    ) -> Result<Vec<everruns_platform::App>> {
-        let mut params = serde_json::Map::new();
-        if let Some(search) = search {
-            params.insert(
-                "search".to_string(),
-                serde_json::Value::String(search.to_string()),
-            );
-        }
-        if include_archived {
-            params.insert(
-                "include_archived".to_string(),
-                serde_json::Value::Bool(true),
-            );
-        }
-        self.execute_platform_command("list_apps", serde_json::Value::Object(params))
-            .await
-    }
-
-    async fn get_app(
-        &self,
-        id: everruns_provider::typed_id::AppId,
-    ) -> Result<Option<everruns_platform::App>> {
-        self.execute_platform_lookup("get_app", serde_json::json!({ "id": id.to_string() }))
-            .await
-    }
-
-    async fn create_app(
-        &self,
-        name: &str,
-        description: Option<&str>,
-        harness_id: everruns_provider::typed_id::HarnessId,
-        agent_id: Option<everruns_provider::typed_id::AgentId>,
-        agent_identity_id: Option<everruns_provider::typed_id::AgentIdentityId>,
-        channel_type: Option<everruns_platform::ChannelType>,
-        channel_config: Option<&serde_json::Value>,
-    ) -> Result<everruns_platform::App> {
-        let mut params = serde_json::Map::from_iter([
-            (
-                "name".to_string(),
-                serde_json::Value::String(name.to_string()),
-            ),
-            (
-                "harness_id".to_string(),
-                serde_json::Value::String(harness_id.to_string()),
-            ),
-        ]);
-        if let Some(description) = description {
-            params.insert(
-                "description".to_string(),
-                serde_json::Value::String(description.to_string()),
-            );
-        }
-        if let Some(agent_id) = agent_id {
-            params.insert(
-                "agent_id".to_string(),
-                serde_json::Value::String(agent_id.to_string()),
-            );
-        }
-        if let Some(agent_identity_id) = agent_identity_id {
-            params.insert(
-                "agent_identity_id".to_string(),
-                serde_json::Value::String(agent_identity_id.to_string()),
-            );
-        }
-        if let Some(channel_type) = channel_type {
-            params.insert(
-                "channel_type".to_string(),
-                serde_json::Value::String(channel_type.to_string()),
-            );
-        }
-        if let Some(channel_config) = channel_config {
-            params.insert("channel_config".to_string(), channel_config.clone());
-        }
-        self.execute_platform_command("create_app", serde_json::Value::Object(params))
-            .await
-    }
-
-    async fn update_app(
-        &self,
-        id: everruns_provider::typed_id::AppId,
-        name: Option<&str>,
-        description: Option<&str>,
-        harness_id: Option<everruns_provider::typed_id::HarnessId>,
-        agent_id: Option<everruns_provider::typed_id::AgentId>,
-        agent_identity_id: Option<Option<everruns_provider::typed_id::AgentIdentityId>>,
-    ) -> Result<everruns_platform::App> {
-        let mut params = serde_json::Map::from_iter([(
-            "id".to_string(),
-            serde_json::Value::String(id.to_string()),
-        )]);
-        if let Some(name) = name {
-            params.insert(
-                "name".to_string(),
-                serde_json::Value::String(name.to_string()),
-            );
-        }
-        if let Some(description) = description {
-            params.insert(
-                "description".to_string(),
-                serde_json::Value::String(description.to_string()),
-            );
-        }
-        if let Some(harness_id) = harness_id {
-            params.insert(
-                "harness_id".to_string(),
-                serde_json::Value::String(harness_id.to_string()),
-            );
-        }
-        if let Some(agent_id) = agent_id {
-            params.insert(
-                "agent_id".to_string(),
-                serde_json::Value::String(agent_id.to_string()),
-            );
-        }
-        match agent_identity_id {
-            Some(Some(agent_identity_id)) => {
-                params.insert(
-                    "agent_identity_id".to_string(),
-                    serde_json::Value::String(agent_identity_id.to_string()),
-                );
-            }
-            Some(None) => {
-                params.insert("agent_identity_id".to_string(), serde_json::Value::Null);
-            }
-            None => {}
-        }
-        self.execute_platform_command("update_app", serde_json::Value::Object(params))
-            .await
-    }
-
-    async fn delete_app(&self, id: everruns_provider::typed_id::AppId) -> Result<()> {
-        let _: serde_json::Value = self
-            .execute_platform_command("delete_app", serde_json::json!({ "id": id.to_string() }))
-            .await?;
-        Ok(())
-    }
-
-    async fn destroy_app(&self, id: everruns_provider::typed_id::AppId) -> Result<()> {
-        let _: serde_json::Value = self
-            .execute_platform_command("destroy_app", serde_json::json!({ "id": id.to_string() }))
-            .await?;
-        Ok(())
-    }
-
-    async fn publish_app(
-        &self,
-        id: everruns_provider::typed_id::AppId,
-    ) -> Result<everruns_platform::App> {
-        self.execute_platform_command("publish_app", serde_json::json!({ "id": id.to_string() }))
-            .await
-    }
-
-    async fn unpublish_app(
-        &self,
-        id: everruns_provider::typed_id::AppId,
-    ) -> Result<everruns_platform::App> {
-        self.execute_platform_command("unpublish_app", serde_json::json!({ "id": id.to_string() }))
-            .await
-    }
-
-    async fn add_app_channel(
-        &self,
-        app_id: everruns_provider::typed_id::AppId,
-        channel_type: everruns_platform::ChannelType,
-        channel_config: Option<&serde_json::Value>,
-        enabled: Option<bool>,
-    ) -> Result<everruns_platform::AppChannel> {
-        let mut params = serde_json::Map::from_iter([
-            (
-                "app_id".to_string(),
-                serde_json::Value::String(app_id.to_string()),
-            ),
-            (
-                "channel_type".to_string(),
-                serde_json::Value::String(channel_type.to_string()),
-            ),
-        ]);
-        if let Some(channel_config) = channel_config {
-            params.insert("channel_config".to_string(), channel_config.clone());
-        }
-        if let Some(enabled) = enabled {
-            params.insert("enabled".to_string(), serde_json::Value::Bool(enabled));
-        }
-        self.execute_platform_command("add_app_channel", serde_json::Value::Object(params))
-            .await
-    }
-
-    async fn update_app_channel(
-        &self,
-        app_id: everruns_provider::typed_id::AppId,
-        channel_id: everruns_provider::typed_id::AppChannelId,
-        channel_type: Option<everruns_platform::ChannelType>,
-        channel_config: Option<&serde_json::Value>,
-        enabled: Option<bool>,
-    ) -> Result<everruns_platform::AppChannel> {
-        let mut params = serde_json::Map::from_iter([
-            (
-                "app_id".to_string(),
-                serde_json::Value::String(app_id.to_string()),
-            ),
-            (
-                "channel_id".to_string(),
-                serde_json::Value::String(channel_id.to_string()),
-            ),
-        ]);
-        if let Some(channel_type) = channel_type {
-            params.insert(
-                "channel_type".to_string(),
-                serde_json::Value::String(channel_type.to_string()),
-            );
-        }
-        if let Some(channel_config) = channel_config {
-            params.insert("channel_config".to_string(), channel_config.clone());
-        }
-        if let Some(enabled) = enabled {
-            params.insert("enabled".to_string(), serde_json::Value::Bool(enabled));
-        }
-        self.execute_platform_command("update_app_channel", serde_json::Value::Object(params))
-            .await
-    }
-
-    async fn delete_app_channel(
-        &self,
-        app_id: everruns_provider::typed_id::AppId,
-        channel_id: everruns_provider::typed_id::AppChannelId,
-    ) -> Result<()> {
-        let _: serde_json::Value = self
-            .execute_platform_command(
-                "delete_app_channel",
-                serde_json::json!({
-                    "app_id": app_id.to_string(),
-                    "channel_id": channel_id.to_string(),
-                }),
-            )
-            .await?;
-        Ok(())
-    }
-
     // =========================================================================
     // Session Operations
     // =========================================================================
-
-    async fn list_sessions(
-        &self,
-        limit: Option<usize>,
-        agent_id: Option<AgentId>,
-    ) -> Result<Vec<Session>> {
-        let page: CommandPage<Session> = self
-            .execute_platform_command(
-                "list_sessions",
-                serde_json::json!({
-                    "limit": limit.unwrap_or(20),
-                    "agent_id": agent_id.map(|id| id.to_string()),
-                }),
-            )
-            .await?;
-        Ok(page.data)
-    }
-
-    async fn create_session(
-        &self,
-        harness_id: everruns_provider::typed_id::HarnessId,
-        agent_id: Option<AgentId>,
-        title: Option<&str>,
-        locale: Option<&str>,
-        blueprint_id: Option<&str>,
-        blueprint_config: Option<&serde_json::Value>,
-        parent_session_id: Option<SessionId>,
-    ) -> Result<Session> {
-        self.execute_platform_command(
-            "create_session",
-            serde_json::json!({
-                "harness_id": harness_id.to_string(),
-                "agent_id": agent_id.map(|id| id.to_string()),
-                "title": title,
-                "locale": locale,
-                "tags": ["managed"],
-                "capabilities": [],
-                "tools": [],
-                "mcp_servers": {},
-                "initial_files": [],
-                "blueprint_id": blueprint_id,
-                "blueprint_config": blueprint_config,
-                "parent_session_id": parent_session_id.map(|id| id.to_string()),
-            }),
-        )
-        .await
-    }
 
     async fn create_session_with_options(
         &self,
@@ -3707,27 +3255,6 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
             }),
         )
         .await
-    }
-
-    async fn get_session_context_report(
-        &self,
-        id: SessionId,
-    ) -> Result<everruns_core::SessionContextReport> {
-        self.execute_platform_command(
-            "get_session_context_report",
-            serde_json::json!({ "session_id": id.to_string() }),
-        )
-        .await
-    }
-
-    async fn delete_session(&self, id: SessionId) -> Result<()> {
-        let _: serde_json::Value = self
-            .execute_platform_command(
-                "delete_session",
-                serde_json::json!({ "session_id": id.to_string() }),
-            )
-            .await?;
-        Ok(())
     }
 
     // =========================================================================
@@ -3844,40 +3371,9 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
     // Capabilities
     // =========================================================================
 
-    async fn list_capabilities(
-        &self,
-        search: Option<&str>,
-    ) -> Result<Vec<everruns_core::CapabilityInfo>> {
-        let mut params = serde_json::Map::new();
-        params.insert("limit".to_string(), serde_json::json!(200));
-        if let Some(search) = search {
-            params.insert(
-                "search".to_string(),
-                serde_json::Value::String(search.to_string()),
-            );
-        }
-
-        let page: CommandPage<everruns_core::CapabilityInfo> = self
-            .execute_platform_command("list_capabilities", serde_json::Value::Object(params))
-            .await?;
-        Ok(page.data)
-    }
-
     // =========================================================================
     // UI Links
     // =========================================================================
-
-    fn base_url(&self) -> &str {
-        // Cache the base_url as a leaked static to satisfy the &str lifetime
-        // Called infrequently, value stable across runtime
-        static BASE_URL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-        BASE_URL.get_or_init(|| {
-            everruns_core::config::env_string_any(
-                &["PUBLIC_APP_URL", "FRONTEND_URL", "APP_URL"],
-                "http://localhost:9300",
-            )
-        })
-    }
 }
 
 // ============================================================================
@@ -4749,19 +4245,6 @@ mod tests {
         let err = grpc_missing_field("No session in response");
         assert!(matches!(err, AgentLoopError::MessageStore(_)));
         assert!(err.to_string().contains("No session in response"));
-    }
-
-    #[test]
-    fn test_capability_refs_to_configs_wraps_ids() {
-        let configs = capability_refs_to_configs(&["session".to_string(), "platform".to_string()]);
-
-        assert_eq!(
-            configs,
-            vec![
-                serde_json::json!({ "ref": "session", "config": {} }),
-                serde_json::json!({ "ref": "platform", "config": {} }),
-            ]
-        );
     }
 
     #[test]

@@ -234,6 +234,18 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             .map_err(|e| AgentLoopError::store(format!("Failed to resolve images: {}", e)))
     }
 
+    async fn resolve_files_batch(
+        &self,
+        org_id: i64,
+        file_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, everruns_core::file_services::ResolvedFile>> {
+        let resolver = GrpcOrgAdapter::new(self.client.clone(), org_id);
+        resolver
+            .resolve_files_batch(file_ids)
+            .await
+            .map_err(|e| AgentLoopError::store(format!("Failed to resolve files: {}", e)))
+    }
+
     // =========================================================================
     // Session File Operations
     // =========================================================================

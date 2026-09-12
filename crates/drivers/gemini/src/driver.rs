@@ -134,6 +134,27 @@ impl GeminiChatDriver {
                     LlmContentPart::Audio { .. } => {
                         Some(GeminiPart::text(AUDIO_CONTENT_PLACEHOLDER))
                     }
+                    LlmContentPart::File { url, .. } => {
+                        if let Some(parsed) = parse_data_url(url) {
+                            Some(GeminiPart::InlineData {
+                                inline_data: GeminiBlob {
+                                    mime_type: parsed.media_type,
+                                    data: parsed.data,
+                                },
+                            })
+                        } else if url.starts_with("data:") {
+                            // Malformed data URL
+                            None
+                        } else {
+                            // File URL - reference via file_data (PDF)
+                            Some(GeminiPart::FileData {
+                                file_data: GeminiFileData {
+                                    mime_type: "application/pdf".to_string(),
+                                    file_uri: url.clone(),
+                                },
+                            })
+                        }
+                    }
                 })
                 .collect(),
         }
@@ -1391,5 +1412,20 @@ mod tests {
             }
             assert_eq!(requests[0].body_json::<Value>().unwrap(), expected);
         }
+    }
+
+    #[test]
+    fn file_pdf_serializes_to_inline_data() {
+        let content = LlmMessageContent::Parts(vec![LlmContentPart::File {
+            url: "data:application/pdf;base64,JVBERi0=".into(),
+            filename: Some("report.pdf".into()),
+        }]);
+        let v = serde_json::to_value(GeminiChatDriver::convert_content(&content)).unwrap();
+        assert_eq!(
+            v,
+            serde_json::json!([{
+                "inlineData": {"mimeType": "application/pdf", "data": "JVBERi0="}
+            }])
+        );
     }
 }

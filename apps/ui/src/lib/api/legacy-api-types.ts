@@ -2789,6 +2789,36 @@ export type AllowedImageType = (typeof ALLOWED_IMAGE_TYPES)[number];
 /** Maximum image size in bytes (100 MB) */
 export const MAX_IMAGE_SIZE = 100 * 1024 * 1024;
 
+/** File metadata (returned from upload; for model-input files such as PDFs) */
+export interface FileInfo {
+  id: string;
+  filename: string | null;
+  content_type: string;
+  size_bytes: number;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+/** File upload response */
+export interface FileUploadResponse {
+  id: string;
+  filename: string | null;
+  content_type: string;
+  size_bytes: number;
+  created_at: string;
+}
+
+/** Allowed model-input file content types (PDF only for now) */
+export const ALLOWED_FILE_TYPES = ["application/pdf"] as const;
+
+export type AllowedFileType = (typeof ALLOWED_FILE_TYPES)[number];
+
+/** Allowed model-input file extensions */
+export const ALLOWED_FILE_EXTENSIONS = [".pdf"] as const;
+
+/** Maximum model-input file size in bytes (32 MB, matches the server cap) */
+export const MAX_FILE_SIZE = 32 * 1024 * 1024;
+
 // From legacy knowledge-index-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 // Knowledge Index types
 //
@@ -3042,6 +3072,11 @@ export type ContentPart =
       filename?: string;
     }
   | {
+      type: "file";
+      file_id: string;
+      filename?: string;
+    }
+  | {
       type: "resource";
       uri?: string;
       mimeType?: string;
@@ -3100,6 +3135,14 @@ export function isImageFilePart(part: ContentPart): part is {
   filename?: string;
 } {
   return part.type === "image_file";
+}
+
+export function isFilePart(part: ContentPart): part is {
+  type: "file";
+  file_id: string;
+  filename?: string;
+} {
+  return part.type === "file";
 }
 
 export function isResourcePart(part: ContentPart): part is Extract<

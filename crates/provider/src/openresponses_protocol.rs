@@ -379,9 +379,12 @@ impl OpenResponsesProtocolChatDriver {
             let output = match &msg.content {
                 LlmMessageContent::Text(text) => text.clone(),
                 LlmMessageContent::Parts(parts) => {
-                    has_images = parts
-                        .iter()
-                        .any(|p| matches!(p, LlmContentPart::Image { .. }));
+                    has_images = parts.iter().any(|p| {
+                        matches!(
+                            p,
+                            LlmContentPart::Image { .. } | LlmContentPart::File { .. }
+                        )
+                    });
                     parts
                         .iter()
                         .filter_map(|p| match p {
@@ -395,7 +398,7 @@ impl OpenResponsesProtocolChatDriver {
             if has_images {
                 tracing::warn!(
                     tool_call_id = %tool_call_id,
-                    "OpenResponses API does not support images in tool results; images dropped"
+                    "OpenResponses API does not support images/files in tool results; attachments dropped"
                 );
             }
             return ResponsesInputItem::FunctionCallOutput {
@@ -424,6 +427,14 @@ impl OpenResponsesProtocolChatDriver {
                             input_audio: ResponsesInputAudio {
                                 data: url.clone(),
                                 format: "wav".to_string(),
+                            },
+                        },
+                        LlmContentPart::File { url, filename } => ResponsesContentPart::InputFile {
+                            r#type: "input_file".to_string(),
+                            input_file: ResponsesInputFile {
+                                file_data: Some(url.clone()),
+                                file_url: None,
+                                filename: filename.clone(),
                             },
                         },
                     })
@@ -2343,6 +2354,17 @@ impl From<&CompactOutputItem> for ResponsesInputItem {
                                         image_url: image_url.clone(),
                                     }
                                 }
+                                CompactContentPart::InputFile {
+                                    file_data,
+                                    filename,
+                                } => ResponsesContentPart::InputFile {
+                                    r#type: "input_file".to_string(),
+                                    input_file: ResponsesInputFile {
+                                        file_data: Some(file_data.clone()),
+                                        file_url: None,
+                                        filename: filename.clone(),
+                                    },
+                                },
                             })
                             .collect(),
                     ),
@@ -2381,12 +2403,26 @@ enum ResponsesContentPart {
         r#type: String,
         input_audio: ResponsesInputAudio,
     },
+    InputFile {
+        r#type: String,
+        input_file: ResponsesInputFile,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ResponsesInputAudio {
     data: String,
     format: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ResponsesInputFile {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_data: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filename: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -5708,5 +5744,25 @@ mod tests {
         }
         assert_ne!(bodies[0]["input"], bodies[1]["input"]);
         assert_eq!(bodies[0]["prompt_cache_key"], bodies[1]["prompt_cache_key"]);
+    }
+
+    #[test]
+    fn file_part_serializes_to_input_file() {
+        let part = ResponsesContentPart::InputFile {
+            r#type: "input_file".to_string(),
+            input_file: ResponsesInputFile {
+                file_data: Some("data:application/pdf;base64,JVBERi0=".to_string()),
+                file_url: None,
+                filename: Some("report.pdf".to_string()),
+            },
+        };
+        let v = serde_json::to_value(&part).unwrap();
+        assert_eq!(v["type"], serde_json::json!("input_file"));
+        assert_eq!(
+            v["input_file"]["file_data"],
+            serde_json::json!("data:application/pdf;base64,JVBERi0=")
+        );
+        assert_eq!(v["input_file"]["filename"], serde_json::json!("report.pdf"));
+        assert!(v["input_file"].get("file_url").is_none());
     }
 }

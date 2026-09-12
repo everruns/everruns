@@ -346,6 +346,32 @@ pub trait ChatDriver: Send + Sync {
         })
     }
 
+    /// Whether this driver can complete without SSE on the wire.
+    ///
+    /// When `false` (the default), [`Self::chat_completion_non_streaming`]
+    /// falls back to collecting [`Self::chat_completion_stream`], so callers
+    /// still wait for one full response but the provider call streams
+    /// underneath. Drivers with a native `stream: false` JSON endpoint
+    /// return `true` and issue a single request/response call instead.
+    fn supports_native_non_streaming(&self) -> bool {
+        false
+    }
+
+    /// Call the LLM and wait for the full response without SSE.
+    ///
+    /// This is the non-streaming counterpart to
+    /// [`Self::chat_completion_stream`]: no `LlmStreamEvent`s reach the
+    /// caller. The default collects the stream; drivers with a native
+    /// non-streaming endpoint override this to use it.
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponse> {
+        self.chat_completion(endpoint, messages, config).await
+    }
+
     /// List available models from the provider
     ///
     /// Returns `Ok(Some(models))` if the provider supports model listing,
@@ -456,6 +482,21 @@ impl ChatDriver for Box<dyn ChatDriver> {
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         (**self).chat_completion(endpoint, messages, config).await
+    }
+
+    fn supports_native_non_streaming(&self) -> bool {
+        (**self).supports_native_non_streaming()
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponse> {
+        (**self)
+            .chat_completion_non_streaming(endpoint, messages, config)
+            .await
     }
 
     async fn list_models(
@@ -659,6 +700,11 @@ pub enum LlmContentPart {
     Image { url: String },
     /// Audio content (base64 data URL)
     Audio { url: String },
+    /// File content, e.g. a PDF document (base64 data URL or file URL)
+    File {
+        url: String,
+        filename: Option<String>,
+    },
 }
 
 impl LlmContentPart {
@@ -675,6 +721,14 @@ impl LlmContentPart {
     /// Create an audio content part from URL (typically a data URL)
     pub fn audio(url: impl Into<String>) -> Self {
         LlmContentPart::Audio { url: url.into() }
+    }
+
+    /// Create a file content part from URL (typically a data URL)
+    pub fn file(url: impl Into<String>, filename: Option<String>) -> Self {
+        LlmContentPart::File {
+            url: url.into(),
+            filename,
+        }
     }
 }
 
@@ -1417,6 +1471,21 @@ impl ChatDriver for RequestOptionsDriver {
             .await
     }
 
+    fn supports_native_non_streaming(&self) -> bool {
+        self.inner.supports_native_non_streaming()
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponse> {
+        self.inner
+            .chat_completion_non_streaming(endpoint, messages, &self.apply(config))
+            .await
+    }
+
     async fn list_models(
         &self,
         endpoint: &crate::runtime_provider::ProviderEndpoint,
@@ -2030,6 +2099,7 @@ mod tests {
                     LlmContentPart::Text { text } => ("text", text.as_str()),
                     LlmContentPart::Image { url } => ("image", url.as_str()),
                     LlmContentPart::Audio { url } => ("audio", url.as_str()),
+                    LlmContentPart::File { url, .. } => ("file", url.as_str()),
                 })
                 .collect();
             assert_eq!(actual, expected);

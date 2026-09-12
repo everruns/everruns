@@ -2,8 +2,8 @@
 
 use async_trait::async_trait;
 use everruns::local::{LocalPlatformStore, LocalSessionRunner};
-use everruns_core::session::ExecutionSession;
-use everruns_platform::{PlatformMessage, PlatformStore};
+use everruns_core::session::{ExecutionSession, SessionSeedMode};
+use everruns_platform::{PlatformCreateSessionRequest, PlatformMessage, PlatformStore};
 use everruns_provider::error::Result;
 use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 use std::sync::Arc;
@@ -71,8 +71,24 @@ impl LocalSessionRunner for FakeRunner {
     }
 }
 
+fn request(harness_id: HarnessId, blueprint_id: Option<&str>) -> PlatformCreateSessionRequest {
+    PlatformCreateSessionRequest {
+        harness_id,
+        agent_id: None,
+        title: Some("child".to_string()),
+        goal: None,
+        locale: None,
+        blueprint_id: blueprint_id.map(str::to_string),
+        blueprint_config: None,
+        parent_session_id: None,
+        forked_from_session_id: None,
+        budget_root_session_id: None,
+        seed: SessionSeedMode::Fresh,
+    }
+}
+
 fn store() -> LocalPlatformStore {
-    LocalPlatformStore::new(Arc::new(FakeRunner::default()), "http://localhost:9300")
+    LocalPlatformStore::new(Arc::new(FakeRunner::default()))
 }
 
 #[tokio::test]
@@ -80,7 +96,7 @@ async fn subagent_core_is_honest() {
     let store = store();
     let harness_id = HarnessId::new();
     let child = store
-        .create_session(harness_id, None, Some("child"), None, None, None, None)
+        .create_session_with_options(request(harness_id, None))
         .await
         .unwrap();
     assert_eq!(child.harness_id, harness_id);
@@ -88,20 +104,18 @@ async fn subagent_core_is_honest() {
     store.send_message(child.id, "go").await.unwrap();
     assert_eq!(store.wait_for_idle(child.id, None).await.unwrap(), "idle");
     assert_eq!(store.get_messages(child.id, None).await.unwrap().len(), 1);
-    assert_eq!(store.base_url(), "http://localhost:9300");
 }
 
+/// The management surface the local store used to reject method-by-method is
+/// gone from `PlatformStore` entirely (EVE-953), so there is nothing left to
+/// call. What still has to hold is that the one creation path the local store
+/// does not support is refused rather than silently ignored.
 #[tokio::test]
-async fn platform_management_ops_are_unsupported() {
+async fn blueprint_sessions_are_unsupported() {
     let store = store();
-    assert!(store.list_harnesses().await.is_err());
-    assert!(store.list_agents().await.is_err());
-    assert!(store.list_apps(None, false).await.is_err());
-    assert!(store.list_capabilities(None).await.is_err());
-    assert!(store.delete_session(SessionId::new()).await.is_err());
     assert!(
         store
-            .create_agent("x", None, None, "prompt", &[])
+            .create_session_with_options(request(HarnessId::new(), Some("bp")))
             .await
             .is_err()
     );

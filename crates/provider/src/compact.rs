@@ -112,6 +112,15 @@ pub enum CompactContentPart {
         /// Image URL or data URL.
         image_url: String,
     },
+    /// File (e.g. PDF) input.
+    #[serde(rename = "input_file")]
+    InputFile {
+        /// File data URL (base64) or file URL.
+        file_data: String,
+        /// Original filename, when known.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        filename: Option<String>,
+    },
 }
 
 /// Decoded response from native conversation compaction.
@@ -324,6 +333,12 @@ impl CompactInputItem {
                         LlmContentPart::Image { url } => Some(CompactContentPart::InputImage {
                             image_url: url.clone(),
                         }),
+                        LlmContentPart::File { url, filename } => {
+                            Some(CompactContentPart::InputFile {
+                                file_data: url.clone(),
+                                filename: filename.clone(),
+                            })
+                        }
                         LlmContentPart::Audio { .. } => None,
                     })
                     .collect::<Vec<_>>();
@@ -562,5 +577,20 @@ mod tests {
             serde_json::to_value(CompactInputItem::from_llm_message(&calls_only)).unwrap(),
             json!([{"type":"function_call","call_id":"call-2","name":"clock","arguments":"{}"}])
         );
+    }
+
+    #[test]
+    fn compact_file_part_preserves_data_url_and_filename() {
+        let part = CompactContentPart::InputFile {
+            file_data: "data:application/pdf;base64,JVBERi0=".to_string(),
+            filename: Some("report.pdf".to_string()),
+        };
+        let v = serde_json::to_value(&part).unwrap();
+        assert_eq!(v["type"], serde_json::json!("input_file"));
+        assert_eq!(
+            v["file_data"],
+            serde_json::json!("data:application/pdf;base64,JVBERi0=")
+        );
+        assert_eq!(v["filename"], serde_json::json!("report.pdf"));
     }
 }

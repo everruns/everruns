@@ -59,8 +59,12 @@ use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use crate::{ErrorDisclosure, UserFacingError, UserFacingErrorContext};
 use crate::{
-    durability::DurableToolResultStore, durability::PartialStreamState,
-    durability::PartialStreamStore, event_emitter::EventEmitter, image_services::ImageResolver,
+    durability::DurableToolResultStore,
+    durability::PartialStreamState,
+    durability::PartialStreamStore,
+    event_emitter::EventEmitter,
+    file_services::{FileResolver, ResolvedFile},
+    image_services::ImageResolver,
     image_services::ResolvedImage,
 };
 use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
@@ -277,6 +281,7 @@ pub struct ReasonAtom {
     event_emitter: PhaseEffectEmitter<dyn PhaseEffectSink>,
     /// Optional image resolver for resolving image_file content parts
     image_resolver: Option<Arc<dyn ImageResolver>>,
+    file_resolver: Option<Arc<dyn FileResolver>>,
     /// Optional heartbeater for stream-liveness signalling (EVE-531).
     stream_heartbeater: Option<Arc<dyn crate::durability::StreamHeartbeater>>,
     /// Optional provider stall timeout (EVE-531). Default: 120s.
@@ -319,6 +324,7 @@ impl ReasonAtom {
             capability_registry,
             event_emitter: PhaseEffectEmitter::new(Arc::new(event_emitter)),
             image_resolver: None,
+            file_resolver: None,
             stream_heartbeater: None,
             provider_stall_timeout: None,
             provider_retry_config: LlmRetryConfig::default(),
@@ -385,6 +391,11 @@ impl ReasonAtom {
     /// ```
     pub fn with_image_resolver(mut self, resolver: Arc<dyn ImageResolver>) -> Self {
         self.image_resolver = Some(resolver);
+        self
+    }
+
+    pub fn with_file_resolver(mut self, resolver: Arc<dyn FileResolver>) -> Self {
+        self.file_resolver = Some(resolver);
         self
     }
 
@@ -1119,6 +1130,7 @@ impl ReasonAtom {
         // Image resolution converts image_file content parts (which only contain UUIDs)
         // into actual base64-encoded image data that can be sent to LLMs.
         let resolved_images = self.resolve_images(&context_messages).await;
+        let resolved_files = self.resolve_files(&context_messages).await;
 
         // 11. Build LLM messages
         let mut llm_messages = Vec::new();
@@ -1157,8 +1169,11 @@ impl ReasonAtom {
                 stripped_error_count += 1;
                 continue;
             }
-            let mut llm_msg =
-                crate::llm_conversions::llm_message_from_message_with_images(msg, &resolved_images);
+            let mut llm_msg = crate::llm_conversions::llm_message_from_message_with_attachments(
+                msg,
+                &resolved_images,
+                &resolved_files,
+            );
             llm_msg.configuration_update = reasoning_replay
                 .as_ref()
                 .and_then(|replay| replay.transitions.get(&msg.id).copied());
@@ -2707,6 +2722,34 @@ impl ReasonAtom {
         );
 
         resolved
+    }
+
+    async fn resolve_files(&self, messages: &[Message]) -> HashMap<Uuid, ResolvedFile> {
+        let Some(resolver) = &self.file_resolver else {
+            return HashMap::new();
+        };
+
+        let file_ids: Vec<Uuid> = messages
+            .iter()
+            .flat_map(crate::llm_conversions::extract_file_ids)
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        if file_ids.is_empty() {
+            return HashMap::new();
+        }
+
+        match resolver.resolve_files(&file_ids).await {
+            Ok(map) => map,
+            Err(e) => {
+                tracing::warn!(
+                    target: "reason",
+                    "ReasonAtom: file resolution failed: {e}"
+                );
+                HashMap::new()
+            }
+        }
     }
 }
 

@@ -139,11 +139,9 @@ impl LocalBackends {
     /// (org, session); the runner is the source of truth for local session
     /// state, so no extra store handles are required.
     pub fn with_platform_runner(mut self, runner: Arc<dyn LocalSessionRunner>) -> Self {
-        let base_url = self.profile.base_url.clone();
         let factory: PlatformStoreFactory =
             Arc::new(move |_org_id: i64, _session_id: SessionId| {
-                Arc::new(LocalPlatformStore::new(runner.clone(), base_url.clone()))
-                    as Arc<dyn PlatformStore>
+                Arc::new(LocalPlatformStore::new(runner.clone())) as Arc<dyn PlatformStore>
             });
         self.runtime_backends = self.runtime_backends.with_platform_store_factory(factory);
         self

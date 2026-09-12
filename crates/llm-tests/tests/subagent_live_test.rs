@@ -172,13 +172,11 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
     );
 
     let runtime_cell: Arc<OnceLock<InProcessRuntime>> = Arc::new(OnceLock::new());
-    let store: Arc<dyn PlatformStore> = Arc::new(LocalPlatformStore::new(
-        Arc::new(RuntimeRunner {
+    let store: Arc<dyn PlatformStore> =
+        Arc::new(LocalPlatformStore::new(Arc::new(RuntimeRunner {
             runtime: runtime_cell.clone(),
             sessions,
-        }),
-        "http://localhost",
-    ));
+        })));
 
     let backends =
         backends.with_platform_store_factory(Arc::new(move |_org, _session| store.clone()));

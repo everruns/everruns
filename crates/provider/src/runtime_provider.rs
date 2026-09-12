@@ -358,6 +358,21 @@ impl RuntimeProvider {
             .map_err(|error| error.with_provider(self.id.as_str()))
     }
 
+    pub fn supports_native_non_streaming(&self) -> bool {
+        self.driver.supports_native_non_streaming()
+    }
+
+    pub async fn chat_completion_non_streaming(
+        &self,
+        messages: Vec<crate::driver_registry::LlmMessage>,
+        config: &crate::driver_registry::LlmCallConfig,
+    ) -> Result<crate::driver_registry::LlmResponse> {
+        self.driver
+            .chat_completion_non_streaming(&self.endpoint, messages, config)
+            .await
+            .map_err(|error| error.with_provider(self.id.as_str()))
+    }
+
     pub async fn list_models(
         &self,
     ) -> Result<Option<Vec<crate::driver_registry::DiscoveredModel>>> {
@@ -438,6 +453,19 @@ impl ChatDriver for ProviderBoundDriver {
         _endpoint: &ProviderEndpoint,
     ) -> Result<Option<Vec<crate::driver_registry::DiscoveredModel>>> {
         self.0.list_models().await
+    }
+
+    fn supports_native_non_streaming(&self) -> bool {
+        self.0.supports_native_non_streaming()
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        messages: Vec<crate::driver_registry::LlmMessage>,
+        config: &crate::driver_registry::LlmCallConfig,
+    ) -> Result<crate::driver_registry::LlmResponse> {
+        self.0.chat_completion_non_streaming(messages, config).await
     }
 
     fn supports_compact(&self) -> bool {

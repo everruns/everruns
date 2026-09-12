@@ -2183,6 +2183,113 @@ async fn test_message_triggers_agent_workflow() {
     println!("Message triggers agent workflow test passed!");
 }
 
+// ============================================================================
+// POST /v1/sessions/:id/messages?wait=true (workflow test)
+// ============================================================================
+
+/// Tests POST /messages?wait=true blocks until the worker completes the turn (workflow test):
+/// with server+worker running, the request must return 200 with a completed status and the
+/// assistant output produced by the LlmSim scripted model.
+#[tokio::test]
+async fn test_post_message_wait_returns_completed_turn() {
+    use std::time::Duration;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(70))
+        .build()
+        .expect("Failed to create client");
+
+    // Step 1: Register LlmSim provider + model and create agent.
+    let provider_name = "wait-test-llmsim";
+    let provider_response = client
+        .post(format!("{}/v1/providers", API_BASE_URL))
+        .json(&json!({
+            "name": provider_name,
+            "provider_type": "llmsim",
+            "config": {"base_url": "http://localhost:1", "api_key": "test-key"}
+        }))
+        .send()
+        .await
+        .expect("Failed to create LlmSim provider");
+    assert_eq!(provider_response.status(), 201);
+    let provider: Provider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+
+    let model_id = "llmsim-wait-test";
+    let model_create = client
+        .post(format!(
+            "{}/v1/providers/{}/models",
+            API_BASE_URL, provider.id
+        ))
+        .json(&json!({
+            "model_id": model_id,
+            "display_name": "LlmSim Wait Test Model"
+        }))
+        .send()
+        .await
+        .expect("Failed to create LlmSim model");
+    assert_eq!(model_create.status(), 201);
+
+    let agent_name = "wait-test-agent";
+    let agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "provider_id": provider.id,
+            "model_id": model_id,
+            "name": agent_name,
+            "system_prompt": "You are a helpful test assistant."
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+    assert_eq!(agent_response.status(), 201);
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+
+    // Step 2: Create a session for the agent.
+    let session_response = client
+        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .json(&json!({
+            "harness_name": SEED_HARNESS_NAME,
+            "agent_id": agent.public_id,
+            "title": "Wait test"
+        }))
+        .send()
+        .await
+        .expect("Failed to create session");
+    assert_eq!(session_response.status(), 201);
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+
+    // Step 3: POST with wait=true; the worker completes the turn, expect 200 completed.
+    let message_response = client
+        .post(format!(
+            "{}/v1/sessions/{}/messages?wait=true&timeout_ms=60000",
+            API_BASE_URL, session.id
+        ))
+        .json(&json!({
+            "message": {
+                "role": "user",
+                "content": [{ "type": "text", "text": "Reply to this workflow test message." }]
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to post message");
+    assert_eq!(message_response.status(), 200);
+    let body: Value = message_response
+        .json()
+        .await
+        .expect("Failed to parse wait response");
+    assert_eq!(body["status"], "completed");
+    let messages = body["messages"].as_array().expect("messages array");
+    assert!(!messages.is_empty(), "waited turn returns assistant output");
+    println!("✓ POST /messages?wait=true returns completed turn");
+}
+
 /// Test that tool calls are not duplicated during workflow execution.
 ///
 /// This test verifies that when an agent uses a tool (like current_time),
