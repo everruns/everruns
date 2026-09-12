@@ -228,6 +228,7 @@ configs:
       #   /oauth/*   -> API
       #   /mcp       -> API
       #   /.well-known/* -> API
+      #   /auth.md   -> API
       #   /api-doc/* -> API
       #   /health    -> API
       #   /*         -> UI
@@ -268,6 +269,9 @@ configs:
           reverse_proxy server:9000
         }
         handle /.well-known/* {
+          reverse_proxy server:9000
+        }
+        handle /auth.md {
           reverse_proxy server:9000
         }
         handle /api-doc/* {

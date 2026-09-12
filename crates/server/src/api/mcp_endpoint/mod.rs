@@ -136,8 +136,8 @@ impl JsonRpcResponse {
 // MCP Tool definitions
 // ============================================================================
 
-const MCP_SERVER_NAME: &str = "everruns";
-const MCP_SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const MCP_SERVER_NAME: &str = "everruns";
+pub const MCP_SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 const MCP_PROTOCOL_VERSION_FALLBACK: &str = "2025-03-26";
 const MCP_PROTOCOL_VERSION_2025_06: &str = "2025-06-18";
 const MCP_PROTOCOL_VERSION_LATEST: &str = "2026-07-28";

@@ -1539,6 +1539,15 @@ impl ServerAppBuilder {
             flags: feature_flags.clone(),
         };
 
+        // Agent discovery: MCP server card + auth.md, both derived from the
+        // live auth config so a self-hosted deployment describes itself.
+        let agent_discovery_state = api::agent_discovery::AppState::new(
+            mcp_root_url.clone(),
+            auth_config.base_url.clone(),
+            auth_config.mode.clone(),
+            api::mcp_endpoint::MCP_SERVER_NAME,
+            api::mcp_endpoint::MCP_SERVER_VERSION,
+        );
         let http_signing_keys_state = api::http_signing_keys::AppState::from_env();
 
         if !self.config.api_prefix.is_empty() {
@@ -1779,6 +1788,7 @@ impl ServerAppBuilder {
                 "/api-doc/openapi.json",
                 get(|| async { Json(ApiDoc::openapi()) }),
             )
+            .merge(api::agent_discovery::routes(agent_discovery_state))
             .merge(api::http_signing_keys::routes(http_signing_keys_state))
             .merge(root_routes)
             .merge(build_router_with_prefix(
