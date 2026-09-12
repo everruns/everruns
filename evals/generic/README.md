@@ -209,13 +209,15 @@ before creation and execution after confirmation.
 ### Acceptance status
 
 The candidate follows [official Astra prompting guidance](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra)
-(reviewed 2026-09-05). Production adoption requires live behavioral comparison;
-local deterministic tests establish runtime/scorer correctness only. Automatic
-approval review blocked sending the internal harness prompts to OpenAI Astra,
-even after confirming the selected eleven fixtures are synthetic and contain no
-attachments. No live scores or Astra acceptance are claimed.
+(reviewed 2026-09-05). A live comparison on 2026-09-12 ran GPT-6 Astra at low
+effort for three trials of every behavior case: both baseline and candidate
+passed 42/42 scored trials. The candidate used 83 tool calls and 131 iterations,
+versus the baseline's 76 and 124, and consumed more input and output tokens.
+It therefore does not justify production adoption. Local deterministic tests
+remain the proof of runtime and scorer correctness; the live result is the
+acceptance decision for this candidate.
 
 The full unshipped production-prompt proposal is preserved on local branch
 `codex/astra-harness-behavior`, commit `db74ce86d`. It remains an open objective:
-obtain explicit authorization for the prompt payload and destination, run the
-paired comparison, inspect regressions, then review production adoption separately.
+revise the candidate to produce a measurable behavioral improvement, then run
+the paired comparison and review production adoption separately.
