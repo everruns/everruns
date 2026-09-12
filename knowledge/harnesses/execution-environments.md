@@ -12,8 +12,24 @@ tags:
 
 # Execution environments
 
-Status: proposal. Extends, does not replace,
-[Sandbox Abstraction](sandbox-abstraction.md). That concept solved the durable
+Status: first slice implemented, the rest proposed. Extends, does not replace,
+[Sandbox Abstraction](sandbox-abstraction.md).
+
+What exists in code today:
+
+- the Framework contract, `crates/host/src/compute.rs`: `Compute`,
+  `ComputeSession`, `ComputeCapabilities`, `Containment`, `Durability`, and
+  `Environment`'s named `compute` and `containment` members with the validation
+  rule below;
+- the `host` target, `HostCompute`, behind `everruns/host-compute`;
+- a read-only control-plane surface, `GET /v1/sessions/{id}/environment` and
+  `GET /v1/environment-targets`, derived from a session's effective
+  capabilities because profiles are not stored yet, which the response says with
+  `resolved_from: "capabilities"`;
+- the Workspace-tab environment panel in the UI.
+
+Not yet: environment profiles as agent configuration, the machine target,
+kernel containment, and the provider ports. That concept solved the durable
 logical sandbox: one working filesystem, provider-neutral drivers, checkpoints,
 and physical-loss recovery. This proposal adds the two things it left out, then
 folds Yolop into the same contract:
