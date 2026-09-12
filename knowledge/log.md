@@ -49,6 +49,13 @@
   hundreds of commands had to forbid it. See
   [Command Tree](execution/command-tree.md).
 
+## 2026-09-08
+
+* The Framework live-session example now offers offline and live OpenAI modes,
+  configurable corrections, and transcript inspection. Its iteration-boundary
+  `Session::send` behavior remains distinct from the isolated WebSocket steering
+ experiment. See [the steering boundary](execution/openai-steering-prototype.md).
+
 ## 2026-09-05
 
 * Astra reasoning changes preserve the initial request effort, persist effective
@@ -61,6 +68,12 @@
   Brave Search establishes the application adapter pattern and separates hosted
   connector registration from the Framework dependency graph. See
   [Framework application boundaries](framework/application-api.md).
+
+* **Mid-turn correction justifies revisiting socket ownership.** The isolated
+  OpenAI steering prototype uses a durable inbox and explicit single-host owner.
+  Acceptance remains queued until a successor is created; ambiguous disconnects
+  block replay until history proves commitment. Normal workers continue over
+  HTTP. See `knowledge/execution/openai-steering-prototype.md`.
 
 ## 2026-09-01
 
