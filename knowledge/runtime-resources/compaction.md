@@ -448,8 +448,16 @@ data: {
 ```
 
 `checkpoint_id` is present when a durable replacement checkpoint was
-installed. Event data MUST NOT contain the checkpoint payload, provider-native
-encrypted content, or the at-rest ciphertext.
+installed. Fallback installs that only mask or trim the in-memory suffix carry
+no checkpoint id. Event data MUST NOT contain the checkpoint payload,
+provider-native encrypted content, or the at-rest ciphertext.
+
+Every pressured evaluation closes with exactly one terminal event: an install
+(`context.compacted`, including fallback installs), a skip
+(`context.compaction.skipped` with the reason the attempt never ran), or a
+failure (`context.compaction.failed` with the stage that failed). See
+`CompactionSkipReason` and `CompactionFailStage` in `crates/core/src/events.rs`
+and the emission points in the compaction engine.
 
 **Reason enum:** `proactive_budget` | `request_too_large` | `manual`
 

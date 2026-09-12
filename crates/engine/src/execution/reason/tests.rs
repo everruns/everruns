@@ -839,3 +839,416 @@ async fn test_partial_stream_store_returns_empty_when_started_no_delta() {
         .unwrap();
     assert!(result.unwrap().accumulated.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// EVE-961: structured compaction lifecycle events.
+// ---------------------------------------------------------------------------
+
+use super::compaction::{ProactiveCompactionContext, apply_proactive_compaction};
+use crate::ChatDriver;
+use crate::compaction_policy::{
+    CompactionPolicy, CompactionSettings, CompactionStrategy, ObservationMaskingResult,
+};
+use crate::driver_registry::{LlmMessage, LlmResponseStream};
+use crate::events::{
+    CompactionFailStage, CompactionSkipReason, CompactionTrigger, EventData, TokenUsage,
+};
+use crate::test_fixtures::TestEventEmitter;
+use everruns_provider::error::{AgentLoopError, Result as ProviderResult};
+use everruns_provider::runtime_provider::ProviderEndpoint;
+
+/// Policy stub with pressure forced on and native strategy configured.
+#[derive(Debug)]
+struct LifecycleStubPolicy {
+    window_pressure: bool,
+}
+
+impl CompactionPolicy for LifecycleStubPolicy {
+    fn settings(&self) -> CompactionSettings {
+        CompactionSettings {
+            strategy: CompactionStrategy::Native,
+            budget_percent: 0.85,
+            summarization_model: None,
+        }
+    }
+
+    fn estimate_total_tokens(&self, _messages: &[LlmMessage]) -> usize {
+        90_000
+    }
+
+    fn total_tool_result_bytes(&self, _messages: &[everruns_core::message::Message]) -> usize {
+        0
+    }
+
+    fn should_compact_proactively(&self, _messages: &[LlmMessage], _context_window: usize) -> bool {
+        self.window_pressure
+    }
+
+    fn should_compact_for_cost(
+        &self,
+        _estimated_input_tokens: usize,
+        _raw_tool_result_bytes: usize,
+        _usage: Option<&TokenUsage>,
+    ) -> bool {
+        false
+    }
+
+    fn apply_observation_masking(&self, _messages: &[LlmMessage]) -> ObservationMaskingResult {
+        ObservationMaskingResult {
+            messages: vec![],
+            masked_count: 0,
+        }
+    }
+
+    fn aggressive_trim(
+        &self,
+        messages: &[LlmMessage],
+        _target_tokens: usize,
+        _preserve_system: bool,
+    ) -> Vec<LlmMessage> {
+        messages.to_vec()
+    }
+
+    fn summarization_prompt(&self) -> String {
+        "summarize".to_string()
+    }
+
+    fn format_messages_for_summarization(&self, _messages: &[LlmMessage]) -> String {
+        String::new()
+    }
+
+    fn compose_summary_with_recent(
+        &self,
+        _system_message: Option<LlmMessage>,
+        _summary_text: &str,
+        recent_messages: &[LlmMessage],
+    ) -> Vec<LlmMessage> {
+        recent_messages.to_vec()
+    }
+}
+
+/// Driver stub without native compaction support (default `supports_compact`).
+#[derive(Debug)]
+struct NoNativeCompactDriver;
+
+#[async_trait::async_trait]
+impl ChatDriver for NoNativeCompactDriver {
+    async fn chat_completion_stream(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        _messages: Vec<LlmMessage>,
+        _config: &crate::driver_registry::LlmCallConfig,
+    ) -> ProviderResult<LlmResponseStream> {
+        unimplemented!("proactive skip path never streams")
+    }
+}
+
+/// Driver stub whose native compaction endpoint always fails.
+#[derive(Debug)]
+struct FailingCompactDriver;
+
+#[async_trait::async_trait]
+impl ChatDriver for FailingCompactDriver {
+    async fn chat_completion_stream(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        _messages: Vec<LlmMessage>,
+        _config: &crate::driver_registry::LlmCallConfig,
+    ) -> ProviderResult<LlmResponseStream> {
+        unimplemented!("proactive path never streams")
+    }
+
+    fn supports_compact(&self) -> bool {
+        true
+    }
+
+    async fn compact(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        _request: everruns_provider::compact::CompactRequest,
+    ) -> ProviderResult<Option<everruns_provider::compact::CompactResponse>> {
+        Err(AgentLoopError::config("stub native compaction failure"))
+    }
+}
+
+/// Driver stub whose native compaction succeeds, for install-failure tests.
+#[derive(Debug)]
+struct InstallingCompactDriver;
+
+#[async_trait::async_trait]
+impl ChatDriver for InstallingCompactDriver {
+    async fn chat_completion_stream(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        _messages: Vec<LlmMessage>,
+        _config: &crate::driver_registry::LlmCallConfig,
+    ) -> ProviderResult<LlmResponseStream> {
+        unimplemented!("proactive path never streams")
+    }
+
+    fn supports_compact(&self) -> bool {
+        true
+    }
+
+    async fn compact(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        _request: everruns_provider::compact::CompactRequest,
+    ) -> ProviderResult<Option<everruns_provider::compact::CompactResponse>> {
+        use everruns_provider::compact::{CompactOutputItem, CompactResponse, CompactUsage};
+        Ok(Some(CompactResponse {
+            output: vec![CompactOutputItem::Compaction {
+                encrypted_content: "stub-opaque-payload".to_string(),
+            }],
+            usage: Some(CompactUsage {
+                input_tokens: Some(90_000),
+                output_tokens: Some(1_000),
+                total_tokens: Some(91_000),
+                cost: Some(0.0),
+            }),
+        }))
+    }
+}
+
+/// Checkpoint store stub whose install always fails.
+#[derive(Debug)]
+struct FailingInstallStore;
+
+#[async_trait::async_trait]
+impl crate::CompactionCheckpointStore for FailingInstallStore {
+    async fn get_latest(
+        &self,
+        _session_id: crate::typed_id::SessionId,
+        _provider_type: &str,
+        _model: &str,
+    ) -> everruns_provider::error::Result<Option<crate::CompactionCheckpoint>> {
+        Ok(None)
+    }
+
+    async fn install(
+        &self,
+        _checkpoint: crate::CompactionCheckpoint,
+    ) -> everruns_provider::error::Result<bool> {
+        Err(AgentLoopError::store("stub checkpoint install failure"))
+    }
+
+    async fn get_proactive_attempt(
+        &self,
+        _session_id: crate::typed_id::SessionId,
+        _provider_type: &str,
+        _model: &str,
+    ) -> everruns_provider::error::Result<Option<crate::ProactiveCompactionAttempt>> {
+        Ok(None)
+    }
+
+    async fn record_proactive_attempt(
+        &self,
+        _session_id: crate::typed_id::SessionId,
+        _provider_type: &str,
+        _model: &str,
+        _attempt: crate::ProactiveCompactionAttempt,
+    ) -> everruns_provider::error::Result<()> {
+        Ok(())
+    }
+}
+
+/// Checkpoint store stub: no prior state, records nothing durably.
+#[derive(Debug)]
+struct LifecycleStubStore;
+
+#[async_trait::async_trait]
+impl crate::CompactionCheckpointStore for LifecycleStubStore {
+    async fn get_latest(
+        &self,
+        _session_id: crate::typed_id::SessionId,
+        _provider_type: &str,
+        _model: &str,
+    ) -> everruns_provider::error::Result<Option<crate::CompactionCheckpoint>> {
+        Ok(None)
+    }
+
+    async fn install(
+        &self,
+        _checkpoint: crate::CompactionCheckpoint,
+    ) -> everruns_provider::error::Result<bool> {
+        Ok(true)
+    }
+
+    async fn get_proactive_attempt(
+        &self,
+        _session_id: crate::typed_id::SessionId,
+        _provider_type: &str,
+        _model: &str,
+    ) -> everruns_provider::error::Result<Option<crate::ProactiveCompactionAttempt>> {
+        Ok(None)
+    }
+
+    async fn record_proactive_attempt(
+        &self,
+        _session_id: crate::typed_id::SessionId,
+        _provider_type: &str,
+        _model: &str,
+        _attempt: crate::ProactiveCompactionAttempt,
+    ) -> everruns_provider::error::Result<()> {
+        Ok(())
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lifecycle_test_context<'a>(
+    policy: &'a LifecycleStubPolicy,
+    driver: &'a dyn ChatDriver,
+    emitter: &'a TestEventEmitter,
+    event_context: &'a crate::events::EventContext,
+    store: Option<&'a std::sync::Arc<dyn crate::CompactionCheckpointStore>>,
+) -> ProactiveCompactionContext<'a> {
+    ProactiveCompactionContext {
+        policy,
+        chat_driver: driver,
+        checkpoint_store: store,
+        event_emitter: emitter,
+        event_context,
+        session_id: crate::typed_id::SessionId::new(),
+        message_source_sequence: Some(7),
+        provider_type: "stub-provider",
+        model: "stub-model",
+        system_prompt: None,
+        stateful_response_continuation: false,
+        checkpoint_restored: false,
+        checkpoint_suffix_message_count: 0,
+        raw_tool_result_bytes: 0,
+        prior_usage: None,
+    }
+}
+
+fn lifecycle_test_config() -> crate::driver_registry::LlmCallConfig {
+    crate::driver_registry::LlmCallConfig {
+        speed: None,
+        verbosity: None,
+        model: "stub-model".to_string(),
+        temperature: None,
+        max_tokens: None,
+        tools: vec![],
+        reasoning_effort: None,
+        metadata: std::collections::HashMap::new(),
+        previous_response_id: None,
+        provider_opaque_context: None,
+        tool_search: None,
+        prompt_cache: None,
+        openrouter_routing: None,
+        parallel_tool_calls: None,
+        volatile_suffix_len: 0,
+        extra_headers: Vec::new(),
+        cache_diagnostics: None,
+        reasoning_state: None,
+    }
+}
+
+#[tokio::test]
+async fn proactive_pressure_without_native_support_emits_skip() {
+    let policy = LifecycleStubPolicy {
+        window_pressure: true,
+    };
+    let driver = NoNativeCompactDriver;
+    let emitter = TestEventEmitter::new();
+    let event_context = crate::events::EventContext::default();
+    let ctx = lifecycle_test_context(&policy, &driver, &emitter, &event_context, None);
+    let mut messages: Vec<LlmMessage> = vec![];
+    let mut config = lifecycle_test_config();
+
+    let outcome = apply_proactive_compaction(ctx, &mut messages, &mut config)
+        .await
+        .expect("skip path returns Ok");
+    assert!(outcome.is_none(), "no compaction installs without support");
+
+    let events = emitter.events().await;
+    assert_eq!(events.len(), 1, "one terminal skip event, got {events:?}");
+    match &events[0].data {
+        EventData::ContextCompactionSkipped(skipped) => {
+            assert_eq!(skipped.skip_reason, CompactionSkipReason::DriverUnsupported);
+            assert_eq!(skipped.trigger, CompactionTrigger::ContextBudget);
+            assert_eq!(skipped.tokens_observed, 90_000);
+            assert_eq!(skipped.source_sequence, Some(7));
+            assert_eq!(skipped.model, "stub-model");
+        }
+        other => panic!("expected a skipped event, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn proactive_checkpoint_install_failure_emits_failed() {
+    let policy = LifecycleStubPolicy {
+        window_pressure: true,
+    };
+    let driver = InstallingCompactDriver;
+    let emitter = TestEventEmitter::new();
+    let event_context = crate::events::EventContext::default();
+    let store: std::sync::Arc<dyn crate::CompactionCheckpointStore> =
+        std::sync::Arc::new(FailingInstallStore);
+    let ctx = lifecycle_test_context(&policy, &driver, &emitter, &event_context, Some(&store));
+    let mut messages: Vec<LlmMessage> = vec![];
+    let mut config = lifecycle_test_config();
+
+    let result = apply_proactive_compaction(ctx, &mut messages, &mut config).await;
+    assert!(result.is_err(), "install failure propagates");
+
+    let events = emitter.events().await;
+    assert_eq!(
+        events.len(),
+        2,
+        "attempt plus terminal failed, got {events:?}"
+    );
+    assert!(matches!(&events[0].data, EventData::ContextCompacting(_)));
+    match &events[1].data {
+        EventData::ContextCompactionFailed(failed) => {
+            assert_eq!(failed.stage, CompactionFailStage::CheckpointInstall);
+            assert_eq!(failed.trigger, CompactionTrigger::ContextBudget);
+            assert_eq!(failed.tokens_before, 90_000);
+            assert!(failed.error.contains("stub checkpoint install failure"));
+        }
+        other => panic!("expected a failed event, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn proactive_endpoint_error_without_fallback_install_emits_skipped() {
+    // Native endpoint errors are tolerated by design (warn + fall through to
+    // the masking/trim fallback). When the fallback installs nothing, the
+    // attempt lifecycle still closes: as skipped, not dangling.
+    let policy = LifecycleStubPolicy {
+        window_pressure: true,
+    };
+    let driver = FailingCompactDriver;
+    let emitter = TestEventEmitter::new();
+    let event_context = crate::events::EventContext::default();
+    let store: std::sync::Arc<dyn crate::CompactionCheckpointStore> =
+        std::sync::Arc::new(LifecycleStubStore);
+    let ctx = lifecycle_test_context(&policy, &driver, &emitter, &event_context, Some(&store));
+    let mut messages: Vec<LlmMessage> = vec![];
+    let mut config = lifecycle_test_config();
+
+    let outcome = apply_proactive_compaction(ctx, &mut messages, &mut config)
+        .await
+        .expect("endpoint errors are tolerated");
+    assert!(outcome.is_none(), "nothing installs");
+
+    let events = emitter.events().await;
+    assert_eq!(
+        events.len(),
+        2,
+        "attempt plus terminal skipped, got {events:?}"
+    );
+    assert!(matches!(&events[0].data, EventData::ContextCompacting(_)));
+    match &events[1].data {
+        EventData::ContextCompactionSkipped(skipped) => {
+            assert_eq!(
+                skipped.skip_reason,
+                CompactionSkipReason::NativeReturnedNone
+            );
+            assert_eq!(skipped.trigger, CompactionTrigger::ContextBudget);
+        }
+        other => panic!("expected a skipped event, got {other:?}"),
+    }
+}

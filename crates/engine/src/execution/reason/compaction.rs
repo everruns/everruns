@@ -9,8 +9,9 @@ use crate::driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole};
 use crate::error::{AgentLoopError, Result};
 use crate::event_emitter::EventEmitter;
 use crate::events::{
-    CompactionReason, CompactionStepData, ContextCompactedData, ContextCompactingData,
-    EventContext, EventRequest, LlmCompactionInfo, TokenUsage,
+    CompactionFailStage, CompactionReason, CompactionSkipReason, CompactionStepData,
+    CompactionTrigger, ContextCompactedData, ContextCompactingData, ContextCompactionFailedData,
+    ContextCompactionSkippedData, EventContext, EventRequest, LlmCompactionInfo, TokenUsage,
 };
 use crate::typed_id::SessionId;
 
@@ -279,6 +280,38 @@ pub(super) struct ProactiveCompactionContext<'a> {
     pub(super) prior_usage: Option<&'a TokenUsage>,
 }
 
+/// Classify a proactive evaluation as budget- or cost-driven.
+///
+/// Window pressure means the context no longer fits comfortably in the model
+/// window; cost-only pressure means compacting early to keep prompts small.
+pub(super) fn proactive_trigger(window_pressure: bool, cost_pressure: bool) -> CompactionTrigger {
+    if cost_pressure && !window_pressure {
+        CompactionTrigger::CostPressure
+    } else {
+        CompactionTrigger::ContextBudget
+    }
+}
+
+/// First gate that blocks a native attempt, in evaluation order.
+///
+/// Callers only invoke this when pressure is present but no native attempt
+/// runs, so the fallthrough arm unambiguously means the rearm window.
+pub(super) fn proactive_skip_reason(
+    native_strategy: bool,
+    supports_compact: bool,
+    has_checkpoint_store: bool,
+) -> CompactionSkipReason {
+    if !native_strategy {
+        CompactionSkipReason::StrategyExcludesNative
+    } else if !supports_compact {
+        CompactionSkipReason::DriverUnsupported
+    } else if !has_checkpoint_store {
+        CompactionSkipReason::CheckpointStoreUnavailable
+    } else {
+        CompactionSkipReason::CooldownActive
+    }
+}
+
 pub(super) async fn apply_proactive_compaction(
     context: ProactiveCompactionContext<'_>,
     messages: &mut Vec<LlmMessage>,
@@ -366,9 +399,16 @@ pub(super) async fn apply_proactive_compaction(
         && native_attempt_rearmed
         && local_pressure;
 
+    let messages_before = messages.len();
+    let trigger = proactive_trigger(window_pressure, cost_pressure);
+    let budget_remaining_before =
+        (context_window.saturating_sub(estimated_tokens_before as usize)) as u64;
+    let (cache_read_tokens, cache_creation_tokens) = context
+        .prior_usage
+        .map(|usage| (usage.cache_read_tokens, usage.cache_creation_tokens))
+        .unwrap_or((None, None));
     let applied = if let (true, Some((store, source_sequence))) = (should_attempt, durable_source) {
-        let messages_before = messages.len();
-        let input_message_count = messages.len();
+        let input_message_count = messages_before;
         let source_fingerprint =
             proactive_source_fingerprint(config.provider_opaque_context.as_ref(), messages);
         if let Err(error) = store
@@ -402,6 +442,14 @@ pub(super) async fn apply_proactive_compaction(
                     messages_before,
                     tokens_before: Some(estimated_tokens_before),
                     bytes_before: None,
+                    trigger,
+                    model: context.model.to_string(),
+                    provider: Some(context.provider_type.to_string()),
+                    driver: None,
+                    budget_remaining_tokens: Some(budget_remaining_before),
+                    source_sequence: context.message_source_sequence,
+                    cache_read_tokens,
+                    cache_creation_tokens,
                 },
             ))
             .await;
@@ -419,7 +467,37 @@ pub(super) async fn apply_proactive_compaction(
             messages,
             config,
         )
-        .await?;
+        .await;
+        let applied = match applied {
+            Err(error) => {
+                // A failed attempt must close its lifecycle: record the
+                // failure before propagating.
+                let _ = context
+                    .event_emitter
+                    .emit(EventRequest::new(
+                        context.session_id,
+                        context.event_context.clone(),
+                        ContextCompactionFailedData {
+                            reason: CompactionReason::ProactiveBudget,
+                            trigger,
+                            stage: CompactionFailStage::CheckpointInstall,
+                            error: error.to_string(),
+                            strategy: settings.strategy.to_string(),
+                            model: context.model.to_string(),
+                            provider: Some(context.provider_type.to_string()),
+                            driver: None,
+                            tokens_before: estimated_tokens_before,
+                            budget_remaining_tokens: Some(budget_remaining_before),
+                            source_sequence: context.message_source_sequence,
+                            messages_before,
+                            checkpoint_id: None,
+                        },
+                    ))
+                    .await;
+                return Err(error);
+            }
+            Ok(applied) => applied,
+        };
 
         if let Some(applied) = applied.as_ref() {
             let steps = vec![CompactionStepData {
@@ -435,6 +513,17 @@ pub(super) async fn apply_proactive_compaction(
                     ContextCompactedData {
                         checkpoint_id: applied.checkpoint_id.clone(),
                         strategy_used: "native".to_string(),
+                        trigger,
+                        model: context.model.to_string(),
+                        provider: Some(context.provider_type.to_string()),
+                        driver: None,
+                        budget_remaining_tokens: applied
+                            .tokens_after
+                            .map(|after| (context_window.saturating_sub(after as usize)) as u64)
+                            .or(Some(budget_remaining_before)),
+                        source_sequence: context.message_source_sequence,
+                        cache_read_tokens: None,
+                        cache_creation_tokens: None,
                         messages_before,
                         messages_after: applied.output_items_after,
                         tokens_before: applied.tokens_before,
@@ -449,9 +538,41 @@ pub(super) async fn apply_proactive_compaction(
         }
         applied
     } else {
+        // Pressure without a native attempt still closes the lifecycle:
+        // record why native did not run before the fallback below.
+        if local_pressure {
+            let _ = context
+                .event_emitter
+                .emit(EventRequest::new(
+                    context.session_id,
+                    context.event_context.clone(),
+                    ContextCompactionSkippedData {
+                        reason: CompactionReason::ProactiveBudget,
+                        trigger,
+                        skip_reason: proactive_skip_reason(
+                            native_strategy,
+                            context.chat_driver.supports_compact(),
+                            durable_source.is_some(),
+                        ),
+                        strategy: settings.strategy.to_string(),
+                        model: context.model.to_string(),
+                        provider: Some(context.provider_type.to_string()),
+                        driver: None,
+                        tokens_observed: estimated_tokens_before,
+                        budget_remaining_tokens: Some(budget_remaining_before),
+                        source_sequence: context.message_source_sequence,
+                        messages_observed: messages.len(),
+                    },
+                ))
+                .await;
+        }
         None
     };
 
+    // The no-native-compaction fallback installs masking/trim without a
+    // durable checkpoint. Track which strategy installed so the lifecycle
+    // below closes with an install event instead of dangling.
+    let mut fallback_installed_strategy: Option<&str> = None;
     if local_pressure && applied.is_none() {
         if matches!(
             settings.strategy,
@@ -470,16 +591,84 @@ pub(super) async fn apply_proactive_compaction(
                 }
                 model_view.extend(masked.messages);
                 *messages = model_view;
+                fallback_installed_strategy = Some("masking");
             }
         }
         let budget_tokens = (context_window as f32 * settings.budget_percent) as usize;
         if context.policy.estimate_total_tokens(messages) > budget_tokens {
+            fallback_installed_strategy = Some(match fallback_installed_strategy {
+                // Masking may have installed just above; report the full chain.
+                Some("masking") => "masking+trim",
+                _ => "trim",
+            });
             *messages = context.policy.aggressive_trim(
                 messages,
                 budget_tokens,
                 context.system_prompt.is_some(),
             );
         }
+    }
+
+    if let Some(fallback_strategy) = fallback_installed_strategy {
+        // The fallback installed compacted context: close the lifecycle it
+        // opened as an install.
+        let fallback_tokens_after = context.policy.estimate_total_tokens(messages) as u64;
+        let _ = context
+            .event_emitter
+            .emit(EventRequest::new(
+                context.session_id,
+                context.event_context.clone(),
+                ContextCompactedData {
+                    checkpoint_id: None,
+                    strategy_used: fallback_strategy.to_string(),
+                    messages_before,
+                    messages_after: messages.len(),
+                    tokens_before: Some(estimated_tokens_before),
+                    tokens_after: Some(fallback_tokens_after),
+                    bytes_before: None,
+                    bytes_after: None,
+                    duration_ms: 0,
+                    steps: vec![CompactionStepData {
+                        strategy: fallback_strategy.to_string(),
+                        messages_after: messages.len(),
+                        duration_ms: 0,
+                    }],
+                    trigger,
+                    model: context.model.to_string(),
+                    provider: Some(context.provider_type.to_string()),
+                    driver: None,
+                    budget_remaining_tokens: Some(
+                        (context_window.saturating_sub(fallback_tokens_after as usize)) as u64,
+                    ),
+                    source_sequence: context.message_source_sequence,
+                    cache_read_tokens: None,
+                    cache_creation_tokens: None,
+                },
+            ))
+            .await;
+    } else if should_attempt && applied.is_none() {
+        // A native attempt ran but yielded no checkpoint and the fallback
+        // installed nothing: close the attempt lifecycle as skipped.
+        let _ = context
+            .event_emitter
+            .emit(EventRequest::new(
+                context.session_id,
+                context.event_context.clone(),
+                ContextCompactionSkippedData {
+                    reason: CompactionReason::ProactiveBudget,
+                    trigger,
+                    skip_reason: CompactionSkipReason::NativeReturnedNone,
+                    strategy: settings.strategy.to_string(),
+                    model: context.model.to_string(),
+                    provider: Some(context.provider_type.to_string()),
+                    driver: None,
+                    tokens_observed: estimated_tokens_before,
+                    budget_remaining_tokens: Some(budget_remaining_before),
+                    source_sequence: context.message_source_sequence,
+                    messages_observed: messages.len(),
+                },
+            ))
+            .await;
     }
 
     Ok(applied.map(|applied| {
@@ -543,6 +732,14 @@ pub(super) async fn apply_reactive_compaction(
             context.event_context.clone(),
             ContextCompactingData {
                 reason: CompactionReason::RequestTooLarge,
+                trigger: CompactionTrigger::ContextBudget,
+                model: context.model.to_string(),
+                provider: Some(context.provider_type.to_string()),
+                driver: None,
+                budget_remaining_tokens: None,
+                source_sequence: context.message_source_sequence,
+                cache_read_tokens: None,
+                cache_creation_tokens: None,
                 strategy: settings.strategy.to_string(),
                 messages_before,
                 tokens_before,
@@ -607,8 +804,8 @@ pub(super) async fn apply_reactive_compaction(
         }
     }
 
-    if run_native
-        && let Some(applied) = try_apply_native_compaction(
+    let native_applied = if run_native {
+        match try_apply_native_compaction(
             context.chat_driver,
             context.policy,
             context.checkpoint_store,
@@ -621,8 +818,41 @@ pub(super) async fn apply_reactive_compaction(
             messages,
             config,
         )
-        .await?
-    {
+        .await
+        {
+            Err(error) => {
+                // A failed attempt must close its lifecycle: record the
+                // failure before propagating.
+                let _ = context
+                    .event_emitter
+                    .emit(EventRequest::new(
+                        context.session_id,
+                        context.event_context.clone(),
+                        ContextCompactionFailedData {
+                            reason: CompactionReason::RequestTooLarge,
+                            trigger: CompactionTrigger::ContextBudget,
+                            stage: CompactionFailStage::CheckpointInstall,
+                            error: error.to_string(),
+                            strategy: settings.strategy.to_string(),
+                            model: context.model.to_string(),
+                            provider: Some(context.provider_type.to_string()),
+                            driver: None,
+                            tokens_before: measured_tokens_before.unwrap_or(0),
+                            budget_remaining_tokens: None,
+                            source_sequence: context.message_source_sequence,
+                            messages_before,
+                            checkpoint_id: None,
+                        },
+                    ))
+                    .await;
+                return Err(error);
+            }
+            Ok(applied) => applied,
+        }
+    } else {
+        None
+    };
+    if let Some(applied) = native_applied {
         generation_info = Some(LlmCompactionInfo::new(
             applied
                 .tokens_before
@@ -652,6 +882,26 @@ pub(super) async fn apply_reactive_compaction(
         // Summary/trim would lose native configuration and opaque context. An
         // unsuccessful explicit compaction must leave the canonical history
         // intact and surface the context error, not silently discard it.
+        let _ = context
+            .event_emitter
+            .emit(EventRequest::new(
+                context.session_id,
+                context.event_context.clone(),
+                ContextCompactionSkippedData {
+                    reason: CompactionReason::RequestTooLarge,
+                    trigger: CompactionTrigger::ContextBudget,
+                    skip_reason: CompactionSkipReason::GuardRejected,
+                    strategy: settings.strategy.to_string(),
+                    model: context.model.to_string(),
+                    provider: Some(context.provider_type.to_string()),
+                    driver: None,
+                    tokens_observed: measured_tokens_before.unwrap_or(0),
+                    budget_remaining_tokens: None,
+                    source_sequence: context.message_source_sequence,
+                    messages_observed: messages.len(),
+                },
+            ))
+            .await;
         return Ok(None);
     }
     if run_summarization && !strategies_used.iter().any(|strategy| strategy == "native") {
@@ -795,6 +1045,26 @@ pub(super) async fn apply_reactive_compaction(
             ?tokens_after,
             "ReasonAtom: compaction cascade made no material reduction"
         );
+        let _ = context
+            .event_emitter
+            .emit(EventRequest::new(
+                context.session_id,
+                context.event_context.clone(),
+                ContextCompactionSkippedData {
+                    reason: CompactionReason::RequestTooLarge,
+                    trigger: CompactionTrigger::ContextBudget,
+                    skip_reason: CompactionSkipReason::NoMaterialReduction,
+                    strategy: settings.strategy.to_string(),
+                    model: context.model.to_string(),
+                    provider: Some(context.provider_type.to_string()),
+                    driver: None,
+                    tokens_observed: measured_tokens_before.unwrap_or(0),
+                    budget_remaining_tokens: None,
+                    source_sequence: context.message_source_sequence,
+                    messages_observed: messages.len(),
+                },
+            ))
+            .await;
         return Ok(None);
     }
 
@@ -811,6 +1081,14 @@ pub(super) async fn apply_reactive_compaction(
                 ContextCompactedData {
                     checkpoint_id,
                     strategy_used: strategy_used.clone(),
+                    trigger: CompactionTrigger::ContextBudget,
+                    model: context.model.to_string(),
+                    provider: Some(context.provider_type.to_string()),
+                    driver: None,
+                    budget_remaining_tokens: None,
+                    source_sequence: context.message_source_sequence,
+                    cache_read_tokens: None,
+                    cache_creation_tokens: None,
                     messages_before,
                     messages_after,
                     tokens_before: measured_tokens_before,
@@ -819,6 +1097,36 @@ pub(super) async fn apply_reactive_compaction(
                     bytes_after,
                     duration_ms,
                     steps,
+                },
+            ))
+            .await;
+    } else if !strategies_used.is_empty() {
+        // Masking-only cascades install compacted context without a
+        // checkpoint: close the lifecycle as an install like native ones.
+        let _ = context
+            .event_emitter
+            .emit(EventRequest::new(
+                context.session_id,
+                context.event_context.clone(),
+                ContextCompactedData {
+                    checkpoint_id: None,
+                    strategy_used: strategy_used.clone(),
+                    messages_before,
+                    messages_after,
+                    tokens_before: measured_tokens_before,
+                    tokens_after,
+                    bytes_before,
+                    bytes_after,
+                    duration_ms,
+                    steps: steps.clone(),
+                    trigger: CompactionTrigger::ContextBudget,
+                    model: context.model.to_string(),
+                    provider: Some(context.provider_type.to_string()),
+                    driver: None,
+                    budget_remaining_tokens: None,
+                    source_sequence: context.message_source_sequence,
+                    cache_read_tokens: None,
+                    cache_creation_tokens: None,
                 },
             ))
             .await;
