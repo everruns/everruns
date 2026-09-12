@@ -413,3 +413,177 @@ async fn concurrent_sessions_write_separate_heads_without_collisions() {
         "right"
     );
 }
+
+/// A target that fixes its own boundary, the way Bashkit and a Daytona VM do.
+struct IsolatedCompute;
+
+#[async_trait::async_trait]
+impl everruns::Compute for IsolatedCompute {
+    fn id(&self) -> &str {
+        "test-isolated"
+    }
+
+    fn kind(&self) -> everruns::ComputeKind {
+        everruns::ComputeKind::Vfs
+    }
+
+    fn capabilities(&self) -> everruns::ComputeCapabilities {
+        everruns::ComputeCapabilities {
+            portable_checkpoint: true,
+            network_enforced: true,
+            ..Default::default()
+        }
+    }
+
+    fn enforced_containment(&self) -> everruns::ContainmentLevel {
+        everruns::ContainmentLevel::Isolated
+    }
+
+    fn durability(&self) -> everruns::Durability {
+        everruns::Durability::Checkpointed
+    }
+
+    async fn connect(
+        &self,
+        _head: &everruns::WorkspaceHead,
+    ) -> Result<Arc<dyn everruns::ComputeSession>, everruns::ComputeError> {
+        Err(everruns::ComputeError::Unsupported("connect"))
+    }
+}
+
+/// A target that contains nothing, the way a real machine does.
+struct UncontainedCompute;
+
+#[async_trait::async_trait]
+impl everruns::Compute for UncontainedCompute {
+    fn id(&self) -> &str {
+        "test-uncontained"
+    }
+
+    fn kind(&self) -> everruns::ComputeKind {
+        everruns::ComputeKind::Host
+    }
+
+    fn capabilities(&self) -> everruns::ComputeCapabilities {
+        everruns::ComputeCapabilities::full_machine()
+    }
+
+    fn enforced_containment(&self) -> everruns::ContainmentLevel {
+        everruns::ContainmentLevel::None
+    }
+
+    fn durability(&self) -> everruns::Durability {
+        everruns::Durability::None
+    }
+
+    async fn connect(
+        &self,
+        _head: &everruns::WorkspaceHead,
+    ) -> Result<Arc<dyn everruns::ComputeSession>, everruns::ComputeError> {
+        Err(everruns::ComputeError::Unsupported("connect"))
+    }
+}
+
+async fn test_head() -> (
+    tempfile::TempDir,
+    tempfile::TempDir,
+    everruns::WorkspaceHead,
+) {
+    let repository = repository();
+    let data = tempfile::tempdir().unwrap();
+    let provider = Arc::new(LocalGitWorkspaceProvider::new(data.path().join("git-heads")).unwrap());
+    let workspace = Workspace::open(provider, repository.path().to_string_lossy())
+        .await
+        .unwrap();
+    let head = workspace.head("compute").create().await.unwrap();
+    (repository, data, head)
+}
+
+#[tokio::test]
+async fn an_environment_without_compute_can_do_nothing_and_says_so() {
+    let (_repository, _data, head) = test_head().await;
+
+    let environment = Environment::builder().workspace(head).build().unwrap();
+
+    assert!(environment.compute().is_none());
+    assert!(!environment.capabilities().native_processes);
+    assert_eq!(
+        environment.containment().level,
+        everruns::ContainmentLevel::None
+    );
+}
+
+#[tokio::test]
+async fn an_omitted_containment_records_what_the_target_enforces() {
+    let (_repository, _data, head) = test_head().await;
+
+    let environment = Environment::builder()
+        .workspace(head)
+        .compute(Arc::new(IsolatedCompute))
+        .build()
+        .unwrap();
+
+    assert_eq!(
+        environment.containment().level,
+        everruns::ContainmentLevel::Isolated
+    );
+    assert_eq!(environment.durability(), everruns::Durability::Checkpointed);
+    assert!(environment.capabilities().portable_checkpoint);
+}
+
+#[tokio::test]
+async fn containment_weaker_than_the_target_is_refused_rather_than_corrected() {
+    let (_repository, _data, head) = test_head().await;
+
+    let error = Environment::builder()
+        .workspace(head)
+        .compute(Arc::new(IsolatedCompute))
+        .containment(everruns::Containment::none())
+        .build()
+        .expect_err("a target's own boundary cannot be opted out of");
+
+    assert!(matches!(
+        error,
+        everruns::EnvironmentError::ContainmentWeakerThanTarget {
+            requested: everruns::ContainmentLevel::None,
+            enforced: everruns::ContainmentLevel::Isolated,
+        }
+    ));
+}
+
+#[tokio::test]
+async fn containment_nothing_implements_yet_is_refused_rather_than_promised() {
+    let (_repository, _data, head) = test_head().await;
+
+    let error = Environment::builder()
+        .workspace(head)
+        .compute(Arc::new(UncontainedCompute))
+        .containment(everruns::Containment::native())
+        .build()
+        .expect_err("kernel containment has no provider yet");
+
+    assert!(matches!(
+        error,
+        everruns::EnvironmentError::ContainmentUnavailable {
+            requested: everruns::ContainmentLevel::Native,
+        }
+    ));
+}
+
+#[tokio::test]
+async fn an_uncontained_target_never_reports_itself_as_recoverable() {
+    let (_repository, _data, head) = test_head().await;
+
+    let environment = Environment::builder()
+        .workspace(head)
+        .compute(Arc::new(UncontainedCompute))
+        .containment(everruns::Containment::none())
+        .build()
+        .unwrap();
+
+    // Durability is read off the target, so no profile can promise recovery a
+    // real machine cannot deliver.
+    assert_eq!(environment.durability(), everruns::Durability::None);
+    assert!(environment.capabilities().native_processes);
+    assert!(!environment.capabilities().portable_checkpoint);
+}

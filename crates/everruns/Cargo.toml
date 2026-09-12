@@ -66,6 +66,10 @@ bashkit = ["everruns-host/bashkit", "dep:everruns-integrations-bashkit"]
 web-fetch = ["everruns-host/web-fetch", "dep:everruns-integrations-web-fetch"]
 duckduckgo = ["everruns-host/duckduckgo", "dep:everruns-integrations-duckduckgo"]
 lua = ["everruns-host/lua"]
+# Run commands on the machine this process is already running on, with nothing
+# between the command and the filesystem. Opt-in because it is the one target
+# that contains nothing; the contract types compile without it.
+host-compute = ["everruns-host/process"]
 mcp = ["everruns-host/mcp"]
 # Enable local-process (stdio) MCP servers, mirroring `everruns-host/mcp-stdio`.
 mcp-stdio = ["mcp", "everruns-host/mcp-stdio"]

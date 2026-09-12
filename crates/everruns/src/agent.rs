@@ -526,7 +526,10 @@ impl Agent {
             Environment::builder()
                 .workspace(head)
                 .build()
-                .map_err(map_workspace_resume_error)?,
+                // A reopened head with no compute request cannot fail
+                // assembly today; treat any future failure as an
+                // unavailable workspace rather than resuming half-bound.
+                .map_err(|_| crate::ResumeError::WorkspaceUnavailable)?,
         ))
     }
 

@@ -53,9 +53,9 @@ impl DefaultWorkspace {
         if self.shared {
             head = head.shared();
         }
-        Environment::builder()
+        Ok(Environment::builder()
             .workspace(head.create().await?)
-            .build()
+            .build()?)
     }
 }
 
