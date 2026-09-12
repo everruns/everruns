@@ -325,11 +325,7 @@ impl Database {
 
     /// Read an org-owned model without filtering disabled or inconsistent
     /// provider links. Mutation callers must validate the provider separately.
-    pub async fn get_model_for_mutation(
-        &self,
-        org_id: i64,
-        id: Uuid,
-    ) -> Result<Option<ModelRow>> {
+    pub async fn get_model_for_mutation(&self, org_id: i64, id: Uuid) -> Result<Option<ModelRow>> {
         let row = sqlx::query_as::<_, ModelRow>(
             r#"
             SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at

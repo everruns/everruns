@@ -2190,11 +2190,7 @@ impl StorageBackend {
         dispatch!(self, get_model, org_id, id)
     }
 
-    pub async fn get_model_for_mutation(
-        &self,
-        org_id: i64,
-        id: Uuid,
-    ) -> Result<Option<ModelRow>> {
+    pub async fn get_model_for_mutation(&self, org_id: i64, id: Uuid) -> Result<Option<ModelRow>> {
         dispatch!(self, get_model_for_mutation, org_id, id)
     }
 
