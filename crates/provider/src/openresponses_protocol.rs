@@ -1243,9 +1243,14 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             });
 
         // Reasoning items are only replayable when the provider hands back
-        // their encrypted payload, and it only does so on request.
-        let include = (reasoning.is_some() || update_state.is_some())
-            .then(|| vec!["reasoning.encrypted_content".to_string()]);
+        // their encrypted payload, and it only does so on request. Stateful
+        // continuations already retain that state server-side; Meta rejects
+        // this include when paired with `previous_response_id`.
+        let include = previous_response_id
+            .is_none()
+            .then_some(reasoning.is_some() || update_state.is_some())
+            .filter(|include| *include)
+            .map(|_| vec!["reasoning.encrypted_content".to_string()]);
 
         // Build metadata for request tracking
         let metadata = if config.metadata.is_empty() {
@@ -3754,7 +3759,7 @@ mod tests {
             temperature: None,
             max_tokens: None,
             tools: vec![],
-            reasoning_effort: None,
+            reasoning_effort: Some(crate::model::ReasoningEffort::High),
             metadata: std::collections::HashMap::new(),
             previous_response_id: Some("resp_tool_turn".to_string()),
             provider_opaque_context: None,
@@ -3781,6 +3786,10 @@ mod tests {
         let first: serde_json::Value = requests[0].body_json().expect("first body");
         let second: serde_json::Value = requests[1].body_json().expect("second body");
         assert_eq!(first["previous_response_id"], "resp_tool_turn");
+        assert!(
+            first.get("include").is_none(),
+            "stateful continuations must not request encrypted reasoning: {first}"
+        );
         assert!(second.get("previous_response_id").is_none());
         let replay = second["input"].as_array().expect("replay input");
         assert!(replay.iter().any(|item| item["type"] == "function_call"));
