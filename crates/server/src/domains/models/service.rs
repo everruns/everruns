@@ -1504,6 +1504,7 @@ mod tests {
                 input: 5.0,
                 output: 25.0,
                 cache_read: None,
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             ..base_profile()
@@ -1516,6 +1517,7 @@ mod tests {
                 input: 0.5,
                 output: 1.0,
                 cache_read: Some(0.1),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             ..base_profile()
@@ -1548,6 +1550,7 @@ mod tests {
                 input: 0.5,
                 output: 1.0,
                 cache_read: Some(0.1),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             supported_parameters: vec!["tools".into(), "temperature".into()],

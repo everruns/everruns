@@ -5985,6 +5985,11 @@ export interface components {
       cache_read?: number | null;
       /**
        * Format: double
+       * @description Cache write cost per million tokens (USD); absent falls back to input.
+       */
+      cache_write?: number | null;
+      /**
+       * Format: double
        * @description Input cost per million tokens (USD) for this tier
        */
       input: number;
@@ -12056,6 +12061,11 @@ export interface components {
        */
       cache_read?: number | null;
       /**
+       * Format: double
+       * @description Cache write cost per million tokens (USD); absent falls back to input.
+       */
+      cache_write?: number | null;
+      /**
        * @description Tiered pricing that applies when prompt tokens exceed context thresholds.
        *     When present, the highest matching tier replaces the base rates for the
        *     whole request.
@@ -13731,7 +13741,7 @@ export interface components {
      * @description Strategy for prompt caching.
      * @enum {string}
      */
-    PromptCacheStrategy: "auto";
+    PromptCacheStrategy: "auto" | "explicit";
     /**
      * @description LLM Provider entity (API keys never exposed)
      *     Note: This is the entity struct, separate from the Provider trait in llm.rs

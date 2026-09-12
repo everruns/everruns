@@ -3584,6 +3584,8 @@ export interface ModelCost {
   output: number;
   /** Cached read cost per million tokens, if supported */
   cache_read?: number;
+  /** Cache write cost per million tokens, if known */
+  cache_write?: number;
   /** Tiered pricing above certain context thresholds */
   cost_tiers?: CostTier[];
 }
@@ -3598,6 +3600,8 @@ export interface CostTier {
   output: number;
   /** Cached read cost per million tokens (USD) for this tier, if supported */
   cache_read?: number;
+  /** Cache write cost per million tokens, if known */
+  cache_write?: number;
 }
 
 /** Token limits for the model */

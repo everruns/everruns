@@ -19593,6 +19593,14 @@
             "format": "double",
             "description": "Cached read cost per million tokens (USD) for this tier, if supported"
           },
+          "cache_write": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Cache write cost per million tokens (USD); absent falls back to input."
+          },
           "input": {
             "type": "number",
             "format": "double",
@@ -30365,6 +30373,14 @@
             "format": "double",
             "description": "Cached read cost per million tokens (USD), if supported"
           },
+          "cache_write": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Cache write cost per million tokens (USD); absent falls back to input."
+          },
           "cost_tiers": {
             "type": "array",
             "items": {
@@ -33139,7 +33155,8 @@
         "type": "string",
         "description": "Strategy for prompt caching.",
         "enum": [
-          "auto"
+          "auto",
+          "explicit"
         ]
       },
       "Provider": {

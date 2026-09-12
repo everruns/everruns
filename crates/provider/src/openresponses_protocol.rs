@@ -124,6 +124,7 @@ pub struct OpenResponsesProtocolChatDriver {
     stateful_responses: Option<bool>,
     native_phases: bool,
     hosted_tool_search: bool,
+    native_prompt_cache_options: bool,
 }
 
 impl OpenResponsesProtocolChatDriver {
@@ -140,6 +141,7 @@ impl OpenResponsesProtocolChatDriver {
             stateful_responses: None,
             native_phases: false,
             hosted_tool_search: false,
+            native_prompt_cache_options: false,
         }
     }
 
@@ -147,6 +149,12 @@ impl OpenResponsesProtocolChatDriver {
     pub fn with_native_features(mut self, phases: bool, hosted_tool_search: bool) -> Self {
         self.native_phases = phases;
         self.hosted_tool_search = hosted_tool_search;
+        self
+    }
+
+    /// Enable OpenAI's explicit cache controls on an endpoint that supports them.
+    pub fn with_prompt_cache_options(mut self, enabled: bool) -> Self {
+        self.native_prompt_cache_options = enabled;
         self
     }
 
@@ -1124,6 +1132,37 @@ fn repair_unpaired_function_call_items(
         .collect()
 }
 
+/// Breakpoints belong on content blocks, never the top-level instructions string.
+/// Apply after serialization so ordinary input and compact-item replay stay lossless.
+fn apply_cache_options(body: &mut Value, config: &LlmCallConfig, native_openai: bool) {
+    if !native_openai || !crate::openai_compat::supports_cache_options(&config.model) {
+        return;
+    }
+    let Some(cache) = config.prompt_cache.as_ref().filter(|c| c.enabled) else {
+        return;
+    };
+    let explicit = cache.strategy == crate::driver_registry::PromptCacheStrategy::Explicit;
+    body["prompt_cache_options"] =
+        json!({"ttl": "30m", "mode": if explicit { "explicit" } else { "implicit" }});
+    if explicit
+        && let Some(instructions) = body
+            .get("instructions")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    {
+        body.as_object_mut().unwrap().remove("instructions");
+        body["input"].as_array_mut().unwrap().insert(
+            0,
+            json!({
+                "type": "message", "role": "developer", "content": [{
+                    "type": "input_text", "text": instructions,
+                    "prompt_cache_breakpoint": {"mode": "explicit"}
+                }]
+            }),
+        );
+    }
+}
+
 fn is_missing_tool_output_continuation_error(error: &AgentLoopError) -> bool {
     if !matches!(error.llm_error_kind(), Some(LlmErrorKind::InvalidRequest)) {
         return false;
@@ -1147,6 +1186,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
+        crate::openai_compat::validate_config(config)?;
         let api_url = endpoint.url("responses").ok_or_else(|| {
             AgentLoopError::Configuration("Open Responses provider has no base URL".to_string())
         })?;
@@ -1193,6 +1233,19 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         } else {
             None
         };
+
+        // Explicit breakpoints move instructions into input. Replaying the full
+        // transcript avoids appending that developer prefix again on every
+        // previous_response_id continuation (instructions normally do not persist).
+        if self.native_prompt_cache_options
+            && crate::openai_compat::supports_cache_options(&config.model)
+            && config.prompt_cache.as_ref().is_some_and(|cache| {
+                cache.enabled
+                    && cache.strategy == crate::driver_registry::PromptCacheStrategy::Explicit
+            })
+        {
+            previous_response_id = None;
+        }
 
         // Native compact output replaces history through its durable source
         // boundary. Messages supplied here are the raw suffix written after that
@@ -1308,6 +1361,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         if let Some(extension) = &self.request_extension {
             extension.decorate(&mut request_body, config)?;
         }
+        apply_cache_options(&mut request_body, config, self.native_prompt_cache_options);
+        crate::openai_compat::validate_body(&request_body, endpoint, true)?;
         let mut extension_headers = HeaderMap::new();
         if let Some(extension) = &self.request_extension {
             extension.decorate_headers(&mut extension_headers, config)?;
@@ -1368,6 +1423,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 if let Some(extension) = &self.request_extension {
                     extension.decorate(&mut request_body, config)?;
                 }
+                apply_cache_options(&mut request_body, config, self.native_prompt_cache_options);
+                crate::openai_compat::validate_body(&request_body, endpoint, true)?;
                 connect_sse_with_reconnect(
                     &self.retry_config,
                     "OpenResponsesProtocolDriver",
@@ -1682,15 +1739,17 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                         let input = *input_tokens.lock().unwrap();
                                         let output = *output_tokens.lock().unwrap();
                                         let cached = *cache_read_tokens.lock().unwrap();
+                                        let written = response_obj.pointer("/usage/input_tokens_details/cache_write_tokens")
+                                            .and_then(Value::as_u64).map(|n| n.min(u32::MAX as u64) as u32);
 
                                         Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
                                             // `input` is OpenAI's cache-inclusive prompt count;
                                             // normalize to non-cached input (disjoint convention).
                                             total_tokens: Some(input + output),
-                                            prompt_tokens: Some(disjoint_prompt_tokens(input, cached)),
+                                            prompt_tokens: Some(disjoint_prompt_tokens(input, cached).saturating_sub(written.unwrap_or(0))),
                                             completion_tokens: Some(output),
                                             cache_read_tokens: cached,
-                                            cache_creation_tokens: None,
+                                            cache_creation_tokens: written,
                                             provider_cost_usd,
                                             model: Some(model),
                                             finish_reason: Some(reason),
@@ -2262,16 +2321,23 @@ fn handle_streaming_event(
             let input = *input_tokens.lock().unwrap();
             let output = *output_tokens.lock().unwrap();
             let cached = *cache_read_tokens.lock().unwrap();
+            let written = response
+                .usage
+                .as_ref()
+                .and_then(|u| u.input_tokens_details.as_ref())
+                .and_then(|d| d.cache_write_tokens);
             let provider_cost_usd = response.usage.as_ref().and_then(|u| u.cost);
 
             LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
                 // `input` is OpenAI's cache-inclusive prompt count; normalize to
                 // non-cached input (disjoint convention).
                 total_tokens: Some(input + output),
-                prompt_tokens: Some(disjoint_prompt_tokens(input, cached)),
+                prompt_tokens: Some(
+                    disjoint_prompt_tokens(input, cached).saturating_sub(written.unwrap_or(0)),
+                ),
                 completion_tokens: Some(output),
                 cache_read_tokens: cached,
-                cache_creation_tokens: None,
+                cache_creation_tokens: written,
                 provider_cost_usd,
                 model: Some(model),
                 finish_reason: Some(reason),
@@ -2573,6 +2639,62 @@ enum ResponsesTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_cache_wire_options_are_model_gated() {
+        let mut config = LlmCallConfig {
+            reasoning_state: None,
+            speed: None,
+            verbosity: None,
+            model: "gpt-6-astra".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            driver_options: Default::default(),
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
+        };
+        config.prompt_cache = Some(crate::driver_registry::PromptCacheConfig {
+            enabled: true,
+            strategy: crate::driver_registry::PromptCacheStrategy::Explicit,
+            ..Default::default()
+        });
+        let original = json!({"instructions": "Stable policy", "input": [{"role": "user", "content": "Changing question"}]});
+        let mut body = original.clone();
+        apply_cache_options(&mut body, &config, true);
+        assert_eq!(
+            body["prompt_cache_options"],
+            json!({"ttl":"30m","mode":"explicit"})
+        );
+        assert!(body.get("instructions").is_none());
+        assert_eq!(
+            body["input"][0]["content"][0],
+            json!({"type":"input_text","text":"Stable policy","prompt_cache_breakpoint":{"mode":"explicit"}})
+        );
+        assert_eq!(body["input"][1], original["input"][0]);
+        let mut gateway = original.clone();
+        apply_cache_options(&mut gateway, &config, false);
+        assert_eq!(gateway, original);
+        config.model = "gpt-5.5".into();
+        let mut older = original.clone();
+        apply_cache_options(&mut older, &config, true);
+        assert_eq!(older, original);
+        config.model = "gpt-5.6-sol".into();
+        config.prompt_cache.as_mut().unwrap().strategy =
+            crate::driver_registry::PromptCacheStrategy::Auto;
+        let mut implicit = original.clone();
+        apply_cache_options(&mut implicit, &config, true);
+        assert_eq!(implicit["instructions"], original["instructions"]);
+        assert_eq!(implicit["prompt_cache_options"]["mode"], "implicit");
+    }
 
     #[test]
     fn test_request_serialization() {
@@ -5140,7 +5262,7 @@ mod tests {
                     "input_tokens": 1000,
                     "output_tokens": 20,
                     "total_tokens": 1020,
-                    "input_tokens_details": { "cached_tokens": 800 }
+                    "input_tokens_details": { "cached_tokens": 800, "cache_write_tokens": 150 }
                 }
             }
         }"#;
@@ -5160,8 +5282,9 @@ mod tests {
 
         match stream_event {
             LlmStreamEvent::Done(metadata) => {
-                // 1000 reported − 800 cached = 200 non-cached input.
-                assert_eq!(metadata.prompt_tokens, Some(200));
+                // 1000 reported − 800 read − 150 written = 50 ordinary input.
+                assert_eq!(metadata.prompt_tokens, Some(50));
+                assert_eq!(metadata.cache_creation_tokens, Some(150));
                 assert_eq!(metadata.cache_read_tokens, Some(800));
                 // total_tokens stays the true prompt+output total (1000 + 20).
                 assert_eq!(metadata.total_tokens, Some(1020));

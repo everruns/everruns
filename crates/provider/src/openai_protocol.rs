@@ -197,6 +197,12 @@ impl OpenAIProtocolChatDriver {
         let mut retry_config = self.retry_config.clone();
         retry_config.max_retries = retry_config.max_retries.saturating_sub(retries_consumed);
 
+        crate::openai_compat::validate_body(
+            &serde_json::to_value(request)
+                .map_err(|e| AgentLoopError::Configuration(e.to_string()))?,
+            endpoint,
+            false,
+        )?;
         let body = serde_json::to_vec(request)
             .map_err(|e| AgentLoopError::llm(format!("failed to serialize request: {e}")))?;
         retry_request(
@@ -633,6 +639,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
+        crate::openai_compat::validate_config(config)?;
         // Note: OTel instrumentation is handled via event listeners.
         // ReasonAtom emits llm.generation events, and OtelEventListener
         // creates gen-ai spans from those events.

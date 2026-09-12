@@ -703,7 +703,11 @@ pub struct Usage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputTokensDetails {
     /// Tokens served from cache.
+    #[serde(default)]
     pub cached_tokens: u32,
+    /// Tokens written to cache, already included in input_tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<u32>,
 }
 
 /// Output token breakdown.

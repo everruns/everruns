@@ -901,3 +901,87 @@ async fn completed_call_does_not_dispatch_partial_sibling() {
     assert_eq!(calls[0].arguments, serde_json::json!({"q":"complete"}));
     assert_eq!(response_id.as_deref(), Some("response_latest"));
 }
+
+#[tokio::test]
+async fn astra_cache_wire_and_usage_buckets() {
+    use everruns_provider::driver_registry::{PromptCacheConfig, PromptCacheStrategy};
+    use serde_json::json;
+    // Missing sequence_number exercises the generic parser; the complete shape
+    // exercises the typed parser. Both must preserve identical billing buckets.
+    for typed in [false, true] {
+        let server = MockServer::start().await;
+        let mut event = json!({"type":"response.completed", "response": {
+            "id":"resp_cache", "object":"response", "created_at":1780000000,
+            "status":"completed", "model":"gpt-6-astra", "output":[],
+            "usage":{"input_tokens":2000,"output_tokens":20,"total_tokens":2020,
+                "input_tokens_details":{"cached_tokens":800,"cache_write_tokens":1000}}
+        }});
+        if typed {
+            event["sequence_number"] = json!(1);
+        }
+        mount_sse(&server, format!("data: {event}\n\n")).await;
+        let provider = Provider::new(
+            "openai",
+            OpenResponsesProtocolChatDriver::new()
+                .with_native_features(true, true)
+                .with_prompt_cache_options(true)
+                .with_stateful_responses(true),
+        )
+        .base_url(format!("{}/v1/responses", server.uri()));
+        let mut cfg = config("gpt-6-astra");
+        cfg.previous_response_id = Some("resp_previous".into());
+        cfg.reasoning_effort = Some(everruns_provider::ReasoningEffort::Low);
+        cfg.reasoning_state = Some(astra_state(Some(everruns_provider::ReasoningEffort::High)));
+        cfg.prompt_cache = Some(PromptCacheConfig {
+            enabled: true,
+            strategy: PromptCacheStrategy::Explicit,
+            ..Default::default()
+        });
+        let response = provider
+            .chat_completion(
+                vec![
+                    LlmMessage::text(LlmMessageRole::System, "Stable policy"),
+                    LlmMessage::text(LlmMessageRole::User, "Current question"),
+                ],
+                &cfg,
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.metadata.prompt_tokens, Some(200));
+        assert_eq!(response.metadata.cache_read_tokens, Some(800));
+        assert_eq!(response.metadata.cache_creation_tokens, Some(1000));
+        assert_eq!(response.metadata.total_tokens, Some(2020));
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(
+            body["prompt_cache_options"],
+            json!({"ttl":"30m","mode":"explicit"})
+        );
+        assert_eq!(
+            body["input"][0]["content"][0]["prompt_cache_breakpoint"],
+            json!({"mode":"explicit"})
+        );
+        assert_eq!(body["reasoning"]["effort"], "low");
+        assert_eq!(body["input"][1]["type"], "configuration_update");
+        assert_eq!(body["input"][1]["reasoning"]["effort"], "high");
+        assert_eq!(body["input"][2]["content"], "Current question");
+        assert!(body.get("instructions").is_none());
+        assert!(body.get("previous_response_id").is_none());
+        assert!(body["prompt_cache_key"].as_str().unwrap().len() <= 64);
+    }
+}
+
+#[tokio::test]
+async fn astra_invalid_effort_fails_before_http() {
+    let server = MockServer::start().await;
+    for effort in [
+        everruns_provider::ReasoningEffort::None,
+        everruns_provider::ReasoningEffort::Minimal,
+    ] {
+        let mut cfg = config("gpt-6-astra");
+        cfg.reasoning_effort = Some(effort);
+        let result = driver(&server).chat_completion(vec![], &cfg).await;
+        assert!(result.unwrap_err().to_string().contains("unsupported"));
+    }
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
