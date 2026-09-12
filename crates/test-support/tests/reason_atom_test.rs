@@ -1492,7 +1492,15 @@ async fn proactive_native_noop_retries_only_after_meaningful_source_growth() {
             .events()
             .await
             .iter()
-            .all(|event| !matches!(event.data, everruns_core::EventData::ContextCompacted(_)))
+            // EVE-961: the no-checkpoint fallback reports installs without a
+            // checkpoint id; only durable checkpoint installs are forbidden here.
+            .all(|event| {
+                !matches!(
+                    event.data,
+                    everruns_core::EventData::ContextCompacted(ref data)
+                        if data.checkpoint_id.is_some()
+                )
+            })
     );
     let calls = rig.calls.lock().await;
     assert!(calls.last().unwrap().1.provider_opaque_context.is_none());
@@ -1772,7 +1780,15 @@ async fn proactive_native_failure_is_atomic() {
             .events()
             .await
             .iter()
-            .all(|event| !matches!(event.data, everruns_core::EventData::ContextCompacted(_)))
+            // EVE-961: the no-checkpoint fallback reports installs without a
+            // checkpoint id; only durable checkpoint installs are forbidden here.
+            .all(|event| {
+                !matches!(
+                    event.data,
+                    everruns_core::EventData::ContextCompacted(ref data)
+                        if data.checkpoint_id.is_some()
+                )
+            })
     );
 }
 

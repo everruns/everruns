@@ -18715,6 +18715,15 @@
           }
         }
       },
+      "CompactionFailStage": {
+        "type": "string",
+        "description": "Which stage of a compaction attempt failed.",
+        "enum": [
+          "native_compaction",
+          "checkpoint_install",
+          "summarization"
+        ]
+      },
       "CompactionReason": {
         "type": "string",
         "description": "Reason why compaction was triggered.",
@@ -18722,6 +18731,19 @@
           "proactive_budget",
           "request_too_large",
           "manual"
+        ]
+      },
+      "CompactionSkipReason": {
+        "type": "string",
+        "description": "Why a pressured compaction evaluation did not install compacted context.",
+        "enum": [
+          "strategy_excludes_native",
+          "driver_unsupported",
+          "checkpoint_store_unavailable",
+          "cooldown_active",
+          "native_returned_none",
+          "no_material_reduction",
+          "guard_rejected"
         ]
       },
       "CompactionStepData": {
@@ -18749,6 +18771,14 @@
             "description": "Strategy used in this step."
           }
         }
+      },
+      "CompactionTrigger": {
+        "type": "string",
+        "description": "What triggered a compaction lifecycle: the context-window budget or cost pressure.",
+        "enum": [
+          "context_budget",
+          "cost_pressure"
+        ]
       },
       "Connection": {
         "type": "object",
@@ -18967,6 +18997,16 @@
           "duration_ms"
         ],
         "properties": {
+          "budget_remaining_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Tokens of headroom remaining when the install completed, when measurable.",
+            "example": 8192,
+            "minimum": 0
+          },
           "bytes_after": {
             "type": [
               "integer",
@@ -18985,12 +19025,41 @@
             "description": "Serialized request-context bytes before compaction, when measurable.",
             "minimum": 0
           },
+          "cache_creation_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Cache-creation tokens written after compaction, when reported.",
+            "example": 1024,
+            "minimum": 0
+          },
+          "cache_read_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Cached input tokens read after compaction, when reported.",
+            "example": 90210,
+            "minimum": 0
+          },
           "checkpoint_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Durable checkpoint installed by this compaction, when applicable."
+            "description": "Durable checkpoint installed by this compaction, when applicable.",
+            "example": "01934c2f-9f2e-7c1b-8d3e-4f5a6b7c8d9e"
+          },
+          "driver": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Local driver identifier, when known.",
+            "example": "openai-chat"
           },
           "duration_ms": {
             "type": "integer",
@@ -19006,7 +19075,30 @@
           "messages_before": {
             "type": "integer",
             "description": "Number of messages before compaction.",
+            "example": 120,
             "minimum": 0
+          },
+          "model": {
+            "type": "string",
+            "description": "Model that performed the compaction.",
+            "example": "gpt-5-mini"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider backend (e.g. \"openai\"), when known.",
+            "example": "openai"
+          },
+          "source_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Source message sequence the compaction ran at, when known.",
+            "example": 481
           },
           "steps": {
             "type": "array",
@@ -19035,7 +19127,12 @@
             ],
             "format": "int64",
             "description": "Estimated or provider-reported input tokens before compaction.",
+            "example": 184320,
             "minimum": 0
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/CompactionTrigger",
+            "description": "What triggered this compaction: context-window budget or cost pressure."
           }
         }
       },
@@ -19048,6 +19145,16 @@
           "messages_before"
         ],
         "properties": {
+          "budget_remaining_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Tokens of headroom remaining when the attempt started, when measurable.",
+            "example": 8192,
+            "minimum": 0
+          },
           "bytes_before": {
             "type": [
               "integer",
@@ -19057,18 +19164,70 @@
             "description": "Serialized request-context bytes before compaction, when measurable.",
             "minimum": 0
           },
+          "cache_creation_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Cache-creation tokens written before compaction, when reported.",
+            "example": 1024,
+            "minimum": 0
+          },
+          "cache_read_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Cached input tokens read before compaction, when reported.",
+            "example": 90210,
+            "minimum": 0
+          },
+          "driver": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Local driver identifier, when known.",
+            "example": "openai-chat"
+          },
           "messages_before": {
             "type": "integer",
             "description": "Number of messages before compaction.",
+            "example": 120,
             "minimum": 0
+          },
+          "model": {
+            "type": "string",
+            "description": "Model performing the compaction.",
+            "example": "gpt-5-mini"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider backend (e.g. \"openai\"), when known.",
+            "example": "openai"
           },
           "reason": {
             "$ref": "#/components/schemas/CompactionReason",
             "description": "Why compaction was triggered."
           },
+          "source_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Source message sequence the attempt ran at, when known.",
+            "example": 481
+          },
           "strategy": {
             "type": "string",
-            "description": "Strategy requested (may differ from strategy_used in the completed event)."
+            "description": "Strategy requested (may differ from strategy_used in the completed event).",
+            "example": "summary_then_trim"
           },
           "tokens_before": {
             "type": [
@@ -19077,7 +19236,196 @@
             ],
             "format": "int64",
             "description": "Estimated or provider-reported input tokens before compaction.",
+            "example": 184320,
             "minimum": 0
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/CompactionTrigger",
+            "description": "What triggered this attempt: context-window budget or cost pressure."
+          }
+        }
+      },
+      "ContextCompactionFailedData": {
+        "type": "object",
+        "description": "Data for context.compaction.failed: an attempt errored before installing.\n\nTerminal event for an emitted context.compacting attempt that did not\ninstall. The envelope timestamp records when the failure surfaced.",
+        "required": [
+          "reason",
+          "trigger",
+          "stage",
+          "error",
+          "strategy",
+          "model",
+          "tokens_before",
+          "messages_before"
+        ],
+        "properties": {
+          "budget_remaining_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Tokens of headroom remaining, when measurable.",
+            "example": 8192,
+            "minimum": 0
+          },
+          "checkpoint_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Durable checkpoint being installed when the failure hit, if any.",
+            "example": "01934c2f-9f2e-7c1b-8d3e-4f5a6b7c8d9e"
+          },
+          "driver": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Local driver identifier, when known.",
+            "example": "openai-chat"
+          },
+          "error": {
+            "type": "string",
+            "description": "Human-readable failure.",
+            "example": "summarizer request failed: upstream timed out"
+          },
+          "messages_before": {
+            "type": "integer",
+            "description": "Number of messages before the attempt.",
+            "example": 120,
+            "minimum": 0
+          },
+          "model": {
+            "type": "string",
+            "description": "Model the attempt ran under.",
+            "example": "gpt-5-mini"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider backend (e.g. \"openai\"), when known.",
+            "example": "openai"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/CompactionReason",
+            "description": "Why compaction was attempted."
+          },
+          "source_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Source message sequence the attempt ran at, when known.",
+            "example": 481
+          },
+          "stage": {
+            "$ref": "#/components/schemas/CompactionFailStage",
+            "description": "Which stage failed."
+          },
+          "strategy": {
+            "type": "string",
+            "description": "Strategy requested.",
+            "example": "summary_then_trim"
+          },
+          "tokens_before": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Estimated or provider-reported input tokens before the attempt.",
+            "example": 184320,
+            "minimum": 0
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/CompactionTrigger",
+            "description": "Whether window/budget or cost pressure triggered the attempt."
+          }
+        }
+      },
+      "ContextCompactionSkippedData": {
+        "type": "object",
+        "description": "Data for context.compaction.skipped: pressure observed, nothing installed.\n\nEmitted when context-budget or cost pressure is present but the evaluation\ndoes not install compacted context. The envelope timestamp records when the\ndecision was made; every pressured evaluation closes with exactly one of\nskipped, installed (context.compacted), or failed.",
+        "required": [
+          "reason",
+          "trigger",
+          "skip_reason",
+          "strategy",
+          "model",
+          "tokens_observed",
+          "messages_observed"
+        ],
+        "properties": {
+          "budget_remaining_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Tokens of headroom remaining, when measurable.",
+            "example": 8192,
+            "minimum": 0
+          },
+          "driver": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Local driver identifier, when known.",
+            "example": "openai-chat"
+          },
+          "messages_observed": {
+            "type": "integer",
+            "description": "Number of messages observed.",
+            "example": 120,
+            "minimum": 0
+          },
+          "model": {
+            "type": "string",
+            "description": "Model the evaluation ran under.",
+            "example": "gpt-5-mini"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider backend (e.g. \"openai\"), when known.",
+            "example": "openai"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/CompactionReason",
+            "description": "Why compaction was evaluated."
+          },
+          "skip_reason": {
+            "$ref": "#/components/schemas/CompactionSkipReason",
+            "description": "Why nothing was installed."
+          },
+          "source_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Source message sequence the evaluation ran at, when known.",
+            "example": 481
+          },
+          "strategy": {
+            "type": "string",
+            "description": "Strategy requested.",
+            "example": "summary_then_trim"
+          },
+          "tokens_observed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Estimated input tokens observed at evaluation time.",
+            "example": 184320,
+            "minimum": 0
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/CompactionTrigger",
+            "description": "Whether window/budget or cost pressure triggered the evaluation."
           }
         }
       },
@@ -21859,6 +22207,14 @@
           },
           {
             "$ref": "#/components/schemas/ContextCompactedData"
+          },
+          {
+            "$ref": "#/components/schemas/ContextCompactionSkippedData",
+            "description": "Evaluation ran but installed nothing (context.compaction.skipped)."
+          },
+          {
+            "$ref": "#/components/schemas/ContextCompactionFailedData",
+            "description": "Attempt errored before installing (context.compaction.failed)."
           },
           {
             "$ref": "#/components/schemas/FileWrittenData"
