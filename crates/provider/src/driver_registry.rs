@@ -346,6 +346,32 @@ pub trait ChatDriver: Send + Sync {
         })
     }
 
+    /// Whether this driver can complete without SSE on the wire.
+    ///
+    /// When `false` (the default), [`Self::chat_completion_non_streaming`]
+    /// falls back to collecting [`Self::chat_completion_stream`], so callers
+    /// still wait for one full response but the provider call streams
+    /// underneath. Drivers with a native `stream: false` JSON endpoint
+    /// return `true` and issue a single request/response call instead.
+    fn supports_native_non_streaming(&self) -> bool {
+        false
+    }
+
+    /// Call the LLM and wait for the full response without SSE.
+    ///
+    /// This is the non-streaming counterpart to
+    /// [`Self::chat_completion_stream`]: no `LlmStreamEvent`s reach the
+    /// caller. The default collects the stream; drivers with a native
+    /// non-streaming endpoint override this to use it.
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponse> {
+        self.chat_completion(endpoint, messages, config).await
+    }
+
     /// List available models from the provider
     ///
     /// Returns `Ok(Some(models))` if the provider supports model listing,
@@ -456,6 +482,21 @@ impl ChatDriver for Box<dyn ChatDriver> {
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         (**self).chat_completion(endpoint, messages, config).await
+    }
+
+    fn supports_native_non_streaming(&self) -> bool {
+        (**self).supports_native_non_streaming()
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponse> {
+        (**self)
+            .chat_completion_non_streaming(endpoint, messages, config)
+            .await
     }
 
     async fn list_models(
@@ -1427,6 +1468,21 @@ impl ChatDriver for RequestOptionsDriver {
     ) -> Result<LlmResponse> {
         self.inner
             .chat_completion(endpoint, messages, &self.apply(config))
+            .await
+    }
+
+    fn supports_native_non_streaming(&self) -> bool {
+        self.inner.supports_native_non_streaming()
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponse> {
+        self.inner
+            .chat_completion_non_streaming(endpoint, messages, &self.apply(config))
             .await
     }
 

@@ -3195,7 +3195,6 @@ export interface paths {
     /** GET /v1/sessions/{session_id}/messages - List messages (PRIMARY data) */
     get: operations["list_messages"];
     put?: never;
-    /** POST /v1/sessions/{session_id}/messages - Create message (user message triggers workflow) */
     post: operations["create_message"];
     delete?: never;
     options?: never;
@@ -6313,6 +6312,9 @@ export interface components {
        */
       tags?: string[] | null;
     };
+    CreateMessageResult:
+      | components["schemas"]["Message"]
+      | components["schemas"]["TurnWaitResponse"];
     /** @description Request to create a new LLM model for a provider */
     CreateModelRequest: {
       /**
@@ -16348,6 +16350,24 @@ export interface components {
        */
       turn_id: string;
     };
+    /** @description Waited result for `POST /v1/sessions/{session_id}/messages?wait=true`. */
+    TurnWaitResponse: {
+      /** @description Turn failure detail when `status` is `failed`. */
+      error?: string | null;
+      /** @description The accepted user message (same body as the `201` path). */
+      message: components["schemas"]["Message"];
+      /**
+       * @description Messages appended after the accepted message: assistant output on
+       *     completion, whatever exists so far on timeout, empty on failure.
+       */
+      messages: components["schemas"]["Message"][];
+      status: components["schemas"]["TurnWaitStatus"];
+    };
+    /**
+     * @description Terminal-or-pending outcome of a waited turn.
+     * @enum {string}
+     */
+    TurnWaitStatus: "completed" | "failed" | "timeout";
     /** @description Request to update an agent. Only provided fields will be updated. */
     UpdateAgentRequest: {
       /**
@@ -29242,7 +29262,16 @@ export interface operations {
   };
   create_message: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Wait for turn completion and return the turn result. */
+        wait?: boolean;
+        /**
+         * @description Max wait budget in milliseconds (default 120000, capped at 600000).
+         *     Only used with `wait=true`. On expiry the endpoint returns `202`
+         *     with the messages produced so far.
+         */
+        timeout_ms?: number | null;
+      };
       header?: never;
       path: {
         /** @description Session ID (prefixed, e.g., sess_...) */
@@ -29256,13 +29285,31 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Message created successfully */
+      /** @description Waited turn reached a terminal state (?wait=true) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CreateMessageResult"];
+        };
+      };
+      /** @description Message accepted; turn runs in background */
       201: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["Message"];
+          "application/json": components["schemas"]["CreateMessageResult"];
+        };
+      };
+      /** @description Wait deadline expired; turn still running (?wait=true) */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CreateMessageResult"];
         };
       };
       /** @description Invalid ID format */

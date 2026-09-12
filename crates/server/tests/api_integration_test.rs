@@ -2791,6 +2791,49 @@ async fn create_llmsim_agent(server: &TestServer, name: &str) -> Agent {
 }
 
 #[tokio::test]
+async fn test_post_message_wait_times_out_without_worker() {
+    // No worker drains turn tasks in-process, so no turn can complete here: a
+    // short wait budget must return 202 with a timeout status. The 200
+    // completed path requires server+worker and is covered in workflow_test.rs.
+    let server = TestServer::in_memory().await;
+    let agent = create_llmsim_agent(&server, "msg-wait").await;
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent.public_id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let result: Value = server
+        .post(
+            &format!(
+                "/v1/sessions/{}/messages?wait=true&timeout_ms=1500",
+                session.id
+            ),
+            json!({
+                "message": {
+                    "role": "user",
+                    "content": [{ "type": "text", "text": "Hello" }]
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::ACCEPTED)
+        .json();
+
+    assert_eq!(result["status"], "timeout");
+    assert!(
+        result["message"]["id"].is_string(),
+        "timeout returns the accepted message"
+    );
+}
+
+#[tokio::test]
 async fn test_session_commands_are_scoped_to_active_capabilities() {
     let server = TestServer::in_memory().await;
 

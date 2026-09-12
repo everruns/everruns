@@ -48,7 +48,9 @@ impl UtilityLlmService for OpenAiUtilityLlmService {
 
     async fn chat_completion(&self, request: UtilityLlmRequest) -> Result<LlmResponse> {
         let (messages, config) = request.into_driver_request()?;
-        self.provider.chat_completion(messages, &config).await
+        self.provider
+            .chat_completion_non_streaming(messages, &config)
+            .await
     }
 
     async fn chat_completion_stream(
