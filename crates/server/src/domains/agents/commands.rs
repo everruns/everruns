@@ -265,7 +265,7 @@ impl Command for CreateAgent {
         CommandMeta {
             name: "create_agent",
             category: "agents",
-            description: "Create a new agent with a name, system prompt, and optional capabilities.",
+            description: "Create a new agent with a name, system prompt, and optional capabilities. Agent name must contain only lowercase letters, digits, and hyphens (e.g. joke-telling-agent).",
             method: "POST",
             path: "/v1/agents",
         }

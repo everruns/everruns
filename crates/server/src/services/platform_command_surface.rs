@@ -537,6 +537,33 @@ mod tests {
     }
 
     #[test]
+    fn discovery_descriptions_carry_argument_constraints() {
+        // Each op below caused a failed first agent attempt (agent-name casing,
+        // --agent vs --agent_id, string vs content array), so its description
+        // carries the constraint inline. Exact-name lookups mirror the agent flow:
+        // a broad discover pass, then fetching the single op before invoking it.
+        let cases = [
+            ("create_agent", "lowercase letters, digits, and hyphens"),
+            ("create_session", "--agent_id or --agent_name"),
+            ("create_message", "array of content parts"),
+        ];
+        for (query, hint) in cases {
+            let output = discover_for_test(&serde_json::json!({ "query": query }))
+                .expect("discover JSON output");
+            let value: Value = serde_json::from_str(&output).expect("discover JSON");
+            let operations = value["operations"].as_array().unwrap();
+            assert!(
+                operations.iter().any(|operation| {
+                    operation["description"]
+                        .as_str()
+                        .is_some_and(|description| description.contains(hint))
+                }),
+                "discover '{query}' must surface the hint '{hint}': {value}"
+            );
+        }
+    }
+
+    #[test]
     fn a_flat_command_still_carries_its_usage() {
         // No `cli` spelling means no `--help` to defer to, so discovery stays
         // the only place its flags are written down.

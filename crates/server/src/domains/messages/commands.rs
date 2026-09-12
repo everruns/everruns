@@ -36,7 +36,7 @@ impl Command for CreateMessage {
         CommandMeta {
             name: "create_message",
             category: "messages",
-            description: "Create a user message in a session and start the next run.",
+            description: "Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]'.",
             method: "POST",
             path: "/v1/sessions/{session_id}/messages",
         }

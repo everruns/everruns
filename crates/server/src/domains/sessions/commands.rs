@@ -65,7 +65,7 @@ impl Command for CreateSession {
         CommandMeta {
             name: "create_session",
             category: "sessions",
-            description: "Create a new session. Optionally assign an agent and harness.",
+            description: "Create a new session. Optionally assign an agent and harness. Assign the agent with --agent_id or --agent_name (the everruns CLI spelling of this flag is --agent).",
             method: "POST",
             path: "/v1/sessions",
         }
