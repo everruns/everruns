@@ -1462,8 +1462,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List uploaded files, newest first. */
     get: operations["list_files"];
     put?: never;
+    /** Upload a PDF file for use as model input. */
     post: operations["upload_file"];
     delete?: never;
     options?: never;
@@ -1478,9 +1480,11 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Download a stored file's bytes. */
     get: operations["get_file"];
     put?: never;
     post?: never;
+    /** Delete a stored file. */
     delete: operations["delete_file"];
     options?: never;
     head?: never;
@@ -7629,15 +7633,33 @@ export interface components {
       /** @description Original filename (for display and provider file parts) */
       filename?: string | null;
     };
+    /** @description Stored file metadata (no binary data). */
     FileInfo: {
+      /**
+       * @description MIME type of the stored file (currently always application/pdf).
+       * @example application/pdf
+       */
       content_type: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Upload timestamp.
+       * @example 2026-01-04T11:23:00Z
+       */
       created_at: string;
+      /**
+       * @description Original filename supplied at upload, if known.
+       * @example report.pdf
+       */
       filename?: string | null;
       /** @example file_01933b5a00007000800000000000001 */
       id: string;
-      metadata: unknown;
-      /** Format: int64 */
+      /** @description Caller-supplied metadata captured at upload. */
+      metadata: Record<string, unknown>;
+      /**
+       * Format: int64
+       * @description Size of the stored file in bytes.
+       * @example 1048576
+       */
       size_bytes: number;
     };
     /** @description File stat information */
@@ -7666,14 +7688,31 @@ export interface components {
        */
       updated_at: string;
     };
+    /** @description File metadata returned after a successful upload (no binary data). */
     FileUploadResponse: {
+      /**
+       * @description MIME type of the stored file (currently always application/pdf).
+       * @example application/pdf
+       */
       content_type: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Upload timestamp.
+       * @example 2026-01-04T11:23:00Z
+       */
       created_at: string;
+      /**
+       * @description Original filename supplied at upload, if known.
+       * @example report.pdf
+       */
       filename?: string | null;
       /** @example file_01933b5a00007000800000000000001 */
       id: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Size of the stored file in bytes.
+       * @example 1048576
+       */
       size_bytes: number;
     };
     /** @description Data for file.written events emitted when files are written to the session filesystem. */
@@ -23326,6 +23365,7 @@ export interface operations {
   list_files: {
     parameters: {
       query?: {
+        /** @description Maximum number of files to return. */
         limit?: number | null;
       };
       header?: never;
@@ -23348,6 +23388,7 @@ export interface operations {
   upload_file: {
     parameters: {
       query?: {
+        /** @description Optional session to attribute the upload to. */
         session_id?: string | null;
       };
       header?: never;

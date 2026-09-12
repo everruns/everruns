@@ -5549,11 +5549,13 @@
         "tags": [
           "Files"
         ],
+        "summary": "List uploaded files, newest first.",
         "operationId": "list_files",
         "parameters": [
           {
             "name": "limit",
             "in": "query",
+            "description": "Maximum number of files to return.",
             "required": false,
             "schema": {
               "type": [
@@ -5584,11 +5586,13 @@
         "tags": [
           "Files"
         ],
+        "summary": "Upload a PDF file for use as model input.",
         "operationId": "upload_file",
         "parameters": [
           {
             "name": "session_id",
             "in": "query",
+            "description": "Optional session to attribute the upload to.",
             "required": false,
             "schema": {
               "type": [
@@ -5633,6 +5637,7 @@
         "tags": [
           "Files"
         ],
+        "summary": "Download a stored file's bytes.",
         "operationId": "get_file",
         "parameters": [
           {
@@ -5654,6 +5659,7 @@
         "tags": [
           "Files"
         ],
+        "summary": "Delete a stored file.",
         "operationId": "delete_file",
         "parameters": [
           {
@@ -22275,6 +22281,7 @@
       },
       "FileInfo": {
         "type": "object",
+        "description": "Stored file metadata (no binary data).",
         "required": [
           "id",
           "content_type",
@@ -22284,26 +22291,37 @@
         ],
         "properties": {
           "content_type": {
-            "type": "string"
+            "type": "string",
+            "description": "MIME type of the stored file (currently always application/pdf).",
+            "example": "application/pdf"
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Upload timestamp.",
+            "example": "2026-01-04T11:23:00Z"
           },
           "filename": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Original filename supplied at upload, if known.",
+            "example": "report.pdf"
           },
           "id": {
             "type": "string",
             "example": "file_01933b5a00007000800000000000001"
           },
-          "metadata": {},
+          "metadata": {
+            "type": "object",
+            "description": "Caller-supplied metadata captured at upload."
+          },
           "size_bytes": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Size of the stored file in bytes.",
+            "example": 1048576
           }
         }
       },
@@ -22355,6 +22373,7 @@
       },
       "FileUploadResponse": {
         "type": "object",
+        "description": "File metadata returned after a successful upload (no binary data).",
         "required": [
           "id",
           "content_type",
@@ -22363,17 +22382,23 @@
         ],
         "properties": {
           "content_type": {
-            "type": "string"
+            "type": "string",
+            "description": "MIME type of the stored file (currently always application/pdf).",
+            "example": "application/pdf"
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Upload timestamp.",
+            "example": "2026-01-04T11:23:00Z"
           },
           "filename": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Original filename supplied at upload, if known.",
+            "example": "report.pdf"
           },
           "id": {
             "type": "string",
@@ -22381,7 +22406,9 @@
           },
           "size_bytes": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Size of the stored file in bytes.",
+            "example": 1048576
           }
         }
       },

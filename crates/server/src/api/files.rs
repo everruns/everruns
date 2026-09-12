@@ -14,6 +14,7 @@ use axum_extra::extract::Multipart;
 use chrono::{DateTime, Utc};
 use everruns_provider::typed_id::FileId;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
@@ -38,34 +39,56 @@ pub const MAX_FILE_SIZE_BYTES: usize = 32 * 1024 * 1024;
 /// Allowed content types for model-input files.
 pub const ALLOWED_FILE_CONTENT_TYPES: &[&str] = &["application/pdf"];
 
+/// File metadata returned after a successful upload (no binary data).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FileUploadResponse {
     #[schema(value_type = String, example = "file_01933b5a00007000800000000000001")]
     pub id: FileId,
+    /// Original filename supplied at upload, if known.
+    #[schema(example = "report.pdf")]
     pub filename: Option<String>,
+    /// MIME type of the stored file (currently always application/pdf).
+    #[schema(example = "application/pdf")]
     pub content_type: String,
+    /// Size of the stored file in bytes.
+    #[schema(example = 1048576)]
     pub size_bytes: i64,
+    /// Upload timestamp.
+    #[schema(example = "2026-01-04T11:23:00Z")]
     pub created_at: DateTime<Utc>,
 }
 
+/// Stored file metadata (no binary data).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FileInfo {
     #[schema(value_type = String, example = "file_01933b5a00007000800000000000001")]
     pub id: FileId,
+    /// Original filename supplied at upload, if known.
+    #[schema(example = "report.pdf")]
     pub filename: Option<String>,
+    /// MIME type of the stored file (currently always application/pdf).
+    #[schema(example = "application/pdf")]
     pub content_type: String,
+    /// Size of the stored file in bytes.
+    #[schema(example = 1048576)]
     pub size_bytes: i64,
+    /// Caller-supplied metadata captured at upload.
+    #[schema(value_type = Object, example = json!({"source": "chat-upload"}))]
     pub metadata: serde_json::Value,
+    /// Upload timestamp.
+    #[schema(example = "2026-01-04T11:23:00Z")]
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct UploadFileQuery {
+    /// Optional session to attribute the upload to.
     pub session_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct ListFilesQuery {
+    /// Maximum number of files to return.
     pub limit: Option<i64>,
 }
 
@@ -81,6 +104,7 @@ pub struct ListFilesQuery {
     ),
     tag = "Files"
 )]
+/// Upload a PDF file for use as model input.
 pub async fn upload_file(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -190,6 +214,7 @@ pub async fn upload_file(
     responses((status = 200, description = "List files", body = Vec<FileInfo>)),
     tag = "Files"
 )]
+/// List uploaded files, newest first.
 pub async fn list_files(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -223,6 +248,7 @@ pub async fn list_files(
     responses((status = 200, description = "File bytes")),
     tag = "Files"
 )]
+/// Download a stored file's bytes.
 pub async fn get_file(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -280,6 +306,7 @@ pub async fn get_file(
     responses((status = 200, description = "File deleted")),
     tag = "Files"
 )]
+/// Delete a stored file.
 pub async fn delete_file(
     org: ResolvedOrg,
     State(state): State<AppState>,
