@@ -5,18 +5,6 @@
   },
   "plugins": [
     {
-      "name": "everruns-dev",
-      "source": {
-        "source": "local",
-        "path": "./plugins/everruns-dev"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Agents"
-    },
-    {
       "name": "everruns",
       "source": {
         "source": "local",
@@ -26,7 +14,21 @@
         "installation": "AVAILABLE",
         "authentication": "ON_INSTALL"
       },
-      "category": "Agents"
+      "category": "Agents",
+      "description": "Connects Codex to Everruns over MCP (https://app.everruns.com/mcp) with skills, slash commands, and agents. See plugins/everruns/README.md."
+    },
+    {
+      "name": "resend",
+      "description": "Send transactional email through Resend over MCP. See plugins/resend/README.md.",
+      "source": {
+        "source": "local",
+        "path": "./plugins/resend"
+      },
+      "policy": {
+        "trust": "verified"
+      },
+      "category": "Productivity"
     }
-  ]
+  ],
+  "description": "Everruns plugins for Codex"
 }

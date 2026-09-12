@@ -286,12 +286,12 @@ Only `agent_get_card` ships in the first iteration.
 
 ## Plugin Surface
 
-The `everruns-dev` plugin exposes a slash command for the new tool:
+The `everruns` plugin exposes a slash command for the new tool:
 
 - `commands/agent-card.md` → calls `agent_get_card` with a positional
   agent ID or name (resolved via `query` if not a valid `agent_…` ID).
 
-The skill (`plugins/everruns-dev/skills/everruns-dev/SKILL.md`) documents
+The skill (`plugins/everruns/skills/everruns/SKILL.md`) documents
 the `ui://` resource URI shape so coding agents know to surface the card
 resource alongside textual replies in MCP-UI-aware hosts, and to fall back
 to `get_agent` JSON otherwise.

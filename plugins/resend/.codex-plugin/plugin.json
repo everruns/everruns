@@ -1,0 +1,31 @@
+{
+  "name": "resend",
+  "description": "Send transactional emails through the Resend remote MCP server from Codex. Sending, scheduling, audiences, and broadcasts over OAuth.",
+  "version": "0.1.1",
+  "author": {
+    "name": "Everruns",
+    "email": "support@everruns.com"
+  },
+  "homepage": "https://resend.com",
+  "repository": "https://github.com/everruns/everruns",
+  "license": "MIT",
+  "skills": "./skills/",
+  "commands": "./commands/",
+  "mcpServers": "./mcp.json",
+  "interface": {
+    "displayName": "Resend",
+    "shortDescription": "Send transactional emails through Resend.",
+    "longDescription": "Use Resend from Codex to send transactional emails, schedule deliveries, manage audiences, and send broadcasts. Connects over MCP with OAuth, so no API key handling in the agent.",
+    "developerName": "Everruns",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://resend.com",
+    "defaultPrompt": [
+      "Send a welcome email via Resend to a new user."
+    ],
+    "screenshots": []
+  }
+}

@@ -206,7 +206,6 @@ jobs:
               # scripts/test-no-everruns-runtime.sh scans these trees too.
               - 'knowledge/**'
               - 'skills/**'
-              - 'plugins/everruns-dev/**'
               - '.agents/plugins/**'
               - '.claude-plugin/**'
               - 'local/Caddyfile'
