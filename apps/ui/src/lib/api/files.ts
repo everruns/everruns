@@ -1,4 +1,4 @@
-import { apiFetch, getApiBaseUrl } from "./client";
+import { getApiBaseUrl, throwApiError } from "./client";
 import {
   ALLOWED_FILE_EXTENSIONS,
   ALLOWED_FILE_TYPES,
@@ -28,10 +28,21 @@ export async function uploadFile(file: File, sessionId?: string): Promise<FileUp
   const formData = new FormData();
   formData.append("file", file, file.name);
   const params = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
-  return apiFetch<FileUploadResponse>(`/v1/files${params}`, {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/v1/files${params}`;
+
+  // Raw fetch needed for FormData (no Content-Type header — browser sets multipart boundary)
+  const response = await fetch(url, {
     method: "POST",
     body: formData,
+    credentials: "include",
   });
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+
+  return response.json();
 }
 
 export function getFileUrl(fileId: string): string {

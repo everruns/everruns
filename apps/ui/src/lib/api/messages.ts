@@ -60,7 +60,9 @@ export async function sendUserMessageWithImages(
   files: FileAttachment[] = [],
 ): Promise<Message> {
   const content: Array<
-    { type: "text"; text: string } | { type: "image_file"; image_id: string; filename?: string }
+    | { type: "text"; text: string }
+    | { type: "image_file"; image_id: string; filename?: string }
+    | { type: "file"; file_id: string; filename?: string }
   > = [];
 
   // Add text content if provided

@@ -228,8 +228,16 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
     [addImageFiles, addFileFiles, supportsPdf],
   );
 
+  const {
+    isDraggingOver,
+    dropZoneProps,
+    handlePaste: imageHandlePaste,
+  } = useImageDropZone({
+    onImageFiles: addFiles,
+  });
+
   const handlePaste = useCallback(
-    (event: React.ClipboardEvent | ClipboardEvent) => {
+    (event: React.ClipboardEvent) => {
       imageHandlePaste(event);
       if (supportsPdf) {
         handleFilePaste(event);
@@ -240,14 +248,6 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
 
   const modelReady = Boolean(selectedModel || (!selectedModelId && llmModel));
   const modelLoading = selectedModelId ? modelsLoading : llmModelLoading;
-
-  const {
-    isDraggingOver,
-    dropZoneProps,
-    handlePaste: imageHandlePaste,
-  } = useImageDropZone({
-    onImageFiles: addFiles,
-  });
 
   const { data: commandsData } = useSessionCommands(sessionId);
   const commands = commandsData?.commands ?? [];
