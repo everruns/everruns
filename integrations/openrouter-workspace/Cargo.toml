@@ -19,7 +19,7 @@ default = []
 [dependencies]
 everruns-core.workspace = true
 everruns-provider.workspace = true
-everruns-openrouter = { path = "../../crates/drivers/openrouter" }
+everruns-openrouter = { version = "0.18.4", path = "../../crates/drivers/openrouter" }
 async-trait.workspace = true
 reqwest.workspace = true
 serde.workspace = true
