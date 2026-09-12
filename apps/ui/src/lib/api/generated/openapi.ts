@@ -5473,10 +5473,27 @@ export interface components {
       tree_oid: string;
     };
     /**
+     * @description Which stage of a compaction attempt failed.
+     * @enum {string}
+     */
+    CompactionFailStage: "native_compaction" | "checkpoint_install" | "summarization";
+    /**
      * @description Reason why compaction was triggered.
      * @enum {string}
      */
     CompactionReason: "proactive_budget" | "request_too_large" | "manual";
+    /**
+     * @description Why a pressured compaction evaluation did not install compacted context.
+     * @enum {string}
+     */
+    CompactionSkipReason:
+      | "strategy_excludes_native"
+      | "driver_unsupported"
+      | "checkpoint_store_unavailable"
+      | "cooldown_active"
+      | "native_returned_none"
+      | "no_material_reduction"
+      | "guard_rejected";
     /** @description A single step in a compaction cascade. */
     CompactionStepData: {
       /**
@@ -5489,6 +5506,11 @@ export interface components {
       /** @description Strategy used in this step. */
       strategy: string;
     };
+    /**
+     * @description What triggered a compaction lifecycle: the context-window budget or cost pressure.
+     * @enum {string}
+     */
+    CompactionTrigger: "context_budget" | "cost_pressure";
     /** @description Connection info returned in API responses (never includes token) */
     Connection: {
       /** Format: date-time */
@@ -5538,6 +5560,11 @@ export interface components {
     ContextCompactedData: {
       /**
        * Format: int64
+       * @description Tokens of headroom remaining when the install completed, when measurable.
+       */
+      budget_remaining_tokens?: number | null;
+      /**
+       * Format: int64
        * @description Serialized compact output bytes, when measurable.
        */
       bytes_after?: number | null;
@@ -5546,8 +5573,20 @@ export interface components {
        * @description Serialized request-context bytes before compaction, when measurable.
        */
       bytes_before?: number | null;
+      /**
+       * Format: int32
+       * @description Cache-creation tokens written after compaction, when reported.
+       */
+      cache_creation_tokens?: number | null;
+      /**
+       * Format: int32
+       * @description Cached input tokens read after compaction, when reported.
+       */
+      cache_read_tokens?: number | null;
       /** @description Durable checkpoint installed by this compaction, when applicable. */
       checkpoint_id?: string | null;
+      /** @description Local driver identifier, when known. */
+      driver?: string | null;
       /**
        * Format: int64
        * @description Total duration of all compaction steps in milliseconds.
@@ -5557,6 +5596,15 @@ export interface components {
       messages_after: number;
       /** @description Number of messages before compaction. */
       messages_before: number;
+      /** @description Model that performed the compaction. */
+      model?: string;
+      /** @description Provider backend (e.g. "openai"), when known. */
+      provider?: string | null;
+      /**
+       * Format: int64
+       * @description Source message sequence the compaction ran at, when known.
+       */
+      source_sequence?: number | null;
       /** @description Individual steps in the cascade. */
       steps?: components["schemas"]["CompactionStepData"][];
       /** @description Combined strategy description (e.g., "observation_masking+native"). */
@@ -5571,18 +5619,46 @@ export interface components {
        * @description Estimated or provider-reported input tokens before compaction.
        */
       tokens_before?: number | null;
+      /** @description What triggered this compaction: context-window budget or cost pressure. */
+      trigger?: components["schemas"]["CompactionTrigger"];
     };
     /** @description Data for context.compacting event (compaction starting). */
     ContextCompactingData: {
       /**
        * Format: int64
+       * @description Tokens of headroom remaining when the attempt started, when measurable.
+       */
+      budget_remaining_tokens?: number | null;
+      /**
+       * Format: int64
        * @description Serialized request-context bytes before compaction, when measurable.
        */
       bytes_before?: number | null;
+      /**
+       * Format: int32
+       * @description Cache-creation tokens written before compaction, when reported.
+       */
+      cache_creation_tokens?: number | null;
+      /**
+       * Format: int32
+       * @description Cached input tokens read before compaction, when reported.
+       */
+      cache_read_tokens?: number | null;
+      /** @description Local driver identifier, when known. */
+      driver?: string | null;
       /** @description Number of messages before compaction. */
       messages_before: number;
+      /** @description Model performing the compaction. */
+      model?: string;
+      /** @description Provider backend (e.g. "openai"), when known. */
+      provider?: string | null;
       /** @description Why compaction was triggered. */
       reason: components["schemas"]["CompactionReason"];
+      /**
+       * Format: int64
+       * @description Source message sequence the attempt ran at, when known.
+       */
+      source_sequence?: number | null;
       /** @description Strategy requested (may differ from strategy_used in the completed event). */
       strategy: string;
       /**
@@ -5590,6 +5666,92 @@ export interface components {
        * @description Estimated or provider-reported input tokens before compaction.
        */
       tokens_before?: number | null;
+      /** @description What triggered this attempt: context-window budget or cost pressure. */
+      trigger?: components["schemas"]["CompactionTrigger"];
+    };
+    /**
+     * @description Data for context.compaction.failed: an attempt errored before installing.
+     *
+     *     Terminal event for an emitted context.compacting attempt that did not
+     *     install. The envelope timestamp records when the failure surfaced.
+     */
+    ContextCompactionFailedData: {
+      /**
+       * Format: int64
+       * @description Tokens of headroom remaining, when measurable.
+       */
+      budget_remaining_tokens?: number | null;
+      /** @description Durable checkpoint being installed when the failure hit, if any. */
+      checkpoint_id?: string | null;
+      /** @description Local driver identifier, when known. */
+      driver?: string | null;
+      /** @description Human-readable failure. */
+      error: string;
+      /** @description Number of messages before the attempt. */
+      messages_before: number;
+      /** @description Model the attempt ran under. */
+      model: string;
+      /** @description Provider backend (e.g. "openai"), when known. */
+      provider?: string | null;
+      /** @description Why compaction was attempted. */
+      reason: components["schemas"]["CompactionReason"];
+      /**
+       * Format: int64
+       * @description Source message sequence the attempt ran at, when known.
+       */
+      source_sequence?: number | null;
+      /** @description Which stage failed. */
+      stage: components["schemas"]["CompactionFailStage"];
+      /** @description Strategy requested. */
+      strategy: string;
+      /**
+       * Format: int64
+       * @description Estimated or provider-reported input tokens before the attempt.
+       */
+      tokens_before: number;
+      /** @description Whether window/budget or cost pressure triggered the attempt. */
+      trigger: components["schemas"]["CompactionTrigger"];
+    };
+    /**
+     * @description Data for context.compaction.skipped: pressure observed, nothing installed.
+     *
+     *     Emitted when context-budget or cost pressure is present but the evaluation
+     *     does not install compacted context. The envelope timestamp records when the
+     *     decision was made; every pressured evaluation closes with exactly one of
+     *     skipped, installed (context.compacted), or failed.
+     */
+    ContextCompactionSkippedData: {
+      /**
+       * Format: int64
+       * @description Tokens of headroom remaining, when measurable.
+       */
+      budget_remaining_tokens?: number | null;
+      /** @description Local driver identifier, when known. */
+      driver?: string | null;
+      /** @description Number of messages observed. */
+      messages_observed: number;
+      /** @description Model the evaluation ran under. */
+      model: string;
+      /** @description Provider backend (e.g. "openai"), when known. */
+      provider?: string | null;
+      /** @description Why compaction was evaluated. */
+      reason: components["schemas"]["CompactionReason"];
+      /** @description Why nothing was installed. */
+      skip_reason: components["schemas"]["CompactionSkipReason"];
+      /**
+       * Format: int64
+       * @description Source message sequence the evaluation ran at, when known.
+       */
+      source_sequence?: number | null;
+      /** @description Strategy requested. */
+      strategy: string;
+      /**
+       * Format: int64
+       * @description Estimated input tokens observed at evaluation time.
+       */
+      tokens_observed: number;
+      /** @description Whether window/budget or cost pressure triggered the evaluation. */
+      trigger: components["schemas"]["CompactionTrigger"];
     };
     /**
      * @description Single-source token contribution within a `ContextReportSection` — the
@@ -7291,6 +7453,8 @@ export interface components {
       | components["schemas"]["TaskMessageEventData"]
       | components["schemas"]["ContextCompactingData"]
       | components["schemas"]["ContextCompactedData"]
+      | components["schemas"]["ContextCompactionSkippedData"]
+      | components["schemas"]["ContextCompactionFailedData"]
       | components["schemas"]["FileWrittenData"]
       | components["schemas"]["BudgetEventData"]
       | components["schemas"]["BudgetEventData"]

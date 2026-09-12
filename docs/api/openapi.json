@@ -21961,10 +21961,12 @@
             "$ref": "#/components/schemas/ContextCompactedData"
           },
           {
-            "$ref": "#/components/schemas/ContextCompactionSkippedData"
+            "$ref": "#/components/schemas/ContextCompactionSkippedData",
+            "description": "Evaluation ran but installed nothing (context.compaction.skipped)."
           },
           {
-            "$ref": "#/components/schemas/ContextCompactionFailedData"
+            "$ref": "#/components/schemas/ContextCompactionFailedData",
+            "description": "Attempt errored before installing (context.compaction.failed)."
           },
           {
             "$ref": "#/components/schemas/FileWrittenData"

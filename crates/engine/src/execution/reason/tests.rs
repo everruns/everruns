@@ -1137,7 +1137,7 @@ fn lifecycle_test_config() -> crate::driver_registry::LlmCallConfig {
         provider_opaque_context: None,
         tool_search: None,
         prompt_cache: None,
-        openrouter_routing: None,
+        driver_options: Default::default(),
         parallel_tool_calls: None,
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
