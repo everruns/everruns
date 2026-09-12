@@ -1,5 +1,6 @@
 packages: []
 overrides:
+  '@ag-ui/core': 0.0.59
   '@babel/core': 7.29.6
   brace-expansion@1: 1.1.18
   brace-expansion@2: 2.1.4
