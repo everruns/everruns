@@ -68,6 +68,11 @@
   Brave Search establishes the application adapter pattern and separates hosted
   connector registration from the Framework dependency graph. See
   [Framework application boundaries](framework/application-api.md).
+* Connected opt-in native async tools to normal Reason/Act execution with shared
+  encrypted journals, worker ownership fencing, transcript retention, cancellation,
+  and original-call continuation gating. Live Astra function/custom acceptance
+  passed on 2026-09-06; ambiguous receipt recovery remains fail-closed. See
+  [Native asynchronous tool calls](execution/native-async-tools.md).
 
 * **Mid-turn correction justifies revisiting socket ownership.** The isolated
   OpenAI steering prototype uses a durable inbox and explicit single-host owner.

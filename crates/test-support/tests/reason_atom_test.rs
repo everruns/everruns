@@ -3173,6 +3173,7 @@ async fn test_previous_response_id_round_trips_through_serde() {
 
     // ReasonResult with response_id
     let result = ReasonResult {
+        native_counts: None,
         text: "test".to_string(),
         tool_calls: vec![],
         tool_definitions: vec![],

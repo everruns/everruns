@@ -2843,6 +2843,7 @@ mod tests {
     fn test_tool_result_with_images_conversion() {
         // Tool result with text + image content
         let msg = LlmMessage {
+            native_tool_calls: Vec::new(),
             role: LlmMessageRole::Tool,
             content: LlmMessageContent::Parts(vec![
                 LlmContentPart::Text {
@@ -2860,6 +2861,7 @@ mod tests {
         };
 
         let assistant = LlmMessage {
+            native_tool_calls: Vec::new(),
             role: LlmMessageRole::Assistant,
             content: LlmMessageContent::Text(String::new()),
             tool_calls: Some(vec![ToolCall {

@@ -12281,6 +12281,65 @@ export interface components {
       src_path: string;
     };
     /**
+     * @description A complete provider-native call, retaining its original identity and payload.
+     * @example {
+     *       "arguments": "{\"query\":\"weather in Paris\"}",
+     *       "async": true,
+     *       "call_id": "call_lookup_1",
+     *       "name": "lookup",
+     *       "type": "function_call"
+     *     }
+     */
+    NativeToolCall:
+      | {
+          /**
+           * @description Complete JSON arguments, preserved exactly as received.
+           * @example {"query":"weather in Paris"}
+           */
+          arguments: string;
+          /**
+           * @description Whether execution may start before response generation completes.
+           * @example true
+           */
+          async?: boolean;
+          /**
+           * @description Original provider call identity used when delivering the result.
+           * @example call_lookup_1
+           */
+          call_id: string;
+          /**
+           * @description Registered function or custom tool name.
+           * @example lookup
+           */
+          name: string;
+          /** @enum {string} */
+          type: "function_call";
+        }
+      | {
+          /**
+           * @description Whether execution may start before response generation completes.
+           * @example true
+           */
+          async?: boolean;
+          /**
+           * @description Original provider call identity used when delivering the result.
+           * @example call_lookup_1
+           */
+          call_id: string;
+          /**
+           * @description Raw custom-tool input, without JSON normalization.
+           * @example weather in Paris
+           */
+          input: string;
+          /**
+           * @description Registered function or custom tool name.
+           * @example lookup
+           */
+          name: string;
+          /** @enum {string} */
+          type: "custom_tool_call";
+        };
+    /**
      * @description Network access list controlling which hosts/URLs an agent session can reach.
      *
      *     - `allowed`: if non-empty, only URLs matching these patterns are permitted.
@@ -16144,6 +16203,7 @@ export interface components {
       arguments: unknown;
       id: string;
       name: string;
+      native?: null | components["schemas"]["NativeToolCall"];
     };
     /**
      * @description Data for the `tool.call_repaired` event (EVE-600).

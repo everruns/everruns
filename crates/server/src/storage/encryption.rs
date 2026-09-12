@@ -371,6 +371,12 @@ pub struct EncryptedColumn {
 /// - `reencrypt-secrets` CLI tool for key rotation
 /// - Tests to ensure all encrypted columns are properly registered
 pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
+    // Pending native calls contain private arguments and tool results.
+    EncryptedColumn {
+        table: "native_async_checkpoints",
+        column: "payload_encrypted",
+        id_column: "id",
+    },
     // Provider-native compact context can contain opaque provider secrets.
     EncryptedColumn {
         table: "session_compaction_checkpoints",

@@ -34,6 +34,8 @@
 //! # let _ = accepts_inputs;
 //! ```
 
+pub mod native_async;
+
 mod backends;
 mod builders;
 mod capabilities;

@@ -30793,6 +30793,92 @@
           }
         }
       },
+      "NativeToolCall": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "call_id",
+              "name",
+              "arguments",
+              "type"
+            ],
+            "properties": {
+              "arguments": {
+                "type": "string",
+                "description": "Complete JSON arguments, preserved exactly as received.",
+                "example": "{\"query\":\"weather in Paris\"}"
+              },
+              "async": {
+                "type": "boolean",
+                "description": "Whether execution may start before response generation completes.",
+                "example": true
+              },
+              "call_id": {
+                "type": "string",
+                "description": "Original provider call identity used when delivering the result.",
+                "example": "call_lookup_1"
+              },
+              "name": {
+                "type": "string",
+                "description": "Registered function or custom tool name.",
+                "example": "lookup"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "function_call"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "call_id",
+              "name",
+              "input",
+              "type"
+            ],
+            "properties": {
+              "async": {
+                "type": "boolean",
+                "description": "Whether execution may start before response generation completes.",
+                "example": true
+              },
+              "call_id": {
+                "type": "string",
+                "description": "Original provider call identity used when delivering the result.",
+                "example": "call_lookup_1"
+              },
+              "input": {
+                "type": "string",
+                "description": "Raw custom-tool input, without JSON normalization.",
+                "example": "weather in Paris"
+              },
+              "name": {
+                "type": "string",
+                "description": "Registered function or custom tool name.",
+                "example": "lookup"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "custom_tool_call"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "A complete provider-native call, retaining its original identity and payload.",
+        "example": {
+          "arguments": "{\"query\":\"weather in Paris\"}",
+          "async": true,
+          "call_id": "call_lookup_1",
+          "name": "lookup",
+          "type": "function_call"
+        }
+      },
       "NetworkAccessList": {
         "type": "object",
         "description": "Network access list controlling which hosts/URLs an agent session can reach.\n\n- `allowed`: if non-empty, only URLs matching these patterns are permitted.\n- `blocked`: URLs matching these patterns are always denied (takes precedence over allowed).\n\nPattern format:\n- `example.com` — exact domain match (any port, any path)\n- `*.example.com` — domain and all subdomains\n- `https://example.com/api/` — exact URL prefix (scheme + host + path)",
@@ -37280,6 +37366,17 @@
           },
           "name": {
             "type": "string"
+          },
+          "native": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NativeToolCall",
+                "description": "Original native call, including raw custom input and async metadata."
+              }
+            ]
           }
         }
       },

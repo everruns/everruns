@@ -742,6 +742,8 @@ pub enum OutputItem {
         #[serde(skip_serializing_if = "Option::is_none")]
         namespace: Option<String>,
         arguments: String,
+        #[serde(rename = "async", default, skip_serializing_if = "std::ops::Not::not")]
+        asynchronous: bool,
         status: ItemStatus,
     },
     #[serde(rename = "function_call_output")]

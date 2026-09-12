@@ -156,6 +156,8 @@ pub enum LlmStreamEvent {
     ReasoningItem(crate::reasoning::ReasoningContentPart),
     /// Tool calls from the LLM
     ToolCalls(Vec<ToolCall>),
+    /// Complete native async/custom call; requires a native-call coordinator.
+    NativeToolCall(crate::native_async::NativeToolCall),
     /// Provider-native execution phase for the current assistant message,
     /// surfaced mid-stream before completion (EVE-774).
     ///
@@ -288,6 +290,15 @@ pub fn disjoint_prompt_tokens(reported_input: u32, cache_read: Option<u32>) -> u
 /// reports it under a transient status like 429.
 #[async_trait]
 pub trait ChatDriver: Send + Sync {
+    /// Opt in on a supported provider/model, retaining the synchronous fallback.
+    fn native_async_driver(
+        &self,
+        _model: &str,
+        _tools: std::collections::BTreeMap<String, Option<serde_json::Value>>,
+        _continuation: Option<crate::native_async::Delivery>,
+    ) -> Option<Arc<dyn ChatDriver>> {
+        None
+    }
     /// Call the LLM with streaming response
     async fn chat_completion_stream(
         &self,
@@ -321,6 +332,11 @@ pub trait ChatDriver: Send + Sync {
                 LlmStreamEvent::ReasoningDelta { .. } => {}
                 LlmStreamEvent::ReasoningItem(item) => reasoning.push(item),
                 LlmStreamEvent::ToolCalls(calls) => tool_calls = calls,
+                LlmStreamEvent::NativeToolCall(_) => {
+                    return Err(crate::error::AgentLoopError::config(
+                        "native async/custom calls require a streaming coordinator",
+                    ));
+                }
                 // Streamed phase hint is a mid-stream refinement only; the
                 // non-streaming collector relies on the terminal Done metadata.
                 LlmStreamEvent::MessagePhase(_) => {}
@@ -464,6 +480,14 @@ pub trait ChatDriver: Send + Sync {
 /// Implement ChatDriver for `Box<dyn ChatDriver>` to allow dynamic dispatch
 #[async_trait]
 impl ChatDriver for Box<dyn ChatDriver> {
+    fn native_async_driver(
+        &self,
+        model: &str,
+        tools: std::collections::BTreeMap<String, Option<serde_json::Value>>,
+        continuation: Option<crate::native_async::Delivery>,
+    ) -> Option<Arc<dyn ChatDriver>> {
+        (**self).native_async_driver(model, tools, continuation)
+    }
     async fn chat_completion_stream(
         &self,
         endpoint: &crate::runtime_provider::ProviderEndpoint,
@@ -538,6 +562,8 @@ impl ChatDriver for Box<dyn ChatDriver> {
 /// Message format for LLM calls (provider-agnostic)
 #[derive(Debug, Clone)]
 pub struct LlmMessage {
+    /// Provider-native call identities, retained alongside portable fallbacks.
+    pub native_tool_calls: Vec<crate::native_async::NativeToolCall>,
     pub role: LlmMessageRole,
     pub content: LlmMessageContent,
     pub tool_calls: Option<Vec<ToolCall>>,
@@ -563,6 +589,7 @@ impl LlmMessage {
     /// Create a message with text content
     pub fn text(role: LlmMessageRole, content: impl Into<String>) -> Self {
         Self {
+            native_tool_calls: Vec::new(),
             role,
             content: LlmMessageContent::Text(content.into()),
             tool_calls: None,
@@ -576,6 +603,7 @@ impl LlmMessage {
     /// Create a message with content parts (text, images, audio)
     pub fn parts(role: LlmMessageRole, parts: Vec<LlmContentPart>) -> Self {
         Self {
+            native_tool_calls: Vec::new(),
             role,
             content: LlmMessageContent::Parts(parts),
             tool_calls: None,
@@ -1411,7 +1439,7 @@ impl ChatDriver for CredentialGateDriver {
 /// no driver needs to know that a connection can carry them, and a driver that
 /// implements neither simply ignores the config it is handed.
 struct RequestOptionsDriver {
-    inner: BoxedChatDriver,
+    inner: Arc<dyn ChatDriver>,
     options: crate::provider::ProviderRequestOptions,
 }
 
@@ -1426,7 +1454,7 @@ impl RequestOptionsDriver {
             return driver;
         }
         Box::new(Self {
-            inner: driver,
+            inner: Arc::from(driver),
             options: options.clone(),
         })
     }
@@ -1449,6 +1477,17 @@ impl RequestOptionsDriver {
 
 #[async_trait]
 impl ChatDriver for RequestOptionsDriver {
+    fn native_async_driver(
+        &self,
+        model: &str,
+        tools: std::collections::BTreeMap<String, Option<serde_json::Value>>,
+        continuation: Option<crate::native_async::Delivery>,
+    ) -> Option<Arc<dyn ChatDriver>> {
+        Some(Arc::new(Self {
+            inner: self.inner.native_async_driver(model, tools, continuation)?,
+            options: self.options.clone(),
+        }))
+    }
     async fn chat_completion_stream(
         &self,
         endpoint: &crate::runtime_provider::ProviderEndpoint,

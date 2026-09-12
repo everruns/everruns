@@ -1023,7 +1023,7 @@ where
 
     store.record_activity_started(task, worker_id).await;
 
-    let (heartbeat_cancel_tx, heartbeat_handle) = spawn_task_heartbeat(
+    let (heartbeat_cancel_tx, heartbeat_handle, task_cancellation) = spawn_task_heartbeat(
         store.clone(),
         task.id,
         worker_id.to_string(),
@@ -1040,7 +1040,10 @@ where
 
                 let res = match task.activity_type.as_str() {
                     "process_input" => execute_input_activity(adapters, &turn_input).await,
-                    "reason" => execute_reason_activity(adapters, &turn_input).await,
+                    "reason" => {
+                        execute_reason_activity(adapters, &turn_input, task_cancellation.clone())
+                            .await
+                    }
                     _ => unreachable!(),
                 };
                 (res, Some(turn_input))
@@ -1261,8 +1264,10 @@ fn spawn_task_heartbeat<S: TaskStore>(
 ) -> (
     tokio::sync::oneshot::Sender<()>,
     tokio::task::JoinHandle<()>,
+    tokio::sync::watch::Receiver<bool>,
 ) {
     let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    let (task_cancel_tx, task_cancel_rx) = tokio::sync::watch::channel(false);
     let handle = tokio::spawn(async move {
         let mut interval = tokio::time::interval(heartbeat_interval);
         loop {
@@ -1271,12 +1276,14 @@ fn spawn_task_heartbeat<S: TaskStore>(
                     match store.heartbeat_task(task_id, &worker_id, None).await {
                         Ok(response) => {
                             if response.should_cancel {
+                                let _ = task_cancel_tx.send(true);
                                 warn!(task_id = %task_id, "Task cancellation requested via heartbeat");
                                 break;
                             }
                             debug!(task_id = %task_id, "Task heartbeat sent");
                         }
                         Err(error) => {
+                            let _ = task_cancel_tx.send(true);
                             warn!(task_id = %task_id, error = %error, "Failed to send task heartbeat");
                         }
                     }
@@ -1288,7 +1295,7 @@ fn spawn_task_heartbeat<S: TaskStore>(
             }
         }
     });
-    (cancel_tx, handle)
+    (cancel_tx, handle, task_cancel_rx)
 }
 
 fn parse_resume_state(input: &serde_json::Value) -> Result<Option<DurableTurnInput>> {
@@ -1351,6 +1358,7 @@ async fn execute_input_activity<A: WorkerAdapters>(
 async fn execute_reason_activity<A: WorkerAdapters>(
     adapters: &A,
     input: &DurableTurnInput,
+    cancellation: tokio::sync::watch::Receiver<bool>,
 ) -> Result<serde_json::Value> {
     debug!(
         session_id = %input.session_id,
@@ -1389,7 +1397,8 @@ async fn execute_reason_activity<A: WorkerAdapters>(
         metadata
     });
     let result = runtime_execute_reason_activity(
-        &WorkerRuntimeHost::with_event_metadata(adapters.clone(), event_metadata),
+        &WorkerRuntimeHost::with_event_metadata(adapters.clone(), event_metadata)
+            .with_turn_cancellation(cancellation),
         input.org_id,
         reason_input,
     )
@@ -1776,6 +1785,7 @@ mod tests {
             final_answer_preview: None,
         };
         let reason = ReasonResult {
+            native_counts: None,
             success: true,
             text: String::new(),
             tool_calls: vec![everruns_provider::tool_types::ToolCall {

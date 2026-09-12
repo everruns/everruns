@@ -200,10 +200,20 @@ fn add_usage(current: &mut Option<TokenUsage>, next: &TokenUsage) {
 impl TurnState {
     pub(crate) fn with_reason_summary(&self, reason_result: &ReasonResult) -> Self {
         let mut next = self.clone();
-        next.llm_call_count = next.llm_call_count.saturating_add(1);
-        next.tool_call_count = next
-            .tool_call_count
-            .saturating_add(reason_result.tool_calls.len() as u32);
+        next.llm_call_count = next.llm_call_count.saturating_add(
+            reason_result
+                .native_counts
+                .as_ref()
+                .map_or(1, |counts| counts.llm_calls),
+        );
+        next.tool_call_count = next.tool_call_count.saturating_add(
+            reason_result
+                .native_counts
+                .as_ref()
+                .map_or(reason_result.tool_calls.len() as u32, |counts| {
+                    counts.tool_calls
+                }),
+        );
         if let Some(usage) = &reason_result.usage {
             add_usage(&mut next.cumulative_usage, usage);
         }

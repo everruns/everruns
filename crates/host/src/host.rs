@@ -141,6 +141,10 @@ pub struct ResolvedTurnInputs {
 /// engine itself remains outside this crate.
 #[async_trait]
 pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
+    /// Durable task cancellation/ownership loss, scoped to this execution.
+    fn turn_cancellation(&self) -> Option<tokio::sync::watch::Receiver<bool>> {
+        None
+    }
     /// Session status mutation is a host effect, separate from execution
     /// inputs: it exposes no stored Session record to the engine.
     async fn set_session_status(
@@ -178,6 +182,12 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     fn provider_store(&self, org_id: i64) -> Arc<dyn ProviderStore>;
 
     fn message_store(&self) -> Arc<dyn MessageRetriever>;
+
+    fn native_async_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>> {
+        None
+    }
 
     fn compaction_checkpoint_store(
         &self,
@@ -1282,6 +1292,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
             )
             .await?;
         return Ok(ReasonResult {
+            native_counts: None,
             success: false,
             text: blocker.message().to_string(),
             tool_calls: vec![],
@@ -1329,6 +1340,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
                     )
                     .await?;
                 return Ok(ReasonResult {
+                    native_counts: None,
                     success: false,
                     text: user_message.unwrap_or_else(|| reason.clone()),
                     tool_calls: vec![],
@@ -1528,7 +1540,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         emit_model_change_if_switched(adapter, org_id, &input, &assembled).await;
     }
 
-    atom.execute_with_assembled_context(input, assembled).await
+    crate::native_async::execute_reason(adapter, org_id, input, assembled, atom).await
 }
 
 /// Emit `session.model.changed` when this turn's input selects a model

@@ -84,6 +84,13 @@ const PROMPT_CACHE_KEY_PREFIX: &str = "everruns:";
 /// per request, after the base body is serialized and before it is sent; either
 /// may return an error to abort the request (e.g. failed routing validation).
 pub trait OpenResponsesRequestExtension: Send + Sync {
+    /// Whether a rejected stateful continuation may be retried as a repaired
+    /// stateless transcript. Extensions with provider-owned pending work must
+    /// opt out so the fallback cannot discard or repeat that work.
+    fn allow_stateless_recovery(&self) -> bool {
+        true
+    }
+
     fn decorate(&self, body: &mut Value, config: &LlmCallConfig) -> Result<()>;
 
     /// Add provider-specific **non-auth** request headers (routing, attribution,
@@ -1324,6 +1331,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             Ok(connected) => connected,
             Err(error)
                 if request.previous_response_id.is_some()
+                    && self
+                        .request_extension
+                        .as_ref()
+                        .is_none_or(|extension| extension.allow_stateless_recovery())
                     && is_missing_tool_output_continuation_error(&error) =>
             {
                 // The provider lost or rejected its continuation state. The
@@ -1412,6 +1423,25 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                         // "Failed to parse event" error after the real completion.
                         if event_data == "[DONE]" {
                             return Ok(LlmStreamEvent::TextDelta(String::new()));
+                        }
+
+                        // A custom tool call is not represented by the typed
+                        // Responses event enum. Decode completed calls before
+                        // that enum so its native metadata reaches the runtime.
+                        if let Ok(json) = serde_json::from_str::<Value>(event_data)
+                            && json.get("type").and_then(Value::as_str)
+                                == Some("response.output_item.done")
+                            && let Some(item) = json.get("item")
+                            && matches!(
+                                item.get("type").and_then(Value::as_str),
+                                Some("function_call" | "custom_tool_call")
+                            )
+                        {
+                            return completed_tool_call_event(
+                                item,
+                                &accumulated_tool_calls,
+                                &finish_reason,
+                            );
                         }
 
                         // Try to parse as typed StreamingEvent first for type safety
@@ -1661,7 +1691,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             finish_reason: Some(reason),
                                             retry_metadata: retry_metadata_for_done
                                                 .map(|arc| (*arc).clone()),
-                                            response_id: None,
+                                            response_id: response_obj
+                                                .get("id")
+                                                .and_then(Value::as_str)
+                                                .map(str::to_owned),
                                             phase,
                                             cache_diagnostics: None,
                                         })))
@@ -1774,6 +1807,9 @@ struct ToolCallAccumulator {
     name: String,
     /// Accumulated JSON arguments
     arguments: String,
+    /// Only terminal items are executable. Announced siblings can still carry
+    /// partial arguments when another call finishes first.
+    completed: bool,
 }
 
 impl ToolCallAccumulator {
@@ -1813,7 +1849,8 @@ impl ToolCallStream {
     /// Append one streamed argument fragment to its call.
     fn observe_arguments_delta(&mut self, item_id: &str, delta: &str) {
         match self.calls.iter_mut().find(|tc| tc.id == item_id) {
-            Some(entry) => entry.arguments.push_str(delta),
+            Some(entry) if !entry.completed => entry.arguments.push_str(delta),
+            Some(_) => {}
             None => self.calls.push(ToolCallAccumulator {
                 id: item_id.to_string(),
                 arguments: delta.to_string(),
@@ -1869,6 +1906,7 @@ impl ToolCallStream {
             } = item
             {
                 self.observe_item(id, call_id, name, arguments);
+                self.mark_complete(id, call_id);
             }
         }
     }
@@ -1889,6 +1927,15 @@ impl ToolCallStream {
                 field("name"),
                 field("arguments"),
             );
+            self.mark_complete(field("id"), field("call_id"));
+        }
+    }
+
+    fn mark_complete(&mut self, id: &str, call_id: &str) {
+        if let Some(entry) = self.calls.iter_mut().find(|tc| {
+            (!id.is_empty() && tc.id == id) || (!call_id.is_empty() && tc.call_id == call_id)
+        }) {
+            entry.completed = true;
         }
     }
 
@@ -1902,7 +1949,7 @@ impl ToolCallStream {
         let signature: Vec<(String, String, String)> = self
             .calls
             .iter()
-            .filter(|tc| !tc.name.is_empty())
+            .filter(|tc| tc.completed && !tc.name.is_empty())
             .map(ToolCallAccumulator::signature)
             .collect();
         if signature.is_empty() || signature == self.emitted {
@@ -1915,7 +1962,7 @@ impl ToolCallStream {
     fn snapshot(&self) -> Vec<ToolCall> {
         self.calls
             .iter()
-            .filter(|tc| !tc.name.is_empty())
+            .filter(|tc| tc.completed && !tc.name.is_empty())
             .map(|tc| {
                 let arguments: Value =
                     serde_json::from_str(&tc.arguments).unwrap_or_else(|error| {
@@ -1942,6 +1989,65 @@ impl ToolCallStream {
             })
             .collect()
     }
+}
+
+/// Decode a completed native call only after its terminal item is available.
+/// This keeps custom-call metadata intact while preserving the stream's normal
+/// full-snapshot behavior for synchronous function calls.
+fn completed_tool_call_event(
+    item: &Value,
+    accumulated: &Mutex<ToolCallStream>,
+    finish_reason: &Mutex<Option<String>>,
+) -> Result<LlmStreamEvent> {
+    let mut complete = item.clone();
+    if item.get("type").and_then(Value::as_str) == Some("function_call") {
+        let acc = accumulated.lock().unwrap();
+        if let Some(tc) = acc
+            .calls
+            .iter()
+            .find(|tc| item.get("id").and_then(Value::as_str) == Some(tc.id.as_str()))
+        {
+            for (field, value) in [
+                ("arguments", &tc.arguments),
+                ("name", &tc.name),
+                ("call_id", &tc.call_id),
+            ] {
+                if complete.get(field).is_none() {
+                    complete[field] = Value::String(value.clone());
+                }
+            }
+        }
+    }
+
+    let call: crate::native_async::NativeToolCall = serde_json::from_value(complete)
+        .map_err(|_| AgentLoopError::llm("invalid completed tool call"))?;
+    call.validate()?;
+    *finish_reason.lock().unwrap() = Some("tool_calls".to_string());
+    if call.is_async() || matches!(call, crate::native_async::NativeToolCall::Custom { .. }) {
+        return Ok(LlmStreamEvent::NativeToolCall(call));
+    }
+
+    let crate::native_async::NativeToolCall::Function {
+        call_id,
+        name,
+        arguments,
+        ..
+    } = call
+    else {
+        unreachable!()
+    };
+    let id = item
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or(&call_id)
+        .to_string();
+    let mut acc = accumulated.lock().unwrap();
+    acc.observe_item(&id, &call_id, &name, &arguments);
+    acc.mark_complete(&id, &call_id);
+    Ok(acc
+        .take_unemitted()
+        .map(LlmStreamEvent::ToolCalls)
+        .unwrap_or_else(|| LlmStreamEvent::TextDelta(String::new())))
 }
 
 /// Handle typed streaming events from the OpenResponses API
@@ -2835,6 +2941,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -2844,6 +2951,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
 
@@ -2887,6 +2995,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
 
@@ -2945,6 +3054,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -2954,6 +3064,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
 
@@ -3485,6 +3596,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -3494,6 +3606,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
 
@@ -3621,6 +3734,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -3630,6 +3744,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
         let config = LlmCallConfig {
@@ -4075,6 +4190,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::User, "Think"),
             LlmMessage {
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("No summary on this one.".to_string()),
                 tool_calls: None,
@@ -4088,6 +4204,7 @@ mod tests {
             },
             LlmMessage {
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("This one was summarized.".to_string()),
                 tool_calls: None,
@@ -4140,6 +4257,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::User, "Think about this deeply"),
             LlmMessage {
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("I have thought about this.".to_string()),
                 tool_calls: None,
@@ -4189,6 +4307,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::User, "What time is it? Think carefully."),
             LlmMessage {
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("Let me check.".to_string()),
                 tool_calls: Some(vec![ToolCall {
@@ -4212,6 +4331,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
 
@@ -4253,6 +4373,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
 
@@ -4766,6 +4887,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
 
@@ -4789,6 +4911,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::User, "First question"),
             LlmMessage {
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("First answer.".to_string()),
                 tool_calls: None,
@@ -4803,6 +4926,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::User, "Second question"),
             LlmMessage {
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
                 role: LlmMessageRole::Assistant,
                 content: LlmMessageContent::Text("Second answer.".to_string()),
                 tool_calls: None,
@@ -4851,6 +4975,7 @@ mod tests {
                 phase: Some(ExecutionPhase::Commentary),
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
@@ -4860,6 +4985,7 @@ mod tests {
                 phase: None,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                native_tool_calls: Vec::new(),
             },
         ];
 

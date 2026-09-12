@@ -226,6 +226,7 @@ impl EventSink for ExternalEventSink {
 fn external_backends(log: Arc<ExternalEventLog>) -> HostBackends {
     let defaults = HostBackends::in_memory();
     HostBackends {
+        native_async_store: defaults.native_async_store,
         harness_store: Arc::new(ExternalHarnessStore(defaults.harness_store)),
         agent_store: Arc::new(ExternalAgentStore(defaults.agent_store)),
         session_store: Arc::new(ExternalSessionStore(defaults.session_store)),

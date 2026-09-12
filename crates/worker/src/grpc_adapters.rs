@@ -3937,6 +3937,102 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
     }
 }
 
+impl GrpcAdapter {
+    async fn native_async_operation(
+        &self,
+        lease: everruns_core::native_async_store::NativeAsyncLease,
+        operation: proto::native_async_journal_request::Operation,
+        checkpoint_json: Vec<u8>,
+    ) -> Result<Vec<u8>> {
+        let response = self
+            .client
+            .inner
+            .lock()
+            .await
+            .native_async_journal(proto::NativeAsyncJournalRequest {
+                operation: operation as i32,
+                org_id: lease.org_id,
+                session_id: Some(uuid_to_proto(lease.session_id.uuid())),
+                turn_id: Some(uuid_to_proto(lease.turn_id.uuid())),
+                owner: Some(uuid_to_proto(lease.owner)),
+                checkpoint_json,
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        Ok(response.checkpoint_json)
+    }
+}
+
+#[async_trait]
+impl everruns_core::native_async_store::NativeAsyncStore for GrpcAdapter {
+    async fn acquire(
+        &self,
+        lease: everruns_core::native_async_store::NativeAsyncLease,
+    ) -> Result<everruns_provider::native_async::NativeAsyncCheckpoint> {
+        let bytes = self
+            .native_async_operation(
+                lease,
+                proto::native_async_journal_request::Operation::Acquire,
+                vec![],
+            )
+            .await?;
+        serde_json::from_slice(&bytes).map_err(|error| AgentLoopError::store(error.to_string()))
+    }
+    async fn load(
+        &self,
+        lease: everruns_core::native_async_store::NativeAsyncLease,
+    ) -> Result<everruns_provider::native_async::NativeAsyncCheckpoint> {
+        let bytes = self
+            .native_async_operation(
+                lease,
+                proto::native_async_journal_request::Operation::Load,
+                vec![],
+            )
+            .await?;
+        serde_json::from_slice(&bytes).map_err(|error| AgentLoopError::store(error.to_string()))
+    }
+    async fn renew(
+        &self,
+        lease: everruns_core::native_async_store::NativeAsyncLease,
+    ) -> Result<()> {
+        self.native_async_operation(
+            lease,
+            proto::native_async_journal_request::Operation::Renew,
+            vec![],
+        )
+        .await?;
+        Ok(())
+    }
+    async fn save(
+        &self,
+        lease: everruns_core::native_async_store::NativeAsyncLease,
+        checkpoint: &everruns_provider::native_async::NativeAsyncCheckpoint,
+    ) -> Result<()> {
+        let bytes = serde_json::to_vec(checkpoint)
+            .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        self.native_async_operation(
+            lease,
+            proto::native_async_journal_request::Operation::Save,
+            bytes,
+        )
+        .await?;
+        Ok(())
+    }
+    async fn release(
+        &self,
+        lease: everruns_core::native_async_store::NativeAsyncLease,
+    ) -> Result<()> {
+        self.native_async_operation(
+            lease,
+            proto::native_async_journal_request::Operation::Release,
+            vec![],
+        )
+        .await?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

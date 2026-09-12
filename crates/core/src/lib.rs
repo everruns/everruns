@@ -190,6 +190,8 @@ pub mod config;
 pub mod config_layer;
 pub mod context_report;
 pub mod dependency_blocker;
+/// Shared lease and persistence contracts for native asynchronous tools.
+pub mod native_async_store;
 use everruns_provider::driver_registry;
 use everruns_provider::error;
 pub mod guardrail_checks;

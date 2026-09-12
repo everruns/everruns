@@ -2524,6 +2524,7 @@ dependencies = [
  "everruns-integrations-web-fetch",
  "everruns-llmsim",
  "everruns-mcp",
+ "everruns-openai",
  "everruns-provider",
  "everruns-test-support",
  "fs2",
