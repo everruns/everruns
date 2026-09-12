@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "MCP Capability Unification"
-description: "One extensible MCP capability shared by the hosted product and embedding hosts such as yolop: server provider seam, management tools, discovery reuse."
+description: "One MCP catalog and one command declaration shared by the hosted product and embedding hosts such as yolop, plus the discovery and auth code they duplicate."
 tags:
   - everruns
   - integrations
@@ -24,9 +24,11 @@ edited, how it is enabled/disabled and reloaded, and what the agent itself can d
 about it. Each host reimplements that layer, and the term "MCP capability" currently
 names two unrelated things.
 
-The decision: introduce one **extensible MCP capability** in `everruns-mcp`,
-parameterized by a pluggable server-catalog seam, so a host supplies *where servers
-are stored* and inherits identity, tools, discovery, enablement, and reload for free.
+The decision: introduce one **MCP catalog trait** in `everruns-mcp`, so a host supplies
+*where servers are stored* and inherits identity, discovery, enablement and reload for
+free, and declare the management operations **once as commands** rather than as model
+tools, because both products have now independently settled on a CLI grammar for
+administration.
 
 ## Problem state
 
@@ -65,39 +67,41 @@ Two of these are *general* and only accidentally live downstream:
 the per-entry `enabled` flag (the hosted product expresses the same idea with archived
 rows).
 
-### Both repositories have moved administration out of model tools
+### Both products already unified administration, separately
 
-The two products reached the same conclusion independently, after this analysis was
-first written:
+The larger convergence happened while this analysis was being written, in both
+repositories at once, and neither knows about the other's version:
 
-- Upstream, [Command Tree](../execution/command-tree.md) added the
-  `everruns <noun> <verb>` grammar, with `mcp-servers` in the first tranche.
-  Membership is opt-in through `Command::cli()`, and `CliCommandSource` (in the
-  bashkit integration, not the server) is where a host says which operations it
-  can serve, so a Framework application with no control plane behind it can source
-  the same tree.
-- In yolop, `src/control.rs` defines `ControlCapability` / `CliCapability`: a
-  capability contributes a top-level `yolop <cmd>` parser plus an attached control
-  route, and a directly invoked binary asks its parent session to mutate live
-  state. Extensions, skills, hooks, config, model, and worktree all use it. The
-  stated reason is context cost: administration tool schemas would be paid every
-  turn, so the affordance is named once in the system prompt instead.
+| | everruns | yolop |
+|---|---|---|
+| Contribution unit | `Command::cli() -> Option<CliRoute>` on a domain command | `ControlRoute` on a `Capability` |
+| Registry | `CliCommandSource::specs()` | `CliRegistry` of `CliCapability` |
+| Grammar | declared noun path plus verb | a clap `Command` the capability builds |
+| Root token | `CliCommandSource::root()`, default `everruns` | the `yolop` binary |
+| Transport | in-process bashkit builtin, or rewrite for `ScriptedTool` | spawn own executable, one-shot pipes to the parent session |
+| Read-only marking | per-command `policy()` | `ControlRoute::read_only_operations` |
+| Prompt cost | scripted tool description plus a catalog `cli` field | one shared block, each route contributes one clause |
 
-MCP is the odd one out in yolop, the last administrative domain still shaped as
-model tools; the follow-up recorded on yolop #661 is to move it onto
-`CliCapability`. This does not change the catalog decision below, but it does change
-what the management capability should *be* (D3).
+Upstream this is [Command Tree](../execution/command-tree.md), with `mcp-servers` in
+the first tranche and the root token made a host's own concern (#3496). In yolop it is
+`src/control.rs`, and MCP finished the move in #685: `McpCapability::tools()` now
+returns an empty vector, mutation lives entirely in `yolop mcp ...` and `/mcp ...` with
+automatic live reload, and only the read-only `list` is served inline on the control
+route.
+
+So MCP management as model tools is gone from both products. What remains duplicated is
+the *machinery*, twice, and the catalog underneath it, twice.
 
 ### Host-private code forces downstream duplication
 
-`crates/host/src/mcp.rs` is `mod mcp;` — not `pub mod`. Everything in it is
+`crates/host/src/mcp.rs` is `mod mcp;`, not `pub mod`. Everything in it is
 `pub(crate)`. Consequently yolop carries byte-level copies:
 
 - `src/runtime/mod.rs::mcp_connection_for` duplicates `host::mcp::endpoint_for` +
   `resolve_servers` (transport match, `McpConnection` construction, empty
   `secret_bindings`).
 - `src/runtime/mod.rs::discover_mcp_tool_names` duplicates
-  `host::mcp::discover_tool_definitions` minus the cache and concurrency — so `/tools`
+  `host::mcp::discover_tool_definitions` minus the cache and concurrency, so `/tools`
   discovery is serial, uncached, and can diverge from what the turn path actually
   offered the model.
 
@@ -123,7 +127,7 @@ management capability and stops the two concepts reading as one. Internal code n
 compatibility shim; the rename touches `crates/server/src/services/capability.rs`,
 `crates/server/src/domains/mcp_servers/scoped_mcp.rs`, and `crates/host/src/mcp.rs`.
 
-### D2, One `McpCatalog` seam owning storage
+### D2, One `McpCatalog` trait owning storage
 
 Introduce a trait in `everruns-mcp`:
 
@@ -153,28 +157,40 @@ feature, implementing the `.mcp.json` / `mcpServers` shape, `${VAR}` expansion, 
 `normalize_server_entry_value`), which yolop adopts wholesale; and a DB-backed catalog
 in `crates/server` for the hosted product.
 
-### D3, `McpCapability` becomes the extensible management capability
+### D3, One MCP command declaration over the catalog, not a tool set
 
-A single capability with id `mcp`, constructed from an `Arc<dyn McpCatalog>`. What
-varies is the *presentation*, not the operations: the catalog defines list, upsert,
-remove, and set-enabled once, and a host renders them as a command tree, as model
-tools, or as neither. Given that both products now prefer the CLI shape, the command
-declaration is the primary rendering and model tools are the opt-in:
+The original version of this decision proposed a management capability carrying four
+model tools. Both products have since rejected that shape, so it is withdrawn.
 
-- Tool set is derived from what the catalog supports. A read-only catalog exposes only
-  `list_mcp_servers`; a mutable one adds upsert/remove/enable. That is the
-  extensibility point that lets the hosted product opt into agent-driven MCP management
-  later without a second implementation.
-- A `literal_credentials: bool` policy flag carries yolop's ACP rule (reject literal
-  credential-bearing header/env fields when the prompt channel is not a secure input),
-  which is a general property of the *channel*, not of yolop.
-- `mcp_servers_with_config` returns the catalog's effective set, so the capability
-  contributes its own servers through the seam that already exists in
-  `everruns_core::capabilities::collect_capability_mcp_servers`. Hosts stop threading a
-  separate config load into session construction.
+What is shared instead is a **command declaration**: `list`, `add`, `remove`, `enable`,
+`disable`, `login`, declared once against `McpCatalog` with their argument shapes,
+read-only marking, and examples, and rendered by whichever CLI machinery the host
+already has. The capability still exists, because servers reach a session through
+`Capability::mcp_servers_with_config` and `collect_capability_mcp_servers`, but it
+contributes servers and a command declaration, not tools.
 
-This is the piece that "enables both": everruns registers it over the DB catalog,
-yolop over the file catalog, and a third embedder over anything else.
+Two properties carry over from the withdrawn version because they are real:
+
+- Mutation is optional. A read-only catalog (the hosted product's, until it chooses
+  otherwise) declares only `list`, and no host renders a write command it cannot serve.
+- A `literal_credentials` policy belongs to the *channel*, not to yolop: rejecting
+  literal credential-bearing header and environment fields is correct wherever the
+  input path is not a secure one, which is why yolop applies it under ACP.
+
+### D6, Move the command-tree contract out of the bashkit integration
+
+`CliRoute`, `CliCommandSpec`, `CliCommandSource`, `CliTree`, the help renderer, and the
+statement rewriter live in `integrations/bashkit/src/cli.rs`. Only two lines of that
+1269-line file touch bashkit: one `use bashkit::ExecResult` and one
+`impl bashkit::Builtin` block at the end. yolop has no bashkit dependency at all (it
+runs real processes through `src/exec/`), so today it cannot adopt any of it.
+
+Splitting the grammar, tree, source trait and help rendering into a neutral crate, and
+leaving the builtin adapter behind in the integration, would let yolop's `CliCapability`
+become a `CliCommandSource` implementation and yolop's binary the tree's root token,
+which #3496 already made a host's choice. That is the change that actually makes one
+administration grammar serve both products, and it is independent of MCP: MCP is simply
+the first domain that would cross it.
 
 ### D4, Publish the host's discovery path
 
@@ -195,21 +211,29 @@ composes providers in order so `OAuth → env → none` is expressed once. yolop
 
 Each step is independently shippable and independently useful downstream:
 
-1. **D4 + D5** — pure deletion downstream, no new concepts, no config migration. Land
-   first; it removes the drift hazard immediately.
-2. **D1** — mechanical rename, internal-only.
-3. **D2** — `McpCatalog` + `FileMcpCatalog`, with yolop's `McpConfigStore` reimplemented
-   on top and its scope/merge tests moved up as the conformance suite.
-4. **D3** — `McpCapability` over the catalog; yolop deletes `src/capabilities/mcp.rs`
-   and registers the upstream one. `/mcp`, `yolop mcp`, and `RuntimeHandles::reload_mcp_servers`
-   stay downstream (they are terminal and ACP concerns) but call the catalog.
+1. **D4 + D5**: pure deletion downstream, no new concepts, no config migration. Land
+   first; it removes the drift hazard immediately and needs no agreement about
+   administration at all.
+2. **D1**: mechanical rename, internal-only.
+3. **D6**: extract the command-tree contract from the bashkit integration. Independent
+   of MCP, and the prerequisite for D3 being one declaration rather than two.
+4. **D2**: `McpCatalog` plus `FileMcpCatalog`, with yolop's `McpConfigStore`
+   reimplemented on top and its scope and merge tests moved up as the conformance suite.
+5. **D3**: one MCP command declaration over the catalog, rendered by both trees. yolop's
+   `/mcp`, `yolop mcp`, and `RuntimeHandles::reload_mcp_servers` stay downstream (they
+   are terminal and ACP concerns) but read and write through the catalog.
+
+D4, D5 and D6 are each worth landing on their own merits even if the catalog work never
+follows.
 
 ## Non-goals
 
 - Unifying the *storage formats* themselves. The hosted product keeps rows; yolop keeps
-  files. The catalog seam exists precisely so they need not converge.
-- Moving `/mcp`, `yolop mcp`, or the OAuth loopback browser flow upstream. Those are
-  terminal-host concerns; the catalog and the capability are not.
+  files. `McpCatalog` exists so they need not converge.
+- Moving `/mcp`, the terminal rendering, or the OAuth loopback browser flow upstream.
+  Those are terminal-host concerns; the catalog and the command declaration are not.
+- Making yolop depend on bashkit. D6 moves a contract to neutral ground rather than
+  moving a shell into a host that already has one.
 - Changing tool naming, prefixing, or the execution path. Those are already shared and
   correct.
 
@@ -218,8 +242,9 @@ Each step is independently shippable and independently useful downstream:
 | Concern | Location |
 |---|---|
 | Per-server virtual capability (D1) | `crates/mcp/src/capability.rs` |
-| Catalog seam and file catalog (D2) | `crates/mcp/src/catalog.rs` (new) |
-| Management capability (D3) | `crates/mcp/src/management.rs` (new) |
+| Catalog trait and file catalog (D2) | `crates/mcp/src/catalog.rs` (new) |
+| MCP command declaration (D3) | `crates/mcp/src/commands.rs` (new) |
+| Command-tree contract (D6) | `integrations/bashkit/src/cli.rs`, moving to a neutral crate |
 | Discovery/connection mapping (D4) | `crates/host/src/mcp.rs` |
 | Auth providers (D5) | `crates/mcp/src/auth.rs` |
 | Hosted DB catalog | `crates/server/src/domains/mcp_servers/` |

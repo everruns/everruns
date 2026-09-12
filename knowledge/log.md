@@ -56,8 +56,9 @@
   layer (where servers are stored, how they are edited, enabled, and reloaded) is
   reimplemented per host, `crates/host/src/mcp.rs` is private so downstream
   embedders copy its connection mapping and discovery, and "MCP capability" names
-  two unrelated things. Records the decision to unify behind one extensible MCP
-  capability over a pluggable catalog trait. See
+  two unrelated things. Records the decision to unify behind one catalog trait plus
+  one command declaration, after both products independently moved administration out
+  of model tools and into a CLI grammar. See
   [MCP Capability Unification](integrations/mcp-capability-unification.md).
 
 * Astra reasoning changes preserve the initial request effort, persist effective
