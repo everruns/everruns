@@ -1,0 +1,5 @@
+E-LOGS
+10:04:58 checkout v43 payment_gateway_timeout deadline=200ms upstream_elapsed=203ms
+10:04:59 checkout v43 payment_gateway_timeout deadline=200ms upstream_elapsed=201ms
+10:05:00 checkout v43 payment_success upstream_elapsed=172ms
+No database connection failures in this sampled window. Sampling cannot prove absence.

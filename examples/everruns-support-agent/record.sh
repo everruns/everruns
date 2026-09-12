@@ -7,4 +7,5 @@ task_transcript=$(mktemp)
 trap 'rm -f "$task_transcript"' EXIT
 cargo run -q -p everruns-framework-support-agent -- "$@" | tee "$task_transcript"
 mv "$task_transcript" demo.txt
+python3 render_demo.py
 vhs demo.tape

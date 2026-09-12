@@ -6,7 +6,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
-everruns = { path = "../../crates/everruns" }
+everruns = { path = "../../crates/everruns", features = ["web-fetch"] }
 everruns-example-demo = { path = "../demo-support" }
 everruns-openrouter = { path = "../../crates/drivers/openrouter" }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search", default-features = false }

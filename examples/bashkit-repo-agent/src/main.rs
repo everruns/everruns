@@ -28,17 +28,6 @@ use everruns::{Agent, BashkitShell, Engine, OpenAI, WorkspacePolicy};
 const MODEL: &str = "gpt-5.6-terra";
 const TARGET_VERSION: &str = "0.2.0";
 
-const SYSTEM_PROMPT: &str = "\
-You are a release engineer for the repository mounted at /workspace. The bash \
-tool is your only way to see or change anything: no file is read or written \
-except through a shell command. It is a sandboxed Bash interpreter, so there \
-is no network, no host filesystem, and no git; work with the files in the \
-working tree. It implements a large but partial coreutils surface, so when a \
-command is missing, reach for a portable alternative instead of retrying it. \
-Inspect before you edit, make every edit idempotent, verify the result with a \
-command that would fail loudly if the edit did not land, and keep the final \
-answer under 120 words.";
-
 fn release_request(release_date: &str) -> String {
     format!(
         "Cut release {TARGET_VERSION} of the repository in /workspace, dated {release_date}.\n\
@@ -57,7 +46,7 @@ fn release_request(release_date: &str) -> String {
 fn build_agent(provider: OpenAI, workspace: &Path) -> Result<Agent, everruns::BuildError> {
     Agent::builder()
         .name("bashkit-repo-agent")
-        .instructions(SYSTEM_PROMPT)
+        .instructions(include_str!("../instructions.md"))
         .provider(provider)
         .model(MODEL)
         // One real host directory becomes the session's /workspace. The

@@ -2356,6 +2356,7 @@ dependencies = [
  "everruns",
  "everruns-anthropic",
  "everruns-example-demo",
+ "tempfile",
  "tokio",
 ]
 
@@ -2488,7 +2489,6 @@ dependencies = [
  "everruns-anthropic",
  "everruns-example-demo",
  "libc",
- "reqwest 0.13.5",
  "tokio",
 ]
 

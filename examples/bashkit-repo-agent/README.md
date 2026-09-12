@@ -1,81 +1,143 @@
 # Bashkit Repo Agent
 
-A Framework agent that performs a real repository operation — cutting a release
-— with the sandboxed [Bashkit](https://bashkit.sh) shell as its only execution
-runtime. It runs against a real model (`gpt-5.6-terra`), and the host verifies
-the result on disk after the turn.
+Cut a release in a bundled repository through the sandboxed
+[Bashkit](https://bashkit.sh) shell, then verify the claimed changes on disk.
+This is a real `gpt-5.6-terra` agent, not a scripted turn.
 
 ![Bashkit Repo Agent terminal demo](demo.gif)
 
-## Run
+## What you learn
+
+Mounting a scoped read-write workspace, giving an agent one execution
+capability, recovering from an unsupported command, and checking the resulting
+state independently of the model's final answer.
+
+## Scenario and expected outcome
+
+The bundled `sample-repo/` is a two-crate Cargo workspace with changelog
+fragments. The agent must cut release `0.2.0`: update both manifests and the
+path-dependency pin, create a dated changelog section, retain the previous
+release, and remove the folded fragments. The host then re-reads the working
+copy and fails the process if any invariant is false.
+
+## Run it
+
+Install Rust/Cargo, clone the repository, and run from its root. This folder is
+self-contained **within the workspace**: its manifest references local
+Framework crates, so copying the folder alone is not sufficient.
 
 ```bash
-OPENAI_API_KEY=... cargo run -p everruns-bashkit-repo-agent
-OPENAI_API_KEY=... cargo run -p everruns-bashkit-repo-agent -- /tmp/release-run
-cargo test -p everruns-bashkit-repo-agent
+git clone https://github.com/everruns/everruns.git
+cd everruns
+export OPENAI_API_KEY="your-key"
+cargo run -p everruns-bashkit-repo-agent
 ```
 
-`cargo run` makes real provider calls. With no argument the working copy lives
-in a temporary directory that is removed on exit; pass a path to keep it. That
-directory is the agent's read-write workspace and is edited in place, so pass a
-scratch path rather than a repository you care about — the runtime clamps every
-shell path under it, but everything inside it is fair game. The tests never
-contact the provider.
-
-## What it does
-
-1. The example materializes the bundled [`sample-repo/`](sample-repo) fixture —
-   a two-crate Cargo workspace with a `CHANGELOG.md` and unreleased fragments in
-   `changelog.d/` — into a throwaway working copy.
-2. That host directory is mounted as the agent's `/workspace` with
-   `WorkspacePolicy::read_write()`, and the agent gets exactly one capability:
-   `BashkitShell`.
-3. The agent is asked to cut `0.2.0`: bump the version in every crate manifest,
-   fold the changelog fragments into a new dated section, and delete the
-   fragments. It does all of it with `sed`, `grep`, heredocs, and `rm` inside
-   Bashkit — there is no file tool in the session.
-4. When the turn ends, the host re-reads the directory and prints a check per
-   claim (`verify` in [src/main.rs](src/main.rs)), exiting non-zero if the
-   release did not actually land.
-
-## How the demo works
-
-The screencast is a **paged replay of a recorded live run**, with provider wait
-time removed. Read the [complete displayed transcript](demo.txt) at your own
-pace; long scripts and command output are truncated for display only, the agent
-receives the full result. The run shown hits a real edge of the sandbox — `find
--delete` is not implemented — and recovers with a portable `-exec rm -f {} \;`.
-
-To capture a new live run, export `OPENAI_API_KEY` and run:
+With no argument, the working copy uses a temporary directory removed on exit.
+Pass a scratch directory after `--` to inspect it afterwards:
 
 ```bash
+cargo run -p everruns-bashkit-repo-agent -- /tmp/release-run
+```
+
+The configured model is `gpt-5.6-terra`. A funded OpenAI account is required;
+live runs can incur charges. Never point this example at a repository you care
+about: the agent may change anything inside the mounted workspace.
+
+## Build the agent
+
+The editable system prompt lives in `instructions.md`. The workspace is a real
+host directory, but the policy and Bashkit runtime clamp agent access to its
+mounted `/workspace` tree.
+
+```rust
+let agent = Agent::builder()
+    .name("bashkit-repo-agent")
+    .instructions(include_str!("../instructions.md"))
+    .provider(provider)
+    .model(MODEL)
+    .workspace(workspace)
+    .workspace_policy(WorkspacePolicy::read_write())
+    .capability(BashkitShell::new())
+    .build()?;
+```
+
+## Run and verify
+
+`demo::run` subscribes before sending, shows a bounded shell timeline, and
+waits for a successful turn. The final answer is not treated as proof: `verify`
+checks the manifests, changelog, and fragment directory from the host.
+
+```rust
+let session = Engine::new().create(agent);
+demo::run(&session, &release_request(&release_date)).await?;
+
+let checks = verify(&root, &release_date);
+if checks.iter().any(|check| !check.passed) {
+    return Err("release verification failed".into());
+}
+```
+
+Use `session.send_and_wait(request).await?` instead when you do not need the
+live tool timeline.
+
+## How the capability works
+
+Bashkit interprets bash in-process against the session filesystem: no
+`/bin/bash`, subprocess, host path outside `/workspace`, network, or `git`.
+Commands, loops, and script size are bounded. The recording includes a genuine
+recovery: `find -delete` is unsupported, so the agent inspects partial state and
+uses the portable `-exec rm -f {} \;` form.
+
+## Validate the behavior
+
+```bash
+cargo test -p everruns-bashkit-repo-agent
+python3 examples/bashkit-repo-agent/render_demo.py --check
+```
+
+Tests validate agent construction, the fixture's starting state, and the
+host-side assertions without contacting OpenAI. CI does not grade live model
+quality.
+
+## Demo and recording
+
+`demo.txt` is output from a successful live run. `render_demo.py` automatically
+creates readable pages and durations; VHS replays them without another API
+call.
+
+```bash
+cd examples/bashkit-repo-agent
 bash record.sh
 ```
 
-Recording needs VHS, `less`, and a real provider call. Adjust the page count in
-[demo.tape](demo.tape) if a new transcript is longer; `vhs demo.tape` replays
-the saved transcript without API calls.
+Recording needs Python 3, VHS, ffmpeg, a VHS-compatible browser, and funded
+OpenAI credentials. The script preserves the previous successful transcript if
+the provider run fails. Inspect recordings before sharing when adapting this
+example to private repositories.
 
-## Why Bashkit
+## Adapt it
 
-Bashkit interprets bash in-process against the session filesystem: no
-`/bin/bash`, no subprocess, no host filesystem beyond `/workspace`, no network,
-and fixed limits on commands, loop iterations, and script size. The agent gets a
-usable shell over the repository, and the deployment keeps a hard boundary
-around it. Because it is an interpreter rather than a shell-out, `git` is not
-available, so the agent works on the checked-out tree.
+Replace `sample-repo/`, `release_request`, and `verify` with a disposable fixture
+and independent assertions for your workflow. Keep the mounted root narrow,
+start read-only unless mutation is required, and validate important claims from
+host state after the turn.
 
-This example is only its agent: [src/main.rs](src/main.rs) holds the agent
-setup, the release request, and the verification. The terminal observer is
-shared by every example and lives in
-[examples/demo-support](../demo-support) — its `shell` module prints each
-script the agent runs and decodes the exec result it gets back, colored unless
-`NO_COLOR` is set. The shell here operates on this example's own throwaway copy
-— review what an observer prints before pointing one at a workspace with
-private data.
+## Boundaries
+
+This demonstrates one sandboxed repository mutation, not a general coding
+agent. It has no network or Git credentials and cannot create commits or push.
+The session itself is in-memory.
+
+## Source map
+
+`src/main.rs`: agent, run, and verification; `src/sample_repo.rs`: fixture
+materialization; `sample-repo/`: input repository; `instructions.md`: agent
+instructions. `examples/demo-support::shell` handles terminal presentation;
+`record.sh` and `render_demo.py` handle recording.
 
 ## See also
 
 - [Bashkit Shell capability](https://docs.everruns.com/capabilities/bashkit-shell/)
-- [`coding-cli`](../coding-cli) — a full terminal coding agent that combines
+- [`coding-cli`](../coding-cli) — a full terminal coding agent combining
   Bashkit with file, search, and skill capabilities
