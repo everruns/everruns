@@ -157,15 +157,18 @@ fn default_user_role() -> MessageRole {
 pub struct CreateMessageQuery {
     /// Wait for turn completion and return the turn result.
     #[serde(default)]
+    #[schema(example = true)]
     pub wait: bool,
     /// Max wait budget in milliseconds (default 120000, capped at 600000).
     /// Only used with `wait=true`. On expiry the endpoint returns `202`
     /// with the messages produced so far.
+    #[schema(example = 120000)]
     pub timeout_ms: Option<u64>,
 }
 
 /// Terminal-or-pending outcome of a waited turn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[schema(example = "completed")]
 #[serde(rename_all = "snake_case")]
 pub enum TurnWaitStatus {
     Completed,
@@ -177,6 +180,7 @@ pub enum TurnWaitStatus {
 /// Waited result for `POST /v1/sessions/{session_id}/messages?wait=true`.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TurnWaitResponse {
+    /// Wait outcome for the triggered turn.
     pub status: TurnWaitStatus,
     /// The accepted user message (same body as the `201` path).
     pub message: Message,
@@ -185,6 +189,7 @@ pub struct TurnWaitResponse {
     pub messages: Vec<Message>,
     /// Turn failure detail when `status` is `failed`.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "turn failed: upstream model error")]
     pub error: Option<String>,
 }
 
@@ -321,7 +326,6 @@ pub fn routes(state: AppState) -> Router {
 // HTTP Handlers
 // ============================================
 
-/// POST /v1/sessions/{session_id}/messages - Create message (user message triggers workflow)
 /// Default wait budget for `?wait=true` (2 minutes).
 pub const DEFAULT_WAIT_TIMEOUT_MS: u64 = 120_000;
 /// Upper bound for `timeout_ms` (10 minutes).
@@ -374,6 +378,7 @@ async fn wait_for_turn(
         }
     }
 }
+/// POST /v1/sessions/{session_id}/messages - Create message (user message triggers workflow)
 #[utoipa::path(
     post,
     path = "/v1/sessions/{session_id}/messages",

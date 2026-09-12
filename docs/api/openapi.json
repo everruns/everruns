@@ -12982,6 +12982,7 @@
         "tags": [
           "messages"
         ],
+        "summary": "POST /v1/sessions/{session_id}/messages - Create message (user message triggers workflow)",
         "operationId": "create_message",
         "parameters": [
           {
@@ -37815,7 +37816,8 @@
               "string",
               "null"
             ],
-            "description": "Turn failure detail when `status` is `failed`."
+            "description": "Turn failure detail when `status` is `failed`.",
+            "example": "turn failed: upstream model error"
           },
           "message": {
             "$ref": "#/components/schemas/Message",
@@ -37829,7 +37831,8 @@
             "description": "Messages appended after the accepted message: assistant output on\ncompletion, whatever exists so far on timeout, empty on failure."
           },
           "status": {
-            "$ref": "#/components/schemas/TurnWaitStatus"
+            "$ref": "#/components/schemas/TurnWaitStatus",
+            "description": "Wait outcome for the triggered turn."
           }
         }
       },
@@ -37840,7 +37843,8 @@
           "completed",
           "failed",
           "timeout"
-        ]
+        ],
+        "example": "completed"
       },
       "UpdateAgentRequest": {
         "type": "object",

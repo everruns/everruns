@@ -3195,6 +3195,7 @@ export interface paths {
     /** GET /v1/sessions/{session_id}/messages - List messages (PRIMARY data) */
     get: operations["list_messages"];
     put?: never;
+    /** POST /v1/sessions/{session_id}/messages - Create message (user message triggers workflow) */
     post: operations["create_message"];
     delete?: never;
     options?: never;
@@ -16352,7 +16353,10 @@ export interface components {
     };
     /** @description Waited result for `POST /v1/sessions/{session_id}/messages?wait=true`. */
     TurnWaitResponse: {
-      /** @description Turn failure detail when `status` is `failed`. */
+      /**
+       * @description Turn failure detail when `status` is `failed`.
+       * @example turn failed: upstream model error
+       */
       error?: string | null;
       /** @description The accepted user message (same body as the `201` path). */
       message: components["schemas"]["Message"];
@@ -16361,10 +16365,12 @@ export interface components {
        *     completion, whatever exists so far on timeout, empty on failure.
        */
       messages: components["schemas"]["Message"][];
+      /** @description Wait outcome for the triggered turn. */
       status: components["schemas"]["TurnWaitStatus"];
     };
     /**
      * @description Terminal-or-pending outcome of a waited turn.
+     * @example completed
      * @enum {string}
      */
     TurnWaitStatus: "completed" | "failed" | "timeout";
