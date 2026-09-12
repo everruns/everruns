@@ -211,6 +211,7 @@ pub mod delegation_services;
 pub mod durability;
 pub mod event_emitter;
 pub mod execution_loading;
+pub mod file_services;
 pub mod image_services;
 pub mod outline;
 pub mod output_guardrail;
@@ -433,8 +434,10 @@ pub use context_report::{
 };
 pub use events::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, CONTEXT_COMPACTED,
-    CONTEXT_COMPACTING, CompactionReason, CompactionStepData, ContextCompactedData,
-    ContextCompactingData, Event, EventBuilder, EventContext, EventData, EventRequest,
+    CONTEXT_COMPACTING, CONTEXT_COMPACTION_FAILED, CONTEXT_COMPACTION_SKIPPED, CompactionFailStage,
+    CompactionReason, CompactionSkipReason, CompactionStepData, CompactionTrigger,
+    ContextCompactedData, ContextCompactingData, ContextCompactionFailedData,
+    ContextCompactionSkippedData, Event, EventBuilder, EventContext, EventData, EventRequest,
     FILE_WRITTEN, FileWrittenData, INPUT_MESSAGE, InputMessageData, LLM_GENERATION,
     LlmCompactionInfo, LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput, LlmRetryInfo,
     ModelMetadata, OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED,

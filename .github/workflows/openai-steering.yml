@@ -1,0 +1,38 @@
+name: OpenAI Steering Prototype
+
+on:
+  pull_request:
+    paths:
+      - 'examples/openai-steering/**'
+      - '.github/workflows/openai-steering.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'examples/openai-steering/**'
+      - '.github/workflows/openai-steering.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  steering:
+    name: Steering protocol (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        python: ['3.11', '3.14']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install isolated transport dependency
+        run: python -m pip install -r examples/openai-steering/requirements.txt
+      - name: Test durable recovery and real local WebSocket flows
+        run: python -m unittest discover -s examples/openai-steering -v

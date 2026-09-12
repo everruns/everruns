@@ -1455,6 +1455,42 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/files": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List uploaded files, newest first. */
+    get: operations["list_files"];
+    put?: never;
+    /** Upload a PDF file for use as model input. */
+    post: operations["upload_file"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/files/{file_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Download a stored file's bytes. */
+    get: operations["get_file"];
+    put?: never;
+    post?: never;
+    /** Delete a stored file. */
+    delete: operations["delete_file"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/harness-examples": {
     parameters: {
       query?: never;
@@ -2040,13 +2076,13 @@ export interface paths {
       cookie?: never;
     };
     /** @description Read a file or list a directory inside a Memory. */
-    get: operations["get_file"];
+    get: operations["get_file_get_v1_memories_memory_id_fs_path"];
     /** @description Update a file's content. Directories cannot be updated. */
     put: operations["update_file"];
     /** @description Create a file or directory inside a Memory. */
     post: operations["create_file"];
     /** @description Delete a file or directory. Pass `recursive=true` to delete non-empty directories. */
-    delete: operations["delete_file"];
+    delete: operations["delete_file_delete_v1_memories_memory_id_fs_path"];
     options?: never;
     head?: never;
     patch?: never;
@@ -2445,6 +2481,27 @@ export interface paths {
     put?: never;
     /** Create a new LLM provider */
     post: operations["create_provider"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/providers/check-credentials": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Check whether a provider accepts an API key, without storing it
+     * @description Used by org setup so a key the provider will reject is caught at entry
+     *     instead of at the first agent run. Nothing is persisted.
+     */
+    post: operations["check_credentials"];
     delete?: never;
     options?: never;
     head?: never;
@@ -5295,6 +5352,28 @@ export interface components {
       /** @description Whether the name is available for use. */
       available: boolean;
     };
+    /** @description Request to check a provider credential without storing it. */
+    CheckCredentialsRequest: {
+      /**
+       * @description Single-field credential. Mutually exclusive with `credentials`.
+       * @example sk-proj-...
+       */
+      api_key?: string | null;
+      /**
+       * @description Base URL for the provider's API, when not the driver default.
+       * @example https://api.openai.com/v1
+       */
+      base_url?: string | null;
+      /**
+       * @description Typed multi-field credential, validated against the driver's schema
+       *     exactly as on create.
+       */
+      credentials?: {
+        [key: string]: string;
+      } | null;
+      /** @description The type of LLM provider (e.g., openai, anthropic). */
+      provider_type: components["schemas"]["DriverId"];
+    };
     /** @description Response for name availability check. */
     CheckNameResponse: {
       /** @description Whether the name is available for use. */
@@ -5430,10 +5509,27 @@ export interface components {
       tree_oid: string;
     };
     /**
+     * @description Which stage of a compaction attempt failed.
+     * @enum {string}
+     */
+    CompactionFailStage: "native_compaction" | "checkpoint_install" | "summarization";
+    /**
      * @description Reason why compaction was triggered.
      * @enum {string}
      */
     CompactionReason: "proactive_budget" | "request_too_large" | "manual";
+    /**
+     * @description Why a pressured compaction evaluation did not install compacted context.
+     * @enum {string}
+     */
+    CompactionSkipReason:
+      | "strategy_excludes_native"
+      | "driver_unsupported"
+      | "checkpoint_store_unavailable"
+      | "cooldown_active"
+      | "native_returned_none"
+      | "no_material_reduction"
+      | "guard_rejected";
     /** @description A single step in a compaction cascade. */
     CompactionStepData: {
       /**
@@ -5446,6 +5542,11 @@ export interface components {
       /** @description Strategy used in this step. */
       strategy: string;
     };
+    /**
+     * @description What triggered a compaction lifecycle: the context-window budget or cost pressure.
+     * @enum {string}
+     */
+    CompactionTrigger: "context_budget" | "cost_pressure";
     /** @description Connection info returned in API responses (never includes token) */
     Connection: {
       /** Format: date-time */
@@ -5479,6 +5580,10 @@ export interface components {
           /** @enum {string} */
           type: "image_file";
         })
+      | (components["schemas"]["FileContentPart"] & {
+          /** @enum {string} */
+          type: "file";
+        })
       | (components["schemas"]["ToolCallContentPart"] & {
           /** @enum {string} */
           type: "tool_call";
@@ -5495,6 +5600,12 @@ export interface components {
     ContextCompactedData: {
       /**
        * Format: int64
+       * @description Tokens of headroom remaining when the install completed, when measurable.
+       * @example 8192
+       */
+      budget_remaining_tokens?: number | null;
+      /**
+       * Format: int64
        * @description Serialized compact output bytes, when measurable.
        */
       bytes_after?: number | null;
@@ -5503,8 +5614,28 @@ export interface components {
        * @description Serialized request-context bytes before compaction, when measurable.
        */
       bytes_before?: number | null;
-      /** @description Durable checkpoint installed by this compaction, when applicable. */
+      /**
+       * Format: int32
+       * @description Cache-creation tokens written after compaction, when reported.
+       * @example 1024
+       */
+      cache_creation_tokens?: number | null;
+      /**
+       * Format: int32
+       * @description Cached input tokens read after compaction, when reported.
+       * @example 90210
+       */
+      cache_read_tokens?: number | null;
+      /**
+       * @description Durable checkpoint installed by this compaction, when applicable.
+       * @example 01934c2f-9f2e-7c1b-8d3e-4f5a6b7c8d9e
+       */
       checkpoint_id?: string | null;
+      /**
+       * @description Local driver identifier, when known.
+       * @example openai-chat
+       */
+      driver?: string | null;
       /**
        * Format: int64
        * @description Total duration of all compaction steps in milliseconds.
@@ -5512,8 +5643,27 @@ export interface components {
       duration_ms: number;
       /** @description Number of messages after compaction. */
       messages_after: number;
-      /** @description Number of messages before compaction. */
+      /**
+       * @description Number of messages before compaction.
+       * @example 120
+       */
       messages_before: number;
+      /**
+       * @description Model that performed the compaction.
+       * @example gpt-5-mini
+       */
+      model?: string;
+      /**
+       * @description Provider backend (e.g. "openai"), when known.
+       * @example openai
+       */
+      provider?: string | null;
+      /**
+       * Format: int64
+       * @description Source message sequence the compaction ran at, when known.
+       * @example 481
+       */
+      source_sequence?: number | null;
       /** @description Individual steps in the cascade. */
       steps?: components["schemas"]["CompactionStepData"][];
       /** @description Combined strategy description (e.g., "observation_masking+native"). */
@@ -5526,27 +5676,204 @@ export interface components {
       /**
        * Format: int64
        * @description Estimated or provider-reported input tokens before compaction.
+       * @example 184320
        */
       tokens_before?: number | null;
+      /** @description What triggered this compaction: context-window budget or cost pressure. */
+      trigger?: components["schemas"]["CompactionTrigger"];
     };
     /** @description Data for context.compacting event (compaction starting). */
     ContextCompactingData: {
       /**
        * Format: int64
+       * @description Tokens of headroom remaining when the attempt started, when measurable.
+       * @example 8192
+       */
+      budget_remaining_tokens?: number | null;
+      /**
+       * Format: int64
        * @description Serialized request-context bytes before compaction, when measurable.
        */
       bytes_before?: number | null;
-      /** @description Number of messages before compaction. */
+      /**
+       * Format: int32
+       * @description Cache-creation tokens written before compaction, when reported.
+       * @example 1024
+       */
+      cache_creation_tokens?: number | null;
+      /**
+       * Format: int32
+       * @description Cached input tokens read before compaction, when reported.
+       * @example 90210
+       */
+      cache_read_tokens?: number | null;
+      /**
+       * @description Local driver identifier, when known.
+       * @example openai-chat
+       */
+      driver?: string | null;
+      /**
+       * @description Number of messages before compaction.
+       * @example 120
+       */
       messages_before: number;
+      /**
+       * @description Model performing the compaction.
+       * @example gpt-5-mini
+       */
+      model?: string;
+      /**
+       * @description Provider backend (e.g. "openai"), when known.
+       * @example openai
+       */
+      provider?: string | null;
       /** @description Why compaction was triggered. */
       reason: components["schemas"]["CompactionReason"];
-      /** @description Strategy requested (may differ from strategy_used in the completed event). */
+      /**
+       * Format: int64
+       * @description Source message sequence the attempt ran at, when known.
+       * @example 481
+       */
+      source_sequence?: number | null;
+      /**
+       * @description Strategy requested (may differ from strategy_used in the completed event).
+       * @example summary_then_trim
+       */
       strategy: string;
       /**
        * Format: int64
        * @description Estimated or provider-reported input tokens before compaction.
+       * @example 184320
        */
       tokens_before?: number | null;
+      /** @description What triggered this attempt: context-window budget or cost pressure. */
+      trigger?: components["schemas"]["CompactionTrigger"];
+    };
+    /**
+     * @description Data for context.compaction.failed: an attempt errored before installing.
+     *
+     *     Terminal event for an emitted context.compacting attempt that did not
+     *     install. The envelope timestamp records when the failure surfaced.
+     */
+    ContextCompactionFailedData: {
+      /**
+       * Format: int64
+       * @description Tokens of headroom remaining, when measurable.
+       * @example 8192
+       */
+      budget_remaining_tokens?: number | null;
+      /**
+       * @description Durable checkpoint being installed when the failure hit, if any.
+       * @example 01934c2f-9f2e-7c1b-8d3e-4f5a6b7c8d9e
+       */
+      checkpoint_id?: string | null;
+      /**
+       * @description Local driver identifier, when known.
+       * @example openai-chat
+       */
+      driver?: string | null;
+      /**
+       * @description Human-readable failure.
+       * @example summarizer request failed: upstream timed out
+       */
+      error: string;
+      /**
+       * @description Number of messages before the attempt.
+       * @example 120
+       */
+      messages_before: number;
+      /**
+       * @description Model the attempt ran under.
+       * @example gpt-5-mini
+       */
+      model: string;
+      /**
+       * @description Provider backend (e.g. "openai"), when known.
+       * @example openai
+       */
+      provider?: string | null;
+      /** @description Why compaction was attempted. */
+      reason: components["schemas"]["CompactionReason"];
+      /**
+       * Format: int64
+       * @description Source message sequence the attempt ran at, when known.
+       * @example 481
+       */
+      source_sequence?: number | null;
+      /** @description Which stage failed. */
+      stage: components["schemas"]["CompactionFailStage"];
+      /**
+       * @description Strategy requested.
+       * @example summary_then_trim
+       */
+      strategy: string;
+      /**
+       * Format: int64
+       * @description Estimated or provider-reported input tokens before the attempt.
+       * @example 184320
+       */
+      tokens_before: number;
+      /** @description Whether window/budget or cost pressure triggered the attempt. */
+      trigger: components["schemas"]["CompactionTrigger"];
+    };
+    /**
+     * @description Data for context.compaction.skipped: pressure observed, nothing installed.
+     *
+     *     Emitted when context-budget or cost pressure is present but the evaluation
+     *     does not install compacted context. The envelope timestamp records when the
+     *     decision was made; every pressured evaluation closes with exactly one of
+     *     skipped, installed (context.compacted), or failed.
+     */
+    ContextCompactionSkippedData: {
+      /**
+       * Format: int64
+       * @description Tokens of headroom remaining, when measurable.
+       * @example 8192
+       */
+      budget_remaining_tokens?: number | null;
+      /**
+       * @description Local driver identifier, when known.
+       * @example openai-chat
+       */
+      driver?: string | null;
+      /**
+       * @description Number of messages observed.
+       * @example 120
+       */
+      messages_observed: number;
+      /**
+       * @description Model the evaluation ran under.
+       * @example gpt-5-mini
+       */
+      model: string;
+      /**
+       * @description Provider backend (e.g. "openai"), when known.
+       * @example openai
+       */
+      provider?: string | null;
+      /** @description Why compaction was evaluated. */
+      reason: components["schemas"]["CompactionReason"];
+      /** @description Why nothing was installed. */
+      skip_reason: components["schemas"]["CompactionSkipReason"];
+      /**
+       * Format: int64
+       * @description Source message sequence the evaluation ran at, when known.
+       * @example 481
+       */
+      source_sequence?: number | null;
+      /**
+       * @description Strategy requested.
+       * @example summary_then_trim
+       */
+      strategy: string;
+      /**
+       * Format: int64
+       * @description Estimated input tokens observed at evaluation time.
+       * @example 184320
+       */
+      tokens_observed: number;
+      /** @description Whether window/budget or cost pressure triggered the evaluation. */
+      trigger: components["schemas"]["CompactionTrigger"];
     };
     /**
      * @description Single-source token contribution within a `ContextReportSection` — the
@@ -6230,6 +6557,9 @@ export interface components {
        */
       tags?: string[] | null;
     };
+    CreateMessageResult:
+      | components["schemas"]["Message"]
+      | components["schemas"]["TurnWaitResponse"];
     /** @description Request to create a new LLM model for a provider */
     CreateModelRequest: {
       /**
@@ -6729,6 +7059,39 @@ export interface components {
       /** @example team-research */
       name: string;
     };
+    /** @description Outcome of checking a candidate provider credential. */
+    CredentialCheckResult:
+      | {
+          /**
+           * @description Number of models the provider listed for this credential.
+           * @example 42
+           */
+          models: number;
+          /** @enum {string} */
+          status: "valid";
+        }
+      | {
+          /**
+           * @description User-facing reason. Never carries the provider's response body.
+           * @example The provider rejected this API key.
+           */
+          message: string;
+          /** @enum {string} */
+          status: "rejected";
+        }
+      | {
+          /** @enum {string} */
+          status: "unsupported";
+        }
+      | {
+          /**
+           * @description User-facing reason. Never carries the provider's response body.
+           * @example Could not reach the provider to verify this API key.
+           */
+          message: string;
+          /** @enum {string} */
+          status: "unreachable";
+        };
     /** @description Describes the form fields and instructions for entering a credential. */
     CredentialFormSchema: {
       /** @description Input fields to render. */
@@ -7215,6 +7578,8 @@ export interface components {
       | components["schemas"]["TaskMessageEventData"]
       | components["schemas"]["ContextCompactingData"]
       | components["schemas"]["ContextCompactedData"]
+      | components["schemas"]["ContextCompactionSkippedData"]
+      | components["schemas"]["ContextCompactionFailedData"]
       | components["schemas"]["FileWrittenData"]
       | components["schemas"]["BudgetEventData"]
       | components["schemas"]["BudgetEventData"]
@@ -7502,58 +7867,49 @@ export interface components {
      * @enum {string}
      */
     FieldType: "password" | "text" | "url";
-    /** @description File metadata without content */
+    /**
+     * @description File content part (reference to an uploaded file, e.g. a PDF)
+     *
+     *     This is used for files uploaded via the /files API.
+     *     The file data is stored separately and referenced by ID.
+     */
+    FileContentPart: {
+      /**
+       * @description ID of the uploaded file (format: file_{32-hex})
+       * @example file_01933b5a00007000800000000000001
+       */
+      file_id: string;
+      /** @description Original filename (for display and provider file parts) */
+      filename?: string | null;
+    };
+    /** @description Stored file metadata (no binary data). */
     FileInfo: {
       /**
+       * @description MIME type of the stored file (currently always application/pdf).
+       * @example application/pdf
+       */
+      content_type: string;
+      /**
        * Format: date-time
-       * @description Timestamp when this entry was created (RFC 3339).
-       * @example 2026-05-25T10:14:00Z
+       * @description Upload timestamp.
+       * @example 2026-01-04T11:23:00Z
        */
       created_at: string;
       /**
-       * Format: uuid
-       * @description Internal database UUID for this file entry.
-       * @example 550e8400-e29b-41d4-a716-446655440000
+       * @description Original filename supplied at upload, if known.
+       * @example report.pdf
        */
+      filename?: string | null;
+      /** @example file_01933b5a00007000800000000000001 */
       id: string;
-      /**
-       * @description `true` when this entry represents a directory; `false` for a regular file.
-       * @example false
-       */
-      is_directory: boolean;
-      /**
-       * @description Whether the entry was marked read-only at creation. Read-only entries cannot be edited or deleted by the session.
-       * @example false
-       */
-      is_readonly: boolean;
-      /**
-       * @description File or directory name (the last segment of `path`).
-       * @example notes.md
-       */
-      name: string;
-      /**
-       * @description Absolute path within the session workspace (e.g. `/notes.md`).
-       * @example /notes.md
-       */
-      path: string;
-      /**
-       * Format: uuid
-       * @description UUID of the owning session.
-       * @example 01933b5a-0000-7000-8000-000000000001
-       */
-      session_id: string;
+      /** @description Caller-supplied metadata captured at upload. */
+      metadata: Record<string, unknown>;
       /**
        * Format: int64
-       * @description File size in bytes. `0` for directories.
-       * @example 4096
+       * @description Size of the stored file in bytes.
+       * @example 1048576
        */
       size_bytes: number;
-      /**
-       * Format: date-time
-       * @description Timestamp when this entry was last updated (RFC 3339).
-       * @example 2026-05-25T10:15:30Z
-       */
-      updated_at: string;
     };
     /** @description File stat information */
     FileStat: {
@@ -7580,6 +7936,33 @@ export interface components {
        * @description Timestamp when this entry was last updated (RFC 3339).
        */
       updated_at: string;
+    };
+    /** @description File metadata returned after a successful upload (no binary data). */
+    FileUploadResponse: {
+      /**
+       * @description MIME type of the stored file (currently always application/pdf).
+       * @example application/pdf
+       */
+      content_type: string;
+      /**
+       * Format: date-time
+       * @description Upload timestamp.
+       * @example 2026-01-04T11:23:00Z
+       */
+      created_at: string;
+      /**
+       * @description Original filename supplied at upload, if known.
+       * @example report.pdf
+       */
+      filename?: string | null;
+      /** @example file_01933b5a00007000800000000000001 */
+      id: string;
+      /**
+       * Format: int64
+       * @description Size of the stored file in bytes.
+       * @example 1048576
+       */
+      size_bytes: number;
     };
     /** @description Data for file.written events emitted when files are written to the session filesystem. */
     FileWrittenData: {
@@ -8097,6 +8480,14 @@ export interface components {
         [key: string]: string;
       };
       /**
+       * @description Display glyph name rendered by the UI (e.g. "message-circle").
+       *
+       *     Built-in harnesses declare it in their definition; custom harnesses
+       *     leave it unset and fall back to the UI's generic harness glyph.
+       * @example message-circle
+       */
+      icon?: string | null;
+      /**
        * @description Unique identifier for the harness (format: harness_{32-hex}).
        * @example harness_01933b5a00007000800000000000001
        */
@@ -8171,6 +8562,8 @@ export interface components {
       dev_only: boolean;
       /** @description Human-readable display name (e.g. `Data Analyst`). */
       display_name: string;
+      /** @description Display glyph name rendered by the UI (e.g. `bar-chart`). */
+      icon?: string | null;
       /** @description Unique slug (e.g. `data-analyst`). */
       name: string;
       /**
@@ -8466,6 +8859,10 @@ export interface components {
       | (components["schemas"]["ImageFileContentPart"] & {
           /** @enum {string} */
           type: "image_file";
+        })
+      | (components["schemas"]["FileContentPart"] & {
+          /** @enum {string} */
+          type: "file";
         });
     /**
      * @description Input message for creating a user message
@@ -9445,6 +9842,14 @@ export interface components {
         embedder_metadata?: {
           [key: string]: string;
         };
+        /**
+         * @description Display glyph name rendered by the UI (e.g. "message-circle").
+         *
+         *     Built-in harnesses declare it in their definition; custom harnesses
+         *     leave it unset and fall back to the UI's generic harness glyph.
+         * @example message-circle
+         */
+        icon?: string | null;
         /**
          * @description Unique identifier for the harness (format: harness_{32-hex}).
          * @example harness_01933b5a00007000800000000000001
@@ -10677,6 +11082,14 @@ export interface components {
         embedder_metadata?: {
           [key: string]: string;
         };
+        /**
+         * @description Display glyph name rendered by the UI (e.g. "message-circle").
+         *
+         *     Built-in harnesses declare it in their definition; custom harnesses
+         *     leave it unset and fall back to the UI's generic harness glyph.
+         * @example message-circle
+         */
+        icon?: string | null;
         /**
          * @description Unique identifier for the harness (format: harness_{32-hex}).
          * @example harness_01933b5a00007000800000000000001
@@ -16184,6 +16597,29 @@ export interface components {
        */
       turn_id: string;
     };
+    /** @description Waited result for `POST /v1/sessions/{session_id}/messages?wait=true`. */
+    TurnWaitResponse: {
+      /**
+       * @description Turn failure detail when `status` is `failed`.
+       * @example turn failed: upstream model error
+       */
+      error?: string | null;
+      /** @description The accepted user message (same body as the `201` path). */
+      message: components["schemas"]["Message"];
+      /**
+       * @description Messages appended after the accepted message: assistant output on
+       *     completion, whatever exists so far on timeout, empty on failure.
+       */
+      messages: components["schemas"]["Message"][];
+      /** @description Wait outcome for the triggered turn. */
+      status: components["schemas"]["TurnWaitStatus"];
+    };
+    /**
+     * @description Terminal-or-pending outcome of a waited turn.
+     * @example completed
+     * @enum {string}
+     */
+    TurnWaitStatus: "completed" | "failed" | "timeout";
     /** @description Request to update an agent. Only provided fields will be updated. */
     UpdateAgentRequest: {
       /**
@@ -17763,6 +18199,14 @@ export interface components {
         [key: string]: string;
       };
       /**
+       * @description Display glyph name rendered by the UI (e.g. "message-circle").
+       *
+       *     Built-in harnesses declare it in their definition; custom harnesses
+       *     leave it unset and fall back to the UI's generic harness glyph.
+       * @example message-circle
+       */
+      icon?: string | null;
+      /**
        * @description Unique identifier for the harness (format: harness_{32-hex}).
        * @example harness_01933b5a00007000800000000000001
        */
@@ -18197,6 +18641,14 @@ export interface components {
       embedder_metadata?: {
         [key: string]: string;
       };
+      /**
+       * @description Display glyph name rendered by the UI (e.g. "message-circle").
+       *
+       *     Built-in harnesses declare it in their definition; custom harnesses
+       *     leave it unset and fall back to the UI's generic harness glyph.
+       * @example message-circle
+       */
+      icon?: string | null;
       /**
        * @description Unique identifier for the harness (format: harness_{32-hex}).
        * @example harness_01933b5a00007000800000000000001
@@ -21514,6 +21966,8 @@ export interface operations {
         offset?: number;
         /** @description Page size (default: 20, max: 100) */
         limit?: number;
+        /** @description Include retired capabilities (default: false) */
+        include_retired?: boolean;
       };
       header?: never;
       path?: never;
@@ -23173,6 +23627,110 @@ export interface operations {
       };
       /** @description Durable store not available */
       503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_files: {
+    parameters: {
+      query?: {
+        /** @description Maximum number of files to return. */
+        limit?: number | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List files */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FileInfo"][];
+        };
+      };
+    };
+  };
+  upload_file: {
+    parameters: {
+      query?: {
+        /** @description Optional session to attribute the upload to. */
+        session_id?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "multipart/form-data": string;
+      };
+    };
+    responses: {
+      /** @description File uploaded */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FileUploadResponse"];
+        };
+      };
+      /** @description Invalid file */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description File too large */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_file: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        file_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description File bytes */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_file: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        file_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description File deleted */
+      200: {
         headers: {
           [name: string]: unknown;
         };
@@ -25191,7 +25749,7 @@ export interface operations {
       };
     };
   };
-  get_file: {
+  get_file_get_v1_memories_memory_id_fs_path: {
     parameters: {
       query?: never;
       header?: never;
@@ -25335,7 +25893,7 @@ export interface operations {
       };
     };
   };
-  delete_file: {
+  delete_file_delete_v1_memories_memory_id_fs_path: {
     parameters: {
       query?: never;
       header?: never;
@@ -26825,6 +27383,44 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["WithUrls_Provider"];
+        };
+      };
+      /** @description Invalid request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  check_credentials: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CheckCredentialsRequest"];
+      };
+    };
+    responses: {
+      /** @description Check completed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CredentialCheckResult"];
         };
       };
       /** @description Invalid request */
@@ -28918,7 +29514,16 @@ export interface operations {
   };
   create_message: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Wait for turn completion and return the turn result. */
+        wait?: boolean;
+        /**
+         * @description Max wait budget in milliseconds (default 120000, capped at 600000).
+         *     Only used with `wait=true`. On expiry the endpoint returns `202`
+         *     with the messages produced so far.
+         */
+        timeout_ms?: number | null;
+      };
       header?: never;
       path: {
         /** @description Session ID (prefixed, e.g., sess_...) */
@@ -28932,13 +29537,31 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Message created successfully */
+      /** @description Waited turn reached a terminal state (?wait=true) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CreateMessageResult"];
+        };
+      };
+      /** @description Message accepted; turn runs in background */
       201: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["Message"];
+          "application/json": components["schemas"]["CreateMessageResult"];
+        };
+      };
+      /** @description Wait deadline expired; turn still running (?wait=true) */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CreateMessageResult"];
         };
       };
       /** @description Invalid ID format */

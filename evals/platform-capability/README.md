@@ -36,6 +36,27 @@ MCP capability attachment, hourly cron/message, and absence of a session
 schedule. Runtime injection is covered separately with a controlled MCP egress
 test; no credential value belongs in this dataset or its transcript.
 
+## Command-tree cases
+
+Four `cli-tree` cases measure the `everruns <noun> <verb>` surface. Two of them
+(`discoverability`-tagged) are deliberately *signal* cases rather than
+correctness cases: the flat wire names still work, so a model that types
+`list_agents` produces a correct answer and fails the case anyway. That is the
+point. The design's central bet is that a CLI, unlike a tool schema, has to be
+advertised to be found; these cases are how a weakening of that pointer shows
+up as a number instead of as a support question.
+
+Read a failure accordingly:
+
+- `cli-tree-agents-list` failing means the prompt/discovery pointers are too
+  weak, not that the tree is broken.
+- `cli-tree-nested-noun` failing means the hierarchy that flat names hide
+  (`list_agent_versions` is `agents versions list`) is not being composed.
+- `cli-tree-help-instead-of-guessing` failing means the model invents verbs
+  rather than asking a surface whose help is bounded on purpose.
+- `cli-tree-wrong-verb-recovers` failing means a wrong first guess is costing
+  more than the one retry the error text is designed to cost.
+
 ## Signals
 
 Each JSONL sample declares deterministic expectations in `metadata`:

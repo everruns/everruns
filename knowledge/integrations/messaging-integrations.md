@@ -89,7 +89,7 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 | **CI: change detection** | Path filter for `{platform}` files. |
 | **CI: live-test job** | Dedicated `{platform}-live-test` job, conditional on change detection + `push` event. |
 | **User docs** | `docs/integrations/{platform}.md`, setup guide, scopes, session strategies, reply modes. |
-| **UI test case** | `test_cases/ui/{platform}_app/TC001_*.md`, manual test for app creation, webhook verification, message flow. |
+| **UI test case** | `knowledge/test-cases/ui/{platform}_app/TC001_*.md`, manual test for app creation, webhook verification, message flow. |
 | **Threat model** | Section in `knowledge/security/threat-model.md` covering platform-specific threats (signing bypass, bot loops, replay). |
 | **Startup recovery** | Re-register active deliveries after server restart (query sessions with `{platform}:*` tags). |
 | **DEV_MODE fallback** | Polling-based delivery when EventNotificationBroadcaster is unavailable (in-memory mode). |

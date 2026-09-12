@@ -14,6 +14,18 @@ jest.mock("@/hooks", () => ({
   useHarnesses: jest.fn(),
 }));
 
+// ChatMessageList and friends reach `use-providers` for org context this suite
+// does not stub. The form itself no longer reads intelligence state — its hosts
+// do — so a fixed healthy model is enough.
+jest.mock("@/hooks/use-providers", () => ({
+  useModels: () => ({
+    data: [{ enabled: true, healthy: true, capabilities: ["chat"] }],
+    isLoading: false,
+    isError: false,
+  }),
+  useProvidersConfig: () => ({ data: { policies: {} }, isLoading: false }),
+}));
+
 jest.mock("@/hooks/use-sessions", () => ({
   useCreateSession: jest.fn(),
 }));
@@ -108,7 +120,7 @@ describe("NewChatForm", () => {
 
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
-        request: { agent_id: "agent_1", tags: ["chat"] },
+        request: { agent_id: "agent_1", source: "chat", tags: ["chat"] },
       }),
     );
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/chats/sess_new"));
@@ -124,7 +136,7 @@ describe("NewChatForm", () => {
 
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
-        request: { harness_name: "platform-chat", tags: ["chat"] },
+        request: { harness_name: "platform-chat", source: "chat", tags: ["chat"] },
       }),
     );
   });
@@ -150,7 +162,7 @@ describe("NewChatForm", () => {
 
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
-        request: { harness_name: "generic", tags: ["chat"] },
+        request: { harness_name: "generic", source: "chat", tags: ["chat"] },
       }),
     );
   });

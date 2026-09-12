@@ -29,6 +29,10 @@
 	handle /.well-known/* {
 		reverse_proxy {$SERVER_HOST}:9000
 	}
+	# Agent credential documentation, served by the API (see local/Caddyfile).
+	handle /auth.md {
+		reverse_proxy {$SERVER_HOST}:9000
+	}
 
 	handle /api-doc/* {
 		reverse_proxy {$SERVER_HOST}:9000

@@ -85,7 +85,9 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
   const destroyHarness = useDestroyHarness();
   const { can: canPolicies } = usePolicies("harnesses");
 
-  const { data: allCapabilities, isLoading: capabilitiesLoading } = useCapabilities();
+  const { data: allCapabilities, isLoading: capabilitiesLoading } = useCapabilities({
+    includeRetired: true,
+  });
 
   const [activeTab, setActiveTab] = useState<string>("edit");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);

@@ -1,0 +1,3 @@
+# Image generation (Agent workflow)
+
+* [TC001: GPT Image Generation with Session Files and Persisted Artifacts](TC001_funny_images_with_artifacts.md) - Verify that an agent using `gpt_image_gen` can complete a three-image generation request end to end: plan three `generate_image` calls, persist durable `img_*` artifacts, mirror each image into the session filesystem,...

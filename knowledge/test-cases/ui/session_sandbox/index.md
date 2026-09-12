@@ -1,0 +1,3 @@
+# Session sandbox (UI)
+
+* [TC001: Managed Session Sandbox - Lifecycle](TC001_managed_session_sandbox_lifecycle.md) - Verify that the built-in **Coding (Session Sandbox)** harness uses the provider-neutral managed sandbox flow end to end: create or resume a single session-owned sandbox, execute work through `sandbox_*` tools, pause a...

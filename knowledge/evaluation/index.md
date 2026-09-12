@@ -1,6 +1,5 @@
 # Evaluation, testing, and reporting
 
-* [Test Cases Specification](test-cases.md) - Manual test case format.
 * [Evals](evals.md) - User-facing behavioral evals.
 * [External Evaluation Results Publishing](external-results-publishing.md) - Publishing externally executed eval results into Everruns and remaining reporting work.
 * [Agent Checks](agent-checks.md) - Advisory agent config checks (lint, LLM analysis, health checks).

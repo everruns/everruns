@@ -10,9 +10,11 @@ use everruns_core::{
     AgentDefinition, DEFAULT_ORG_PUBLIC_ID, ExecutionSession, HarnessDefinition, ScopedMcpServers,
     SessionExecutionState,
 };
-pub use everruns_provider::driver_registry::{
-    OPENROUTER_HTTP_REFERER_METADATA_KEY, OPENROUTER_X_TITLE_METADATA_KEY,
-};
+/// Metadata keys consumed by the OpenRouter driver as `HTTP-Referer` / `X-Title`.
+/// Owned by `everruns_openrouter::options`; duplicated here as plain strings so
+/// the host harness keeps zero type-level coupling to any leaf driver crate.
+const OPENROUTER_HTTP_REFERER_METADATA_KEY: &str = "openrouter.http_referer";
+const OPENROUTER_X_TITLE_METADATA_KEY: &str = "openrouter.x_title";
 use everruns_provider::tool_types::ToolDefinition;
 use everruns_provider::typed_id::{AgentId, HarnessId, ModelId, SessionId, WorkspaceId};
 

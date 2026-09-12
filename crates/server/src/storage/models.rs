@@ -3,13 +3,14 @@
 use crate::kernel_imports::{
     everruns_provider::driver_registry::ServiceKind, everruns_provider::typed_id::AgentId,
     everruns_provider::typed_id::AgentIdentityId, everruns_provider::typed_id::EventId,
-    everruns_provider::typed_id::HarnessId, everruns_provider::typed_id::ImageId,
-    everruns_provider::typed_id::LeasedResourceId, everruns_provider::typed_id::McpServerId,
-    everruns_provider::typed_id::MessageId, everruns_provider::typed_id::ModelId,
-    everruns_provider::typed_id::NotificationId, everruns_provider::typed_id::PrincipalId,
-    everruns_provider::typed_id::ProviderId, everruns_provider::typed_id::ScheduleId,
-    everruns_provider::typed_id::SessionId, everruns_provider::typed_id::SessionParticipantId,
-    everruns_provider::typed_id::SkillId, everruns_provider::typed_id::TriggerId,
+    everruns_provider::typed_id::FileId, everruns_provider::typed_id::HarnessId,
+    everruns_provider::typed_id::ImageId, everruns_provider::typed_id::LeasedResourceId,
+    everruns_provider::typed_id::McpServerId, everruns_provider::typed_id::MessageId,
+    everruns_provider::typed_id::ModelId, everruns_provider::typed_id::NotificationId,
+    everruns_provider::typed_id::PrincipalId, everruns_provider::typed_id::ProviderId,
+    everruns_provider::typed_id::ScheduleId, everruns_provider::typed_id::SessionId,
+    everruns_provider::typed_id::SessionParticipantId, everruns_provider::typed_id::SkillId,
+    everruns_provider::typed_id::TriggerId,
 };
 use chrono::{DateTime, Utc};
 use everruns_durable::UpdateField;
@@ -671,6 +672,9 @@ pub struct HarnessRow {
     pub name: String,
     #[sqlx(default)]
     pub display_name: Option<String>,
+    /// Display glyph name rendered by the UI. Set from built-in definitions.
+    #[sqlx(default)]
+    pub icon: Option<String>,
     pub description: Option<String>,
     /// Base system prompt. Nullable: a harness may contribute no base prompt
     /// and rely entirely on inheritance, agent, session, and capability layers.
@@ -702,6 +706,8 @@ pub struct HarnessRow {
 pub struct CreateHarnessRow {
     pub name: String,
     pub display_name: Option<String>,
+    /// Display glyph name rendered by the UI.
+    pub icon: Option<String>,
     pub description: Option<String>,
     /// Base system prompt; `None` means the harness contributes no base prompt.
     pub system_prompt: Option<String>,
@@ -1906,6 +1912,46 @@ pub struct CreateImageRow {
     pub metadata: serde_json::Value,
 }
 
+// ============================================
+// File models (model-input file attachments, e.g. PDFs)
+// ============================================
+
+/// File row from database
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct FileRow {
+    pub id: FileId,
+    pub org_id: i64,
+    pub filename: Option<String>,
+    pub content_type: String,
+    pub size_bytes: i64,
+    pub data: Vec<u8>,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+/// File info without binary data (for listing)
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct FileInfoRow {
+    pub id: FileId,
+    pub org_id: i64,
+    pub filename: Option<String>,
+    pub content_type: String,
+    pub size_bytes: i64,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Input for creating a file
+#[derive(Debug, Clone)]
+pub struct CreateFileRow {
+    pub org_id: i64,
+    pub filename: Option<String>,
+    pub content_type: String,
+    pub size_bytes: i64,
+    pub data: Vec<u8>,
+    pub metadata: serde_json::Value,
+}
+
 /// Input for updating MCP server cached tools
 #[derive(Debug, Clone)]
 pub struct UpdateMcpServerTools {
@@ -2336,6 +2382,15 @@ pub struct CreateAgentIdentityConnectionRow {
 // Session Schedule models
 // ============================================
 
+/// How long a session schedule claim is honoured before another instance may
+/// take it over.
+///
+/// Short on purpose: the claim only has to survive until the poller advances
+/// `next_trigger_at`, which is the first thing it does with a claimed row. A
+/// long lease would instead mean an instance that died mid-fire stranded its
+/// schedules for that long.
+pub const SESSION_SCHEDULE_CLAIM_LEASE_SECONDS: i32 = 30;
+
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct SessionScheduleRow {
     pub id: ScheduleId,
@@ -2353,6 +2408,14 @@ pub struct SessionScheduleRow {
     pub next_trigger_at: Option<DateTime<Utc>>,
     pub last_triggered_at: Option<DateTime<Utc>>,
     pub trigger_count: i32,
+    /// Scheduler instance holding the current claim lease, if any.
+    #[sqlx(default)]
+    pub claimed_by: Option<String>,
+    /// When the current claim was taken. A claim older than the claim lease
+    /// (see `SESSION_SCHEDULE_CLAIM_LEASE_SECONDS`) is reclaimable by any
+    /// instance, so an instance that dies mid-fire does not strand a schedule.
+    #[sqlx(default)]
+    pub claimed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

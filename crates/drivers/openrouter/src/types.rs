@@ -239,10 +239,11 @@ fn openrouter_price_per_million(value: &str) -> Option<f64> {
         .filter(|price| price.is_finite() && *price >= 0.0)
 }
 
-/// Standard low/medium/high effort config for OpenRouter reasoning models.
+/// Standard effort config for OpenRouter reasoning models.
 ///
-/// OpenRouter normalizes `reasoning.effort` ∈ {low, medium, high} across upstream
-/// providers, so we expose those three with `medium` as the default.
+/// The gateway forwards `reasoning.effort` through to the upstream provider,
+/// which accepts `xhigh` on reasoning-capable models, so we expose
+/// low/medium/high/xhigh with `medium` as the default.
 fn openrouter_effort_config() -> everruns_provider::model::ReasoningEffortConfig {
     use everruns_provider::model::*;
     ReasoningEffortConfig {
@@ -258,6 +259,10 @@ fn openrouter_effort_config() -> everruns_provider::model::ReasoningEffortConfig
             ReasoningEffortValue {
                 value: ReasoningEffort::High,
                 name: "High".into(),
+            },
+            ReasoningEffortValue {
+                value: ReasoningEffort::Xhigh,
+                name: "Extra High".into(),
             },
         ],
         default: ReasoningEffort::Medium,
@@ -318,7 +323,7 @@ mod openrouter_tests {
                 "tool_call":true,"structured_output":true,"open_weights":false,
                 "limits":{"context":262144,"output":262144},
                 "modalities":{"input":["text"],"output":["text"]},
-                "reasoning_effort":{"values":[{"value":"low","name":"Low"},{"value":"medium","name":"Medium"},{"value":"high","name":"High"}],"default":"medium"},
+                "reasoning_effort":{"values":[{"value":"low","name":"Low"},{"value":"medium","name":"Medium"},{"value":"high","name":"High"},{"value":"xhigh","name":"Extra High"}],"default":"medium"},
                 "tool_search":false,"supports_phases":false,
                 "supported_parameters":["include_reasoning","max_tokens","reasoning","response_format","structured_outputs","temperature","tool_choice","tools","top_p"]
             })

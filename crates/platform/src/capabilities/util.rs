@@ -25,7 +25,7 @@ pub fn get_platform_store(
         .map(|ext| ext.0.clone())
         .ok_or_else(|| {
             ToolExecutionResult::tool_error(
-                "Platform management not available: platform_store context is missing. Ensure the platform_management capability is enabled.",
+                "Platform management not available: platform_store context is missing. Ensure the platform capability is enabled.",
             )
         })
 }

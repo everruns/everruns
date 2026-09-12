@@ -6,6 +6,7 @@ import type { CommandDescriptor, Controls } from "@/lib/api/types";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
 import {
   useAgents,
+  useFileAttachments,
   useImageAttachments,
   useImageDropZone,
   useModels,
@@ -16,6 +17,7 @@ import { getDisplayName } from "@/lib/entity-lifecycle";
 import { getSessionParticipantLabel } from "@/lib/session-participant-label";
 import type { ParticipantMentionOption } from "@/components/chat/participant-mention-autocomplete";
 import { useChatModelSelection } from "@/hooks/use-chat-model-selection";
+import { useIntelligenceStatus } from "@/hooks/use-intelligence";
 import { executeSessionCommand } from "@/lib/api/commands";
 import { ApiError } from "@/lib/api/client";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
@@ -23,6 +25,7 @@ import { endSessionVoice, startSessionVoice } from "@/lib/api/voice";
 import { useMutation } from "@tanstack/react-query";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { ChatComposer } from "@/components/chat/chat-composer";
+import { NoIntelligenceMessage } from "@/components/chat/no-intelligence-notice";
 import { MessageContent } from "@/components/chat/message-content";
 import { SessionTaskChips } from "@/components/session/session-task-chips";
 import { SessionParticipantsRail } from "@/components/session/session-participants-rail";
@@ -117,6 +120,7 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
     agentId,
     sessionId,
     session,
+    chatEvents,
     llmModel,
     llmModelLoading,
     eventsLoading,
@@ -131,6 +135,12 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
   } = useSessionContext();
 
   const { data: models = [], isLoading: modelsLoading } = useModels();
+  // One message, not two: when the org has no model to chat with, the notice
+  // *replaces* the transcript's "No messages yet" card on a fresh thread, and
+  // only sits above the composer once there is history to sit under.
+  const intelligence = useIntelligenceStatus();
+  const showNoIntelligence = !intelligence.isLoading && !intelligence.available;
+  const transcriptEmpty = chatEvents.length === 0;
   const { data: participants, refetch: refetchParticipants } = useSessionParticipants(sessionId);
   const { data: agents } = useAgents();
   const [inputValue, setInputValue] = useState("");
@@ -177,19 +187,67 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
     pendingImages,
     allUploaded,
     uploadedImageIds,
-    addFiles,
+    addFiles: addImageFiles,
     removeImage,
     clearImages,
     hasImages,
     isUploading,
   } = useImageAttachments({ sessionId });
 
-  const modelReady = Boolean(selectedModel || (!selectedModelId && llmModel));
-  const modelLoading = selectedModelId ? modelsLoading : llmModelLoading;
+  const {
+    pendingFiles,
+    allUploaded: allFilesUploaded,
+    uploadedFileIds,
+    addFiles: addFileFiles,
+    removeFile: removeFileAttachment,
+    clearFiles,
+    handlePaste: handleFilePaste,
+    hasFiles,
+  } = useFileAttachments({ sessionId });
 
-  const { isDraggingOver, dropZoneProps, handlePaste } = useImageDropZone({
+  const supportsPdf =
+    (
+      selectedModel as unknown as {
+        profile?: { modalities?: { input?: string[] } };
+      } | null
+    )?.profile?.modalities?.input?.includes("pdf") ?? false;
+
+  const addFiles = useCallback(
+    (files: File[]) => {
+      const isPdf = (f: File) =>
+        f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
+      const pdfs = files.filter(isPdf);
+      const imgs = files.filter((f) => !isPdf(f));
+      if (imgs.length > 0) {
+        addImageFiles(imgs);
+      }
+      if (pdfs.length > 0 && supportsPdf) {
+        addFileFiles(pdfs);
+      }
+    },
+    [addImageFiles, addFileFiles, supportsPdf],
+  );
+
+  const {
+    isDraggingOver,
+    dropZoneProps,
+    handlePaste: imageHandlePaste,
+  } = useImageDropZone({
     onImageFiles: addFiles,
   });
+
+  const handlePaste = useCallback(
+    (event: React.ClipboardEvent) => {
+      imageHandlePaste(event);
+      if (supportsPdf) {
+        handleFilePaste(event);
+      }
+    },
+    [imageHandlePaste, handleFilePaste, supportsPdf],
+  );
+
+  const modelReady = Boolean(selectedModel || (!selectedModelId && llmModel));
+  const modelLoading = selectedModelId ? modelsLoading : llmModelLoading;
 
   const { data: commandsData } = useSessionCommands(sessionId);
   const commands = commandsData?.commands ?? [];
@@ -220,14 +278,16 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
     mutationFn: async ({
       text,
       images,
+      files,
       controls,
       addressedParticipantId: addressed,
     }: {
       text: string;
       images: Array<{ imageId: string; filename?: string }>;
+      files: Array<{ fileId: string; filename?: string }>;
       controls?: Controls;
       addressedParticipantId?: string | null;
-    }) => sendUserMessageWithImages(sessionId, text, images, controls, addressed),
+    }) => sendUserMessageWithImages(sessionId, text, images, controls, addressed, files),
   });
   const executeCommand = useMutation({
     mutationFn: async ({
@@ -248,8 +308,9 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
 
   const canSubmit =
     modelReady &&
-    (inputValue.trim().length > 0 || hasImages) &&
+    (inputValue.trim().length > 0 || hasImages || hasFiles) &&
     allUploaded &&
+    allFilesUploaded &&
     !sendMessage.isPending &&
     !sendMessageWithImages.isPending &&
     !executeCommand.isPending;
@@ -293,7 +354,9 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
     setVoiceError(null);
     setVoiceState("connecting");
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
       const peerConnection = new RTCPeerConnection();
       peerConnectionRef.current = peerConnection;
       mediaStreamRef.current = mediaStream;
@@ -314,7 +377,10 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
         sdp: offer.sdp,
         reasoning_effort: reasoningEffort || undefined,
       });
-      await peerConnection.setRemoteDescription({ type: "answer", sdp: voice.answer_sdp });
+      await peerConnection.setRemoteDescription({
+        type: "answer",
+        sdp: voice.answer_sdp,
+      });
       document.body.appendChild(remoteAudio);
       voiceConnectionIdRef.current = voice.voice_connection_id;
       setVoiceState("connected");
@@ -493,14 +559,16 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
     }
 
     try {
-      if (hasImages) {
+      if (hasImages || hasFiles) {
         await sendMessageWithImages.mutateAsync({
           text: inputValue.trim(),
           images: uploadedImageIds,
+          files: uploadedFileIds,
           controls,
           addressedParticipantId,
         });
         clearImages();
+        clearFiles();
       } else {
         await sendMessage.mutateAsync({
           sessionId,
@@ -547,6 +615,11 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
         <div className="flex min-h-0 flex-1 flex-col">
           <SessionTranscript
             showRunCards={showRunCards}
+            emptyState={
+              showNoIntelligence ? (
+                <NoIntelligenceMessage canManage={intelligence.canManage} />
+              ) : undefined
+            }
             footer={
               <>
                 {submitError && (
@@ -573,6 +646,10 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
             hasTasksFeature={hasTasksFeature}
           />
 
+          {showNoIntelligence && !transcriptEmpty && (
+            <NoIntelligenceMessage canManage={intelligence.canManage} className="mb-3" />
+          )}
+
           <ChatComposer
             commands={commands}
             models={models}
@@ -587,6 +664,10 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
             hasImages={hasImages}
             removeImage={removeImage}
             addFiles={addFiles}
+            pendingFiles={pendingFiles}
+            hasFiles={hasFiles}
+            removeFileAttachment={removeFileAttachment}
+            supportsPdf={supportsPdf}
             isDraggingOver={isDraggingOver}
             dropZoneProps={dropZoneProps}
             handlePaste={handlePaste}

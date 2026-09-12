@@ -66,7 +66,7 @@ up `18.09` to reach `256`. Exact gradient/stop values live in the source SVGs.)
 | File(s) | Variant |
 |---------|---------|
 | `logo.svg`, `apps/ui/public/logo.svg`, `apps/docs/src/assets/logo.svg`, `apps/docs/public/favicon.svg`, `apps/ui/src/app/icon.svg` | color (identical) |
-| `logo-mono.svg`, `plugins/everruns/assets/everruns-small.svg`, `plugins/everruns-dev/assets/everruns-small.svg` | mono (identical) |
+| `logo-mono.svg`, `plugins/everruns/assets/everruns-small.svg` | mono (identical) |
 | `infra/railway/template-icon.svg` | Railway avatar |
 | `apps/docs/src/assets/og-image.svg`, `apps/docs/scripts/generate-og-image.mjs` (`LOGO_SMALL`) | OG banner |
 

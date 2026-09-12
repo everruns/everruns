@@ -10,6 +10,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
         "General-purpose harness with file system, bash, web fetch, secrets, session management, session schedules, long-context support, context compaction, budgeting, self-managed budget guidance, tool output persistence, tool output distillation, loop detection, message timestamp annotations, detailed error disclosure, parallel tool calls, agent skills, and claim-level citations with verification. Recommended default for most use cases.",
         SYSTEM_PROMPT,
     )
+    .with_icon("box")
     .with_tags(["generic", "default", "built-in"])
     .with_roles([BuiltInHarnessRole::Default])
     .with_capabilities([

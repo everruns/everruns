@@ -54,34 +54,40 @@ function TimelineRow({ row }: { row: TimelineToolRow }) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="text-[15px] text-muted-foreground">{row.label}</div>
+          <div className="flex min-w-0 items-baseline gap-x-1.5">
+            <span className="min-w-0 flex-1 truncate text-[15px] text-muted-foreground">
+              {row.label}
+            </span>
 
-          {preview && !expanded && (
-            <div className="mt-0.5 truncate text-xs text-muted-foreground/75">{preview}</div>
-          )}
+            {preview && !expanded && (
+              <span className="max-w-[50%] shrink-0 truncate text-xs text-muted-foreground/75">
+                {preview}
+              </span>
+            )}
+
+            {hasDetails && (
+              <button
+                type="button"
+                onClick={() => setExpanded((current) => !current)}
+                className="inline-flex shrink-0 items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70 transition-colors hover:text-foreground"
+                aria-expanded={expanded}
+                aria-controls={detailsId}
+              >
+                {expanded ? (
+                  <ChevronDown className="h-3 w-3" />
+                ) : (
+                  <ChevronRight className="h-3 w-3" />
+                )}
+                {expanded ? t("hide_details") : t("details")}
+              </button>
+            )}
+          </div>
 
           {row.result?.error && (
             <div className="mt-0.5 text-xs text-red-600 dark:text-red-400">{row.result.error}</div>
           )}
 
           <McpAppResourceList resources={mcpAppResources} />
-
-          {hasDetails && (
-            <button
-              type="button"
-              onClick={() => setExpanded((current) => !current)}
-              className="mt-1 inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70 transition-colors hover:text-foreground"
-              aria-expanded={expanded}
-              aria-controls={detailsId}
-            >
-              {expanded ? (
-                <ChevronDown className="h-3 w-3" />
-              ) : (
-                <ChevronRight className="h-3 w-3" />
-              )}
-              {expanded ? t("hide_details") : t("details")}
-            </button>
-          )}
 
           <div
             id={detailsId}

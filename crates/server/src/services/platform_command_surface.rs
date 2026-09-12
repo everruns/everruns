@@ -3,7 +3,7 @@
 //! MCP and the built-in Platform capability both delegate here so command
 //! discovery, Bashkit behavior, limits, and error sanitization stay identical.
 
-use crate::api::mcp_endpoint::{catalog, positional};
+use crate::api::mcp_endpoint::{catalog, cli_tree, positional};
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,10 +100,31 @@ fn discover(
         if let Some(positional_arg) = entry.positional_arg {
             value["positional_arg"] = json!(positional_arg);
         }
+        // Show the spelling a caller should type. `name` stays the wire
+        // identity (and still works), but usage renders the tree form so
+        // discovery teaches one grammar instead of two.
+        if let Some(spelling) = &entry.cli {
+            value["cli"] = json!(format!("{} {spelling}", cli_tree::ROOT));
+        }
         if include_schemas {
             value["input_schema"] = entry.input_schema.clone();
             value["output_schema"] = entry.output_schema.clone();
-            value["bash_usage"] = json!(catalog::bash_usage(entry.name, &entry.input_schema));
+            // A command in the tree documents its own flags through `--help`,
+            // generated from the same schema at the moment of asking. Printing
+            // a second rendering here gave the caller two sources for one
+            // truth, and they drifted: discovery advertised `--flag
+            // <true|false>` for booleans, which the interpreter rejects.
+            // Flat-only commands have no `--help`, so their usage still has to
+            // come from here.
+            match &entry.cli {
+                Some(spelling) => {
+                    value["help"] = json!(format!("{} {spelling} --help", cli_tree::ROOT));
+                }
+                None => {
+                    value["bash_usage"] =
+                        json!(catalog::bash_usage(entry.name, &entry.input_schema));
+                }
+            }
             value["output_fields"] = json!(catalog::schema_field_paths(&entry.output_schema));
             if serde_json::to_vec(&value).is_ok_and(|encoded| encoded.len() > 2_000) {
                 value
@@ -115,7 +136,7 @@ fn discover(
                     .expect("operation object")
                     .remove("output_schema");
                 value["schemas_omitted"] = json!(
-                    "Expanded schemas exceeded the discovery size limit. bash_usage and output_fields remain authoritative for scripting."
+                    "Expanded schemas exceeded the discovery size limit. Run the command's `help` for its flags, or use bash_usage and output_fields where present."
                 );
             }
         }
@@ -175,8 +196,9 @@ fn discover(
 
 fn script_guidance() -> Value {
     json!([
-        "Invoke operations as Bash builtins using exactly the flags shown in bash_usage.",
-        "Builtins do not implement --help; discover the exact command name for its schema and bash_usage.",
+        "Operations with a `cli` spelling document their own flags: run the command in `help` before scripting it.",
+        "Operations without a `cli` spelling are flat builtins with no --help; use exactly the flags shown in bash_usage.",
+        "A boolean flag is a switch: pass `--flag`, never `--flag true`.",
         "Filesystem redirection is disabled; keep intermediate JSON in shell variables and pipe it directly to jq.",
         "Pass array and object flag values as JSON text.",
         "Capture JSON output and use jq for dependent IDs; combine dependent mutations in one execute script.",
@@ -263,7 +285,11 @@ async fn script(
         .unwrap_or(30_000)
         .min(60_000);
 
-    let rewritten = positional::rewrite(commands, positional::positional_map());
+    // Tree spelling first, then the positional fixup: `everruns agents get X`
+    // becomes `get_agent X` and then `get_agent --id X`, so both rewrites
+    // compose instead of each needing to know about the other.
+    let with_tree = cli_tree::rewrite(commands, cli_tree::tree());
+    let rewritten = positional::rewrite(&with_tree, positional::positional_map());
     let tool = catalog::build_toolset(context, mode);
     let request = bashkit::ToolRequest::new(rewritten);
     let result = tokio::time::timeout(
@@ -379,6 +405,25 @@ mod tests {
         assert!(!error.contains(PARTIAL_FAILURE_LABEL));
     }
 
+    fn all_flags() -> everruns_platform::FeatureFlags {
+        everruns_platform::FeatureFlags {
+            notifications: true,
+            evals: true,
+            skills: true,
+            memory: true,
+            knowledge: true,
+            plugins: true,
+            app_budgets: true,
+            agent_versions: true,
+            voice: true,
+            agent_delegation: true,
+            observers: true,
+            public_chat: true,
+            webmcp: true,
+            machine_payments: true,
+        }
+    }
+
     fn discover_for_test(arguments: &Value) -> Result<String, String> {
         discover(
             arguments,
@@ -401,6 +446,32 @@ mod tests {
         )
     }
 
+    /// Discovery is where a model learns the spelling, so the tree has to
+    /// reach it: a working rewrite that nothing advertises is a surface nobody
+    /// finds.
+    #[test]
+    fn discovery_shows_the_tree_spelling_and_usage() {
+        let text = discover_for_test(&json!({"query": "list_agents"})).expect("discover");
+        let value: Value = serde_json::from_str(&text).expect("json");
+        let rendered = serde_json::to_string(&value).expect("re-encode");
+
+        assert!(rendered.contains("everruns agents list"), "{rendered}");
+        // The wire name stays present: it is the identity, and still runs.
+        assert!(rendered.contains("list_agents"), "{rendered}");
+    }
+
+    /// A command outside the declared tranche must not gain a spelling by
+    /// accident. Tree membership is opt-in precisely so internal plumbing
+    /// cannot leak into an agent-facing surface.
+    #[test]
+    fn discovery_omits_a_spelling_for_undeclared_commands() {
+        let text = discover_for_test(&json!({"query": "health_check"})).expect("discover");
+        let value: Value = serde_json::from_str(&text).expect("json");
+        let rendered = serde_json::to_string(&value).expect("re-encode");
+        assert!(rendered.contains("health_check"), "{rendered}");
+        assert!(!rendered.contains("\"cli\""), "{rendered}");
+    }
+
     #[test]
     fn jq_errors_are_concise_and_omit_input() {
         let error = sanitize_script_error(
@@ -410,6 +481,105 @@ mod tests {
         assert!(error.contains("output_shape/output_schema"));
         assert!(!error.contains("secret prompt"));
         assert!(error.len() < 240);
+    }
+
+    /// Flag names come from the schema, and a rename there silently changes
+    /// the surface a caller scripts against. Discovery used to guard this by
+    /// rendering usage for every operation; it now defers to `--help` for
+    /// tree-visible ones, so the guard moves onto the renderer directly.
+    #[test]
+    fn schema_flag_names_callers_script_against_do_not_drift() {
+        let flags = all_flags();
+        let entries = crate::domains::common::catalog_entries_with_schemas(true, &flags);
+        let usage_for = |command: &str| {
+            let entry = entries
+                .iter()
+                .find(|entry| entry.name == command)
+                .unwrap_or_else(|| panic!("{command} catalog entry"));
+            catalog::bash_usage(command, &entry.input_schema)
+        };
+
+        let create_agent = usage_for("create_agent");
+        assert!(create_agent.contains("--name"), "{create_agent}");
+        assert!(create_agent.contains("--system_prompt"), "{create_agent}");
+        assert!(
+            create_agent.contains("--default_model_id"),
+            "{create_agent}"
+        );
+        assert!(!create_agent.contains("--model_id "), "{create_agent}");
+        assert!(
+            create_agent.contains("--capabilities '[{"),
+            "{create_agent}"
+        );
+
+        let mcp = usage_for("create_mcp_server");
+        assert!(mcp.contains("--auth_mode"), "{mcp}");
+        assert!(mcp.contains("--api_key"), "{mcp}");
+        assert!(!mcp.contains("--authentication_type"), "{mcp}");
+    }
+
+    #[test]
+    fn a_tree_command_points_at_its_own_help_instead_of_a_second_usage_rendering() {
+        let output = discover_for_test(&json!({
+            "query": "create_agent",
+            "include_schemas": true
+        }))
+        .expect("discover create_agent");
+        let value: Value = serde_json::from_str(&output).expect("discover JSON");
+        let operation = &value["operations"][0];
+
+        assert_eq!(operation["cli"], "everruns agents create");
+        assert_eq!(operation["help"], "everruns agents create --help");
+        assert!(
+            operation["bash_usage"].is_null(),
+            "a command with --help must not carry a second usage rendering: {operation}"
+        );
+    }
+
+    #[test]
+    fn discovery_descriptions_carry_argument_constraints() {
+        // Each op below caused a failed first agent attempt (agent-name casing,
+        // --agent vs --agent_id, string vs content array), so its description
+        // carries the constraint inline. Exact-name lookups mirror the agent flow:
+        // a broad discover pass, then fetching the single op before invoking it.
+        let cases = [
+            ("create_agent", "lowercase letters, digits, and hyphens"),
+            ("create_session", "--agent_id or --agent_name"),
+            ("create_message", "array of content parts"),
+        ];
+        for (query, hint) in cases {
+            let output = discover_for_test(&serde_json::json!({ "query": query }))
+                .expect("discover JSON output");
+            let value: Value = serde_json::from_str(&output).expect("discover JSON");
+            let operations = value["operations"].as_array().unwrap();
+            assert!(
+                operations.iter().any(|operation| {
+                    operation["description"]
+                        .as_str()
+                        .is_some_and(|description| description.contains(hint))
+                }),
+                "discover '{query}' must surface the hint '{hint}': {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_flat_command_still_carries_its_usage() {
+        // No `cli` spelling means no `--help` to defer to, so discovery stays
+        // the only place its flags are written down.
+        let output = discover_for_test(&json!({
+            "query": "create_agent_trigger",
+            "include_schemas": true
+        }))
+        .expect("discover create_agent_trigger");
+        let value: Value = serde_json::from_str(&output).expect("discover JSON");
+        let operation = &value["operations"][0];
+
+        assert!(operation["cli"].is_null(), "{operation}");
+        assert!(operation["help"].is_null(), "{operation}");
+        let usage = operation["bash_usage"].as_str().expect("bash_usage");
+        assert!(usage.contains("--agent_id"), "{usage}");
+        assert!(usage.contains("--cron_expression"), "{usage}");
     }
 
     #[test]
@@ -423,17 +593,9 @@ mod tests {
 
         assert_eq!(value["count"], 1);
         assert_eq!(value["operations"][0]["name"], "create_agent");
-        let usage = value["operations"][0]["bash_usage"]
-            .as_str()
-            .expect("bash_usage");
-        assert!(usage.contains("--name"));
-        assert!(usage.contains("--system_prompt"));
-        assert!(usage.contains("--default_model_id"));
-        assert!(!usage.contains("--model_id"));
-        assert!(usage.contains("--capabilities '[{"), "usage was {usage}");
-        assert!(
-            usage.contains(r#""ref":"current_time""#),
-            "usage was {usage}"
+        assert_eq!(
+            value["operations"][0]["help"],
+            "everruns agents create --help"
         );
         assert!(
             value["script_guidance"]
@@ -446,12 +608,10 @@ mod tests {
         let mcp_output = discover_for_test(&json!({ "query": "create_mcp_server" }))
             .expect("discover create_mcp_server");
         let mcp_value: Value = serde_json::from_str(&mcp_output).expect("MCP discover JSON");
-        let mcp_usage = mcp_value["operations"][0]["bash_usage"]
-            .as_str()
-            .expect("MCP bash_usage");
-        assert!(mcp_usage.contains("--auth_mode"));
-        assert!(mcp_usage.contains("--api_key"));
-        assert!(!mcp_usage.contains("--authentication_type"));
+        assert_eq!(
+            mcp_value["operations"][0]["help"],
+            "everruns mcp-servers create --help"
+        );
         assert!(mcp_output.len() < 10_000, "MCP discovery must stay compact");
 
         let trigger_output = discover_for_test(&json!({ "query": "create_agent_trigger" }))
@@ -494,10 +654,9 @@ mod tests {
             serde_json::from_str(&natural_name_output).expect("natural discover JSON");
         assert_eq!(natural_name_value["count"], 1);
         assert_eq!(natural_name_value["operations"][0]["name"], "create_agent");
-        assert!(
-            natural_name_value["operations"][0]
-                .get("bash_usage")
-                .is_some()
+        assert_eq!(
+            natural_name_value["operations"][0]["help"],
+            "everruns agents create --help"
         );
         assert!(natural_name_value.get("refine_hint").is_none());
 

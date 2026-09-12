@@ -520,30 +520,34 @@ async fn oauth_authorize(
     Query(query): Query<OAuthAuthorizeQuery>,
 ) -> Result<Response, AuthError> {
     tracing::debug!(client_id = %query.client_id, "MCP OAuth: authorize request");
+    // Preserve the full original URI (including `resource` and any other
+    // query params) so nothing is lost across the login redirect. Reused for
+    // the "Switch account" link, which round-trips through login and
+    // re-renders this page (minting a fresh consent token) for the new session.
+    let authorize_path = original_uri
+        .path_and_query()
+        .map(|pq| pq.as_str())
+        .unwrap_or("/oauth/authorize");
+    let frontend = state
+        .login_origin
+        .as_deref()
+        .unwrap_or(&state.frontend_url)
+        .trim_end_matches('/');
+    let login_url = format!(
+        "{}/login?return_to={}",
+        frontend,
+        urlencoding::encode(authorize_path)
+    );
     // Try to resolve user from cookie session (browser flow)
     let user = match try_resolve_user(&state, &jar).await {
         Some(u) => u,
         None => {
             tracing::debug!("MCP OAuth: no session, redirecting to login");
-            // Preserve the full original URI (including `resource` and any other
-            // query params) so nothing is lost across the login redirect.
-            let authorize_path = original_uri
-                .path_and_query()
-                .map(|pq| pq.as_str())
-                .unwrap_or("/oauth/authorize");
-            let frontend = state
-                .login_origin
-                .as_deref()
-                .unwrap_or(&state.frontend_url)
-                .trim_end_matches('/');
-            let login_url = format!(
-                "{}/login?return_to={}",
-                frontend,
-                urlencoding::encode(authorize_path)
-            );
             return Ok(Redirect::temporary(&login_url).into_response());
         }
     };
+    // Account switching is meaningless with a single fixed identity.
+    let switch_url = (state.auth.config.mode != AuthMode::None).then_some(login_url.as_str());
     let ip = audit::client_ip_from_connect_info(connect_info, &headers);
 
     // Validate response_type
@@ -601,6 +605,7 @@ async fn oauth_authorize(
         &user,
         &csrf_token,
         state.issuer_url.trim_end_matches('/'),
+        switch_url,
     );
     audit::emit(
         state.db.clone(),
@@ -793,12 +798,26 @@ fn build_oauth_redirect_url(
     Ok(redirect.into())
 }
 
+/// "Not you?" row under "Signed in as". Hidden when account switching is
+/// impossible (e.g. single-identity setups), since the link just returns here.
+fn switch_account_row(user_name: &str, switch_url: Option<&str>) -> String {
+    match switch_url {
+        Some(url) => format!(
+            "<div class=\"switch-account\">Not {user_name}? <a href=\"{url}\">Switch account</a></div>",
+            user_name = escape_html(user_name),
+            url = escape_html(url),
+        ),
+        None => String::new(),
+    }
+}
+
 fn render_authorize_confirm_page(
     query: &OAuthAuthorizeQuery,
     client_name: &str,
     user: &AuthUser,
     csrf_token: &str,
     issuer: &str,
+    switch_url: Option<&str>,
 ) -> String {
     let normalized_scope = normalize_scope(&query.scope);
     // RFC 9207 applies to error responses too — a client that validates `iss`
@@ -887,6 +906,10 @@ h1 {
   overflow-wrap: anywhere;
   font-size: 14px;
   line-height: 1.4;
+}
+.switch-account {
+  margin-top: 6px;
+  font-size: 13px;
 }
 .scope-row {
   display: flex;
@@ -1003,6 +1026,7 @@ button {
         <div class="field">
           <span class="field-label">Signed in as</span>
           <span class="field-value">{user_name} &lt;{user_email}&gt;</span>
+          {switch_account_row}
         </div>
         <div class="field">
           <span class="field-label">Redirect URI</span>
@@ -1055,6 +1079,7 @@ button {
         client_id = escape_html(&query.client_id),
         user_name = escape_html(&user.name),
         user_email = escape_html(&user.email),
+        switch_account_row = switch_account_row(&user.name, switch_url),
         redirect_uri = escape_html(&query.redirect_uri),
         scope_chips = scope_chips,
         response_type = escape_html(&query.response_type),
@@ -1651,6 +1676,7 @@ mod tests {
             &auth_user_for_render(),
             "csrf",
             "https://app.example.com",
+            None,
         );
 
         assert!(html.contains("Authorize this MCP client?"));
@@ -1688,6 +1714,7 @@ mod tests {
             &user,
             "csrf&token",
             "https://app.example.com",
+            None,
         );
 
         assert!(!html.contains("<script>alert"));
@@ -1702,6 +1729,26 @@ mod tests {
     }
 
     #[test]
+    fn test_authorize_confirm_page_switch_account_link() {
+        let html = render_authorize_confirm_page(
+            &authorize_query(),
+            "Cursor",
+            &auth_user_for_render(),
+            "csrf",
+            "https://app.example.com",
+            Some(
+                "https://app.example.com/login?return_to=%2Foauth%2Fauthorize%3Fclient_id%3Dx%26a=b",
+            ),
+        );
+
+        assert!(html.contains("Not Ava Root?"));
+        assert!(html.contains(
+            "href=\"https://app.example.com/login?return_to=%2Foauth%2Fauthorize%3Fclient_id%3Dx%26a=b\"",
+        ));
+        assert!(html.contains(">Switch account</a>"));
+    }
+
+    #[test]
     fn test_authorize_confirm_page_normalizes_empty_scope() {
         let mut query = authorize_query();
         query.scope = " \t ".to_string();
@@ -1712,10 +1759,13 @@ mod tests {
             &auth_user_for_render(),
             "csrf",
             "https://app.example.com",
+            None,
         );
 
         assert!(html.contains(r#"<span class="scope">mcp</span>"#));
         assert!(html.contains(r#"name="scope" value="mcp""#));
+        // No account to switch to: the link stays hidden.
+        assert!(!html.contains("Switch account"));
     }
 
     #[test]

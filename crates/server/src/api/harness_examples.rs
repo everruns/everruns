@@ -27,6 +27,9 @@ pub struct HarnessExample {
     pub display_name: String,
     /// Short description.
     pub description: String,
+    /// Display glyph name rendered by the UI (e.g. `bar-chart`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
     /// Tags for categorization.
     pub tags: Vec<String>,
     /// Name of the parent harness this example inherits from when adopted
@@ -46,6 +49,7 @@ fn example_to_dto(ex: &HarnessExampleDef) -> HarnessExample {
         name: ex.definition.name.clone(),
         display_name: ex.definition.display_name.clone(),
         description: ex.definition.description.clone(),
+        icon: ex.definition.icon.clone(),
         tags: ex.definition.tags.clone(),
         parent_name: ex.definition.parent_name.clone(),
         capabilities: ex

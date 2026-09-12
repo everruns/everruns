@@ -1,21 +1,31 @@
-## Plugin changes
+# Plugins
 
-When changing a shipped plugin, bump the plugin patch version unless the change
-is purely internal test code. Keep all plugin manifests and marketplace entries
-that carry the version in sync, then run the plugin metadata validation.
+Portable agent plugins live here, one directory per plugin. Each plugin keeps
+per-host manifests (Claude `.claude-plugin/`, Codex `.codex-plugin/`, Cursor
+`.cursor-plugin/`) in sync with shared marketplace registration (`plugin.json` /
+`mcp.json`), one skill, and matching slash commands.
 
-For `plugins/everruns-dev`, update:
+## Layout
 
-- `plugins/everruns-dev/plugin.json`
-- `plugins/everruns-dev/.codex-plugin/plugin.json`
-- `plugins/everruns-dev/.claude-plugin/plugin.json`
-- `plugins/everruns-dev/.cursor-plugin/plugin.json`
-- `.claude-plugin/marketplace.json`
-- `.cursor-plugin/marketplace.json` (both the top-level `metadata.version`
-  and the per-plugin `version`)
+| Directory | Plugin | Hosts |
+|---|---|---|
+| `plugins/everruns/` | `everruns` — connect to Everruns over MCP (`skills/everruns/`) | Claude, Codex, Cursor |
+| `plugins/resend/` | `resend` — send email via Resend over MCP (`skills/resend/`) | Claude, Codex, Cursor |
 
-Validate with:
+## Rules
 
-```bash
-bash scripts/test-everruns-dev-plugin.sh
-```
+- The plugin `name` and `version` must match across the root `plugin.json` and
+  all three host manifests (`.claude-plugin/`, `.codex-plugin/`, `.cursor-plugin/`).
+- The MCP endpoint default lives in `.mcp.json` (`EVERUNS_MCP_URL`, falling back
+  to `https://app.everruns.com/mcp`); `mcp.json` pins the production URL.
+- The skill directory (`skills/<name>/SKILL.md`) must declare matching
+  frontmatter `name` and `description`.
+- Marketplace registration lives in `.claude-plugin/marketplace.json`,
+  `.agents/plugins/marketplace.json`, and `.cursor-plugin/marketplace.json`;
+  keep the plugin entries pointing at the directories above.
+
+## Verification
+
+Run `bash scripts/test-plugins.sh`. It checks manifest name/version parity,
+marketplace registration, and skill frontmatter. See
+`knowledge/integrations/plugins.md` for the plugin contract.

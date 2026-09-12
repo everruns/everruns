@@ -76,6 +76,17 @@ graph TD
    default hostname, or credential. The same driver instance may serve multiple
    provider keys with different endpoints, headers, and auth.
 
+4. **`ToolCalls` carries the whole set, and a driver owes it before `Done`.**
+   The stream reader *replaces* its tool-call list on every `ToolCalls` event,
+   so an event carrying only the newest call drops the earlier ones; and `Done`
+   ends the stream for the reader, so a call surfaced after it never runs. A
+   driver whose wire protocol describes one call across several frames must
+   therefore treat every frame that names it as authoritative, not just the
+   first, and reconcile against the provider's own terminal call list before
+   emitting `Done`. Nothing downstream can audit this: the finish reason a
+   driver reports is derived from what it emitted, so a dropped call is
+   indistinguishable from the model choosing to stop.
+
 ### Error Types (Contract)
 
 Drivers MUST use the following error types from `AgentLoopError`:
@@ -571,7 +582,8 @@ is persisted via the model-sync pipeline and surfaces on existing rows on the ne
 sync. Cost is left to hardcoded profiles.
 
 OpenRouter-specific routing controls (`models`, `route`, `provider`, and `plugins`) are
-represented as typed `LlmCallConfig` fields inside `OpenRouterRoutingConfig`. The Open
+represented by `OpenRouterRoutingConfig` in the OpenRouter driver crate and carried
+opaquely on `LlmCallConfig.driver_options` under the `openrouter/routing` key. The Open
 Responses protocol driver serializes them only when the resolved provider type is
 OpenRouter, so ordinary OpenAI-compatible requests do not receive non-standard OpenRouter
 routing extensions.
@@ -626,8 +638,8 @@ loop therefore never dispatches them; the only client-visible artifact is
   (`OpenRouterServerTool` / `OpenRouterServerToolKind`) is the typed representation;
   `OpenRouterRequestExtension` appends the entries. Emitted only for OpenRouter requests.
 - **Runtime configuration**: the `openrouter_server_tools` capability exposes per-agent
-  toggles (`config_schema`) and compiles the selection into
-  `RuntimeAgent.openrouter_routing.server_tools` during capability collection, the same path
+  toggles (`config_schema`) and compiles the selection into the `openrouter/routing`
+  driver option during capability collection, the same path
   `prompt_caching` uses. It contributes *request intent only*, no executable tools. Because
   `web_search` and `web_fetch` run outside Everruns' egress boundary, the capability is
   `RiskLevel::High` and uses the admin-only assignment gate. Enabling it on a
@@ -670,7 +682,7 @@ Presets are applied before capacity strategy, `apply_presets()` runs first, then
 `apply_capacity_strategy()` runs on the result.
 
 Preset definitions and their exact mappings live in
-[`OpenRouterRoutingPreset` and its compiler](../../crates/provider/src/driver_registry.rs).
+[`OpenRouterRoutingPreset` and its compiler](../../crates/drivers/openrouter/src/options.rs).
 Price ceilings retain USD per million prompt/completion tokens, matching the
 [OpenRouter routing contract](https://openrouter.ai/docs/guides/routing/provider-selection).
 Catalog model pricing uses a different unit and must not be applied to routing ceilings.

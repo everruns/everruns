@@ -10,6 +10,7 @@ import {
   makePendingImages,
 } from "@/app/dev/_fixtures/chat-runtime-fixtures";
 import { ChatComposer } from "@/components/chat/chat-composer";
+import { NoIntelligenceMessage } from "@/components/chat/no-intelligence-notice";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import type { PendingImage } from "@/lib/api/images";
@@ -88,6 +89,39 @@ export default function DevChatComponentsPage() {
           <DevChatNavRailPreview />
         </section>
 
+        <section className="space-y-3">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-foreground">No intelligence available</h2>
+            <p className="text-sm text-muted-foreground">
+              Shown on every chat surface when the org has no enabled, healthy chat model. It is
+              always the only centred message on the surface: it replaces the transcript&rsquo;s
+              &ldquo;No messages yet&rdquo; card on a fresh thread, sits above the composer once
+              there is history, and replaces the counterpart picker on the new-chat form. The route
+              to Settings only appears for a caller who can manage providers.
+            </p>
+          </div>
+          <div className="grid gap-4 border border-border/70 bg-background p-6 md:grid-cols-2">
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                Can manage providers
+              </p>
+              <NoIntelligenceMessage canManage />
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                Member, view only
+              </p>
+              <NoIntelligenceMessage canManage={false} />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                Plain, inside a host that draws its own frame
+              </p>
+              <NoIntelligenceMessage canManage variant="plain" />
+            </div>
+          </div>
+        </section>
+
         <section className="space-y-3 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
           <div className="space-y-1">
             <h2 className="text-lg font-semibold text-foreground">Empty state and composer</h2>
@@ -130,6 +164,10 @@ export default function DevChatComponentsPage() {
                     )
                   }
                   addFiles={() => undefined}
+                  pendingFiles={[]}
+                  hasFiles={false}
+                  removeFileAttachment={() => undefined}
+                  supportsPdf={false}
                   isDraggingOver={false}
                   dropZoneProps={{}}
                   handlePaste={() => undefined}

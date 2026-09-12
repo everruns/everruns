@@ -10,7 +10,7 @@
 //   7. Update (re-compile)
 //   8. Uninstall
 //
-// These tests use in-memory storage and the local testdata/plugins fixture.
+// These tests use in-memory storage and the everruns-core testdata/plugins fixture.
 // They require `DEV_MODE=true` (or equivalent deployment grade) so `local_path`
 // is accepted. We set `DEPLOYMENT_GRADE=dev` to gate the source-type check.
 
@@ -20,20 +20,9 @@ use axum::http::StatusCode;
 use serde_json::json;
 use test_harness::TestServer;
 
-/// Absolute path to the testdata plugin fixtures.
+/// Absolute path to the plugin fixtures owned by `everruns-core`.
 fn testdata_plugins_path() -> String {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .unwrap_or_else(|_| "/home/user/everruns/crates/server".to_string());
-    // Walk up to the workspace root and into testdata/plugins.
-    let workspace_root = std::path::Path::new(&manifest_dir)
-        .parent() // crates/
-        .and_then(|p| p.parent()) // workspace root
-        .unwrap_or_else(|| std::path::Path::new("/home/user/everruns"));
-    workspace_root
-        .join("testdata")
-        .join("plugins")
-        .to_string_lossy()
-        .to_string()
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../core/testdata/plugins").to_string()
 }
 
 /// Create a TestServer with DEV_MODE so local_path is accepted.

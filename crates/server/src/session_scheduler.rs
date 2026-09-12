@@ -74,6 +74,11 @@ pub fn spawn_session_scheduler(
     probe_tool_registry: Option<Arc<ToolRegistry>>,
     poll_interval: Duration,
 ) -> JoinHandle<()> {
+    // One identity per process, stamped on every schedule this instance claims.
+    // Servers do not coordinate outside the database, so the claim lease is the
+    // only thing stopping two instances from firing the same schedule.
+    let scheduler_id = format!("session-scheduler-{}", uuid::Uuid::now_v7());
+
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(poll_interval);
         // Skip the immediate first tick — let the server finish starting.
@@ -81,6 +86,7 @@ pub fn spawn_session_scheduler(
 
         tracing::info!(
             poll_interval_secs = poll_interval.as_secs(),
+            scheduler_id = %scheduler_id,
             "Started session schedule poller"
         );
 
@@ -92,6 +98,7 @@ pub fn spawn_session_scheduler(
             interval.tick().await;
             if let Err(e) = poll_and_trigger(
                 &db,
+                &scheduler_id,
                 &schedule_service,
                 &event_service,
                 &runner,
@@ -119,6 +126,7 @@ pub fn spawn_session_scheduler(
 /// One iteration of the poll loop.
 async fn poll_and_trigger(
     db: &Arc<StorageBackend>,
+    scheduler_id: &str,
     schedule_service: &Arc<SessionScheduleService>,
     event_service: &Arc<EventService>,
     runner: &Arc<dyn AgentRunner>,
@@ -130,7 +138,7 @@ async fn poll_and_trigger(
     let task_registry =
         DbSessionTaskRegistry::new(db.clone()).with_event_emitter(event_service.clone());
 
-    let due = db.claim_due_session_schedules(10).await?;
+    let due = db.claim_due_session_schedules(scheduler_id, 10).await?;
     if due.is_empty() {
         return Ok(());
     }

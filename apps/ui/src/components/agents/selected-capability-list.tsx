@@ -16,7 +16,10 @@ import {
 } from "lucide-react";
 import type { Capability, CapabilityId, AgentCapabilityConfig } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
-import { localizedCapabilityName } from "@/lib/capability-localization";
+import {
+  localizedCapabilityDescription,
+  localizedCapabilityName,
+} from "@/lib/capability-localization";
 import { useLocale } from "@/providers/locale-provider";
 import { cn } from "@/lib/utils";
 import { capabilityConfigRecord } from "./capability-config";
@@ -109,6 +112,45 @@ export function SelectedCapabilityList({
             </div>
           );
         }
+        // A retired capability is an inert shell: it is still attached and
+        // still resolves, but contributes nothing. Show it as removed with no
+        // settings or reorder affordances so the only useful action is taken.
+        if (cap.status === "retired") {
+          return (
+            <div
+              key={capConfig.ref}
+              role="alert"
+              className="border border-destructive/40 bg-destructive/5 p-3"
+            >
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-destructive">
+                    {localizedCapabilityName(cap, locale)} was removed
+                  </p>
+                  <p className="mt-1 break-all text-xs text-muted-foreground">{capConfig.ref}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {localizedCapabilityDescription(cap, locale)}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    It no longer provides tools or a system prompt. Remove it.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onRemove(capConfig.ref)}
+                  disabled={disabled}
+                  className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  aria-label={`Remove removed capability ${capConfig.ref}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          );
+        }
+
+        const isDeprecated = cap.status === "deprecated";
         const hasSettings = hasCapabilitySettings(cap);
         const isSettingsExpanded = expandedSettings.has(capConfig.ref);
         const config = capabilityConfigRecord(capConfig.config);
@@ -158,6 +200,25 @@ export function SelectedCapabilityList({
                       <Plug className="w-2.5 h-2.5" />
                       MCP
                     </Badge>
+                  )}
+                  {isDeprecated && (
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Badge
+                          variant="outline"
+                          className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0 border-amber-500 text-amber-500"
+                        >
+                          <AlertTriangle className="w-2.5 h-2.5" />
+                          Deprecated
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>
+                          Scheduled for removal. It still works today — plan to replace it before it
+                          is removed.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
                   {cap.is_guardrail && (
                     <Badge variant="outline" className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0">

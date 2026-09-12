@@ -105,7 +105,7 @@ impl UtilityLlmRequest {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
@@ -201,7 +201,7 @@ mod tests {
         assert!(config.previous_response_id.is_none());
         assert!(config.provider_opaque_context.is_none());
         assert!(config.prompt_cache.is_none());
-        assert!(config.openrouter_routing.is_none());
+        assert!(config.driver_options.is_empty());
         assert_eq!(config.parallel_tool_calls, None);
         assert_eq!(config.volatile_suffix_len, 0);
         assert!(config.extra_headers.is_empty());

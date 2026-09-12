@@ -488,6 +488,35 @@ pub trait Capability: Send + Sync {
         self.system_prompt_contribution(ctx).await
     }
 
+    /// User-visible conversation context contributed by this capability.
+    ///
+    /// Content returned here renders as the leading user-role message of every
+    /// turn: model-visible and re-resolved alongside the system prompt, but
+    /// never folded into the cached system prompt. This is the correct sink
+    /// for untrusted workspace content (e.g. AGENTS.md hierarchies): it keeps
+    /// file instructions below harness safety instructions in the instruction
+    /// hierarchy and out of the cache-stable prefix.
+    ///
+    /// Default returns `None` (no conversation context).
+    async fn conversation_context_contribution(
+        &self,
+        _ctx: &SystemPromptContext,
+    ) -> Option<String> {
+        None
+    }
+
+    /// Called during capability collection. Capabilities whose conversation
+    /// context depends on config override this method.
+    ///
+    /// Default delegates to `conversation_context_contribution(ctx)`.
+    async fn conversation_context_contribution_with_config(
+        &self,
+        ctx: &SystemPromptContext,
+        _config: &serde_json::Value,
+    ) -> Option<String> {
+        self.conversation_context_contribution(ctx).await
+    }
+
     /// Returns tool definitions for the agent config
     /// By default, converts tools() to definitions
     fn tool_definitions(&self) -> Vec<ToolDefinition> {
@@ -648,16 +677,11 @@ pub trait Capability: Send + Sync {
         None
     }
 
-    /// Provider routing requested by this capability.
-    ///
-    /// The OpenRouter integration implements this seam for provider-executed
-    /// server tools. Core transports the provider contract without naming a
-    /// capability ID or parsing a first-party capability schema.
-    fn openrouter_routing_config(
-        &self,
-        _config: &serde_json::Value,
-    ) -> Option<crate::driver_registry::OpenRouterRoutingConfig> {
-        None
+    /// Driver-namespaced opaque per-call options (`"<driver-id>/<option>"`)
+    /// requested by this capability. Each entry's shape is owned by the driver
+    /// crate named in the key; core transports the values untouched.
+    fn driver_options(&self, _config: &serde_json::Value) -> Vec<(String, serde_json::Value)> {
+        Vec::new()
     }
 
     /// Request-level parallel tool-call preference contributed by this
@@ -1392,6 +1416,15 @@ pub struct CollectedCapabilities {
     pub system_prompt_parts: Vec<String>,
     /// Source attribution for each system prompt addition.
     pub system_prompt_attributions: Vec<SystemPromptAttribution>,
+    /// Conversation-context additions (in order). Unlike system prompt parts,
+    /// these render as the leading user-role message of every turn:
+    /// model-visible and re-resolved alongside the system prompt, but never
+    /// folded into the cached system prompt. Untrusted workspace content
+    /// (e.g. AGENTS.md hierarchies) belongs here, below harness safety
+    /// instructions in the instruction hierarchy.
+    pub conversation_context_parts: Vec<String>,
+    /// Source attribution for each conversation-context addition.
+    pub conversation_context_attributions: Vec<SystemPromptAttribution>,
     /// Tool implementations for the registry
     pub tools: Vec<Box<dyn Tool>>,
     /// Tool definitions for config
@@ -1406,9 +1439,10 @@ pub struct CollectedCapabilities {
     pub tool_search: Option<crate::driver_registry::ToolSearchConfig>,
     /// Prompt caching configuration (set when prompt_caching capability is present)
     pub prompt_cache: Option<crate::driver_registry::PromptCacheConfig>,
-    /// OpenRouter routing controls (set when the `openrouter_server_tools`
-    /// capability is present). Carries provider-executed server tools.
-    pub openrouter_routing: Option<crate::driver_registry::OpenRouterRoutingConfig>,
+    /// Driver-namespaced opaque per-call options (e.g. provider-executed
+    /// server tools contributed by the `openrouter_server_tools` capability).
+    /// First contributor wins per key.
+    pub driver_options: HashMap<String, serde_json::Value>,
     /// Request-level parallel tool calls preference (set when the
     /// `parallel_tool_calls` capability is present with mode `prefer`/`avoid`).
     /// `None` when absent or mode `none`.
@@ -1440,6 +1474,17 @@ impl CollectedCapabilities {
             None
         } else {
             Some(self.system_prompt_parts.join("\n\n"))
+        }
+    }
+
+    /// Combined conversation context from all capabilities (joined with blank
+    /// lines), or `None` when no capability contributed any. Renders as the
+    /// leading user-role message of every turn, never as system prompt.
+    pub fn conversation_context(&self) -> Option<String> {
+        if self.conversation_context_parts.is_empty() {
+            None
+        } else {
+            Some(self.conversation_context_parts.join("\n\n"))
         }
     }
 
@@ -1860,8 +1905,7 @@ fn compaction_is_enabled(
 ) -> bool {
     capability_configs.iter().any(|cap_config| {
         registry.get(cap_config.capability_id()).is_some_and(|cap| {
-            cap.status() == CapabilityStatus::Available
-                && cap.compaction_policy(cap_config.config_value()).is_some()
+            cap.status().is_active() && cap.compaction_policy(cap_config.config_value()).is_some()
         })
     })
 }
@@ -1882,7 +1926,7 @@ pub fn collect_message_filters_only(
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_id();
         if let Some(capability) = registry.get(cap_id) {
-            if capability.status() != CapabilityStatus::Available {
+            if !capability.status().is_active() {
                 continue;
             }
             // Resolve against None: no model is known at message-filter collection
@@ -1921,7 +1965,7 @@ pub fn collect_model_view_providers(
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_id();
         if let Some(capability) = registry.get(cap_id) {
-            if capability.status() != CapabilityStatus::Available {
+            if !capability.status().is_active() {
                 continue;
             }
             let effective: &dyn Capability = capability
@@ -1955,7 +1999,7 @@ pub fn collect_dynamic_facts(
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_id();
         if let Some(capability) = registry.get(cap_id) {
-            if capability.status() != CapabilityStatus::Available {
+            if !capability.status().is_active() {
                 continue;
             }
             let effective: &dyn Capability = capability
@@ -1985,7 +2029,7 @@ pub fn collect_capability_mcp_servers(
             if let Ok(definition) = serde_json::from_value::<DeclarativeCapabilityDefinition>(
                 cap_config.config_value().clone(),
             ) {
-                if definition.status != CapabilityStatus::Available {
+                if !definition.status.is_active() {
                     continue;
                 }
                 if let Some(contributed) = definition.mcp_servers {
@@ -1995,7 +2039,7 @@ pub fn collect_capability_mcp_servers(
             continue;
         }
         if let Some(capability) = registry.get(cap_id) {
-            if capability.status() != CapabilityStatus::Available {
+            if !capability.status().is_active() {
                 continue;
             }
             servers = merge_scoped_mcp_servers(
@@ -2362,6 +2406,8 @@ pub async fn collect_capabilities_with_configs(
 ) -> CollectedCapabilities {
     let mut system_prompt_parts: Vec<String> = Vec::new();
     let mut system_prompt_attributions: Vec<SystemPromptAttribution> = Vec::new();
+    let mut conversation_context_parts: Vec<String> = Vec::new();
+    let mut conversation_context_attributions: Vec<SystemPromptAttribution> = Vec::new();
     let mut tools: Vec<Box<dyn Tool>> = Vec::new();
     let mut tool_definitions: Vec<ToolDefinition> = Vec::new();
     let mut mounts: Vec<MountPoint> = Vec::new();
@@ -2370,7 +2416,7 @@ pub async fn collect_capabilities_with_configs(
     let mut applied_ids: Vec<String> = Vec::new();
     let mut tool_search: Option<crate::driver_registry::ToolSearchConfig> = None;
     let mut prompt_cache: Option<crate::driver_registry::PromptCacheConfig> = None;
-    let mut openrouter_routing: Option<crate::driver_registry::OpenRouterRoutingConfig> = None;
+    let mut driver_options: HashMap<String, serde_json::Value> = HashMap::new();
     let mut parallel_tool_calls: Option<bool> = None;
     let mut tool_definition_hooks: Vec<Arc<dyn ToolDefinitionHook>> = Vec::new();
     let mut tool_call_hooks: Vec<Arc<dyn ToolCallHook>> = Vec::new();
@@ -2398,7 +2444,7 @@ pub async fn collect_capabilities_with_configs(
                 cap_config.config_value().clone(),
             ) {
                 Ok(definition) => {
-                    if definition.status != CapabilityStatus::Available {
+                    if !definition.status.is_active() {
                         continue;
                     }
 
@@ -2433,8 +2479,10 @@ pub async fn collect_capabilities_with_configs(
             continue;
         }
         if let Some(capability) = registry.get(cap_id) {
-            // Only collect from available capabilities
-            if capability.status() != CapabilityStatus::Available {
+            // Skip inert capabilities: `ComingSoon` is not implemented yet and
+            // `Retired` has been removed. Both resolve to a no-op rather than an
+            // error so an agent that still references one keeps running.
+            if !capability.status().is_active() {
                 continue;
             }
 
@@ -2467,6 +2515,21 @@ pub async fn collect_capabilities_with_configs(
                     content: contribution.clone(),
                 });
                 system_prompt_parts.push(contribution);
+            }
+
+            // Collect conversation-context contribution (config-aware, may read
+            // from filesystem). Renders as the leading user-role message of
+            // every turn, never as system prompt, so untrusted workspace
+            // content cannot share privilege with harness safety instructions.
+            if let Some(contribution) = effective
+                .conversation_context_contribution_with_config(ctx, cap_config.config_value())
+                .await
+            {
+                conversation_context_attributions.push(SystemPromptAttribution {
+                    capability_id: cap_id.to_string(),
+                    content: contribution.clone(),
+                });
+                conversation_context_parts.push(contribution);
             }
 
             // Collect declared facts. Static facts fold into the cached prompt
@@ -2515,9 +2578,9 @@ pub async fn collect_capabilities_with_configs(
                 .parallel_tool_calls_preference(cap_config.config_value())
                 .or(parallel_tool_calls);
 
-            openrouter_routing = effective
-                .openrouter_routing_config(cap_config.config_value())
-                .or(openrouter_routing);
+            for (key, value) in effective.driver_options(cap_config.config_value()) {
+                driver_options.entry(key).or_insert(value);
+            }
 
             // Collect mount points
             mounts.extend(effective.mounts());
@@ -2564,7 +2627,7 @@ pub async fn collect_capabilities_with_configs(
         .into_iter()
         .filter(|cap| {
             !applied_ids.iter().any(|id| id == cap.id())
-                && cap.status() == CapabilityStatus::Available
+                && cap.status().is_active()
                 && cap.auto_activates_for(&tool_definitions)
         })
         .cloned()
@@ -2614,6 +2677,8 @@ pub async fn collect_capabilities_with_configs(
     CollectedCapabilities {
         system_prompt_parts,
         system_prompt_attributions,
+        conversation_context_parts,
+        conversation_context_attributions,
         tools,
         tool_definitions,
         mounts,
@@ -2621,7 +2686,7 @@ pub async fn collect_capabilities_with_configs(
         applied_ids,
         tool_search,
         prompt_cache,
-        openrouter_routing,
+        driver_options,
         parallel_tool_calls,
         tool_definition_hooks,
         tool_call_hooks,
@@ -2692,6 +2757,10 @@ pub async fn apply_capabilities(
         collected.system_prompt_prefix().as_deref(),
     );
 
+    // Conversation context (e.g. hierarchical AGENTS.md) renders as the
+    // leading user-role message, never as system prompt. Bound before fields
+    // move out of `collected` below.
+    let conversation_context = collected.conversation_context();
     // Build tool registry from collected tools
     let mut tool_registry = ToolRegistry::new();
     for tool in collected.tools {
@@ -2713,13 +2782,16 @@ pub async fn apply_capabilities(
         max_tokens: base_runtime_agent.max_tokens,
         tool_search: collected.tool_search,
         prompt_cache: collected.prompt_cache,
-        openrouter_routing: collected.openrouter_routing,
+        driver_options: collected.driver_options,
         network_access: base_runtime_agent.network_access,
         // Explicit request-level preference (escape hatch) wins; otherwise the
         // `parallel_tool_calls` capability supplies the preference.
         parallel_tool_calls: base_runtime_agent
             .parallel_tool_calls
             .or(collected.parallel_tool_calls),
+        // Conversation context (e.g. hierarchical AGENTS.md) renders as the
+        // leading user-role message, never as system prompt.
+        conversation_context,
     };
 
     AppliedCapabilities {
@@ -3479,6 +3551,96 @@ mod tests {
             base_runtime_agent.system_prompt
         );
         assert!(applied.applied_ids.is_empty());
+    }
+
+    /// A deprecated capability has only *announced* its removal, so it must keep
+    /// behaving exactly as before. This is the regression guard for the gating
+    /// switch from `status() == Available` to `status().is_active()`.
+    #[tokio::test]
+    async fn test_apply_capabilities_keeps_deprecated_fully_functional() {
+        struct DeprecatedFixture;
+        impl Capability for DeprecatedFixture {
+            fn id(&self) -> &str {
+                "deprecated_fixture"
+            }
+            fn name(&self) -> &str {
+                "Deprecated Fixture"
+            }
+            fn description(&self) -> &str {
+                "Test-only capability."
+            }
+            fn status(&self) -> CapabilityStatus {
+                CapabilityStatus::Deprecated
+            }
+            fn system_prompt_addition(&self) -> Option<&str> {
+                Some("Still working.")
+            }
+        }
+        let mut registry = CapabilityRegistry::new();
+        registry.register(DeprecatedFixture);
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
+
+        let applied = apply_capabilities(
+            base_runtime_agent,
+            &["deprecated_fixture".to_string()],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+
+        assert!(
+            applied
+                .runtime_agent
+                .system_prompt
+                .contains("Still working.")
+        );
+        assert_eq!(applied.applied_ids, vec!["deprecated_fixture"]);
+    }
+
+    /// A retired capability is inert, but an agent that still references one must
+    /// keep running: the reference resolves to a no-op and every other capability
+    /// in the list still applies.
+    #[tokio::test]
+    async fn test_apply_capabilities_skips_retired_without_failing() {
+        struct RetiredFixture;
+        impl Capability for RetiredFixture {
+            fn id(&self) -> &str {
+                "retired_fixture"
+            }
+            fn name(&self) -> &str {
+                "Retired Fixture"
+            }
+            fn description(&self) -> &str {
+                "Test-only capability."
+            }
+            fn status(&self) -> CapabilityStatus {
+                CapabilityStatus::Retired
+            }
+            fn system_prompt_addition(&self) -> Option<&str> {
+                Some("Should never be applied.")
+            }
+        }
+        let mut registry = fixture_registry();
+        registry.register(RetiredFixture);
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
+
+        let applied = apply_capabilities(
+            base_runtime_agent,
+            &["retired_fixture".to_string(), "current_time".to_string()],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+
+        assert!(
+            !applied
+                .runtime_agent
+                .system_prompt
+                .contains("Should never be applied.")
+        );
+        // The surviving capability in the same list is unaffected.
+        assert_eq!(applied.applied_ids, vec!["current_time"]);
+        assert!(applied.tool_registry.has("get_current_time"));
     }
 
     #[tokio::test]

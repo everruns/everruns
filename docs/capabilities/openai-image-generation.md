@@ -8,9 +8,9 @@ description: Generate and edit raster images with OpenAI's GPT Image API, persis
 | **ID** | `gpt_image_gen` |
 | **Category** | Media |
 | **Features** | None |
-| **Dependencies** | [`session_file_system`](/capabilities/file-system/), [`session_storage`](/capabilities/session-storage/) |
+| **Dependencies** | [`session_file_system`](/capabilities/file-system/) |
 
-Generate new raster images and edit existing ones with OpenAI's ChatGPT Images 2.0 API model, `gpt-image-2`, by default.
+Generate new raster images and edit existing ones with OpenAI's ChatGPT Images 2.0 API model, `gpt-image-2`, by default. The capability also supports Meta's Muse image model (`muse-image-1.0`) through Meta or OpenRouter providers.
 
 Capability config supports both model selection and a default quality used when the tool call does not specify one:
 
@@ -18,11 +18,14 @@ Capability config supports both model selection and a default quality used when 
 {
   "model": "gpt-image-2",
   "default_quality": "medium",
-  "partial_images": 1
+  "partial_images": 1,
+  "fallback": "auto"
 }
 ```
 
-If you need the previous generation model for compatibility, set `"model": "gpt-image-1"`.
+If you need the previous generation model for compatibility, set `"model": "gpt-image-1"`. To use the Muse image model instead, set `"model": "muse-image-1.0"` and configure a Meta provider (served as `muse-image-1.0`) or an OpenRouter provider (served as `meta/muse-image`).
+
+When no OpenAI or Azure OpenAI credentials are configured but a Meta or OpenRouter provider is available, the capability falls back to the Muse image model if `fallback` is `"auto"` (the default). Set `fallback` to `"off"` to require OpenAI or Azure OpenAI credentials for GPT image models instead.
 
 The default quality is `medium`. That keeps latency and reliability reasonable for `gpt-image-2` while still producing polished outputs.
 
@@ -32,13 +35,11 @@ This capability resolves credentials server-side, persists durable image artifac
 
 ## Credential Resolution
 
-The tool layer never reads provider environment variables directly. Resolution order:
+The capability never reads provider credentials from session secrets or environment variables. Resolution order:
 
-1. Session secret `OPENAI_API_KEY` (or `openai_api_key`)
-2. Session secret `OPENAI_BASE_URL` (or `openai_base_url`) for endpoint override
-3. Default OpenAI provider credentials from the control plane
-
-Use [`secret_store`](/capabilities/session-storage/) for per-session overrides.
+1. Default OpenAI provider credentials from the control plane
+2. Default Azure OpenAI provider credentials from the control plane
+3. Default Meta or OpenRouter provider credentials from the control plane (Muse image model)
 
 ## Tools
 

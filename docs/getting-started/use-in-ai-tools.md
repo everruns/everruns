@@ -1,103 +1,51 @@
 ---
 title: Use in AI Tools
-description: Set up Everruns in AI tools through the Everruns(Dev) plugin.
+description: Set up Everruns in AI tools through the Everruns plugin.
 ---
 
-Use Everruns from the AI tools where you already work. The Everruns(Dev) plugin
-ships in this repository with both Claude Code and Codex support.
+# Use in AI Tools (Everruns Plugin)
 
-## Claude Code
+The `everruns` plugin connects Claude Code, Codex, and Cursor to any Everruns deployment over MCP. It ships skills, slash commands, and agents; Codex setup additionally uses the plugin's `defaultPrompt` and `description`.
 
-The Claude Code plugin connects Claude Code to `https://dev.everruns.com/mcp`
-and adds Everruns(Dev) tools, slash commands, and a skill with platform
-guidance.
+## Quickstart (local Everruns)
 
-### Install the Plugin
-
-1. Add the Everruns marketplace and install the plugin from inside Claude Code:
-
-   ```text
-   /plugin marketplace add everruns/everruns
-   /plugin install everruns-dev@everruns-dev
-   ```
-
-   Claude Code reads `.claude-plugin/marketplace.json` from the repository to
-   discover available plugins. The install syntax is
-   `<plugin-name>@<marketplace-name>`.
-
-2. Verify the install by running:
-
-   ```text
-   /everruns-dev:whoami
-   ```
-
-   On first run the plugin opens an OAuth flow in your browser to authenticate
-   against the Everruns(Dev) platform over MCP.
-
-If `/plugin` is not recognized, update Claude Code to a version that supports
-the plugin marketplace and try again.
-
-### Use Everruns
-
-Ask Claude Code for an Everruns task in natural language, for example:
-
-```text
-Create an Everruns(Dev) agent that summarizes https://news.ycombinator.com/ and run it once.
+```bash
+just up
+just agent-auth PROVIDER=cursor # or vscode, claude, codex, gemini, droid, opencode
 ```
 
-The plugin also exposes slash commands such as `/everruns-dev:agent-run`,
-`/everruns-dev:session-send`, and `/everruns-dev:discover` for common
-workflows.
+This scaffolds a plugin that talks to your local deployment. Point the plugin at a different deployment by setting `EVERUNS_MCP_URL` (defaults to `https://app.everruns.com/mcp`).
 
-### Alternative Install
+## Codex (ChatGPT + CLI)
 
-To install from a local clone or point at a self-hosted Everruns deployment,
-see [`plugins/everruns-dev/README.md`](https://github.com/everruns/everruns/blob/main/plugins/everruns-dev/README.md).
-To target another Everruns deployment, update the `url` in
-`plugins/everruns-dev/.mcp.json` to that deployment's `/mcp` endpoint.
+Use the plugin's `defaultPrompt` and `description` so you do not have to type OAuth scopes and MCP labels by hand:
 
-## Codex
-
-The Codex plugin connects Codex to `https://dev.everruns.com/mcp` and adds
-Everruns(Dev) tools and guidance.
-
-### Set Up the Marketplace
-
-1. Add the Everruns plugin marketplace:
-
-   ```bash
-   codex plugin marketplace add https://github.com/everruns/everruns.git
-   ```
-
-2. Restart Codex if **Everruns(Dev)** does not appear in the plugin directory.
-
-3. Open the Codex plugin directory, choose the **Everruns(Dev)** marketplace
-   source, and install **Everruns(Dev)**.
-
-   ![Everruns Dev plugin page in Codex showing the Add to Codex button](./codex-everruns-dev-plugin.png)
-
-   Codex discovers the marketplace from `.agents/plugins/marketplace.json`. That
-   marketplace points to `./plugins/everruns-dev`, which contains the Codex plugin
-   manifest and MCP server configuration.
-
-4. Complete the browser OAuth flow when Codex asks you to authenticate.
-
-For the general Codex marketplace format, see the
-[Codex plugin marketplace documentation](https://developers.openai.com/codex/plugins/build#how-codex-uses-marketplaces).
-
-### Use Everruns
-
-Ask Codex for an Everruns task in natural language, for example:
-
-```text
-Create an Everruns(Dev) agent that summarizes https://news.ycombinator.com/ and run it once.
+```jsonc
+{
+  "title": "Everruns",
+  "text": "...",
+  "images": ["docs/getting-started/codex-everruns-plugin.png"],
+  "skill": "everruns",
+  "commands": ["commands"],
+  "mcp": "everruns",
+  "defaultPrompt": "You are using Everruns at ${EVERUNS_MCP_URL:-https://app.everruns.com/mcp}. Use the everruns skill...",
+  "description": "Connects Codex to Everruns over MCP with skills, slash commands, and agents."
+}
 ```
 
-To verify the connection, ask Codex:
+![Everruns Codex plugin](codex-everruns-plugin.png)
 
-```text
-Check my Everruns(Dev) user and active organization.
-```
+To install the published plugin, open the `everruns` plugin page in Codex and choose **Add to Codex**.
 
-To point the plugin at another Everruns deployment, update the `url` in
-`plugins/everruns-dev/.mcp.json` to that deployment's `/mcp` endpoint.
+## Plugin layout
+
+The portable plugin lives in `plugins/everruns/`:
+
+- `plugin.json` / `mcp.json` — marketplace registration (name `everruns`, version, MCP server URL).
+- `.claude-plugin/plugin.json` — Claude Code manifest.
+- `.codex-plugin/plugin.json` — Codex manifest (`defaultPrompt`, `description`).
+- `.cursor-plugin/plugin.json` — Cursor manifest.
+- `skills/everruns/SKILL.md` — the agent skill (frontmatter `name: everruns`).
+- `commands/` — slash commands.
+
+`EVERUNS_MCP_URL` selects the deployment the plugin talks to; it defaults to `https://app.everruns.com/mcp`.

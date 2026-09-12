@@ -98,6 +98,22 @@ function localizeRuntimeErrorBase(
       return formatMessage(locale, "runtime_error_provider_misconfigured");
     case "provider_quota_exhausted":
       return formatMessage(locale, "runtime_error_provider_quota_exhausted");
+    case "provider_attestation_required": {
+      // The confirmation page is the whole point of this code — without it the
+      // reader knows something is gated but not where to clear it — so fall
+      // back to the backend copy (which carries the URL) if the field is gone.
+      const confirmUrl = stringField(error.fields, "confirm_url");
+      if (!confirmUrl) return fallback;
+      const missingTypes = stringListField(error.fields, "missing_types");
+      return missingTypes
+        ? formatMessage(locale, "runtime_error_provider_attestation_required_types", {
+            missing_types: missingTypes,
+            confirm_url: confirmUrl,
+          })
+        : formatMessage(locale, "runtime_error_provider_attestation_required", {
+            confirm_url: confirmUrl,
+          });
+    }
     case "provider_unavailable":
       return formatMessage(locale, "runtime_error_provider_unavailable");
     case "processing_error":
@@ -178,6 +194,16 @@ function formatFixed(locale: SupportedLocale, value: number): string {
 
 function stringField(fields: Record<string, unknown> | undefined, key: string): string | undefined {
   return typeof fields?.[key] === "string" ? (fields[key] as string) : undefined;
+}
+
+function stringListField(
+  fields: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = fields?.[key];
+  if (!Array.isArray(value)) return undefined;
+  const entries = value.filter((entry): entry is string => typeof entry === "string" && !!entry);
+  return entries.length > 0 ? entries.join(", ") : undefined;
 }
 
 function numberField(fields: Record<string, unknown> | undefined, key: string): number | undefined {

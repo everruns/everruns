@@ -683,6 +683,15 @@ impl Ctx {
 }
 
 // ============================================================================
+// CLI route
+// ============================================================================
+
+// The tree contract is transport-neutral and shared with the bash-tool
+// adapter, so it lives in the bashkit integration rather than being defined
+// twice. Re-exported here because command declarations reference it.
+pub use everruns_integrations_bashkit::cli::CliRoute;
+
+// ============================================================================
 // Command trait
 // ============================================================================
 
@@ -711,6 +720,15 @@ pub trait Command: DeserializeOwned + Send + 'static + CommandSchema {
     /// for positional args, so the command string is pre-rewritten to insert
     /// `--<positional_arg>` before the value. See EVE-323.
     fn positional_arg() -> Option<&'static str> {
+        None
+    }
+
+    /// Where this command sits in the `everruns` command tree, if it is
+    /// exposed there at all.
+    ///
+    /// Defaults to `None`: tree membership is opt-in, so internal plumbing
+    /// cannot leak into a human- or agent-facing surface by being written.
+    fn cli() -> Option<CliRoute> {
         None
     }
 
@@ -1034,6 +1052,7 @@ pub struct CommandDescriptor {
     pub meta: fn() -> CommandMeta,
     pub read_only: fn() -> bool,
     pub positional_arg: fn() -> Option<&'static str>,
+    pub cli: fn() -> Option<CliRoute>,
     pub param_schema: fn() -> Value,
     pub output_schema: fn() -> Value,
     pub output_shape: fn() -> &'static str,
@@ -1052,6 +1071,7 @@ impl CommandDescriptor {
             meta: C::meta,
             read_only: C::read_only,
             positional_arg: C::positional_arg,
+            cli: C::cli,
             param_schema: <C as Command>::param_schema,
             output_schema: C::output_schema,
             output_shape: C::output_shape,
@@ -1128,6 +1148,11 @@ pub struct CommandCatalogEntry {
     pub read_only: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub positional_arg: Option<&'static str>,
+    /// Tree spelling (`agents list`) when the command opted into the
+    /// `everruns` command tree, so discovery can teach the spelling a caller
+    /// should actually type.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cli: Option<String>,
     pub input_schema: Value,
     pub output_schema: Value,
     pub output_shape: &'static str,
@@ -1150,6 +1175,7 @@ pub fn catalog_entries_with_schemas(
                 path: meta.path,
                 read_only: (desc.read_only)(),
                 positional_arg: (desc.positional_arg)(),
+                cli: (desc.cli)().map(|route| route.spelling()),
                 input_schema: if include_schemas {
                     (desc.param_schema)()
                 } else {

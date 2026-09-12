@@ -5,11 +5,13 @@
 use everruns_core::{Permission, Policy, Rule};
 
 pub mod commands;
+pub mod credential_check;
 pub mod queries;
 pub mod service;
 pub mod types;
 
 pub use commands::*;
+pub use credential_check::{CredentialCheckResult, check_credentials};
 pub use service::*;
 
 pub const LLM_PROVIDER_VIEW: Policy = Policy {

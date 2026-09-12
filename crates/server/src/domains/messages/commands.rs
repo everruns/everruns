@@ -36,7 +36,7 @@ impl Command for CreateMessage {
         CommandMeta {
             name: "create_message",
             category: "messages",
-            description: "Create a user message in a session and start the next run.",
+            description: "Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]'.",
             method: "POST",
             path: "/v1/sessions/{session_id}/messages",
         }
@@ -486,6 +486,7 @@ mod tests {
                 CreateHarnessRow {
                     name: "routing-harness".to_string(),
                     display_name: None,
+                    icon: None,
                     description: None,
                     system_prompt: Some("You are helpful.".to_string()),
                     parent_harness_id: None,
@@ -640,6 +641,7 @@ mod tests {
                 CreateHarnessRow {
                     name: "platform-chat".to_string(),
                     display_name: Some("Platform Chat".to_string()),
+                    icon: None,
                     description: None,
                     system_prompt: None,
                     parent_harness_id: None,

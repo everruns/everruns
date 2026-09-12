@@ -33,7 +33,6 @@ import {
   BarChart3,
   Rocket,
   Terminal,
-  Shield,
 } from "lucide-react";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
 import { EntityIdentity } from "@/components/ui/entity-identity";
@@ -52,6 +51,7 @@ import {
 } from "@/components/layout";
 import type { Capability, ModelWithProvider } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
+import { HarnessIcon } from "@/lib/harness-icons";
 import {
   localizedCapabilityDescription,
   localizedCapabilityName,
@@ -73,7 +73,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
   const { data: harness, isLoading: harnessLoading } = useHarness(harnessId);
   usePageTitle(harness ? getDisplayName(harness) : null, "Harness");
   const { data: harnesses = [] } = useHarnesses();
-  const { data: allCapabilities } = useCapabilities();
+  const { data: allCapabilities } = useCapabilities({ includeRetired: true });
   const { data: models } = useModels();
   const { data: stats, isLoading: statsLoading, error: statsError } = useHarnessStats(harnessId);
   const deleteHarness = useDeleteHarness();
@@ -160,7 +160,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
       />
 
       <PageMasthead
-        icon={<Shield />}
+        icon={<HarnessIcon icon={harness.icon} />}
         entityId={harness.id}
         title={
           <span className={getEntityNameClassName(harness.status)}>{getDisplayName(harness)}</span>

@@ -29,6 +29,7 @@ fn fixture_records() -> (Harness, Agent, ExecutionSession) {
         id: harness_id,
         name: "hoster".into(),
         display_name: None,
+        icon: None,
         description: None,
         system_prompt: Some("Harness instructions.".into()),
         parent_harness_id: None,
@@ -193,6 +194,13 @@ macro_rules! mock_worker_adapters {
                 _org_id: i64,
                 _image_ids: &[Uuid],
             ) -> CoreResult<HashMap<Uuid, everruns_core::image_services::ResolvedImage>> {
+                unimplemented!()
+            }
+            async fn resolve_files_batch(
+                &self,
+                _org_id: i64,
+                _file_ids: &[Uuid],
+            ) -> CoreResult<HashMap<Uuid, everruns_core::file_services::ResolvedFile>> {
                 unimplemented!()
             }
             async fn read_file(

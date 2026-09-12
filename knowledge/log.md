@@ -1,5 +1,61 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-11
+
+* **Session schedules are now safe to poll from more than one server
+  instance.** `claim_due_session_schedules` selected due rows with
+  `FOR UPDATE SKIP LOCKED` but ran the statement on the pool, so the implicit
+  transaction committed and released the row locks before the caller advanced
+  `next_trigger_at`, and nothing recorded that a row had been picked up. Two
+  instances both saw the same schedules as due and both fired them: duplicate
+  agent turns, duplicate monitor probes, duplicate model spend. `mark_triggered`
+  was no backstop either, being an unguarded read-then-write with no
+  compare-and-swap. The claim is now a single atomic statement that stamps
+  `claimed_by`/`claimed_at`, the shape `durable_schedules` already used, and it
+  is a lease so an instance that dies mid-fire does not strand its schedules.
+  Both storage backends implement it. Found while validating a downstream
+  zero-downtime rollout that wanted two server replicas.
+
+* **Test fixtures live with the crate that owns them, and never ship.** The
+  root `testdata/` and `tests/` trees each held a single fixture set. Plugin
+  marketplace fixtures moved to `crates/core/testdata/plugins/` (core owns the
+  plugin file set and compiler; host and server tests reach it through
+  `../core/testdata/plugins`), and the downstream-consumer workspace moved to
+  `crates/everruns/tests/fixtures/external-consumer/`, still its own cargo
+  workspace outside the repository workspace. Both crates now declare `exclude`
+  so neither fixture tree inflates a published package. The vestigial
+  `proposals/` relocation stub was removed; migration
+  `087_eval_external_runs.sql` is immutable, so its comment link to the old
+  path is left dangling on purpose, and the canonical design is
+  [External results publishing](evaluation/external-results-publishing.md).
+
+* **Manual test cases became knowledge.** `test_cases/` moved to
+  `knowledge/test-cases/`, so cases are OKF concepts reached by the same
+  progressive disclosure as every other concept: domain index, target index,
+  feature index, case. Each case carries `type: Test Case` frontmatter with its
+  title and a one-sentence description, and every folder has an index. The
+  format specification moved from `evaluation/test-cases.md` to
+  [Test Cases Specification](test-cases/format.md). Manual run results now land
+  outside the bundle, in `.local/test-results/`.
+
+## 2026-09-09
+
+* **One command grammar, several hosts.** Operations reached through the
+  scripted MCP surface, a session's shell, and (eventually) the external CLI had
+  drifted into two spellings. The `everruns <noun> <verb>` tree is declared once
+  per command and rendered by every host, with the flat wire name kept as the
+  identity so dispatch, schema coercion, policy, and error handling are
+  unchanged. A tree also makes `--help` affordable where a flat namespace of
+  hundreds of commands had to forbid it. See
+  [Command Tree](execution/command-tree.md).
+
+## 2026-09-08
+
+* The Framework live-session example now offers offline and live OpenAI modes,
+  configurable corrections, and transcript inspection. Its iteration-boundary
+  `Session::send` behavior remains distinct from the isolated WebSocket steering
+ experiment. See [the steering boundary](execution/openai-steering-prototype.md).
+
 ## 2026-09-05
 
 * Astra reasoning changes preserve the initial request effort, persist effective
@@ -12,6 +68,12 @@
   Brave Search establishes the application adapter pattern and separates hosted
   connector registration from the Framework dependency graph. See
   [Framework application boundaries](framework/application-api.md).
+
+* **Mid-turn correction justifies revisiting socket ownership.** The isolated
+  OpenAI steering prototype uses a durable inbox and explicit single-host owner.
+  Acceptance remains queued until a successor is created; ambiguous disconnects
+  block replay until history proves commitment. Normal workers continue over
+  HTTP. See `knowledge/execution/openai-steering-prototype.md`.
 
 ## 2026-09-01
 

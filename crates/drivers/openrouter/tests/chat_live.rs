@@ -9,10 +9,12 @@
 //! Ignored by default (requires network + `OPENROUTER_API_KEY`); run manually:
 //!   `doppler run -- cargo test -p everruns-openrouter --test chat_live -- --ignored --nocapture`
 
+use everruns_openrouter::options::{
+    OpenRouterRoute, OpenRouterRoutingConfig, insert_routing_option,
+};
 use everruns_openrouter::provider;
 use everruns_provider::driver_registry::{
-    LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent, OpenRouterRoute,
-    OpenRouterRoutingConfig,
+    LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent,
 };
 use everruns_provider::model::ReasoningEffort;
 use futures::StreamExt;
@@ -28,7 +30,7 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
     let mut metadata = std::collections::HashMap::new();
     metadata.insert("session_id".to_string(), "session_live_smoke".to_string());
 
-    let config = LlmCallConfig {
+    let mut config = LlmCallConfig {
         speed: None,
         verbosity: None,
         model: "openai/gpt-5.6-luna".to_string(),
@@ -41,21 +43,25 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
         provider_opaque_context: None,
         tool_search: None,
         prompt_cache: None,
-        // Exercise the routing-decoration path alongside session_id forwarding.
-        openrouter_routing: Some(OpenRouterRoutingConfig {
-            models: vec![
-                "openai/gpt-5.6-luna".to_string(),
-                "openai/gpt-5.6-terra".to_string(),
-            ],
-            route: Some(OpenRouterRoute::Fallback),
-            ..Default::default()
-        }),
+        driver_options: Default::default(),
         parallel_tool_calls: None,
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
         reasoning_state: None,
     };
+    // Exercise the routing-decoration path alongside session_id forwarding.
+    insert_routing_option(
+        &mut config.driver_options,
+        &OpenRouterRoutingConfig {
+            models: vec![
+                "openai/gpt-5.6-luna".to_string(),
+                "openai/gpt-5.6-terra".to_string(),
+            ],
+            route: Some(OpenRouterRoute::Fallback),
+            ..Default::default()
+        },
+    );
 
     let messages = vec![LlmMessage::text(
         LlmMessageRole::User,

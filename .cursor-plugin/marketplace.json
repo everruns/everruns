@@ -1,41 +1,14 @@
 {
-  "name": "everruns-dev",
+  "name": "everruns",
   "owner": {
     "name": "Everruns",
     "email": "support@everruns.com"
   },
   "metadata": {
-    "description": "Everruns plugins for Cursor — connect Cursor to the Everruns(Dev) managed harnesses platform to manage agents, harnesses, capabilities, sessions, and apps.",
+    "description": "Everruns plugins for Cursor — connect Cursor to the Everruns managed harnesses platform to manage agents, harnesses, capabilities, sessions, and apps.",
     "version": "0.1.6"
   },
   "plugins": [
-    {
-      "name": "everruns-dev",
-      "source": "./plugins/everruns-dev",
-      "description": "Interact with the Everruns(Dev) managed harnesses platform from Cursor. Manage harnesses, agents, and capabilities. Run agentic sessions. Create and deploy agentic applications.",
-      "version": "0.1.6",
-      "author": {
-        "name": "Everruns",
-        "email": "support@everruns.com"
-      },
-      "homepage": "https://everruns.com",
-      "repository": "https://github.com/everruns/everruns",
-      "license": "MIT",
-      "logo": "plugins/everruns-dev/assets/everruns.png",
-      "category": "agents",
-      "tags": [
-        "agents",
-        "automation",
-        "developer-tools"
-      ],
-      "keywords": [
-        "agents",
-        "everruns-dev",
-        "mcp",
-        "harness",
-        "llm"
-      ]
-    },
     {
       "name": "everruns",
       "source": "./plugins/everruns",

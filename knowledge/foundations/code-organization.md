@@ -89,7 +89,7 @@ trees. Default-product registration stays a composition concern: the worker
 (`crates/worker/src/adapters.rs`) assembles all official drivers into the
 product registry, and downstream providers register through the open
 `DriverRegistry` boundaries alone (see
-`tests/fixtures/external-consumer/provider-pack/`).
+`crates/everruns/tests/fixtures/external-consumer/provider-pack/`).
 
 Deterministic simulation lives in the publishable `everruns-llmsim` crate:
 the driver, configuration and scripted-turn types, registry helpers, and the

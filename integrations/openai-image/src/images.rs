@@ -15,6 +15,11 @@ pub struct OpenAiImageClient {
     client: Client,
     api_key: String,
     base_url: Option<String>,
+    /// Path appended to the base URL for text-to-image generations.
+    /// Defaults to `"images/generations"` (OpenAI and Meta Model API);
+    /// providers with a different surface (e.g. OpenRouter's `"images"`)
+    /// override it via [`OpenAiImageClient::with_images_path`].
+    images_path: String,
 }
 
 impl OpenAiImageClient {
@@ -31,11 +36,19 @@ impl OpenAiImageClient {
                 .context("failed to build OpenAI image client")?,
             api_key: api_key.into(),
             base_url,
+            images_path: "images/generations".to_string(),
         })
     }
 
+    /// Override the generations endpoint path for providers whose image API
+    /// lives at a different path than OpenAI's `images/generations`.
+    pub fn with_images_path(mut self, path: impl Into<String>) -> Self {
+        self.images_path = path.into();
+        self
+    }
+
     pub async fn generate(&self, request: GenerateImageRequest) -> Result<ImageApiResponse> {
-        let url = image_endpoint_url(self.base_url.as_deref(), "images/generations")?;
+        let url = image_endpoint_url(self.base_url.as_deref(), &self.images_path)?;
         let response = self
             .apply_auth(self.client.post(url.clone()), url.as_str())
             .json(&request)
@@ -55,7 +68,7 @@ impl OpenAiImageClient {
         F: FnMut(ImageApiStreamEvent) -> Fut + Send,
         Fut: Future<Output = ()> + Send,
     {
-        let url = image_endpoint_url(self.base_url.as_deref(), "images/generations")?;
+        let url = image_endpoint_url(self.base_url.as_deref(), &self.images_path)?;
         let response = self
             .apply_auth(self.client.post(url.clone()), url.as_str())
             .json(&request)
@@ -377,6 +390,45 @@ mod tests {
                 quality: Some("high".to_string()),
                 background: Some("transparent".to_string()),
                 output_format: Some("png".to_string()),
+                stream: None,
+                partial_images: None,
+                count: 1,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(response.data.len(), 1);
+        assert_eq!(response.data[0].b64_json, "aGVsbG8=");
+    }
+
+    #[tokio::test]
+    async fn generate_uses_custom_images_path() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/images"))
+            .and(header("authorization", "Bearer or-key"))
+            .and(body_json(serde_json::json!({
+                "model": "meta/muse-image",
+                "prompt": "otter",
+                "n": 1
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": [{"b64_json": "aGVsbG8="}]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = OpenAiImageClient::new("or-key", Some(format!("{}/v1", server.uri())))
+            .unwrap()
+            .with_images_path("images");
+        let response = client
+            .generate(GenerateImageRequest {
+                model: "meta/muse-image".to_string(),
+                prompt: "otter".to_string(),
+                size: None,
+                quality: None,
+                background: None,
+                output_format: None,
                 stream: None,
                 partial_images: None,
                 count: 1,

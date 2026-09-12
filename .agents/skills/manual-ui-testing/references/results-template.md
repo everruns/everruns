@@ -1,6 +1,6 @@
 # Results file template
 
-Write to `test_cases/ui/MANUAL_TEST_RESULTS_<YYYY-MM-DD>.md`.
+Write to `.local/test-results/MANUAL_TEST_RESULTS_<YYYY-MM-DD>.md`.
 
 ```markdown
 # Manual UI Test Results - <YYYY-MM-DD>

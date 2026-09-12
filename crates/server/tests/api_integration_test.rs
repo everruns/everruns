@@ -1873,6 +1873,57 @@ async fn test_provider_crud() {
         .assert_status(StatusCode::NO_CONTENT);
 }
 
+/// Credential checks must never persist anything and must reject unusable
+/// input before any outbound request is made.
+#[tokio::test]
+async fn test_check_credentials_validates_input_without_persisting() {
+    let server = TestServer::in_memory().await;
+
+    // Seeded catalog providers exist from startup; the check must not add to
+    // them, so compare against the baseline rather than zero.
+    let before: serde_json::Value = server.get("/v1/providers").await.json();
+    let baseline = before["data"].as_array().map(Vec::len);
+
+    // Empty key: rejected up front, no provider row created.
+    server
+        .post(
+            "/v1/providers/check-credentials",
+            json!({"provider_type": "openai", "api_key": "   "}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+
+    // SSRF guard: the same base-URL validation as create applies, since the
+    // check issues a real outbound request.
+    server
+        .post(
+            "/v1/providers/check-credentials",
+            json!({
+                "provider_type": "openai",
+                "api_key": "sk-test",
+                "base_url": "http://127.0.0.1:8080/v1"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+
+    // A driver with no upstream to ask reports "unsupported" rather than
+    // failing the user's key.
+    let body: serde_json::Value = server
+        .post(
+            "/v1/providers/check-credentials",
+            json!({"provider_type": "llmsim", "api_key": "sk-test"}),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(body["status"], "unsupported");
+
+    // Nothing was stored by any of the above.
+    let after: serde_json::Value = server.get("/v1/providers").await.json();
+    assert_eq!(after["data"].as_array().map(Vec::len), baseline);
+}
+
 /// Connection-level request options retain their non-secret shape across the
 /// API, but header values must never be returned to provider-view callers.
 #[tokio::test]
@@ -2737,6 +2788,49 @@ async fn create_llmsim_agent(server: &TestServer, name: &str) -> Agent {
         .await
         .assert_status(StatusCode::CREATED)
         .json()
+}
+
+#[tokio::test]
+async fn test_post_message_wait_times_out_without_worker() {
+    // No worker drains turn tasks in-process, so no turn can complete here: a
+    // short wait budget must return 202 with a timeout status. The 200
+    // completed path requires server+worker and is covered in workflow_test.rs.
+    let server = TestServer::in_memory().await;
+    let agent = create_llmsim_agent(&server, "msg-wait").await;
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent.public_id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let result: Value = server
+        .post(
+            &format!(
+                "/v1/sessions/{}/messages?wait=true&timeout_ms=1500",
+                session.id
+            ),
+            json!({
+                "message": {
+                    "role": "user",
+                    "content": [{ "type": "text", "text": "Hello" }]
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::ACCEPTED)
+        .json();
+
+    assert_eq!(result["status"], "timeout");
+    assert!(
+        result["message"]["id"].is_string(),
+        "timeout returns the accepted message"
+    );
 }
 
 #[tokio::test]
@@ -3886,6 +3980,13 @@ async fn test_chat_harness_includes_platform_capability() {
         vec![
             "platform",
             "btw",
+            "human_intent",
+            "current_time",
+            "message_metadata",
+            "parallel_tool_calls",
+            "stateless_todo_list",
+            "prompt_caching",
+            "tool_call_repair",
             "loop_detection",
             "error_disclosure",
             "compaction"

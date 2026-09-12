@@ -6,6 +6,7 @@
 pub mod a2a_signing;
 pub mod ag_ui;
 pub mod agent_credentials;
+pub mod agent_discovery;
 pub mod agent_examples;
 pub mod agent_identities;
 pub mod agent_identity_connections;
@@ -28,6 +29,7 @@ pub mod evals;
 pub mod events;
 pub mod fcp;
 pub mod feature_flags;
+pub mod files;
 pub mod harness_examples;
 pub mod harnesses;
 pub mod http_signing_keys;

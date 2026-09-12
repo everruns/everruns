@@ -11,6 +11,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
         "Coding harness with one managed session-owned sandbox. Uses provider-neutral sandbox tools backed by Daytona and intentionally omits a local shell.",
         SYSTEM_PROMPT,
     )
+    .with_icon("terminal")
     .with_tags(["coding", "sandbox", "managed", "built-in"])
     .with_capabilities([
         BuiltInCapabilityDefinition::new("session_file_system"),

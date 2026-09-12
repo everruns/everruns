@@ -65,10 +65,17 @@ impl Command for CreateSession {
         CommandMeta {
             name: "create_session",
             category: "sessions",
-            description: "Create a new session. Optionally assign an agent and harness.",
+            description: "Create a new session. Optionally assign an agent and harness. Assign the agent with --agent_id or --agent_name (the everruns CLI spelling of this flag is --agent).",
             method: "POST",
             path: "/v1/sessions",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions"], "create")
+                .with_examples(&["everruns sessions create --agent_id agt_01h9..."]),
+        )
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -296,6 +303,13 @@ impl Command for ListSessionParticipants {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions", "participants"], "list")
+                .with_examples(&["everruns sessions participants list --session_id ses_01h9..."]),
+        )
+    }
+
     fn policy() -> Option<&'static everruns_core::Policy> {
         Some(&super::SESSION_VIEW)
     }
@@ -340,6 +354,14 @@ impl Command for AddSessionParticipant {
             method: "POST",
             path: "/v1/sessions/{session_id}/participants",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions", "participants"], "add").with_examples(&[
+                "everruns sessions participants add --session_id ses_01h9... --user_id usr_01h9...",
+            ]),
+        )
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -478,6 +500,13 @@ impl Command for LeaveSessionParticipant {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions", "participants"], "leave")
+                .with_examples(&["everruns sessions participants leave --session_id ses_01h9..."]),
+        )
+    }
+
     fn policy() -> Option<&'static everruns_core::Policy> {
         Some(&super::SESSION_MANAGE)
     }
@@ -550,6 +579,13 @@ impl Command for ForkSession {
             method: "POST",
             path: "/v1/sessions/{session_id}/fork",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions"], "fork")
+                .with_examples(&["everruns sessions fork ses_01h9..."]),
+        )
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -757,6 +793,13 @@ impl Command for ListSessions {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions"], "list")
+                .with_examples(&["everruns sessions list --limit 20"]),
+        )
+    }
+
     fn policy() -> Option<&'static everruns_core::Policy> {
         Some(&super::SESSION_VIEW)
     }
@@ -813,6 +856,13 @@ impl Command for GetSessionFacets {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions"], "facets")
+                .with_examples(&["everruns sessions facets ses_01h9..."]),
+        )
+    }
+
     fn policy() -> Option<&'static everruns_core::Policy> {
         Some(&super::SESSION_VIEW)
     }
@@ -858,6 +908,13 @@ impl Command for GetSession {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions"], "get")
+                .with_examples(&["everruns sessions get ses_01h9..."]),
+        )
+    }
+
     fn positional_arg() -> Option<&'static str> {
         Some("session_id")
     }
@@ -891,6 +948,13 @@ impl Command for GetSessionContextReport {
             method: "GET",
             path: "/v1/sessions/{session_id}/context-report",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions"], "context")
+                .with_examples(&["everruns sessions context ses_01h9..."]),
+        )
     }
 
     fn positional_arg() -> Option<&'static str> {
@@ -1577,6 +1641,13 @@ impl Command for UpdateSessionCmd {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions"], "update")
+                .with_examples(&["everruns sessions update ses_01h9... --title 'Release triage'"]),
+        )
+    }
+
     fn policy() -> Option<&'static everruns_core::Policy> {
         Some(&super::SESSION_MANAGE)
     }
@@ -1638,6 +1709,13 @@ impl Command for DeleteSession {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions"], "delete")
+                .with_examples(&["everruns sessions delete ses_01h9..."]),
+        )
+    }
+
     fn policy() -> Option<&'static everruns_core::Policy> {
         Some(&super::SESSION_MANAGE)
     }
@@ -1667,6 +1745,13 @@ impl Command for GetSessionStats {
             method: "GET",
             path: "/v1/sessions/stats",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions"], "stats")
+                .with_examples(&["everruns sessions stats ses_01h9..."]),
+        )
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -1709,6 +1794,13 @@ impl Command for PinSession {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions"], "pin")
+                .with_examples(&["everruns sessions pin ses_01h9..."]),
+        )
+    }
+
     fn policy() -> Option<&'static everruns_core::Policy> {
         Some(&super::SESSION_MANAGE)
     }
@@ -1747,6 +1839,13 @@ impl Command for UnpinSession {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions"], "unpin")
+                .with_examples(&["everruns sessions unpin ses_01h9..."]),
+        )
+    }
+
     fn policy() -> Option<&'static everruns_core::Policy> {
         Some(&super::SESSION_MANAGE)
     }
@@ -1782,6 +1881,13 @@ impl Command for ArchiveSession {
             method: "PUT",
             path: "/v1/sessions/{session_id}/archive",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions"], "archive")
+                .with_examples(&["everruns sessions archive ses_01h9..."]),
+        )
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -1822,6 +1928,13 @@ impl Command for UnarchiveSession {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions"], "unarchive")
+                .with_examples(&["everruns sessions unarchive ses_01h9..."]),
+        )
+    }
+
     fn policy() -> Option<&'static everruns_core::Policy> {
         Some(&super::SESSION_MANAGE)
     }
@@ -1855,6 +1968,13 @@ impl Command for CancelSession {
             method: "POST",
             path: "/v1/sessions/{session_id}/cancel",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["sessions"], "cancel")
+                .with_examples(&["everruns sessions cancel ses_01h9..."]),
+        )
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {

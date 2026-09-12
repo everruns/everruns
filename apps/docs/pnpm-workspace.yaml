@@ -7,6 +7,7 @@ overrides:
   lodash: 4.17.23
   nanoid: 3.3.18
   postcss: 8.5.23
+  smol-toml: 1.8.0
   yaml: 2.8.4
 onlyBuiltDependencies:
   - esbuild
@@ -27,6 +28,10 @@ minimumReleaseAgeStrict: true
 # was widened to `<3.3.18` on 2026-08-13 after 3.3.17 proved an incomplete fix, so
 # the previous 3.3.17 pin — recorded here as the patched release — was still inside
 # the advisory. 3.3.18 is the actual fix. Exact-pinned via overrides.
+# smol-toml 1.8.0 (GHSA-7w5x-hrqm-74c2 — DoS via malformed TOML in every release
+# through 1.7.0, reached via @astrojs/markdown-satteri > @astrojs/internal-helpers)
+# is past the maturity window and needs no exemption; sibling copies of that
+# dependency already resolve to 1.8.0, so the override only unifies the tree.
 minimumReleaseAgeExclude:
   - form-data
   - esbuild

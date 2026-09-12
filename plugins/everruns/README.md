@@ -30,7 +30,7 @@ From GitHub marketplace:
 
 ```text
 /plugin marketplace add everruns/everruns
-/plugin install everruns@everruns-dev
+/plugin install everruns@everruns
 ```
 
 From a local clone:

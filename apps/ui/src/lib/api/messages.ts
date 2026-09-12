@@ -43,6 +43,11 @@ export interface ImageAttachment {
   filename?: string;
 }
 
+export interface FileAttachment {
+  fileId: string;
+  filename?: string;
+}
+
 /**
  * Send a user message with optional image attachments
  */
@@ -52,9 +57,12 @@ export async function sendUserMessageWithImages(
   images: ImageAttachment[],
   controls?: Controls,
   addressedParticipantId?: string | null,
+  files: FileAttachment[] = [],
 ): Promise<Message> {
   const content: Array<
-    { type: "text"; text: string } | { type: "image_file"; image_id: string; filename?: string }
+    | { type: "text"; text: string }
+    | { type: "image_file"; image_id: string; filename?: string }
+    | { type: "file"; file_id: string; filename?: string }
   > = [];
 
   // Add text content if provided
@@ -68,6 +76,15 @@ export async function sendUserMessageWithImages(
       type: "image_file",
       image_id: img.imageId,
       filename: img.filename,
+    });
+  }
+
+  // Add file (PDF) references
+  for (const f of files) {
+    content.push({
+      type: "file",
+      file_id: f.fileId,
+      filename: f.filename,
     });
   }
 

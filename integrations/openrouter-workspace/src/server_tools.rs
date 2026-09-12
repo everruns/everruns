@@ -4,9 +4,9 @@
 // (beta). Unlike normal function tools, these are run by OpenRouter server-side
 // — it loops internally and returns the final answer, so the agent loop never
 // dispatches them. This capability therefore contributes *request intent*, not
-// executable tools: the selected tools are compiled into
-// `LlmCallConfig.openrouter_routing.server_tools` and serialized by the
-// OpenRouter driver into the request `tools` array as `{"type":"openrouter:…"}`.
+// executable tools: the selected tools are compiled into a routing payload
+// stashed in `LlmCallConfig.driver_options` and serialized by the OpenRouter
+// driver into the request `tools` array as `{"type":"openrouter:…"}`.
 //
 // Non-OpenRouter providers ignore the routing config entirely, so enabling this
 // capability on a non-OpenRouter agent is a harmless no-op.
@@ -18,8 +18,8 @@ use async_trait::async_trait;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext,
 };
-use everruns_provider::driver_registry::{
-    OpenRouterRoutingConfig, OpenRouterServerTool, OpenRouterServerToolKind,
+use everruns_openrouter::options::{
+    OpenRouterRoutingConfig, OpenRouterServerTool, OpenRouterServerToolKind, insert_routing_option,
 };
 use serde_json::{Value, json};
 
@@ -253,12 +253,18 @@ impl Capability for OpenRouterServerToolsCapability {
         Ok(())
     }
 
-    fn openrouter_routing_config(&self, config: &Value) -> Option<OpenRouterRoutingConfig> {
+    fn driver_options(&self, config: &Value) -> Vec<(String, Value)> {
         let server_tools = server_tools_from_config(config);
-        (!server_tools.is_empty()).then_some(OpenRouterRoutingConfig {
+        if server_tools.is_empty() {
+            return Vec::new();
+        }
+        let routing = OpenRouterRoutingConfig {
             server_tools,
             ..Default::default()
-        })
+        };
+        let mut options = std::collections::HashMap::new();
+        insert_routing_option(&mut options, &routing);
+        options.into_iter().collect()
     }
 }
 
@@ -271,10 +277,11 @@ mod tests {
     #[test]
     fn capability_hook_contributes_only_non_empty_routing_intent() {
         let capability = OpenRouterServerToolsCapability;
-        assert!(capability.openrouter_routing_config(&json!({})).is_none());
+        assert!(capability.driver_options(&json!({})).is_empty());
 
-        let routing = capability
-            .openrouter_routing_config(&json!({ "tools": ["web_search"] }))
+        let options = capability.driver_options(&json!({ "tools": ["web_search"] }));
+        assert_eq!(options.len(), 1);
+        let routing: OpenRouterRoutingConfig = serde_json::from_value(options[0].1.clone())
             .expect("selected server tools should contribute routing intent");
         assert_eq!(routing.server_tools.len(), 1);
         assert_eq!(

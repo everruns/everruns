@@ -301,6 +301,38 @@ Env-var fallbacks for dev (`DEFAULT_*_API_KEY`, startup materialization into the
 
 Driver crates do **not** read the process environment for credentials. Credentials reach a driver through its constructor or `DriverConfig` (resolved from the encrypted database on the server path). Env-based loading for standalone/dev/CLI use is the single, injectable `CredentialProvider`/`EnvCredentialProvider` boundary in `crates/core/src/credential_provider.rs`; the server never constructs an `EnvCredentialProvider`. See the Key Resolution Contract in [llm-drivers.md](llm-drivers.md).
 
+### Credential check before storage
+
+A key that the provider will reject must not be accepted silently. Stored
+blind, it is encrypted into the org and only surfaces at the first agent run,
+far from where the user entered it, which is exactly what org setup (a new
+user's first key) can least afford.
+
+`POST /v1/providers/check-credentials` probes a *candidate* credential with a
+read-only `list_models` call and persists nothing, so a rejected key never
+reaches storage. It takes the credential inline rather than a provider id
+precisely because the interesting moment is before any provider row exists.
+`provider.manage` gates it, and a supplied `base_url` passes the same SSRF
+validation as create, since the check makes a real outbound request.
+
+The outcome is classified from the driver's `LlmErrorKind`, assigned at the
+provider boundary where status and body are still available. Only an
+authentication failure proves the key is bad and blocks the caller; a driver
+without a discovery endpoint and an unreachable provider both say nothing about
+the key, so setup proceeds rather than dead-ending a user behind an unprovable
+check (offline, air-gapped, or provider outage). Response messages are fixed
+strings: the provider's response body is logged server-side, never echoed.
+
+The same probe backs every provider form in Settings, not just org setup, and
+runs on input rather than behind a "test" button (`use-credential-check.ts`):
+verification that needs a click is verification most people skip, so a bad key
+is caught where it was pasted. A typing pause debounces it and a stale response
+is dropped, so the cadence is bounded by pauses in typing, not by keystrokes.
+Settings treats the verdict as **advisory** where setup treats it as a gate: a
+rejection is surfaced but never blocks saving, because a key can be valid for an
+org the probe cannot see, and a provider the user meant to add is worth more
+than an unprovable check.
+
 ### OAuth provider connection
 
 A driver may additionally declare an **interactive OAuth connect flow** so an org admin can connect a provider by authorizing in the browser instead of pasting a key. This is a second way to *populate* the credential document, not a second credential model: the flow always ends by writing a long-lived credential into `credentials_encrypted`, exactly where a hand-typed key lands. Runtime resolution is unchanged, and non-admin users are unaffected, they never authorize; they use models served by the org provider against the one stored credential, as before.
@@ -361,7 +393,7 @@ The acceptance bar for this refactor: `rg -i "llm_provider|llm-provider|LlmProvi
 | Worker / runtime / CLI / examples | Adapter types and gRPC contracts follow core renames. |
 | UI (`apps/ui`) | `lib/api/llm-providers.ts` → `providers.ts`, hooks, Settings → Providers pages (credential forms rendered from driver schemas), model pages grouped by profile with provider as secondary dimension, service-kind filtered pickers. |
 | Connector side | `ConnectionProviderPlugin` → `ConnectorPlugin`; shared credential-schema/validation primitives extracted; `crates/server/specs/user-connections.md` updated. |
-| Specs & docs | `knowledge/foundations/llm-drivers.md` restructured to the ChatDriver wire contract (entity/resolution/key-management content moves here); `knowledge/foundations/concepts.md`, `knowledge/foundations/models.md`, `knowledge/operations/voice.md`, `knowledge/security/usage-tracking.md`, `knowledge/runtime-resources/knowledge-bases.md`, `docs/` (including `docs/how-to/migrate-providers.md`), `test_cases/` updated to the new vocabulary. |
+| Specs & docs | `knowledge/foundations/llm-drivers.md` restructured to the ChatDriver wire contract (entity/resolution/key-management content moves here); `knowledge/foundations/concepts.md`, `knowledge/foundations/models.md`, `knowledge/operations/voice.md`, `knowledge/security/usage-tracking.md`, `knowledge/runtime-resources/knowledge-bases.md`, `docs/` (including `docs/how-to/migrate-providers.md`), `knowledge/test-cases/` updated to the new vocabulary. |
 | Tests | Unit/integration/repository tests follow renames; new coverage: credential-schema validation, profile assignment at sync, `resolve_service` selection and fail-closed behavior, multi-provider-per-driver resolution. The fail-closed env-leak test is preserved under the new resolver name. |
 
 ## Phasing
@@ -414,6 +446,7 @@ The refactor has landed; current implementations live at:
 - `crates/core/src/provider_resolution.rs`, `ProviderStore` + `ResolvedModel`
 - `crates/server/src/services/provider_resolver.rs`, fail-closed resolution (`resolve_service`)
 - `crates/server/src/services/model_sync.rs`, model discovery
+- `crates/server/src/domains/providers/credential_check.rs`, pre-store credential probe + failure classification
 - `crates/server/src/api/providers.rs`, `crates/server/src/api/models.rs`, REST API
 - `crates/server/src/api/voice.rs`, realtime credential resolution (routed through `resolve_service`)
 - `crates/platform/src/connector.rs`, connector plugin trait

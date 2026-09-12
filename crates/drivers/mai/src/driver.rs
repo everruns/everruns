@@ -14,7 +14,7 @@ use everruns_provider::credential_schema::{CredentialFormSchema, FormField};
 use everruns_provider::driver_helpers::fetch_models;
 use everruns_provider::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
-    LlmMessage, LlmResponseStream,
+    LlmMessage, LlmResponse, LlmResponseStream,
 };
 use everruns_provider::error::Result;
 use everruns_provider::openai_protocol::{is_azure_openai_api_url, models_url_for_api_url};
@@ -101,6 +101,21 @@ impl ChatDriver for MaiChatDriver {
         self.inner.supports_parallel_tool_calls(model)
     }
 
+    fn supports_native_non_streaming(&self) -> bool {
+        self.inner.supports_native_non_streaming()
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &everruns_provider::ProviderEndpoint,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponse> {
+        self.inner
+            .chat_completion_non_streaming(endpoint, messages, config)
+            .await
+    }
+
     async fn list_models(
         &self,
         endpoint: &ProviderEndpoint,
@@ -117,7 +132,7 @@ impl ChatDriver for MaiChatDriver {
         }
 
         list_foundry_models(
-            self.inner.client(),
+            &self.inner.client(),
             endpoint,
             &models_url_for_api_url(&api_url),
         )
@@ -334,7 +349,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: Some(false),
             volatile_suffix_len: 0,
             extra_headers: vec![],

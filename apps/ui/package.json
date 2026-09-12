@@ -1,6 +1,6 @@
 {
   "name": "everruns-ui",
-  "version": "0.22.0",
+  "version": "0.25.0",
   "private": true,
   "packageManager": "pnpm@10.33.0",
   "exports": {
@@ -44,7 +44,7 @@
     "cron-parser": "^5.6.1",
     "cronstrue": "^3.24.0",
     "lucide-react": "^1.23.0",
-    "next": "^16.2.11",
+    "next": "^16.3.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "recharts": "^3.9.1",
@@ -52,7 +52,7 @@
     "remark-github-blockquote-alert": "^2.1.0",
     "streamdown": "^2.5.0",
     "tailwind-merge": "^3.6.0",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@ag-ui/core": "^0.0.53",

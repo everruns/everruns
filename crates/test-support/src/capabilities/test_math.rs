@@ -298,82 +298,36 @@ impl Tool for DivideTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
-
-    #[test]
-    fn test_capability_no_system_prompt() {
-        let cap = TestMathCapability;
-        assert!(cap.system_prompt_addition().is_none());
-    }
+    use serde_json::json;
 
     #[tokio::test]
-    async fn test_add_tool() {
-        let tool = AddTool;
-        let result = tool.execute(serde_json::json!({"a": 5, "b": 3})).await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 8.0);
-            assert_eq!(value.get("operation").unwrap().as_str().unwrap(), "add");
-        } else {
-            panic!("Expected success");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_subtract_tool() {
-        let tool = SubtractTool;
-        let result = tool.execute(serde_json::json!({"a": 10, "b": 4})).await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 6.0);
+    async fn registered_math_tools_preserve_operands_and_operation_results() {
+        let tools = TestMathCapability.tools();
+        assert_eq!(
+            tools.iter().map(|tool| tool.name()).collect::<Vec<_>>(),
+            ["add", "subtract", "multiply", "divide"]
+        );
+        for (tool, expected) in tools.iter().zip([-4.5, -10.5, -22.5, -2.5]) {
+            let ToolExecutionResult::Success(value) = tool.execute(json!({"a":-7.5,"b":3})).await
+            else {
+                panic!("{} should return a result", tool.name());
+            };
             assert_eq!(
-                value.get("operation").unwrap().as_str().unwrap(),
-                "subtract"
+                value,
+                json!({"a":-7.5,"b":3.0,"operation":tool.name(),"result":expected})
             );
-        } else {
-            panic!("Expected success");
         }
     }
 
     #[tokio::test]
-    async fn test_multiply_tool() {
-        let tool = MultiplyTool;
-        let result = tool.execute(serde_json::json!({"a": 6, "b": 7})).await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 42.0);
-            assert_eq!(
-                value.get("operation").unwrap().as_str().unwrap(),
-                "multiply"
-            );
-        } else {
-            panic!("Expected success");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_divide_tool() {
-        let tool = DivideTool;
-        let result = tool.execute(serde_json::json!({"a": 20, "b": 4})).await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("result").unwrap().as_f64().unwrap(), 5.0);
-            assert_eq!(value.get("operation").unwrap().as_str().unwrap(), "divide");
-        } else {
-            panic!("Expected success");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_divide_by_zero() {
-        let tool = DivideTool;
-        let result = tool.execute(serde_json::json!({"a": 10, "b": 0})).await;
-
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(msg.contains("divide by zero"));
-        } else {
-            panic!("Expected tool error for division by zero");
+    async fn division_rejects_both_signed_zero_divisors() {
+        for zero in [0.0, -0.0] {
+            let ToolExecutionResult::ToolError(error) =
+                DivideTool.execute(json!({"a":10,"b":zero})).await
+            else {
+                panic!("zero divisor must fail");
+            };
+            assert_eq!(error, "Cannot divide by zero");
         }
     }
 }

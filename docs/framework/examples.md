@@ -24,6 +24,12 @@ the agents with placeholder credentials, so it never makes billed calls.
 Each example page includes source, prerequisite, command, and terminal
 screencast.
 
+## Execution runtimes
+
+| Example | Provider and model | What it does |
+| --- | --- | --- |
+| [Bashkit Repo Agent](/framework/examples/bashkit-repo-agent/) | OpenAI `gpt-5.6-terra` | Cuts a release in a real repository with the sandboxed Bashkit shell as its only tool, then verifies the result on disk. |
+
 ## Core crate catalog
 
 | Example | Demonstrates | Command |

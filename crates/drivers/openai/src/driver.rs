@@ -16,7 +16,8 @@ use everruns_provider::OpenResponsesProtocolChatDriver;
 use everruns_provider::credential_schema::CredentialFormSchema;
 use everruns_provider::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
-    EmbeddingsDriverFactory, LlmCallConfig, LlmMessage, LlmResponseStream, ServiceKind,
+    EmbeddingsDriverFactory, LlmCallConfig, LlmMessage, LlmResponse, LlmResponseStream,
+    ServiceKind,
 };
 use everruns_provider::error::{AgentLoopError, Result};
 use everruns_provider::openai_protocol::{
@@ -143,6 +144,21 @@ impl ChatDriver for OpenAIChatDriver {
             .await
     }
 
+    fn supports_native_non_streaming(&self) -> bool {
+        self.inner.supports_native_non_streaming()
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &everruns_provider::ProviderEndpoint,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponse> {
+        self.inner
+            .chat_completion_non_streaming(endpoint, messages, config)
+            .await
+    }
+
     async fn list_models(
         &self,
         endpoint: &ProviderEndpoint,
@@ -156,7 +172,7 @@ impl ChatDriver for OpenAIChatDriver {
         }
 
         let models_url = models_url_for_api_url(&api_url);
-        list_openai_models(self.inner.client(), endpoint, &models_url).await
+        list_openai_models(&self.inner.client(), endpoint, &models_url).await
     }
 
     fn supports_compact(&self) -> bool {
@@ -237,6 +253,21 @@ impl ChatDriver for OpenAICompletionsChatDriver {
             .await
     }
 
+    fn supports_native_non_streaming(&self) -> bool {
+        self.inner.supports_native_non_streaming()
+    }
+
+    async fn chat_completion_non_streaming(
+        &self,
+        endpoint: &everruns_provider::ProviderEndpoint,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponse> {
+        self.inner
+            .chat_completion_non_streaming(endpoint, messages, config)
+            .await
+    }
+
     async fn list_models(
         &self,
         endpoint: &ProviderEndpoint,
@@ -250,7 +281,7 @@ impl ChatDriver for OpenAICompletionsChatDriver {
         }
 
         let models_url = models_url_for_api_url(&api_url);
-        list_openai_models(self.inner.client(), endpoint, &models_url).await
+        list_openai_models(&self.inner.client(), endpoint, &models_url).await
     }
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {

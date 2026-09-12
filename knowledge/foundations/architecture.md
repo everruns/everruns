@@ -147,7 +147,7 @@ everruns/
 │   └── deno/             # Deno sandbox (inventory plugin)
 ├── docs/                 # Documentation content (symlinked to apps/docs)
 ├── knowledge/            # OKF design and product knowledge
-├── test_cases/           # Manual test cases
+│   └── test-cases/       # Manual test cases
 ├── local/                # Docker Compose for local dev
 └── scripts/              # Dev scripts
 ```

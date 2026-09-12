@@ -30,7 +30,7 @@ refreshed automatically.
 
 ```text
 /plugin marketplace add everruns/everruns
-/plugin install resend@everruns-dev
+/plugin install resend@everruns
 ```
 
 Claude Code runs its own OAuth flow on first use of the server.

@@ -888,7 +888,7 @@ mod tests {
     fn compile_microsoft_docs_fixture() {
         let fixture = std::path::Path::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../testdata/plugins/microsoft-docs"
+            "/testdata/plugins/microsoft-docs"
         ));
         let file_set = PluginFileSet::from_dir(fixture).expect("load fixture");
         let compiled = compile_plugin(&file_set).expect("compile fixture");
@@ -957,7 +957,6 @@ mod tests {
     fn compile_first_party_portable_plugins() {
         for (name, url) in [
             ("everruns", "https://app.everruns.com/mcp"),
-            ("everruns-dev", "https://dev.everruns.com/mcp"),
             ("resend", "https://mcp.resend.com/mcp"),
         ] {
             let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

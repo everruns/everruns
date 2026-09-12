@@ -3,8 +3,9 @@
 // `RealDiskFileStore` rooted at a temp directory.
 //
 // What this proves:
-//   1. Drop AGENTS.md on disk → it appears in the system prompt on the next
-//      turn (no rebuild required).
+//   1. Drop AGENTS.md on disk → it appears as the leading user-role message
+//      (conversation context) on the next turn (no rebuild required) — and
+//      never in the system prompt.
 //   2. Edit AGENTS.md on disk → the change appears on the next turn (the
 //      capability re-reads every `load_context`).
 //
@@ -103,14 +104,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     // 5. Inspect the assembled context. The AgentInstructionsCapability
-    //    reads AGENTS.md from RealDiskFileStore and folds it into the
+    //    reads AGENTS.md from RealDiskFileStore and resolves it as
+    //    conversation context — model-visible, but never folded into the
     //    system prompt.
     let ctx = runtime.load_context(session_id).await?;
-    println!("\n--- system prompt (initial) ---");
-    println!("{}", ctx.runtime_agent.system_prompt);
+    println!("\n--- conversation context (initial) ---");
+    let context = ctx
+        .runtime_agent
+        .conversation_context
+        .as_deref()
+        .unwrap_or("<none>");
+    println!("{context}");
     assert!(
-        ctx.runtime_agent.system_prompt.contains("snake_case"),
-        "AGENTS.md content should be in the system prompt"
+        !ctx.runtime_agent.system_prompt.contains("snake_case"),
+        "AGENTS.md content must not enter the system prompt"
+    );
+    assert!(
+        context.contains("snake_case"),
+        "AGENTS.md content should ride as conversation context"
     );
 
     // 6. Mutate the file on disk and reload — the change appears on the
@@ -121,10 +132,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     let ctx = runtime.load_context(session_id).await?;
-    println!("\n--- system prompt (after editing AGENTS.md on disk) ---");
-    println!("{}", ctx.runtime_agent.system_prompt);
+    println!("\n--- conversation context (after editing AGENTS.md on disk) ---");
+    let context = ctx
+        .runtime_agent
+        .conversation_context
+        .as_deref()
+        .unwrap_or("<none>");
+    println!("{context}");
     assert!(
-        ctx.runtime_agent.system_prompt.contains("camelCase"),
+        !ctx.runtime_agent.system_prompt.contains("camelCase"),
+        "edited AGENTS.md must stay out of the system prompt"
+    );
+    assert!(
+        context.contains("camelCase"),
         "edited AGENTS.md should appear on the next turn"
     );
 

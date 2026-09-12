@@ -35,6 +35,15 @@ jest.mock("@/hooks", () => ({
   usePageTitle: jest.fn(),
 }));
 
+// The page now decides whether its empty state is "No chats yet" or the
+// no-intelligence message, so it reads intelligence status (org context this
+// suite does not stub). Default to available; the no-intelligence branch has
+// its own coverage.
+const intelligenceStatus = { isLoading: false, available: true, canManage: true };
+jest.mock("@/hooks/use-intelligence", () => ({
+  useIntelligenceStatus: () => intelligenceStatus,
+}));
+
 jest.mock("@/components/chat/new-chat-form", () => ({
   NewChatForm: ({ onStartingChange }: { onStartingChange?: (starting: boolean) => void }) => (
     <button type="button" onClick={() => onStartingChange?.(true)}>
@@ -77,6 +86,9 @@ describe("Chats surface", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseChatThreads.mockReturnValue({ threads: [], isLoading: false, error: null });
+    intelligenceStatus.isLoading = false;
+    intelligenceStatus.available = true;
+    intelligenceStatus.canManage = true;
   });
 
   it("renders the empty state without feature-flag configuration", () => {
@@ -91,6 +103,18 @@ describe("Chats surface", () => {
 
     expect(screen.getByText("No chats yet")).toBeInTheDocument();
     expect(screen.getByText("new-chat-form")).toBeInTheDocument();
+  });
+
+  it("swaps the whole empty state for the no-intelligence message", () => {
+    intelligenceStatus.available = false;
+
+    render(<ChatsPageClient />);
+
+    expect(screen.getByText("No intelligence available")).toBeInTheDocument();
+    // One centred message: "No chats yet / pick an agent and start talking"
+    // would be advice that cannot work.
+    expect(screen.queryByText("No chats yet")).not.toBeInTheDocument();
+    expect(screen.queryByText("new-chat-form")).not.toBeInTheDocument();
   });
 
   it("lists threads, linking each to its thread route", () => {

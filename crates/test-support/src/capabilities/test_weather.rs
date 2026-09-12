@@ -202,7 +202,7 @@ impl Tool for GetForecastTool {
             .get("days")
             .and_then(|v| v.as_u64())
             .unwrap_or(3)
-            .min(7) as usize;
+            .clamp(1, 7) as usize;
 
         let units = arguments
             .get("units")
@@ -225,7 +225,12 @@ impl Tool for GetForecastTool {
             } else {
                 temp_c as f64
             };
-            let temp_low = temp_high - 8.0 - ((day_hash % 5) as f64);
+            let low_c = temp_c as f64 - 8.0 - ((day_hash % 5) as f64);
+            let temp_low = if units == "fahrenheit" {
+                (low_c * 9.0 / 5.0) + 32.0
+            } else {
+                low_c
+            };
 
             let conditions = match day_hash % 5 {
                 0 => "sunny",
@@ -258,83 +263,103 @@ impl Tool for GetForecastTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
-
-    #[test]
-    fn test_capability_no_system_prompt() {
-        let cap = TestWeatherCapability;
-        assert!(cap.system_prompt_addition().is_none());
-    }
+    use serde_json::json;
 
     #[tokio::test]
-    async fn test_get_weather_tool() {
-        let tool = GetWeatherTool;
-        let result = tool
-            .execute(serde_json::json!({"location": "New York"}))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("location").unwrap().as_str().unwrap(), "New York");
-            assert!(value.get("temperature").is_some());
-            assert!(value.get("conditions").is_some());
-            assert!(value.get("humidity").is_some());
-        } else {
-            panic!("Expected success");
+    async fn registered_weather_tool_returns_complete_unit_aware_observations() {
+        let tools = TestWeatherCapability.tools();
+        assert_eq!(
+            tools.iter().map(|tool| tool.name()).collect::<Vec<_>>(),
+            ["get_weather", "get_forecast"]
+        );
+        for (arguments, location, units, temperature, conditions, humidity, wind) in [
+            (
+                json!({"location":"A"}),
+                "A",
+                "celsius",
+                35.0,
+                "sunny",
+                45,
+                10,
+            ),
+            (
+                json!({"location":"A","units":"fahrenheit"}),
+                "A",
+                "fahrenheit",
+                95.0,
+                "sunny",
+                45,
+                10,
+            ),
+            (
+                json!({"location":"B"}),
+                "B",
+                "celsius",
+                36.0,
+                "partly cloudy",
+                46,
+                11,
+            ),
+        ] {
+            let before = chrono::Utc::now();
+            let ToolExecutionResult::Success(mut value) = tools[0].execute(arguments).await else {
+                panic!("weather must succeed")
+            };
+            let after = chrono::Utc::now();
+            let timestamp = value.as_object_mut().unwrap().remove("timestamp").unwrap();
+            let timestamp = chrono::DateTime::parse_from_rfc3339(timestamp.as_str().unwrap())
+                .unwrap()
+                .with_timezone(&chrono::Utc);
+            assert!(timestamp >= before && timestamp <= after);
+            assert_eq!(
+                value,
+                json!({"location":location,"units":units,"temperature":temperature,"conditions":conditions,"humidity":humidity,"wind_speed_kmh":wind})
+            );
         }
     }
 
     #[tokio::test]
-    async fn test_get_weather_fahrenheit() {
-        let tool = GetWeatherTool;
-        let result = tool
-            .execute(serde_json::json!({"location": "London", "units": "fahrenheit"}))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("units").unwrap().as_str().unwrap(), "fahrenheit");
-            // Fahrenheit temps should be higher than Celsius
-            let temp = value.get("temperature").unwrap().as_f64().unwrap();
-            assert!(temp > 30.0); // At least 30°F
-        } else {
-            panic!("Expected success");
+    async fn forecasts_convert_both_temperatures_and_bound_day_counts() {
+        let tools = TestWeatherCapability.tools();
+        for (units, temperatures) in [
+            ("celsius", [(35.0, 27.0), (7.0, -3.0), (14.0, 2.0)]),
+            ("fahrenheit", [(95.0, 80.6), (44.6, 26.6), (57.2, 35.6)]),
+        ] {
+            let before = chrono::Utc::now().date_naive();
+            let ToolExecutionResult::Success(value) = tools[1]
+                .execute(json!({"location":"A","units":units}))
+                .await
+            else {
+                panic!("forecast must succeed")
+            };
+            let after = chrono::Utc::now().date_naive();
+            let first = chrono::NaiveDate::parse_from_str(
+                value["forecast"][0]["date"].as_str().unwrap(),
+                "%Y-%m-%d",
+            )
+            .unwrap();
+            assert!(first >= before && first <= after);
+            let expected = temperatures.into_iter().zip([("sunny",65),("cloudy",72),("windy",79)]).enumerate().map(|(day,((high,low),(conditions,precipitation)))| json!({
+                "date":(first+chrono::Duration::days(day as i64)).to_string(),"high":high,"low":low,"conditions":conditions,"precipitation_chance":precipitation
+            })).collect::<Vec<_>>();
+            assert_eq!(
+                value,
+                json!({"location":"A","units":units,"days":3,"forecast":expected})
+            );
         }
-    }
-
-    #[tokio::test]
-    async fn test_get_forecast_tool() {
-        let tool = GetForecastTool;
-        let result = tool
-            .execute(serde_json::json!({"location": "Tokyo", "days": 5}))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("location").unwrap().as_str().unwrap(), "Tokyo");
-            assert_eq!(value.get("days").unwrap().as_u64().unwrap(), 5);
-            let forecast = value.get("forecast").unwrap().as_array().unwrap();
-            assert_eq!(forecast.len(), 5);
-            // Check first day has expected fields
-            let first_day = &forecast[0];
-            assert!(first_day.get("date").is_some());
-            assert!(first_day.get("high").is_some());
-            assert!(first_day.get("low").is_some());
-            assert!(first_day.get("conditions").is_some());
-        } else {
-            panic!("Expected success");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_get_forecast_default_days() {
-        let tool = GetForecastTool;
-        let result = tool.execute(serde_json::json!({"location": "Paris"})).await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value.get("days").unwrap().as_u64().unwrap(), 3); // Default is 3
-            let forecast = value.get("forecast").unwrap().as_array().unwrap();
-            assert_eq!(forecast.len(), 3);
-        } else {
-            panic!("Expected success");
+        for (requested, expected) in [(0, 1), (1, 1), (7, 7), (8, 7), (u64::MAX, 7)] {
+            let ToolExecutionResult::Success(value) = tools[1]
+                .execute(json!({"location":"A","days":requested}))
+                .await
+            else {
+                panic!("forecast must succeed")
+            };
+            assert_eq!(value["days"], expected);
+            assert_eq!(
+                value["forecast"].as_array().unwrap().len(),
+                expected as usize
+            );
+            assert_eq!(value["units"], "celsius");
         }
     }
 }

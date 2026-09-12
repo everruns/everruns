@@ -27,6 +27,12 @@ Every harness has two name fields:
 | `name` | URL/CLI-friendly addressable identifier | `[a-z0-9]+(-[a-z0-9]+)*`, max 64 chars, unique per org | `deep-research` |
 | `display_name` | Human-readable label shown in UI | Free-form string, max 2 KB | `Deep Research` |
 
+Harnesses also carry an optional `icon`: a glyph name the UI renders on harness cards, detail pages,
+and the example gallery. Icons are code-defined — every built-in and example harness declares one in
+its definition (`crates/server/src/harnesses/*.rs`), and the UI resolves the name against its icon
+map (`apps/ui/src/lib/harness-icons.tsx`). The API does not accept an icon on create/update, so
+user-created harnesses render the neutral fallback glyph.
+
 The `name` field works like a GitHub repository name: lowercase alphanumeric with hyphens, no consecutive hyphens, no leading/trailing hyphens. It is unique per organization (among non-deleted harnesses) and can be used for API lookups, CLI references, and URL routing.
 
 ### Name-based access
@@ -100,17 +106,32 @@ The recommended default harness. Bundles the core capabilities needed for genera
 
 ### Platform Chat
 
-Conversational harness for the global chat interface. Inherits Generic capabilities, adds `platform`, and is tagged separately to support the per-user singleton session pattern.
+Conversational harness for the Everruns Platform chat. Parents on Base and declares an explicit,
+focused capability set, so its effective surface is exactly what it lists. It is tagged separately to
+support the per-user singleton session pattern.
 
 | Property | Value |
 |----------|-------|
 | Name | `platform-chat` |
 | Display Name | Platform Chat |
-| Parent | `generic` |
+| Parent | `base` |
 | System Prompt | See `crates/server/src/harnesses/platform_chat.rs` for full prompt |
 | Tags | `chat`, `built-in` |
 
-**Effective capabilities:** Inherits Generic harness capabilities and adds local `platform`.
+**Effective capabilities:** Base contributes none, so the effective set is the local list in
+`crates/server/src/harnesses/platform_chat.rs` — pinned by
+`platform_chat_has_a_focused_tool_surface`. It grants platform catalog access, the UI-facing
+affordances the chat surface renders (tool narration, timestamps, todo lists), conversational
+robustness (loop detection, tool-call repair, detailed error disclosure, proactive compaction), and
+prompt caching for long operator threads.
+
+**Deliberately excluded:** no file system, shell, or web fetch — the chat stays grounded in platform
+state rather than becoming a coding agent. That exclusion transitively rules out
+`tool_output_distillation`, `tool_output_persistence`, and `memory`, which all depend on
+`session_file_system`; `memory` additionally needs `mounts[]` naming per-org `mem_` IDs that a
+built-in definition cannot know. `session_schedule` is excluded because recurring work belongs on an
+Agent Trigger, never on the chat session itself. Guarded by
+`platform_chat_omits_vfs_dependent_capabilities`.
 
 **Authorization rule:** Do not remove `platform` from Platform Chat to paper over authorization bugs. Platform tools must reload the session owner and enforce that caller's permissions via the normal command/policy path.
 

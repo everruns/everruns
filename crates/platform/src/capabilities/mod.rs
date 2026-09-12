@@ -17,6 +17,7 @@ pub mod knowledge_index;
 pub mod memory;
 pub mod monitors;
 pub mod platform;
+mod platform_docs;
 pub mod platform_management;
 pub mod research;
 pub mod session_sandbox;
@@ -78,11 +79,7 @@ pub use platform::{
     PlatformCapability, QUERY_DESCRIPTION as PLATFORM_QUERY_DESCRIPTION, discover_input_schema,
     execute_input_schema, query_input_schema,
 };
-pub use platform_management::{
-    ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool, PLATFORM_MANAGEMENT_CAPABILITY_ID,
-    PlatformManagementCapability, ReadAgentsTool, ReadCapabilitiesTool, ReadHarnessesTool,
-    ReadSessionsTool, SessionReadMessagesTool, SessionReadResponseTool, SessionSendMessageTool,
-};
+pub use platform_management::{PLATFORM_MANAGEMENT_CAPABILITY_ID, PlatformManagementCapability};
 pub use research::{RESEARCH_CAPABILITY_ID, ResearchCapability};
 pub use session_sandbox::{
     SESSION_SANDBOX_CAPABILITY_ID, SandboxExecTool, SandboxManageTool, SandboxReadFileTool,
