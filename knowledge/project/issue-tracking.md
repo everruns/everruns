@@ -18,7 +18,7 @@ We use [Linear](https://linear.app) for issue tracking. All issues for this repo
 
 ## Prerequisites
 
-- Linear MCP server configured (`.mcp.json`)
+- Linear MCP server configured (agent global config)
 - `LINEAR_API_KEY` available via Doppler
 - GitHub CLI authenticated: `doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh auth status'`
 
