@@ -35,25 +35,6 @@
         "harness",
         "llm"
       ]
-    },
-    {
-      "name": "resend",
-      "displayName": "Resend",
-      "description": "Send transactional emails through the Resend remote MCP server from Cursor. Sending, scheduling, audiences, and broadcasts over OAuth.",
-      "source": "./plugins/resend",
-      "version": "0.1.1",
-      "publisher": "Everruns",
-      "license": "MIT",
-      "categories": [
-        "productivity",
-        "developer-tools"
-      ],
-      "keywords": [
-        "resend",
-        "email",
-        "mcp",
-        "oauth"
-      ]
     }
   ]
 }
