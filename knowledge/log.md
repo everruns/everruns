@@ -1,5 +1,21 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-12
+
+* **The Slack channel is a classic Events API bot on a platform that has moved
+  on.** Slack now ships a dedicated agent surface, split-view container, app
+  threads, native text streaming, agent session status and titles, suggested
+  prompts, plus manifest fields that can carry the event subscription URL,
+  interactivity, slash commands and Workflow Builder steps. We use none of it.
+  A read of the handler and delivery dispatcher also turned up silent terminal
+  states (a failed turn, an exhausted budget, or a delivery that ran out of
+  retries produces no Slack reply at all), a `ChannelDeliveryAdapter` impl the
+  only dispatcher never calls, a `ThreadContext` built and discarded on every
+  message, and a missing message-subtype allowlist that lets a `channel_join`
+  event start a session and burn a turn. Recorded as
+  [Slack Integration Modernization](integrations/slack-modernization.md) with a
+  suggested ordering; nothing is committed to yet.
+
 ## 2026-09-11
 
 * **Session schedules are now safe to poll from more than one server

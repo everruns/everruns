@@ -13,5 +13,6 @@
 * [A2A Capability](a2a-capability.md) - A2A outbound delegation capability.
 * [FCP (Free Communication Protocol) channel](fcp-channel.md) - FCP inbound channel.
 * [Messaging Integrations](messaging-integrations.md) - Messaging integrations.
+* [Slack Integration Modernization](slack-modernization.md) - Gap analysis of the Slack channel against the current Slack agent platform, with a prioritized set of improvements.
 * [Plugins](plugins.md) - Plugin host: marketplaces and cross-host plugin packages installed as capabilities.
 * [Model Router Specification](model-router.md) - Model Routers.
