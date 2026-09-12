@@ -23,6 +23,7 @@ everruns-provider.workspace = true
 
 async-trait.workspace = true
 chrono.workspace = true
+chrono-tz = "0.10"
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
