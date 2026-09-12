@@ -55,16 +55,10 @@ use crate::services::{EventService, ProviderResolverService};
 use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
 use crate::storage::{EncryptionService, StorageBackend};
 use everruns_durable::WorkflowEventStore;
-use serde::Deserialize;
 
 // Helper to create store errors
 fn store_error(msg: impl Into<String>) -> AgentLoopError {
     AgentLoopError::store(msg)
-}
-
-#[derive(Debug, Deserialize)]
-struct CommandPage<T> {
-    data: Vec<T>,
 }
 
 /// Extract file name from path
@@ -2753,13 +2747,6 @@ impl DirectPlatformStore {
         )
     }
 
-    fn capability_refs_to_configs(capabilities: &[String]) -> Vec<serde_json::Value> {
-        capabilities
-            .iter()
-            .map(|capability| serde_json::json!({ "ref": capability, "config": {} }))
-            .collect()
-    }
-
     async fn resolve_caller(&self) -> everruns_provider::error::Result<Caller> {
         self.resolved_caller
             .get_or_try_init(|| async {
@@ -2983,11 +2970,6 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
     // Harness Operations
     // =========================================================================
 
-    async fn list_harnesses(&self) -> everruns_provider::error::Result<Vec<Harness>> {
-        self.execute_domain_command("list_harnesses", serde_json::json!({}))
-            .await
-    }
-
     async fn get_harness(
         &self,
         id: HarnessId,
@@ -2996,127 +2978,9 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
             .await
     }
 
-    async fn create_harness(
-        &self,
-        name: &str,
-        display_name: Option<&str>,
-        description: Option<&str>,
-        system_prompt: Option<&str>,
-        parent_harness_id: Option<HarnessId>,
-        capabilities: &[String],
-    ) -> everruns_provider::error::Result<Harness> {
-        self.execute_domain_command(
-            "create_harness",
-            serde_json::json!({
-                "name": name,
-                "display_name": display_name,
-                "description": description,
-                // Omit when absent so the harness contributes no base prompt.
-                "system_prompt": system_prompt,
-                "parent_harness_id": parent_harness_id.map(|id| id.to_string()),
-                "tags": ["managed"],
-                "initial_files": [],
-                "mcp_servers": {},
-                "capabilities": Self::capability_refs_to_configs(capabilities),
-            }),
-        )
-        .await
-    }
-
-    async fn update_harness(
-        &self,
-        id: HarnessId,
-        name: Option<&str>,
-        display_name: Option<&str>,
-        description: Option<&str>,
-        system_prompt: Option<&str>,
-        parent_harness_id: Option<Option<HarnessId>>,
-    ) -> everruns_provider::error::Result<Harness> {
-        let mut params = serde_json::Map::from_iter([(
-            "id".to_string(),
-            serde_json::Value::String(id.to_string()),
-        )]);
-        if let Some(name) = name {
-            params.insert(
-                "name".to_string(),
-                serde_json::Value::String(name.to_string()),
-            );
-        }
-        if let Some(display_name) = display_name {
-            params.insert(
-                "display_name".to_string(),
-                serde_json::Value::String(display_name.to_string()),
-            );
-        }
-        if let Some(description) = description {
-            params.insert(
-                "description".to_string(),
-                serde_json::Value::String(description.to_string()),
-            );
-        }
-        if let Some(system_prompt) = system_prompt {
-            params.insert(
-                "system_prompt".to_string(),
-                serde_json::Value::String(system_prompt.to_string()),
-            );
-        }
-        match parent_harness_id {
-            Some(Some(parent_id)) => {
-                params.insert(
-                    "parent_harness_id".to_string(),
-                    serde_json::Value::String(parent_id.to_string()),
-                );
-            }
-            Some(None) => {
-                params.insert("parent_harness_id".to_string(), serde_json::Value::Null);
-            }
-            None => {}
-        }
-
-        self.execute_domain_command("update_harness", serde_json::Value::Object(params))
-            .await
-    }
-
-    async fn delete_harness(&self, id: HarnessId) -> everruns_provider::error::Result<()> {
-        let _: serde_json::Value = self
-            .execute_domain_command(
-                "delete_harness",
-                serde_json::json!({ "id": id.to_string() }),
-            )
-            .await?;
-        Ok(())
-    }
-
-    async fn copy_harness(
-        &self,
-        id: HarnessId,
-        new_name: Option<&str>,
-    ) -> everruns_provider::error::Result<Harness> {
-        let harness: Harness = self
-            .execute_domain_command("copy_harness", serde_json::json!({ "id": id.to_string() }))
-            .await?;
-
-        if let Some(new_name) = new_name {
-            self.update_harness(harness.id, Some(new_name), None, None, None, None)
-                .await
-        } else {
-            Ok(harness)
-        }
-    }
-
     // =========================================================================
     // Agent Operations
     // =========================================================================
-
-    async fn list_agents(&self) -> everruns_provider::error::Result<Vec<Agent>> {
-        let page: CommandPage<Agent> = self
-            .execute_domain_command(
-                "list_agents",
-                serde_json::json!({ "offset": 0, "limit": 1000 }),
-            )
-            .await?;
-        Ok(page.data)
-    }
 
     async fn get_agent_by_id(
         &self,
@@ -3126,381 +2990,13 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
             .await
     }
 
-    async fn create_agent(
-        &self,
-        name: &str,
-        display_name: Option<&str>,
-        description: Option<&str>,
-        system_prompt: &str,
-        capabilities: &[String],
-    ) -> everruns_provider::error::Result<Agent> {
-        self.execute_domain_command(
-            "create_agent",
-            serde_json::json!({
-                "name": name,
-                "display_name": display_name,
-                "description": description,
-                "system_prompt": system_prompt,
-                "tags": ["managed"],
-                "initial_files": [],
-                "tools": [],
-                "mcp_servers": {},
-                "capabilities": Self::capability_refs_to_configs(capabilities),
-            }),
-        )
-        .await
-    }
-
-    async fn update_agent(
-        &self,
-        id: AgentId,
-        name: Option<&str>,
-        display_name: Option<&str>,
-        description: Option<&str>,
-        system_prompt: Option<&str>,
-    ) -> everruns_provider::error::Result<Agent> {
-        let mut params = serde_json::Map::from_iter([(
-            "id".to_string(),
-            serde_json::Value::String(id.to_string()),
-        )]);
-        if let Some(name) = name {
-            params.insert(
-                "name".to_string(),
-                serde_json::Value::String(name.to_string()),
-            );
-        }
-        if let Some(display_name) = display_name {
-            params.insert(
-                "display_name".to_string(),
-                serde_json::Value::String(display_name.to_string()),
-            );
-        }
-        if let Some(description) = description {
-            params.insert(
-                "description".to_string(),
-                serde_json::Value::String(description.to_string()),
-            );
-        }
-        if let Some(system_prompt) = system_prompt {
-            params.insert(
-                "system_prompt".to_string(),
-                serde_json::Value::String(system_prompt.to_string()),
-            );
-        }
-
-        self.execute_domain_command("update_agent", serde_json::Value::Object(params))
-            .await
-    }
-
-    async fn delete_agent(&self, id: AgentId) -> everruns_provider::error::Result<()> {
-        let _: serde_json::Value = self
-            .execute_domain_command("delete_agent", serde_json::json!({ "id": id.to_string() }))
-            .await?;
-        Ok(())
-    }
-
     // =========================================================================
     // App Operations
     // =========================================================================
 
-    async fn list_apps(
-        &self,
-        search: Option<&str>,
-        include_archived: bool,
-    ) -> everruns_provider::error::Result<Vec<everruns_platform::App>> {
-        let mut params = serde_json::Map::new();
-        if let Some(search) = search {
-            params.insert(
-                "search".to_string(),
-                serde_json::Value::String(search.to_string()),
-            );
-        }
-        if include_archived {
-            params.insert(
-                "include_archived".to_string(),
-                serde_json::Value::Bool(true),
-            );
-        }
-        self.execute_domain_command("list_apps", serde_json::Value::Object(params))
-            .await
-    }
-
-    async fn get_app(
-        &self,
-        id: everruns_provider::typed_id::AppId,
-    ) -> everruns_provider::error::Result<Option<everruns_platform::App>> {
-        self.execute_domain_lookup("get_app", serde_json::json!({ "id": id.to_string() }))
-            .await
-    }
-
-    async fn create_app(
-        &self,
-        name: &str,
-        description: Option<&str>,
-        harness_id: HarnessId,
-        agent_id: Option<AgentId>,
-        agent_identity_id: Option<everruns_provider::typed_id::AgentIdentityId>,
-        channel_type: Option<everruns_platform::ChannelType>,
-        channel_config: Option<&serde_json::Value>,
-    ) -> everruns_provider::error::Result<everruns_platform::App> {
-        let mut params = serde_json::Map::from_iter([
-            (
-                "name".to_string(),
-                serde_json::Value::String(name.to_string()),
-            ),
-            (
-                "harness_id".to_string(),
-                serde_json::Value::String(harness_id.to_string()),
-            ),
-        ]);
-        if let Some(description) = description {
-            params.insert(
-                "description".to_string(),
-                serde_json::Value::String(description.to_string()),
-            );
-        }
-        if let Some(agent_id) = agent_id {
-            params.insert(
-                "agent_id".to_string(),
-                serde_json::Value::String(agent_id.to_string()),
-            );
-        }
-        if let Some(agent_identity_id) = agent_identity_id {
-            params.insert(
-                "agent_identity_id".to_string(),
-                serde_json::Value::String(agent_identity_id.to_string()),
-            );
-        }
-        if let Some(channel_type) = channel_type {
-            params.insert(
-                "channel_type".to_string(),
-                serde_json::Value::String(channel_type.to_string()),
-            );
-        }
-        if let Some(channel_config) = channel_config {
-            params.insert("channel_config".to_string(), channel_config.clone());
-        }
-        self.execute_domain_command("create_app", serde_json::Value::Object(params))
-            .await
-    }
-
-    async fn update_app(
-        &self,
-        id: everruns_provider::typed_id::AppId,
-        name: Option<&str>,
-        description: Option<&str>,
-        harness_id: Option<HarnessId>,
-        agent_id: Option<AgentId>,
-        agent_identity_id: Option<Option<everruns_provider::typed_id::AgentIdentityId>>,
-    ) -> everruns_provider::error::Result<everruns_platform::App> {
-        let mut params = serde_json::Map::from_iter([(
-            "id".to_string(),
-            serde_json::Value::String(id.to_string()),
-        )]);
-        if let Some(name) = name {
-            params.insert(
-                "name".to_string(),
-                serde_json::Value::String(name.to_string()),
-            );
-        }
-        if let Some(description) = description {
-            params.insert(
-                "description".to_string(),
-                serde_json::Value::String(description.to_string()),
-            );
-        }
-        if let Some(harness_id) = harness_id {
-            params.insert(
-                "harness_id".to_string(),
-                serde_json::Value::String(harness_id.to_string()),
-            );
-        }
-        if let Some(agent_id) = agent_id {
-            params.insert(
-                "agent_id".to_string(),
-                serde_json::Value::String(agent_id.to_string()),
-            );
-        }
-        match agent_identity_id {
-            Some(Some(agent_identity_id)) => {
-                params.insert(
-                    "agent_identity_id".to_string(),
-                    serde_json::Value::String(agent_identity_id.to_string()),
-                );
-            }
-            Some(None) => {
-                params.insert("agent_identity_id".to_string(), serde_json::Value::Null);
-            }
-            None => {}
-        }
-        self.execute_domain_command("update_app", serde_json::Value::Object(params))
-            .await
-    }
-
-    async fn delete_app(
-        &self,
-        id: everruns_provider::typed_id::AppId,
-    ) -> everruns_provider::error::Result<()> {
-        let _: serde_json::Value = self
-            .execute_domain_command("delete_app", serde_json::json!({ "id": id.to_string() }))
-            .await?;
-        Ok(())
-    }
-
-    async fn destroy_app(
-        &self,
-        id: everruns_provider::typed_id::AppId,
-    ) -> everruns_provider::error::Result<()> {
-        let _: serde_json::Value = self
-            .execute_domain_command("destroy_app", serde_json::json!({ "id": id.to_string() }))
-            .await?;
-        Ok(())
-    }
-
-    async fn publish_app(
-        &self,
-        id: everruns_provider::typed_id::AppId,
-    ) -> everruns_provider::error::Result<everruns_platform::App> {
-        self.execute_domain_command("publish_app", serde_json::json!({ "id": id.to_string() }))
-            .await
-    }
-
-    async fn unpublish_app(
-        &self,
-        id: everruns_provider::typed_id::AppId,
-    ) -> everruns_provider::error::Result<everruns_platform::App> {
-        self.execute_domain_command("unpublish_app", serde_json::json!({ "id": id.to_string() }))
-            .await
-    }
-
-    async fn add_app_channel(
-        &self,
-        app_id: everruns_provider::typed_id::AppId,
-        channel_type: everruns_platform::ChannelType,
-        channel_config: Option<&serde_json::Value>,
-        enabled: Option<bool>,
-    ) -> everruns_provider::error::Result<everruns_platform::AppChannel> {
-        let mut params = serde_json::Map::from_iter([
-            (
-                "app_id".to_string(),
-                serde_json::Value::String(app_id.to_string()),
-            ),
-            (
-                "channel_type".to_string(),
-                serde_json::Value::String(channel_type.to_string()),
-            ),
-        ]);
-        if let Some(channel_config) = channel_config {
-            params.insert("channel_config".to_string(), channel_config.clone());
-        }
-        if let Some(enabled) = enabled {
-            params.insert("enabled".to_string(), serde_json::Value::Bool(enabled));
-        }
-        self.execute_domain_command("add_app_channel", serde_json::Value::Object(params))
-            .await
-    }
-
-    async fn update_app_channel(
-        &self,
-        app_id: everruns_provider::typed_id::AppId,
-        channel_id: everruns_provider::typed_id::AppChannelId,
-        channel_type: Option<everruns_platform::ChannelType>,
-        channel_config: Option<&serde_json::Value>,
-        enabled: Option<bool>,
-    ) -> everruns_provider::error::Result<everruns_platform::AppChannel> {
-        let mut params = serde_json::Map::from_iter([
-            (
-                "app_id".to_string(),
-                serde_json::Value::String(app_id.to_string()),
-            ),
-            (
-                "channel_id".to_string(),
-                serde_json::Value::String(channel_id.to_string()),
-            ),
-        ]);
-        if let Some(channel_type) = channel_type {
-            params.insert(
-                "channel_type".to_string(),
-                serde_json::Value::String(channel_type.to_string()),
-            );
-        }
-        if let Some(channel_config) = channel_config {
-            params.insert("channel_config".to_string(), channel_config.clone());
-        }
-        if let Some(enabled) = enabled {
-            params.insert("enabled".to_string(), serde_json::Value::Bool(enabled));
-        }
-        self.execute_domain_command("update_app_channel", serde_json::Value::Object(params))
-            .await
-    }
-
-    async fn delete_app_channel(
-        &self,
-        app_id: everruns_provider::typed_id::AppId,
-        channel_id: everruns_provider::typed_id::AppChannelId,
-    ) -> everruns_provider::error::Result<()> {
-        let _: serde_json::Value = self
-            .execute_domain_command(
-                "delete_app_channel",
-                serde_json::json!({
-                    "app_id": app_id.to_string(),
-                    "channel_id": channel_id.to_string(),
-                }),
-            )
-            .await?;
-        Ok(())
-    }
-
     // =========================================================================
     // Session Operations
     // =========================================================================
-
-    async fn list_sessions(
-        &self,
-        limit: Option<usize>,
-        agent_id: Option<AgentId>,
-    ) -> everruns_provider::error::Result<Vec<Session>> {
-        let page: CommandPage<Session> = self
-            .execute_domain_command(
-                "list_sessions",
-                serde_json::json!({
-                    "limit": limit.unwrap_or(20),
-                    "agent_id": agent_id.map(|id| id.to_string()),
-                }),
-            )
-            .await?;
-        Ok(page.data)
-    }
-
-    async fn create_session(
-        &self,
-        harness_id: HarnessId,
-        agent_id: Option<AgentId>,
-        title: Option<&str>,
-        locale: Option<&str>,
-        blueprint_id: Option<&str>,
-        blueprint_config: Option<&serde_json::Value>,
-        parent_session_id: Option<SessionId>,
-    ) -> everruns_provider::error::Result<Session> {
-        self.execute_domain_command(
-            "create_session",
-            serde_json::json!({
-                "harness_id": harness_id.to_string(),
-                "agent_id": agent_id.map(|id| id.to_string()),
-                "title": title,
-                "locale": locale,
-                "tags": ["managed"],
-                "capabilities": [],
-                "tools": [],
-                "mcp_servers": {},
-                "initial_files": [],
-                "blueprint_id": blueprint_id,
-                "blueprint_config": blueprint_config,
-                "parent_session_id": parent_session_id.map(|id| id.to_string()),
-            }),
-        )
-        .await
-    }
 
     async fn create_session_with_options(
         &self,
@@ -3555,27 +3051,6 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
             }),
         )
         .await
-    }
-
-    async fn get_session_context_report(
-        &self,
-        id: SessionId,
-    ) -> everruns_provider::error::Result<everruns_core::SessionContextReport> {
-        self.execute_domain_command(
-            "get_session_context_report",
-            serde_json::json!({ "session_id": id.to_string() }),
-        )
-        .await
-    }
-
-    async fn delete_session(&self, id: SessionId) -> everruns_provider::error::Result<()> {
-        let _: serde_json::Value = self
-            .execute_domain_command(
-                "delete_session",
-                serde_json::json!({ "session_id": id.to_string() }),
-            )
-            .await?;
-        Ok(())
     }
 
     // =========================================================================
@@ -3701,40 +3176,15 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
     // Capabilities
     // =========================================================================
 
-    async fn list_capabilities(
-        &self,
-        search: Option<&str>,
-    ) -> everruns_provider::error::Result<Vec<everruns_core::CapabilityInfo>> {
-        let mut params = serde_json::Map::new();
-        params.insert("limit".to_string(), serde_json::json!(200));
-        if let Some(search) = search {
-            params.insert(
-                "search".to_string(),
-                serde_json::Value::String(search.to_string()),
-            );
-        }
-        let page: CommandPage<everruns_core::CapabilityInfo> = self
-            .execute_domain_command("list_capabilities", serde_json::Value::Object(params))
-            .await?;
-        Ok(page.data)
-    }
-
     // =========================================================================
     // UI Links
     // =========================================================================
-
-    fn base_url(&self) -> &str {
-        // Leak a static string from env for lifetime reasons
-        // This is called infrequently and the value is stable
-        Box::leak(Self::base_url_from_env().into_boxed_str())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::storage::models::CreateHarnessRow;
-    use everruns_platform::PlatformStore;
 
     #[test]
     fn string_to_provider_type_maps_gemini() {
@@ -4093,94 +3543,6 @@ mod tests {
         user.id
     }
 
-    fn test_platform_store(
-        adapters: &DirectWorkerAdapters,
-        org_id: i64,
-        session_id: SessionId,
-    ) -> DirectPlatformStore {
-        DirectPlatformStore::new(
-            org_id,
-            session_id,
-            adapters.db.clone(),
-            DirectPlatformStoreDeps {
-                event_service: adapters.event_service.clone(),
-                runner: None,
-                capability_registry: adapters.capability_registry.clone(),
-                connector_registry: adapters.connector_registry.clone(),
-                encryption: None,
-                workflow_store: None,
-                permission_resolver: adapters.permission_resolver.clone(),
-                egress_service: adapters.egress_service.clone(),
-            },
-        )
-    }
-
-    #[tokio::test]
-    async fn platform_store_update_rejects_built_in_harness() {
-        let adapters = test_adapters();
-        let harness_id = seed_harness_for_platform_store(
-            &adapters.db,
-            everruns_core::DEFAULT_ORG_ID,
-            "built-in",
-            true,
-        )
-        .await;
-        let owner_user_id = seed_platform_owner(
-            &adapters.db,
-            everruns_core::DEFAULT_ORG_ID,
-            "built-in-update-owner@example.com",
-        )
-        .await;
-        let session_id = seed_platform_session(
-            &adapters.db,
-            everruns_core::DEFAULT_ORG_ID,
-            harness_id,
-            Some(owner_user_id),
-        )
-        .await;
-        let store = test_platform_store(&adapters, everruns_core::DEFAULT_ORG_ID, session_id);
-
-        let err = store
-            .update_harness(harness_id, Some("renamed"), None, None, None, None)
-            .await
-            .expect_err("built-in harness updates should be rejected");
-
-        assert!(err.to_string().contains("built-in harness"));
-    }
-
-    #[tokio::test]
-    async fn platform_store_delete_rejects_built_in_harness() {
-        let adapters = test_adapters();
-        let harness_id = seed_harness_for_platform_store(
-            &adapters.db,
-            everruns_core::DEFAULT_ORG_ID,
-            "built-in",
-            true,
-        )
-        .await;
-        let owner_user_id = seed_platform_owner(
-            &adapters.db,
-            everruns_core::DEFAULT_ORG_ID,
-            "built-in-delete-owner@example.com",
-        )
-        .await;
-        let session_id = seed_platform_session(
-            &adapters.db,
-            everruns_core::DEFAULT_ORG_ID,
-            harness_id,
-            Some(owner_user_id),
-        )
-        .await;
-        let store = test_platform_store(&adapters, everruns_core::DEFAULT_ORG_ID, session_id);
-
-        let err = store
-            .delete_harness(harness_id)
-            .await
-            .expect_err("built-in harness deletes should be rejected");
-
-        assert!(err.to_string().contains("built-in harness"));
-    }
-
     #[tokio::test]
     async fn platform_store_uses_session_owner_permissions() {
         use crate::storage::models::{CreateOrganizationRow, CreateUserRow};
@@ -4244,17 +3606,6 @@ mod tests {
             script_error.to_string().contains("forbidden")
                 || script_error.to_string().contains("Access denied"),
             "unexpected authorization error: {script_error}"
-        );
-
-        let err = store
-            .create_harness("forbidden", None, None, Some("prompt"), None, &[])
-            .await
-            .expect_err("member should not manage harnesses via platform tools");
-
-        assert!(
-            err.to_string().contains("Access denied")
-                || err.to_string().contains("Permission denied"),
-            "unexpected error: {err}"
         );
     }
 
@@ -5110,11 +4461,27 @@ mod tests {
         let session_org2 =
             seed_platform_session(&adapters.db, org2.org_id, harness_org2, Some(owner_org2)).await;
 
+        // `list_agents` moved off PlatformStore with the legacy CRUD (EVE-953);
+        // the org boundary it guarded is now enforced on the command surface,
+        // so assert it there instead of dropping the coverage.
         let store_org1 = adapters.platform_store(everruns_core::DEFAULT_ORG_ID, session_org1);
-        let agents_org1 = store_org1.list_agents().await.unwrap();
-        assert!(!agents_org1.is_empty(), "default org should have agents");
+        let agents_org1 = store_org1
+            .platform_query(serde_json::json!({ "commands": "list_agents" }))
+            .await
+            .expect("default org may list its agents");
+        assert!(
+            agents_org1.contains("test-agent"),
+            "default org should see its seeded agent: {agents_org1}"
+        );
+
         let store_org2 = adapters.platform_store(org2.org_id, session_org2);
-        let agents_org2 = store_org2.list_agents().await.unwrap();
-        assert!(agents_org2.is_empty(), "second org should have no agents");
+        let agents_org2 = store_org2
+            .platform_query(serde_json::json!({ "commands": "list_agents" }))
+            .await
+            .expect("second org may list its agents");
+        assert!(
+            !agents_org2.contains("test-agent"),
+            "second org must not see the default org's agent: {agents_org2}"
+        );
     }
 }

@@ -660,6 +660,8 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .map(everruns_provider::typed_id::HarnessId::from_uuid)
         .expect("harness uuid");
 
+    // Keep a storage handle: `start_grpc_test_server` takes the service by value.
+    let db = service.db.clone();
     let (addr, shutdown_tx, server) = start_grpc_test_server(service).await;
     let client = everruns_worker::GrpcClient::connect(&addr)
         .await
@@ -747,16 +749,35 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
     assert_eq!(detached.parent_session_id, None);
     assert_eq!(detached.forked_from_session_id, Some(parent_id));
 
-    let target_agent = adapter
-        .create_agent(
-            "grpc-handoff-target",
-            Some("gRPC Handoff Target"),
-            None,
-            "You complete test handoffs.",
-            &[],
+    // Seeded directly rather than through the adapter: `create_agent` left
+    // PlatformStore with the legacy CRUD (EVE-953). This agent is setup for the
+    // handoff assertion below, not the behaviour under test.
+    let target_agent_id = everruns_provider::typed_id::AgentId::new();
+    let target_agent = db
+        .create_agent_with_id(
+            everruns_core::DEFAULT_ORG_ID,
+            target_agent_id,
+            crate::storage::models::CreateAgentRow {
+                public_id: target_agent_id.to_string(),
+                name: "grpc-handoff-target".to_string(),
+                display_name: Some("gRPC Handoff Target".to_string()),
+                description: None,
+                system_prompt: "You complete test handoffs.".to_string(),
+                default_model_id: None,
+                harness_id: parent_harness_id,
+                tags: vec![],
+                initial_files: serde_json::Value::Array(vec![]),
+                tools: serde_json::Value::Array(vec![]),
+                mcp_servers: serde_json::json!({}),
+                max_iterations: None,
+                network_access: None,
+                parallel_tool_calls: None,
+                is_built_in: false,
+            },
         )
         .await
-        .expect("create handoff target agent");
+        .expect("create handoff target agent")
+        .expect("handoff target agent should be created");
     let handoff_config = serde_json::json!({
         "targets": [{
             "id": "target",
