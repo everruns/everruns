@@ -277,19 +277,33 @@ impl Session {
         input: impl Into<InputMessage>,
         options: RunOptions,
     ) -> Result<Turn, RunError> {
-        let Some(token) = options.cancel else {
+        if options.cancel.is_none() && options.timeout.is_none() {
             return self.send_and_wait(input).await;
+        }
+        let token = options.cancel.clone();
+        let timeout = options.timeout;
+        let sent = self.send_internal(input.into(), token.clone()).await?;
+        // Cancellation and timeout share semantics: stop the turn in flight,
+        // then wait for its cancelled outcome.
+        let cancel_turn = async {
+            let _ = sent.turn.cancel().await;
+            sent.wait().await
         };
-        let sent = self
-            .send_internal(input.into(), Some(token.clone()))
-            .await?;
         tokio::select! {
             biased;
             result = sent.wait() => result,
-            () = token.cancelled() => {
-                let _ = sent.turn.cancel().await;
-                sent.wait().await
-            },
+            () = async {
+                match token {
+                    Some(token) => token.cancelled().await,
+                    None => std::future::pending().await,
+                }
+            } => cancel_turn.await,
+            () = async {
+                match timeout {
+                    Some(timeout) => tokio::time::sleep(timeout).await,
+                    None => std::future::pending().await,
+                }
+            } => cancel_turn.await,
         }
     }
 

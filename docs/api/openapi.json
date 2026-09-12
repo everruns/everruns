@@ -12993,6 +12993,29 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "wait",
+            "in": "query",
+            "description": "Wait for turn completion and return the turn result.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "timeout_ms",
+            "in": "query",
+            "description": "Max wait budget in milliseconds (default 120000, capped at 600000).\nOnly used with `wait=true`. On expiry the endpoint returns `202`\nwith the messages produced so far.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
           }
         ],
         "requestBody": {
@@ -13006,12 +13029,32 @@
           "required": true
         },
         "responses": {
-          "201": {
-            "description": "Message created successfully",
+          "200": {
+            "description": "Waited turn reached a terminal state (?wait=true)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Message"
+                  "$ref": "#/components/schemas/CreateMessageResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Message accepted; turn runs in background",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateMessageResult"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Wait deadline expired; turn still running (?wait=true)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateMessageResult"
                 }
               }
             }
@@ -20189,6 +20232,16 @@
             ]
           }
         }
+      },
+      "CreateMessageResult": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/Message"
+          },
+          {
+            "$ref": "#/components/schemas/TurnWaitResponse"
+          }
+        ]
       },
       "CreateModelRequest": {
         "type": "object",
@@ -37748,6 +37801,50 @@
             "example": "turn_01933b5a00007000800000000000001"
           }
         }
+      },
+      "TurnWaitResponse": {
+        "type": "object",
+        "description": "Waited result for `POST /v1/sessions/{session_id}/messages?wait=true`.",
+        "required": [
+          "status",
+          "message",
+          "messages"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Turn failure detail when `status` is `failed`.",
+            "example": "turn failed: upstream model error"
+          },
+          "message": {
+            "$ref": "#/components/schemas/Message",
+            "description": "The accepted user message (same body as the `201` path)."
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "description": "Messages appended after the accepted message: assistant output on\ncompletion, whatever exists so far on timeout, empty on failure."
+          },
+          "status": {
+            "$ref": "#/components/schemas/TurnWaitStatus",
+            "description": "Wait outcome for the triggered turn."
+          }
+        }
+      },
+      "TurnWaitStatus": {
+        "type": "string",
+        "description": "Terminal-or-pending outcome of a waited turn.",
+        "enum": [
+          "completed",
+          "failed",
+          "timeout"
+        ],
+        "example": "completed"
       },
       "UpdateAgentRequest": {
         "type": "object",
