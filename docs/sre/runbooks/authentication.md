@@ -205,6 +205,65 @@ curl http://localhost:9300/health
 # {"status":"ok","version":"0.2.0","auth_mode":"None"}
 ```
 
+## Agent Discovery Endpoints
+
+The server publishes two public documents so an AI agent can work out how to
+authenticate before it has any credentials:
+
+| Path | Contents |
+| --- | --- |
+| `/auth.md` | How to obtain credentials: OAuth 2.1 with dynamic client registration for the MCP endpoint, and personal access tokens for the REST API |
+| `/.well-known/mcp/server-card.json` | MCP Server Card (SEP-1649): server identity, transport, capabilities, and where its OAuth metadata lives |
+
+Both are generated from the running configuration rather than hardcoded, so a
+self-hosted deployment describes itself:
+
+- URLs come from `AUTH_BASE_URL` / `BASE_URL` (or `PUBLIC_APP_URL` plus
+  `API_PREFIX`), the same value used for OAuth callbacks and the MCP resource
+  binding. Set them to the public origin, not an internal container address,
+  or the documents will advertise URLs an agent cannot reach.
+- Content follows `AUTH_MODE`. Under `AUTH_MODE=none` both documents state that
+  no credentials are required instead of describing an OAuth flow that is not
+  enforced.
+
+### Reverse proxy configuration (required)
+
+`/auth.md` sits at the server root, so a deployment that puts the UI on `/`
+must route this one path to the server explicitly. Without the rule the request
+falls through to the UI and returns its 404, and the endpoint is unreachable
+even though the server serves it.
+
+The bundled proxies (`local/Caddyfile`, `infra/railway/caddy/Caddyfile`, and
+`examples/docker-compose-full.yaml`) already include it. For a custom proxy,
+add `/auth.md` wherever `/.well-known/*` is routed:
+
+```caddyfile
+handle /.well-known/* {
+	reverse_proxy server:9000
+}
+handle /auth.md {
+	reverse_proxy server:9000
+}
+```
+
+nginx:
+
+```nginx
+location = /auth.md {
+    proxy_pass http://server:9000;
+}
+```
+
+Verify after deploying:
+
+```bash
+curl -fsS https://your-host/auth.md | head -1        # expect "# auth.md"
+curl -fsS https://your-host/.well-known/mcp/server-card.json
+```
+
+A response of `text/html` rather than `text/markdown` means the UI answered and
+the proxy rule is missing.
+
 ## Security Best Practices
 
 1. **Never commit secrets**: Use environment variables or secret management
