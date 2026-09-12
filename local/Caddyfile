@@ -16,6 +16,7 @@
 #   /oauth/*   -> API server at :API_PORT
 #   /mcp       -> API server at :API_PORT
 #   /.well-known/* -> API server at :API_PORT
+#   /auth.md   -> API server at :API_PORT
 #   /api-doc/* -> API server at :API_PORT
 #   /health    -> API server at :API_PORT
 #   /*         -> UI dev server at :UI_PORT
@@ -63,6 +64,11 @@
 		reverse_proxy localhost:{$API_PORT:9301}
 	}
 	handle /.well-known/* {
+		reverse_proxy localhost:{$API_PORT:9301}
+	}
+	# Agent credential documentation. Served by the API, not the UI: an agent
+	# with no credentials yet is exactly the caller that needs to read it.
+	handle /auth.md {
 		reverse_proxy localhost:{$API_PORT:9301}
 	}
 	handle /api-doc/* {
