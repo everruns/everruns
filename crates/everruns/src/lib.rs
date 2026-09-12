@@ -176,9 +176,10 @@ pub use everruns_provider::driver_registry::{
 pub use everruns_provider::model::ReasoningEffort;
 pub use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 pub use everruns_provider::{ExecutionPhase, PhaseSource};
-// Required by the public `ChatDriver` SPI: downstream drivers must be able to
-// name its error type without adding an implementation-crate dependency.
-pub use everruns_provider::error::AgentLoopError;
+// Required by the public `ChatDriver` SPI and runtime error contract:
+// downstream consumers can inspect provider failures without depending on an
+// implementation crate.
+pub use everruns_provider::error::{AgentLoopError, BillingPressureReason, LlmError, LlmErrorKind};
 pub use everruns_provider::runtime_provider::{
     BearerAuth, Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey,
     StaticHeaderAuth,

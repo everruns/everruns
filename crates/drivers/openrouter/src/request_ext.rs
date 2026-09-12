@@ -22,9 +22,9 @@ use crate::options::{
 };
 use everruns_provider::OpenResponsesRequestExtension;
 use everruns_provider::driver_registry::LlmCallConfig;
-use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::error::{AgentLoopError, BillingPressureReason, LlmErrorKind, Result};
 use everruns_provider::llm_retry::{RateLimitInfo, RateLimitType};
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue, RETRY_AFTER};
 use serde_json::{Value, json};
 
 const HTTP_REFERER_HEADER: HeaderName = HeaderName::from_static("http-referer");
@@ -144,6 +144,49 @@ impl OpenResponsesRequestExtension for OpenRouterRequestExtension {
 
         apply_rate_limit_values(info, remaining, reset);
     }
+
+    fn classify_error(
+        &self,
+        status: u16,
+        headers: &HeaderMap,
+        error_body: &str,
+    ) -> Option<LlmErrorKind> {
+        classify_billing_pressure(status, headers, error_body)
+    }
+}
+
+fn classify_billing_pressure(
+    status: u16,
+    headers: &HeaderMap,
+    error_body: &str,
+) -> Option<LlmErrorKind> {
+    if status != 402 {
+        return None;
+    }
+    let body = serde_json::from_str::<Value>(error_body).ok()?;
+    let metadata = body.get("error")?.get("metadata")?;
+    let reason = match metadata.get("reason")?.as_str()? {
+        "in_flight_budget_exhausted" => BillingPressureReason::InFlightBudgetExhausted,
+        "insufficient_credits" => BillingPressureReason::InsufficientCredits,
+        _ => return None,
+    };
+    let retry_after_secs = header_str(headers, &RETRY_AFTER)
+        .and_then(parse_retry_after_secs)
+        .or_else(|| {
+            metadata
+                .get("headers")
+                .and_then(Value::as_object)
+                .and_then(|headers| json_header_value(headers, "retry-after"))
+                .and_then(parse_retry_after_secs)
+        });
+    Some(LlmErrorKind::BillingPressure {
+        reason,
+        retry_after_secs,
+    })
+}
+
+fn parse_retry_after_secs(value: &str) -> Option<u64> {
+    value.trim().parse().ok()
 }
 
 fn apply_rate_limit_values(info: &mut RateLimitInfo, remaining: Option<&str>, reset: Option<&str>) {
@@ -341,6 +384,60 @@ fn plugins_to_wire(config: &OpenRouterPluginConfig) -> Option<Vec<Value>> {
 mod tests {
     use super::*;
     use crate::options::{OpenRouterFilePlugin, OpenRouterWebSearchPlugin, insert_routing_option};
+
+    #[test]
+    fn billing_classifier_requires_402_and_a_supported_machine_reason() {
+        let body = |reason: &str, retry_after: &str| {
+            json!({
+                "error": {
+                    "metadata": {
+                        "reason": reason,
+                        "headers": {"rEtRy-AfTeR": retry_after},
+                    }
+                }
+            })
+            .to_string()
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert(RETRY_AFTER, HeaderValue::from_static("7"));
+
+        assert_eq!(
+            classify_billing_pressure(402, &headers, &body("in_flight_budget_exhausted", "120")),
+            Some(LlmErrorKind::BillingPressure {
+                reason: BillingPressureReason::InFlightBudgetExhausted,
+                retry_after_secs: Some(7),
+            })
+        );
+        headers.remove(RETRY_AFTER);
+        assert_eq!(
+            classify_billing_pressure(402, &headers, &body("insufficient_credits", "120")),
+            Some(LlmErrorKind::BillingPressure {
+                reason: BillingPressureReason::InsufficientCredits,
+                retry_after_secs: Some(120),
+            })
+        );
+
+        for (status, reason, retry_after) in [
+            (403, "in_flight_budget_exhausted", "120"),
+            (402, "unknown", "120"),
+            (402, "in_flight_budget_exhausted", "not-seconds"),
+        ] {
+            let classified =
+                classify_billing_pressure(status, &headers, &body(reason, retry_after));
+            if status == 402 && reason == "in_flight_budget_exhausted" {
+                assert_eq!(
+                    classified,
+                    Some(LlmErrorKind::BillingPressure {
+                        reason: BillingPressureReason::InFlightBudgetExhausted,
+                        retry_after_secs: None,
+                    })
+                );
+            } else {
+                assert_eq!(classified, None);
+            }
+        }
+        assert_eq!(classify_billing_pressure(402, &headers, "not json"), None);
+    }
     fn base_config(model: &str) -> LlmCallConfig {
         LlmCallConfig {
             speed: None,

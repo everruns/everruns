@@ -211,6 +211,7 @@ impl Default for OpenRouterChatDriver {
 mod tests {
     use super::*;
     use everruns_provider::driver_registry::{DriverId, ProviderConfig, ServiceKind};
+    use everruns_provider::error::{BillingPressureReason, LlmErrorKind};
 
     fn base_config(model: &str) -> LlmCallConfig {
         LlmCallConfig {
@@ -322,6 +323,72 @@ mod tests {
             "LLM error: API key is required. Configure the API key in provider settings."
         );
         assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn billing_pressure_402_reaches_consumers_with_reason_and_retry_after() {
+        use everruns_provider::driver_registry::LlmMessageRole;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let cases = [
+            (
+                "in_flight_budget_exhausted",
+                Some("120"),
+                BillingPressureReason::InFlightBudgetExhausted,
+                Some(120),
+            ),
+            (
+                "insufficient_credits",
+                None,
+                BillingPressureReason::InsufficientCredits,
+                None,
+            ),
+        ];
+        for (wire_reason, retry_after, reason, retry_after_secs) in cases {
+            let server = MockServer::builder().start().await;
+            let mut headers = serde_json::Map::new();
+            if let Some(retry_after) = retry_after {
+                headers.insert("Retry-After".into(), serde_json::json!(retry_after));
+            }
+            Mock::given(method("POST"))
+                .and(path("/v1/responses"))
+                .respond_with(ResponseTemplate::new(402).set_body_json(serde_json::json!({
+                    "error": {
+                        "message": "This request would exceed your available credits.",
+                        "code": 402,
+                        "metadata": {
+                            "reason": wire_reason,
+                            "headers": headers,
+                        }
+                    }
+                })))
+                .expect(1)
+                .mount(&server)
+                .await;
+
+            let result = provider("billing-test", "synthetic-key")
+                .base_url(format!("{}/v1", server.uri()))
+                .chat_completion_stream(
+                    vec![LlmMessage::text(LlmMessageRole::User, "hello")],
+                    &base_config("vendor/model"),
+                )
+                .await;
+            let error = match result {
+                Err(error) => error,
+                Ok(_) => panic!("a 402 response must not start a stream"),
+            };
+
+            assert_eq!(
+                error.llm_error_kind(),
+                Some(LlmErrorKind::BillingPressure {
+                    reason,
+                    retry_after_secs,
+                })
+            );
+            assert!(!error.is_transient_llm_error());
+            assert!(error.to_string().contains(wire_reason));
+        }
     }
 
     #[tokio::test]
