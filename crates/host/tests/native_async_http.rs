@@ -66,7 +66,7 @@ fn config() -> LlmCallConfig {
         provider_opaque_context: None,
         tool_search: None,
         prompt_cache: None,
-        openrouter_routing: None,
+        driver_options: Default::default(),
         parallel_tool_calls: Some(true),
         volatile_suffix_len: 0,
         extra_headers: vec![],
