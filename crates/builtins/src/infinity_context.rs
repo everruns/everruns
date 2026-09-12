@@ -400,6 +400,9 @@ fn estimate_message_tokens(message: &Message) -> usize {
             ContentPart::ImageFile(file) => {
                 file.image_id.to_string().len() + file.filename.as_ref().map_or(0, String::len)
             }
+            ContentPart::File(file) => {
+                file.file_id.to_string().len() + file.filename.as_ref().map_or(0, String::len)
+            }
             ContentPart::ToolCall(call) => {
                 call.id.len() + call.name.len() + estimate_json_value_len(&call.arguments) + 20
             }

@@ -6,6 +6,7 @@ import type { CommandDescriptor, Controls } from "@/lib/api/types";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
 import {
   useAgents,
+  useFileAttachments,
   useImageAttachments,
   useImageDropZone,
   useModels,
@@ -186,17 +187,65 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
     pendingImages,
     allUploaded,
     uploadedImageIds,
-    addFiles,
+    addFiles: addImageFiles,
     removeImage,
     clearImages,
     hasImages,
     isUploading,
   } = useImageAttachments({ sessionId });
 
+  const {
+    pendingFiles,
+    allUploaded: allFilesUploaded,
+    uploadedFileIds,
+    addFiles: addFileFiles,
+    removeFile: removeFileAttachment,
+    clearFiles,
+    handlePaste: handleFilePaste,
+    hasFiles,
+  } = useFileAttachments({ sessionId });
+
+  const supportsPdf =
+    (
+      selectedModel as unknown as {
+        profile?: { modalities?: { input?: string[] } };
+      } | null
+    )?.profile?.modalities?.input?.includes("pdf") ?? false;
+
+  const addFiles = useCallback(
+    (files: File[]) => {
+      const isPdf = (f: File) =>
+        f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
+      const pdfs = files.filter(isPdf);
+      const imgs = files.filter((f) => !isPdf(f));
+      if (imgs.length > 0) {
+        addImageFiles(imgs);
+      }
+      if (pdfs.length > 0 && supportsPdf) {
+        addFileFiles(pdfs);
+      }
+    },
+    [addImageFiles, addFileFiles, supportsPdf],
+  );
+
+  const handlePaste = useCallback(
+    (event: React.ClipboardEvent | ClipboardEvent) => {
+      imageHandlePaste(event);
+      if (supportsPdf) {
+        handleFilePaste(event);
+      }
+    },
+    [imageHandlePaste, handleFilePaste, supportsPdf],
+  );
+
   const modelReady = Boolean(selectedModel || (!selectedModelId && llmModel));
   const modelLoading = selectedModelId ? modelsLoading : llmModelLoading;
 
-  const { isDraggingOver, dropZoneProps, handlePaste } = useImageDropZone({
+  const {
+    isDraggingOver,
+    dropZoneProps,
+    handlePaste: imageHandlePaste,
+  } = useImageDropZone({
     onImageFiles: addFiles,
   });
 
@@ -229,14 +278,16 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
     mutationFn: async ({
       text,
       images,
+      files,
       controls,
       addressedParticipantId: addressed,
     }: {
       text: string;
       images: Array<{ imageId: string; filename?: string }>;
+      files: Array<{ fileId: string; filename?: string }>;
       controls?: Controls;
       addressedParticipantId?: string | null;
-    }) => sendUserMessageWithImages(sessionId, text, images, controls, addressed),
+    }) => sendUserMessageWithImages(sessionId, text, images, controls, addressed, files),
   });
   const executeCommand = useMutation({
     mutationFn: async ({
@@ -257,8 +308,9 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
 
   const canSubmit =
     modelReady &&
-    (inputValue.trim().length > 0 || hasImages) &&
+    (inputValue.trim().length > 0 || hasImages || hasFiles) &&
     allUploaded &&
+    allFilesUploaded &&
     !sendMessage.isPending &&
     !sendMessageWithImages.isPending &&
     !executeCommand.isPending;
@@ -302,7 +354,9 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
     setVoiceError(null);
     setVoiceState("connecting");
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
       const peerConnection = new RTCPeerConnection();
       peerConnectionRef.current = peerConnection;
       mediaStreamRef.current = mediaStream;
@@ -323,7 +377,10 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
         sdp: offer.sdp,
         reasoning_effort: reasoningEffort || undefined,
       });
-      await peerConnection.setRemoteDescription({ type: "answer", sdp: voice.answer_sdp });
+      await peerConnection.setRemoteDescription({
+        type: "answer",
+        sdp: voice.answer_sdp,
+      });
       document.body.appendChild(remoteAudio);
       voiceConnectionIdRef.current = voice.voice_connection_id;
       setVoiceState("connected");
@@ -502,14 +559,16 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
     }
 
     try {
-      if (hasImages) {
+      if (hasImages || hasFiles) {
         await sendMessageWithImages.mutateAsync({
           text: inputValue.trim(),
           images: uploadedImageIds,
+          files: uploadedFileIds,
           controls,
           addressedParticipantId,
         });
         clearImages();
+        clearFiles();
       } else {
         await sendMessage.mutateAsync({
           sessionId,
@@ -605,6 +664,10 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
             hasImages={hasImages}
             removeImage={removeImage}
             addFiles={addFiles}
+            pendingFiles={pendingFiles}
+            hasFiles={hasFiles}
+            removeFileAttachment={removeFileAttachment}
+            supportsPdf={supportsPdf}
             isDraggingOver={isDraggingOver}
             dropZoneProps={dropZoneProps}
             handlePaste={handlePaste}

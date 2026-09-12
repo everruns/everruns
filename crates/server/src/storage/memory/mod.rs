@@ -23,6 +23,7 @@ mod compaction_checkpoints;
 mod declarative_capabilities;
 mod evals;
 mod events;
+mod files;
 mod harnesses;
 mod knowledge_bases;
 mod knowledge_indexes;
@@ -58,14 +59,15 @@ mod tests;
 use crate::kernel_imports::{
     DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, everruns_provider::typed_id::AgentId,
     everruns_provider::typed_id::AgentIdentityId, everruns_provider::typed_id::AgentVersionId,
-    everruns_provider::typed_id::EventId, everruns_provider::typed_id::HarnessId,
-    everruns_provider::typed_id::ImageId, everruns_provider::typed_id::LeasedResourceId,
-    everruns_provider::typed_id::McpServerId, everruns_provider::typed_id::MessageId,
-    everruns_provider::typed_id::ModelId, everruns_provider::typed_id::NotificationId,
-    everruns_provider::typed_id::PluginMarketplaceId, everruns_provider::typed_id::PrincipalId,
-    everruns_provider::typed_id::ProviderId, everruns_provider::typed_id::ScheduleId,
-    everruns_provider::typed_id::SessionId, everruns_provider::typed_id::SessionParticipantId,
-    everruns_provider::typed_id::SkillId, everruns_provider::typed_id::TriggerId,
+    everruns_provider::typed_id::EventId, everruns_provider::typed_id::FileId,
+    everruns_provider::typed_id::HarnessId, everruns_provider::typed_id::ImageId,
+    everruns_provider::typed_id::LeasedResourceId, everruns_provider::typed_id::McpServerId,
+    everruns_provider::typed_id::MessageId, everruns_provider::typed_id::ModelId,
+    everruns_provider::typed_id::NotificationId, everruns_provider::typed_id::PluginMarketplaceId,
+    everruns_provider::typed_id::PrincipalId, everruns_provider::typed_id::ProviderId,
+    everruns_provider::typed_id::ScheduleId, everruns_provider::typed_id::SessionId,
+    everruns_provider::typed_id::SessionParticipantId, everruns_provider::typed_id::SkillId,
+    everruns_provider::typed_id::TriggerId,
 };
 use chrono::{DateTime, Utc};
 use parking_lot::RwLock;
@@ -134,6 +136,7 @@ pub struct InMemoryDatabase {
     git_refs: RwLock<HashMap<(SessionId, String), SessionGitRefRow>>,
     mcp_servers: RwLock<HashMap<McpServerId, McpServerRow>>,
     images: RwLock<HashMap<ImageId, ImageRow>>,
+    files: RwLock<HashMap<FileId, FileRow>>,
     skills: RwLock<HashMap<SkillId, SkillRow>>,
     skill_files: RwLock<Vec<SkillFileRow>>,
     declarative_capabilities: RwLock<HashMap<Uuid, DeclarativeCapabilityRow>>,
@@ -300,6 +303,7 @@ impl Default for InMemoryDatabase {
             git_refs: RwLock::new(HashMap::new()),
             mcp_servers: RwLock::new(HashMap::new()),
             images: RwLock::new(HashMap::new()),
+            files: RwLock::new(HashMap::new()),
             skills: RwLock::new(HashMap::new()),
             skill_files: RwLock::new(Vec::new()),
             declarative_capabilities: RwLock::new(HashMap::new()),

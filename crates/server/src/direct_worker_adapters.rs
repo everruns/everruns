@@ -14,10 +14,10 @@ use crate::kernel_imports::{
 };
 use crate::kernel_imports::{
     connection_services::ProviderCredentialStore, delegation_services::SessionCreationAuthority,
-    everruns_provider::model_spec::ModelSpec, image_services::CreateStoredImage,
-    image_services::ImageArtifactStore, image_services::ResolvedImage, image_services::StoredImage,
-    image_services::StoredImageInfo, tool_execution::BudgetChecker,
-    tool_execution::PaymentAuthority,
+    everruns_provider::model_spec::ModelSpec, file_services::ResolvedFile,
+    image_services::CreateStoredImage, image_services::ImageArtifactStore,
+    image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
+    tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
 };
 use async_trait::async_trait;
 use everruns_capability::CapabilityRef as AgentCapabilityConfig;
@@ -868,6 +868,34 @@ impl WorkerAdapters for DirectWorkerAdapters {
         for &image_id in image_ids {
             if let Some(resolved) = self.resolve_image(org_id, image_id).await? {
                 result.insert(image_id, resolved);
+            }
+        }
+        Ok(result)
+    }
+
+    async fn resolve_files_batch(
+        &self,
+        org_id: i64,
+        file_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, ResolvedFile>> {
+        let mut result = HashMap::new();
+        for &file_id in file_ids {
+            let file_row = self.db.get_file(org_id, file_id).await.map_err(|e| {
+                tracing::error!("Failed to get file: {}", e);
+                store_error("Failed to get file")
+            })?;
+            if let Some(row) = file_row {
+                // Convert file data to base64
+                use base64::Engine;
+                let base64_data = base64::engine::general_purpose::STANDARD.encode(&row.data);
+                result.insert(
+                    file_id,
+                    ResolvedFile {
+                        base64: base64_data,
+                        media_type: row.content_type,
+                        filename: row.filename,
+                    },
+                );
             }
         }
         Ok(result)

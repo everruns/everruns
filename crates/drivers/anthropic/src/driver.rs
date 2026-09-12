@@ -408,6 +408,29 @@ impl AnthropicChatDriver {
                         text: AUDIO_CONTENT_PLACEHOLDER.to_string(),
                         cache_control: None,
                     }),
+                    LlmContentPart::File { url, .. } => {
+                        if let Some(parsed) = parse_data_url(url) {
+                            Some(AnthropicContentBlock::Document {
+                                source: AnthropicDocumentSource::Base64 {
+                                    media_type: parsed.media_type,
+                                    data: parsed.data,
+                                },
+                            })
+                        } else if url.starts_with("data:") {
+                            // Malformed data URL — fall back to application/pdf
+                            Some(AnthropicContentBlock::Document {
+                                source: AnthropicDocumentSource::Base64 {
+                                    media_type: "application/pdf".to_string(),
+                                    data: url.clone(),
+                                },
+                            })
+                        } else {
+                            // File URL
+                            Some(AnthropicContentBlock::Document {
+                                source: AnthropicDocumentSource::Url { url: url.clone() },
+                            })
+                        }
+                    }
                 })
                 .collect(),
         }
@@ -1674,6 +1697,8 @@ enum AnthropicContentBlock {
     },
     #[serde(rename = "image")]
     Image { source: AnthropicImageSource },
+    #[serde(rename = "document")]
+    Document { source: AnthropicDocumentSource },
     #[serde(rename = "thinking")]
     Thinking {
         thinking: String,
@@ -1724,6 +1749,17 @@ enum AnthropicToolResultBlock {
 enum AnthropicImageSource {
     #[serde(rename = "base64")]
     Base64 { media_type: String, data: String },
+    #[serde(rename = "url")]
+    Url { url: String },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+enum AnthropicDocumentSource {
+    #[serde(rename = "base64")]
+    Base64 { media_type: String, data: String },
+    #[serde(rename = "text")]
+    Text { media_type: String, data: String },
     #[serde(rename = "url")]
     Url { url: String },
 }
@@ -2679,6 +2715,31 @@ mod tests {
                 {"type":"image","source":{"type":"url","url":"https://example.com/photo.jpg?size=large"}},
                 {"type":"text","text":"[Audio content not supported]"},
                 {"type":"text","text":"  "}
+            ])
+        );
+    }
+
+    #[test]
+    fn file_pdf_serializes_to_document_block() {
+        let content = LlmMessageContent::Parts(vec![
+            LlmContentPart::Text {
+                text: "summarize".into(),
+            },
+            LlmContentPart::File {
+                url: "data:application/pdf;base64,JVBERi0=".into(),
+                filename: Some("report.pdf".into()),
+            },
+            LlmContentPart::File {
+                url: "https://example.com/report.pdf".into(),
+                filename: None,
+            },
+        ]);
+        assert_eq!(
+            serde_json::to_value(AnthropicChatDriver::convert_content(&content)).unwrap(),
+            json!([
+                {"type":"text","text":"summarize"},
+                {"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"JVBERi0="}},
+                {"type":"document","source":{"type":"url","url":"https://example.com/report.pdf"}},
             ])
         );
     }

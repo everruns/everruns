@@ -420,6 +420,12 @@ pub struct ImageIdMarker;
 impl IdMarker for ImageIdMarker {
     const PREFIX: &'static str = "img";
 }
+/// Marker for File (e.g. PDF attachment) IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct FileIdMarker;
+impl IdMarker for FileIdMarker {
+    const PREFIX: &'static str = "file";
+}
 
 /// Marker for MCP Server IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -685,6 +691,8 @@ pub type ProviderId = TypedId<ProviderIdMarker>;
 pub type ModelId = TypedId<ModelIdMarker>;
 /// Image ID
 pub type ImageId = TypedId<ImageIdMarker>;
+/// File (e.g. PDF attachment) ID
+pub type FileId = TypedId<FileIdMarker>;
 /// MCP Server ID
 pub type McpServerId = TypedId<McpServerIdMarker>;
 /// Skill ID

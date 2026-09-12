@@ -300,6 +300,10 @@ fn message_text(msg: &Message) -> String {
                 }
             }
             ContentPart::Image(_) | ContentPart::ImageFile(_) => parts.push("[image]".to_string()),
+            ContentPart::File(f) => parts.push(format!(
+                "[file: {}]",
+                f.filename.as_deref().unwrap_or("unnamed")
+            )),
             // Rendered above via `reasoning_display_text`, ahead of the content
             // parts, so it is not repeated here.
             ContentPart::Reasoning(_) => {}

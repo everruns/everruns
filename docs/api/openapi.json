@@ -5544,6 +5544,134 @@
         }
       }
     },
+    "/v1/files": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "operationId": "list_files",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List files",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FileInfo"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "operationId": "upload_file",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "File uploaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileUploadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid file"
+          },
+          "413": {
+            "description": "File too large"
+          }
+        }
+      }
+    },
+    "/v1/files/{file_id}": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "operationId": "get_file",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File bytes"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Files"
+        ],
+        "operationId": "delete_file",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File deleted"
+          }
+        }
+      }
+    },
     "/v1/harness-examples": {
       "get": {
         "tags": [
@@ -18688,6 +18816,29 @@
           {
             "allOf": [
               {
+                "$ref": "#/components/schemas/FileContentPart",
+                "description": "File content (reference to uploaded file, e.g. PDF, by ID)"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "file"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "File content (reference to uploaded file, e.g. PDF, by ID)"
+          },
+          {
+            "allOf": [
+              {
                 "$ref": "#/components/schemas/ToolCallContentPart",
                 "description": "Tool call content (assistant requesting tool execution)"
               },
@@ -22101,70 +22252,58 @@
           "url"
         ]
       },
-      "FileInfo": {
+      "FileContentPart": {
         "type": "object",
-        "description": "File metadata without content",
+        "description": "File content part (reference to an uploaded file, e.g. a PDF)\n\nThis is used for files uploaded via the /files API.\nThe file data is stored separately and referenced by ID.",
         "required": [
-          "id",
-          "session_id",
-          "path",
-          "name",
-          "is_directory",
-          "is_readonly",
-          "size_bytes",
-          "created_at",
-          "updated_at"
+          "file_id"
         ],
         "properties": {
+          "file_id": {
+            "type": "string",
+            "description": "ID of the uploaded file (format: file_{32-hex})",
+            "example": "file_01933b5a00007000800000000000001"
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Original filename (for display and provider file parts)"
+          }
+        }
+      },
+      "FileInfo": {
+        "type": "object",
+        "required": [
+          "id",
+          "content_type",
+          "size_bytes",
+          "metadata",
+          "created_at"
+        ],
+        "properties": {
+          "content_type": {
+            "type": "string"
+          },
           "created_at": {
             "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this entry was created (RFC 3339).",
-            "example": "2026-05-25T10:14:00Z"
+            "format": "date-time"
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "type": "string",
-            "format": "uuid",
-            "description": "Internal database UUID for this file entry.",
-            "example": "550e8400-e29b-41d4-a716-446655440000"
+            "example": "file_01933b5a00007000800000000000001"
           },
-          "is_directory": {
-            "type": "boolean",
-            "description": "`true` when this entry represents a directory; `false` for a regular file.",
-            "example": false
-          },
-          "is_readonly": {
-            "type": "boolean",
-            "description": "Whether the entry was marked read-only at creation. Read-only entries cannot be edited or deleted by the session.",
-            "example": false
-          },
-          "name": {
-            "type": "string",
-            "description": "File or directory name (the last segment of `path`).",
-            "example": "notes.md"
-          },
-          "path": {
-            "type": "string",
-            "description": "Absolute path within the session workspace (e.g. `/notes.md`).",
-            "example": "/notes.md"
-          },
-          "session_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUID of the owning session.",
-            "example": "01933b5a-0000-7000-8000-000000000001"
-          },
+          "metadata": {},
           "size_bytes": {
             "type": "integer",
-            "format": "int64",
-            "description": "File size in bytes. `0` for directories.",
-            "example": 4096
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this entry was last updated (RFC 3339).",
-            "example": "2026-05-25T10:15:30Z"
+            "format": "int64"
           }
         }
       },
@@ -22211,6 +22350,38 @@
             "type": "string",
             "format": "date-time",
             "description": "Timestamp when this entry was last updated (RFC 3339)."
+          }
+        }
+      },
+      "FileUploadResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "content_type",
+          "size_bytes",
+          "created_at"
+        ],
+        "properties": {
+          "content_type": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "example": "file_01933b5a00007000800000000000001"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -24016,6 +24187,29 @@
               }
             ],
             "description": "Image file content (reference to uploaded image by ID)"
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FileContentPart",
+                "description": "File content (reference to uploaded file, e.g. PDF, by ID)"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "file"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "File content (reference to uploaded file, e.g. PDF, by ID)"
           }
         ],
         "description": "Input content part - text, image, and image_file (for user input)\n\nThis is a subset of ContentPart that users can send.\nTool calls and results are system-generated."

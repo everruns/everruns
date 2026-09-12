@@ -127,7 +127,7 @@ pub fn retain_complete_llm_tool_exchanges_for_request(
 fn message_has_visible_content(message: &Message) -> bool {
     message.content.iter().any(|part| match part {
         ContentPart::Text(text) => !text.text.is_empty(),
-        ContentPart::Image(_) | ContentPart::ImageFile(_) => true,
+        ContentPart::Image(_) | ContentPart::ImageFile(_) | ContentPart::File(_) => true,
         ContentPart::ToolCall(_) | ContentPart::ToolResult(_) => true,
         // Reasoning is never user-visible content on its own: a message
         // carrying only reasoning has nothing to show and nothing to act on.

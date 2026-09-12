@@ -835,6 +835,7 @@ impl BraintrustListener {
                 everruns_core::ContentPart::Text(_) => "text",
                 everruns_core::ContentPart::Image(_) => "image",
                 everruns_core::ContentPart::ImageFile(_) => "image_file",
+                everruns_core::ContentPart::File(_) => "file",
                 everruns_core::ContentPart::ToolCall(_) => "tool_call",
                 everruns_core::ContentPart::ToolResult(_) => "tool_result",
                 everruns_core::ContentPart::Reasoning(_) => "reasoning",
