@@ -3471,7 +3471,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
@@ -3604,7 +3604,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
@@ -3682,7 +3682,7 @@ mod tests {
                 threshold: 15,
             }),
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
@@ -3719,7 +3719,6 @@ mod tests {
 
     #[tokio::test]
     async fn openai_provider_omits_openrouter_routing_controls() {
-        use crate::driver_registry::{OpenRouterRoute, OpenRouterRoutingConfig};
         use wiremock::matchers::method;
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -3752,12 +3751,17 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: Some(OpenRouterRoutingConfig {
-                models: vec!["openai/gpt-5-mini".to_string()],
-                route: Some(OpenRouterRoute::Fallback),
-                provider: None,
-                ..Default::default()
-            }),
+            // Opaque OpenRouter routing payload: the OpenAI driver must ignore
+            // `driver_options` entries it does not own.
+            driver_options: [(
+                "openrouter/routing".to_string(),
+                serde_json::json!({
+                    "models": ["openai/gpt-5-mini"],
+                    "route": "fallback",
+                }),
+            )]
+            .into_iter()
+            .collect(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
@@ -3830,7 +3834,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
@@ -3926,7 +3930,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
@@ -4628,7 +4632,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
@@ -4667,7 +4671,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
@@ -5096,7 +5100,7 @@ mod tests {
             provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),

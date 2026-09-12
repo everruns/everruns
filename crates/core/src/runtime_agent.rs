@@ -19,6 +19,8 @@ use crate::capabilities::{
     compose_system_prompt, resolve_capability_configs,
 };
 use crate::config_layer::AgentConfigOverlay;
+use std::collections::HashMap;
+
 use crate::driver_registry::{PromptCacheConfig, ToolSearchConfig};
 use crate::harness_definition::HarnessDefinition;
 use crate::model_profiles::get_model_profile;
@@ -59,11 +61,12 @@ pub struct RuntimeAgent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_cache: Option<PromptCacheConfig>,
 
-    /// OpenRouter routing controls, including provider-executed server tools
-    /// (set by the `openrouter_server_tools` capability). Only forwarded to
-    /// OpenRouter-compatible endpoints.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub openrouter_routing: Option<crate::driver_registry::OpenRouterRoutingConfig>,
+    /// Driver-namespaced opaque per-call options (`"<driver-id>/<option>"`),
+    /// e.g. provider-executed server tools contributed by the
+    /// `openrouter_server_tools` capability. Shapes are owned by the respective
+    /// driver crates.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub driver_options: HashMap<String, serde_json::Value>,
 
     /// Merged network access list (harness ∩ agent ∩ session).
     /// Used by tools (web_fetch) to enforce URL access policy.
@@ -107,7 +110,7 @@ impl RuntimeAgent {
             max_tokens: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             network_access: None,
             parallel_tool_calls: None,
             conversation_context: None,
@@ -126,7 +129,7 @@ impl Default for RuntimeAgent {
             max_tokens: None,
             tool_search: None,
             prompt_cache: None,
-            openrouter_routing: None,
+            driver_options: Default::default(),
             network_access: None,
             parallel_tool_calls: None,
             conversation_context: None,
@@ -332,8 +335,8 @@ impl RuntimeAgentBuilder {
             self.runtime_agent.prompt_cache = Some(pc_config);
         }
 
-        if let Some(routing) = collected.openrouter_routing {
-            self.runtime_agent.openrouter_routing = Some(routing);
+        for (key, value) in collected.driver_options {
+            self.runtime_agent.driver_options.insert(key, value);
         }
 
         // Apply the `parallel_tool_calls` capability preference. An explicit
@@ -975,11 +978,10 @@ mod tests {
         fn parallel_tool_calls_preference(&self, config: &serde_json::Value) -> Option<bool> {
             config["parallel"].as_bool()
         }
-        fn openrouter_routing_config(
-            &self,
-            config: &serde_json::Value,
-        ) -> Option<crate::driver_registry::OpenRouterRoutingConfig> {
-            Some(serde_json::from_value(config["routing"].clone()).unwrap())
+        fn driver_options(&self, config: &serde_json::Value) -> Vec<(String, serde_json::Value)> {
+            // Core treats option keys opaquely; the `test/routing` namespace is
+            // test-only and never interpreted here.
+            vec![("test/routing".to_string(), config["routing"].clone())]
         }
     }
 
@@ -1038,10 +1040,7 @@ mod tests {
                     gemini_cached_content: Some("cachedContents/configured".into())
                 })
             );
-            assert_eq!(
-                serde_json::to_value(agent.openrouter_routing.unwrap()).unwrap(),
-                routing
-            );
+            assert_eq!(agent.driver_options.get("test/routing"), Some(&routing));
         }
     }
 
@@ -1063,7 +1062,7 @@ mod tests {
             assert_eq!(agent.max_iterations, 500);
             assert!(agent.tool_search.is_none());
             assert!(agent.prompt_cache.is_none());
-            assert!(agent.openrouter_routing.is_none());
+            assert!(agent.driver_options.is_empty());
             assert!(agent.network_access.is_none());
             assert_eq!(agent.parallel_tool_calls, None);
         }

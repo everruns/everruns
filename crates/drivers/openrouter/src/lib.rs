@@ -21,6 +21,7 @@
 //! ```
 
 mod driver;
+pub mod options;
 mod request_ext;
 mod types;
 

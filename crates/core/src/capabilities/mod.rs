@@ -677,16 +677,11 @@ pub trait Capability: Send + Sync {
         None
     }
 
-    /// Provider routing requested by this capability.
-    ///
-    /// The OpenRouter integration implements this seam for provider-executed
-    /// server tools. Core transports the provider contract without naming a
-    /// capability ID or parsing a first-party capability schema.
-    fn openrouter_routing_config(
-        &self,
-        _config: &serde_json::Value,
-    ) -> Option<crate::driver_registry::OpenRouterRoutingConfig> {
-        None
+    /// Driver-namespaced opaque per-call options (`"<driver-id>/<option>"`)
+    /// requested by this capability. Each entry's shape is owned by the driver
+    /// crate named in the key; core transports the values untouched.
+    fn driver_options(&self, _config: &serde_json::Value) -> Vec<(String, serde_json::Value)> {
+        Vec::new()
     }
 
     /// Request-level parallel tool-call preference contributed by this
@@ -1444,9 +1439,10 @@ pub struct CollectedCapabilities {
     pub tool_search: Option<crate::driver_registry::ToolSearchConfig>,
     /// Prompt caching configuration (set when prompt_caching capability is present)
     pub prompt_cache: Option<crate::driver_registry::PromptCacheConfig>,
-    /// OpenRouter routing controls (set when the `openrouter_server_tools`
-    /// capability is present). Carries provider-executed server tools.
-    pub openrouter_routing: Option<crate::driver_registry::OpenRouterRoutingConfig>,
+    /// Driver-namespaced opaque per-call options (e.g. provider-executed
+    /// server tools contributed by the `openrouter_server_tools` capability).
+    /// First contributor wins per key.
+    pub driver_options: HashMap<String, serde_json::Value>,
     /// Request-level parallel tool calls preference (set when the
     /// `parallel_tool_calls` capability is present with mode `prefer`/`avoid`).
     /// `None` when absent or mode `none`.
@@ -2420,7 +2416,7 @@ pub async fn collect_capabilities_with_configs(
     let mut applied_ids: Vec<String> = Vec::new();
     let mut tool_search: Option<crate::driver_registry::ToolSearchConfig> = None;
     let mut prompt_cache: Option<crate::driver_registry::PromptCacheConfig> = None;
-    let mut openrouter_routing: Option<crate::driver_registry::OpenRouterRoutingConfig> = None;
+    let mut driver_options: HashMap<String, serde_json::Value> = HashMap::new();
     let mut parallel_tool_calls: Option<bool> = None;
     let mut tool_definition_hooks: Vec<Arc<dyn ToolDefinitionHook>> = Vec::new();
     let mut tool_call_hooks: Vec<Arc<dyn ToolCallHook>> = Vec::new();
@@ -2582,9 +2578,9 @@ pub async fn collect_capabilities_with_configs(
                 .parallel_tool_calls_preference(cap_config.config_value())
                 .or(parallel_tool_calls);
 
-            openrouter_routing = effective
-                .openrouter_routing_config(cap_config.config_value())
-                .or(openrouter_routing);
+            for (key, value) in effective.driver_options(cap_config.config_value()) {
+                driver_options.entry(key).or_insert(value);
+            }
 
             // Collect mount points
             mounts.extend(effective.mounts());
@@ -2690,7 +2686,7 @@ pub async fn collect_capabilities_with_configs(
         applied_ids,
         tool_search,
         prompt_cache,
-        openrouter_routing,
+        driver_options,
         parallel_tool_calls,
         tool_definition_hooks,
         tool_call_hooks,
@@ -2786,7 +2782,7 @@ pub async fn apply_capabilities(
         max_tokens: base_runtime_agent.max_tokens,
         tool_search: collected.tool_search,
         prompt_cache: collected.prompt_cache,
-        openrouter_routing: collected.openrouter_routing,
+        driver_options: collected.driver_options,
         network_access: base_runtime_agent.network_access,
         // Explicit request-level preference (escape hatch) wins; otherwise the
         // `parallel_tool_calls` capability supplies the preference.

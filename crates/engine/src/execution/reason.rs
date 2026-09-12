@@ -1407,11 +1407,17 @@ impl ReasonAtom {
         let retry_config = self.provider_retry_config.clone();
         // OpenRouter server tools execute inside the provider and therefore do
         // not surface as agent ToolCalls. Reissuing their request can duplicate
-        // side effects even when the stream has emitted only reasoning.
+        // side effects even when the stream has emitted only reasoning. The
+        // routing payload shape is owned by the OpenRouter driver crate
+        // (`everruns_openrouter::options`); the engine only sniffs the opaque
+        // `driver_options` data so the `engine -> core/provider/capability`
+        // dependency direction holds.
         let has_provider_executed_tools = llm_config
-            .openrouter_routing
-            .as_ref()
-            .is_some_and(|routing| !routing.server_tools.is_empty());
+            .driver_options
+            .get("openrouter/routing")
+            .and_then(|raw| raw.get("server_tools"))
+            .and_then(|tools| tools.as_array())
+            .is_some_and(|tools| !tools.is_empty());
         let mut stream_retry_metadata = RetryMetadata::default();
         let mut retry_started_at = None;
         // Best-effort streamed phase hint (EVE-774). Starts `None` ("not yet
