@@ -9,7 +9,7 @@ contains the maintained public examples. Each imports the `everruns` facade.
 ## Complete agents
 
 The root-level [`examples`](https://github.com/everruns/everruns/tree/main/examples)
-catalog contains five Framework walkthroughs. Each folder includes the program,
+catalog contains six Framework walkthroughs. Each folder includes the program,
 instructions, fixtures where applicable, and recording scripts. Run them from a
 repository checkout: their dependencies point to the workspace crates.
 

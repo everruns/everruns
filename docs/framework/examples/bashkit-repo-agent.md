@@ -1,68 +1,124 @@
 ---
 title: Bashkit Repo Agent
-description: Cut a release in a real repository with the sandboxed Bashkit shell as the agent's only execution runtime.
+description: Cut and verify a release in a real repository using a sandboxed shell.
 ---
 
 The [Bashkit Repo Agent source](https://github.com/everruns/everruns/tree/main/examples/bashkit-repo-agent)
-performs a repository operation end to end with `gpt-5.6-terra`: it bumps the
-version in every crate manifest, folds the unreleased changelog fragments into a
-new dated section, and deletes the fragments.
-
-Every step runs through the [Bashkit Shell](/capabilities/bashkit-shell/)
-capability, the agent's only tool. A throwaway working copy of the bundled
-sample repository is mounted as `/workspace` with a read-write workspace policy,
-so the shell edits real files on disk while staying inside the sandbox: no
-subprocess, no host filesystem, no network, and no `git`.
+cuts a release in a bundled repository through the sandboxed [Bashkit
+Shell](/capabilities/bashkit-shell/), then verifies the claimed changes on disk.
+This is a real `gpt-5.6-terra` agent, not a scripted turn.
 
 ![Bashkit Repo Agent terminal demo](https://raw.githubusercontent.com/everruns/everruns/main/examples/bashkit-repo-agent/demo.gif)
 
-This screencast replays a real run in readable pages, with waiting time removed.
-[Read the complete displayed transcript](https://github.com/everruns/everruns/blob/main/examples/bashkit-repo-agent/demo.txt).
-Scripts and command output are truncated for display; the agent receives the
-full result.
+## What you learn
+
+Mounting a scoped read-write workspace, exposing one execution capability,
+recovering from an unsupported command, and checking resulting state
+independently of the model's final answer.
+
+## Scenario and expected outcome
+
+The bundled fixture is a two-crate Cargo workspace with unreleased changelog
+fragments. The agent must cut `0.2.0`: update both package versions and their
+path-dependency pin, create a dated changelog section, preserve the previous
+release, and remove the folded fragments. The host fails the run if any of
+those invariants is false.
+
+## Run it
+
+Clone the repository and run from its root:
 
 ```bash
-OPENAI_API_KEY=... cargo run -p everruns-bashkit-repo-agent
+export OPENAI_API_KEY="your-key"
+cargo run -p everruns-bashkit-repo-agent
 ```
 
-Pass a directory after `--` to keep the working copy after the run. When the
-turn ends, the host re-reads the directory and prints one check per claim the
-agent made, exiting non-zero if the release did not land. That check list is
-what makes the example a test of the execution runtime rather than of the
-model's summary.
+The default working copy is temporary. Pass a scratch directory after `--` to
+keep it. Never pass a repository you care about: the agent may modify anything
+inside the mounted workspace.
 
-## The important part
+```bash
+cargo run -p everruns-bashkit-repo-agent -- /tmp/release-run
+```
+
+Provider access and funded credits are required. Missing credentials,
+unsuccessful turns, or failed host assertions exit nonzero.
+
+## Build the agent
+
+The editable prompt lives in `instructions.md`. Writing is an explicit policy
+choice; the default workspace policy is read-only.
 
 ```rust
 let agent = Agent::builder()
     .name("bashkit-repo-agent")
-    // Tell the agent what the sandbox is, so it reaches for a portable
-    // alternative instead of retrying a builtin Bashkit does not implement.
-    .instructions("You are a release engineer for the repository mounted at \
-        /workspace. The bash tool is your only way to see or change anything. \
-        It is a sandboxed Bash interpreter, so there is no network, no host \
-        filesystem, and no git; work with the files in the working tree.")
-    .provider(OpenAI::from_env()?)
+    .instructions(include_str!("../instructions.md"))
+    .provider(provider)
     .model("gpt-5.6-terra")
-    // One real host directory becomes the session's `/workspace`. Every shell
-    // path resolves under it — nothing above it is addressable.
-    .workspace(&working_copy)
-    // Writing is an explicit opt-in; the default policy is read-only.
+    .workspace(workspace)
     .workspace_policy(WorkspacePolicy::read_write())
-    // The only capability: a sandboxed shell over that workspace. No file
-    // tools, so every read and edit in the transcript is a bash command.
     .capability(BashkitShell::new())
     .build()?;
+```
 
+## Run and verify
+
+The shared observer subscribes before sending, displays bounded shell events,
+and waits for a successful turn. The host then reads the workspace itself;
+confidence in the final answer cannot make a failed release pass.
+
+```rust
 let session = Engine::new().create(agent);
-// The example streams session events to print each shell script and its
-// output; `session.send_and_wait(request)` is the version without the observer.
-session.send_and_wait(&release_request(&release_date)).await?;
+demo::run(&session, &release_request(&release_date)).await?;
 
-// The turn is not the result — the directory is. The host re-reads the working
-// copy and checks each claim, so a confident summary over an unchanged tree
-// fails loudly.
-for check in verify(&working_copy, &release_date) {
-    println!("[{}] {}", if check.passed { "ok" } else { "FAIL" }, check.label);
+let checks = verify(&root, &release_date);
+if checks.iter().any(|check| !check.passed) {
+    return Err("release verification failed".into());
 }
 ```
+
+Use `session.send_and_wait(request).await?` when a live tool timeline is not
+needed.
+
+## How the sandbox behaves
+
+Bashkit interprets bash in-process against `/workspace`: there is no subprocess,
+network, Git, or host filesystem outside the mount. Commands, loops, and script
+size are bounded. The recording shows the model encountering an unsupported
+`find -delete`, inspecting partial state, and recovering with a portable command.
+
+## Validate it
+
+```bash
+cargo test -p everruns-bashkit-repo-agent
+python3 examples/bashkit-repo-agent/render_demo.py --check
+```
+
+These checks are offline. They validate construction, fixture state, host-side
+assertions, and recording pagination; they do not grade model quality.
+
+## Recording workflow
+
+[`demo.txt`](https://github.com/everruns/everruns/blob/main/examples/bashkit-repo-agent/demo.txt)
+is a successful live transcript. `render_demo.py` automatically paginates it,
+and VHS replays those pages without another provider call:
+
+```bash
+cd examples/bashkit-repo-agent
+bash record.sh
+```
+
+The script preserves the previous successful transcript if the live run fails.
+Review output before sharing when adapting this observer to private data.
+
+## Adapt it safely
+
+Replace the fixture, request, and `verify` assertions together. Keep the mount
+narrow, prefer a disposable copy, grant write access only when necessary, and
+verify consequential claims from host state after the turn.
+
+## Boundaries
+
+This is one sandboxed repository operation, not a general coding agent. It has
+no network or Git credentials and cannot commit or push. Its Framework session
+is in-memory.

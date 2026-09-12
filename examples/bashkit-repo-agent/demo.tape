@@ -1,27 +1,56 @@
-# Paged replay of demo.txt captured by record.sh from a real provider run.
+# Generated from demo.txt by render_demo.py.
 Output demo.gif
-Require less
 Set Shell "bash"
 Set Width 1440
-Set Height 740
+Set Height 800
 Set FontSize 18
-Set TypingSpeed 15ms
 Set Theme "Catppuccin Mocha"
+Set TypingSpeed 1ms
 Hide
-Type "LESS= LESSOPEN= LESSCHARSET=utf-8 less -R -z24 -P 'Recorded live run | SPACE next page | Q quit' demo.txt"
+Type "clear; cat .demo-pages/01.txt"
 Enter
-Sleep 500ms
+Sleep 300ms
 Show
-Sleep 7s
-Space
-Sleep 7s
-Space
-Sleep 7s
-Space
-Sleep 7s
-Space
-Sleep 7s
-Space
-Sleep 7s
-Space
-Sleep 7s
+Sleep 14s
+Hide
+Type "clear; cat .demo-pages/02.txt"
+Enter
+Sleep 300ms
+Show
+Sleep 14s
+Hide
+Type "clear; cat .demo-pages/03.txt"
+Enter
+Sleep 300ms
+Show
+Sleep 14s
+Hide
+Type "clear; cat .demo-pages/04.txt"
+Enter
+Sleep 300ms
+Show
+Sleep 14s
+Hide
+Type "clear; cat .demo-pages/05.txt"
+Enter
+Sleep 300ms
+Show
+Sleep 14s
+Hide
+Type "clear; cat .demo-pages/06.txt"
+Enter
+Sleep 300ms
+Show
+Sleep 13s
+Hide
+Type "clear; cat .demo-pages/07.txt"
+Enter
+Sleep 300ms
+Show
+Sleep 10s
+Hide
+Type "clear; cat .demo-pages/08.txt"
+Enter
+Sleep 300ms
+Show
+Sleep 11s

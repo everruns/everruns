@@ -11,13 +11,15 @@ repository: these Cargo packages depend on local workspace crates.
 | [Code Review](coding-review-agent/) | Execute a fixed reproduction before reporting a defect | `cargo run -p everruns-coding-review-agent` |
 | [Research](research-agent/) | Search and fetch primary sources | `cargo run -p everruns-research-agent` |
 | [Incident Commander](incident-commander-agent/) | Investigate evidence and persist a safe update | `cargo run -p everruns-incident-commander-agent` |
+| [Bashkit Repo](bashkit-repo-agent/) | Modify and verify a repository through a sandboxed shell | `cargo run -p everruns-bashkit-repo-agent` |
 
 Each README lists credentials, contrasting scenarios, expected outcomes, and
 limits. Live runs incur provider/search charges. Offline tests exercise tool
 behavior, not model quality. The default engine is in-memory, not durable storage.
 
-`src/main.rs` shows build → create session → subscribe → send → observe → wait.
-`src/demo.rs` is presentation only. `instructions.md` is the editable prompt.
+`src/main.rs` shows build → create session → run → verify. `instructions.md` is
+the editable prompt. Shared terminal presentation lives in `demo-support`; it
+does not change agent behavior.
 
 [Public walkthroughs](https://docs.everruns.com/framework/examples/) explain the code.
 [Focused Framework API examples](../crates/everruns/examples/) cover persistence,

@@ -820,7 +820,7 @@ jobs:
             -p everruns-research-agent -p everruns-incident-commander-agent \
             -p everruns-framework-support-agent -p everruns-bashkit-repo-agent \
             -p everruns-example-demo
-          for example in support-agent everruns-support-agent coding-review-agent research-agent incident-commander-agent; do
+          for example in support-agent everruns-support-agent coding-review-agent research-agent incident-commander-agent bashkit-repo-agent; do
             python3 "examples/$example/render_demo.py" --check
           done
           # Production-safe deterministic simulator plus its optional host
