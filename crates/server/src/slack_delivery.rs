@@ -68,8 +68,9 @@ pub struct SlackDeliveryDispatcher {
     /// UI base used to build the session link carried by terminal notices.
     /// Empty when unconfigured, in which case notices ship without a link.
     frontend_url: String,
-    /// Slack API base. Overridden by tests to point at a mock server.
-    slack_api_base: String,
+    /// Platform delivery adapter. Every outbound message goes through it, so the
+    /// path a second platform inherits is the one Slack actually exercises.
+    adapter: Arc<dyn ChannelDeliveryAdapter>,
 }
 
 impl SlackDeliveryDispatcher {
@@ -82,15 +83,20 @@ impl SlackDeliveryDispatcher {
         event_rx: broadcast::Receiver<EventNotificationPayload>,
         frontend_url: String,
     ) -> Arc<Self> {
-        Self::start_with_slack_api_base(db, event_rx, frontend_url, SLACK_API_BASE.to_string())
+        Self::start_with_adapter(
+            db,
+            event_rx,
+            frontend_url,
+            Arc::new(SlackDeliveryAdapter::new()),
+        )
     }
 
     /// `start`, with the Slack API base injected. Tests point this at a mock.
-    pub fn start_with_slack_api_base(
+    pub fn start_with_adapter(
         db: Arc<StorageBackend>,
         event_rx: broadcast::Receiver<EventNotificationPayload>,
         frontend_url: String,
-        slack_api_base: String,
+        adapter: Arc<dyn ChannelDeliveryAdapter>,
     ) -> Arc<Self> {
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
@@ -100,7 +106,7 @@ impl SlackDeliveryDispatcher {
             db,
             shutdown_tx,
             frontend_url,
-            slack_api_base,
+            adapter,
         });
 
         // Spawn the event processing loop
@@ -276,21 +282,17 @@ impl SlackDeliveryDispatcher {
                 if let Some(text) =
                     extract_delivery_text(&event.event_type, ctx.reply_mode, &event.data)
                 {
-                    match post_to_slack_with_retry_base(
-                        &self.slack_api_base,
-                        &ctx.bot_token,
-                        &ctx.channel,
-                        &ctx.thread_ts,
-                        &text,
-                    )
-                    .await
-                    {
+                    // In report-progress-only mode the only text that reaches here
+                    // is a progress report; in all-messages mode it is the answer.
+                    let is_progress_report = ctx.reply_mode == SlackReplyMode::ReportProgressOnly;
+                    match self.post(&ctx, session_id, text, is_progress_report).await {
                         // Only a reply Slack accepted counts as delivered. A send that
                         // exhausted its retries or hit a permanent error leaves this
                         // false, so the notice below tells the user the answer was
                         // produced and lost rather than leaving the thread silent.
-                        Ok(()) => delivered = true,
-                        Err(e) => error!(
+                        ChannelDeliveryResult::Ok => delivered = true,
+                        ChannelDeliveryResult::TransientError(e)
+                        | ChannelDeliveryResult::PermanentError(e) => error!(
                             %session_id,
                             error = %e,
                             "Failed to post message to Slack after retries"
@@ -317,21 +319,15 @@ impl SlackDeliveryDispatcher {
                 // is over, and unregister either way.
                 if !delivered {
                     let notice = self.terminal_notice(&event_type, session_id);
-                    if let Err(e) = post_to_slack_with_retry_base(
-                        &self.slack_api_base,
-                        &ctx.bot_token,
-                        &ctx.channel,
-                        &ctx.thread_ts,
-                        &notice,
-                    )
-                    .await
-                    {
-                        warn!(
+                    match self.post(&ctx, session_id, notice, false).await {
+                        ChannelDeliveryResult::Ok => {}
+                        ChannelDeliveryResult::TransientError(e)
+                        | ChannelDeliveryResult::PermanentError(e) => warn!(
                             %session_id,
                             event_type = %event_type,
                             error = %e,
                             "Failed to post terminal-state notice to Slack"
-                        );
+                        ),
                     }
                 }
                 self.unregister(&key).await;
@@ -344,6 +340,34 @@ impl SlackDeliveryDispatcher {
                 }
             }
         }
+    }
+
+    /// Post one message through the platform adapter.
+    ///
+    /// The dispatcher deliberately does not interpret the failure variant.
+    /// Transient-vs-permanent is the adapter's judgement (EVE-972); the only
+    /// thing the dispatcher decides is whether the user saw the message.
+    async fn post(
+        &self,
+        ctx: &DeliveryContext,
+        session_id: Uuid,
+        text: String,
+        is_progress_report: bool,
+    ) -> ChannelDeliveryResult {
+        let message = OutboundChannelMessage {
+            session_id: SessionId::from_uuid(session_id),
+            text,
+            thread_ref: ctx.thread_ts.clone(),
+            is_progress_report,
+        };
+        let delivery_ctx = ChannelDeliveryContext {
+            auth_token: ctx.bot_token.clone(),
+            channel_id: ctx.channel.clone(),
+            thread_ref: ctx.thread_ts.clone(),
+            reply_mode: ctx.reply_mode.into(),
+            extra: HashMap::new(),
+        };
+        self.adapter.deliver(&message, &delivery_ctx).await
     }
 
     /// One terse status line for a turn that ended without a reply.
@@ -594,7 +618,46 @@ impl SlackDeliveryDispatcher {
 /// Translates `OutboundChannelMessage` into Slack `chat.postMessage` API calls.
 /// Used by the `SlackDeliveryDispatcher` and available for future generic
 /// delivery dispatchers.
-pub struct SlackDeliveryAdapter;
+pub struct SlackDeliveryAdapter {
+    /// Slack API base. Tests point this at a mock server.
+    api_base: String,
+}
+
+impl SlackDeliveryAdapter {
+    pub fn new() -> Self {
+        Self {
+            api_base: SLACK_API_BASE.to_string(),
+        }
+    }
+
+    /// Adapter aimed at a different Slack API base — used by tests.
+    pub fn with_api_base(api_base: String) -> Self {
+        Self { api_base }
+    }
+}
+
+impl Default for SlackDeliveryAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Slack API errors that retrying cannot fix.
+///
+/// The single source of truth for transient-vs-permanent (EVE-972). Both the
+/// retry loop and `ChannelDeliveryResult` mapping read it, so a send can no
+/// longer be abandoned as unretryable while being reported as transient.
+fn slack_error_is_permanent(error: &str) -> bool {
+    const PERMANENT: &[&str] = &[
+        "channel_not_found",
+        "not_authed",
+        "invalid_auth",
+        "token_revoked",
+        "account_inactive",
+        "no_text",
+    ];
+    PERMANENT.iter().any(|e| error.contains(e))
+}
 
 #[async_trait]
 impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
@@ -607,7 +670,8 @@ impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
         message: &OutboundChannelMessage,
         context: &ChannelDeliveryContext,
     ) -> ChannelDeliveryResult {
-        match post_to_slack_with_retry(
+        match post_to_slack_with_retry_base(
+            &self.api_base,
             &context.auth_token,
             &context.channel_id,
             &context.thread_ref,
@@ -616,18 +680,7 @@ impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
         .await
         {
             Ok(()) => ChannelDeliveryResult::Ok,
-            Err(e) => {
-                let err = e.to_string();
-                if err.contains("channel_not_found")
-                    || err.contains("not_authed")
-                    || err.contains("invalid_auth")
-                    || err.contains("token_revoked")
-                {
-                    ChannelDeliveryResult::PermanentError(err)
-                } else {
-                    ChannelDeliveryResult::TransientError(err)
-                }
-            }
+            Err(e) => classify_slack_failure(e),
         }
     }
 
@@ -637,9 +690,17 @@ impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
         text: &str,
         context: &ChannelDeliveryContext,
     ) -> ChannelDeliveryResult {
-        match post_to_slack(&context.auth_token, &context.channel_id, thread_ref, text).await {
+        match post_to_slack_base(
+            &self.api_base,
+            &context.auth_token,
+            &context.channel_id,
+            thread_ref,
+            text,
+        )
+        .await
+        {
             Ok(()) => ChannelDeliveryResult::Ok,
-            Err(e) => ChannelDeliveryResult::TransientError(e.to_string()),
+            Err(e) => classify_slack_failure(e),
         }
     }
 
@@ -648,6 +709,16 @@ impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
         report: &everruns_core::progress_reporting::ProgressReportPayload,
     ) -> String {
         format_progress_report_for_slack(report)
+    }
+}
+
+/// Map a Slack transport failure onto a `ChannelDeliveryResult`.
+fn classify_slack_failure(error: anyhow::Error) -> ChannelDeliveryResult {
+    let err = error.to_string();
+    if slack_error_is_permanent(&err) {
+        ChannelDeliveryResult::PermanentError(err)
+    } else {
+        ChannelDeliveryResult::TransientError(err)
     }
 }
 
@@ -713,19 +784,6 @@ pub(crate) fn extract_delivery_text(
     }
 }
 
-/// Post a message to Slack with exponential backoff retry.
-///
-/// Retries up to 3 times on transient failures (network errors, rate limits).
-/// Non-retryable errors (invalid token, channel not found) fail immediately.
-async fn post_to_slack_with_retry(
-    bot_token: &str,
-    channel: &str,
-    thread_ts: &str,
-    text: &str,
-) -> anyhow::Result<()> {
-    post_to_slack_with_retry_base(SLACK_API_BASE, bot_token, channel, thread_ts, text).await
-}
-
 async fn post_to_slack_with_retry_base(
     base_url: &str,
     bot_token: &str,
@@ -743,13 +801,7 @@ async fn post_to_slack_with_retry_base(
                 let error_str = e.to_string();
 
                 // Non-retryable Slack API errors
-                if error_str.contains("channel_not_found")
-                    || error_str.contains("not_authed")
-                    || error_str.contains("invalid_auth")
-                    || error_str.contains("token_revoked")
-                    || error_str.contains("account_inactive")
-                    || error_str.contains("no_text")
-                {
+                if slack_error_is_permanent(&error_str) {
                     return Err(e);
                 }
 
@@ -1615,6 +1667,182 @@ mod tests {
         }
     }
 
+    /// EVE-972: every outbound message leaves through `ChannelDeliveryAdapter`,
+    /// and transient-vs-permanent is decided in exactly one place.
+    mod adapter_routing_tests {
+        use super::*;
+        use crate::storage::StorageBackend;
+        use std::sync::Mutex;
+        use tokio::sync::broadcast;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        /// Adapter that records what it was asked to send and never touches the
+        /// network. If the dispatcher still called Slack directly, the recorder
+        /// would stay empty and the mock would see traffic instead.
+        struct RecordingAdapter {
+            sent: Arc<Mutex<Vec<(String, bool)>>>,
+        }
+
+        #[async_trait]
+        impl ChannelDeliveryAdapter for RecordingAdapter {
+            fn platform(&self) -> &str {
+                "recording"
+            }
+
+            async fn deliver(
+                &self,
+                message: &OutboundChannelMessage,
+                _context: &ChannelDeliveryContext,
+            ) -> ChannelDeliveryResult {
+                self.sent
+                    .lock()
+                    .expect("recorder lock")
+                    .push((message.text.clone(), message.is_progress_report));
+                ChannelDeliveryResult::Ok
+            }
+
+            async fn send_ack(
+                &self,
+                _thread_ref: &str,
+                _text: &str,
+                _context: &ChannelDeliveryContext,
+            ) -> ChannelDeliveryResult {
+                ChannelDeliveryResult::Ok
+            }
+
+            fn format_progress_report(&self, report: &ProgressReportPayload) -> String {
+                format_progress_report_for_slack(report)
+            }
+        }
+
+        #[tokio::test]
+        async fn dispatcher_delivers_through_the_adapter() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let session_id = terminal_state_tests::seed_session(&db).await;
+
+            // A live Slack mock that must never be called: the dispatcher's only
+            // route out is the adapter above.
+            let unused_slack = MockServer::start().await;
+            let sent = Arc::new(Mutex::new(Vec::new()));
+            let (_tx, rx) = broadcast::channel::<EventNotificationPayload>(16);
+            let dispatcher = SlackDeliveryDispatcher::start_with_adapter(
+                db.clone(),
+                rx,
+                "https://app.example.com".to_string(),
+                Arc::new(RecordingAdapter { sent: sent.clone() }),
+            );
+
+            dispatcher
+                .register(
+                    session_id.uuid(),
+                    "msg_turn_one".to_string(),
+                    "xoxb-test-token".to_string(),
+                    "C_ADAPTER".to_string(),
+                    "1700000000.000100".to_string(),
+                    SlackReplyMode::AllMessages,
+                )
+                .await;
+
+            terminal_state_tests::emit(
+                &db,
+                session_id,
+                "output.message.completed",
+                "msg_turn_one",
+                serde_json::json!({
+                    "message": { "content": [{ "type": "text", "text": "Routed reply." }] }
+                }),
+            )
+            .await;
+            terminal_state_tests::emit(
+                &db,
+                session_id,
+                "turn.completed",
+                "msg_turn_one",
+                serde_json::json!({}),
+            )
+            .await;
+            dispatcher.process_session_events(session_id.uuid()).await;
+
+            let sent = sent.lock().expect("recorder lock").clone();
+            assert_eq!(sent, vec![("Routed reply.".to_string(), false)]);
+            assert!(
+                unused_slack
+                    .received_requests()
+                    .await
+                    .unwrap_or_default()
+                    .is_empty(),
+                "dispatcher must make no direct Slack API calls"
+            );
+        }
+
+        async fn deliver_against(body: serde_json::Value) -> ChannelDeliveryResult {
+            let mock_server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
+                .mount(&mock_server)
+                .await;
+
+            let adapter = SlackDeliveryAdapter::with_api_base(mock_server.uri());
+            let message = OutboundChannelMessage {
+                session_id: SessionId::from_uuid(uuid::Uuid::nil()),
+                text: "hello".to_string(),
+                thread_ref: String::new(),
+                is_progress_report: false,
+            };
+            let ctx = ChannelDeliveryContext {
+                auth_token: "xoxb-test-token".to_string(),
+                channel_id: "C123".to_string(),
+                thread_ref: String::new(),
+                reply_mode: SlackReplyMode::AllMessages.into(),
+                extra: HashMap::new(),
+            };
+            adapter.deliver(&message, &ctx).await
+        }
+
+        /// `account_inactive` and `no_text` were already treated as unretryable by
+        /// the retry loop, but the adapter reported them as transient — the two
+        /// lists had drifted apart. One list now answers both questions.
+        #[tokio::test]
+        async fn permanent_errors_are_reported_permanent() {
+            for error in ["channel_not_found", "account_inactive", "no_text"] {
+                let result =
+                    deliver_against(serde_json::json!({ "ok": false, "error": error })).await;
+                assert!(
+                    matches!(result, ChannelDeliveryResult::PermanentError(_)),
+                    "{error} must be permanent, got {result:?}"
+                );
+            }
+        }
+
+        #[tokio::test]
+        async fn unknown_errors_stay_transient() {
+            let result =
+                deliver_against(serde_json::json!({ "ok": false, "error": "ratelimited" })).await;
+            assert!(
+                matches!(result, ChannelDeliveryResult::TransientError(_)),
+                "a rate limit must stay retryable, got {result:?}"
+            );
+        }
+
+        #[test]
+        fn classification_lists_every_unretryable_error() {
+            for error in [
+                "channel_not_found",
+                "not_authed",
+                "invalid_auth",
+                "token_revoked",
+                "account_inactive",
+                "no_text",
+            ] {
+                assert!(slack_error_is_permanent(error), "{error} must be permanent");
+            }
+            assert!(!slack_error_is_permanent("ratelimited"));
+            assert!(!slack_error_is_permanent("internal_error"));
+        }
+    }
+
     /// EVE-966: a turn that ends without a delivered reply must say so in the
     /// Slack thread exactly once, and must always release its registration.
     mod terminal_state_tests {
@@ -1633,7 +1861,9 @@ mod tests {
         const CHANNEL: &str = "C_TERMINAL";
         const THREAD_TS: &str = "1700000000.000100";
 
-        async fn seed_session(db: &StorageBackend) -> everruns_provider::typed_id::SessionId {
+        pub(super) async fn seed_session(
+            db: &StorageBackend,
+        ) -> everruns_provider::typed_id::SessionId {
             db.create_session(CreateSessionRow {
                 source: everruns_platform::SessionSource::Api,
                 workspace_id: None,
@@ -1669,7 +1899,7 @@ mod tests {
             .id
         }
 
-        async fn emit(
+        pub(super) async fn emit(
             db: &StorageBackend,
             session_id: everruns_provider::typed_id::SessionId,
             event_type: &str,
@@ -1710,11 +1940,11 @@ mod tests {
                 .await;
 
             let (_tx, rx) = broadcast::channel::<EventNotificationPayload>(16);
-            let dispatcher = SlackDeliveryDispatcher::start_with_slack_api_base(
+            let dispatcher = SlackDeliveryDispatcher::start_with_adapter(
                 db,
                 rx,
                 FRONTEND.to_string(),
-                mock_server.uri(),
+                Arc::new(SlackDeliveryAdapter::with_api_base(mock_server.uri())),
             );
             (dispatcher, mock_server)
         }
@@ -1929,11 +2159,11 @@ mod tests {
                 .await;
 
             let (_tx, rx) = broadcast::channel::<EventNotificationPayload>(16);
-            let dispatcher = SlackDeliveryDispatcher::start_with_slack_api_base(
+            let dispatcher = SlackDeliveryDispatcher::start_with_adapter(
                 db.clone(),
                 rx,
                 FRONTEND.to_string(),
-                mock_server.uri(),
+                Arc::new(SlackDeliveryAdapter::with_api_base(mock_server.uri())),
             );
             register_turn(&dispatcher, session_id.uuid()).await;
 

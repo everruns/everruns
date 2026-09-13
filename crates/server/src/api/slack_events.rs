@@ -838,17 +838,37 @@ async fn process_slack_message(
     let session_id = session.id.uuid();
     let message_id = message.id;
 
+    // Through the adapter rather than the Slack client directly (EVE-972), so the
+    // trait's ack path is exercised by its only implementation instead of being
+    // dead code a second platform would have to discover the gaps in.
     if slack_config.reply_mode == SlackReplyMode::ReportProgressOnly
         && !channel.is_empty()
         && !thread_ts.is_empty()
-        && let Err(error) =
-            crate::slack_delivery::post_to_slack(&bot_token, &channel, &thread_ts, "On it.").await
     {
-        tracing::warn!(
-            session_id = %session.id,
-            error = %error,
-            "Failed to post initial Slack handoff acknowledgement"
-        );
+        use everruns_core::channel::{
+            ChannelDeliveryAdapter, DeliveryContext as ChannelDeliveryContext,
+            DeliveryResult as ChannelDeliveryResult,
+        };
+
+        let adapter = crate::slack_delivery::SlackDeliveryAdapter::new();
+        let delivery_ctx = ChannelDeliveryContext {
+            auth_token: bot_token.clone(),
+            channel_id: channel.clone(),
+            thread_ref: thread_ts.clone(),
+            reply_mode: slack_config.reply_mode.into(),
+            extra: std::collections::HashMap::new(),
+        };
+
+        if let ChannelDeliveryResult::TransientError(error)
+        | ChannelDeliveryResult::PermanentError(error) =
+            adapter.send_ack(&thread_ts, "On it.", &delivery_ctx).await
+        {
+            tracing::warn!(
+                session_id = %session.id,
+                error = %error,
+                "Failed to post initial Slack handoff acknowledgement"
+            );
+        }
     }
 
     if let Some(ref dispatcher) = state.delivery_dispatcher {
