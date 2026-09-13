@@ -568,6 +568,7 @@ impl TestServer {
             None, // No delivery dispatcher in tests
             feature_flags.notifications,
             event_delivery.clone(),
+            "https://example.com/api".to_string(),
         );
         let app_webhooks_state = api::app_webhooks::AppWebhookState::new(
             db.clone(),

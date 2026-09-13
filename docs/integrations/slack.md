@@ -25,30 +25,35 @@ Everruns generates a pre-filled Slack App manifest for each app, making setup fa
 2. Enter a name, select a Harness and Agent
 3. Click **Create App**: you'll be redirected to the detail page
 
-### 2. Create the Slack App
+### 2. Publish the App
+
+Click **Publish** on the App detail page. This activates the webhook endpoint.
+
+Publishing comes before creating the Slack app because the generated manifest now declares the
+Request URL, and Slack verifies that URL at the moment the manifest is saved. An unpublished app
+returns 404 from the manifest endpoint for the same reason.
+
+### 3. Create the Slack App
 
 1. On the App detail page, click **Create Slack App**
-2. This opens Slack's "Create app from manifest" page with pre-filled scopes and bot settings
+2. This opens Slack's "Create app from manifest" page with pre-filled scopes, bot settings, **and
+   event subscriptions**
 3. Review the manifest and click **Create**
 4. Install the app to your workspace when prompted
 
-### 3. Copy Credentials Back
+The manifest subscribes the bot to `app_mention`, `message.channels`, `message.groups`,
+`message.im` and `message.mpim` at your app's Request URL, so there is nothing to configure by hand.
+
+> **Local development:** Slack cannot reach `localhost`, so the generated Request URL will not
+> verify. Run `ngrok http 9300` and replace the Request URL under **Event Subscriptions** with your
+> ngrok URL plus the same `/v1/apps/{app_id}/slack/events` path.
+
+### 4. Copy Credentials Back
 
 1. In your new Slack app, go to **Basic Information** and copy the **Signing Secret**
 2. Go to **OAuth & Permissions** and copy the **Bot User OAuth Token** (`xoxb-...`)
 3. Back in Everruns, click **Configure** on the Slack Integration card
 4. Paste both values and click **Save**
-
-### 4. Configure Event Subscriptions
-
-1. **Publish** the app in Everruns first (so the webhook URL is live)
-2. Copy the **Request URL** shown on the app detail page
-3. In your Slack app settings, go to **Event Subscriptions** → Enable Events
-4. Paste the Request URL, Slack will verify it automatically
-5. Subscribe to bot events: `message.channels`, `message.groups`, `message.im`, `message.mpim`, `app_mention`
-6. Click **Save Changes**
-
-> **Note:** Event subscriptions require a live webhook URL, so the Everruns app must be published before configuring this step.
 
 ### 5. Start Using
 
