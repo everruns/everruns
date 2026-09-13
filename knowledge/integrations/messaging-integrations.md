@@ -93,7 +93,7 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 |---|---|
 | **SPEC.md** | Co-located spec (`crates/server/specs/{platform}-integration.md`): architecture, webhook flow, security review. |
 | **Inbound adapter** | Parse platform webhook into `InboundChannelEvent`. Use `build_session_routing_tag()` for session lookup. Track participants via `ThreadContext`. |
-| **Delivery adapter** | Implement `ChannelDeliveryAdapter` trait for outbound message delivery. Handle retry with exponential backoff. |
+| **Delivery adapter** | Implement `ChannelDeliveryAdapter` trait for outbound message delivery. Handle retry with exponential backoff. Every outbound message goes through the trait, and transient-vs-permanent classification lives in the adapter alone — a dispatcher that also classifies lets the two lists drift apart. |
 | **Signing/auth verification** | Platform-specific request authentication (e.g. HMAC signing secret for Slack, Ed25519 for Discord). |
 | **Unit tests** | Webhook parsing, signature verification, session tag construction, delivery text extraction, bot message filtering. |
 | **Integration tests** | `crates/server/tests/{platform}_integration_test.rs`, webhook→session→message flows against in-memory storage. |
