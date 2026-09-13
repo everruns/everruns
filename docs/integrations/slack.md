@@ -155,6 +155,35 @@ The webhook URL must be publicly accessible. If running locally, use a tool like
 | `channel_id` | No | Restrict to a specific channel (e.g., `C0123456789`) |
 | `team_id` | No | Slack workspace ID |
 | `session_strategy` | No | `per_thread` (default), `per_channel`, or `per_user` |
+| `agent_surface_enabled` | No | `false` (default). Also serve Slack's agent pane — see [Agent Surface](#agent-surface) |
+
+## Agent Surface
+
+Slack apps can additionally appear as an **agent** — a dedicated assistant pane, separate from
+channel conversations. Setting `agent_surface_enabled` turns this on.
+
+It is additive, not a mode. The same app keeps answering `@mentions` in channels exactly as before
+and *also* gets the pane. Which surface a message belongs to is decided per event: a DM to the app
+is the pane, an `app_mention` in a channel is a channel thread.
+
+With the flag on, the generated manifest gains:
+
+- the `features.agent_view` block (with an `agent_description` derived from the app)
+- the `assistant:write` bot scope
+- the `app_home_opened`, `app_context_changed`, `agent_session_stopped` and
+  `agent_session_title_changed` bot events
+
+> **Enabling this on an existing app requires a reinstall.** `assistant:write` is a new OAuth scope,
+> and a config change cannot grant it. Regenerate the manifest, apply it to your Slack app, then
+> reinstall the app to your workspace. Until you do, the pane will not appear — channel replies keep
+> working throughout.
+
+Session strategy in the pane is always `per_thread`: a pane conversation *is* a thread, so
+`per_channel` and `per_user` have no meaning there. Your configured strategy still applies to
+channel threads, so one app can sensibly use `per_channel` in channels and per-thread in the pane.
+
+Today these events are acknowledged and logged but not yet acted on, so the toggle is safe to enable
+early. Streaming replies, agent status, the stop button, and thread context are tracked separately.
 
 ## Session Strategies
 
@@ -165,6 +194,9 @@ The session strategy controls how Slack messages map to Everruns sessions:
 | `per_thread` | Each Slack thread is a separate session | `slack:thread:{thread_ts}` |
 | `per_channel` | One session per Slack channel | `slack:channel:{channel}` |
 | `per_user` | One session per Slack user | `slack:user:{user}` |
+
+Agent-pane messages always use `per_thread` regardless of this setting (see
+[Agent Surface](#agent-surface)).
 
 **`per_thread`** is recommended for most use cases, it gives each conversation its own context, matching how Slack threads naturally work.
 

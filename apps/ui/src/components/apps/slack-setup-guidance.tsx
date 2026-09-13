@@ -19,6 +19,7 @@ interface SlackSetupGuidanceProps {
   webhookUrl: string;
   webhookPath: string;
   isLocalhost: boolean;
+  agentSurfaceEnabled: boolean;
   onCreateSlackApp: () => void;
   creatingSlackApp: boolean;
   onConfigure: () => void;
@@ -32,6 +33,7 @@ export function SlackSetupGuidance({
   webhookUrl,
   webhookPath,
   isLocalhost,
+  agentSurfaceEnabled,
   onCreateSlackApp,
   creatingSlackApp,
   onConfigure,
@@ -47,11 +49,39 @@ export function SlackSetupGuidance({
         webhookUrl={webhookUrl}
         webhookPath={webhookPath}
         isLocalhost={isLocalhost}
+        agentSurfaceEnabled={agentSurfaceEnabled}
         onCreateSlackApp={onCreateSlackApp}
         creatingSlackApp={creatingSlackApp}
         onConfigure={onConfigure}
       />
+      {hasSlackConfig && <AgentSurfaceNotice agentSurfaceEnabled={agentSurfaceEnabled} />}
     </>
+  );
+}
+
+/// The agent surface needs a new OAuth scope, so it is never a pure config flip.
+/// Saying so up front beats offering a toggle that half-works.
+function AgentSurfaceNotice({ agentSurfaceEnabled }: { agentSurfaceEnabled: boolean }) {
+  return (
+    <div className="mt-4 border-t pt-4 space-y-1">
+      <p className="text-sm font-medium">
+        {agentSurfaceEnabled ? "Agent surface enabled" : "Agent surface available"}
+      </p>
+      {agentSurfaceEnabled ? (
+        <p className="text-xs text-muted-foreground">
+          This app also serves Slack&apos;s agent pane. If the pane has not appeared, the Slack app
+          still needs reinstalling to pick up the <code>assistant:write</code> scope. Channel
+          threads are unaffected either way.
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Enabling it gives this app Slack&apos;s agent pane <em>alongside</em> its channel bot —
+          nothing about channel replies changes. It requires the <code>assistant:write</code> scope,
+          which a config change cannot grant on its own: you will need to update the Slack app from
+          a fresh manifest <strong>and reinstall it</strong> to your workspace.
+        </p>
+      )}
+    </div>
   );
 }
 

@@ -32,6 +32,66 @@ use crate::event_notifications::EventNotificationPayload;
 use crate::services::run_summary::is_terminal_turn_event;
 use crate::storage::StorageBackend;
 
+/// Which Slack surface a turn belongs to.
+///
+/// One app serves both at once: enabling Slack's Agents feature adds an assistant
+/// container, it does not replace the channel bot. Which surface an event belongs
+/// to is therefore read from the event at runtime, not from config (EVE-973).
+/// Delivery style branches on this in the tickets that follow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SlackSurface {
+    /// An ordinary channel or group thread — the classic channel bot.
+    #[default]
+    Channel,
+    /// The agent pane: a DM to an app with the agent surface enabled.
+    Pane,
+}
+
+/// Pane or channel, from the only two signals Slack gives us.
+///
+/// A live event carries `channel_type` (`"im"` for the agent pane). Recovery has
+/// no event to read — only the channel id stored in the turn's metadata — and
+/// Slack DM channel ids start with `D`. Both paths go through here so the two
+/// cannot drift into disagreeing about the same session.
+///
+/// With the surface disabled the app is a channel bot everywhere, DMs included,
+/// which is exactly how it behaves today.
+pub fn classify_surface(
+    agent_surface_enabled: bool,
+    channel_type: Option<&str>,
+    channel_id: &str,
+) -> SlackSurface {
+    if !agent_surface_enabled {
+        return SlackSurface::Channel;
+    }
+
+    let is_dm = match channel_type {
+        Some(kind) => kind == "im",
+        None => channel_id.starts_with('D'),
+    };
+
+    if is_dm {
+        SlackSurface::Pane
+    } else {
+        SlackSurface::Channel
+    }
+}
+
+/// Everything needed to start watching one turn's delivery.
+///
+/// A struct rather than a parameter list: the turn's identity, its Slack
+/// destination, and its delivery style are three different things, and passing
+/// seven positional arguments made them easy to transpose.
+pub struct DeliveryRegistration {
+    pub session_id: Uuid,
+    pub input_message_id: String,
+    pub bot_token: String,
+    pub channel: String,
+    pub thread_ts: String,
+    pub reply_mode: SlackReplyMode,
+    pub surface: SlackSurface,
+}
+
 /// Context needed to deliver Slack messages for a turn.
 #[derive(Debug, Clone)]
 struct DeliveryContext {
@@ -40,6 +100,9 @@ struct DeliveryContext {
     thread_ts: String,
     input_message_id: String,
     reply_mode: SlackReplyMode,
+    /// Surface this turn arrived on. Carried so delivery can branch on it.
+    #[allow(dead_code)]
+    surface: SlackSurface,
     /// Last event ID we've processed (for cursor-based pagination).
     since_event_id: Option<EventId>,
     /// Whether a reply has already reached Slack for this turn. Terminal states
@@ -122,15 +185,17 @@ impl SlackDeliveryDispatcher {
     ///
     /// Called when a Slack message creates a new agent turn. The dispatcher will
     /// watch for output events and post them to Slack.
-    pub async fn register(
-        &self,
-        session_id: Uuid,
-        input_message_id: String,
-        bot_token: String,
-        channel: String,
-        thread_ts: String,
-        reply_mode: SlackReplyMode,
-    ) {
+    pub async fn register(&self, registration: DeliveryRegistration) {
+        let DeliveryRegistration {
+            session_id,
+            input_message_id,
+            bot_token,
+            channel,
+            thread_ts,
+            reply_mode,
+            surface,
+        } = registration;
+
         let key = DeliveryKey {
             session_id,
             input_message_id: input_message_id.clone(),
@@ -142,6 +207,7 @@ impl SlackDeliveryDispatcher {
             thread_ts,
             input_message_id,
             reply_mode,
+            surface,
             since_event_id: None,
             delivered: false,
         };
@@ -149,6 +215,7 @@ impl SlackDeliveryDispatcher {
         info!(
             %session_id,
             input_message_id = %ctx.input_message_id,
+            ?surface,
             "Registered Slack delivery"
         );
 
@@ -613,14 +680,18 @@ impl SlackDeliveryDispatcher {
                 "Recovering Slack delivery"
             );
 
-            self.register(
-                session.id.uuid(),
+            // No event to read on this path, so the channel id is the only signal.
+            let surface = classify_surface(slack_config.agent_surface_enabled, None, &channel);
+
+            self.register(DeliveryRegistration {
+                session_id: session.id.uuid(),
                 input_message_id,
-                slack_config.bot_token.clone(),
+                bot_token: slack_config.bot_token.clone(),
                 channel,
                 thread_ts,
-                slack_config.reply_mode,
-            )
+                reply_mode: slack_config.reply_mode,
+                surface,
+            })
             .await;
         }
 
@@ -662,21 +733,102 @@ impl Default for SlackDeliveryAdapter {
     }
 }
 
-/// Slack API errors that retrying cannot fix.
+/// Slack API error codes that retrying cannot fix.
 ///
-/// The single source of truth for transient-vs-permanent (EVE-972). Both the
-/// retry loop and `ChannelDeliveryResult` mapping read it, so a send can no
-/// longer be abandoned as unretryable while being reported as transient.
-fn slack_error_is_permanent(error: &str) -> bool {
-    const PERMANENT: &[&str] = &[
-        "channel_not_found",
-        "not_authed",
-        "invalid_auth",
-        "token_revoked",
-        "account_inactive",
-        "no_text",
-    ];
-    PERMANENT.iter().any(|e| error.contains(e))
+/// The single source of truth for transient-vs-permanent (EVE-972), matched as
+/// exact codes rather than substrings of a formatted message (EVE-968).
+const PERMANENT_SLACK_ERRORS: &[&str] = &[
+    "channel_not_found",
+    "not_authed",
+    "invalid_auth",
+    "token_revoked",
+    "account_inactive",
+    "no_text",
+];
+
+/// Ceiling on an honoured `Retry-After`.
+///
+/// Slack's advice is normally seconds, but a delivery task must not be pinned by
+/// a pathological value. Worst case is `max_attempts` waits at this cap.
+const MAX_RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// A failed Slack API call, typed so the retry loop can act on the reason.
+///
+/// Before EVE-968 every failure was flattened into a string and re-examined by
+/// substring match, which threw away the one thing a 429 actually tells us:
+/// how long to wait.
+#[derive(Debug)]
+pub(crate) enum SlackApiError {
+    /// Slack asked us to slow down, and said for how long when it could.
+    RateLimited {
+        retry_after: Option<std::time::Duration>,
+    },
+    /// Retrying cannot help: bad token, missing channel, empty message.
+    Permanent(String),
+    /// Network trouble, a 5xx, or an error code we do not recognise.
+    Transient(String),
+}
+
+impl SlackApiError {
+    /// Classify a Slack `error` code from an `ok: false` body.
+    fn from_code(code: &str, retry_after: Option<std::time::Duration>) -> Self {
+        if code == "ratelimited" {
+            return Self::RateLimited { retry_after };
+        }
+        let message = format!("Slack API error: {code}");
+        if PERMANENT_SLACK_ERRORS.contains(&code) {
+            Self::Permanent(message)
+        } else {
+            Self::Transient(message)
+        }
+    }
+
+    /// Whether retrying this failure is pointless.
+    fn is_permanent(&self) -> bool {
+        matches!(self, Self::Permanent(_))
+    }
+}
+
+impl std::fmt::Display for SlackApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RateLimited {
+                retry_after: Some(d),
+            } => {
+                write!(f, "Slack API rate limited (retry after {}s)", d.as_secs())
+            }
+            Self::RateLimited { retry_after: None } => write!(f, "Slack API rate limited"),
+            Self::Permanent(message) | Self::Transient(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl std::error::Error for SlackApiError {}
+
+/// How long to wait before the next attempt.
+///
+/// Slack's own advice beats our guess. Retrying a 429 on a 1s backoff burns the
+/// remaining attempts before the rate-limit window has even opened, which is how
+/// a burst drops replies that would otherwise have gone through (EVE-968).
+fn retry_wait(error: &SlackApiError, backoff: std::time::Duration) -> std::time::Duration {
+    match error {
+        SlackApiError::RateLimited {
+            retry_after: Some(advice),
+        } => (*advice).min(MAX_RETRY_AFTER),
+        _ => backoff,
+    }
+}
+
+/// Slack sends `Retry-After` in whole seconds.
+fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<std::time::Duration> {
+    headers
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .map(std::time::Duration::from_secs)
 }
 
 #[async_trait]
@@ -745,12 +897,10 @@ impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
 }
 
 /// Map a Slack transport failure onto a `ChannelDeliveryResult`.
-fn classify_slack_failure(error: anyhow::Error) -> ChannelDeliveryResult {
-    let err = error.to_string();
-    if slack_error_is_permanent(&err) {
-        ChannelDeliveryResult::PermanentError(err)
-    } else {
-        ChannelDeliveryResult::TransientError(err)
+fn classify_slack_failure(error: SlackApiError) -> ChannelDeliveryResult {
+    match error {
+        SlackApiError::Permanent(message) => ChannelDeliveryResult::PermanentError(message),
+        other => ChannelDeliveryResult::TransientError(other.to_string()),
     }
 }
 
@@ -823,33 +973,29 @@ async fn post_to_slack_with_retry_base(
     thread_ts: &str,
     text: &str,
     correlation: Option<&SlackCorrelation>,
-) -> anyhow::Result<()> {
+) -> Result<(), SlackApiError> {
     let max_attempts = 3;
-    let mut delay = std::time::Duration::from_secs(1);
+    let mut backoff = std::time::Duration::from_secs(1);
 
     for attempt in 1..=max_attempts {
         match post_slack_message(base_url, bot_token, channel, thread_ts, text, correlation).await {
             Ok(()) => return Ok(()),
             Err(e) => {
-                let error_str = e.to_string();
-
-                // Non-retryable Slack API errors
-                if slack_error_is_permanent(&error_str) {
+                if e.is_permanent() || attempt == max_attempts {
                     return Err(e);
                 }
 
-                if attempt == max_attempts {
-                    return Err(e);
-                }
+                let wait = retry_wait(&e, backoff);
 
                 warn!(
                     attempt,
                     max_attempts,
+                    wait_secs = wait.as_secs(),
                     error = %e,
                     "Slack post failed, retrying"
                 );
-                tokio::time::sleep(delay).await;
-                delay *= 2;
+                tokio::time::sleep(wait).await;
+                backoff *= 2;
             }
         }
     }
@@ -1081,7 +1227,8 @@ pub(crate) async fn post_to_slack(
     thread_ts: &str,
     text: &str,
 ) -> anyhow::Result<()> {
-    post_to_slack_base(SLACK_API_BASE, bot_token, channel, thread_ts, text).await
+    post_to_slack_base(SLACK_API_BASE, bot_token, channel, thread_ts, text).await?;
+    Ok(())
 }
 
 /// Post a message to Slack using the Bot API (with configurable base URL for testing).
@@ -1091,7 +1238,7 @@ pub(crate) async fn post_to_slack_base(
     channel: &str,
     thread_ts: &str,
     text: &str,
-) -> anyhow::Result<()> {
+) -> Result<(), SlackApiError> {
     post_slack_message(base_url, bot_token, channel, thread_ts, text, None).await
 }
 
@@ -1107,7 +1254,7 @@ pub(crate) async fn post_slack_message(
     thread_ts: &str,
     text: &str,
     correlation: Option<&SlackCorrelation>,
-) -> anyhow::Result<()> {
+) -> Result<(), SlackApiError> {
     let client = reqwest::Client::new();
     let payloads = build_post_payloads(channel, thread_ts, text, correlation);
     let total = payloads.len();
@@ -1119,10 +1266,18 @@ pub(crate) async fn post_slack_message(
             .header("Content-Type", "application/json")
             .json(&payload)
             .send()
-            .await?;
+            .await
+            .map_err(|e| SlackApiError::Transient(e.to_string()))?;
 
         let status = response.status();
-        let body: serde_json::Value = response.json().await?;
+        // Read the header before the body is consumed: a 429 carries its advice
+        // here, not in the JSON.
+        let retry_after = parse_retry_after(response.headers());
+
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| SlackApiError::Transient(e.to_string()))?;
 
         if !body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
             let error = body
@@ -1130,20 +1285,29 @@ pub(crate) async fn post_slack_message(
                 .and_then(|e| e.as_str())
                 .unwrap_or("unknown");
 
-            // Rate limited — treat as retryable
-            if error == "ratelimited" {
-                return Err(anyhow::anyhow!("Slack API rate limited"));
-            }
+            let failure = SlackApiError::from_code(error, retry_after);
 
-            error!(
-                channel = channel,
-                error = error,
-                status = %status,
-                part = index + 1,
-                parts = total,
-                "Failed to post message to Slack"
-            );
-            return Err(anyhow::anyhow!("Slack API error: {}", error));
+            // A rate limit is routine backpressure, not a fault to shout about.
+            if matches!(failure, SlackApiError::RateLimited { .. }) {
+                debug!(
+                    channel = channel,
+                    retry_after_secs = ?retry_after.map(|d| d.as_secs()),
+                    status = %status,
+                    part = index + 1,
+                    parts = total,
+                    "Slack rate limited the post"
+                );
+            } else {
+                error!(
+                    channel = channel,
+                    error = error,
+                    status = %status,
+                    part = index + 1,
+                    parts = total,
+                    "Failed to post message to Slack"
+                );
+            }
+            return Err(failure);
         }
     }
 
@@ -1933,6 +2097,62 @@ mod tests {
         }
     }
 
+    /// EVE-973: one app serves both Slack surfaces, and which one an event
+    /// belongs to is read from the event rather than from config.
+    mod surface_tests {
+        use super::*;
+
+        #[test]
+        fn surface_off_is_channel_everywhere() {
+            // Including DMs — that is exactly today's behaviour, and enabling the
+            // feature must be the only thing that changes it.
+            assert_eq!(
+                classify_surface(false, Some("im"), "D123"),
+                SlackSurface::Channel
+            );
+            assert_eq!(
+                classify_surface(false, Some("channel"), "C123"),
+                SlackSurface::Channel
+            );
+        }
+
+        #[test]
+        fn live_events_classify_on_channel_type() {
+            assert_eq!(
+                classify_surface(true, Some("im"), "D123"),
+                SlackSurface::Pane
+            );
+            for kind in ["channel", "group", "mpim"] {
+                assert_eq!(
+                    classify_surface(true, Some(kind), "C123"),
+                    SlackSurface::Channel,
+                    "{kind} is not the pane"
+                );
+            }
+        }
+
+        /// Recovery has no event to read, only the stored channel id.
+        #[test]
+        fn recovery_classifies_on_channel_id() {
+            assert_eq!(classify_surface(true, None, "D0A1B2C3"), SlackSurface::Pane);
+            assert_eq!(
+                classify_surface(true, None, "C0A1B2C3"),
+                SlackSurface::Channel
+            );
+            assert_eq!(classify_surface(true, None, ""), SlackSurface::Channel);
+        }
+
+        /// An `app_mention` delivered with an explicit channel type is channel-shaped
+        /// even if the id looks like a DM: the event's own word wins.
+        #[test]
+        fn channel_type_wins_over_channel_id() {
+            assert_eq!(
+                classify_surface(true, Some("channel"), "D123"),
+                SlackSurface::Channel
+            );
+        }
+    }
+
     /// EVE-972: every outbound message leaves through `ChannelDeliveryAdapter`,
     /// and transient-vs-permanent is decided in exactly one place.
     mod adapter_routing_tests {
@@ -2000,14 +2220,15 @@ mod tests {
             );
 
             dispatcher
-                .register(
-                    session_id.uuid(),
-                    "msg_turn_one".to_string(),
-                    "xoxb-test-token".to_string(),
-                    "C_ADAPTER".to_string(),
-                    "1700000000.000100".to_string(),
-                    SlackReplyMode::AllMessages,
-                )
+                .register(DeliveryRegistration {
+                    session_id: session_id.uuid(),
+                    input_message_id: "msg_turn_one".to_string(),
+                    bot_token: "xoxb-test-token".to_string(),
+                    channel: "C_ADAPTER".to_string(),
+                    thread_ts: "1700000000.000100".to_string(),
+                    reply_mode: SlackReplyMode::AllMessages,
+                    surface: SlackSurface::Channel,
+                })
                 .await;
 
             terminal_state_tests::emit(
@@ -2103,10 +2324,171 @@ mod tests {
                 "account_inactive",
                 "no_text",
             ] {
-                assert!(slack_error_is_permanent(error), "{error} must be permanent");
+                assert!(
+                    SlackApiError::from_code(error, None).is_permanent(),
+                    "{error} must be permanent"
+                );
             }
-            assert!(!slack_error_is_permanent("ratelimited"));
-            assert!(!slack_error_is_permanent("internal_error"));
+            assert!(!SlackApiError::from_code("internal_error", None).is_permanent());
+
+            // A rate limit is its own variant, never permanent.
+            assert!(matches!(
+                SlackApiError::from_code("ratelimited", None),
+                SlackApiError::RateLimited { .. }
+            ));
+        }
+    }
+
+    /// EVE-968: a 429 carries Slack's own advice on how long to wait. Ignoring it
+    /// is how a burst drops replies that would otherwise have gone through.
+    mod rate_limit_tests {
+        use super::*;
+        use std::time::Duration;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        /// Post once against a mock returning `response`, and hand back the error.
+        async fn post_against(response: ResponseTemplate) -> SlackApiError {
+            let mock_server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(response)
+                .mount(&mock_server)
+                .await;
+
+            post_to_slack_base(&mock_server.uri(), "xoxb-test-token", "C123", "", "hi")
+                .await
+                .expect_err("rate limited")
+        }
+
+        fn rate_limited_body() -> serde_json::Value {
+            serde_json::json!({ "ok": false, "error": "ratelimited" })
+        }
+
+        #[tokio::test]
+        async fn retry_after_header_is_propagated() {
+            let error = post_against(
+                ResponseTemplate::new(429)
+                    .insert_header("Retry-After", "30")
+                    .set_body_json(rate_limited_body()),
+            )
+            .await;
+
+            assert!(
+                matches!(
+                    error,
+                    SlackApiError::RateLimited {
+                        retry_after: Some(d)
+                    } if d == Duration::from_secs(30)
+                ),
+                "expected 30s of advice, got {error:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn rate_limit_without_header_is_still_rate_limited() {
+            let error =
+                post_against(ResponseTemplate::new(200).set_body_json(rate_limited_body())).await;
+
+            assert!(
+                matches!(error, SlackApiError::RateLimited { retry_after: None }),
+                "expected a rate limit with no advice, got {error:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn unparseable_retry_after_falls_back_to_no_advice() {
+            // Slack documents whole seconds; an HTTP-date or junk value must not
+            // panic or be mistaken for a duration.
+            let error = post_against(
+                ResponseTemplate::new(429)
+                    .insert_header("Retry-After", "Wed, 21 Oct 2026 07:28:00 GMT")
+                    .set_body_json(rate_limited_body()),
+            )
+            .await;
+
+            assert!(
+                matches!(error, SlackApiError::RateLimited { retry_after: None }),
+                "expected no usable advice, got {error:?}"
+            );
+        }
+
+        /// End to end through the retry loop, on virtual time: the first attempt
+        /// is rate limited with 30s of advice, the second succeeds, and the loop
+        /// must have waited the 30s rather than its 1s backoff.
+        #[tokio::test(start_paused = true)]
+        async fn retry_loop_waits_the_advised_window() {
+            let mock_server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(
+                    ResponseTemplate::new(429)
+                        .insert_header("Retry-After", "30")
+                        .set_body_json(rate_limited_body()),
+                )
+                .up_to_n_times(1)
+                .mount(&mock_server)
+                .await;
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({ "ok": true, "ts": "1.2" })),
+                )
+                .mount(&mock_server)
+                .await;
+
+            let started = tokio::time::Instant::now();
+            let result =
+                post_to_slack_with_retry_base(&mock_server.uri(), "xoxb-t", "C123", "", "hi", None)
+                    .await;
+            let waited = started.elapsed();
+
+            assert!(result.is_ok(), "second attempt should succeed: {result:?}");
+            assert!(
+                waited >= Duration::from_secs(30),
+                "loop waited {waited:?}, expected the advised 30s"
+            );
+        }
+
+        #[test]
+        fn advice_wins_over_backoff() {
+            let one_second = Duration::from_secs(1);
+            assert_eq!(
+                retry_wait(
+                    &SlackApiError::RateLimited {
+                        retry_after: Some(Duration::from_secs(30))
+                    },
+                    one_second
+                ),
+                Duration::from_secs(30),
+                "a 429 saying 30s must not be retried after 1s"
+            );
+        }
+
+        #[test]
+        fn backoff_applies_without_advice() {
+            let backoff = Duration::from_secs(4);
+            for error in [
+                SlackApiError::RateLimited { retry_after: None },
+                SlackApiError::Transient("boom".to_string()),
+            ] {
+                assert_eq!(retry_wait(&error, backoff), backoff, "{error:?}");
+            }
+        }
+
+        #[test]
+        fn pathological_advice_is_capped() {
+            assert_eq!(
+                retry_wait(
+                    &SlackApiError::RateLimited {
+                        retry_after: Some(Duration::from_secs(86_400))
+                    },
+                    Duration::from_secs(1)
+                ),
+                MAX_RETRY_AFTER,
+                "a delivery task must not be pinned for a day"
+            );
         }
     }
 
@@ -2233,14 +2615,15 @@ mod tests {
 
         async fn register_turn(dispatcher: &SlackDeliveryDispatcher, session_id: uuid::Uuid) {
             dispatcher
-                .register(
+                .register(DeliveryRegistration {
                     session_id,
-                    INPUT_MSG.to_string(),
-                    "xoxb-test-token".to_string(),
-                    CHANNEL.to_string(),
-                    THREAD_TS.to_string(),
-                    SlackReplyMode::AllMessages,
-                )
+                    input_message_id: INPUT_MSG.to_string(),
+                    bot_token: "xoxb-test-token".to_string(),
+                    channel: CHANNEL.to_string(),
+                    thread_ts: THREAD_TS.to_string(),
+                    reply_mode: SlackReplyMode::AllMessages,
+                    surface: SlackSurface::Channel,
+                })
                 .await;
         }
 

@@ -49,7 +49,7 @@ use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
 use crate::middleware::RequestId;
 use crate::services::{EventService, PrincipalService};
-use crate::slack_delivery::SlackDeliveryDispatcher;
+use crate::slack_delivery::{SlackDeliveryDispatcher, SlackSurface, classify_surface};
 use crate::storage::StorageBackend;
 use crate::storage::models::{CreateSessionParticipantRow, SessionParticipantRow, UpdateSession};
 
@@ -103,6 +103,10 @@ struct SlackEvent {
     /// Subtype (e.g., "bot_message", "message_changed").
     #[serde(default)]
     subtype: Option<String>,
+    /// Conversation kind: "channel", "group", "im", "mpim". `im` is the agent
+    /// pane once the agent surface is enabled (EVE-973).
+    #[serde(default)]
+    channel_type: Option<String>,
     /// File attachments (images, documents, videos, etc.).
     #[serde(default)]
     files: Vec<SlackFile>,
@@ -452,6 +456,27 @@ async fn handle_slack_event(
                     return Ok((StatusCode::OK, Json(ack_json())));
                 }
 
+                // Agent-surface lifecycle events. Acknowledged and logged so the
+                // toggle is safe to enable before the behaviour that consumes them
+                // lands (EVE-974 streaming, EVE-975 status, EVE-976 stop,
+                // EVE-977 context). Handled explicitly rather than falling into the
+                // generic "not a message" branch so an unknown event stays
+                // distinguishable from one we deliberately ignore.
+                if matches!(
+                    event.event_type.as_str(),
+                    "app_home_opened"
+                        | "app_context_changed"
+                        | "agent_session_stopped"
+                        | "agent_session_title_changed"
+                ) {
+                    tracing::debug!(
+                        app_id = %app_id,
+                        event_type = %event.event_type,
+                        "Slack agent-surface event acknowledged (no-op)"
+                    );
+                    return Ok((StatusCode::OK, Json(ack_json())));
+                }
+
                 // Skip bot messages to avoid loops // THREAT[TM-SLACK-002]
                 if event.bot_id.is_some() || event.subtype.as_deref() == Some("bot_message") {
                     tracing::debug!(app_id = %app_id, "Skipping bot message");
@@ -569,6 +594,12 @@ async fn process_slack_message(
     let org_id = app.org_id;
     let slack_user_id = event.user.clone().unwrap_or_default();
 
+    let surface = classify_surface(
+        slack_config.agent_surface_enabled,
+        event.channel_type.as_deref(),
+        event.channel.as_deref().unwrap_or_default(),
+    );
+
     // Resolve Slack user display name (gracefully falls back to user ID)
     let display_name = if !slack_user_id.is_empty() {
         resolve_slack_user_name(
@@ -601,7 +632,7 @@ async fn process_slack_message(
     let org_public_id = org_row.public_id;
 
     // Build session tags based on strategy
-    let routing_tags = build_session_tags(app, slack_config, event);
+    let routing_tags = build_session_tags(app, slack_config, event, surface);
     let desired_tags = desired_session_tags(&routing_tags, slack_config.reply_mode);
 
     // Find or create session
@@ -725,6 +756,13 @@ async fn process_slack_message(
     // Inject thread context: when joining an existing thread mid-conversation,
     // fetch prior messages from Slack and inject them as context so the agent
     // sees the full conversation history.
+    //
+    // Deliberately per_thread only. A per_channel or per_user session is not
+    // scoped to one thread: it outlives any single thread and accumulates its
+    // own history across turns, so backfilling would re-inject a full thread
+    // every time the session touched a new one, duplicating context it already
+    // holds. per_thread is the only strategy where "new session" and "thread
+    // the agent has not seen" are the same statement (EVE-969).
     if is_new_session
         && slack_config.session_strategy == SessionStrategy::PerThread
         && event.thread_ts.is_some()
@@ -879,14 +917,15 @@ async fn process_slack_message(
     if let Some(ref dispatcher) = state.delivery_dispatcher {
         // Event-driven delivery: no deadline, handles arbitrarily long turns
         dispatcher
-            .register(
+            .register(crate::slack_delivery::DeliveryRegistration {
                 session_id,
-                message_id.to_string(),
+                input_message_id: message_id.to_string(),
                 bot_token,
                 channel,
                 thread_ts,
-                slack_config.reply_mode,
-            )
+                reply_mode: slack_config.reply_mode,
+                surface,
+            })
             .await;
     } else {
         // Fallback for DEV_MODE without EventNotificationBroadcaster:
@@ -1074,6 +1113,7 @@ fn build_session_tags(
     app: &App,
     slack_config: &SlackChannelConfig,
     event: &SlackEvent,
+    surface: SlackSurface,
 ) -> Vec<String> {
     let mut tags = vec![format!("slack:app:{}", app.public_id)];
 
@@ -1092,7 +1132,14 @@ fn build_session_tags(
         routing_metadata.insert("user_id".to_string(), user.clone());
     }
 
-    let generic_strategy: SessionRoutingStrategy = slack_config.session_strategy.into();
+    // An agent pane is inherently one thread, so `per_channel` and `per_user` have
+    // no meaning there. Rejecting the combination at config time would be wrong —
+    // the same app also serves channels, where those strategies are legitimate — so
+    // the pane forces per-thread and config keeps meaning what it says for channels.
+    let generic_strategy: SessionRoutingStrategy = match surface {
+        SlackSurface::Pane => SessionRoutingStrategy::PerThread,
+        SlackSurface::Channel => slack_config.session_strategy.into(),
+    };
     if let Some(routing_tag) =
         build_session_routing_tag("slack", &generic_strategy, &routing_metadata)
     {
@@ -1148,66 +1195,157 @@ struct SlackReplyMessage {
     subtype: Option<String>,
 }
 
+/// Messages Slack returns per `conversations.replies` page. 100 is Slack's
+/// documented default and its recommended maximum for this method.
+const THREAD_BACKFILL_PAGE_SIZE: u32 = 100;
+
+/// Most thread messages injected into a new session.
+///
+/// A thread is backfilled in full up to this many messages; beyond it the
+/// oldest are dropped so a very long thread cannot exhaust the agent's context
+/// window. The agent is told when this happens rather than being handed a
+/// window it would read as the whole thread.
+const THREAD_BACKFILL_MAX_MESSAGES: usize = 500;
+
+/// Cursor pages followed before giving up, bounding the work one inbound Slack
+/// message can cause. At [`THREAD_BACKFILL_PAGE_SIZE`] this reaches 2000
+/// messages — far past any thread Slack's own UI stays usable in — so it is a
+/// runaway-cursor guard, not the truncation mechanism.
+const THREAD_BACKFILL_MAX_PAGES: usize = 20;
+
+/// Thread history fetched for backfill, plus what had to be left out.
+#[derive(Debug, Default)]
+struct ThreadBackfill {
+    /// Messages in chronological order, newest-biased when capped.
+    messages: Vec<SlackReplyMessage>,
+    /// Older messages dropped to stay within [`THREAD_BACKFILL_MAX_MESSAGES`].
+    omitted_older: usize,
+    /// False when the page cap stopped us before Slack ran out of cursors, in
+    /// which case the *newest* messages are missing too.
+    exhausted: bool,
+}
+
+impl ThreadBackfill {
+    fn is_truncated(&self) -> bool {
+        self.omitted_older > 0 || !self.exhausted
+    }
+}
+
 /// Fetch thread replies from Slack's conversations.replies API.
 ///
-/// Returns messages in chronological order. Gracefully returns empty vec on
-/// API errors (missing scope, invalid token, etc.) so the agent can proceed
-/// without history rather than failing the entire message flow.
-async fn fetch_thread_replies(
+/// Returns messages in chronological order. Gracefully returns an empty
+/// backfill on API errors (missing scope, invalid token, etc.) so the agent can
+/// proceed without history rather than failing the entire message flow.
+async fn fetch_thread_replies(bot_token: &str, channel: &str, thread_ts: &str) -> ThreadBackfill {
+    fetch_thread_replies_base(SLACK_API_BASE, bot_token, channel, thread_ts).await
+}
+
+/// Fetch thread replies, following `response_metadata.next_cursor` until the
+/// thread is exhausted (with a configurable base URL for testing).
+///
+/// A partial page is not an end-of-thread signal — Slack documents the cursor
+/// as the only one — so paging stops on an absent or empty cursor.
+async fn fetch_thread_replies_base(
+    base_url: &str,
     bot_token: &str,
     channel: &str,
     thread_ts: &str,
-) -> Vec<SlackReplyMessage> {
+) -> ThreadBackfill {
     let client = reqwest::Client::new();
-    let url = format!(
-        "https://slack.com/api/conversations.replies?channel={}&ts={}&limit=100",
-        channel, thread_ts
-    );
-    let result = client
-        .get(&url)
-        .header("Authorization", format!("Bearer {}", bot_token))
-        .send()
-        .await;
+    let mut backfill = ThreadBackfill::default();
+    let mut cursor: Option<String> = None;
 
-    let response = match result {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to fetch thread replies (network)");
-            return vec![];
-        }
-    };
-
-    let body: serde_json::Value = match response.json().await {
-        Ok(b) => b,
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to parse conversations.replies response");
-            return vec![];
-        }
-    };
-
-    if !body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
-        let error = body
-            .get("error")
-            .and_then(|e| e.as_str())
-            .unwrap_or("unknown");
-        tracing::warn!(
-            error = error,
-            channel = channel,
-            thread_ts = thread_ts,
-            "Slack conversations.replies API error (thread context unavailable)"
+    for _ in 0..THREAD_BACKFILL_MAX_PAGES {
+        let mut url = format!(
+            "{}/conversations.replies?channel={}&ts={}&limit={}",
+            base_url.trim_end_matches('/'),
+            urlencoding::encode(channel),
+            urlencoding::encode(thread_ts),
+            THREAD_BACKFILL_PAGE_SIZE
         );
-        return vec![];
-    }
+        if let Some(ref c) = cursor {
+            url.push_str(&format!("&cursor={}", urlencoding::encode(c)));
+        }
 
-    match serde_json::from_value::<Vec<SlackReplyMessage>>(
-        body.get("messages").cloned().unwrap_or_default(),
-    ) {
-        Ok(msgs) => msgs,
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to parse thread reply messages");
-            vec![]
+        let result = client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", bot_token))
+            .send()
+            .await;
+
+        let response = match result {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to fetch thread replies (network)");
+                // Keep whatever earlier pages produced: partial history the
+                // agent is told about beats silently dropping all of it.
+                backfill.exhausted = backfill.messages.is_empty();
+                return backfill;
+            }
+        };
+
+        let body: serde_json::Value = match response.json().await {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to parse conversations.replies response");
+                backfill.exhausted = backfill.messages.is_empty();
+                return backfill;
+            }
+        };
+
+        if !body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+            let error = body
+                .get("error")
+                .and_then(|e| e.as_str())
+                .unwrap_or("unknown");
+            tracing::warn!(
+                error = error,
+                channel = channel,
+                thread_ts = thread_ts,
+                "Slack conversations.replies API error (thread context unavailable)"
+            );
+            backfill.exhausted = backfill.messages.is_empty();
+            return backfill;
+        }
+
+        match serde_json::from_value::<Vec<SlackReplyMessage>>(
+            body.get("messages").cloned().unwrap_or_default(),
+        ) {
+            Ok(msgs) => backfill.messages.extend(msgs),
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to parse thread reply messages");
+                backfill.exhausted = backfill.messages.is_empty();
+                return backfill;
+            }
+        }
+
+        // Cap as we go so a runaway thread cannot balloon memory either.
+        if backfill.messages.len() > THREAD_BACKFILL_MAX_MESSAGES {
+            let excess = backfill.messages.len() - THREAD_BACKFILL_MAX_MESSAGES;
+            backfill.messages.drain(0..excess);
+            backfill.omitted_older += excess;
+        }
+
+        cursor = body
+            .get("response_metadata")
+            .and_then(|m| m.get("next_cursor"))
+            .and_then(|c| c.as_str())
+            .filter(|c| !c.is_empty())
+            .map(str::to_string);
+
+        if cursor.is_none() {
+            backfill.exhausted = true;
+            return backfill;
         }
     }
+
+    tracing::warn!(
+        channel = channel,
+        thread_ts = thread_ts,
+        max_pages = THREAD_BACKFILL_MAX_PAGES,
+        "Stopped paging thread replies at the page cap; newest messages may be missing"
+    );
+    backfill
 }
 
 /// Inject thread history as context messages into a newly created session.
@@ -1229,14 +1367,46 @@ async fn inject_thread_context(
     session_id: everruns_provider::typed_id::SessionId,
     exclude_ts: Option<&str>,
 ) -> anyhow::Result<()> {
-    let replies = fetch_thread_replies(bot_token, channel, thread_ts).await;
+    let backfill = fetch_thread_replies(bot_token, channel, thread_ts).await;
 
-    if replies.is_empty() {
+    if backfill.messages.is_empty() {
         return Ok(());
     }
 
+    // Say up front that this is a window, not the thread. Injected before the
+    // history so the agent reads the qualifier before the messages it governs.
+    if backfill.is_truncated() {
+        let notice = truncation_notice(&backfill);
+        tracing::info!(
+            session_id = %session_id,
+            thread_ts = thread_ts,
+            omitted_older = backfill.omitted_older,
+            exhausted = backfill.exhausted,
+            "Thread backfill truncated; telling the agent"
+        );
+        let message = everruns_core::Message {
+            id: everruns_provider::typed_id::MessageId::new(),
+            role: everruns_core::MessageRole::System,
+            content: vec![everruns_core::ContentPart::text(&notice)],
+            phase: None,
+            phase_source: None,
+            controls: None,
+            metadata: None,
+            external_actor: None,
+            created_at: chrono::Utc::now(),
+        };
+        state
+            .event_service
+            .emit(everruns_core::events::EventRequest::new(
+                session_id,
+                everruns_core::events::EventContext::empty(),
+                everruns_core::events::InputMessageData::new(message),
+            ))
+            .await?;
+    }
+
     let mut injected = 0u32;
-    for reply in &replies {
+    for reply in &backfill.messages {
         if should_skip_thread_reply(reply, exclude_ts) {
             continue;
         }
@@ -1302,6 +1472,28 @@ async fn inject_thread_context(
     }
 
     Ok(())
+}
+
+/// Wording for the truncation notice injected ahead of a capped backfill.
+///
+/// Names the cap so the agent can tell "this thread is short" from "you are
+/// seeing the tail of a long one", and stays vague only where we genuinely do
+/// not know how much is missing.
+fn truncation_notice(backfill: &ThreadBackfill) -> String {
+    let shown = backfill.messages.len();
+    if backfill.exhausted {
+        format!(
+            "[Thread history truncated: showing the most recent {} messages of this Slack thread; \
+             {} earlier messages were omitted.]",
+            shown, backfill.omitted_older
+        )
+    } else {
+        format!(
+            "[Thread history truncated: showing {} messages from this Slack thread. It was too \
+             long to read in full, so both earlier and more recent messages may be missing.]",
+            shown
+        )
+    }
 }
 
 fn should_skip_thread_reply(reply: &SlackReplyMessage, exclude_ts: Option<&str>) -> bool {
@@ -1625,9 +1817,19 @@ async fn handle_slack_manifest(
 
     // Mirror webhook exposure policy: only published apps with an enabled Slack channel
     // can retrieve Slack manifest data from this unauthenticated endpoint.
-    if app.status != AppStatus::Published || app.slack_channel().is_none() {
+    let Some(slack_channel) = app.slack_channel() else {
+        return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
+    };
+    if app.status != AppStatus::Published {
         return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
     }
+
+    // A config we cannot parse still produces the channel-bot manifest rather than
+    // a 500: the agent surface is additive, so defaulting it off is the safe read.
+    let agent_surface_enabled =
+        serde_json::from_value::<SlackChannelConfig>(slack_channel.channel_config.clone())
+            .map(|config| config.agent_surface_enabled)
+            .unwrap_or(false);
 
     let display_name = truncate_display_name(&app.name);
 
@@ -1637,6 +1839,7 @@ async fn handle_slack_manifest(
         &display_name,
         app.description.as_deref(),
         &request_url,
+        agent_surface_enabled,
     );
 
     // URL-encode the manifest for the Slack "create from manifest" URL
@@ -1668,17 +1871,72 @@ fn slack_webhook_url(api_base_url: &str, app_public_id: &str) -> String {
 ///
 /// Slack requires `long_description` to be 174–4000 chars. We build it from the
 /// app's description (if any) plus a standard suffix, padding if needed.
+/// Slack caps `agent_view.agent_description` at 300 characters.
+const SLACK_AGENT_DESC_MAX: usize = 300;
+
+/// The `features.agent_view` block, or empty when the agent surface is off.
+///
+/// New apps must use `agent_view`; `assistant_view` is the legacy spelling Slack
+/// is deprecating, and Everruns only ever generates manifests for new apps.
+/// `agent_description` is the only required sub-field — `suggested_prompts` and
+/// `actions` are optional and deliberately left out here (see EVE-978).
+fn build_agent_view(app_name: &str, app_description: Option<&str>) -> String {
+    let desc = match app_description.filter(|d| !d.trim().is_empty()) {
+        Some(d) => format!("{app_name} — {d}"),
+        None => format!("{app_name}, an AI agent powered by Everruns"),
+    };
+    let desc = truncate_chars(&desc, SLACK_AGENT_DESC_MAX);
+
+    format!(
+        "\x20 agent_view:\n\
+         \x20   agent_description: \"{}\"\n",
+        yaml_escape(&desc)
+    )
+}
+
+/// Truncate to at most `max` characters, on a char boundary.
+fn truncate_chars(s: &str, max: usize) -> String {
+    match s.char_indices().nth(max) {
+        Some((idx, _)) => s[..idx].to_string(),
+        None => s.to_string(),
+    }
+}
+
 fn build_manifest_yaml(
     app_name: &str,
     display_name: &str,
     app_description: Option<&str>,
     request_url: &str,
+    agent_surface_enabled: bool,
 ) -> String {
-    let name = yaml_escape(app_name);
+    let escaped_name = yaml_escape(app_name);
+    let name = &escaped_name;
     let display_name = yaml_escape(display_name);
     let long_desc = build_long_description(app_name, app_description);
     let long_desc = yaml_escape(&long_desc);
     let request_url = yaml_escape(request_url);
+
+    // The agent surface is additive: it adds a scope, a feature block and four
+    // events on top of the channel bot, which keeps working exactly as before.
+    let agent_view = if agent_surface_enabled {
+        build_agent_view(app_name, app_description)
+    } else {
+        String::new()
+    };
+    let agent_scope = if agent_surface_enabled {
+        "\x20     - assistant:write\n"
+    } else {
+        ""
+    };
+    let agent_events = if agent_surface_enabled {
+        "\x20     - app_home_opened\n\
+         \x20     - app_context_changed\n\
+         \x20     - agent_session_stopped\n\
+         \x20     - agent_session_title_changed\n"
+    } else {
+        ""
+    };
+
     format!(
         "display_information:\n\
          \x20 name: \"{name}\"\n\
@@ -1689,6 +1947,7 @@ fn build_manifest_yaml(
          \x20 bot_user:\n\
          \x20   display_name: \"{display_name}\"\n\
          \x20   always_online: true\n\
+         {agent_view}\
          oauth_config:\n\
          \x20 scopes:\n\
          \x20   bot:\n\
@@ -1700,6 +1959,7 @@ fn build_manifest_yaml(
          \x20     - app_mentions:read\n\
          \x20     - users:read\n\
          \x20     - files:read\n\
+         {agent_scope}\
          settings:\n\
          \x20 event_subscriptions:\n\
          \x20   request_url: \"{request_url}\"\n\
@@ -1709,6 +1969,7 @@ fn build_manifest_yaml(
          \x20     - message.groups\n\
          \x20     - message.im\n\
          \x20     - message.mpim\n\
+         {agent_events}\
          \x20 org_deploy_enabled: false\n\
          \x20 socket_mode_enabled: false\n\
          \x20 token_rotation_enabled: false\n",
@@ -1959,7 +2220,7 @@ mod tests {
         let config = test_config(SessionStrategy::PerThread);
         let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
 
-        let tags = build_session_tags(&app, &config, &event);
+        let tags = build_session_tags(&app, &config, &event, SlackSurface::Channel);
         assert_eq!(tags.len(), 2);
         assert!(tags[0].starts_with("slack:app:"));
         assert_eq!(tags[1], "slack:thread:1234.0000"); // uses thread_ts
@@ -1971,7 +2232,7 @@ mod tests {
         let config = test_config(SessionStrategy::PerThread);
         let event = test_event("C123", Some("1234.5678"), None);
 
-        let tags = build_session_tags(&app, &config, &event);
+        let tags = build_session_tags(&app, &config, &event, SlackSurface::Channel);
         assert_eq!(tags[1], "slack:thread:1234.5678"); // falls back to ts
     }
 
@@ -1981,7 +2242,7 @@ mod tests {
         let config = test_config(SessionStrategy::PerChannel);
         let event = test_event("C123", Some("1234.5678"), None);
 
-        let tags = build_session_tags(&app, &config, &event);
+        let tags = build_session_tags(&app, &config, &event, SlackSurface::Channel);
         assert_eq!(tags[1], "slack:channel:C123");
     }
 
@@ -1992,7 +2253,7 @@ mod tests {
         let mut event = test_event("C123", Some("1234.5678"), None);
         event.user = Some("U999".to_string());
 
-        let tags = build_session_tags(&app, &config, &event);
+        let tags = build_session_tags(&app, &config, &event, SlackSurface::Channel);
         assert_eq!(tags[1], "slack:user:U999");
     }
 
@@ -2192,6 +2453,7 @@ mod tests {
 
     fn test_config(strategy: SessionStrategy) -> SlackChannelConfig {
         SlackChannelConfig {
+            agent_surface_enabled: false,
             signing_secret: "secret".to_string(),
             bot_token: "xoxb-token".to_string(),
             channel_id: None,
@@ -2201,6 +2463,34 @@ mod tests {
             webhook_verified_at: None,
             first_message_received_at: None,
         }
+    }
+
+    /// The agent pane is inherently one thread, so `per_channel`/`per_user` have
+    /// no meaning there — but the same app still honours them in channels, which
+    /// is why the combination is resolved at runtime instead of rejected in config.
+    #[test]
+    fn test_pane_forces_per_thread_routing() {
+        let app = test_app();
+        let mut config = test_config(SessionStrategy::PerChannel);
+        config.agent_surface_enabled = true;
+        let event = test_event("D_PANE", Some("1234.5678"), None);
+
+        let pane_tags = build_session_tags(&app, &config, &event, SlackSurface::Pane);
+        assert!(
+            pane_tags.iter().any(|t| t == "slack:thread:1234.5678"),
+            "pane must route per thread, got {pane_tags:?}"
+        );
+        assert!(
+            !pane_tags.iter().any(|t| t.starts_with("slack:channel:")),
+            "pane must not route per channel, got {pane_tags:?}"
+        );
+
+        // Same config, channel surface: per_channel still means per_channel.
+        let channel_tags = build_session_tags(&app, &config, &event, SlackSurface::Channel);
+        assert!(
+            channel_tags.iter().any(|t| t == "slack:channel:D_PANE"),
+            "channel surface must keep the configured strategy, got {channel_tags:?}"
+        );
     }
 
     fn test_event(channel: &str, ts: Option<&str>, thread_ts: Option<&str>) -> SlackEvent {
@@ -2213,6 +2503,7 @@ mod tests {
             ts: ts.map(String::from),
             bot_id: None,
             subtype: None,
+            channel_type: None,
             files: vec![],
             attachments: vec![],
         }
@@ -2336,17 +2627,17 @@ mod tests {
         let config = test_config(SessionStrategy::PerThread);
         let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
 
-        let tags = build_session_tags(&app, &config, &event);
+        let tags = build_session_tags(&app, &config, &event, SlackSurface::Channel);
         assert_eq!(tags[1], "slack:thread:1234.0000");
 
         let config_channel = test_config(SessionStrategy::PerChannel);
-        let tags_channel = build_session_tags(&app, &config_channel, &event);
+        let tags_channel = build_session_tags(&app, &config_channel, &event, SlackSurface::Channel);
         assert_eq!(tags_channel[1], "slack:channel:C123");
 
         let mut event_user = test_event("C123", Some("1234.5678"), None);
         event_user.user = Some("U999".to_string());
         let config_user = test_config(SessionStrategy::PerUser);
-        let tags_user = build_session_tags(&app, &config_user, &event_user);
+        let tags_user = build_session_tags(&app, &config_user, &event_user, SlackSurface::Channel);
         assert_eq!(tags_user[1], "slack:user:U999");
     }
 
@@ -2618,7 +2909,7 @@ mod tests {
 
     #[test]
     fn test_manifest_yaml_contains_event_subscriptions() {
-        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL);
+        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL, false);
 
         assert!(
             yaml.contains(&format!("    request_url: \"{TEST_REQUEST_URL}\"")),
@@ -2650,7 +2941,7 @@ mod tests {
 
     #[test]
     fn test_manifest_yaml_parses_as_yaml_with_expected_shape() {
-        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL);
+        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL, false);
         let parsed: serde_yaml::Value =
             serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
 
@@ -2675,10 +2966,118 @@ mod tests {
     }
 
     #[test]
+    fn test_manifest_yaml_agent_surface_off_is_unchanged() {
+        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL, false);
+
+        // Existing apps must be untouched by the feature existing.
+        assert!(!yaml.contains("agent_view"), "{yaml}");
+        assert!(!yaml.contains("assistant:write"), "{yaml}");
+        for event in [
+            "app_home_opened",
+            "app_context_changed",
+            "agent_session_stopped",
+            "agent_session_title_changed",
+        ] {
+            assert!(
+                !yaml.contains(event),
+                "{event} leaked with surface off:\n{yaml}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_manifest_yaml_agent_surface_on() {
+        let yaml = build_manifest_yaml(
+            "My Bot",
+            "My Bot",
+            Some("Answers questions"),
+            TEST_REQUEST_URL,
+            true,
+        );
+        let parsed: serde_yaml::Value =
+            serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
+
+        // `agent_view`, not the legacy `assistant_view`: Slack only accepts the
+        // former for new apps, and every manifest we generate is for a new app.
+        let agent_view = &parsed["features"]["agent_view"];
+        assert!(
+            !agent_view.is_null(),
+            "features.agent_view missing:\n{yaml}"
+        );
+        assert!(parsed["features"]["assistant_view"].is_null());
+        let description = agent_view["agent_description"]
+            .as_str()
+            .expect("agent_description is required by Slack");
+        assert!(description.contains("My Bot"));
+        assert!(description.len() <= SLACK_AGENT_DESC_MAX);
+
+        // The channel bot is untouched — the surface is additive.
+        let scopes: Vec<&str> = parsed["oauth_config"]["scopes"]["bot"]
+            .as_sequence()
+            .expect("bot scopes")
+            .iter()
+            .map(|v| v.as_str().expect("scope is a string"))
+            .collect();
+        assert!(scopes.contains(&"assistant:write"), "{scopes:?}");
+        assert!(scopes.contains(&"chat:write"), "{scopes:?}");
+
+        let events: Vec<&str> = parsed["settings"]["event_subscriptions"]["bot_events"]
+            .as_sequence()
+            .expect("bot_events")
+            .iter()
+            .map(|v| v.as_str().expect("event is a string"))
+            .collect();
+        for event in [
+            "app_home_opened",
+            "app_context_changed",
+            "agent_session_stopped",
+            "agent_session_title_changed",
+            // message.im is the pane's inbound channel and was already present.
+            "message.im",
+            // Channel events survive: one app serves both surfaces.
+            "app_mention",
+            "message.channels",
+        ] {
+            assert!(events.contains(&event), "{event} missing from {events:?}");
+        }
+    }
+
+    #[test]
+    fn test_agent_description_respects_slack_limit() {
+        // Slack rejects an agent_description over 300 characters.
+        let long = "d".repeat(500);
+        let yaml = build_manifest_yaml("Bot", "Bot", Some(&long), TEST_REQUEST_URL, true);
+        let parsed: serde_yaml::Value =
+            serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
+
+        let description = parsed["features"]["agent_view"]["agent_description"]
+            .as_str()
+            .expect("agent_description");
+        assert_eq!(description.chars().count(), SLACK_AGENT_DESC_MAX);
+    }
+
+    #[test]
+    fn test_agent_description_is_char_safe() {
+        // Truncation must not split a multi-byte character.
+        let long = "é".repeat(500);
+        let yaml = build_manifest_yaml("Bot", "Bot", Some(&long), TEST_REQUEST_URL, true);
+        let parsed: serde_yaml::Value =
+            serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
+        assert_eq!(
+            parsed["features"]["agent_view"]["agent_description"]
+                .as_str()
+                .expect("agent_description")
+                .chars()
+                .count(),
+            SLACK_AGENT_DESC_MAX
+        );
+    }
+
+    #[test]
     fn test_manifest_yaml_escapes_request_url() {
         // The URL is server-configured, but a quote in it must not break out of
         // the YAML string and corrupt the rest of the manifest.
-        let yaml = build_manifest_yaml("My Bot", "My Bot", None, r#"https://x/"evil"#);
+        let yaml = build_manifest_yaml("My Bot", "My Bot", None, r#"https://x/"evil"#, false);
         let parsed: serde_yaml::Value =
             serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
         assert_eq!(
@@ -2702,7 +3101,7 @@ mod tests {
 
     #[test]
     fn test_manifest_yaml_contains_description_and_long_description() {
-        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL);
+        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL, false);
         assert!(yaml.contains(r#"description: "My Bot (Powered by Everruns)""#));
         assert!(yaml.contains("AI agent powered by Everruns"));
         assert!(yaml.contains("https://everruns.com"));
@@ -2715,6 +3114,7 @@ mod tests {
             "My Bot",
             Some("A helpful assistant"),
             TEST_REQUEST_URL,
+            false,
         );
         assert!(yaml.contains("A helpful assistant"));
         assert!(yaml.contains("AI agent powered by Everruns"));
@@ -2725,7 +3125,7 @@ mod tests {
         // Slack description limit is 140 chars. Worst case: 35-char app name
         // (Slack's name limit) + " (Powered by Everruns)" = 57 chars.
         let long_name = "a".repeat(35);
-        let yaml = build_manifest_yaml(&long_name, &long_name, None, TEST_REQUEST_URL);
+        let yaml = build_manifest_yaml(&long_name, &long_name, None, TEST_REQUEST_URL, false);
         // Extract the description value
         let desc_prefix = "description: \"";
         let desc_start = yaml.find(desc_prefix).unwrap() + desc_prefix.len();
@@ -2741,7 +3141,13 @@ mod tests {
 
     #[test]
     fn test_manifest_yaml_escapes_special_chars_in_name() {
-        let yaml = build_manifest_yaml(r#"Bot "Special""#, "Bot Special", None, TEST_REQUEST_URL);
+        let yaml = build_manifest_yaml(
+            r#"Bot "Special""#,
+            "Bot Special",
+            None,
+            TEST_REQUEST_URL,
+            false,
+        );
         assert!(yaml.contains(r#"name: "Bot \"Special\"""#));
         assert!(yaml.contains(r#"description: "Bot \"Special\" (Powered by Everruns)""#));
     }
@@ -3315,6 +3721,7 @@ mod tests {
             "Bot",
             None,
             "https://example.com/api/v1/apps/app_x/slack/events",
+            false,
         );
         assert!(
             yaml.contains("channels:history"),
@@ -3754,6 +4161,296 @@ mod tests {
                     .unwrap_err()
                     .to_string()
                     .contains("channel_not_found")
+            );
+        }
+
+        // ------------------------------------------
+        // fetch_thread_replies — pagination (EVE-969)
+        // ------------------------------------------
+
+        /// Build a conversations.replies page of `count` messages.
+        fn replies_page(
+            start: usize,
+            count: usize,
+            next_cursor: Option<&str>,
+        ) -> serde_json::Value {
+            let messages: Vec<serde_json::Value> = (start..start + count)
+                .map(|i| {
+                    serde_json::json!({
+                        "user": "U123",
+                        "text": format!("message {}", i),
+                        "ts": format!("{}.000000", 1000 + i),
+                    })
+                })
+                .collect();
+            let mut body = serde_json::json!({ "ok": true, "messages": messages });
+            if let Some(cursor) = next_cursor {
+                body["response_metadata"] = serde_json::json!({ "next_cursor": cursor });
+            }
+            body
+        }
+
+        /// The bug: a thread longer than one page was silently cut to 100.
+        /// 250 messages must arrive whole, which requires following two cursors.
+        #[tokio::test]
+        async fn test_fetch_thread_replies_follows_cursor_to_end_of_thread() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/conversations.replies"))
+                .and(wiremock::matchers::query_param_is_missing("cursor"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(replies_page(
+                    0,
+                    100,
+                    Some("c1"),
+                )))
+                .mount(&mock_server)
+                .await;
+
+            Mock::given(method("GET"))
+                .and(path("/conversations.replies"))
+                .and(wiremock::matchers::query_param("cursor", "c1"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(replies_page(
+                    100,
+                    100,
+                    Some("c2"),
+                )))
+                .mount(&mock_server)
+                .await;
+
+            Mock::given(method("GET"))
+                .and(path("/conversations.replies"))
+                .and(wiremock::matchers::query_param("cursor", "c2"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(replies_page(200, 50, None)))
+                .mount(&mock_server)
+                .await;
+
+            let backfill = fetch_thread_replies_base(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "C123",
+                "1000.000000",
+            )
+            .await;
+
+            assert_eq!(
+                backfill.messages.len(),
+                250,
+                "whole thread must be returned"
+            );
+            assert!(backfill.exhausted);
+            assert_eq!(backfill.omitted_older, 0);
+            assert!(!backfill.is_truncated());
+            // Chronological order preserved across page boundaries.
+            assert_eq!(backfill.messages[0].text.as_deref(), Some("message 0"));
+            assert_eq!(backfill.messages[249].text.as_deref(), Some("message 249"));
+        }
+
+        /// An empty cursor string is Slack's "no more pages", not a page to fetch.
+        #[tokio::test]
+        async fn test_fetch_thread_replies_treats_empty_cursor_as_end() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/conversations.replies"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(replies_page(
+                    0,
+                    100,
+                    Some(""),
+                )))
+                .expect(1)
+                .mount(&mock_server)
+                .await;
+
+            let backfill = fetch_thread_replies_base(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "C123",
+                "1000.000000",
+            )
+            .await;
+
+            assert_eq!(backfill.messages.len(), 100);
+            assert!(backfill.exhausted);
+        }
+
+        /// Past the cap the newest messages are kept and the drop is counted,
+        /// so the notice can say how much is missing instead of guessing.
+        #[tokio::test]
+        async fn test_fetch_thread_replies_caps_and_keeps_newest() {
+            let mock_server = MockServer::start().await;
+            let total_pages = (THREAD_BACKFILL_MAX_MESSAGES / 100) + 2; // 7 pages = 700 messages
+
+            for page in 0..total_pages {
+                let cursor_in = if page == 0 {
+                    None
+                } else {
+                    Some(format!("c{}", page))
+                };
+                let cursor_out = if page + 1 == total_pages {
+                    None
+                } else {
+                    Some(format!("c{}", page + 1))
+                };
+                let body = replies_page(page * 100, 100, cursor_out.as_deref());
+                let mut mock = Mock::given(method("GET")).and(path("/conversations.replies"));
+                mock = match cursor_in {
+                    Some(ref c) => mock.and(wiremock::matchers::query_param("cursor", c.as_str())),
+                    None => mock.and(wiremock::matchers::query_param_is_missing("cursor")),
+                };
+                mock.respond_with(ResponseTemplate::new(200).set_body_json(body))
+                    .mount(&mock_server)
+                    .await;
+            }
+
+            let backfill = fetch_thread_replies_base(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "C123",
+                "1000.000000",
+            )
+            .await;
+
+            let fetched = total_pages * 100;
+            assert_eq!(backfill.messages.len(), THREAD_BACKFILL_MAX_MESSAGES);
+            assert_eq!(
+                backfill.omitted_older,
+                fetched - THREAD_BACKFILL_MAX_MESSAGES
+            );
+            assert!(backfill.exhausted);
+            assert!(backfill.is_truncated());
+            // The tail is what survives: the newest message is still present.
+            assert_eq!(
+                backfill.messages.last().unwrap().text.as_deref(),
+                Some(format!("message {}", fetched - 1).as_str())
+            );
+        }
+
+        /// A cursor that never terminates must not page forever.
+        #[tokio::test]
+        async fn test_fetch_thread_replies_stops_at_page_cap() {
+            let mock_server = MockServer::start().await;
+
+            // Every page hands back a fresh cursor, so only the cap ends this.
+            Mock::given(method("GET"))
+                .and(path("/conversations.replies"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(replies_page(
+                    0,
+                    100,
+                    Some("always"),
+                )))
+                .expect(THREAD_BACKFILL_MAX_PAGES as u64)
+                .mount(&mock_server)
+                .await;
+
+            let backfill = fetch_thread_replies_base(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "C123",
+                "1000.000000",
+            )
+            .await;
+
+            assert!(!backfill.exhausted, "page cap must be reported, not hidden");
+            assert!(backfill.is_truncated());
+            assert_eq!(backfill.messages.len(), THREAD_BACKFILL_MAX_MESSAGES);
+        }
+
+        /// A mid-thread failure keeps the pages already read rather than
+        /// throwing away history the agent could still use.
+        #[tokio::test]
+        async fn test_fetch_thread_replies_keeps_earlier_pages_on_later_error() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/conversations.replies"))
+                .and(wiremock::matchers::query_param_is_missing("cursor"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(replies_page(
+                    0,
+                    100,
+                    Some("c1"),
+                )))
+                .mount(&mock_server)
+                .await;
+
+            Mock::given(method("GET"))
+                .and(path("/conversations.replies"))
+                .and(wiremock::matchers::query_param("cursor", "c1"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "ratelimited"
+                })))
+                .mount(&mock_server)
+                .await;
+
+            let backfill = fetch_thread_replies_base(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "C123",
+                "1000.000000",
+            )
+            .await;
+
+            assert_eq!(backfill.messages.len(), 100);
+            assert!(
+                !backfill.exhausted,
+                "partial history must read as truncated"
+            );
+            assert!(backfill.is_truncated());
+        }
+
+        /// A first-page error still degrades to "no history", as before.
+        #[tokio::test]
+        async fn test_fetch_thread_replies_empty_on_first_page_error() {
+            let mock_server = MockServer::start().await;
+
+            Mock::given(method("GET"))
+                .and(path("/conversations.replies"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": false,
+                    "error": "missing_scope"
+                })))
+                .mount(&mock_server)
+                .await;
+
+            let backfill = fetch_thread_replies_base(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "C123",
+                "1000.000000",
+            )
+            .await;
+
+            assert!(backfill.messages.is_empty());
+            // Nothing was dropped, so nothing to warn the agent about.
+            assert!(backfill.exhausted);
+            assert!(!backfill.is_truncated());
+        }
+
+        /// The notice must name the omitted count when we know it, and admit
+        /// uncertainty when the page cap means we do not.
+        #[test]
+        fn test_truncation_notice_distinguishes_known_and_unknown_loss() {
+            let capped = ThreadBackfill {
+                messages: vec![],
+                omitted_older: 312,
+                exhausted: true,
+            };
+            let notice = truncation_notice(&capped);
+            assert!(
+                notice.contains("312 earlier messages were omitted"),
+                "{notice}"
+            );
+
+            let unbounded = ThreadBackfill {
+                messages: vec![],
+                omitted_older: 0,
+                exhausted: false,
+            };
+            let notice = truncation_notice(&unbounded);
+            assert!(
+                notice.contains("more recent messages may be missing"),
+                "{notice}"
             );
         }
     }

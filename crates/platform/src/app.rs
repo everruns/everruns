@@ -491,6 +491,15 @@ pub struct SlackChannelConfig {
     /// Set when the first real message is received from Slack.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_message_received_at: Option<DateTime<Utc>>,
+    /// Whether this app also serves Slack's agent surface (the assistant pane).
+    ///
+    /// One boolean, not a mode: enabling Slack's Agents feature does not replace
+    /// the channel bot, it adds an assistant container alongside it. The same app
+    /// answers `@mentions` in channels *and* messages in the pane, and which
+    /// surface an event belongs to is read from the event at runtime rather than
+    /// from config (EVE-973).
+    #[serde(default)]
+    pub agent_surface_enabled: bool,
 }
 
 /// Default session expiration for public channel threads (6 hours).
@@ -1171,6 +1180,15 @@ mod tests {
         assert!(serialized.get("first_message_received_at").is_some());
     }
 
+    /// Channels stored before the agent surface existed have no such key, and
+    /// must keep parsing with it off (EVE-973).
+    #[test]
+    fn test_slack_channel_config_defaults_agent_surface_off() {
+        let json = r#"{"signing_secret":"s","bot_token":"t"}"#;
+        let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
+        assert!(!config.agent_surface_enabled);
+    }
+
     #[test]
     fn test_slack_channel_config_timestamps_skipped_when_none() {
         let config = SlackChannelConfig {
@@ -1182,6 +1200,7 @@ mod tests {
             reply_mode: SlackReplyMode::AllMessages,
             webhook_verified_at: None,
             first_message_received_at: None,
+            agent_surface_enabled: false,
         };
         let json = serde_json::to_value(&config).unwrap();
         assert!(json.get("webhook_verified_at").is_none());
