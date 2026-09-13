@@ -3134,6 +3134,7 @@ mod tests {
             locale: None,
             file_store: Some(mounted),
             model: None,
+            session_storage: None,
         };
 
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -3161,6 +3162,7 @@ mod tests {
             locale: None,
             file_store: Some(prompt_store),
             model: None,
+            session_storage: None,
         };
 
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -3183,6 +3185,7 @@ mod tests {
             locale: None,
             file_store: Some(store),
             model: None,
+            session_storage: None,
         };
 
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -4464,6 +4467,7 @@ mod tests {
             locale: None,
             file_store: Some(store),
             model: None,
+            session_storage: None,
         };
         let mut registry = CapabilityRegistry::new();
         registry.register(FileSystemCapability);

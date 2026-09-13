@@ -868,6 +868,7 @@ async fn reason_tool_definitions(
         agent_id,
         &[],
         Some(adapter.file_store.clone()),
+        None,
     )
     .await
     .expect("reason context")

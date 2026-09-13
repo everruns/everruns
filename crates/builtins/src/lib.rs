@@ -34,6 +34,7 @@ pub mod attach_skill;
 pub mod auto_tool_search;
 pub mod btw;
 pub mod budgeting;
+pub mod channel_context;
 pub mod claude_tool_search;
 pub mod compaction;
 pub mod current_time;
@@ -115,6 +116,7 @@ pub use attach_skill::AttachSkillCapability;
 pub use auto_tool_search::{AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapability};
 pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
 pub use budgeting::{BUDGETING_CAPABILITY_ID, BudgetingCapability};
+pub use channel_context::{CHANNEL_CONTEXT_CAPABILITY_ID, ChannelContextCapability};
 pub use claude_tool_search::{CLAUDE_TOOL_SEARCH_CAPABILITY_ID, ClaudeToolSearchCapability};
 pub use compaction::{
     COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionStep,
@@ -281,6 +283,7 @@ fn runtime_capabilities() -> Vec<Arc<dyn Capability>> {
         Arc::new(InfinityContextCapability),
         Arc::new(SkillsCapability),
         Arc::new(AgentInstructionsCapability),
+        Arc::new(ChannelContextCapability),
         Arc::new(CurrentTimeCapability),
         Arc::new(MessageMetadataCapability),
         Arc::new(StatelessTodoListCapability),
@@ -311,11 +314,12 @@ fn runtime_capabilities() -> Vec<Arc<dyn Capability>> {
 mod bundle_tests {
     use super::*;
 
-    const RUNTIME_IDS: [&str; 27] = [
+    const RUNTIME_IDS: [&str; 28] = [
         "human_intent",
         "infinity_context",
         "skills",
         "agent_instructions",
+        "channel_context",
         "current_time",
         "message_metadata",
         "stateless_todo_list",

@@ -90,6 +90,32 @@ async fn wait_for_sessions_with_tag(
     );
 }
 
+/// Wait for exactly one session with `tag` and return its id.
+async fn wait_for_session_with_tag(
+    server: &TestServer,
+    tag: &str,
+) -> everruns_provider::typed_id::SessionId {
+    let sessions = wait_for_sessions_with_tag(server, tag, 1).await;
+    sessions[0]["id"]
+        .as_str()
+        .expect("session id")
+        .parse()
+        .expect("session id parses")
+}
+
+/// Number of events currently recorded on a session.
+async fn session_event_count(
+    server: &TestServer,
+    session_id: &everruns_provider::typed_id::SessionId,
+) -> usize {
+    let events: Value = server
+        .get(&format!("/v1/sessions/{session_id}/events"))
+        .await
+        .assert_success()
+        .json();
+    events["data"].as_array().map(Vec::len).unwrap_or(0)
+}
+
 /// Wait and confirm that NO sessions with the given tag exist after a reasonable wait.
 async fn assert_no_sessions_with_tag(server: &TestServer, tag: &str) {
     // Wait a bit to give background tasks time to (incorrectly) create sessions
@@ -488,6 +514,10 @@ async fn test_slack_agent_surface_events_are_no_ops() {
     let server = TestServer::new().await;
     let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
 
+    // `app_context_changed` is no longer a no-op — it updates the session's
+    // persisted ThreadContext (EVE-977) — but it still creates no session and
+    // burns no turn, which is what this test is about. Its own behaviour is
+    // covered by `test_slack_context_change_updates_thread_context`.
     for event_type in [
         "app_home_opened",
         "app_context_changed",
@@ -514,6 +544,91 @@ async fn test_slack_agent_surface_events_are_no_ops() {
 
         assert_no_sessions_with_tag(&server, &format!("slack:thread:{}", ts)).await;
     }
+}
+
+/// EVE-977: a context change records where the user is looking on the existing
+/// session, and does so without minting an event per change.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_slack_context_change_updates_thread_context() {
+    let server = TestServer::new().await;
+    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+
+    // A message first, so there is a session for the context to attach to.
+    let ts = unique_ts();
+    let message = json!({
+        "type": "event_callback",
+        "team_id": "T_TEST",
+        "event": {
+            "type": "message",
+            "text": "hello",
+            "user": "U_TESTUSER",
+            "channel": "D_PANE",
+            "channel_type": "im",
+            "ts": ts,
+        }
+    });
+    send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &message)
+        .await
+        .assert_status(StatusCode::OK);
+
+    let session_id = wait_for_session_with_tag(&server, &format!("slack:thread:{ts}")).await;
+    let events_before = session_event_count(&server, &session_id).await;
+
+    // Now the user navigates somewhere else.
+    let context_change = json!({
+        "type": "event_callback",
+        "team_id": "T_TEST",
+        "event": {
+            "type": "app_context_changed",
+            "user": "U_TESTUSER",
+            "assistant_thread": {
+                "channel_id": "D_PANE",
+                "thread_ts": ts,
+                "context": { "channel_id": "C_ELSEWHERE", "team_id": "T_TEST" }
+            }
+        }
+    });
+    send_slack_event(
+        &server,
+        &app.public_id,
+        TEST_SIGNING_SECRET,
+        &context_change,
+    )
+    .await
+    .assert_status(StatusCode::OK);
+
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    let stored = server
+        .db
+        .get_session_key_value(
+            session_id.uuid(),
+            everruns_core::channel::THREAD_CONTEXT_KV_KEY,
+        )
+        .await
+        .expect("read thread context")
+        .expect("context change must persist a ThreadContext");
+
+    let thread = everruns_core::channel::decode_thread_context(&stored.value)
+        .expect("stored record must decode");
+    let view = thread
+        .current_view
+        .as_ref()
+        .expect("the reported position must be recorded");
+    assert_eq!(view.channel_id.as_deref(), Some("C_ELSEWHERE"));
+    assert_eq!(view.team_id.as_deref(), Some("T_TEST"));
+
+    // The participant from the message is still there — the context write must
+    // not clobber the accumulated thread.
+    assert_eq!(thread.participant_count(), 1, "participants must survive");
+
+    // And the change cost no event: that is the point of persisting it rather
+    // than injecting an input.message per navigation.
+    assert_eq!(
+        session_event_count(&server, &session_id).await,
+        events_before,
+        "a context change must not add events to the session"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

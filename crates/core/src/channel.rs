@@ -67,6 +67,45 @@ pub struct ThreadContext {
     /// Known participants in this thread, keyed by actor_id for O(1) lookup.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub participants: HashMap<String, Participant>,
+    /// What the user is currently looking at on the platform, when it reports
+    /// that (Slack: `app_context_changed`). Last write wins — it is a current
+    /// position, not a history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_view: Option<ChannelViewContext>,
+}
+
+/// Session KV key holding the persisted [`ThreadContext`].
+///
+/// One key per session, not a prefix: a session belongs to exactly one channel
+/// thread. `session_storage` reserves it from the user-facing `kv_store` tool
+/// (see `is_internal_session_kv_key`) so a session or tool actor cannot forge
+/// its own participant list or the "user is viewing" hint — both of which reach
+/// the model as context (TM-TOOL/TM-AGENT).
+pub const THREAD_CONTEXT_KV_KEY: &str = "channel:thread_context";
+
+/// Where the user's attention is on the platform, as the platform reports it.
+///
+/// Deliberately opaque ids and nothing resolved. The agent has not been granted
+/// access to whatever the user happens to be looking at, so this is a hint that
+/// it should ask about, not a fact it can act on — see [`ThreadContext::view_summary`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChannelViewContext {
+    /// Platform channel/conversation id the user is viewing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_id: Option<String>,
+    /// Platform team/workspace id, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_id: Option<String>,
+    /// When the platform reported this position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl ChannelViewContext {
+    /// True when there is nothing worth telling the model.
+    pub fn is_empty(&self) -> bool {
+        self.channel_id.is_none() && self.team_id.is_none()
+    }
 }
 
 impl ThreadContext {
@@ -77,6 +116,7 @@ impl ThreadContext {
             platform: platform.into(),
             platform_metadata: HashMap::new(),
             participants: HashMap::new(),
+            current_view: None,
         }
     }
 
@@ -122,6 +162,95 @@ impl ThreadContext {
         names.sort();
         format!("Thread participants: {}", names.join(", "))
     }
+
+    /// Record where the user is now looking. Last write wins.
+    ///
+    /// Returns true when this actually changed the stored position, so callers
+    /// can skip a write when the platform re-reports the same place.
+    pub fn set_current_view(&mut self, view: ChannelViewContext) -> bool {
+        let view = (!view.is_empty()).then_some(view);
+        if self.current_view == view {
+            return false;
+        }
+        self.current_view = view;
+        true
+    }
+
+    /// One line describing where the user is looking, for model context.
+    ///
+    /// Phrased as a hint the agent must ask about rather than a fact it can act
+    /// on. The platform reports what the *user* is viewing, which the agent may
+    /// have no access to and no tool for; stating it as available context would
+    /// invite the model to claim knowledge of a channel it cannot read. The id
+    /// stays opaque for the same reason — resolving it to a name would mean
+    /// fetching a channel the agent was never granted.
+    pub fn view_summary(&self) -> String {
+        let Some(view) = self.current_view.as_ref() else {
+            return String::new();
+        };
+        let Some(channel_id) = view.channel_id.as_deref() else {
+            return String::new();
+        };
+        format!(
+            "The user is currently viewing {} channel {}. You have not been given \
+             access to it — ask before assuming you can read it.",
+            self.platform, channel_id
+        )
+    }
+}
+
+/// Decode a persisted thread context record.
+///
+/// A malformed record decodes to `None` rather than erroring: losing
+/// accumulated participants degrades the prompt, but failing a turn over it
+/// would take the whole conversation down for a context line.
+///
+/// The codec is shared by both writers (the channel webhook, through whatever
+/// storage handle it has) and the reader (prompt assembly, through
+/// `SessionStorageStore`), so the two cannot drift on shape.
+pub fn decode_thread_context(raw: &str) -> Option<ThreadContext> {
+    match serde_json::from_str(raw) {
+        Ok(ctx) => Some(ctx),
+        Err(error) => {
+            tracing::warn!(%error, "Discarding malformed thread context record");
+            None
+        }
+    }
+}
+
+/// Encode a thread context for persistence. See [`decode_thread_context`].
+pub fn encode_thread_context(context: &ThreadContext) -> crate::error::Result<String> {
+    serde_json::to_string(context).map_err(|e| crate::error::AgentLoopError::store(e.to_string()))
+}
+
+/// Load the persisted thread context for a session, if any.
+///
+/// An unreadable record is treated as absent, for the reason in
+/// [`decode_thread_context`].
+pub async fn load_thread_context(
+    store: &dyn crate::session_services::SessionStorageStore,
+    session_id: SessionId,
+) -> Option<ThreadContext> {
+    match store.get_value(session_id, THREAD_CONTEXT_KV_KEY).await {
+        Ok(Some(raw)) => decode_thread_context(&raw),
+        Ok(None) => None,
+        Err(error) => {
+            tracing::warn!(%session_id, %error, "Failed to read persisted thread context");
+            None
+        }
+    }
+}
+
+/// Persist the thread context for a session, replacing any previous record.
+pub async fn save_thread_context(
+    store: &dyn crate::session_services::SessionStorageStore,
+    session_id: SessionId,
+    context: &ThreadContext,
+) -> crate::error::Result<()> {
+    let encoded = encode_thread_context(context)?;
+    store
+        .set_value(session_id, THREAD_CONTEXT_KV_KEY, &encoded)
+        .await
 }
 
 // ============================================
@@ -484,5 +613,131 @@ mod tests {
                 strategy
             );
         }
+    }
+    // ============================================
+    // Persisted thread context (EVE-977)
+    // ============================================
+
+    fn actor(id: &str, name: &str) -> ExternalActor {
+        ExternalActor {
+            actor_id: id.to_string(),
+            actor_name: Some(name.to_string()),
+            source: "slack".to_string(),
+            metadata: None,
+        }
+    }
+
+    /// The bug: a ThreadContext built per message only ever saw one speaker, so
+    /// the summary never named the thread. Accumulation is the whole point.
+    #[test]
+    fn participants_accumulate_across_a_round_trip() {
+        let mut ctx = ThreadContext::new("1700.1", "slack");
+        assert!(ctx.track_participant(&actor("U1", "Alice")));
+
+        // Survive a restart: encode, drop, decode.
+        let encoded = encode_thread_context(&ctx).expect("encode");
+        let mut restored = decode_thread_context(&encoded).expect("decode");
+
+        assert!(restored.track_participant(&actor("U2", "Bob")));
+        assert!(
+            !restored.track_participant(&actor("U1", "Alice")),
+            "re-seen actor is not new"
+        );
+
+        assert_eq!(restored.participant_count(), 2);
+        assert_eq!(
+            restored.participants_summary(),
+            "Thread participants: Alice, Bob"
+        );
+    }
+
+    /// A malformed record degrades to "no context", never an error: losing the
+    /// participant line must not take the conversation down with it.
+    #[test]
+    fn malformed_record_decodes_to_none() {
+        assert!(decode_thread_context("not json").is_none());
+        assert!(decode_thread_context("").is_none());
+    }
+
+    /// Re-reporting the same position is not a change, so it does not cause a write.
+    #[test]
+    fn setting_the_same_view_twice_reports_no_change() {
+        let mut ctx = ThreadContext::new("1700.1", "slack");
+        let view = ChannelViewContext {
+            channel_id: Some("C123".to_string()),
+            team_id: Some("T1".to_string()),
+            observed_at: None,
+        };
+
+        assert!(
+            ctx.set_current_view(view.clone()),
+            "first report is a change"
+        );
+        assert!(!ctx.set_current_view(view), "identical report is not");
+
+        let moved = ChannelViewContext {
+            channel_id: Some("C999".to_string()),
+            team_id: Some("T1".to_string()),
+            observed_at: None,
+        };
+        assert!(ctx.set_current_view(moved), "a real move is a change");
+    }
+
+    /// An empty report clears rather than storing a hollow record.
+    #[test]
+    fn empty_view_clears_the_current_position() {
+        let mut ctx = ThreadContext::new("1700.1", "slack");
+        ctx.set_current_view(ChannelViewContext {
+            channel_id: Some("C123".to_string()),
+            ..Default::default()
+        });
+        assert!(ctx.current_view.is_some());
+
+        assert!(ctx.set_current_view(ChannelViewContext::default()));
+        assert!(ctx.current_view.is_none());
+        assert_eq!(ctx.view_summary(), "");
+    }
+
+    /// The view line must read as a hint to ask about, not as granted access —
+    /// the agent has no tool for a channel the user merely happens to be in.
+    #[test]
+    fn view_summary_does_not_imply_access() {
+        let mut ctx = ThreadContext::new("1700.1", "slack");
+        ctx.set_current_view(ChannelViewContext {
+            channel_id: Some("C123".to_string()),
+            team_id: None,
+            observed_at: None,
+        });
+
+        let summary = ctx.view_summary();
+        assert!(summary.contains("C123"), "{summary}");
+        assert!(summary.contains("slack"), "{summary}");
+        assert!(
+            summary.contains("have not been given access"),
+            "must not present the channel as readable: {summary}"
+        );
+        assert!(summary.contains("ask before"), "{summary}");
+    }
+
+    /// No position reported means no line at all — not an empty or hedging one.
+    #[test]
+    fn no_view_yields_no_line() {
+        let ctx = ThreadContext::new("1700.1", "slack");
+        assert_eq!(ctx.view_summary(), "");
+        assert_eq!(ctx.participants_summary(), "");
+    }
+
+    /// Round-tripping keeps the reported position, not just the participants.
+    #[test]
+    fn current_view_survives_encoding() {
+        let mut ctx = ThreadContext::new("1700.1", "slack");
+        ctx.set_current_view(ChannelViewContext {
+            channel_id: Some("C123".to_string()),
+            team_id: Some("T1".to_string()),
+            observed_at: None,
+        });
+
+        let restored = decode_thread_context(&encode_thread_context(&ctx).unwrap()).unwrap();
+        assert_eq!(restored.current_view, ctx.current_view);
     }
 }
