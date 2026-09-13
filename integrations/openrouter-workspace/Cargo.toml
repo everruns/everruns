@@ -1,6 +1,6 @@
 [package]
 name = "everruns-integrations-openrouter-workspace"
-version = "0.18.3"
+version = "0.18.4"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -19,7 +19,7 @@ default = []
 [dependencies]
 everruns-core.workspace = true
 everruns-provider.workspace = true
-everruns-openrouter = { version = "0.18.4", path = "../../crates/drivers/openrouter" }
+everruns-openrouter = { version = "0.18.5", path = "../../crates/drivers/openrouter" }
 async-trait.workspace = true
 reqwest.workspace = true
 serde.workspace = true
