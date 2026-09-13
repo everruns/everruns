@@ -10,6 +10,10 @@ const mockUnpinMutate = jest.fn();
 const mockArchiveMutate = jest.fn();
 const mockUnarchiveMutate = jest.fn();
 
+jest.mock("@/components/chat/streamdown-message", () => ({
+  StreamdownMessage: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+  InlineStreamdownMessage: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+}));
 jest.mock("next/link", () => ({
   __esModule: true,
   default: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (

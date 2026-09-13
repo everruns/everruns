@@ -4234,6 +4234,13 @@ export interface components {
       /** @description Starter files copied into each new session for this agent. */
       initial_files?: components["schemas"]["InitialFile"][];
       /**
+       * @description Optional Markdown intro rendered as an intro box at the top of a fresh
+       *     Platform Chat thread. Images are allowed. Wins over the harness intro.
+       *     Hidden once the user inputs.
+       * @example Hey, I'm Ava. Ask me anything about your account.
+       */
+      intro_markdown?: string | null;
+      /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 50
        */
@@ -4261,6 +4268,17 @@ export interface components {
        * @example agent_01933b5a00007000800000000000001
        */
       root_agent_id?: string | null;
+      /**
+       * @description Optional one-line description in simplified Markdown, shown below the
+       *     chat title once the intro is hidden. Wins over the harness value.
+       * @example Answers account questions in seconds.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters for a fresh Platform Chat thread. Win over the
+       *     harness starters when non-empty.
+       */
+      starters?: components["schemas"]["ConversationStarter"][];
       /** @description Current lifecycle status of the agent. */
       status: components["schemas"]["AgentStatus"];
       /**
@@ -5955,6 +5973,24 @@ export interface components {
        */
       verbosity?: string | null;
     };
+    /**
+     * @description A conversation starter shown on a fresh Platform Chat thread.
+     *     Selecting one inserts its text into the composer. `icon` reuses the
+     *     harness icon name set (`HarnessIcon`); unknown names fall back to the
+     *     default glyph.
+     */
+    ConversationStarter: {
+      /**
+       * @description Optional icon name from the harness icon set.
+       * @example zap
+       */
+      icon?: string | null;
+      /**
+       * @description Prompt text inserted into the composer when selected.
+       * @example Triage the newest P1
+       */
+      text: string;
+    };
     /** @description Request to copy a file */
     CopyFileRequest: {
       /**
@@ -6094,6 +6130,13 @@ export interface components {
        */
       initial_files?: components["schemas"]["InitialFile"][];
       /**
+       * @description Markdown intro shown as an intro box on a fresh Platform Chat thread.
+       *     Images are allowed. Wins over the harness intro. Hidden once the user
+       *     inputs.
+       * @example Hey, I'm Ava. Ask me anything about your account.
+       */
+      intro_markdown?: string | null;
+      /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 20
        */
@@ -6115,6 +6158,17 @@ export interface components {
        * @example true
        */
       parallel_tool_calls?: boolean | null;
+      /**
+       * @description One-line description in simplified Markdown, shown below the chat title
+       *     once the intro is hidden. Wins over the harness value.
+       * @example Answers account questions in seconds.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters for a fresh Platform Chat thread. Win over the
+       *     harness starters when non-empty. `icon` reuses the harness icon set.
+       */
+      starters?: components["schemas"]["ConversationStarter"][];
       /**
        * @description The system prompt that defines the agent's behavior and capabilities.
        *     This is sent as the first message in every conversation.
@@ -6349,6 +6403,12 @@ export interface components {
       };
       /** @description Starter files copied into each new session for this harness. */
       initial_files?: components["schemas"]["InitialFile"][];
+      /**
+       * @description Markdown intro shown as an intro box on a fresh Platform Chat thread.
+       *     Images are allowed. The agent intro wins. Hidden once the user inputs.
+       * @example I triage incidents, dig through logs, and draft the update.
+       */
+      intro_markdown?: string | null;
       /** @description Remote MCP servers scoped to this harness. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -6362,6 +6422,18 @@ export interface components {
        * @example harness_01933b5a000070008000000000000602
        */
       parent_harness_id?: string | null;
+      /**
+       * @description One-line description in simplified Markdown, shown below the chat title
+       *     once the intro is hidden. The agent value wins.
+       * @example Triage incidents, dig through logs, draft the update.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters for a fresh Platform Chat thread. Selecting one
+       *     inserts its text into the composer. The agent starters win when
+       *     non-empty. `icon` reuses the harness icon name set.
+       */
+      starters?: components["schemas"]["ConversationStarter"][];
       /**
        * @description Base system prompt defining the harness's behavior. Optional: omit (or
        *     send an empty string) to contribute no base prompt, in which case the
@@ -8500,6 +8572,13 @@ export interface components {
       /** @description Starter files copied into each new session for this harness. */
       initial_files?: components["schemas"]["InitialFile"][];
       /**
+       * @description Optional Markdown intro rendered as an intro box at the top of a fresh
+       *     Platform Chat thread. Images are allowed. The agent intro wins over
+       *     the harness intro. Hidden once the user inputs.
+       * @example I can triage incidents, dig through logs, and draft the update.
+       */
+      intro_markdown?: string | null;
+      /**
        * @description Whether this harness is built-in (system-managed, readonly).
        *     Built-in harnesses are provisioned during org initialization and
        *     cannot be modified or deleted via the API. Users can copy them.
@@ -8529,6 +8608,17 @@ export interface components {
        * @example harness_01933b5a000070008000000000000602
        */
       parent_harness_id?: string | null;
+      /**
+       * @description Optional one-line description in simplified Markdown, shown below the
+       *     chat title once the intro is hidden. The agent value wins.
+       * @example Knows your agents, harnesses, models, and runs.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters for a fresh Platform Chat thread. The agent's
+       *     starters win when non-empty, otherwise the harness's apply.
+       */
+      starters?: components["schemas"]["ConversationStarter"][];
       /** @description Current lifecycle status of the harness. */
       status: components["schemas"]["HarnessStatus"];
       /**
@@ -9408,6 +9498,13 @@ export interface components {
         /** @description Starter files copied into each new session for this agent. */
         initial_files?: components["schemas"]["InitialFile"][];
         /**
+         * @description Optional Markdown intro rendered as an intro box at the top of a fresh
+         *     Platform Chat thread. Images are allowed. Wins over the harness intro.
+         *     Hidden once the user inputs.
+         * @example Hey, I'm Ava. Ask me anything about your account.
+         */
+        intro_markdown?: string | null;
+        /**
          * @description Maximum number of LLM iterations per turn for this agent.
          * @example 50
          */
@@ -9435,6 +9532,17 @@ export interface components {
          * @example agent_01933b5a00007000800000000000001
          */
         root_agent_id?: string | null;
+        /**
+         * @description Optional one-line description in simplified Markdown, shown below the
+         *     chat title once the intro is hidden. Wins over the harness value.
+         * @example Answers account questions in seconds.
+         */
+        short_description?: string | null;
+        /**
+         * @description Conversation starters for a fresh Platform Chat thread. Win over the
+         *     harness starters when non-empty.
+         */
+        starters?: components["schemas"]["ConversationStarter"][];
         /** @description Current lifecycle status of the agent. */
         status: components["schemas"]["AgentStatus"];
         /**
@@ -9863,6 +9971,13 @@ export interface components {
         /** @description Starter files copied into each new session for this harness. */
         initial_files?: components["schemas"]["InitialFile"][];
         /**
+         * @description Optional Markdown intro rendered as an intro box at the top of a fresh
+         *     Platform Chat thread. Images are allowed. The agent intro wins over
+         *     the harness intro. Hidden once the user inputs.
+         * @example I can triage incidents, dig through logs, and draft the update.
+         */
+        intro_markdown?: string | null;
+        /**
          * @description Whether this harness is built-in (system-managed, readonly).
          *     Built-in harnesses are provisioned during org initialization and
          *     cannot be modified or deleted via the API. Users can copy them.
@@ -9892,6 +10007,17 @@ export interface components {
          * @example harness_01933b5a000070008000000000000602
          */
         parent_harness_id?: string | null;
+        /**
+         * @description Optional one-line description in simplified Markdown, shown below the
+         *     chat title once the intro is hidden. The agent value wins.
+         * @example Knows your agents, harnesses, models, and runs.
+         */
+        short_description?: string | null;
+        /**
+         * @description Conversation starters for a fresh Platform Chat thread. The agent's
+         *     starters win when non-empty, otherwise the harness's apply.
+         */
+        starters?: components["schemas"]["ConversationStarter"][];
         /** @description Current lifecycle status of the harness. */
         status: components["schemas"]["HarnessStatus"];
         /**
@@ -11103,6 +11229,13 @@ export interface components {
         /** @description Starter files copied into each new session for this harness. */
         initial_files?: components["schemas"]["InitialFile"][];
         /**
+         * @description Optional Markdown intro rendered as an intro box at the top of a fresh
+         *     Platform Chat thread. Images are allowed. The agent intro wins over
+         *     the harness intro. Hidden once the user inputs.
+         * @example I can triage incidents, dig through logs, and draft the update.
+         */
+        intro_markdown?: string | null;
+        /**
          * @description Whether this harness is built-in (system-managed, readonly).
          *     Built-in harnesses are provisioned during org initialization and
          *     cannot be modified or deleted via the API. Users can copy them.
@@ -11132,6 +11265,17 @@ export interface components {
          * @example harness_01933b5a000070008000000000000602
          */
         parent_harness_id?: string | null;
+        /**
+         * @description Optional one-line description in simplified Markdown, shown below the
+         *     chat title once the intro is hidden. The agent value wins.
+         * @example Knows your agents, harnesses, models, and runs.
+         */
+        short_description?: string | null;
+        /**
+         * @description Conversation starters for a fresh Platform Chat thread. The agent's
+         *     starters win when non-empty, otherwise the harness's apply.
+         */
+        starters?: components["schemas"]["ConversationStarter"][];
         /** @description Current lifecycle status of the harness. */
         status: components["schemas"]["HarnessStatus"];
         /**
@@ -16743,6 +16887,12 @@ export interface components {
        */
       initial_files?: components["schemas"]["InitialFile"][] | null;
       /**
+       * @description Markdown intro for fresh Platform Chat threads. Outer `None` leaves
+       *     unchanged; inner `None` clears.
+       * @example Hey, I'm Ava. Ask me anything about your account.
+       */
+      intro_markdown?: string | null;
+      /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 20
        */
@@ -16762,6 +16912,17 @@ export interface components {
        * @example true
        */
       parallel_tool_calls?: boolean | null;
+      /**
+       * @description One-line description in simplified Markdown. Outer `None` leaves
+       *     unchanged; inner `None` clears.
+       * @example Answers account questions in seconds.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters; omit to leave unchanged, send empty to clear.
+       *     `icon` reuses the harness icon name set.
+       */
+      starters?: components["schemas"]["ConversationStarter"][] | null;
       status?: null | components["schemas"]["AgentStatus"];
       /**
        * @description The system prompt that defines the agent's behavior and capabilities.
@@ -16935,6 +17096,12 @@ export interface components {
        *     ]
        */
       initial_files?: components["schemas"]["InitialFile"][] | null;
+      /**
+       * @description Markdown intro shown as an intro box on a fresh Platform Chat thread.
+       *     Outer `None` leaves unchanged; inner `None` clears.
+       * @example I triage incidents, dig through logs, and draft the update.
+       */
+      intro_markdown?: string | null;
       mcpServers?: null | components["schemas"]["BTreeMap"];
       /**
        * @description Name, unique per org.
@@ -16944,6 +17111,17 @@ export interface components {
       network_access?: null | components["schemas"]["NetworkAccessList"];
       /** @description New parent harness for inheritance. Outer `None` leaves unchanged; inner `None` removes inheritance (becomes a root harness). */
       parent_harness_id?: string | null;
+      /**
+       * @description One-line description in simplified Markdown. Outer `None` leaves
+       *     unchanged; inner `None` clears.
+       * @example Triage incidents, dig through logs, draft the update.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters; omit to leave unchanged, send empty to clear.
+       *     `icon` reuses the harness icon name set.
+       */
+      starters?: components["schemas"]["ConversationStarter"][] | null;
       status?: null | components["schemas"]["HarnessStatus"];
       /**
        * @description New system prompt the harness contributes to sessions; omit to leave unchanged.
@@ -17794,6 +17972,13 @@ export interface components {
       /** @description Starter files copied into each new session for this agent. */
       initial_files?: components["schemas"]["InitialFile"][];
       /**
+       * @description Optional Markdown intro rendered as an intro box at the top of a fresh
+       *     Platform Chat thread. Images are allowed. Wins over the harness intro.
+       *     Hidden once the user inputs.
+       * @example Hey, I'm Ava. Ask me anything about your account.
+       */
+      intro_markdown?: string | null;
+      /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 50
        */
@@ -17821,6 +18006,17 @@ export interface components {
        * @example agent_01933b5a00007000800000000000001
        */
       root_agent_id?: string | null;
+      /**
+       * @description Optional one-line description in simplified Markdown, shown below the
+       *     chat title once the intro is hidden. Wins over the harness value.
+       * @example Answers account questions in seconds.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters for a fresh Platform Chat thread. Win over the
+       *     harness starters when non-empty.
+       */
+      starters?: components["schemas"]["ConversationStarter"][];
       /** @description Current lifecycle status of the agent. */
       status: components["schemas"]["AgentStatus"];
       /**
@@ -18284,6 +18480,13 @@ export interface components {
       /** @description Starter files copied into each new session for this harness. */
       initial_files?: components["schemas"]["InitialFile"][];
       /**
+       * @description Optional Markdown intro rendered as an intro box at the top of a fresh
+       *     Platform Chat thread. Images are allowed. The agent intro wins over
+       *     the harness intro. Hidden once the user inputs.
+       * @example I can triage incidents, dig through logs, and draft the update.
+       */
+      intro_markdown?: string | null;
+      /**
        * @description Whether this harness is built-in (system-managed, readonly).
        *     Built-in harnesses are provisioned during org initialization and
        *     cannot be modified or deleted via the API. Users can copy them.
@@ -18313,6 +18516,17 @@ export interface components {
        * @example harness_01933b5a000070008000000000000602
        */
       parent_harness_id?: string | null;
+      /**
+       * @description Optional one-line description in simplified Markdown, shown below the
+       *     chat title once the intro is hidden. The agent value wins.
+       * @example Knows your agents, harnesses, models, and runs.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters for a fresh Platform Chat thread. The agent's
+       *     starters win when non-empty, otherwise the harness's apply.
+       */
+      starters?: components["schemas"]["ConversationStarter"][];
       /** @description Current lifecycle status of the harness. */
       status: components["schemas"]["HarnessStatus"];
       /**
@@ -18727,6 +18941,13 @@ export interface components {
       /** @description Starter files copied into each new session for this harness. */
       initial_files?: components["schemas"]["InitialFile"][];
       /**
+       * @description Optional Markdown intro rendered as an intro box at the top of a fresh
+       *     Platform Chat thread. Images are allowed. The agent intro wins over
+       *     the harness intro. Hidden once the user inputs.
+       * @example I can triage incidents, dig through logs, and draft the update.
+       */
+      intro_markdown?: string | null;
+      /**
        * @description Whether this harness is built-in (system-managed, readonly).
        *     Built-in harnesses are provisioned during org initialization and
        *     cannot be modified or deleted via the API. Users can copy them.
@@ -18756,6 +18977,17 @@ export interface components {
        * @example harness_01933b5a000070008000000000000602
        */
       parent_harness_id?: string | null;
+      /**
+       * @description Optional one-line description in simplified Markdown, shown below the
+       *     chat title once the intro is hidden. The agent value wins.
+       * @example Knows your agents, harnesses, models, and runs.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters for a fresh Platform Chat thread. The agent's
+       *     starters win when non-empty, otherwise the harness's apply.
+       */
+      starters?: components["schemas"]["ConversationStarter"][];
       /** @description Current lifecycle status of the harness. */
       status: components["schemas"]["HarnessStatus"];
       /**

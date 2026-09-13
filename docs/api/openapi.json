@@ -16387,6 +16387,14 @@
             },
             "description": "Starter files copied into each new session for this agent."
           },
+          "intro_markdown": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional Markdown intro rendered as an intro box at the top of a fresh\nPlatform Chat thread. Images are allowed. Wins over the harness intro.\nHidden once the user inputs.",
+            "example": "Hey, I'm Ava. Ask me anything about your account."
+          },
           "max_iterations": {
             "type": [
               "integer",
@@ -16431,6 +16439,21 @@
             ],
             "description": "Root agent lineage identifier for grouping fork families.",
             "example": "agent_01933b5a00007000800000000000001"
+          },
+          "short_description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional one-line description in simplified Markdown, shown below the\nchat title once the intro is hidden. Wins over the harness value.",
+            "example": "Answers account questions in seconds."
+          },
+          "starters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationStarter"
+            },
+            "description": "Conversation starters for a fresh Platform Chat thread. Win over the\nharness starters when non-empty."
           },
           "status": {
             "$ref": "#/components/schemas/AgentStatus",
@@ -19551,6 +19574,28 @@
           }
         }
       },
+      "ConversationStarter": {
+        "type": "object",
+        "description": "A conversation starter shown on a fresh Platform Chat thread.\nSelecting one inserts its text into the composer. `icon` reuses the\nharness icon name set (`HarnessIcon`); unknown names fall back to the\ndefault glyph.",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional icon name from the harness icon set.",
+            "example": "zap"
+          },
+          "text": {
+            "type": "string",
+            "description": "Prompt text inserted into the composer when selected.",
+            "example": "Triage the newest P1"
+          }
+        }
+      },
       "CopyFileRequest": {
         "type": "object",
         "description": "Request to copy a file",
@@ -19744,6 +19789,14 @@
               }
             ]
           },
+          "intro_markdown": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Markdown intro shown as an intro box on a fresh Platform Chat thread.\nImages are allowed. Wins over the harness intro. Hidden once the user\ninputs.",
+            "example": "Hey, I'm Ava. Ask me anything about your account."
+          },
           "max_iterations": {
             "type": [
               "integer",
@@ -19780,6 +19833,21 @@
             ],
             "description": "Request-level parallel tool calling preference (EVE-598). `true` signals\nthe provider that parallel tool calls are wanted; `false` requests at\nmost one tool call per turn and forces serial execution. Omit to use the\nprovider default.",
             "example": true
+          },
+          "short_description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One-line description in simplified Markdown, shown below the chat title\nonce the intro is hidden. Wins over the harness value.",
+            "example": "Answers account questions in seconds."
+          },
+          "starters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationStarter"
+            },
+            "description": "Conversation starters for a fresh Platform Chat thread. Win over the\nharness starters when non-empty. `icon` reuses the harness icon set."
           },
           "system_prompt": {
             "type": "string",
@@ -20161,6 +20229,14 @@
             },
             "description": "Starter files copied into each new session for this harness."
           },
+          "intro_markdown": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Markdown intro shown as an intro box on a fresh Platform Chat thread.\nImages are allowed. The agent intro wins. Hidden once the user inputs.",
+            "example": "I triage incidents, dig through logs, and draft the update."
+          },
           "mcpServers": {
             "$ref": "#/components/schemas/BTreeMap",
             "description": "Remote MCP servers scoped to this harness."
@@ -20188,6 +20264,21 @@
             ],
             "description": "Optional parent harness to inherit from.",
             "example": "harness_01933b5a000070008000000000000602"
+          },
+          "short_description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One-line description in simplified Markdown, shown below the chat title\nonce the intro is hidden. The agent value wins.",
+            "example": "Triage incidents, dig through logs, draft the update."
+          },
+          "starters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationStarter"
+            },
+            "description": "Conversation starters for a fresh Platform Chat thread. Selecting one\ninserts its text into the composer. The agent starters win when\nnon-empty. `icon` reuses the harness icon name set."
           },
           "system_prompt": {
             "type": [
@@ -23878,6 +23969,14 @@
             },
             "description": "Starter files copied into each new session for this harness."
           },
+          "intro_markdown": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional Markdown intro rendered as an intro box at the top of a fresh\nPlatform Chat thread. Images are allowed. The agent intro wins over\nthe harness intro. Hidden once the user inputs.",
+            "example": "I can triage incidents, dig through logs, and draft the update."
+          },
           "is_built_in": {
             "type": "boolean",
             "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
@@ -23918,6 +24017,21 @@
             ],
             "description": "Optional parent harness that this harness inherits from.",
             "example": "harness_01933b5a000070008000000000000602"
+          },
+          "short_description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional one-line description in simplified Markdown, shown below the\nchat title once the intro is hidden. The agent value wins.",
+            "example": "Knows your agents, harnesses, models, and runs."
+          },
+          "starters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationStarter"
+            },
+            "description": "Conversation starters for a fresh Platform Chat thread. The agent's\nstarters win when non-empty, otherwise the harness's apply."
           },
           "status": {
             "$ref": "#/components/schemas/HarnessStatus",
@@ -25557,6 +25671,14 @@
                   },
                   "description": "Starter files copied into each new session for this agent."
                 },
+                "intro_markdown": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional Markdown intro rendered as an intro box at the top of a fresh\nPlatform Chat thread. Images are allowed. Wins over the harness intro.\nHidden once the user inputs.",
+                  "example": "Hey, I'm Ava. Ask me anything about your account."
+                },
                 "max_iterations": {
                   "type": [
                     "integer",
@@ -25601,6 +25723,21 @@
                   ],
                   "description": "Root agent lineage identifier for grouping fork families.",
                   "example": "agent_01933b5a00007000800000000000001"
+                },
+                "short_description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional one-line description in simplified Markdown, shown below the\nchat title once the intro is hidden. Wins over the harness value.",
+                  "example": "Answers account questions in seconds."
+                },
+                "starters": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConversationStarter"
+                  },
+                  "description": "Conversation starters for a fresh Platform Chat thread. Win over the\nharness starters when non-empty."
                 },
                 "status": {
                   "$ref": "#/components/schemas/AgentStatus",
@@ -26261,6 +26398,14 @@
                   },
                   "description": "Starter files copied into each new session for this harness."
                 },
+                "intro_markdown": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional Markdown intro rendered as an intro box at the top of a fresh\nPlatform Chat thread. Images are allowed. The agent intro wins over\nthe harness intro. Hidden once the user inputs.",
+                  "example": "I can triage incidents, dig through logs, and draft the update."
+                },
                 "is_built_in": {
                   "type": "boolean",
                   "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
@@ -26301,6 +26446,21 @@
                   ],
                   "description": "Optional parent harness that this harness inherits from.",
                   "example": "harness_01933b5a000070008000000000000602"
+                },
+                "short_description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional one-line description in simplified Markdown, shown below the\nchat title once the intro is hidden. The agent value wins.",
+                  "example": "Knows your agents, harnesses, models, and runs."
+                },
+                "starters": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConversationStarter"
+                  },
+                  "description": "Conversation starters for a fresh Platform Chat thread. The agent's\nstarters win when non-empty, otherwise the harness's apply."
                 },
                 "status": {
                   "$ref": "#/components/schemas/HarnessStatus",
@@ -28595,6 +28755,14 @@
                           },
                           "description": "Starter files copied into each new session for this harness."
                         },
+                        "intro_markdown": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "Optional Markdown intro rendered as an intro box at the top of a fresh\nPlatform Chat thread. Images are allowed. The agent intro wins over\nthe harness intro. Hidden once the user inputs.",
+                          "example": "I can triage incidents, dig through logs, and draft the update."
+                        },
                         "is_built_in": {
                           "type": "boolean",
                           "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
@@ -28635,6 +28803,21 @@
                           ],
                           "description": "Optional parent harness that this harness inherits from.",
                           "example": "harness_01933b5a000070008000000000000602"
+                        },
+                        "short_description": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "Optional one-line description in simplified Markdown, shown below the\nchat title once the intro is hidden. The agent value wins.",
+                          "example": "Knows your agents, harnesses, models, and runs."
+                        },
+                        "starters": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/ConversationStarter"
+                          },
+                          "description": "Conversation starters for a fresh Platform Chat thread. The agent's\nstarters win when non-empty, otherwise the harness's apply."
                         },
                         "status": {
                           "$ref": "#/components/schemas/HarnessStatus",
@@ -38396,6 +38579,14 @@
               }
             ]
           },
+          "intro_markdown": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Markdown intro for fresh Platform Chat threads. Outer `None` leaves\nunchanged; inner `None` clears.",
+            "example": "Hey, I'm Ava. Ask me anything about your account."
+          },
           "max_iterations": {
             "type": [
               "integer",
@@ -38442,6 +38633,24 @@
             ],
             "description": "Request-level parallel tool calling preference (EVE-598). `true` signals\nthe provider that parallel tool calls are wanted; `false` requests at\nmost one tool call per turn and forces serial execution. Omit to leave\nunchanged.",
             "example": true
+          },
+          "short_description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One-line description in simplified Markdown. Outer `None` leaves\nunchanged; inner `None` clears.",
+            "example": "Answers account questions in seconds."
+          },
+          "starters": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ConversationStarter"
+            },
+            "description": "Conversation starters; omit to leave unchanged, send empty to clear.\n`icon` reuses the harness icon name set."
           },
           "status": {
             "oneOf": [
@@ -38781,6 +38990,14 @@
               }
             ]
           },
+          "intro_markdown": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Markdown intro shown as an intro box on a fresh Platform Chat thread.\nOuter `None` leaves unchanged; inner `None` clears.",
+            "example": "I triage incidents, dig through logs, and draft the update."
+          },
           "mcpServers": {
             "oneOf": [
               {
@@ -38817,6 +39034,24 @@
               "null"
             ],
             "description": "New parent harness for inheritance. Outer `None` leaves unchanged; inner `None` removes inheritance (becomes a root harness)."
+          },
+          "short_description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One-line description in simplified Markdown. Outer `None` leaves\nunchanged; inner `None` clears.",
+            "example": "Triage incidents, dig through logs, draft the update."
+          },
+          "starters": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ConversationStarter"
+            },
+            "description": "Conversation starters; omit to leave unchanged, send empty to clear.\n`icon` reuses the harness icon name set."
           },
           "status": {
             "oneOf": [
@@ -40487,6 +40722,14 @@
                 },
                 "description": "Starter files copied into each new session for this agent."
               },
+              "intro_markdown": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Optional Markdown intro rendered as an intro box at the top of a fresh\nPlatform Chat thread. Images are allowed. Wins over the harness intro.\nHidden once the user inputs.",
+                "example": "Hey, I'm Ava. Ask me anything about your account."
+              },
               "max_iterations": {
                 "type": [
                   "integer",
@@ -40531,6 +40774,21 @@
                 ],
                 "description": "Root agent lineage identifier for grouping fork families.",
                 "example": "agent_01933b5a00007000800000000000001"
+              },
+              "short_description": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Optional one-line description in simplified Markdown, shown below the\nchat title once the intro is hidden. Wins over the harness value.",
+                "example": "Answers account questions in seconds."
+              },
+              "starters": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ConversationStarter"
+                },
+                "description": "Conversation starters for a fresh Platform Chat thread. Win over the\nharness starters when non-empty."
               },
               "status": {
                 "$ref": "#/components/schemas/AgentStatus",
@@ -41272,6 +41530,14 @@
                 },
                 "description": "Starter files copied into each new session for this harness."
               },
+              "intro_markdown": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Optional Markdown intro rendered as an intro box at the top of a fresh\nPlatform Chat thread. Images are allowed. The agent intro wins over\nthe harness intro. Hidden once the user inputs.",
+                "example": "I can triage incidents, dig through logs, and draft the update."
+              },
               "is_built_in": {
                 "type": "boolean",
                 "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
@@ -41312,6 +41578,21 @@
                 ],
                 "description": "Optional parent harness that this harness inherits from.",
                 "example": "harness_01933b5a000070008000000000000602"
+              },
+              "short_description": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Optional one-line description in simplified Markdown, shown below the\nchat title once the intro is hidden. The agent value wins.",
+                "example": "Knows your agents, harnesses, models, and runs."
+              },
+              "starters": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ConversationStarter"
+                },
+                "description": "Conversation starters for a fresh Platform Chat thread. The agent's\nstarters win when non-empty, otherwise the harness's apply."
               },
               "status": {
                 "$ref": "#/components/schemas/HarnessStatus",
@@ -41987,6 +42268,14 @@
                     },
                     "description": "Starter files copied into each new session for this harness."
                   },
+                  "intro_markdown": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Optional Markdown intro rendered as an intro box at the top of a fresh\nPlatform Chat thread. Images are allowed. The agent intro wins over\nthe harness intro. Hidden once the user inputs.",
+                    "example": "I can triage incidents, dig through logs, and draft the update."
+                  },
                   "is_built_in": {
                     "type": "boolean",
                     "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
@@ -42027,6 +42316,21 @@
                     ],
                     "description": "Optional parent harness that this harness inherits from.",
                     "example": "harness_01933b5a000070008000000000000602"
+                  },
+                  "short_description": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Optional one-line description in simplified Markdown, shown below the\nchat title once the intro is hidden. The agent value wins.",
+                    "example": "Knows your agents, harnesses, models, and runs."
+                  },
+                  "starters": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ConversationStarter"
+                    },
+                    "description": "Conversation starters for a fresh Platform Chat thread. The agent's\nstarters win when non-empty, otherwise the harness's apply."
                   },
                   "status": {
                     "$ref": "#/components/schemas/HarnessStatus",

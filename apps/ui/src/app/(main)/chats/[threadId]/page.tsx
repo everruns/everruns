@@ -26,6 +26,7 @@ import { useHarnesses, usePageTitle } from "@/hooks";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import { isChatThread, threadTitle } from "@/lib/chat-threads";
 import { getDisplayName } from "@/lib/entity-lifecycle";
+import { isPlatformChatThread, resolvePlatformChatIntro } from "@/lib/platform-chat-intro";
 
 function ThreadContent({ threadId }: { threadId: string }) {
   const { session, agent, agentId, sessionLoading } = useSessionContext();
@@ -51,6 +52,13 @@ function ThreadContent({ threadId }: { threadId: string }) {
     : harness
       ? getDisplayName(harness)
       : undefined;
+
+  // Intro box, header description, and starters are Platform Chat-only: they
+  // render on threads bound to the built-in Platform Chat harness, with the
+  // bound agent winning per field when one is set.
+  const platformIntro = isPlatformChatThread(harness?.name)
+    ? resolvePlatformChatIntro(agent, harness)
+    : null;
 
   usePageTitle(session ? title : null, "Chats");
 
@@ -93,6 +101,8 @@ function ThreadContent({ threadId }: { threadId: string }) {
         session={session}
         title={title}
         counterpart={counterpart}
+        platformIntro={platformIntro?.intro ?? null}
+        platformDescription={platformIntro?.description ?? null}
         counterpartHref={
           agentId ? (
             <Link
@@ -105,7 +115,14 @@ function ThreadContent({ threadId }: { threadId: string }) {
           ) : undefined
         }
       />
-      <ChatPanel replyToLabel={counterpart} showRunCards />
+      <ChatPanel
+        replyToLabel={counterpart}
+        showRunCards
+        platformTitle={counterpart}
+        platformIcon={harness?.icon}
+        platformIntro={platformIntro?.intro ?? null}
+        platformStarters={platformIntro?.starters ?? []}
+      />
     </div>
   );
 }

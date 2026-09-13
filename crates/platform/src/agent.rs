@@ -218,6 +218,27 @@ pub struct Agent {
         schema(example = "Handles refund and shipping questions; escalates billing disputes.")
     )]
     pub description: Option<String>,
+    /// Optional Markdown intro rendered as an intro box at the top of a fresh
+    /// Platform Chat thread. Images are allowed. Wins over the harness intro.
+    /// Hidden once the user inputs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "Hey, I'm Ava. Ask me anything about your account.")
+    )]
+    pub intro_markdown: Option<String>,
+    /// Optional one-line description in simplified Markdown, shown below the
+    /// chat title once the intro is hidden. Wins over the harness value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "Answers account questions in seconds.")
+    )]
+    pub short_description: Option<String>,
+    /// Conversation starters for a fresh Platform Chat thread. Win over the
+    /// harness starters when non-empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub starters: Vec<crate::ConversationStarter>,
     /// System prompt that defines the agent's behavior.
     /// Sent as the first message in every conversation.
     #[cfg_attr(
@@ -425,6 +446,9 @@ mod tests {
             name: "test".to_string(),
             display_name: Some("Test".to_string()),
             description: None,
+            intro_markdown: None,
+            short_description: None,
+            starters: Vec::new(),
             system_prompt: "test".to_string(),
             default_model_id: None,
             harness_id: "harness_01933b5a000070008000000000000001".parse().unwrap(),

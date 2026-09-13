@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import type { CommandDescriptor, Controls } from "@/lib/api/types";
+import type { ConversationStarter } from "@/lib/api/legacy-api-types";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
 import {
   useAgents,
@@ -26,6 +27,7 @@ import { useMutation } from "@tanstack/react-query";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { NoIntelligenceMessage } from "@/components/chat/no-intelligence-notice";
+import { PlatformChatIntroBox } from "@/components/chat/platform-chat-intro";
 import { MessageContent } from "@/components/chat/message-content";
 import { SessionTaskChips } from "@/components/session/session-task-chips";
 import { SessionParticipantsRail } from "@/components/session/session-participants-rail";
@@ -111,9 +113,24 @@ export interface ChatPanelProps {
    * a task subscription, and only the Chats thread surface wants it.
    */
   showRunCards?: boolean;
+  /** Display name for the Platform Chat intro card (agent or harness). */
+  platformTitle?: string;
+  /** Icon name for the Platform Chat intro card (harness icon set). */
+  platformIcon?: string | null;
+  /** Markdown intro; the intro box renders while the transcript is empty. */
+  platformIntro?: string | null;
+  /** Conversation starters rendered above the composer while empty. */
+  platformStarters?: ConversationStarter[];
 }
 
-export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps = {}) {
+export function ChatPanel({
+  replyToLabel,
+  showRunCards = false,
+  platformTitle,
+  platformIcon,
+  platformIntro,
+  platformStarters = [],
+}: ChatPanelProps = {}) {
   const { t } = useLocale();
   const voiceFeatureEnabled = useFeatureFlag("voice");
   const {
@@ -646,6 +663,18 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
             hasTasksFeature={hasTasksFeature}
           />
 
+          {transcriptEmpty && (platformIntro || platformStarters.length > 0) ? (
+            <PlatformChatIntroBox
+              title={platformTitle ?? "Platform Chat"}
+              icon={platformIcon ?? null}
+              intro={platformIntro ?? null}
+              starters={platformStarters}
+              onSelect={(text) => {
+                setInputValue(text);
+                textareaRef.current?.focus();
+              }}
+            />
+          ) : null}
           {showNoIntelligence && !transcriptEmpty && (
             <NoIntelligenceMessage canManage={intelligence.canManage} className="mb-3" />
           )}
