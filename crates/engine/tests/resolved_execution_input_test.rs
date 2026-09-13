@@ -111,6 +111,7 @@ async fn kernel_executes_from_resolved_values_without_stores() {
         },
         &capability_registry,
         None,
+        None,
     )
     .await
     .unwrap();

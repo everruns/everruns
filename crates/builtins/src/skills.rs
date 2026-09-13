@@ -1685,6 +1685,7 @@ mod tests {
             locale: None,
             file_store: Some(store),
             model: None,
+            session_storage: None,
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1716,6 +1717,7 @@ mod tests {
             locale: None,
             file_store: Some(store),
             model: None,
+            session_storage: None,
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1782,6 +1784,7 @@ mod tests {
             locale: None,
             file_store: Some(store),
             model: None,
+            session_storage: None,
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1822,6 +1825,7 @@ mod tests {
             locale: None,
             file_store: Some(store),
             model: None,
+            session_storage: None,
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1856,6 +1860,7 @@ mod tests {
             locale: None,
             file_store: Some(store.clone()),
             model: None,
+            session_storage: None,
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -2087,6 +2092,7 @@ mod tests {
             locale: None,
             file_store: Some(store),
             model: None,
+            session_storage: None,
         };
         let result = skills_cap.system_prompt_contribution(&ctx).await.unwrap();
         assert!(result.contains("pdf-tool"));
@@ -2348,6 +2354,7 @@ mod tests {
             locale: None,
             file_store: Some(store),
             model: None,
+            session_storage: None,
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -2379,6 +2386,7 @@ mod tests {
             locale: None,
             file_store: Some(store),
             model: None,
+            session_storage: None,
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();

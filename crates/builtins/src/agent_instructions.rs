@@ -802,6 +802,7 @@ mod tests {
             locale: None,
             file_store: Some(store.clone()),
             model: None,
+            session_storage: None,
         };
 
         let result = cap.conversation_context_contribution(&ctx).await.unwrap();
@@ -824,6 +825,7 @@ mod tests {
             locale: None,
             file_store: Some(store),
             model: None,
+            session_storage: None,
         };
 
         assert!(cap.conversation_context_contribution(&ctx).await.is_none());
@@ -846,6 +848,7 @@ mod tests {
             locale: None,
             file_store: Some(store),
             model: None,
+            session_storage: None,
         };
 
         assert!(cap.conversation_context_contribution(&ctx).await.is_none());
@@ -903,6 +906,7 @@ mod tests {
             locale: None,
             file_store: Some(file_store),
             model: None,
+            session_storage: None,
         };
         let cap = AgentInstructionsCapability;
 
@@ -939,6 +943,7 @@ mod tests {
             locale: None,
             file_store: Some(store.clone()),
             model: None,
+            session_storage: None,
         };
         let cap = AgentInstructionsCapability;
 
@@ -976,6 +981,7 @@ mod tests {
             locale: None,
             file_store: Some(file_store),
             model: None,
+            session_storage: None,
         };
         let cap = AgentInstructionsCapability;
 
@@ -1003,6 +1009,7 @@ mod tests {
             locale: None,
             file_store: Some(file_store),
             model: None,
+            session_storage: None,
         };
         let cap = AgentInstructionsCapability;
 
@@ -1046,6 +1053,7 @@ mod tests {
             locale: None,
             file_store: Some(file_store),
             model: None,
+            session_storage: None,
         };
         let cap = AgentInstructionsCapability;
 
@@ -1126,6 +1134,7 @@ mod tests {
             locale: None,
             file_store: Some(store.clone()),
             model: None,
+            session_storage: None,
         };
 
         let result = cap

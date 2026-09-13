@@ -580,6 +580,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             session.workspace_id,
         )),
         model: None,
+        session_storage: None,
     };
     let collected = collect_capabilities_with_configs(
         &resolved.resolved_capability_configs,
@@ -1453,6 +1454,10 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         adapter.driver_registry(),
     )
     .with_file_store(adapter.file_store());
+    let context_resolver = match adapter.storage_store() {
+        Some(store) => context_resolver.with_session_storage(store),
+        None => context_resolver,
+    };
     let mut atom = ReasonAtom::new(
         context_resolver,
         adapter.message_store(),
@@ -1503,6 +1508,10 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         &adapter.driver_registry(),
         &turn_inputs.mcp_tool_definitions,
         Some(adapter.file_store()),
+        // Lets `channel_context` read the session's persisted ThreadContext at
+        // prompt-assembly time (EVE-977). `None` when the adapter has no store;
+        // the capability then contributes nothing.
+        adapter.storage_store(),
     )
     .await?;
     let input = ReasonInput {
