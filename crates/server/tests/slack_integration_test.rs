@@ -479,6 +479,43 @@ async fn test_slack_bot_message_ignored() {
     assert_no_sessions_with_tag(&server, &expected_tag).await;
 }
 
+/// EVE-973: the agent-surface toggle must be safe to turn on before the
+/// behaviour that consumes these events lands. Each is acknowledged and dropped,
+/// never routed to a session — otherwise opening the app's home tab would burn an
+/// agent turn.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_slack_agent_surface_events_are_no_ops() {
+    let server = TestServer::new().await;
+    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+
+    for event_type in [
+        "app_home_opened",
+        "app_context_changed",
+        "agent_session_stopped",
+        "agent_session_title_changed",
+    ] {
+        let ts = unique_ts();
+        let payload = json!({
+            "type": "event_callback",
+            "team_id": "T_TEST",
+            "event": {
+                "type": event_type,
+                // Deliberately carries text: the point is that the event type is
+                // dropped on its own merits, not because it happened to be empty.
+                "text": "should not start a turn",
+                "user": "U_TESTUSER",
+                "channel": "D_PANE",
+                "ts": ts,
+            }
+        });
+
+        let resp = send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &payload).await;
+        resp.assert_status(StatusCode::OK);
+
+        assert_no_sessions_with_tag(&server, &format!("slack:thread:{}", ts)).await;
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_unpublished_app_rejected() {
     let server = TestServer::new().await;
