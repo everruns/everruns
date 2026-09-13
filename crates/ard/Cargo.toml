@@ -9,7 +9,7 @@
 [package]
 name = "everruns-ard"
 readme = "README.md"
-version = "0.18.3"
+version = "0.18.4"
 rust-version.workspace = true
 homepage.workspace = true
 repository.workspace = true
@@ -49,6 +49,6 @@ url = "2"
 ard-live-tests = []
 
 [dev-dependencies]
-everruns-host = { version = "0.20.0", path = "../host", features = ["direct-egress"] }
+everruns-host = { version = "0.21.0", path = "../host", features = ["direct-egress"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"
