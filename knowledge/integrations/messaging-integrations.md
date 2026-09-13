@@ -105,6 +105,8 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 | **UI test case** | `knowledge/test-cases/ui/{platform}_app/TC001_*.md`, manual test for app creation, webhook verification, message flow. |
 | **Threat model** | Section in `knowledge/security/threat-model.md` covering platform-specific threats (signing bypass, bot loops, replay). |
 | **Thread backfill** | When a new session joins an existing thread, backfill its history by following the platform's pagination cursor to the end — a single page is a silent truncation. Cap what is injected, and say so in the injected context when the cap bites, so the agent can tell a short thread from the tail of a long one. Backfill only where "new session" and "thread the agent has not seen" mean the same thing (for Slack, `per_thread` alone). |
+| **Rich message rendering** | Agent output is Markdown. Post it through whatever rich-text primitive the platform offers (Slack: a `markdown` block) rather than the plain-text field, whose dialect is invariably smaller — tables, headings and fenced code are exactly what degrades. Keep the plain field populated as the notification fallback. Split past the platform's size limit rather than truncating, on a boundary that does not break a code fence. |
+| **Message correlation** | Stamp the session and input message id onto every posted message using the platform's metadata facility, so a platform message maps back to the run that produced it without tag-string heuristics. |
 | **Terminal-state notice** | A turn ending without a delivered reply posts exactly one status line with a session link (see Adapter Lifecycle). |
 | **Startup recovery** | Re-register active deliveries after server restart (query sessions with `{platform}:*` tags). |
 | **DEV_MODE fallback** | Polling-based delivery when EventNotificationBroadcaster is unavailable (in-memory mode). |
@@ -141,6 +143,7 @@ Reference implementation. See [`crates/server/specs/slack-integration.md`](../..
 - Reply modes: `all_messages`, `report_progress_only`
 - Thread context injection via paginated `conversations.replies` (`per_thread` only, capped with a truncation notice)
 - Event-driven delivery via `SlackDeliveryAdapter` (implements `ChannelDeliveryAdapter`)
+- Replies rendered as `markdown` blocks, split (not truncated) past Slack's block limit, stamped with session/message `metadata`
 - Startup recovery: re-registers active sessions with `slack:*` tags
 - DEV_MODE: falls back to 120s polling
 
