@@ -113,6 +113,10 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 | **UI test case** | `knowledge/test-cases/ui/{platform}_app/TC001_*.md`, manual test for app creation, webhook verification, message flow. |
 | **Threat model** | Section in `knowledge/security/threat-model.md` covering platform-specific threats (signing bypass, bot loops, replay). |
 | **Thread backfill** | When a new session joins an existing thread, backfill its history by following the platform's pagination cursor to the end — a single page is a silent truncation. Cap what is injected, and say so in the injected context when the cap bites, so the agent can tell a short thread from the tail of a long one. Backfill only where "new session" and "thread the agent has not seen" mean the same thing (for Slack, `per_thread` alone). |
+| **Rich message rendering** | Agent output is Markdown. Post it through whatever rich-text primitive the platform offers (Slack: a `markdown` block) rather than the plain-text field, whose dialect is invariably smaller — tables, headings and fenced code are exactly what degrades. Keep the plain field populated as the notification fallback. Split past the platform's size limit rather than truncating, on a boundary that does not break a code fence. |
+| **Message correlation** | Stamp the session and input message id onto every posted message using the platform's metadata facility, so a platform message maps back to the run that produced it without tag-string heuristics. |
+| **Thread context** | Persist a `ThreadContext` per session (participants, and where the user is looking when the platform reports it) and surface it as *conversation context*, never as system prompt — participant names and platform view reports are external user-controlled strings. Accumulate across messages and survive a restart. A platform signal that changes often (Slack: `app_context_changed`) updates the record rather than minting an event per change. Store it under the reserved session KV key `channel:thread_context`, which `session_storage` withholds from the agent-facing `kv_store` tool so a session actor cannot forge its own context. |
+| **Inbound control signals** | A platform stop/cancel control is not a message: keep its blast radius fixed at cancel-only, resolve the session through the same app-scoped lookup inbound messages use (so another app's thread resolves nothing), and route it through the shared cancel path that checks terminal state first — a stop for a finished turn is a no-op, not an error. Let the terminal-state notice be the user's confirmation rather than posting a second one. |
 | **Terminal-state notice** | A turn ending without a delivered reply posts exactly one status line with a session link (see Adapter Lifecycle). |
 | **Streaming (optional)** | Implement `ChannelStreamDelivery` and return it from `ChannelDeliveryAdapter::streaming()`. A platform without progressive delivery returns `None` and keeps discrete posting — the capability is probed, not required. One stream per output message, closed on every terminal state. |
 | **Startup recovery** | Re-register active deliveries after server restart (query sessions with `{platform}:*` tags). |
@@ -150,6 +154,8 @@ Reference implementation. See [`crates/server/specs/slack-integration.md`](../..
 - Reply modes: `all_messages`, `report_progress_only`
 - Thread context injection via paginated `conversations.replies` (`per_thread` only, capped with a truncation notice)
 - Event-driven delivery via `SlackDeliveryAdapter` (implements `ChannelDeliveryAdapter`)
+- Replies rendered as `markdown` blocks, split (not truncated) past Slack's block limit, stamped with session/message `metadata`
+- Thread context (participants + current view) persisted per session, rendered by the `channel_context` capability
 - Startup recovery: re-registers active sessions with `slack:*` tags
 - DEV_MODE: falls back to 120s polling
 

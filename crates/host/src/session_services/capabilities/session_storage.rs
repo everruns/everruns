@@ -23,6 +23,11 @@ const INTERNAL_KV_PREFIXES: &[&str] = &[
     everruns_core::capabilities::AGENT_RUN_KEY_PREFIX,
     everruns_core::ard_attachment::ARD_ATTACHMENT_KV_PREFIX,
     everruns_core::ard_attachment::ARD_DISCOVERY_KV_PREFIX,
+    // Persisted channel ThreadContext (EVE-977). Reserved for the same reason
+    // as the ARD prefixes: its participant list and "user is viewing" hint
+    // reach the model as context, so a session/tool actor forging them would
+    // be writing its own prompt.
+    everruns_core::channel::THREAD_CONTEXT_KV_KEY,
 ];
 const INTERNAL_SECRET_PREFIXES: &[&str] = &["browserless_internal:", "mcp_oauth:"];
 // Exact reserved secret names. Unlike the prefixes above, this one cannot

@@ -76,6 +76,27 @@ struct SlackEventEnvelope {
 }
 
 /// Inner Slack event (message, app_mention, etc.).
+/// The agent pane's own thread, plus the user's current position.
+#[derive(Debug, Clone, Deserialize)]
+struct SlackAssistantThread {
+    #[serde(default)]
+    channel_id: Option<String>,
+    #[serde(default)]
+    thread_ts: Option<String>,
+    #[serde(default)]
+    context: Option<SlackViewContext>,
+}
+
+/// What Slack says the user is looking at. Ids only — see
+/// `ThreadContext::view_summary` for why nothing is resolved to a name.
+#[derive(Debug, Clone, Deserialize)]
+struct SlackViewContext {
+    #[serde(default)]
+    channel_id: Option<String>,
+    #[serde(default)]
+    team_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
 struct SlackEvent {
@@ -107,6 +128,10 @@ struct SlackEvent {
     /// pane once the agent surface is enabled (EVE-973).
     #[serde(default)]
     channel_type: Option<String>,
+    /// Agent-pane payload. `app_context_changed` reports the pane thread here
+    /// rather than at the event root, plus what the user is now viewing.
+    #[serde(default)]
+    assistant_thread: Option<SlackAssistantThread>,
     /// File attachments (images, documents, videos, etc.).
     #[serde(default)]
     files: Vec<SlackFile>,
@@ -462,12 +487,52 @@ async fn handle_slack_event(
                 // EVE-977 context). Handled explicitly rather than falling into the
                 // generic "not a message" branch so an unknown event stays
                 // distinguishable from one we deliberately ignore.
+                // Where the user is looking updates the session's persisted
+                // ThreadContext, read at prompt-assembly time. Deliberately not an
+                // `input.message`: the pane reports a new context on every
+                // navigation, and one event per change would flood both the event
+                // log and the model's history for a field only the latest value of
+                // which matters (EVE-977).
+                if event.event_type == "app_context_changed" {
+                    if let Err(error) =
+                        handle_app_context_changed(&state, &app, &slack_config, &event).await
+                    {
+                        // Non-fatal: Slack retries a non-200, and a lost context
+                        // hint is not worth a redelivery storm.
+                        tracing::warn!(
+                            app_id = %app_id,
+                            %error,
+                            "Failed to record Slack context change"
+                        );
+                    }
+                    return Ok((StatusCode::OK, Json(ack_json())));
+                }
+
+                // The stop button. This is the first inbound *control* signal
+                // from Slack rather than a message, so it is deliberately
+                // narrow: it can cancel the resolved session's turn and nothing
+                // else — no resume, retry, or mutation — and the session it
+                // resolves must belong to the app that received the event
+                // (EVE-976).
+                if event.event_type == "agent_session_stopped" {
+                    if let Err(error) =
+                        handle_agent_session_stopped(&state, &app, &slack_config, &event).await
+                    {
+                        // Non-fatal: Slack retries a non-200, and a failed stop
+                        // is not worth a redelivery storm. The user can press
+                        // stop again.
+                        tracing::warn!(
+                            app_id = %app_id,
+                            %error,
+                            "Failed to handle Slack stop request"
+                        );
+                    }
+                    return Ok((StatusCode::OK, Json(ack_json())));
+                }
+
                 if matches!(
                     event.event_type.as_str(),
-                    "app_home_opened"
-                        | "app_context_changed"
-                        | "agent_session_stopped"
-                        | "agent_session_title_changed"
+                    "app_home_opened" | "agent_session_title_changed"
                 ) {
                     tracing::debug!(
                         app_id = %app_id,
@@ -728,22 +793,33 @@ async fn process_slack_message(
         }
     };
 
-    // Track participant via ThreadContext (channel abstraction).
-    // ThreadContext accumulates participants across the session lifetime.
-    // TODO: persist ThreadContext in session metadata for cross-restart continuity.
+    // Accumulate the thread's participants durably. This used to build a
+    // ThreadContext per message, track into it, log, and drop it — so
+    // `participants_summary()` never saw more than one person and nothing
+    // survived a restart (EVE-977).
     if let Some(ref thread_ref) = inbound.thread_ref {
-        let mut thread_ctx = ThreadContext::new(thread_ref.clone(), "slack");
+        let mut thread_ctx = load_thread_context(state, session.id)
+            .await
+            .unwrap_or_else(|| ThreadContext::new(thread_ref.clone(), "slack"));
         if let Some(ref channel) = event.channel {
             thread_ctx
                 .platform_metadata
                 .insert("channel_id".to_string(), channel.clone());
         }
-        let is_new_participant = thread_ctx.track_participant(&inbound.actor);
-        if is_new_participant {
+        if thread_ctx.track_participant(&inbound.actor) {
             tracing::debug!(
                 session_id = %session.id,
                 actor_id = %inbound.actor.actor_id,
+                participants = thread_ctx.participant_count(),
                 "Tracked new participant in thread context"
+            );
+        }
+        // Non-fatal: a lost participant line must not cost the user their reply.
+        if let Err(error) = save_thread_context(state, session.id, &thread_ctx).await {
+            tracing::warn!(
+                session_id = %session.id,
+                %error,
+                "Failed to persist thread context (participants will not accumulate)"
             );
         }
     }
@@ -1117,6 +1193,134 @@ fn build_attachment_content_parts(attachments: &[SlackAttachment]) -> Vec<InputC
 ///
 /// Uses the generic `build_session_routing_tag()` from channel abstractions,
 /// converting the Slack-specific `SessionStrategy` to `SessionRoutingStrategy`.
+/// Cancel the turn running in the pane thread the stop button was pressed in.
+///
+/// Authorization comes from the lookup, not a separate check:
+/// `find_app_session_by_tags` is scoped to this app's org and internal id, so a
+/// session belonging to any other app simply does not resolve and the stop is
+/// logged and dropped. That keeps the webhook's blast radius exactly as wide as
+/// it already was for inbound messages.
+///
+/// A stop for a turn that already finished is a no-op rather than an error:
+/// `cancel_session_turn_for` reads the session's terminal state first and skips
+/// the `turn.cancelled` emission, so a completed turn is never race-flipped to
+/// cancelled and the thread gets no spurious notice.
+///
+/// The in-thread confirmation is not posted here. `turn.cancelled` is a
+/// terminal state the delivery dispatcher already renders as one line with a
+/// session link (EVE-966); posting our own would double it.
+async fn handle_agent_session_stopped(
+    state: &SlackState,
+    app: &App,
+    slack_config: &SlackChannelConfig,
+    event: &SlackEvent,
+) -> anyhow::Result<()> {
+    let Some(thread) = event.assistant_thread.as_ref() else {
+        tracing::debug!(
+            app_id = %app.public_id,
+            "Slack stop event carried no assistant_thread; ignoring"
+        );
+        return Ok(());
+    };
+
+    // The pane reports its thread under `assistant_thread`, not at the event
+    // root, so normalize before tag-building — same as the context path.
+    let mut routing_event = event.clone();
+    routing_event.channel = thread.channel_id.clone().or(routing_event.channel);
+    routing_event.thread_ts = thread.thread_ts.clone().or(routing_event.thread_ts);
+
+    let routing_tags = build_session_tags(app, slack_config, &routing_event, SlackSurface::Pane);
+    let Some(row) = state
+        .db
+        .find_app_session_by_tags(app.org_id, app.internal_id, &routing_tags)
+        .await?
+    else {
+        tracing::info!(
+            app_id = %app.public_id,
+            tags = ?routing_tags,
+            "Slack stop request resolved no session for this app; ignoring"
+        );
+        return Ok(());
+    };
+
+    crate::api::app_api::cancel_session_turn_for(
+        &state.db,
+        &state.message_service,
+        row.id,
+        "slack stop button",
+    )
+    .await?;
+
+    tracing::info!(session_id = %row.id, "Cancelled Slack session turn on stop request");
+    Ok(())
+}
+
+/// Record the user's current position on the session's persisted ThreadContext.
+///
+/// A context change for a pane that has no session yet is a no-op: there is
+/// nothing to attach it to, and the first message will create the session with
+/// no position recorded — which is correct, since by then the user may have
+/// moved on. Slack re-reports on the next navigation either way.
+async fn handle_app_context_changed(
+    state: &SlackState,
+    app: &App,
+    slack_config: &SlackChannelConfig,
+    event: &SlackEvent,
+) -> anyhow::Result<()> {
+    let Some(thread) = event.assistant_thread.as_ref() else {
+        return Ok(());
+    };
+
+    // The pane reports its thread under `assistant_thread`, not at the event
+    // root, so normalize before tag-building rather than teaching the tag
+    // builder a second shape.
+    let mut routing_event = event.clone();
+    routing_event.channel = thread.channel_id.clone().or(routing_event.channel);
+    routing_event.thread_ts = thread.thread_ts.clone().or(routing_event.thread_ts);
+
+    let routing_tags = build_session_tags(app, slack_config, &routing_event, SlackSurface::Pane);
+    let Some(row) = state
+        .db
+        .find_app_session_by_tags(app.org_id, app.internal_id, &routing_tags)
+        .await?
+    else {
+        tracing::debug!(
+            app_id = %app.public_id,
+            tags = ?routing_tags,
+            "Slack context change for a pane with no session yet; ignoring"
+        );
+        return Ok(());
+    };
+
+    let view = thread
+        .context
+        .as_ref()
+        .map(|ctx| everruns_core::ChannelViewContext {
+            channel_id: ctx.channel_id.clone(),
+            team_id: ctx.team_id.clone(),
+            observed_at: Some(Utc::now()),
+        })
+        .unwrap_or_default();
+
+    let thread_ref = routing_event
+        .thread_ts
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
+    let mut thread_ctx = load_thread_context(state, row.id)
+        .await
+        .unwrap_or_else(|| ThreadContext::new(thread_ref, "slack"));
+
+    // Skip the write when the platform re-reports the same place — the pane
+    // does that on every focus change, not only on a real move.
+    if !thread_ctx.set_current_view(view) {
+        return Ok(());
+    }
+
+    save_thread_context(state, row.id, &thread_ctx).await?;
+    tracing::debug!(session_id = %row.id, "Recorded Slack context change");
+    Ok(())
+}
+
 fn build_session_tags(
     app: &App,
     slack_config: &SlackChannelConfig,
@@ -1502,6 +1706,52 @@ fn truncation_notice(backfill: &ThreadBackfill) -> String {
             shown
         )
     }
+}
+
+/// Read the session's persisted `ThreadContext`.
+///
+/// Goes through `StorageBackend` rather than a `SessionStorageStore` handle
+/// because the webhook holds the backend and must work against both the
+/// Postgres and in-memory backends. The key and the JSON shape come from
+/// `everruns_core::channel`, which prompt assembly reads through the trait, so
+/// the two paths cannot drift (EVE-977).
+async fn load_thread_context(
+    state: &SlackState,
+    session_id: everruns_provider::typed_id::SessionId,
+) -> Option<ThreadContext> {
+    match state
+        .db
+        .get_session_key_value(
+            session_id.uuid(),
+            everruns_core::channel::THREAD_CONTEXT_KV_KEY,
+        )
+        .await
+    {
+        Ok(Some(row)) => everruns_core::channel::decode_thread_context(&row.value),
+        Ok(None) => None,
+        Err(error) => {
+            tracing::warn!(%session_id, %error, "Failed to read persisted thread context");
+            None
+        }
+    }
+}
+
+/// Persist the session's `ThreadContext`, replacing any previous record.
+async fn save_thread_context(
+    state: &SlackState,
+    session_id: everruns_provider::typed_id::SessionId,
+    context: &ThreadContext,
+) -> anyhow::Result<()> {
+    let value = everruns_core::channel::encode_thread_context(context)?;
+    state
+        .db
+        .upsert_session_key_value(crate::storage::models::UpsertSessionKeyValue {
+            session_id,
+            key: everruns_core::channel::THREAD_CONTEXT_KV_KEY.to_string(),
+            value,
+        })
+        .await?;
+    Ok(())
 }
 
 fn should_skip_thread_reply(reply: &SlackReplyMessage, exclude_ts: Option<&str>) -> bool {
@@ -2514,6 +2764,7 @@ mod tests {
             channel_type: None,
             files: vec![],
             attachments: vec![],
+            assistant_thread: None,
         }
     }
 

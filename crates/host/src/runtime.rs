@@ -1786,6 +1786,9 @@ impl InProcessRuntime {
             agent_id,
             mcp_tool_definitions,
             Some(self.file_store.clone()),
+            // Introspection only; channel context is not part of what this
+            // reports, so it does not need the store.
+            None,
         )
         .await
     }

@@ -143,6 +143,7 @@ pub async fn assemble_resolved_turn_context(
     input: ResolvedTurnContextInput,
     capability_registry: &CapabilityRegistry,
     file_store: Option<Arc<dyn SessionFileSystem>>,
+    session_storage: Option<Arc<dyn crate::session_services::SessionStorageStore>>,
 ) -> Result<AssembledTurnContext> {
     let ResolvedTurnContextInput {
         snapshot,
@@ -166,6 +167,7 @@ pub async fn assemble_resolved_turn_context(
         locale: resolved_locale.clone(),
         file_store,
         model: Some(model.model.clone()),
+        session_storage,
     };
     let compaction_policy = effective_overlay.capabilities.iter().find_map(|config| {
         capability_registry

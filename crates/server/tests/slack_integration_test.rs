@@ -90,6 +90,81 @@ async fn wait_for_sessions_with_tag(
     );
 }
 
+/// Wait for exactly one session with `tag` and return its id.
+async fn wait_for_session_with_tag(
+    server: &TestServer,
+    tag: &str,
+) -> everruns_provider::typed_id::SessionId {
+    let sessions = wait_for_sessions_with_tag(server, tag, 1).await;
+    sessions[0]["id"]
+        .as_str()
+        .expect("session id")
+        .parse()
+        .expect("session id parses")
+}
+
+/// Number of events currently recorded on a session.
+async fn session_event_count(
+    server: &TestServer,
+    session_id: &everruns_provider::typed_id::SessionId,
+) -> usize {
+    let events: Value = server
+        .get(&format!("/v1/sessions/{session_id}/events"))
+        .await
+        .assert_success()
+        .json();
+    events["data"].as_array().map(Vec::len).unwrap_or(0)
+}
+
+/// A Slack `agent_session_stopped` payload for the given pane thread.
+fn stop_event(thread_ts: &str, channel: &str) -> Value {
+    json!({
+        "type": "event_callback",
+        "team_id": "T_TEST",
+        "event": {
+            "type": "agent_session_stopped",
+            "user": "U_TESTUSER",
+            "assistant_thread": { "channel_id": channel, "thread_ts": thread_ts }
+        }
+    })
+}
+
+/// True when the session has recorded at least one event of this type.
+async fn session_has_event_type(
+    server: &TestServer,
+    session_id: &everruns_provider::typed_id::SessionId,
+    event_type: &str,
+) -> bool {
+    let events: Value = server
+        .get(&format!("/v1/sessions/{session_id}/events"))
+        .await
+        .assert_success()
+        .json();
+    events["data"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                // The events API serialises the discriminant as `type`.
+                .any(|e| e["type"].as_str() == Some(event_type))
+        })
+        .unwrap_or(false)
+}
+
+/// Poll until the session records `event_type`, or give up.
+async fn wait_for_event_type(
+    server: &TestServer,
+    session_id: &everruns_provider::typed_id::SessionId,
+    event_type: &str,
+) -> bool {
+    for delay_ms in [100, 200, 400, 800, 1600, 3200] {
+        if session_has_event_type(server, session_id, event_type).await {
+            return true;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+    }
+    false
+}
+
 /// Wait and confirm that NO sessions with the given tag exist after a reasonable wait.
 async fn assert_no_sessions_with_tag(server: &TestServer, tag: &str) {
     // Wait a bit to give background tasks time to (incorrectly) create sessions
@@ -488,6 +563,12 @@ async fn test_slack_agent_surface_events_are_no_ops() {
     let server = TestServer::new().await;
     let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
 
+    // Two of these are no longer pure no-ops: `app_context_changed` updates the
+    // persisted ThreadContext (EVE-977) and `agent_session_stopped` cancels a
+    // turn (EVE-976). Both still create no session and burn no turn, which is
+    // what this test is about — their own behaviour is covered by
+    // `test_slack_context_change_updates_thread_context` and
+    // `test_slack_stop_cancels_the_running_turn`.
     for event_type in [
         "app_home_opened",
         "app_context_changed",
@@ -514,6 +595,208 @@ async fn test_slack_agent_surface_events_are_no_ops() {
 
         assert_no_sessions_with_tag(&server, &format!("slack:thread:{}", ts)).await;
     }
+}
+
+/// EVE-977: a context change records where the user is looking on the existing
+/// session, and does so without minting an event per change.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_slack_context_change_updates_thread_context() {
+    let server = TestServer::new().await;
+    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+
+    // A message first, so there is a session for the context to attach to.
+    let ts = unique_ts();
+    let message = json!({
+        "type": "event_callback",
+        "team_id": "T_TEST",
+        "event": {
+            "type": "message",
+            "text": "hello",
+            "user": "U_TESTUSER",
+            "channel": "D_PANE",
+            "channel_type": "im",
+            "ts": ts,
+        }
+    });
+    send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &message)
+        .await
+        .assert_status(StatusCode::OK);
+
+    let session_id = wait_for_session_with_tag(&server, &format!("slack:thread:{ts}")).await;
+    let events_before = session_event_count(&server, &session_id).await;
+
+    // Now the user navigates somewhere else.
+    let context_change = json!({
+        "type": "event_callback",
+        "team_id": "T_TEST",
+        "event": {
+            "type": "app_context_changed",
+            "user": "U_TESTUSER",
+            "assistant_thread": {
+                "channel_id": "D_PANE",
+                "thread_ts": ts,
+                "context": { "channel_id": "C_ELSEWHERE", "team_id": "T_TEST" }
+            }
+        }
+    });
+    send_slack_event(
+        &server,
+        &app.public_id,
+        TEST_SIGNING_SECRET,
+        &context_change,
+    )
+    .await
+    .assert_status(StatusCode::OK);
+
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    let stored = server
+        .db
+        .get_session_key_value(
+            session_id.uuid(),
+            everruns_core::channel::THREAD_CONTEXT_KV_KEY,
+        )
+        .await
+        .expect("read thread context")
+        .expect("context change must persist a ThreadContext");
+
+    let thread = everruns_core::channel::decode_thread_context(&stored.value)
+        .expect("stored record must decode");
+    let view = thread
+        .current_view
+        .as_ref()
+        .expect("the reported position must be recorded");
+    assert_eq!(view.channel_id.as_deref(), Some("C_ELSEWHERE"));
+    assert_eq!(view.team_id.as_deref(), Some("T_TEST"));
+
+    // The participant from the message is still there — the context write must
+    // not clobber the accumulated thread.
+    assert_eq!(thread.participant_count(), 1, "participants must survive");
+
+    // And the change cost no event: that is the point of persisting it rather
+    // than injecting an input.message per navigation.
+    assert_eq!(
+        session_event_count(&server, &session_id).await,
+        events_before,
+        "a context change must not add events to the session"
+    );
+}
+
+/// EVE-976: pressing stop cancels the turn, and the thread is told.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_slack_stop_cancels_the_running_turn() {
+    let server = TestServer::new().await;
+    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+
+    let ts = unique_ts();
+    send_slack_event(
+        &server,
+        &app.public_id,
+        TEST_SIGNING_SECRET,
+        &json!({
+            "type": "event_callback",
+            "team_id": "T_TEST",
+            "event": {
+                "type": "message",
+                "text": "do something long",
+                "user": "U_TESTUSER",
+                "channel": "D_PANE",
+                "channel_type": "im",
+                "ts": ts,
+            }
+        }),
+    )
+    .await
+    .assert_status(StatusCode::OK);
+
+    let session_id = wait_for_session_with_tag(&server, &format!("slack:thread:{ts}")).await;
+
+    send_slack_event(
+        &server,
+        &app.public_id,
+        TEST_SIGNING_SECRET,
+        &stop_event(&ts, "D_PANE"),
+    )
+    .await
+    .assert_status(StatusCode::OK);
+
+    // A `turn.cancelled` event is what the delivery dispatcher renders as the
+    // in-thread terminal notice (EVE-966), so its presence is the assertion
+    // that the user is told — not just that cancellation happened internally.
+    let cancelled = wait_for_event_type(&server, &session_id, "turn.cancelled").await;
+    assert!(
+        cancelled,
+        "stop must record turn.cancelled so the thread gets a terminal notice"
+    );
+}
+
+/// A stop aimed at a thread belonging to another app must not reach it. The
+/// lookup is app-scoped, so this resolves nothing rather than cancelling
+/// someone else's session.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_slack_stop_from_another_app_is_rejected() {
+    let server = TestServer::new().await;
+    let owner = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let other = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+
+    let ts = unique_ts();
+    send_slack_event(
+        &server,
+        &owner.public_id,
+        TEST_SIGNING_SECRET,
+        &json!({
+            "type": "event_callback",
+            "team_id": "T_TEST",
+            "event": {
+                "type": "message",
+                "text": "owned by the first app",
+                "user": "U_TESTUSER",
+                "channel": "D_PANE",
+                "channel_type": "im",
+                "ts": ts,
+            }
+        }),
+    )
+    .await
+    .assert_status(StatusCode::OK);
+
+    let session_id = wait_for_session_with_tag(&server, &format!("slack:thread:{ts}")).await;
+
+    // The *other* app presses stop on the same thread reference.
+    send_slack_event(
+        &server,
+        &other.public_id,
+        TEST_SIGNING_SECRET,
+        &stop_event(&ts, "D_PANE"),
+    )
+    .await
+    .assert_status(StatusCode::OK);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    assert!(
+        !session_has_event_type(&server, &session_id, "turn.cancelled").await,
+        "a stop from a different app must not cancel this app's session"
+    );
+}
+
+/// A stop with no `assistant_thread` resolves nothing and must not error.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_slack_stop_without_thread_is_a_no_op() {
+    let server = TestServer::new().await;
+    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+
+    send_slack_event(
+        &server,
+        &app.public_id,
+        TEST_SIGNING_SECRET,
+        &json!({
+            "type": "event_callback",
+            "team_id": "T_TEST",
+            "event": { "type": "agent_session_stopped", "user": "U_TESTUSER" }
+        }),
+    )
+    .await
+    .assert_status(StatusCode::OK);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -881,6 +1164,137 @@ async fn test_real_slack_post_message() {
             "channel": channel,
             "ts": ts
         }))
+        .send()
+        .await;
+}
+
+/// Post a real `markdown` block payload and read it back off the channel.
+///
+/// The unit tests prove the payload we build; only Slack can prove Slack
+/// accepts it. A `markdown` block that Slack rejects fails the post outright,
+/// and `metadata` is only echoed back if Slack actually stored it — so reading
+/// the message back is what makes this test worth its network call (EVE-971).
+/// Requires: SLACK_BOT_TOKEN, SLACK_TEST_CHANNEL
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_real_slack_markdown_block_payload() {
+    let (bot_token, _signing_secret, channel) = real_slack_credentials();
+
+    // The three constructs the issue calls out as degrading under mrkdwn.
+    // No line continuations: their leading indentation reaches Slack as literal
+    // spaces and gets parsed as preformatted text.
+    let markdown = concat!(
+        "# Heading\n",
+        "\n",
+        "| col | val |\n",
+        "|---|---|\n",
+        "| a | 1 |\n",
+        "\n",
+        "```rust\n",
+        "fn main() { println!(\"hi\"); }\n",
+        "```"
+    );
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("https://slack.com/api/chat.postMessage")
+        .header("Authorization", format!("Bearer {}", bot_token))
+        .json(&json!({
+            "channel": channel,
+            "text": "[Integration Test] markdown block fallback",
+            "blocks": [{"type": "markdown", "text": markdown}],
+            "metadata": {
+                "event_type": "everruns_agent_reply",
+                "event_payload": {
+                    "session_id": "session_integration_test",
+                    "input_message_id": "msg_integration_test"
+                }
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to send request to Slack");
+
+    let body: Value = resp
+        .json::<Value>()
+        .await
+        .expect("Failed to parse Slack response");
+
+    if body["error"].as_str() == Some("not_in_channel") {
+        eprintln!(
+            "Skipping test_real_slack_markdown_block_payload: bot not invited to channel {}.",
+            channel
+        );
+        return;
+    }
+
+    assert!(
+        body["ok"].as_bool().unwrap_or(false),
+        "Slack must accept a markdown block payload. Error: {:?}",
+        body["error"]
+    );
+
+    let ts = body["ts"]
+        .as_str()
+        .expect("Response should include ts")
+        .to_string();
+
+    // Read the message back: Slack echoes stored blocks and metadata.
+    let history = client
+        .get(format!(
+            "https://slack.com/api/conversations.history?channel={}&latest={}&inclusive=true&limit=1&include_all_metadata=true",
+            channel, ts
+        ))
+        .header("Authorization", format!("Bearer {}", bot_token))
+        .send()
+        .await
+        .expect("Failed to read channel history")
+        .json::<Value>()
+        .await
+        .expect("Failed to parse history response");
+
+    if history["ok"].as_bool().unwrap_or(false) {
+        let posted = &history["messages"][0];
+        let rendered = posted["blocks"].to_string();
+
+        // Slack normalizes a `markdown` block server-side into its native block
+        // types, so the stored type is *not* "markdown" — and that is the point.
+        // A `header` block exists only if Slack parsed `# Heading` as a heading;
+        // on the old plain-`text` path the same string arrived as the literal
+        // characters "# Heading" with no blocks at all. This is what proves the
+        // Markdown was interpreted rather than passed through verbatim.
+        assert!(
+            rendered.contains(r#""type":"header""#),
+            "Slack must parse the heading into a header block, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("rich_text_preformatted"),
+            "Slack must parse the fenced block as preformatted code, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("Heading"),
+            "heading text must survive the round trip, got: {rendered}"
+        );
+        assert_eq!(
+            posted["metadata"]["event_type"], "everruns_agent_reply",
+            "correlation metadata must survive the round trip, got: {:?}",
+            posted["metadata"]
+        );
+        assert_eq!(
+            posted["metadata"]["event_payload"]["session_id"],
+            "session_integration_test"
+        );
+    } else {
+        // history needs channels:history; the post assertion above still stands.
+        eprintln!(
+            "Could not read back message (error: {:?}); post-side assertions still applied.",
+            history["error"]
+        );
+    }
+
+    let _ = client
+        .post("https://slack.com/api/chat.delete")
+        .header("Authorization", format!("Bearer {}", bot_token))
+        .json(&json!({ "channel": channel, "ts": ts }))
         .send()
         .await;
 }

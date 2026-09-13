@@ -304,7 +304,7 @@ pub use workspace_roots::{
 
 // Channel abstraction re-exports
 pub use channel::{
-    ChannelDeliveryAdapter, ChannelReplyMode, ChannelStreamDelivery,
+    ChannelDeliveryAdapter, ChannelReplyMode, ChannelStreamDelivery, ChannelViewContext,
     DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
     InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant,
     SessionRoutingStrategy, ThreadContext,

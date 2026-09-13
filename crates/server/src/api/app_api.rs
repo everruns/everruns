@@ -543,40 +543,63 @@ fn content_parts_to_text(parts: &[ContentPart]) -> String {
 /// Cancel the in-flight workflow turn for a session and emit a synthetic
 /// `turn.cancelled` event so subsequent reads observe the canceled state.
 /// Mirrors the A2A `tasks/cancel` behavior.
-async fn cancel_session_turn(
-    state: &AppApiState,
+/// Cancel a session's in-flight turn and record it as cancelled.
+///
+/// Shared by every internal caller that cancels on a user's behalf — the app
+/// API endpoint and the Slack stop button (EVE-976) — so the terminal-state
+/// race guard below cannot drift between them.
+///
+/// `reason` names the caller and reaches only the stored event, never the user;
+/// the Slack notice EVE-966 posts is a fixed string.
+pub(crate) async fn cancel_session_turn_for(
+    db: &Arc<StorageBackend>,
+    message_service: &Arc<MessageService>,
     session_id: everruns_provider::typed_id::SessionId,
+    reason: &str,
 ) -> anyhow::Result<()> {
     use everruns_core::events::{EventContext, EventRequest, TurnCancelledData};
     use everruns_provider::typed_id::{MessageId, TurnId};
 
-    if let Err(err) = state.message_service.runner().cancel_run(session_id).await {
-        tracing::warn!(session_id = %session_id, error = %err, "api_endpoint cancel: cancel_run failed");
+    if let Err(err) = message_service.runner().cancel_run(session_id).await {
+        tracing::warn!(session_id = %session_id, error = %err, "{reason}: cancel_run failed");
     }
 
     // Skip emission if the turn already reached a terminal state, so a real
     // completed/failed turn is not race-flipped to canceled.
-    let (status, _) = read_session_output(&state.db, session_id).await?;
+    let (status, _) = read_session_output(db, session_id).await?;
     if matches!(status, "completed" | "failed" | "canceled") {
         return Ok(());
     }
 
     let turn_id = TurnId::from_uuid(session_id.uuid());
     let input_message_id = MessageId::new();
-    let event_service = state.message_service.event_service();
+    let event_service = message_service.event_service();
     let cancelled_event = EventRequest::new(
         session_id,
         EventContext::turn(turn_id, input_message_id),
         TurnCancelledData {
             turn_id,
-            reason: Some("api_endpoint cancel".to_string()),
+            reason: Some(reason.to_string()),
             usage: None,
         },
     );
     if let Err(err) = event_service.emit(cancelled_event).await {
-        tracing::warn!(session_id = %session_id, error = %err, "api_endpoint cancel: emit turn.cancelled failed");
+        tracing::warn!(session_id = %session_id, error = %err, "{reason}: emit turn.cancelled failed");
     }
     Ok(())
+}
+
+async fn cancel_session_turn(
+    state: &AppApiState,
+    session_id: everruns_provider::typed_id::SessionId,
+) -> anyhow::Result<()> {
+    cancel_session_turn_for(
+        &state.db,
+        &state.message_service,
+        session_id,
+        "api_endpoint cancel",
+    )
+    .await
 }
 
 fn command_error_response(

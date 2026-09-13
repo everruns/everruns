@@ -204,6 +204,7 @@ everruns_core::channel::ChannelReplyMode	enum
 everruns_core::channel::ChannelReplyMode::AllMessages	variant
 everruns_core::channel::ChannelReplyMode::ReportProgressOnly	variant
 everruns_core::channel::ChannelStreamDelivery	trait
+everruns_core::channel::ChannelViewContext	struct
 everruns_core::channel::DeliveryContext	struct
 everruns_core::channel::DeliveryResult	enum
 everruns_core::channel::DeliveryResult::Ok	variant
@@ -219,8 +220,14 @@ everruns_core::channel::SessionRoutingStrategy	enum
 everruns_core::channel::SessionRoutingStrategy::PerChannel	variant
 everruns_core::channel::SessionRoutingStrategy::PerThread	variant
 everruns_core::channel::SessionRoutingStrategy::PerUser	variant
+everruns_core::channel::THREAD_CONTEXT_KV_KEY	constant
 everruns_core::channel::ThreadContext	struct
+everruns_core::channel::ThreadContext::view_summary	function
 everruns_core::channel::build_session_routing_tag	function
+everruns_core::channel::decode_thread_context	function
+everruns_core::channel::encode_thread_context	function
+everruns_core::channel::load_thread_context	function
+everruns_core::channel::save_thread_context	function
 everruns_core::command	module
 everruns_core::command::CommandArg	struct
 everruns_core::command::CommandDescriptor	struct
