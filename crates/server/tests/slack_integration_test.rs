@@ -116,6 +116,55 @@ async fn session_event_count(
     events["data"].as_array().map(Vec::len).unwrap_or(0)
 }
 
+/// A Slack `agent_session_stopped` payload for the given pane thread.
+fn stop_event(thread_ts: &str, channel: &str) -> Value {
+    json!({
+        "type": "event_callback",
+        "team_id": "T_TEST",
+        "event": {
+            "type": "agent_session_stopped",
+            "user": "U_TESTUSER",
+            "assistant_thread": { "channel_id": channel, "thread_ts": thread_ts }
+        }
+    })
+}
+
+/// True when the session has recorded at least one event of this type.
+async fn session_has_event_type(
+    server: &TestServer,
+    session_id: &everruns_provider::typed_id::SessionId,
+    event_type: &str,
+) -> bool {
+    let events: Value = server
+        .get(&format!("/v1/sessions/{session_id}/events"))
+        .await
+        .assert_success()
+        .json();
+    events["data"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                // The events API serialises the discriminant as `type`.
+                .any(|e| e["type"].as_str() == Some(event_type))
+        })
+        .unwrap_or(false)
+}
+
+/// Poll until the session records `event_type`, or give up.
+async fn wait_for_event_type(
+    server: &TestServer,
+    session_id: &everruns_provider::typed_id::SessionId,
+    event_type: &str,
+) -> bool {
+    for delay_ms in [100, 200, 400, 800, 1600, 3200] {
+        if session_has_event_type(server, session_id, event_type).await {
+            return true;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+    }
+    false
+}
+
 /// Wait and confirm that NO sessions with the given tag exist after a reasonable wait.
 async fn assert_no_sessions_with_tag(server: &TestServer, tag: &str) {
     // Wait a bit to give background tasks time to (incorrectly) create sessions
@@ -514,10 +563,12 @@ async fn test_slack_agent_surface_events_are_no_ops() {
     let server = TestServer::new().await;
     let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
 
-    // `app_context_changed` is no longer a no-op — it updates the session's
-    // persisted ThreadContext (EVE-977) — but it still creates no session and
-    // burns no turn, which is what this test is about. Its own behaviour is
-    // covered by `test_slack_context_change_updates_thread_context`.
+    // Two of these are no longer pure no-ops: `app_context_changed` updates the
+    // persisted ThreadContext (EVE-977) and `agent_session_stopped` cancels a
+    // turn (EVE-976). Both still create no session and burn no turn, which is
+    // what this test is about — their own behaviour is covered by
+    // `test_slack_context_change_updates_thread_context` and
+    // `test_slack_stop_cancels_the_running_turn`.
     for event_type in [
         "app_home_opened",
         "app_context_changed",
@@ -629,6 +680,123 @@ async fn test_slack_context_change_updates_thread_context() {
         events_before,
         "a context change must not add events to the session"
     );
+}
+
+/// EVE-976: pressing stop cancels the turn, and the thread is told.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_slack_stop_cancels_the_running_turn() {
+    let server = TestServer::new().await;
+    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+
+    let ts = unique_ts();
+    send_slack_event(
+        &server,
+        &app.public_id,
+        TEST_SIGNING_SECRET,
+        &json!({
+            "type": "event_callback",
+            "team_id": "T_TEST",
+            "event": {
+                "type": "message",
+                "text": "do something long",
+                "user": "U_TESTUSER",
+                "channel": "D_PANE",
+                "channel_type": "im",
+                "ts": ts,
+            }
+        }),
+    )
+    .await
+    .assert_status(StatusCode::OK);
+
+    let session_id = wait_for_session_with_tag(&server, &format!("slack:thread:{ts}")).await;
+
+    send_slack_event(
+        &server,
+        &app.public_id,
+        TEST_SIGNING_SECRET,
+        &stop_event(&ts, "D_PANE"),
+    )
+    .await
+    .assert_status(StatusCode::OK);
+
+    // A `turn.cancelled` event is what the delivery dispatcher renders as the
+    // in-thread terminal notice (EVE-966), so its presence is the assertion
+    // that the user is told — not just that cancellation happened internally.
+    let cancelled = wait_for_event_type(&server, &session_id, "turn.cancelled").await;
+    assert!(
+        cancelled,
+        "stop must record turn.cancelled so the thread gets a terminal notice"
+    );
+}
+
+/// A stop aimed at a thread belonging to another app must not reach it. The
+/// lookup is app-scoped, so this resolves nothing rather than cancelling
+/// someone else's session.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_slack_stop_from_another_app_is_rejected() {
+    let server = TestServer::new().await;
+    let owner = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let other = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+
+    let ts = unique_ts();
+    send_slack_event(
+        &server,
+        &owner.public_id,
+        TEST_SIGNING_SECRET,
+        &json!({
+            "type": "event_callback",
+            "team_id": "T_TEST",
+            "event": {
+                "type": "message",
+                "text": "owned by the first app",
+                "user": "U_TESTUSER",
+                "channel": "D_PANE",
+                "channel_type": "im",
+                "ts": ts,
+            }
+        }),
+    )
+    .await
+    .assert_status(StatusCode::OK);
+
+    let session_id = wait_for_session_with_tag(&server, &format!("slack:thread:{ts}")).await;
+
+    // The *other* app presses stop on the same thread reference.
+    send_slack_event(
+        &server,
+        &other.public_id,
+        TEST_SIGNING_SECRET,
+        &stop_event(&ts, "D_PANE"),
+    )
+    .await
+    .assert_status(StatusCode::OK);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    assert!(
+        !session_has_event_type(&server, &session_id, "turn.cancelled").await,
+        "a stop from a different app must not cancel this app's session"
+    );
+}
+
+/// A stop with no `assistant_thread` resolves nothing and must not error.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_slack_stop_without_thread_is_a_no_op() {
+    let server = TestServer::new().await;
+    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+
+    send_slack_event(
+        &server,
+        &app.public_id,
+        TEST_SIGNING_SECRET,
+        &json!({
+            "type": "event_callback",
+            "team_id": "T_TEST",
+            "event": { "type": "agent_session_stopped", "user": "U_TESTUSER" }
+        }),
+    )
+    .await
+    .assert_status(StatusCode::OK);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

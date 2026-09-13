@@ -508,9 +508,31 @@ async fn handle_slack_event(
                     return Ok((StatusCode::OK, Json(ack_json())));
                 }
 
+                // The stop button. This is the first inbound *control* signal
+                // from Slack rather than a message, so it is deliberately
+                // narrow: it can cancel the resolved session's turn and nothing
+                // else — no resume, retry, or mutation — and the session it
+                // resolves must belong to the app that received the event
+                // (EVE-976).
+                if event.event_type == "agent_session_stopped" {
+                    if let Err(error) =
+                        handle_agent_session_stopped(&state, &app, &slack_config, &event).await
+                    {
+                        // Non-fatal: Slack retries a non-200, and a failed stop
+                        // is not worth a redelivery storm. The user can press
+                        // stop again.
+                        tracing::warn!(
+                            app_id = %app_id,
+                            %error,
+                            "Failed to handle Slack stop request"
+                        );
+                    }
+                    return Ok((StatusCode::OK, Json(ack_json())));
+                }
+
                 if matches!(
                     event.event_type.as_str(),
-                    "app_home_opened" | "agent_session_stopped" | "agent_session_title_changed"
+                    "app_home_opened" | "agent_session_title_changed"
                 ) {
                     tracing::debug!(
                         app_id = %app_id,
@@ -1163,6 +1185,68 @@ fn build_attachment_content_parts(attachments: &[SlackAttachment]) -> Vec<InputC
 ///
 /// Uses the generic `build_session_routing_tag()` from channel abstractions,
 /// converting the Slack-specific `SessionStrategy` to `SessionRoutingStrategy`.
+/// Cancel the turn running in the pane thread the stop button was pressed in.
+///
+/// Authorization comes from the lookup, not a separate check:
+/// `find_app_session_by_tags` is scoped to this app's org and internal id, so a
+/// session belonging to any other app simply does not resolve and the stop is
+/// logged and dropped. That keeps the webhook's blast radius exactly as wide as
+/// it already was for inbound messages.
+///
+/// A stop for a turn that already finished is a no-op rather than an error:
+/// `cancel_session_turn_for` reads the session's terminal state first and skips
+/// the `turn.cancelled` emission, so a completed turn is never race-flipped to
+/// cancelled and the thread gets no spurious notice.
+///
+/// The in-thread confirmation is not posted here. `turn.cancelled` is a
+/// terminal state the delivery dispatcher already renders as one line with a
+/// session link (EVE-966); posting our own would double it.
+async fn handle_agent_session_stopped(
+    state: &SlackState,
+    app: &App,
+    slack_config: &SlackChannelConfig,
+    event: &SlackEvent,
+) -> anyhow::Result<()> {
+    let Some(thread) = event.assistant_thread.as_ref() else {
+        tracing::debug!(
+            app_id = %app.public_id,
+            "Slack stop event carried no assistant_thread; ignoring"
+        );
+        return Ok(());
+    };
+
+    // The pane reports its thread under `assistant_thread`, not at the event
+    // root, so normalize before tag-building — same as the context path.
+    let mut routing_event = event.clone();
+    routing_event.channel = thread.channel_id.clone().or(routing_event.channel);
+    routing_event.thread_ts = thread.thread_ts.clone().or(routing_event.thread_ts);
+
+    let routing_tags = build_session_tags(app, slack_config, &routing_event, SlackSurface::Pane);
+    let Some(row) = state
+        .db
+        .find_app_session_by_tags(app.org_id, app.internal_id, &routing_tags)
+        .await?
+    else {
+        tracing::info!(
+            app_id = %app.public_id,
+            tags = ?routing_tags,
+            "Slack stop request resolved no session for this app; ignoring"
+        );
+        return Ok(());
+    };
+
+    crate::api::app_api::cancel_session_turn_for(
+        &state.db,
+        &state.message_service,
+        row.id,
+        "slack stop button",
+    )
+    .await?;
+
+    tracing::info!(session_id = %row.id, "Cancelled Slack session turn on stop request");
+    Ok(())
+}
+
 /// Record the user's current position on the session's persisted ThreadContext.
 ///
 /// A context change for a pane that has no session yet is a no-op: there is
