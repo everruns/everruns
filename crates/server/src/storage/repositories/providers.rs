@@ -305,15 +305,32 @@ impl Database {
     ///
     /// Disabled models are filtered out: callers on this path must not be able
     /// to resolve a model that an administrator has disabled. Admin code that
-    /// needs to read disabled rows (e.g. the management UI, update/delete by id)
-    /// uses `get_model_with_provider` or operates via `update_model` /
-    /// `delete_model` directly.
+    /// needs to read disabled rows uses `get_model_for_mutation` for mutation
+    /// preconditions or `get_model_with_provider` for provider-enriched views.
     pub async fn get_model(&self, org_id: i64, id: Uuid) -> Result<Option<ModelRow>> {
         let row = sqlx::query_as::<_, ModelRow>(
             r#"
             SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
             FROM models
             WHERE org_id = $1 AND id = $2 AND enabled = TRUE
+            "#,
+        )
+        .bind(org_id)
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Read an org-owned model without filtering disabled or inconsistent
+    /// provider links. Mutation callers must validate the provider separately.
+    pub async fn get_model_for_mutation(&self, org_id: i64, id: Uuid) -> Result<Option<ModelRow>> {
+        let row = sqlx::query_as::<_, ModelRow>(
+            r#"
+            SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
+            FROM models
+            WHERE org_id = $1 AND id = $2
             "#,
         )
         .bind(org_id)
