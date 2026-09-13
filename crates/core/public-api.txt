@@ -203,6 +203,7 @@ everruns_core::channel::ChannelDeliveryAdapter	trait
 everruns_core::channel::ChannelReplyMode	enum
 everruns_core::channel::ChannelReplyMode::AllMessages	variant
 everruns_core::channel::ChannelReplyMode::ReportProgressOnly	variant
+everruns_core::channel::ChannelStreamDelivery	trait
 everruns_core::channel::DeliveryContext	struct
 everruns_core::channel::DeliveryResult	enum
 everruns_core::channel::DeliveryResult::Ok	variant

@@ -81,6 +81,14 @@ back to the session; the failure text stays server-side because these threads
 are frequently public. See `terminal_notice` in
 [`crates/server/src/slack_delivery.rs`](../../crates/server/src/slack_delivery.rs).
 
+Where a platform streams, the stream is per *output message*, not per turn: a turn
+that produces three messages with tool calls between them is three streams, so the
+reader sees three replies rather than one concatenated blob. Every terminal state
+closes any stream still open — an unstopped stream is a message left spinning in
+the client forever, which is worse than the silence above. Flush cadence belongs
+next to its constant with the measurement that chose it, because the documented
+rate-limit tier is a floor rather than the real ceiling.
+
 Cancellation is session-scoped, not turn-scoped: both cancel paths mint a fresh
 `input_message_id` for the synthetic `turn.cancelled` event, so a delivery that
 matches it per-turn never unregisters.
@@ -106,6 +114,7 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 | **Threat model** | Section in `knowledge/security/threat-model.md` covering platform-specific threats (signing bypass, bot loops, replay). |
 | **Thread backfill** | When a new session joins an existing thread, backfill its history by following the platform's pagination cursor to the end — a single page is a silent truncation. Cap what is injected, and say so in the injected context when the cap bites, so the agent can tell a short thread from the tail of a long one. Backfill only where "new session" and "thread the agent has not seen" mean the same thing (for Slack, `per_thread` alone). |
 | **Terminal-state notice** | A turn ending without a delivered reply posts exactly one status line with a session link (see Adapter Lifecycle). |
+| **Streaming (optional)** | Implement `ChannelStreamDelivery` and return it from `ChannelDeliveryAdapter::streaming()`. A platform without progressive delivery returns `None` and keeps discrete posting — the capability is probed, not required. One stream per output message, closed on every terminal state. |
 | **Startup recovery** | Re-register active deliveries after server restart (query sessions with `{platform}:*` tags). |
 | **DEV_MODE fallback** | Polling-based delivery when EventNotificationBroadcaster is unavailable (in-memory mode). |
 

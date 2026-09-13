@@ -925,6 +925,8 @@ async fn process_slack_message(
                 thread_ts,
                 reply_mode: slack_config.reply_mode,
                 surface,
+                recipient_user_id: (!slack_user_id.is_empty()).then(|| slack_user_id.clone()),
+                recipient_team_id: slack_config.team_id.clone(),
             })
             .await;
     } else {
@@ -992,6 +994,12 @@ fn slack_message_metadata(
         (
             "slack_ts".to_string(),
             serde_json::Value::String(event.ts.clone().unwrap_or_default()),
+        ),
+        // Needed by `chat.startStream` after a restart: recovery has no event to
+        // read the sender from (EVE-974).
+        (
+            "slack_user".to_string(),
+            serde_json::Value::String(event.user.clone().unwrap_or_default()),
         ),
     ]
     .into_iter()

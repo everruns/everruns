@@ -250,6 +250,37 @@ pub trait ChannelDeliveryAdapter: Send + Sync {
         &self,
         report: &crate::progress_reporting::ProgressReportPayload,
     ) -> String;
+
+    /// Progressive delivery, when the platform supports it.
+    ///
+    /// A capability probe rather than three more required methods: `None` — the
+    /// default — means the dispatcher uses discrete delivery, so a platform
+    /// without streaming stays honest instead of stubbing an API it does not
+    /// have (EVE-974).
+    fn streaming(&self) -> Option<&dyn ChannelStreamDelivery> {
+        None
+    }
+}
+
+/// Progressive delivery of one message as it is produced.
+///
+/// A stream is per *output message*, not per turn: a turn that produces three
+/// messages with tool calls between them is three streams, so the reader sees
+/// three replies rather than one concatenated blob.
+#[async_trait]
+pub trait ChannelStreamDelivery: Send + Sync {
+    /// Open a stream. The returned handle identifies it until `stop`.
+    async fn start(&self, context: &DeliveryContext) -> Result<String, String>;
+
+    /// Append newly produced text to an open stream.
+    async fn append(&self, handle: &str, text: &str, context: &DeliveryContext) -> DeliveryResult;
+
+    /// Close the stream.
+    ///
+    /// Must run for every `start`, including on failure and cancellation: an
+    /// unstopped stream is a message left spinning in the client forever, which
+    /// is worse than never having streamed at all.
+    async fn stop(&self, handle: &str, context: &DeliveryContext) -> DeliveryResult;
 }
 
 /// Context needed by a delivery adapter to post messages.
