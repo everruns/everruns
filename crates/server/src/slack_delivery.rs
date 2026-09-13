@@ -285,7 +285,16 @@ impl SlackDeliveryDispatcher {
                     // In report-progress-only mode the only text that reaches here
                     // is a progress report; in all-messages mode it is the answer.
                     let is_progress_report = ctx.reply_mode == SlackReplyMode::ReportProgressOnly;
-                    match self.post(&ctx, session_id, text, is_progress_report).await {
+                    match self
+                        .post(
+                            &ctx,
+                            session_id,
+                            Some(key.input_message_id.clone()),
+                            text,
+                            is_progress_report,
+                        )
+                        .await
+                    {
                         // Only a reply Slack accepted counts as delivered. A send that
                         // exhausted its retries or hit a permanent error leaves this
                         // false, so the notice below tells the user the answer was
@@ -319,7 +328,16 @@ impl SlackDeliveryDispatcher {
                 // is over, and unregister either way.
                 if !delivered {
                     let notice = self.terminal_notice(&event_type, session_id);
-                    match self.post(&ctx, session_id, notice, false).await {
+                    match self
+                        .post(
+                            &ctx,
+                            session_id,
+                            Some(key.input_message_id.clone()),
+                            notice,
+                            false,
+                        )
+                        .await
+                    {
                         ChannelDeliveryResult::Ok => {}
                         ChannelDeliveryResult::TransientError(e)
                         | ChannelDeliveryResult::PermanentError(e) => warn!(
@@ -351,6 +369,7 @@ impl SlackDeliveryDispatcher {
         &self,
         ctx: &DeliveryContext,
         session_id: Uuid,
+        input_message_id: Option<String>,
         text: String,
         is_progress_report: bool,
     ) -> ChannelDeliveryResult {
@@ -359,6 +378,7 @@ impl SlackDeliveryDispatcher {
             text,
             thread_ref: ctx.thread_ts.clone(),
             is_progress_report,
+            correlation_id: input_message_id,
         };
         let delivery_ctx = ChannelDeliveryContext {
             auth_token: ctx.bot_token.clone(),
@@ -670,12 +690,24 @@ impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
         message: &OutboundChannelMessage,
         context: &ChannelDeliveryContext,
     ) -> ChannelDeliveryResult {
+        // Correlation comes from the message rather than the context: the
+        // context is per-registration, the ids identify this one reply.
+        let correlation =
+            message
+                .correlation_id
+                .as_ref()
+                .map(|input_message_id| SlackCorrelation {
+                    session_id: message.session_id.to_string(),
+                    input_message_id: input_message_id.clone(),
+                });
+
         match post_to_slack_with_retry_base(
             &self.api_base,
             &context.auth_token,
             &context.channel_id,
             &context.thread_ref,
             &message.text,
+            correlation.as_ref(),
         )
         .await
         {
@@ -790,12 +822,13 @@ async fn post_to_slack_with_retry_base(
     channel: &str,
     thread_ts: &str,
     text: &str,
+    correlation: Option<&SlackCorrelation>,
 ) -> anyhow::Result<()> {
     let max_attempts = 3;
     let mut delay = std::time::Duration::from_secs(1);
 
     for attempt in 1..=max_attempts {
-        match post_to_slack_base(base_url, bot_token, channel, thread_ts, text).await {
+        match post_slack_message(base_url, bot_token, channel, thread_ts, text, correlation).await {
             Ok(()) => return Ok(()),
             Err(e) => {
                 let error_str = e.to_string();
@@ -826,6 +859,221 @@ async fn post_to_slack_with_retry_base(
 
 const SLACK_API_BASE: &str = "https://slack.com/api";
 
+/// Characters Slack accepts in one `markdown` block.
+const SLACK_MARKDOWN_BLOCK_LIMIT: usize = 12_000;
+
+/// Blocks Slack accepts in one `chat.postMessage` call.
+const SLACK_MAX_BLOCKS_PER_MESSAGE: usize = 50;
+
+/// Cap on the `text` notification fallback.
+///
+/// `text` is not rendered when `blocks` are present — it is what Slack shows in
+/// push notifications and the channel list — so it only needs enough to be
+/// recognisable, and Slack rejects the whole post if it runs long.
+const SLACK_TEXT_FALLBACK_LIMIT: usize = 3_000;
+
+/// Correlation stamped onto a posted message via `chat.postMessage`'s
+/// `metadata`, giving a durable key from a Slack message back to the run that
+/// produced it — no tag-string heuristics required.
+#[derive(Debug, Clone)]
+pub(crate) struct SlackCorrelation {
+    pub session_id: String,
+    pub input_message_id: String,
+}
+
+impl SlackCorrelation {
+    fn to_metadata(&self) -> serde_json::Value {
+        serde_json::json!({
+            "event_type": "everruns_agent_reply",
+            "event_payload": {
+                "session_id": self.session_id,
+                "input_message_id": self.input_message_id,
+            }
+        })
+    }
+}
+
+/// Truncate on a char boundary, so multi-byte text cannot panic the slice.
+fn truncate_chars(text: &str, limit: usize) -> &str {
+    match text.char_indices().nth(limit) {
+        Some((idx, _)) => &text[..idx],
+        None => text,
+    }
+}
+
+/// Split Markdown into pieces that each fit one Slack `markdown` block.
+///
+/// Splits on line boundaries, and never leaves a fenced code block open: when a
+/// boundary lands inside a fence the fence is closed at the end of the piece and
+/// reopened — with its original info string — at the start of the next, so a
+/// split code block still renders as code on both sides.
+fn split_markdown_for_blocks(text: &str, limit: usize) -> Vec<String> {
+    debug_assert!(limit > 8, "limit must leave room for fence markers");
+    if text.chars().count() <= limit {
+        return vec![text.to_string()];
+    }
+
+    let mut chunks: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut current_len = 0usize;
+    // The fence currently open, as (marker, info string) — e.g. ("```", "rust").
+    let mut open_fence: Option<(String, String)> = None;
+    // Reopened at the top of the next chunk when a split interrupts a fence.
+    let mut reopen: Option<String> = None;
+
+    // Reserve room for the closing fence we may have to append.
+    let effective = limit.saturating_sub(4);
+
+    let flush = |current: &mut String,
+                 current_len: &mut usize,
+                 open_fence: &Option<(String, String)>,
+                 chunks: &mut Vec<String>,
+                 reopen: &mut Option<String>| {
+        if current.is_empty() {
+            return;
+        }
+        let mut chunk = std::mem::take(current);
+        if let Some((marker, info)) = open_fence {
+            // Close the fence here and reopen it in the next chunk.
+            if !chunk.ends_with('\n') {
+                chunk.push('\n');
+            }
+            chunk.push_str(marker);
+            *reopen = Some(format!("{}{}", marker, info));
+        } else {
+            *reopen = None;
+        }
+        chunks.push(chunk);
+        *current_len = 0;
+    };
+
+    for line in text.split_inclusive('\n') {
+        let line_len = line.chars().count();
+
+        // A single line past the limit has no safe boundary; hard-split it.
+        if line_len > effective {
+            flush(
+                &mut current,
+                &mut current_len,
+                &open_fence,
+                &mut chunks,
+                &mut reopen,
+            );
+            if let Some(ref head) = reopen.take() {
+                current.push_str(head);
+                current.push('\n');
+                current_len = head.chars().count() + 1;
+            }
+            let mut rest = line;
+            while rest.chars().count() > effective.saturating_sub(current_len) {
+                let room = effective.saturating_sub(current_len);
+                let head = truncate_chars(rest, room);
+                current.push_str(head);
+                current_len += head.chars().count();
+                rest = &rest[head.len()..];
+                flush(
+                    &mut current,
+                    &mut current_len,
+                    &open_fence,
+                    &mut chunks,
+                    &mut reopen,
+                );
+                if let Some(ref h) = reopen.take() {
+                    current.push_str(h);
+                    current.push('\n');
+                    current_len = h.chars().count() + 1;
+                }
+            }
+            current.push_str(rest);
+            current_len += rest.chars().count();
+            continue;
+        }
+
+        if current_len + line_len > effective {
+            flush(
+                &mut current,
+                &mut current_len,
+                &open_fence,
+                &mut chunks,
+                &mut reopen,
+            );
+            if let Some(head) = reopen.take() {
+                current.push_str(&head);
+                current.push('\n');
+                current_len = head.chars().count() + 1;
+            }
+        }
+
+        // Track fence state after placement, so the marker line itself lands in
+        // the chunk that opens or closes it.
+        let trimmed = line.trim_start();
+        if let Some(rest) = trimmed
+            .strip_prefix("```")
+            .or_else(|| trimmed.strip_prefix("~~~"))
+        {
+            let marker = &trimmed[..3];
+            match open_fence {
+                // A closing fence carries no info string.
+                Some((ref open_marker, _)) if open_marker == marker => open_fence = None,
+                Some(_) => {}
+                None => open_fence = Some((marker.to_string(), rest.trim_end().to_string())),
+            }
+        }
+
+        current.push_str(line);
+        current_len += line_len;
+    }
+
+    flush(
+        &mut current,
+        &mut current_len,
+        &open_fence,
+        &mut chunks,
+        &mut reopen,
+    );
+
+    chunks
+}
+
+/// Build the `chat.postMessage` payloads for one reply.
+///
+/// Normally one payload. A reply past
+/// `SLACK_MARKDOWN_BLOCK_LIMIT * SLACK_MAX_BLOCKS_PER_MESSAGE` (600k characters)
+/// spills into further messages rather than being truncated.
+fn build_post_payloads(
+    channel: &str,
+    thread_ts: &str,
+    text: &str,
+    correlation: Option<&SlackCorrelation>,
+) -> Vec<serde_json::Value> {
+    let chunks = split_markdown_for_blocks(text, SLACK_MARKDOWN_BLOCK_LIMIT);
+
+    chunks
+        .chunks(SLACK_MAX_BLOCKS_PER_MESSAGE)
+        .map(|group| {
+            let blocks: Vec<serde_json::Value> = group
+                .iter()
+                .map(|chunk| serde_json::json!({ "type": "markdown", "text": chunk }))
+                .collect();
+
+            let mut payload = serde_json::json!({
+                "channel": channel,
+                // Notification fallback only; `blocks` is what renders.
+                "text": truncate_chars(text, SLACK_TEXT_FALLBACK_LIMIT),
+                "blocks": blocks,
+            });
+
+            if !thread_ts.is_empty() {
+                payload["thread_ts"] = serde_json::Value::String(thread_ts.to_string());
+            }
+            if let Some(correlation) = correlation {
+                payload["metadata"] = correlation.to_metadata();
+            }
+            payload
+        })
+        .collect()
+}
+
 /// Post a message to Slack using the Bot API.
 pub(crate) async fn post_to_slack(
     bot_token: &str,
@@ -844,49 +1092,62 @@ pub(crate) async fn post_to_slack_base(
     thread_ts: &str,
     text: &str,
 ) -> anyhow::Result<()> {
+    post_slack_message(base_url, bot_token, channel, thread_ts, text, None).await
+}
+
+/// Post one reply, as one or more `chat.postMessage` calls.
+///
+/// Every call renders through `markdown` blocks, so agent output reaches Slack
+/// as the Markdown it actually is rather than being reinterpreted as the much
+/// smaller `mrkdwn` dialect.
+pub(crate) async fn post_slack_message(
+    base_url: &str,
+    bot_token: &str,
+    channel: &str,
+    thread_ts: &str,
+    text: &str,
+    correlation: Option<&SlackCorrelation>,
+) -> anyhow::Result<()> {
     let client = reqwest::Client::new();
+    let payloads = build_post_payloads(channel, thread_ts, text, correlation);
+    let total = payloads.len();
 
-    let mut payload = serde_json::json!({
-        "channel": channel,
-        "text": text,
-    });
+    for (index, payload) in payloads.into_iter().enumerate() {
+        let response = client
+            .post(format!("{}/chat.postMessage", base_url))
+            .header("Authorization", format!("Bearer {}", bot_token))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await?;
 
-    if !thread_ts.is_empty() {
-        payload["thread_ts"] = serde_json::Value::String(thread_ts.to_string());
-    }
+        let status = response.status();
+        let body: serde_json::Value = response.json().await?;
 
-    let response = client
-        .post(format!("{}/chat.postMessage", base_url))
-        .header("Authorization", format!("Bearer {}", bot_token))
-        .header("Content-Type", "application/json")
-        .json(&payload)
-        .send()
-        .await?;
+        if !body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+            let error = body
+                .get("error")
+                .and_then(|e| e.as_str())
+                .unwrap_or("unknown");
 
-    let status = response.status();
-    let body: serde_json::Value = response.json().await?;
+            // Rate limited — treat as retryable
+            if error == "ratelimited" {
+                return Err(anyhow::anyhow!("Slack API rate limited"));
+            }
 
-    if !body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
-        let error = body
-            .get("error")
-            .and_then(|e| e.as_str())
-            .unwrap_or("unknown");
-
-        // Rate limited — treat as retryable
-        if error == "ratelimited" {
-            return Err(anyhow::anyhow!("Slack API rate limited"));
+            error!(
+                channel = channel,
+                error = error,
+                status = %status,
+                part = index + 1,
+                parts = total,
+                "Failed to post message to Slack"
+            );
+            return Err(anyhow::anyhow!("Slack API error: {}", error));
         }
-
-        error!(
-            channel = channel,
-            error = error,
-            status = %status,
-            "Failed to post message to Slack"
-        );
-        return Err(anyhow::anyhow!("Slack API error: {}", error));
     }
 
-    info!(channel = channel, "Posted response to Slack");
+    info!(channel = channel, parts = total, "Posted response to Slack");
     Ok(())
 }
 
@@ -1342,6 +1603,7 @@ mod tests {
                 "C_GONE",
                 "",
                 "Hello!",
+                None,
             )
             .await;
 
@@ -1376,6 +1638,7 @@ mod tests {
                 "C123",
                 "1234.0000",
                 "Hello!",
+                None,
             )
             .await;
 
@@ -1402,6 +1665,7 @@ mod tests {
                 "C123",
                 "",
                 "Hello!",
+                None,
             )
             .await;
 
@@ -1429,6 +1693,7 @@ mod tests {
                 "C123",
                 "",
                 "Hello!",
+                None,
             )
             .await;
 
@@ -1455,6 +1720,7 @@ mod tests {
                 "C123",
                 "",
                 "",
+                None,
             )
             .await;
 
@@ -1790,6 +2056,7 @@ mod tests {
                 text: "hello".to_string(),
                 thread_ref: String::new(),
                 is_progress_report: false,
+                correlation_id: None,
             };
             let ctx = ChannelDeliveryContext {
                 auth_token: "xoxb-test-token".to_string(),
@@ -2210,6 +2477,267 @@ mod tests {
 
             let notice = dispatcher.terminal_notice("turn.failed", uuid::Uuid::nil());
             assert_eq!(notice, "The agent could not finish this request.");
+        }
+    }
+
+    // ==========================================
+    // Markdown block rendering (EVE-971)
+    // ==========================================
+
+    mod markdown_block_tests {
+        use super::*;
+
+        fn blocks_of(payload: &serde_json::Value) -> Vec<String> {
+            payload["blocks"]
+                .as_array()
+                .expect("blocks array")
+                .iter()
+                .map(|b| {
+                    assert_eq!(
+                        b["type"], "markdown",
+                        "every block must be a markdown block"
+                    );
+                    b["text"].as_str().unwrap().to_string()
+                })
+                .collect()
+        }
+
+        /// The bug: agent Markdown went out in `text`, which Slack reads as the
+        /// much smaller `mrkdwn` dialect. A heading, a table and a fenced code
+        /// block must now reach Slack verbatim inside a `markdown` block.
+        #[test]
+        fn reply_is_posted_as_a_markdown_block_verbatim() {
+            let reply =
+                "# Heading\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```rust\nfn main() {}\n```";
+
+            let payloads = build_post_payloads("C123", "1700.1", reply, None);
+
+            assert_eq!(payloads.len(), 1);
+            let blocks = blocks_of(&payloads[0]);
+            assert_eq!(blocks.len(), 1);
+            assert_eq!(blocks[0], reply, "Markdown must not be rewritten");
+            // The fallback stays populated for notifications.
+            assert_eq!(payloads[0]["text"], reply);
+            assert_eq!(payloads[0]["thread_ts"], "1700.1");
+        }
+
+        /// `thread_ts` is omitted rather than sent empty for a top-level post.
+        #[test]
+        fn top_level_post_omits_thread_ts() {
+            let payloads = build_post_payloads("C123", "", "hi", None);
+            assert!(payloads[0].get("thread_ts").is_none());
+        }
+
+        /// Past the block limit the reply is split across blocks, not cut off.
+        #[test]
+        fn long_reply_splits_across_blocks_without_losing_text() {
+            let line = "x".repeat(200);
+            let reply = std::iter::repeat_n(line.as_str(), 200)
+                .collect::<Vec<_>>()
+                .join("\n"); // ~40k characters
+
+            let payloads = build_post_payloads("C123", "", &reply, None);
+
+            assert_eq!(payloads.len(), 1, "40k fits in one message");
+            let blocks = blocks_of(&payloads[0]);
+            assert!(
+                blocks.len() > 1,
+                "must actually split, got {}",
+                blocks.len()
+            );
+            for block in &blocks {
+                assert!(
+                    block.chars().count() <= SLACK_MARKDOWN_BLOCK_LIMIT,
+                    "block of {} exceeds Slack's limit",
+                    block.chars().count()
+                );
+            }
+            // Nothing was dropped: rejoining reproduces the reply.
+            let rejoined: String = blocks.join("");
+            assert_eq!(rejoined, reply, "split must be lossless");
+        }
+
+        /// A fence interrupted by a split is closed and reopened, so both halves
+        /// still render as code rather than the second half leaking as prose.
+        #[test]
+        fn split_inside_a_fence_closes_and_reopens_it() {
+            let body = std::iter::repeat_n("let x = 1;", 2000)
+                .collect::<Vec<_>>()
+                .join("\n");
+            let reply = format!("intro\n\n```rust\n{}\n```", body);
+
+            let blocks = blocks_of(&build_post_payloads("C123", "", &reply, None)[0]);
+            assert!(blocks.len() > 1, "fixture must be long enough to split");
+
+            // Every block has balanced fences, so none renders half-open.
+            for (i, block) in blocks.iter().enumerate() {
+                let fences = block
+                    .lines()
+                    .filter(|l| l.trim_start().starts_with("```"))
+                    .count();
+                assert_eq!(
+                    fences % 2,
+                    0,
+                    "block {i} leaves a fence open: {fences} markers"
+                );
+            }
+            // The reopened fence keeps the language hint.
+            assert!(
+                blocks[1].starts_with("```rust"),
+                "continuation must reopen the fence with its info string, got: {:?}",
+                &blocks[1][..20.min(blocks[1].len())]
+            );
+        }
+
+        /// The notification fallback is capped; Slack rejects an oversized `text`.
+        #[test]
+        fn notification_fallback_is_capped() {
+            let reply = "y".repeat(SLACK_TEXT_FALLBACK_LIMIT * 3);
+            let payloads = build_post_payloads("C123", "", &reply, None);
+            let fallback = payloads[0]["text"].as_str().unwrap();
+            assert_eq!(fallback.chars().count(), SLACK_TEXT_FALLBACK_LIMIT);
+        }
+
+        /// Past 50 blocks the reply spills into a second message rather than
+        /// losing the tail to Slack's per-message block cap.
+        #[test]
+        fn reply_past_the_block_cap_spills_into_another_message() {
+            // Comfortably more than 50 full blocks.
+            let reply = "z".repeat(SLACK_MARKDOWN_BLOCK_LIMIT * 52);
+            let payloads = build_post_payloads("C123", "1700.1", &reply, None);
+
+            assert_eq!(payloads.len(), 2);
+            assert_eq!(blocks_of(&payloads[0]).len(), SLACK_MAX_BLOCKS_PER_MESSAGE);
+            assert!(!blocks_of(&payloads[1]).is_empty());
+            // Every part still targets the same thread.
+            for payload in &payloads {
+                assert_eq!(payload["thread_ts"], "1700.1");
+            }
+        }
+
+        /// Correlation gives a durable Slack-message-to-run key.
+        #[test]
+        fn correlation_is_stamped_as_message_metadata() {
+            let correlation = SlackCorrelation {
+                session_id: "session_01abc".to_string(),
+                input_message_id: "msg_01xyz".to_string(),
+            };
+            let payloads = build_post_payloads("C123", "", "hi", Some(&correlation));
+
+            let metadata = &payloads[0]["metadata"];
+            assert_eq!(metadata["event_type"], "everruns_agent_reply");
+            assert_eq!(metadata["event_payload"]["session_id"], "session_01abc");
+            assert_eq!(metadata["event_payload"]["input_message_id"], "msg_01xyz");
+        }
+
+        /// Without correlation the key is absent, not empty or invented.
+        #[test]
+        fn absent_correlation_omits_metadata() {
+            let payloads = build_post_payloads("C123", "", "hi", None);
+            assert!(payloads[0].get("metadata").is_none());
+        }
+
+        /// Multi-byte text must not panic the fallback truncation.
+        #[test]
+        fn fallback_truncation_respects_char_boundaries() {
+            let reply = "\u{1f680}".repeat(SLACK_TEXT_FALLBACK_LIMIT * 2);
+            let payloads = build_post_payloads("C123", "", &reply, None);
+            let fallback = payloads[0]["text"].as_str().unwrap();
+            assert_eq!(fallback.chars().count(), SLACK_TEXT_FALLBACK_LIMIT);
+        }
+
+        /// A single unbroken line past the limit has no line boundary to split
+        /// on; it must still be chunked rather than emitted oversized.
+        #[test]
+        fn a_single_oversized_line_is_hard_split() {
+            let reply = "q".repeat(SLACK_MARKDOWN_BLOCK_LIMIT * 3);
+            let blocks = blocks_of(&build_post_payloads("C123", "", &reply, None)[0]);
+            assert!(blocks.len() >= 3);
+            for block in &blocks {
+                assert!(block.chars().count() <= SLACK_MARKDOWN_BLOCK_LIMIT);
+            }
+            assert_eq!(blocks.join(""), reply);
+        }
+
+        /// End to end through the real post path: the wire body Slack receives
+        /// carries the blocks, not just the payload builder's return value.
+        #[tokio::test]
+        async fn posted_request_body_carries_markdown_blocks_and_metadata() {
+            use wiremock::{
+                Mock, MockServer, ResponseTemplate,
+                matchers::{method, path},
+            };
+
+            let mock_server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({"ok": true, "ts": "1.2"})),
+                )
+                .mount(&mock_server)
+                .await;
+
+            let correlation = SlackCorrelation {
+                session_id: "session_01abc".to_string(),
+                input_message_id: "msg_01xyz".to_string(),
+            };
+            post_slack_message(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "C123",
+                "1700.1",
+                "## Title\n\n```py\nx = 1\n```",
+                Some(&correlation),
+            )
+            .await
+            .expect("post should succeed");
+
+            let requests = mock_server.received_requests().await.unwrap();
+            assert_eq!(requests.len(), 1);
+            let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+
+            assert_eq!(body["blocks"][0]["type"], "markdown");
+            assert_eq!(body["blocks"][0]["text"], "## Title\n\n```py\nx = 1\n```");
+            assert_eq!(
+                body["metadata"]["event_payload"]["session_id"],
+                "session_01abc"
+            );
+            assert_eq!(body["thread_ts"], "1700.1");
+        }
+
+        /// The ack path has no correlation to stamp, but still renders as a block.
+        #[tokio::test]
+        async fn ack_path_posts_blocks_without_metadata() {
+            use wiremock::{
+                Mock, MockServer, ResponseTemplate,
+                matchers::{method, path},
+            };
+
+            let mock_server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok": true})),
+                )
+                .mount(&mock_server)
+                .await;
+
+            post_to_slack_base(&mock_server.uri(), "xoxb-test-token", "C123", "", "On it.")
+                .await
+                .expect("ack should succeed");
+
+            let requests = mock_server.received_requests().await.unwrap();
+            let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+            assert_eq!(body["blocks"][0]["text"], "On it.");
+            assert!(body.get("metadata").is_none());
+        }
+
+        /// Short replies stay a single block — no gratuitous splitting.
+        #[test]
+        fn short_reply_is_one_block() {
+            let blocks = blocks_of(&build_post_payloads("C123", "", "ok", None)[0]);
+            assert_eq!(blocks, vec!["ok".to_string()]);
         }
     }
 }
