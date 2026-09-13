@@ -211,6 +211,9 @@ pub struct SlackState {
     user_name_cache: SlackUserCache,
     /// Event-driven Slack delivery dispatcher (None in DEV_MODE without PostgreSQL).
     pub delivery_dispatcher: Option<Arc<SlackDeliveryDispatcher>>,
+    /// Backend origin including the API prefix (e.g. `https://app.example.com/api`).
+    /// The generated manifest needs it to name this server's own webhook URL.
+    pub api_base_url: String,
 }
 
 impl SlackState {
@@ -221,6 +224,7 @@ impl SlackState {
         delivery_dispatcher: Option<Arc<SlackDeliveryDispatcher>>,
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,
+        api_base_url: String,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
@@ -235,6 +239,7 @@ impl SlackState {
             db,
             user_name_cache: new_slack_user_cache(),
             delivery_dispatcher,
+            api_base_url,
         }
     }
 }
@@ -1575,9 +1580,12 @@ struct ManifestResponse {
 /// GET /v1/apps/{app_id}/slack/manifest — Generate a Slack App manifest.
 ///
 /// Returns a pre-filled YAML manifest and a URL that opens Slack's "Create app
-/// from manifest" flow. The manifest includes the correct webhook URL and bot
-/// scopes but omits `event_subscriptions` (requires a live URL, so must be
-/// configured manually after the app is created and published).
+/// from manifest" flow. The manifest carries bot scopes *and*
+/// `event_subscriptions`, so no hand-editing is needed after creation.
+///
+/// Slack verifies `request_url` when the manifest is saved, which is why this
+/// endpoint serves only published apps: the webhook has to be answering before
+/// the Slack app is created from the manifest.
 async fn handle_slack_manifest(
     State(state): State<SlackState>,
     Path(app_id): Path<String>,
@@ -1603,7 +1611,13 @@ async fn handle_slack_manifest(
 
     let display_name = truncate_display_name(&app.name);
 
-    let manifest_yaml = build_manifest_yaml(&app.name, &display_name, app.description.as_deref());
+    let request_url = slack_webhook_url(&state.api_base_url, &app.public_id.to_string());
+    let manifest_yaml = build_manifest_yaml(
+        &app.name,
+        &display_name,
+        app.description.as_deref(),
+        &request_url,
+    );
 
     // URL-encode the manifest for the Slack "create from manifest" URL
     let encoded = urlencoding_encode(&manifest_yaml);
@@ -1618,7 +1632,19 @@ async fn handle_slack_manifest(
     }))
 }
 
-/// Build the YAML manifest for a Slack app (no event_subscriptions — requires live URL).
+/// This server's Slack webhook endpoint for one app.
+///
+/// Fully determined by the app's public ID before the Slack app exists, which is
+/// what makes `event_subscriptions` generatable at all.
+fn slack_webhook_url(api_base_url: &str, app_public_id: &str) -> String {
+    format!(
+        "{}/v1/apps/{}/slack/events",
+        api_base_url.trim_end_matches('/'),
+        app_public_id
+    )
+}
+
+/// Build the YAML manifest for a Slack app.
 ///
 /// Slack requires `long_description` to be 174–4000 chars. We build it from the
 /// app's description (if any) plus a standard suffix, padding if needed.
@@ -1626,11 +1652,13 @@ fn build_manifest_yaml(
     app_name: &str,
     display_name: &str,
     app_description: Option<&str>,
+    request_url: &str,
 ) -> String {
     let name = yaml_escape(app_name);
     let display_name = yaml_escape(display_name);
     let long_desc = build_long_description(app_name, app_description);
     let long_desc = yaml_escape(&long_desc);
+    let request_url = yaml_escape(request_url);
     format!(
         "display_information:\n\
          \x20 name: \"{name}\"\n\
@@ -1653,6 +1681,14 @@ fn build_manifest_yaml(
          \x20     - users:read\n\
          \x20     - files:read\n\
          settings:\n\
+         \x20 event_subscriptions:\n\
+         \x20   request_url: \"{request_url}\"\n\
+         \x20   bot_events:\n\
+         \x20     - app_mention\n\
+         \x20     - message.channels\n\
+         \x20     - message.groups\n\
+         \x20     - message.im\n\
+         \x20     - message.mpim\n\
          \x20 org_deploy_enabled: false\n\
          \x20 socket_mode_enabled: false\n\
          \x20 token_rotation_enabled: false\n",
@@ -2558,9 +2594,95 @@ mod tests {
         assert!(truncated.is_char_boundary(truncated.len()));
     }
 
+    const TEST_REQUEST_URL: &str = "https://example.com/api/v1/apps/app_test123/slack/events";
+
+    #[test]
+    fn test_manifest_yaml_contains_event_subscriptions() {
+        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL);
+
+        assert!(
+            yaml.contains(&format!("    request_url: \"{TEST_REQUEST_URL}\"")),
+            "manifest must name this server's webhook:\n{yaml}"
+        );
+        for event in [
+            "      - app_mention",
+            "      - message.channels",
+            "      - message.groups",
+            "      - message.im",
+            "      - message.mpim",
+        ] {
+            assert!(
+                yaml.contains(event),
+                "manifest must subscribe {event}:\n{yaml}"
+            );
+        }
+        // event_subscriptions has to sit under `settings`, not at the root, or
+        // Slack rejects the manifest.
+        let settings = yaml.find("settings:").expect("settings section");
+        let subs = yaml
+            .find("  event_subscriptions:")
+            .expect("event_subscriptions section");
+        assert!(
+            subs > settings,
+            "event_subscriptions must nest under settings"
+        );
+    }
+
+    #[test]
+    fn test_manifest_yaml_parses_as_yaml_with_expected_shape() {
+        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL);
+        let parsed: serde_yaml::Value =
+            serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
+
+        let subs = &parsed["settings"]["event_subscriptions"];
+        assert_eq!(subs["request_url"].as_str(), Some(TEST_REQUEST_URL));
+        let events: Vec<&str> = subs["bot_events"]
+            .as_sequence()
+            .expect("bot_events sequence")
+            .iter()
+            .map(|v| v.as_str().expect("event is a string"))
+            .collect();
+        assert_eq!(
+            events,
+            vec![
+                "app_mention",
+                "message.channels",
+                "message.groups",
+                "message.im",
+                "message.mpim"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_manifest_yaml_escapes_request_url() {
+        // The URL is server-configured, but a quote in it must not break out of
+        // the YAML string and corrupt the rest of the manifest.
+        let yaml = build_manifest_yaml("My Bot", "My Bot", None, r#"https://x/"evil"#);
+        let parsed: serde_yaml::Value =
+            serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
+        assert_eq!(
+            parsed["settings"]["event_subscriptions"]["request_url"].as_str(),
+            Some(r#"https://x/"evil"#)
+        );
+    }
+
+    #[test]
+    fn test_slack_webhook_url_shape() {
+        assert_eq!(
+            slack_webhook_url("https://example.com/api", "app_abc"),
+            "https://example.com/api/v1/apps/app_abc/slack/events"
+        );
+        // A configured base with a trailing slash must not double up.
+        assert_eq!(
+            slack_webhook_url("https://example.com/api/", "app_abc"),
+            "https://example.com/api/v1/apps/app_abc/slack/events"
+        );
+    }
+
     #[test]
     fn test_manifest_yaml_contains_description_and_long_description() {
-        let yaml = build_manifest_yaml("My Bot", "My Bot", None);
+        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL);
         assert!(yaml.contains(r#"description: "My Bot (Powered by Everruns)""#));
         assert!(yaml.contains("AI agent powered by Everruns"));
         assert!(yaml.contains("https://everruns.com"));
@@ -2568,7 +2690,12 @@ mod tests {
 
     #[test]
     fn test_manifest_yaml_with_app_description() {
-        let yaml = build_manifest_yaml("My Bot", "My Bot", Some("A helpful assistant"));
+        let yaml = build_manifest_yaml(
+            "My Bot",
+            "My Bot",
+            Some("A helpful assistant"),
+            TEST_REQUEST_URL,
+        );
         assert!(yaml.contains("A helpful assistant"));
         assert!(yaml.contains("AI agent powered by Everruns"));
     }
@@ -2578,7 +2705,7 @@ mod tests {
         // Slack description limit is 140 chars. Worst case: 35-char app name
         // (Slack's name limit) + " (Powered by Everruns)" = 57 chars.
         let long_name = "a".repeat(35);
-        let yaml = build_manifest_yaml(&long_name, &long_name, None);
+        let yaml = build_manifest_yaml(&long_name, &long_name, None, TEST_REQUEST_URL);
         // Extract the description value
         let desc_prefix = "description: \"";
         let desc_start = yaml.find(desc_prefix).unwrap() + desc_prefix.len();
@@ -2594,7 +2721,7 @@ mod tests {
 
     #[test]
     fn test_manifest_yaml_escapes_special_chars_in_name() {
-        let yaml = build_manifest_yaml(r#"Bot "Special""#, "Bot Special", None);
+        let yaml = build_manifest_yaml(r#"Bot "Special""#, "Bot Special", None, TEST_REQUEST_URL);
         assert!(yaml.contains(r#"name: "Bot \"Special\"""#));
         assert!(yaml.contains(r#"description: "Bot \"Special\" (Powered by Everruns)""#));
     }
@@ -3123,6 +3250,7 @@ mod tests {
             None,
             false,
             crate::event_delivery::EventDelivery::in_memory(),
+            "https://example.com/api".to_string(),
         );
         let session_id = setup_test_session(&state.db).await;
 
@@ -3162,7 +3290,12 @@ mod tests {
     #[test]
     fn test_manifest_includes_history_scopes_for_thread_context() {
         // conversations.replies requires channels:history / groups:history / im:history / mpim:history
-        let yaml = build_manifest_yaml("Bot", "Bot", None);
+        let yaml = build_manifest_yaml(
+            "Bot",
+            "Bot",
+            None,
+            "https://example.com/api/v1/apps/app_x/slack/events",
+        );
         assert!(
             yaml.contains("channels:history"),
             "Manifest must include channels:history for conversations.replies"

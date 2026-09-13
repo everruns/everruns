@@ -10,9 +10,12 @@ Slack is the reference implementation for the [messaging integrations](../../../
 
 ```
 Per-app manifest (recommended):
+  Publish the App        -->  webhook endpoint goes live (required first)
+                              |
   UI "Create Slack App"  -->  GET /v1/apps/{app_id}/slack/manifest  (returns YAML + create URL)
                               |
   Opens Slack "Create from manifest" with pre-filled scopes + bot user
+  + event_subscriptions (Slack verifies request_url on save)
                               |
   User copies signing_secret + bot_token back to Everruns
 
@@ -33,7 +36,7 @@ The events endpoint verifies HMAC-SHA256 signing secret, finds/creates session b
 ## Design Decisions
 
 - **One Slack App per Everruns App**: Each app has its own identity (name, avatar, scopes). This is unlike GitHub (global app) because Slack bots are user-facing with distinct identities per use case.
-- **Per-app manifest generation**: The manifest endpoint generates a YAML with correct scopes and bot user. `event_subscriptions` is omitted (requires live webhook URL, must be configured after publishing).
+- **Per-app manifest generation**: The manifest endpoint generates a YAML with correct scopes, bot user, and `event_subscriptions`. The webhook URL is fully determined by the app's public ID before the Slack app exists, so it can be declared up front; the real constraint is ordering, since Slack verifies `request_url` when the manifest is saved. That is why the endpoint serves published apps only — publish, then create the Slack app. (An earlier revision of this spec claimed `event_subscriptions` "requires a live webhook URL, must be configured after publishing" and therefore omitted it. The live-URL part is right, the conclusion was not: the fix is ordering, not manual setup.)
 - **App-scoped endpoint**: Slack is bound to an App, so the webhook is `POST /v1/apps/{app_id}/slack/events`. The App defines the harness, optional agent, signing secret, and session strategy.
 - **Unauthenticated**: Webhook and manifest requests come from Slack or the browser. Security is via Slack signing secret verification (HMAC-SHA256), not API key auth.
 - **Unscoped app lookup**: `get_app_by_public_id_unscoped()` looks up apps across all orgs since webhooks have no auth context.
@@ -86,9 +89,9 @@ Apps page at `/apps` with:
 - List of apps with status badges
 - Create page at `/apps/new` with name, harness, and optional agent/channel selection
 - Detail page at `/apps/{id}` with:
-  - "Create Slack App" button (opens Slack with pre-filled manifest)
+  - "Create Slack App" button (opens Slack with pre-filled manifest), offered only once published
   - Manual configuration fields (signing secret, bot token)
-  - Webhook URL display for Event Subscriptions
+  - Webhook URL display, informational — the manifest already declares it
 - Publish/Unpublish actions
 - Delete confirmation
 

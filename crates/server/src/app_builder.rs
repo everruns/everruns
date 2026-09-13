@@ -1256,6 +1256,7 @@ impl ServerAppBuilder {
             slack_dispatcher.clone(),
             notifications_enabled,
             event_delivery.clone(),
+            auth_config.base_url.clone(),
         );
         let webhook_rate_limiter = match valkey_for_channel_rate_limits.clone() {
             Some(client) => {

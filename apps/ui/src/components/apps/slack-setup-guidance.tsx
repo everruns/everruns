@@ -1,6 +1,11 @@
 "use client";
 
 // Keep the Slack checklist in one component so publish-state guidance is testable.
+//
+// Publish comes first (EVE-970). Slack verifies `request_url` at the moment the
+// manifest is saved, and the generated manifest now carries `event_subscriptions`,
+// so the webhook has to be answering before the Slack app is created from it.
+// That ordering is what removes the old hand-editing step.
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -58,6 +63,21 @@ function StepIcon({ done }: { done: boolean }) {
   );
 }
 
+function CopyableValue({ value }: { value: string }) {
+  return (
+    <div className="flex items-center gap-2 bg-muted p-2">
+      <code className="text-xs flex-1 truncate">{value}</code>
+      <button
+        className="shrink-0 hover:text-foreground text-muted-foreground"
+        onClick={() => navigator.clipboard.writeText(value)}
+        aria-label="Copy"
+      >
+        <Copy className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}
+
 function SetupSteps({
   hasSlackConfig,
   isPublished,
@@ -70,15 +90,7 @@ function SetupSteps({
   creatingSlackApp,
   onConfigure,
 }: SlackSetupGuidanceProps) {
-  const currentStep = !hasSlackConfig
-    ? 1
-    : !isPublished
-      ? 3
-      : !webhookVerified
-        ? 4
-        : !firstMessageReceived
-          ? 5
-          : 5;
+  const currentStep = !isPublished ? 1 : !hasSlackConfig ? 2 : !firstMessageReceived ? 4 : 4;
 
   return (
     <div className="space-y-4">
@@ -89,25 +101,18 @@ function SetupSteps({
       )}
 
       <div className="flex gap-3">
-        <StepIcon done={hasSlackConfig} />
+        <StepIcon done={isPublished} />
         <div className="flex-1 space-y-1">
           <p
-            className={`text-sm font-medium ${hasSlackConfig ? "text-muted-foreground line-through" : ""}`}
+            className={`text-sm font-medium ${isPublished ? "text-muted-foreground line-through" : ""}`}
           >
-            1. Create a Slack App
+            1. Publish the app
           </p>
           {currentStep === 1 && (
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">
-                Opens Slack with a pre-filled manifest (bot scopes and settings are already
-                configured). Review and click <strong>Create</strong>, then install to your
-                workspace.
-              </p>
-              <Button size="sm" onClick={onCreateSlackApp} disabled={creatingSlackApp}>
-                <ExternalLink className="w-3 h-3 mr-1" />
-                {creatingSlackApp ? "Opening..." : "Create Slack App"}
-              </Button>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              Click the <strong>Publish</strong> button above to activate the webhook endpoint.
+              Slack checks this URL the moment you create the app, so it has to be live first.
+            </p>
           )}
         </div>
       </div>
@@ -118,9 +123,68 @@ function SetupSteps({
           <p
             className={`text-sm font-medium ${hasSlackConfig ? "text-muted-foreground line-through" : ""}`}
           >
-            2. Copy credentials back
+            2. Create a Slack App
           </p>
           {currentStep === 1 && (
+            <p className="text-xs text-muted-foreground">
+              Available once the app is published — the manifest points Slack at this app&apos;s
+              webhook, and Slack rejects a URL that does not answer yet.
+            </p>
+          )}
+          {currentStep === 2 && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Opens Slack with a pre-filled manifest. Bot scopes <em>and</em> event subscriptions
+                are already set, so there is nothing to configure by hand. Review and click{" "}
+                <strong>Create</strong>, then install to your workspace.
+              </p>
+              {isLocalhost ? (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Slack can&apos;t reach localhost, so the manifest&apos;s Request URL will not
+                    verify. Run{" "}
+                    <code>
+                      ngrok http{" "}
+                      {typeof window !== "undefined" ? window.location.port || "9300" : "9300"}
+                    </code>{" "}
+                    and replace the Request URL under <strong>Event Subscriptions</strong> with your
+                    ngrok URL plus this path:
+                  </p>
+                  <CopyableValue value={webhookPath} />
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    The manifest subscribes to <code>app_mention</code>,{" "}
+                    <code>message.channels</code>, <code>message.groups</code>,{" "}
+                    <code>message.im</code> and <code>message.mpim</code> at this Request URL:
+                  </p>
+                  <CopyableValue value={webhookUrl} />
+                </>
+              )}
+              <Button size="sm" onClick={onCreateSlackApp} disabled={creatingSlackApp}>
+                <ExternalLink className="w-3 h-3 mr-1" />
+                {creatingSlackApp ? "Opening..." : "Create Slack App"}
+              </Button>
+            </div>
+          )}
+          {hasSlackConfig && !webhookVerified && (
+            <p className="text-xs text-muted-foreground">
+              Waiting for Slack&apos;s first call to the Request URL.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <StepIcon done={hasSlackConfig} />
+        <div className="flex-1 space-y-1">
+          <p
+            className={`text-sm font-medium ${hasSlackConfig ? "text-muted-foreground line-through" : ""}`}
+          >
+            3. Copy credentials back
+          </p>
+          {currentStep === 2 && (
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">
                 After creating the Slack app, copy two values back here:
@@ -145,88 +209,12 @@ function SetupSteps({
       </div>
 
       <div className="flex gap-3">
-        <StepIcon done={isPublished} />
-        <div className="flex-1 space-y-1">
-          <p
-            className={`text-sm font-medium ${isPublished ? "text-muted-foreground line-through" : ""}`}
-          >
-            3. Publish the app
-          </p>
-          {currentStep === 3 && (
-            <p className="text-xs text-muted-foreground">
-              Click the <strong>Publish</strong> button above to activate the webhook endpoint.
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div className="flex gap-3">
-        <StepIcon done={webhookVerified} />
-        <div className="flex-1 space-y-1">
-          <p
-            className={`text-sm font-medium ${webhookVerified ? "text-muted-foreground line-through" : ""}`}
-          >
-            4. Configure Event Subscriptions
-          </p>
-          {currentStep === 4 ? (
-            <div className="space-y-2">
-              {isLocalhost ? (
-                <>
-                  <p className="text-xs text-muted-foreground">
-                    Slack can&apos;t reach localhost. Run{" "}
-                    <code>
-                      ngrok http{" "}
-                      {typeof window !== "undefined" ? window.location.port || "9300" : "9300"}
-                    </code>{" "}
-                    then use the ngrok URL with this path as your Request URL:
-                  </p>
-                  <div className="flex items-center gap-2 bg-muted p-2">
-                    <code className="text-xs flex-1 truncate">{webhookPath}</code>
-                    <button
-                      className="shrink-0 hover:text-foreground text-muted-foreground"
-                      onClick={() => navigator.clipboard.writeText(webhookPath)}
-                    >
-                      <Copy className="w-3 h-3" />
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className="text-xs text-muted-foreground">
-                    In your Slack app settings, go to <strong>Event Subscriptions</strong>, enable
-                    events, and paste this Request URL:
-                  </p>
-                  <div className="flex items-center gap-2 bg-muted p-2">
-                    <code className="text-xs flex-1 truncate">{webhookUrl}</code>
-                    <button
-                      className="shrink-0 hover:text-foreground text-muted-foreground"
-                      onClick={() => navigator.clipboard.writeText(webhookUrl)}
-                    >
-                      <Copy className="w-3 h-3" />
-                    </button>
-                  </div>
-                </>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Then subscribe to bot events: <code>message.channels</code>,{" "}
-                <code>message.groups</code>, <code>message.im</code>, <code>app_mention</code>
-              </p>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              Add the webhook URL to your Slack app&apos;s Event Subscriptions.
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div className="flex gap-3">
         <StepIcon done={firstMessageReceived} />
         <div className="flex-1 space-y-1">
           <p
             className={`text-sm font-medium ${firstMessageReceived ? "text-muted-foreground line-through" : ""}`}
           >
-            5. Invite the bot and test
+            4. Invite the bot and test
           </p>
           <p className="text-xs text-muted-foreground">
             In Slack, use <code>/invite @botname</code> in a channel, then send a message.
