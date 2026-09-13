@@ -104,6 +104,7 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 | **User docs** | `docs/integrations/{platform}.md`, setup guide, scopes, session strategies, reply modes. |
 | **UI test case** | `knowledge/test-cases/ui/{platform}_app/TC001_*.md`, manual test for app creation, webhook verification, message flow. |
 | **Threat model** | Section in `knowledge/security/threat-model.md` covering platform-specific threats (signing bypass, bot loops, replay). |
+| **Thread backfill** | When a new session joins an existing thread, backfill its history by following the platform's pagination cursor to the end — a single page is a silent truncation. Cap what is injected, and say so in the injected context when the cap bites, so the agent can tell a short thread from the tail of a long one. Backfill only where "new session" and "thread the agent has not seen" mean the same thing (for Slack, `per_thread` alone). |
 | **Terminal-state notice** | A turn ending without a delivered reply posts exactly one status line with a session link (see Adapter Lifecycle). |
 | **Startup recovery** | Re-register active deliveries after server restart (query sessions with `{platform}:*` tags). |
 | **DEV_MODE fallback** | Polling-based delivery when EventNotificationBroadcaster is unavailable (in-memory mode). |
@@ -138,7 +139,7 @@ Reference implementation. See [`crates/server/specs/slack-integration.md`](../..
 - Signing: HMAC-SHA256 via `signing_secret`
 - Session strategies: `per_thread`, `per_channel`, `per_user`
 - Reply modes: `all_messages`, `report_progress_only`
-- Thread context injection via `conversations.replies` API
+- Thread context injection via paginated `conversations.replies` (`per_thread` only, capped with a truncation notice)
 - Event-driven delivery via `SlackDeliveryAdapter` (implements `ChannelDeliveryAdapter`)
 - Startup recovery: re-registers active sessions with `slack:*` tags
 - DEV_MODE: falls back to 120s polling
