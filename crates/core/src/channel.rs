@@ -184,6 +184,10 @@ pub struct OutboundChannelMessage {
     pub thread_ref: String,
     /// Whether this is a progress report (vs. a final answer).
     pub is_progress_report: bool,
+    /// Id of the input message this reply answers, when the platform can stamp
+    /// it onto the posted message for later correlation. `None` leaves the
+    /// message unstamped rather than inventing a key.
+    pub correlation_id: Option<String>,
 }
 
 // ============================================

@@ -885,6 +885,137 @@ async fn test_real_slack_post_message() {
         .await;
 }
 
+/// Post a real `markdown` block payload and read it back off the channel.
+///
+/// The unit tests prove the payload we build; only Slack can prove Slack
+/// accepts it. A `markdown` block that Slack rejects fails the post outright,
+/// and `metadata` is only echoed back if Slack actually stored it — so reading
+/// the message back is what makes this test worth its network call (EVE-971).
+/// Requires: SLACK_BOT_TOKEN, SLACK_TEST_CHANNEL
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_real_slack_markdown_block_payload() {
+    let (bot_token, _signing_secret, channel) = real_slack_credentials();
+
+    // The three constructs the issue calls out as degrading under mrkdwn.
+    // No line continuations: their leading indentation reaches Slack as literal
+    // spaces and gets parsed as preformatted text.
+    let markdown = concat!(
+        "# Heading\n",
+        "\n",
+        "| col | val |\n",
+        "|---|---|\n",
+        "| a | 1 |\n",
+        "\n",
+        "```rust\n",
+        "fn main() { println!(\"hi\"); }\n",
+        "```"
+    );
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("https://slack.com/api/chat.postMessage")
+        .header("Authorization", format!("Bearer {}", bot_token))
+        .json(&json!({
+            "channel": channel,
+            "text": "[Integration Test] markdown block fallback",
+            "blocks": [{"type": "markdown", "text": markdown}],
+            "metadata": {
+                "event_type": "everruns_agent_reply",
+                "event_payload": {
+                    "session_id": "session_integration_test",
+                    "input_message_id": "msg_integration_test"
+                }
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to send request to Slack");
+
+    let body: Value = resp
+        .json::<Value>()
+        .await
+        .expect("Failed to parse Slack response");
+
+    if body["error"].as_str() == Some("not_in_channel") {
+        eprintln!(
+            "Skipping test_real_slack_markdown_block_payload: bot not invited to channel {}.",
+            channel
+        );
+        return;
+    }
+
+    assert!(
+        body["ok"].as_bool().unwrap_or(false),
+        "Slack must accept a markdown block payload. Error: {:?}",
+        body["error"]
+    );
+
+    let ts = body["ts"]
+        .as_str()
+        .expect("Response should include ts")
+        .to_string();
+
+    // Read the message back: Slack echoes stored blocks and metadata.
+    let history = client
+        .get(format!(
+            "https://slack.com/api/conversations.history?channel={}&latest={}&inclusive=true&limit=1&include_all_metadata=true",
+            channel, ts
+        ))
+        .header("Authorization", format!("Bearer {}", bot_token))
+        .send()
+        .await
+        .expect("Failed to read channel history")
+        .json::<Value>()
+        .await
+        .expect("Failed to parse history response");
+
+    if history["ok"].as_bool().unwrap_or(false) {
+        let posted = &history["messages"][0];
+        let rendered = posted["blocks"].to_string();
+
+        // Slack normalizes a `markdown` block server-side into its native block
+        // types, so the stored type is *not* "markdown" — and that is the point.
+        // A `header` block exists only if Slack parsed `# Heading` as a heading;
+        // on the old plain-`text` path the same string arrived as the literal
+        // characters "# Heading" with no blocks at all. This is what proves the
+        // Markdown was interpreted rather than passed through verbatim.
+        assert!(
+            rendered.contains(r#""type":"header""#),
+            "Slack must parse the heading into a header block, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("rich_text_preformatted"),
+            "Slack must parse the fenced block as preformatted code, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("Heading"),
+            "heading text must survive the round trip, got: {rendered}"
+        );
+        assert_eq!(
+            posted["metadata"]["event_type"], "everruns_agent_reply",
+            "correlation metadata must survive the round trip, got: {:?}",
+            posted["metadata"]
+        );
+        assert_eq!(
+            posted["metadata"]["event_payload"]["session_id"],
+            "session_integration_test"
+        );
+    } else {
+        // history needs channels:history; the post assertion above still stands.
+        eprintln!(
+            "Could not read back message (error: {:?}); post-side assertions still applied.",
+            history["error"]
+        );
+    }
+
+    let _ = client
+        .post("https://slack.com/api/chat.delete")
+        .header("Authorization", format!("Bearer {}", bot_token))
+        .json(&json!({ "channel": channel, "ts": ts }))
+        .send()
+        .await;
+}
+
 /// Test resolving a real Slack user's display name via users.info API.
 /// Requires: SLACK_BOT_TOKEN (and a real user in the workspace)
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
