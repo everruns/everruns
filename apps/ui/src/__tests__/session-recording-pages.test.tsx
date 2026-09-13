@@ -1,8 +1,32 @@
 import { render, screen } from "@testing-library/react";
 import type { Event } from "@/lib/api/types";
+import { formatMessage } from "@/lib/i18n";
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
+jest.mock("@/hooks/use-sessions", () => ({
+  useForkSession: () => ({ mutate: jest.fn(), isPending: false }),
+}));
+
+const translations: Record<string, string> = {
+  no_messages_yet: "No messages yet",
+  session_transcript_empty_description:
+    "This read-only transcript records the session as it runs. Fork it into a chat to talk to the agent.",
+  fork_into_chat: "Fork into chat",
+};
+
+jest.mock("@/providers/locale-provider", () => ({
+  useLocale: () => ({ t: (key: string) => translations[key] ?? key }),
+}));
 
 const mockSessionContext = {
   sessionId: "session_123",
+  session: {
+    id: "session_123",
+    title: "Recorded run",
+    tags: ["recording"],
+  },
   events: [] as Event[],
   eventsLoading: false,
 };
@@ -16,7 +40,16 @@ jest.mock("@/hooks/use-session-tasks", () => ({
 }));
 
 jest.mock("@/components/session/session-transcript", () => ({
-  SessionTranscript: () => <div data-testid="session-transcript">conversation</div>,
+  SessionTranscript: ({ emptyState }: { emptyState?: React.ReactNode }) => (
+    <div data-testid="session-transcript">
+      {emptyState ?? (
+        <>
+          <p>No messages yet</p>
+          <p>Start with a prompt, screenshot, or slash command.</p>
+        </>
+      )}
+    </div>
+  ),
 }));
 
 jest.mock("@/components/session/run-timeline", () => ({
@@ -56,6 +89,22 @@ describe("session recording projections", () => {
 
     expect(screen.getByTestId("session-transcript")).toBeInTheDocument();
     expect(screen.queryByTestId("run-timeline")).not.toBeInTheDocument();
+  });
+
+  it("explains an empty recording and offers a fork instead of inviting an unavailable prompt", () => {
+    render(<TranscriptPage />);
+
+    expect(
+      screen.queryByText("Start with a prompt, screenshot, or slash command."),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/read-only transcript/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fork into chat" })).toBeInTheDocument();
+  });
+  it("localizes the recording explanation and fork action in Ukrainian", () => {
+    expect(formatMessage("uk", "session_transcript_empty_description")).toContain(
+      "доступна лише для читання",
+    );
+    expect(formatMessage("uk", "fork_into_chat")).toBe("Відгалузити в чат");
   });
 
   it("renders Timeline full-width without a transcript rail", () => {

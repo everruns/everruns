@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, type ComponentType } from "react";
+import type { ComponentType } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { Agent, ModelWithProvider, Session, SessionStatus, TokenUsage } from "@/lib/api/types";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EntityIdentity } from "@/components/ui/entity-identity";
+import { SessionForkButton } from "@/components/session/session-fork-button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { IconTile, PageBreadcrumb } from "@/components/layout/page-layout";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useForkSession } from "@/hooks/use-sessions";
 import { downloadSessionExport } from "@/lib/session-export";
 import { useLocale } from "@/providers/locale-provider";
 import { useOptionalNotificationsContext } from "@/providers/notifications-provider";
@@ -26,7 +25,6 @@ import {
   getEntityReferenceLabel,
 } from "@/lib/entity-lifecycle";
 import { formatCompactNumber, formatTokens } from "@/lib/formatting";
-import { CHAT_THREAD_TAG } from "@/lib/chat-threads";
 import { cn, shortenId } from "@/lib/utils";
 import {
   Activity,
@@ -35,9 +33,7 @@ import {
   Download,
   ExternalLink,
   Folder,
-  GitFork,
   ListTree,
-  Loader2,
   MessageSquare,
   Sparkles,
   Waypoints,
@@ -246,48 +242,16 @@ function SessionRecordingActions({
   sessionTitle: string | null;
   sessionTags: string[];
 }) {
-  const router = useRouter();
   const { locale } = useLocale();
   const notificationsContext = useOptionalNotificationsContext();
-  const forkSession = useForkSession();
-  const [forkError, setForkError] = useState<string | null>(null);
-
-  const handleFork = () => {
-    setForkError(null);
-    forkSession.mutate(
-      {
-        sessionId,
-        // Preserve the recording's tags and mark the fork as a chat thread;
-        // the thread route rejects unmarked sessions to prevent direct URL
-        // navigation from making a recording mutable.
-        request: {
-          title: sessionTitle ? `${sessionTitle} (chat)` : undefined,
-          tags: Array.from(new Set([...sessionTags, CHAT_THREAD_TAG])),
-        },
-      },
-      {
-        onSuccess: (session) => router.push(`/chats/${session.id}`),
-        onError: (error) =>
-          setForkError(error instanceof Error ? error.message : "Could not fork this session"),
-      },
-    );
-  };
 
   return (
     <>
-      <button
-        type="button"
-        onClick={handleFork}
-        disabled={forkSession.isPending}
-        className={cn(buttonVariants({ variant: "default", size: "sm" }), "gap-1")}
-      >
-        {forkSession.isPending ? (
-          <Loader2 className="icon-sharp h-4 w-4 animate-spin" />
-        ) : (
-          <GitFork className="icon-sharp h-4 w-4" />
-        )}
-        Fork into chat
-      </button>
+      <SessionForkButton
+        sessionId={sessionId}
+        sessionTitle={sessionTitle}
+        sessionTags={sessionTags}
+      />
 
       {agentId && (
         <Link
@@ -326,12 +290,6 @@ function SessionRecordingActions({
           </DropdownMenuContent>
         </DropdownMenuPositioner>
       </DropdownMenu>
-
-      {forkError && (
-        <span role="alert" className="text-xs text-destructive">
-          {forkError}
-        </span>
-      )}
     </>
   );
 }

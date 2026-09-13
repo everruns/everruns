@@ -16,6 +16,10 @@ const messages = {
     jump_to_turn: "Jump to turn",
     no_messages_yet: "No messages yet",
     start_with_prompt: "Start with a prompt, screenshot, or slash command.",
+    session_transcript_empty_description:
+      "This read-only transcript records the session as it runs. Fork it into a chat to talk to the agent.",
+    fork_into_chat: "Fork into chat",
+    fork_session_error: "Could not fork this session",
     loading_older_messages: "Loading older messages...",
     waiting_on_tools: "Waiting on tools",
     scheduled: "Scheduled",
@@ -236,6 +240,10 @@ const messages = {
     jump_to_turn: "Перейти до ходу",
     no_messages_yet: "Повідомлень ще немає",
     start_with_prompt: "Почніть із запиту, скриншота або slash-команди.",
+    session_transcript_empty_description:
+      "Ця розшифровка доступна лише для читання й записує перебіг сесії. Створіть чат-відгалуження, щоб поговорити з агентом.",
+    fork_into_chat: "Відгалузити в чат",
+    fork_session_error: "Не вдалося відгалузити цю сесію",
     loading_older_messages: "Завантажую старіші повідомлення...",
     waiting_on_tools: "Очікування інструментів",
     scheduled: "За розкладом",
