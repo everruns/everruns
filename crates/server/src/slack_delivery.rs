@@ -29,6 +29,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::event_notifications::EventNotificationPayload;
+use crate::services::run_summary::is_terminal_turn_event;
 use crate::storage::StorageBackend;
 
 /// Context needed to deliver Slack messages for a turn.
@@ -41,6 +42,9 @@ struct DeliveryContext {
     reply_mode: SlackReplyMode,
     /// Last event ID we've processed (for cursor-based pagination).
     since_event_id: Option<EventId>,
+    /// Whether a reply has already reached Slack for this turn. Terminal states
+    /// only announce themselves when the user got nothing (EVE-966).
+    delivered: bool,
 }
 
 /// Key for delivery context — a turn within a session.
@@ -61,6 +65,11 @@ pub struct SlackDeliveryDispatcher {
     active_sessions: Arc<RwLock<std::collections::HashSet<Uuid>>>,
     db: Arc<StorageBackend>,
     shutdown_tx: tokio::sync::watch::Sender<bool>,
+    /// UI base used to build the session link carried by terminal notices.
+    /// Empty when unconfigured, in which case notices ship without a link.
+    frontend_url: String,
+    /// Slack API base. Overridden by tests to point at a mock server.
+    slack_api_base: String,
 }
 
 impl SlackDeliveryDispatcher {
@@ -71,6 +80,17 @@ impl SlackDeliveryDispatcher {
     pub fn start(
         db: Arc<StorageBackend>,
         event_rx: broadcast::Receiver<EventNotificationPayload>,
+        frontend_url: String,
+    ) -> Arc<Self> {
+        Self::start_with_slack_api_base(db, event_rx, frontend_url, SLACK_API_BASE.to_string())
+    }
+
+    /// `start`, with the Slack API base injected. Tests point this at a mock.
+    pub fn start_with_slack_api_base(
+        db: Arc<StorageBackend>,
+        event_rx: broadcast::Receiver<EventNotificationPayload>,
+        frontend_url: String,
+        slack_api_base: String,
     ) -> Arc<Self> {
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
@@ -79,6 +99,8 @@ impl SlackDeliveryDispatcher {
             active_sessions: Arc::new(RwLock::new(std::collections::HashSet::new())),
             db,
             shutdown_tx,
+            frontend_url,
+            slack_api_base,
         });
 
         // Spawn the event processing loop
@@ -115,6 +137,7 @@ impl SlackDeliveryDispatcher {
             input_message_id,
             reply_mode,
             since_event_id: None,
+            delivered: false,
         };
 
         info!(
@@ -224,17 +247,26 @@ impl SlackDeliveryDispatcher {
             };
 
             let mut new_since_id = ctx.since_event_id;
-            let mut should_unregister = false;
+            let mut delivered = ctx.delivered;
+            let mut terminal_event: Option<String> = None;
 
             for event in &events {
                 new_since_id = Some(event.id);
 
-                // Only consider events for our turn
+                // Only consider events for our turn.
+                //
+                // `turn.cancelled` is the exception. Both cancel paths mint a fresh
+                // `input_message_id` for the synthetic event because neither knows the
+                // in-flight turn's id, so a per-turn match would never fire — which is
+                // exactly the registration leak EVE-966 describes. Cancellation is
+                // session-scoped anyway (`cancel_run` takes a session), so every
+                // delivery on this session is terminal once it arrives.
                 let event_input_msg = event
                     .context
                     .get("input_message_id")
                     .and_then(|v| v.as_str());
-                let is_our_turn = event_input_msg == Some(&ctx.input_message_id);
+                let is_our_turn = event_input_msg == Some(&ctx.input_message_id)
+                    || event.event_type == "turn.cancelled";
 
                 if !is_our_turn {
                     continue;
@@ -243,44 +275,105 @@ impl SlackDeliveryDispatcher {
                 // Post output messages to Slack
                 if let Some(text) =
                     extract_delivery_text(&event.event_type, ctx.reply_mode, &event.data)
-                    && let Err(e) = post_to_slack_with_retry(
+                {
+                    match post_to_slack_with_retry_base(
+                        &self.slack_api_base,
                         &ctx.bot_token,
                         &ctx.channel,
                         &ctx.thread_ts,
                         &text,
                     )
                     .await
-                {
-                    error!(
-                        %session_id,
-                        error = %e,
-                        "Failed to post message to Slack after retries"
-                    );
+                    {
+                        // Only a reply Slack accepted counts as delivered. A send that
+                        // exhausted its retries or hit a permanent error leaves this
+                        // false, so the notice below tells the user the answer was
+                        // produced and lost rather than leaving the thread silent.
+                        Ok(()) => delivered = true,
+                        Err(e) => error!(
+                            %session_id,
+                            error = %e,
+                            "Failed to post message to Slack after retries"
+                        ),
+                    }
                 }
 
                 // Stop watching when turn ends
-                if event.event_type == "turn.completed" || event.event_type == "turn.failed" {
+                if is_terminal_turn_event(&event.event_type) {
                     debug!(
                         %session_id,
                         event_type = %event.event_type,
                         "Turn ended, unregistering Slack delivery"
                     );
-                    should_unregister = true;
+                    terminal_event = Some(event.event_type.clone());
                     break;
                 }
             }
 
             // Update cursor or unregister
-            if should_unregister {
+            if let Some(event_type) = terminal_event {
+                // A turn that ended without a delivered reply is silence in the Slack
+                // thread. Post exactly one status line so the user knows the request
+                // is over, and unregister either way.
+                if !delivered {
+                    let notice = self.terminal_notice(&event_type, session_id);
+                    if let Err(e) = post_to_slack_with_retry_base(
+                        &self.slack_api_base,
+                        &ctx.bot_token,
+                        &ctx.channel,
+                        &ctx.thread_ts,
+                        &notice,
+                    )
+                    .await
+                    {
+                        warn!(
+                            %session_id,
+                            event_type = %event_type,
+                            error = %e,
+                            "Failed to post terminal-state notice to Slack"
+                        );
+                    }
+                }
                 self.unregister(&key).await;
-            } else if new_since_id != ctx.since_event_id {
+            } else if new_since_id != ctx.since_event_id || delivered != ctx.delivered {
                 // Update the cursor
                 let mut deliveries = self.deliveries.write().await;
                 if let Some(ctx) = deliveries.get_mut(&key) {
                     ctx.since_event_id = new_since_id;
+                    ctx.delivered = delivered;
                 }
             }
         }
+    }
+
+    /// One terse status line for a turn that ended without a reply.
+    ///
+    /// Deliberately carries no error detail: Slack channels are frequently public
+    /// and the failure text is server-internal. The session link is the escape
+    /// hatch for anyone who needs the real reason.
+    fn terminal_notice(&self, event_type: &str, session_id: Uuid) -> String {
+        let headline = match event_type {
+            "turn.failed" => "The agent could not finish this request.",
+            "turn.cancelled" => "This request was cancelled.",
+            _ => "The agent finished without a reply.",
+        };
+
+        match self.session_link(session_id) {
+            Some(link) => format!("{headline} <{link}|View the session>"),
+            None => headline.to_string(),
+        }
+    }
+
+    /// Absolute UI link to the session, when a frontend URL is configured.
+    fn session_link(&self, session_id: Uuid) -> Option<String> {
+        let base = self.frontend_url.trim_end_matches('/');
+        if base.is_empty() {
+            return None;
+        }
+        Some(format!(
+            "{base}/sessions/{}/chat",
+            SessionId::from_uuid(session_id)
+        ))
     }
 
     /// Remove a delivery registration.
@@ -1468,7 +1561,7 @@ mod tests {
             // dispatcher struct with a valid broadcast receiver so `start`
             // can wire the event loop.
             let (_tx, rx) = broadcast::channel::<EventNotificationPayload>(16);
-            SlackDeliveryDispatcher::start(db, rx)
+            SlackDeliveryDispatcher::start(db, rx, String::new())
         }
 
         #[tokio::test]
@@ -1519,6 +1612,374 @@ mod tests {
                 1,
                 "session app_id should drive Slack recovery even if routing tags drift"
             );
+        }
+    }
+
+    /// EVE-966: a turn that ends without a delivered reply must say so in the
+    /// Slack thread exactly once, and must always release its registration.
+    mod terminal_state_tests {
+        use super::*;
+        use crate::storage::StorageBackend;
+        use crate::storage::models::{CreateEventRow, CreateSessionRow};
+        use everruns_provider::typed_id::PrincipalId;
+        use everruns_provider::typed_id::{AgentId, HarnessId};
+        use tokio::sync::broadcast;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        const ORG: i64 = 30;
+        const INPUT_MSG: &str = "msg_turn_one";
+        const FRONTEND: &str = "https://app.example.com";
+        const CHANNEL: &str = "C_TERMINAL";
+        const THREAD_TS: &str = "1700000000.000100";
+
+        async fn seed_session(db: &StorageBackend) -> everruns_provider::typed_id::SessionId {
+            db.create_session(CreateSessionRow {
+                source: everruns_platform::SessionSource::Api,
+                workspace_id: None,
+                org_id: ORG,
+                app_id: None,
+                harness_id: Some(HarnessId::from_uuid(uuid::Uuid::nil())),
+                agent_id: Some(AgentId::from_uuid(uuid::Uuid::nil())),
+                agent_version_id: None,
+                agent_config_hash: None,
+                agent_identity_id: None,
+                owner_principal_id: PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
+                title: Some("terminal state test".to_string()),
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                system_prompt: None,
+                initial_files: serde_json::Value::Array(vec![]),
+                hints: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+                blueprint_id: None,
+                blueprint_config: None,
+                network_access: None,
+                parent_session_id: None,
+                budget_root_session_id: None,
+            })
+            .await
+            .expect("create session")
+            .id
+        }
+
+        async fn emit(
+            db: &StorageBackend,
+            session_id: everruns_provider::typed_id::SessionId,
+            event_type: &str,
+            input_message_id: &str,
+            data: serde_json::Value,
+        ) {
+            db.create_event(CreateEventRow {
+                session_id,
+                event_type: event_type.to_string(),
+                ts: chrono::Utc::now(),
+                context: serde_json::json!({ "input_message_id": input_message_id }),
+                data,
+                metadata: None,
+                tags: None,
+            })
+            .await
+            .expect("create event");
+        }
+
+        fn reply_event_data(text: &str) -> serde_json::Value {
+            serde_json::json!({
+                "message": { "content": [{ "type": "text", "text": text }] }
+            })
+        }
+
+        /// Slack mock that accepts every post, plus a dispatcher pointed at it.
+        async fn dispatcher_against_slack(
+            db: Arc<StorageBackend>,
+        ) -> (Arc<SlackDeliveryDispatcher>, MockServer) {
+            let mock_server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({ "ok": true, "ts": "1.2" })),
+                )
+                .mount(&mock_server)
+                .await;
+
+            let (_tx, rx) = broadcast::channel::<EventNotificationPayload>(16);
+            let dispatcher = SlackDeliveryDispatcher::start_with_slack_api_base(
+                db,
+                rx,
+                FRONTEND.to_string(),
+                mock_server.uri(),
+            );
+            (dispatcher, mock_server)
+        }
+
+        /// Text of every message the dispatcher posted, in order.
+        async fn posted_texts(mock_server: &MockServer) -> Vec<String> {
+            mock_server
+                .received_requests()
+                .await
+                .unwrap_or_default()
+                .iter()
+                .map(|req| {
+                    let body: serde_json::Value =
+                        serde_json::from_slice(&req.body).expect("slack post body is json");
+                    body["text"].as_str().unwrap_or_default().to_string()
+                })
+                .collect()
+        }
+
+        async fn register_turn(dispatcher: &SlackDeliveryDispatcher, session_id: uuid::Uuid) {
+            dispatcher
+                .register(
+                    session_id,
+                    INPUT_MSG.to_string(),
+                    "xoxb-test-token".to_string(),
+                    CHANNEL.to_string(),
+                    THREAD_TS.to_string(),
+                    SlackReplyMode::AllMessages,
+                )
+                .await;
+        }
+
+        #[tokio::test]
+        async fn turn_failed_without_reply_posts_one_notice() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let session_id = seed_session(&db).await;
+            let (dispatcher, mock_server) = dispatcher_against_slack(db.clone()).await;
+            register_turn(&dispatcher, session_id.uuid()).await;
+
+            emit(
+                &db,
+                session_id,
+                "turn.failed",
+                INPUT_MSG,
+                serde_json::json!({ "error": "provider exploded: secret-bearing detail" }),
+            )
+            .await;
+            dispatcher.process_session_events(session_id.uuid()).await;
+
+            let texts = posted_texts(&mock_server).await;
+            assert_eq!(texts.len(), 1, "expected exactly one notice, got {texts:?}");
+            assert!(
+                texts[0].contains("could not finish"),
+                "unexpected notice: {}",
+                texts[0]
+            );
+            assert!(
+                texts[0].contains(&format!("{FRONTEND}/sessions/{session_id}/chat")),
+                "notice must link back to the session: {}",
+                texts[0]
+            );
+            assert!(
+                !texts[0].contains("secret-bearing detail"),
+                "notice must not leak internal error text: {}",
+                texts[0]
+            );
+            assert_eq!(
+                dispatcher.active_delivery_count().await,
+                0,
+                "a failed turn must release its registration"
+            );
+        }
+
+        #[tokio::test]
+        async fn turn_completed_without_output_posts_notice() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let session_id = seed_session(&db).await;
+            let (dispatcher, mock_server) = dispatcher_against_slack(db.clone()).await;
+            register_turn(&dispatcher, session_id.uuid()).await;
+
+            emit(
+                &db,
+                session_id,
+                "turn.completed",
+                INPUT_MSG,
+                serde_json::json!({}),
+            )
+            .await;
+            dispatcher.process_session_events(session_id.uuid()).await;
+
+            let texts = posted_texts(&mock_server).await;
+            assert_eq!(texts.len(), 1, "expected exactly one notice, got {texts:?}");
+            assert!(
+                texts[0].contains("without a reply"),
+                "unexpected notice: {}",
+                texts[0]
+            );
+        }
+
+        #[tokio::test]
+        async fn delivered_reply_suppresses_notice() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let session_id = seed_session(&db).await;
+            let (dispatcher, mock_server) = dispatcher_against_slack(db.clone()).await;
+            register_turn(&dispatcher, session_id.uuid()).await;
+
+            emit(
+                &db,
+                session_id,
+                "output.message.completed",
+                INPUT_MSG,
+                reply_event_data("Here is your answer."),
+            )
+            .await;
+            emit(
+                &db,
+                session_id,
+                "turn.completed",
+                INPUT_MSG,
+                serde_json::json!({}),
+            )
+            .await;
+            dispatcher.process_session_events(session_id.uuid()).await;
+
+            let texts = posted_texts(&mock_server).await;
+            assert_eq!(texts, vec!["Here is your answer.".to_string()]);
+            assert_eq!(dispatcher.active_delivery_count().await, 0);
+        }
+
+        /// The reply and the terminal event usually arrive in separate
+        /// notifications, so `delivered` has to survive between passes or every
+        /// answered turn would be chased by a spurious "no reply" notice.
+        #[tokio::test]
+        async fn reply_in_earlier_pass_still_suppresses_notice() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let session_id = seed_session(&db).await;
+            let (dispatcher, mock_server) = dispatcher_against_slack(db.clone()).await;
+            register_turn(&dispatcher, session_id.uuid()).await;
+
+            emit(
+                &db,
+                session_id,
+                "output.message.completed",
+                INPUT_MSG,
+                reply_event_data("Answered early."),
+            )
+            .await;
+            dispatcher.process_session_events(session_id.uuid()).await;
+
+            emit(
+                &db,
+                session_id,
+                "turn.completed",
+                INPUT_MSG,
+                serde_json::json!({}),
+            )
+            .await;
+            dispatcher.process_session_events(session_id.uuid()).await;
+
+            let texts = posted_texts(&mock_server).await;
+            assert_eq!(texts, vec!["Answered early.".to_string()]);
+        }
+
+        /// Both cancel paths mint a fresh `input_message_id`, so the delivery used
+        /// to sit registered forever and the user was never told.
+        #[tokio::test]
+        async fn turn_cancelled_notifies_and_unregisters() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let session_id = seed_session(&db).await;
+            let (dispatcher, mock_server) = dispatcher_against_slack(db.clone()).await;
+            register_turn(&dispatcher, session_id.uuid()).await;
+
+            emit(
+                &db,
+                session_id,
+                "turn.cancelled",
+                "msg_freshly_minted_by_cancel",
+                serde_json::json!({ "reason": "User requested cancellation" }),
+            )
+            .await;
+            dispatcher.process_session_events(session_id.uuid()).await;
+
+            let texts = posted_texts(&mock_server).await;
+            assert_eq!(texts.len(), 1, "expected exactly one notice, got {texts:?}");
+            assert!(
+                texts[0].contains("cancelled"),
+                "unexpected notice: {}",
+                texts[0]
+            );
+            assert_eq!(
+                dispatcher.active_delivery_count().await,
+                0,
+                "cancelling must not leak the delivery registration"
+            );
+        }
+
+        /// A reply Slack refused is not a delivered reply: the user still needs to
+        /// be told the turn is over.
+        #[tokio::test]
+        async fn failed_delivery_still_yields_notice() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let session_id = seed_session(&db).await;
+
+            // Reject every post with a permanent error so no retry budget burns.
+            let mock_server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/chat.postMessage"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(
+                    serde_json::json!({ "ok": false, "error": "channel_not_found" }),
+                ))
+                .mount(&mock_server)
+                .await;
+
+            let (_tx, rx) = broadcast::channel::<EventNotificationPayload>(16);
+            let dispatcher = SlackDeliveryDispatcher::start_with_slack_api_base(
+                db.clone(),
+                rx,
+                FRONTEND.to_string(),
+                mock_server.uri(),
+            );
+            register_turn(&dispatcher, session_id.uuid()).await;
+
+            emit(
+                &db,
+                session_id,
+                "output.message.completed",
+                INPUT_MSG,
+                reply_event_data("Answer nobody will see."),
+            )
+            .await;
+            emit(
+                &db,
+                session_id,
+                "turn.completed",
+                INPUT_MSG,
+                serde_json::json!({}),
+            )
+            .await;
+            dispatcher.process_session_events(session_id.uuid()).await;
+
+            let texts = posted_texts(&mock_server).await;
+            assert_eq!(
+                texts.len(),
+                2,
+                "the lost reply and then the notice, got {texts:?}"
+            );
+            assert!(
+                texts[1].contains("without a reply"),
+                "unexpected notice: {}",
+                texts[1]
+            );
+            assert_eq!(dispatcher.active_delivery_count().await, 0);
+        }
+
+        #[tokio::test]
+        async fn notice_without_frontend_url_omits_link() {
+            let (_tx, rx) = broadcast::channel::<EventNotificationPayload>(16);
+            let dispatcher = SlackDeliveryDispatcher::start(
+                Arc::new(StorageBackend::in_memory()),
+                rx,
+                String::new(),
+            );
+
+            let notice = dispatcher.terminal_notice("turn.failed", uuid::Uuid::nil());
+            assert_eq!(notice, "The agent could not finish this request.");
         }
     }
 }
