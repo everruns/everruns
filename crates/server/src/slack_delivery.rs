@@ -14,7 +14,7 @@
 
 use async_trait::async_trait;
 use everruns_core::channel::{
-    ChannelDeliveryAdapter, DeliveryContext as ChannelDeliveryContext,
+    ChannelDeliveryAdapter, ChannelStreamDelivery, DeliveryContext as ChannelDeliveryContext,
     DeliveryResult as ChannelDeliveryResult, OutboundChannelMessage,
 };
 use everruns_core::progress_reporting::{
@@ -77,6 +77,46 @@ pub fn classify_surface(
     }
 }
 
+/// How often open streams are flushed to the platform.
+///
+/// Measured against a real workspace rather than guessed (EVE-974). Appending
+/// serially, Slack sustained 300 appends in 86s — 209/min — with no rate-limit
+/// push-back at all, so the documented "Tier 2: 20+ per minute" is a floor and
+/// not the ceiling. The real limiter is call latency: a median `chat.appendStream`
+/// took 291ms, so a flush interval below ~300ms cannot actually deliver more, it
+/// just queues behind calls already in flight.
+///
+/// 500ms therefore sits above measured call latency and yields 120/min — a ~1.7x
+/// margin under the rate we sustained without push-back.
+const STREAM_FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Flush early once this much text is waiting, so a fast burst surfaces without
+/// waiting out the timer. Well under Slack's 12,000-character append cap.
+const STREAM_FLUSH_CHARS: usize = 2_000;
+
+/// An open stream for one output message.
+///
+/// Deltas are not accumulated locally: `output.message.delta` carries the full
+/// text so far in `accumulated`, so a dropped notification self-heals on the next
+/// one rather than leaving a permanent hole in the reply.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StreamState {
+    /// Platform handle — Slack's stream `ts`.
+    handle: String,
+    /// Full text seen so far.
+    accumulated: String,
+    /// How many bytes of `accumulated` have reached the platform. Always a
+    /// previous `accumulated.len()`, so slicing at it stays on a char boundary.
+    sent: usize,
+}
+
+impl StreamState {
+    /// Text produced since the last flush.
+    fn pending(&self) -> &str {
+        &self.accumulated[self.sent.min(self.accumulated.len())..]
+    }
+}
+
 /// Everything needed to start watching one turn's delivery.
 ///
 /// A struct rather than a parameter list: the turn's identity, its Slack
@@ -90,6 +130,10 @@ pub struct DeliveryRegistration {
     pub thread_ts: String,
     pub reply_mode: SlackReplyMode,
     pub surface: SlackSurface,
+    /// Slack user and team the reply is for. `chat.startStream` requires both
+    /// when streaming into a channel (EVE-974).
+    pub recipient_user_id: Option<String>,
+    pub recipient_team_id: Option<String>,
 }
 
 /// Context needed to deliver Slack messages for a turn.
@@ -101,8 +145,13 @@ struct DeliveryContext {
     input_message_id: String,
     reply_mode: SlackReplyMode,
     /// Surface this turn arrived on. Carried so delivery can branch on it.
-    #[allow(dead_code)]
     surface: SlackSurface,
+    /// Recipient identity, required by `chat.startStream`.
+    recipient_user_id: Option<String>,
+    recipient_team_id: Option<String>,
+    /// Open streams for this turn, keyed by output message id. A turn with three
+    /// output messages is three streams, not one concatenated blob.
+    streams: HashMap<String, StreamState>,
     /// Last event ID we've processed (for cursor-based pagination).
     since_event_id: Option<EventId>,
     /// Whether a reply has already reached Slack for this turn. Terminal states
@@ -194,6 +243,8 @@ impl SlackDeliveryDispatcher {
             thread_ts,
             reply_mode,
             surface,
+            recipient_user_id,
+            recipient_team_id,
         } = registration;
 
         let key = DeliveryKey {
@@ -208,6 +259,9 @@ impl SlackDeliveryDispatcher {
             input_message_id,
             reply_mode,
             surface,
+            recipient_user_id,
+            recipient_team_id,
+            streams: HashMap::new(),
             since_event_id: None,
             delivered: false,
         };
@@ -236,8 +290,18 @@ impl SlackDeliveryDispatcher {
     ) {
         info!("Slack delivery dispatcher started");
 
+        // Streaming needs a cadence the notification stream cannot provide: deltas
+        // arrive per token, and `chat.appendStream` will not take them at that rate.
+        // The loop therefore selects over {notification, flush tick} rather than
+        // notifications alone (EVE-974).
+        let mut flush = tokio::time::interval(STREAM_FLUSH_INTERVAL);
+        flush.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
         loop {
             tokio::select! {
+                _ = flush.tick() => {
+                    self.flush_open_streams().await;
+                }
                 result = event_rx.recv() => {
                     match result {
                         Ok(payload) => {
@@ -322,6 +386,7 @@ impl SlackDeliveryDispatcher {
             let mut new_since_id = ctx.since_event_id;
             let mut delivered = ctx.delivered;
             let mut terminal_event: Option<String> = None;
+            let streams_supported = self.streaming_for(&ctx).is_some();
 
             for event in &events {
                 new_since_id = Some(event.id);
@@ -343,6 +408,63 @@ impl SlackDeliveryDispatcher {
 
                 if !is_our_turn {
                     continue;
+                }
+
+                // Progressive delivery for the pane. Deltas never reach the
+                // discrete path below: they are accumulated per output message and
+                // flushed on a cadence Slack can absorb.
+                if streams_supported && ctx.reply_mode == SlackReplyMode::AllMessages {
+                    if event.event_type == "output.message.delta" {
+                        if let (Some(message_id), Some(accumulated)) = (
+                            event.data.get("message_id").and_then(|v| v.as_str()),
+                            event.data.get("accumulated").and_then(|v| v.as_str()),
+                        ) && self.record_delta(&key, &ctx, message_id, accumulated).await
+                        {
+                            // Flush early on a burst so a long answer does not sit
+                            // behind the timer.
+                            let burst = self
+                                .deliveries
+                                .read()
+                                .await
+                                .get(&key)
+                                .and_then(|c| c.streams.get(message_id))
+                                .is_some_and(|s| s.pending().chars().count() >= STREAM_FLUSH_CHARS);
+                            if burst {
+                                self.flush_stream(&key, &ctx, message_id).await;
+                            }
+                        }
+                        continue;
+                    }
+
+                    // A streamed message is finished by closing its stream, not by
+                    // posting it again.
+                    if event.event_type == "output.message.completed"
+                        && let Some(message_id) = event
+                            .data
+                            .get("message")
+                            .and_then(|m| m.get("id"))
+                            .and_then(|v| v.as_str())
+                    {
+                        // The completed event is authoritative for the final text.
+                        // Closing on the last delta alone truncates the reply by
+                        // whatever arrived after it — and the last chunk is exactly
+                        // what tends to arrive between the final delta and
+                        // completion.
+                        let final_text = extract_response_text(&event.data);
+                        let streamed = match final_text {
+                            Some(text) => self.set_accumulated(&key, message_id, text).await,
+                            None => self
+                                .open_stream_ids(&key)
+                                .await
+                                .iter()
+                                .any(|id| id == message_id),
+                        };
+                        if streamed {
+                            self.close_stream(&key, &ctx, message_id).await;
+                            delivered = true;
+                            continue;
+                        }
+                    }
                 }
 
                 // Post output messages to Slack
@@ -379,6 +501,16 @@ impl SlackDeliveryDispatcher {
                 }
             }
 
+            // Every terminal state stops the stream. An unstopped stream is a
+            // message left spinning in the client forever, which is strictly worse
+            // than the silence EVE-966 fixed.
+            if terminal_event.is_some() {
+                for message_id in self.open_stream_ids(&key).await {
+                    self.close_stream(&key, &ctx, &message_id).await;
+                    delivered = true;
+                }
+            }
+
             // Update cursor or unregister
             if let Some(event_type) = terminal_event {
                 // A turn that ended without a delivered reply is silence in the Slack
@@ -400,11 +532,204 @@ impl SlackDeliveryDispatcher {
                 self.unregister(&key).await;
             } else if new_since_id != ctx.since_event_id || delivered != ctx.delivered {
                 // Update the cursor
+                // Stream state lives in the shared map and is never written back
+                // from a clone, so only the cursor and delivered flag move here.
                 let mut deliveries = self.deliveries.write().await;
-                if let Some(ctx) = deliveries.get_mut(&key) {
-                    ctx.since_event_id = new_since_id;
-                    ctx.delivered = delivered;
+                if let Some(live) = deliveries.get_mut(&key) {
+                    live.since_event_id = new_since_id;
+                    live.delivered = delivered;
                 }
+            }
+        }
+    }
+
+    /// The streaming interface to use for this delivery, if any.
+    ///
+    /// Streaming is a pane behaviour: token-by-token into a shared channel is not
+    /// wanted, and a platform without streaming returns `None` here (EVE-973/974).
+    fn streaming_for(&self, ctx: &DeliveryContext) -> Option<&dyn ChannelStreamDelivery> {
+        if ctx.surface != SlackSurface::Pane {
+            return None;
+        }
+        self.adapter.streaming()
+    }
+
+    /// Record the text produced so far for one output message, opening its stream
+    /// on first sight. Returns false when no stream could be opened, so the caller
+    /// falls back to a discrete reply.
+    async fn record_delta(
+        &self,
+        key: &DeliveryKey,
+        ctx: &DeliveryContext,
+        message_id: &str,
+        accumulated: &str,
+    ) -> bool {
+        {
+            let mut deliveries = self.deliveries.write().await;
+            let Some(live) = deliveries.get_mut(key) else {
+                return false;
+            };
+            if let Some(state) = live.streams.get_mut(message_id) {
+                state.accumulated = accumulated.to_string();
+                return true;
+            }
+        }
+
+        let Some(stream) = self.streaming_for(ctx) else {
+            return false;
+        };
+        let handle = match stream.start(&self.delivery_context(ctx)).await {
+            Ok(handle) => handle,
+            Err(e) => {
+                warn!(error = %e, "Could not start Slack stream, falling back to a discrete reply");
+                return false;
+            }
+        };
+
+        let mut deliveries = self.deliveries.write().await;
+        let Some(live) = deliveries.get_mut(key) else {
+            return false;
+        };
+        live.streams
+            .entry(message_id.to_string())
+            .or_insert(StreamState {
+                handle,
+                accumulated: accumulated.to_string(),
+                sent: 0,
+            })
+            .accumulated = accumulated.to_string();
+        true
+    }
+
+    /// Replace the accumulated text for an open stream, if it is still open.
+    async fn set_accumulated(&self, key: &DeliveryKey, message_id: &str, text: String) -> bool {
+        let mut deliveries = self.deliveries.write().await;
+        match deliveries
+            .get_mut(key)
+            .and_then(|c| c.streams.get_mut(message_id))
+        {
+            Some(state) => {
+                state.accumulated = text;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Output messages with a stream still open on this delivery.
+    async fn open_stream_ids(&self, key: &DeliveryKey) -> Vec<String> {
+        self.deliveries
+            .read()
+            .await
+            .get(key)
+            .map(|ctx| ctx.streams.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Take the text waiting on one stream, advancing `sent` under the lock.
+    ///
+    /// Claiming before the network call is what makes concurrent flushes safe:
+    /// two flushers cannot both read the same `sent` and transmit the same bytes.
+    /// Returns the handle, the claimed text, and the offset to restore if the send
+    /// fails.
+    async fn claim_pending(
+        &self,
+        key: &DeliveryKey,
+        message_id: &str,
+    ) -> Option<(String, String, usize)> {
+        let mut deliveries = self.deliveries.write().await;
+        let state = deliveries.get_mut(key)?.streams.get_mut(message_id)?;
+
+        let pending = state.pending().to_string();
+        if pending.is_empty() {
+            return None;
+        }
+
+        let claimed_from = state.sent;
+        state.sent = state.accumulated.len();
+        Some((state.handle.clone(), pending, claimed_from))
+    }
+
+    /// Give a claim back after a failed send, so the text is retried rather than
+    /// silently dropped from the middle of a reply.
+    async fn release_claim(&self, key: &DeliveryKey, message_id: &str, claimed_from: usize) {
+        let mut deliveries = self.deliveries.write().await;
+        if let Some(ctx) = deliveries.get_mut(key)
+            && let Some(state) = ctx.streams.get_mut(message_id)
+        {
+            state.sent = state.sent.min(claimed_from);
+        }
+    }
+
+    /// Send whatever has accumulated on one stream since the last flush.
+    async fn flush_stream(&self, key: &DeliveryKey, ctx: &DeliveryContext, message_id: &str) {
+        let Some(stream) = self.streaming_for(ctx) else {
+            return;
+        };
+        let Some((handle, pending, claimed_from)) = self.claim_pending(key, message_id).await
+        else {
+            return;
+        };
+
+        if let ChannelDeliveryResult::TransientError(e) | ChannelDeliveryResult::PermanentError(e) =
+            stream
+                .append(&handle, &pending, &self.delivery_context(ctx))
+                .await
+        {
+            warn!(error = %e, "Failed to append to Slack stream");
+            self.release_claim(key, message_id, claimed_from).await;
+        }
+    }
+
+    /// Flush the tail and close the stream, then forget it.
+    ///
+    /// Always closes, even when the append failed — a stream left open spins in
+    /// the client forever, which is worse than a truncated reply.
+    async fn close_stream(&self, key: &DeliveryKey, ctx: &DeliveryContext, message_id: &str) {
+        self.flush_stream(key, ctx, message_id).await;
+
+        let handle = {
+            let mut deliveries = self.deliveries.write().await;
+            match deliveries
+                .get_mut(key)
+                .and_then(|c| c.streams.remove(message_id))
+            {
+                Some(state) => state.handle,
+                None => return,
+            }
+        };
+
+        let Some(stream) = self.streaming_for(ctx) else {
+            return;
+        };
+        if let ChannelDeliveryResult::TransientError(e) | ChannelDeliveryResult::PermanentError(e) =
+            stream.stop(&handle, &self.delivery_context(ctx)).await
+        {
+            warn!(error = %e, "Failed to stop Slack stream");
+        }
+    }
+
+    /// Flush every open stream across every delivery. Driven by the timer.
+    async fn flush_open_streams(&self) {
+        let pending: Vec<(DeliveryKey, DeliveryContext, Vec<String>)> = {
+            let deliveries = self.deliveries.read().await;
+            deliveries
+                .iter()
+                .filter_map(|(key, ctx)| {
+                    let ids: Vec<String> = ctx
+                        .streams
+                        .iter()
+                        .filter(|(_, s)| !s.pending().is_empty())
+                        .map(|(id, _)| id.clone())
+                        .collect();
+                    (!ids.is_empty()).then(|| (key.clone(), ctx.clone(), ids))
+                })
+                .collect()
+        };
+
+        for (key, ctx, message_ids) in pending {
+            for message_id in message_ids {
+                self.flush_stream(&key, &ctx, &message_id).await;
             }
         }
     }
@@ -427,14 +752,28 @@ impl SlackDeliveryDispatcher {
             thread_ref: ctx.thread_ts.clone(),
             is_progress_report,
         };
-        let delivery_ctx = ChannelDeliveryContext {
+        self.adapter
+            .deliver(&message, &self.delivery_context(ctx))
+            .await
+    }
+
+    /// The platform-facing view of a delivery.
+    fn delivery_context(&self, ctx: &DeliveryContext) -> ChannelDeliveryContext {
+        let mut extra = HashMap::new();
+        if let Some(user) = &ctx.recipient_user_id {
+            extra.insert(SLACK_RECIPIENT_USER_ID.to_string(), user.clone());
+        }
+        if let Some(team) = &ctx.recipient_team_id {
+            extra.insert(SLACK_RECIPIENT_TEAM_ID.to_string(), team.clone());
+        }
+
+        ChannelDeliveryContext {
             auth_token: ctx.bot_token.clone(),
             channel_id: ctx.channel.clone(),
             thread_ref: ctx.thread_ts.clone(),
             reply_mode: ctx.reply_mode.into(),
-            extra: HashMap::new(),
-        };
-        self.adapter.deliver(&message, &delivery_ctx).await
+            extra,
+        }
     }
 
     /// One terse status line for a turn that ended without a reply.
@@ -617,6 +956,14 @@ impl SlackDeliveryDispatcher {
                 .unwrap_or_default()
                 .to_string();
 
+            // Persisted at input.message time so a restart can still name the
+            // stream recipient (EVE-974). Absent on turns registered before that
+            // field existed, which simply means no streaming for those.
+            let recipient_user_id = metadata
+                .and_then(|m| m.get("slack_user"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+
             // Check if this turn already completed
             let turn_events = vec!["turn.completed".to_string(), "turn.failed".to_string()];
             let completion_events = self
@@ -671,6 +1018,8 @@ impl SlackDeliveryDispatcher {
                 thread_ts,
                 reply_mode: slack_config.reply_mode,
                 surface,
+                recipient_user_id: recipient_user_id.filter(|u| !u.is_empty()),
+                recipient_team_id: slack_config.team_id.clone(),
             })
             .await;
         }
@@ -862,6 +1211,106 @@ impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
     ) -> String {
         format_progress_report_for_slack(report)
     }
+
+    fn streaming(&self) -> Option<&dyn ChannelStreamDelivery> {
+        Some(self)
+    }
+}
+
+/// Keys the Slack adapter reads out of `DeliveryContext::extra`.
+///
+/// `chat.startStream` refuses a channel stream without both and answers
+/// `missing_recipient_team_id`. Neither is listed as required in Slack's
+/// argument table; this was found by calling it (EVE-974).
+pub(crate) const SLACK_RECIPIENT_USER_ID: &str = "slack_recipient_user_id";
+pub(crate) const SLACK_RECIPIENT_TEAM_ID: &str = "slack_recipient_team_id";
+
+/// Slack caps `markdown_text` at 12,000 characters per append.
+const SLACK_APPEND_MAX_CHARS: usize = 12_000;
+
+#[async_trait]
+impl ChannelStreamDelivery for SlackDeliveryAdapter {
+    async fn start(&self, context: &ChannelDeliveryContext) -> Result<String, String> {
+        let mut payload = serde_json::json!({ "channel": context.channel_id });
+
+        if !context.thread_ref.is_empty() {
+            payload["thread_ts"] = serde_json::Value::String(context.thread_ref.clone());
+        }
+        for (extra_key, field) in [
+            (SLACK_RECIPIENT_USER_ID, "recipient_user_id"),
+            (SLACK_RECIPIENT_TEAM_ID, "recipient_team_id"),
+        ] {
+            if let Some(value) = context.extra.get(extra_key) {
+                payload[field] = serde_json::Value::String(value.clone());
+            }
+        }
+
+        let body = slack_api_call(
+            &self.api_base,
+            &context.auth_token,
+            "chat.startStream",
+            payload,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+        body.get("ts")
+            .and_then(|ts| ts.as_str())
+            .map(str::to_string)
+            .ok_or_else(|| "chat.startStream returned no ts".to_string())
+    }
+
+    async fn append(
+        &self,
+        handle: &str,
+        text: &str,
+        context: &ChannelDeliveryContext,
+    ) -> ChannelDeliveryResult {
+        let payload = serde_json::json!({
+            "channel": context.channel_id,
+            "ts": handle,
+            "markdown_text": truncate_chars(text, SLACK_APPEND_MAX_CHARS),
+        });
+
+        match slack_api_call(
+            &self.api_base,
+            &context.auth_token,
+            "chat.appendStream",
+            payload,
+        )
+        .await
+        {
+            Ok(_) => ChannelDeliveryResult::Ok,
+            Err(e) => classify_slack_failure(e),
+        }
+    }
+
+    async fn stop(&self, handle: &str, context: &ChannelDeliveryContext) -> ChannelDeliveryResult {
+        let payload = serde_json::json!({
+            "channel": context.channel_id,
+            "ts": handle,
+        });
+
+        match slack_api_call(
+            &self.api_base,
+            &context.auth_token,
+            "chat.stopStream",
+            payload,
+        )
+        .await
+        {
+            Ok(_) => ChannelDeliveryResult::Ok,
+            Err(e) => classify_slack_failure(e),
+        }
+    }
+}
+
+/// Truncate to at most `max` characters, on a char boundary.
+fn truncate_chars(s: &str, max: usize) -> String {
+    match s.char_indices().nth(max) {
+        Some((idx, _)) => s[..idx].to_string(),
+        None => s.to_string(),
+    }
 }
 
 /// Map a Slack transport failure onto a `ChannelDeliveryResult`.
@@ -991,8 +1440,6 @@ pub(crate) async fn post_to_slack_base(
     thread_ts: &str,
     text: &str,
 ) -> Result<(), SlackApiError> {
-    let client = reqwest::Client::new();
-
     let mut payload = serde_json::json!({
         "channel": channel,
         "text": text,
@@ -1002,8 +1449,26 @@ pub(crate) async fn post_to_slack_base(
         payload["thread_ts"] = serde_json::Value::String(thread_ts.to_string());
     }
 
+    slack_api_call(base_url, bot_token, "chat.postMessage", payload).await?;
+    info!(channel = channel, "Posted response to Slack");
+    Ok(())
+}
+
+/// Call one Slack Web API method.
+///
+/// Every method shares the same envelope — `ok: false` plus an `error` code, and
+/// a `Retry-After` header on a rate limit — so error handling lives here rather
+/// than being rewritten per endpoint.
+async fn slack_api_call(
+    base_url: &str,
+    bot_token: &str,
+    method: &str,
+    payload: serde_json::Value,
+) -> Result<serde_json::Value, SlackApiError> {
+    let client = reqwest::Client::new();
+
     let response = client
-        .post(format!("{}/chat.postMessage", base_url))
+        .post(format!("{}/{}", base_url, method))
         .header("Authorization", format!("Bearer {}", bot_token))
         .header("Content-Type", "application/json")
         .json(&payload)
@@ -1032,24 +1497,23 @@ pub(crate) async fn post_to_slack_base(
         // A rate limit is routine backpressure, not a fault to shout about.
         if matches!(failure, SlackApiError::RateLimited { .. }) {
             debug!(
-                channel = channel,
+                method = method,
                 retry_after_secs = ?retry_after.map(|d| d.as_secs()),
                 status = %status,
-                "Slack rate limited the post"
+                "Slack rate limited the call"
             );
         } else {
             error!(
-                channel = channel,
+                method = method,
                 error = error,
                 status = %status,
-                "Failed to post message to Slack"
+                "Slack API call failed"
             );
         }
         return Err(failure);
     }
 
-    info!(channel = channel, "Posted response to Slack");
-    Ok(())
+    Ok(body)
 }
 
 #[cfg(test)]
@@ -1960,6 +2424,8 @@ mod tests {
                     thread_ts: "1700000000.000100".to_string(),
                     reply_mode: SlackReplyMode::AllMessages,
                     surface: SlackSurface::Channel,
+                    recipient_user_id: None,
+                    recipient_team_id: None,
                 })
                 .await;
 
@@ -2067,6 +2533,398 @@ mod tests {
                 SlackApiError::from_code("ratelimited", None),
                 SlackApiError::RateLimited { .. }
             ));
+        }
+    }
+
+    /// EVE-974: pane replies render progressively, and every terminal state closes
+    /// the stream. A stream left open spins in the client forever.
+    mod streaming_tests {
+        use super::*;
+        use crate::storage::StorageBackend;
+        use std::sync::Mutex;
+        use tokio::sync::broadcast;
+
+        /// What the dispatcher asked the platform to do, in order.
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        enum Call {
+            Start,
+            Append(String, String),
+            Stop(String),
+            Discrete(String),
+        }
+
+        struct RecordingAdapter {
+            calls: Arc<Mutex<Vec<Call>>>,
+            /// When false, `start` fails so the fallback path can be exercised.
+            can_start: bool,
+        }
+
+        impl RecordingAdapter {
+            fn new(calls: Arc<Mutex<Vec<Call>>>) -> Self {
+                Self {
+                    calls,
+                    can_start: true,
+                }
+            }
+
+            fn push(&self, call: Call) {
+                self.calls.lock().expect("recorder").push(call);
+            }
+        }
+
+        #[async_trait]
+        impl ChannelDeliveryAdapter for RecordingAdapter {
+            fn platform(&self) -> &str {
+                "recording"
+            }
+
+            async fn deliver(
+                &self,
+                message: &OutboundChannelMessage,
+                _context: &ChannelDeliveryContext,
+            ) -> ChannelDeliveryResult {
+                self.push(Call::Discrete(message.text.clone()));
+                ChannelDeliveryResult::Ok
+            }
+
+            async fn send_ack(
+                &self,
+                _thread_ref: &str,
+                _text: &str,
+                _context: &ChannelDeliveryContext,
+            ) -> ChannelDeliveryResult {
+                ChannelDeliveryResult::Ok
+            }
+
+            fn format_progress_report(&self, report: &ProgressReportPayload) -> String {
+                format_progress_report_for_slack(report)
+            }
+
+            fn streaming(&self) -> Option<&dyn ChannelStreamDelivery> {
+                Some(self)
+            }
+        }
+
+        #[async_trait]
+        impl ChannelStreamDelivery for RecordingAdapter {
+            async fn start(&self, _context: &ChannelDeliveryContext) -> Result<String, String> {
+                if !self.can_start {
+                    return Err("stream unavailable".to_string());
+                }
+                self.push(Call::Start);
+                let n = self
+                    .calls
+                    .lock()
+                    .expect("recorder")
+                    .iter()
+                    .filter(|c| matches!(c, Call::Start))
+                    .count();
+                Ok(format!("stream-{n}"))
+            }
+
+            async fn append(
+                &self,
+                handle: &str,
+                text: &str,
+                _context: &ChannelDeliveryContext,
+            ) -> ChannelDeliveryResult {
+                // Yield so concurrent flushes actually interleave — a real append
+                // is a ~300ms network call, which is where the duplication this
+                // guards against came from.
+                tokio::task::yield_now().await;
+                self.push(Call::Append(handle.to_string(), text.to_string()));
+                ChannelDeliveryResult::Ok
+            }
+
+            async fn stop(
+                &self,
+                handle: &str,
+                _context: &ChannelDeliveryContext,
+            ) -> ChannelDeliveryResult {
+                self.push(Call::Stop(handle.to_string()));
+                ChannelDeliveryResult::Ok
+            }
+        }
+
+        async fn dispatcher_with(
+            db: Arc<StorageBackend>,
+            adapter: RecordingAdapter,
+        ) -> Arc<SlackDeliveryDispatcher> {
+            let (_tx, rx) = broadcast::channel::<EventNotificationPayload>(16);
+            SlackDeliveryDispatcher::start_with_adapter(
+                db,
+                rx,
+                "https://app.example.com".to_string(),
+                Arc::new(adapter),
+            )
+        }
+
+        async fn register(
+            dispatcher: &SlackDeliveryDispatcher,
+            session: Uuid,
+            surface: SlackSurface,
+        ) {
+            dispatcher
+                .register(DeliveryRegistration {
+                    session_id: session,
+                    input_message_id: "msg_in".to_string(),
+                    bot_token: "xoxb-t".to_string(),
+                    channel: "D_PANE".to_string(),
+                    thread_ts: "1700000000.000100".to_string(),
+                    reply_mode: SlackReplyMode::AllMessages,
+                    surface,
+                    recipient_user_id: Some("U_HUMAN".to_string()),
+                    recipient_team_id: Some("T_TEAM".to_string()),
+                })
+                .await;
+        }
+
+        async fn delta(
+            db: &StorageBackend,
+            session: SessionId,
+            message_id: &str,
+            accumulated: &str,
+        ) {
+            terminal_state_tests::emit(
+                db,
+                session,
+                "output.message.delta",
+                "msg_in",
+                serde_json::json!({ "message_id": message_id, "accumulated": accumulated }),
+            )
+            .await;
+        }
+
+        async fn completed(db: &StorageBackend, session: SessionId, message_id: &str, text: &str) {
+            terminal_state_tests::emit(
+                db,
+                session,
+                "output.message.completed",
+                "msg_in",
+                serde_json::json!({
+                    "message": { "id": message_id, "content": [{ "type": "text", "text": text }] }
+                }),
+            )
+            .await;
+        }
+
+        fn recorded(calls: &Arc<Mutex<Vec<Call>>>) -> Vec<Call> {
+            calls.lock().expect("recorder").clone()
+        }
+
+        #[tokio::test]
+        async fn pane_reply_streams_then_stops() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let session = terminal_state_tests::seed_session(&db).await;
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let dispatcher =
+                dispatcher_with(db.clone(), RecordingAdapter::new(calls.clone())).await;
+            register(&dispatcher, session.uuid(), SlackSurface::Pane).await;
+
+            delta(&db, session, "m1", "Hel").await;
+            delta(&db, session, "m1", "Hello wor").await;
+            completed(&db, session, "m1", "Hello world").await;
+            dispatcher.process_session_events(session.uuid()).await;
+
+            let calls = recorded(&calls);
+            assert_eq!(
+                calls[0],
+                Call::Start,
+                "first delta opens the stream: {calls:?}"
+            );
+            assert_eq!(
+                calls.last(),
+                Some(&Call::Stop("stream-1".to_string())),
+                "completed closes it: {calls:?}"
+            );
+            // The whole reply reached Slack exactly once, in order.
+            let appended: String = calls
+                .iter()
+                .filter_map(|c| match c {
+                    Call::Append(_, text) => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(appended, "Hello world");
+            assert!(
+                !calls.iter().any(|c| matches!(c, Call::Discrete(_))),
+                "a streamed message must not also be posted discretely: {calls:?}"
+            );
+        }
+
+        /// Two flushes racing must not send the same text twice.
+        ///
+        /// Found against a real workspace, not in a unit test: the dispatcher's own
+        /// 500ms tick overlapped an event-driven flush, both read the same `sent`
+        /// offset, and the reader saw "StreamingStreaming works works end to end."
+        /// `sent` is therefore claimed under the lock before the network call.
+        #[tokio::test]
+        async fn concurrent_flushes_do_not_duplicate_text() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let session = terminal_state_tests::seed_session(&db).await;
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let dispatcher =
+                dispatcher_with(db.clone(), RecordingAdapter::new(calls.clone())).await;
+            register(&dispatcher, session.uuid(), SlackSurface::Pane).await;
+
+            delta(&db, session, "m1", "Streaming works end to end.").await;
+            dispatcher.process_session_events(session.uuid()).await;
+
+            let (a, b) = (dispatcher.clone(), dispatcher.clone());
+            tokio::join!(async move { a.flush_open_streams().await }, async move {
+                b.flush_open_streams().await
+            },);
+
+            let appended: String = recorded(&calls)
+                .iter()
+                .filter_map(|c| match c {
+                    Call::Append(_, text) => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                appended, "Streaming works end to end.",
+                "racing flushes must not re-send claimed text"
+            );
+        }
+
+        #[tokio::test]
+        async fn channel_surface_does_not_stream() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let session = terminal_state_tests::seed_session(&db).await;
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let dispatcher =
+                dispatcher_with(db.clone(), RecordingAdapter::new(calls.clone())).await;
+            register(&dispatcher, session.uuid(), SlackSurface::Channel).await;
+
+            delta(&db, session, "m1", "Hello").await;
+            completed(&db, session, "m1", "Hello world").await;
+            dispatcher.process_session_events(session.uuid()).await;
+
+            assert_eq!(
+                recorded(&calls),
+                vec![Call::Discrete("Hello world".to_string())],
+                "token-by-token into a shared channel is not wanted"
+            );
+        }
+
+        #[tokio::test]
+        async fn several_output_messages_are_several_streams() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let session = terminal_state_tests::seed_session(&db).await;
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let dispatcher =
+                dispatcher_with(db.clone(), RecordingAdapter::new(calls.clone())).await;
+            register(&dispatcher, session.uuid(), SlackSurface::Pane).await;
+
+            delta(&db, session, "m1", "first").await;
+            completed(&db, session, "m1", "first").await;
+            delta(&db, session, "m2", "second").await;
+            completed(&db, session, "m2", "second").await;
+            dispatcher.process_session_events(session.uuid()).await;
+
+            let calls = recorded(&calls);
+            let starts = calls.iter().filter(|c| matches!(c, Call::Start)).count();
+            let stops = calls.iter().filter(|c| matches!(c, Call::Stop(_))).count();
+            assert_eq!(
+                (starts, stops),
+                (2, 2),
+                "two messages, two streams: {calls:?}"
+            );
+            assert!(
+                calls.contains(&Call::Stop("stream-1".to_string()))
+                    && calls.contains(&Call::Stop("stream-2".to_string())),
+                "each stream closes on its own handle: {calls:?}"
+            );
+        }
+
+        /// An unstopped stream is worse than the silence EVE-966 fixed.
+        #[tokio::test]
+        async fn every_terminal_state_stops_an_open_stream() {
+            for terminal in ["turn.completed", "turn.failed", "turn.cancelled"] {
+                let db = Arc::new(StorageBackend::in_memory());
+                let session = terminal_state_tests::seed_session(&db).await;
+                let calls = Arc::new(Mutex::new(Vec::new()));
+                let dispatcher =
+                    dispatcher_with(db.clone(), RecordingAdapter::new(calls.clone())).await;
+                register(&dispatcher, session.uuid(), SlackSurface::Pane).await;
+
+                // A stream is opened and then the turn ends without completing it.
+                delta(&db, session, "m1", "half an ans").await;
+                terminal_state_tests::emit(&db, session, terminal, "msg_in", serde_json::json!({}))
+                    .await;
+                dispatcher.process_session_events(session.uuid()).await;
+
+                let calls = recorded(&calls);
+                let stops = calls.iter().filter(|c| matches!(c, Call::Stop(_))).count();
+                assert_eq!(
+                    stops, 1,
+                    "{terminal} must stop the stream exactly once: {calls:?}"
+                );
+                assert_eq!(
+                    dispatcher.active_delivery_count().await,
+                    0,
+                    "{terminal} must still unregister"
+                );
+            }
+        }
+
+        /// If the platform will not open a stream, the reply must still arrive.
+        #[tokio::test]
+        async fn failed_start_falls_back_to_a_discrete_reply() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let session = terminal_state_tests::seed_session(&db).await;
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let dispatcher = dispatcher_with(
+                db.clone(),
+                RecordingAdapter {
+                    calls: calls.clone(),
+                    can_start: false,
+                },
+            )
+            .await;
+            register(&dispatcher, session.uuid(), SlackSurface::Pane).await;
+
+            delta(&db, session, "m1", "Hel").await;
+            completed(&db, session, "m1", "Hello world").await;
+            dispatcher.process_session_events(session.uuid()).await;
+
+            assert_eq!(
+                recorded(&calls),
+                vec![Call::Discrete("Hello world".to_string())],
+                "a stream that cannot open must not swallow the reply"
+            );
+        }
+
+        #[tokio::test]
+        async fn flush_sends_only_what_is_new() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let session = terminal_state_tests::seed_session(&db).await;
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let dispatcher =
+                dispatcher_with(db.clone(), RecordingAdapter::new(calls.clone())).await;
+            register(&dispatcher, session.uuid(), SlackSurface::Pane).await;
+
+            delta(&db, session, "m1", "one").await;
+            dispatcher.process_session_events(session.uuid()).await;
+            dispatcher.flush_open_streams().await;
+
+            delta(&db, session, "m1", "one two").await;
+            dispatcher.process_session_events(session.uuid()).await;
+            dispatcher.flush_open_streams().await;
+
+            let appends: Vec<String> = recorded(&calls)
+                .into_iter()
+                .filter_map(|c| match c {
+                    Call::Append(_, text) => Some(text),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                appends,
+                vec!["one".to_string(), " two".to_string()],
+                "each flush sends the tail, never the whole accumulated text again"
+            );
         }
     }
 
@@ -2353,6 +3211,8 @@ mod tests {
                     thread_ts: THREAD_TS.to_string(),
                     reply_mode: SlackReplyMode::AllMessages,
                     surface: SlackSurface::Channel,
+                    recipient_user_id: None,
+                    recipient_team_id: None,
                 })
                 .await;
         }
