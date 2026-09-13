@@ -623,6 +623,15 @@ async fn test_slack_context_change_updates_thread_context() {
         .assert_status(StatusCode::OK);
 
     let session_id = wait_for_session_with_tag(&server, &format!("slack:thread:{ts}")).await;
+
+    // Wait for the message's own `input.message` to land before sampling the
+    // baseline. The session row appears before its first event does, so sampling
+    // straight after `wait_for_session_with_tag` races that write — and the delta
+    // below then measures the message's event rather than the context change's.
+    assert!(
+        wait_for_event_type(&server, &session_id, "input.message").await,
+        "the message that opened the session must record its event"
+    );
     let events_before = session_event_count(&server, &session_id).await;
 
     // Now the user navigates somewhere else.
