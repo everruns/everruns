@@ -72,11 +72,16 @@ const INITIAL_SAVE_STATES: Record<SettingsGroupKey, GroupSaveState> = {
 export default function OrganizationPage() {
   usePageTitle("Organization", "Settings");
   const router = useRouter();
-  const { currentOrg, organizations, setCurrentOrg } = useOrg();
+  const { currentOrg, organizations, setCurrentOrg, hasRole } = useOrg();
   const { data: organization, isLoading, error } = useOrganization();
   const { data: harnesses = [] } = useHarnesses();
   const updateOrganization = useUpdateOrganization();
   const createOrganization = useCreateOrganization();
+  // Backend gate: PATCH /v1/orgs/:org is admin-only
+  // (`is_org_admin_of_public_db`, crates/server/src/api/organizations.rs). Members
+  // used to get editable controls that always failed with 403, so the UI mirrors
+  // that check and renders read-only instead.
+  const canManage = hasRole("admin");
   const genericHarnessId = harnesses.find((h) => h.name === "Generic")?.id || "";
   const baseHarnessFallbackId = harnesses.find((h) => h.name === "Base")?.id || "";
   const organizationId = organization?.id;
@@ -168,6 +173,7 @@ export default function OrganizationPage() {
   };
 
   const scheduleAutoSave = (group: SettingsGroupKey, nextDraft: OrganizationDraft) => {
+    if (!canManage) return;
     draftRef.current = nextDraft;
     saveVersionsRef.current[group] += 1;
     const saveVersion = saveVersionsRef.current[group];
@@ -298,10 +304,19 @@ export default function OrganizationPage() {
           </Card>
         ) : (
           <div className="space-y-6">
+            {!canManage && (
+              <Card className="flex items-start gap-3 border-amber-500/30 bg-amber-500/5 p-4 text-sm">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <p>
+                  Only organization owners and admins can change these settings. You have read-only
+                  access as a member.
+                </p>
+              </Card>
+            )}
             <SettingsGroup
               title="Identity"
               description="Name and stable identifier for this organization."
-              status={<AutoSaveBadge saveState={saveStates.identity} />}
+              status={canManage ? <AutoSaveBadge saveState={saveStates.identity} /> : null}
               error={saveStates.identity.error}
             >
               <SettingsRow
@@ -315,7 +330,8 @@ export default function OrganizationPage() {
                   onChange={handleNameChange}
                   onKeyDown={handleKeyDown}
                   placeholder="Organization name"
-                  className={CONTROL_CLASS_NAME}
+                  readOnly={!canManage}
+                  className={cn(CONTROL_CLASS_NAME, !canManage && "bg-muted")}
                 />
               </SettingsRow>
 
@@ -343,7 +359,7 @@ export default function OrganizationPage() {
             <SettingsGroup
               title="Models"
               description="Override the platform model fallback used when agents or sessions do not set their own model."
-              status={<AutoSaveBadge saveState={saveStates.models} />}
+              status={canManage ? <AutoSaveBadge saveState={saveStates.models} /> : null}
               error={saveStates.models.error}
             >
               <SettingsRow
@@ -360,6 +376,7 @@ export default function OrganizationPage() {
                     scheduleAutoSave("models", nextDraft);
                   }}
                   placeholder="Platform default · GPT-5.6 Terra"
+                  disabled={!canManage}
                   className={CONTROL_CLASS_NAME}
                 />
               </SettingsRow>
@@ -368,7 +385,7 @@ export default function OrganizationPage() {
             <SettingsGroup
               title="Harnesses"
               description="Harness fallbacks applied when sessions do not set their own runtime environment."
-              status={<AutoSaveBadge saveState={saveStates.harnesses} />}
+              status={canManage ? <AutoSaveBadge saveState={saveStates.harnesses} /> : null}
               error={saveStates.harnesses.error}
             >
               <SettingsRow
@@ -385,6 +402,7 @@ export default function OrganizationPage() {
                     scheduleAutoSave("harnesses", nextDraft);
                   }}
                   placeholder="Select default harness"
+                  disabled={!canManage}
                   className={CONTROL_CLASS_NAME}
                 />
               </SettingsRow>
@@ -403,6 +421,7 @@ export default function OrganizationPage() {
                     scheduleAutoSave("harnesses", nextDraft);
                   }}
                   placeholder="Select base harness"
+                  disabled={!canManage}
                   className={CONTROL_CLASS_NAME}
                 />
               </SettingsRow>
