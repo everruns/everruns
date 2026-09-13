@@ -1010,7 +1010,11 @@ impl ServerAppBuilder {
         // Must be created before events_state takes ownership of event_broadcaster.
         let slack_dispatcher = if let Some(ref broadcaster) = event_broadcaster {
             let rx = broadcaster.subscribe();
-            let dispatcher = crate::slack_delivery::SlackDeliveryDispatcher::start(db.clone(), rx);
+            let dispatcher = crate::slack_delivery::SlackDeliveryDispatcher::start(
+                db.clone(),
+                rx,
+                auth_config.frontend_url.clone(),
+            );
             tracing::info!("Slack delivery dispatcher started (event-driven)");
             Some(dispatcher)
         } else {

@@ -69,8 +69,21 @@ See `crates/core/src/channel.rs` for full definitions.
 6. Optional: send_ack() for async mode ("On it.")
 7. Agent runs asynchronously...
 8. Event notification → deliver(OutboundChannelMessage) → platform API
-9. Turn ends → unregister delivery
+9. Turn ends (completed/failed/cancelled) → post a terminal notice if nothing
+   was delivered, then unregister
 ```
+
+A turn that ends without a delivered reply must still say so in the thread. A
+failed turn, a cancellation, a turn that produced no text, and a reply the
+platform refused are all indistinguishable from a hung agent otherwise — the
+user sees only the message they sent. The notice is one status line with a link
+back to the session; the failure text stays server-side because these threads
+are frequently public. See `terminal_notice` in
+[`crates/server/src/slack_delivery.rs`](../../crates/server/src/slack_delivery.rs).
+
+Cancellation is session-scoped, not turn-scoped: both cancel paths mint a fresh
+`input_message_id` for the synthetic `turn.cancelled` event, so a delivery that
+matches it per-turn never unregisters.
 
 ## Messaging Integration Parity Requirements
 
@@ -91,6 +104,7 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 | **User docs** | `docs/integrations/{platform}.md`, setup guide, scopes, session strategies, reply modes. |
 | **UI test case** | `knowledge/test-cases/ui/{platform}_app/TC001_*.md`, manual test for app creation, webhook verification, message flow. |
 | **Threat model** | Section in `knowledge/security/threat-model.md` covering platform-specific threats (signing bypass, bot loops, replay). |
+| **Terminal-state notice** | A turn ending without a delivered reply posts exactly one status line with a session link (see Adapter Lifecycle). |
 | **Startup recovery** | Re-register active deliveries after server restart (query sessions with `{platform}:*` tags). |
 | **DEV_MODE fallback** | Polling-based delivery when EventNotificationBroadcaster is unavailable (in-memory mode). |
 
