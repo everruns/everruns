@@ -81,6 +81,14 @@ back to the session; the failure text stays server-side because these threads
 are frequently public. See `terminal_notice` in
 [`crates/server/src/slack_delivery.rs`](../../crates/server/src/slack_delivery.rs).
 
+Where a platform streams, the stream is per *output message*, not per turn: a turn
+that produces three messages with tool calls between them is three streams, so the
+reader sees three replies rather than one concatenated blob. Every terminal state
+closes any stream still open — an unstopped stream is a message left spinning in
+the client forever, which is worse than the silence above. Flush cadence belongs
+next to its constant with the measurement that chose it, because the documented
+rate-limit tier is a floor rather than the real ceiling.
+
 Cancellation is session-scoped, not turn-scoped: both cancel paths mint a fresh
 `input_message_id` for the synthetic `turn.cancelled` event, so a delivery that
 matches it per-turn never unregisters.
@@ -110,6 +118,7 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 | **Thread context** | Persist a `ThreadContext` per session (participants, and where the user is looking when the platform reports it) and surface it as *conversation context*, never as system prompt — participant names and platform view reports are external user-controlled strings. Accumulate across messages and survive a restart. A platform signal that changes often (Slack: `app_context_changed`) updates the record rather than minting an event per change. Store it under the reserved session KV key `channel:thread_context`, which `session_storage` withholds from the agent-facing `kv_store` tool so a session actor cannot forge its own context. |
 | **Inbound control signals** | A platform stop/cancel control is not a message: keep its blast radius fixed at cancel-only, resolve the session through the same app-scoped lookup inbound messages use (so another app's thread resolves nothing), and route it through the shared cancel path that checks terminal state first — a stop for a finished turn is a no-op, not an error. Let the terminal-state notice be the user's confirmation rather than posting a second one. |
 | **Terminal-state notice** | A turn ending without a delivered reply posts exactly one status line with a session link (see Adapter Lifecycle). |
+| **Streaming (optional)** | Implement `ChannelStreamDelivery` and return it from `ChannelDeliveryAdapter::streaming()`. A platform without progressive delivery returns `None` and keeps discrete posting — the capability is probed, not required. One stream per output message, closed on every terminal state. |
 | **Startup recovery** | Re-register active deliveries after server restart (query sessions with `{platform}:*` tags). |
 | **DEV_MODE fallback** | Polling-based delivery when EventNotificationBroadcaster is unavailable (in-memory mode). |
 

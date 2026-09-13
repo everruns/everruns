@@ -182,8 +182,18 @@ Session strategy in the pane is always `per_thread`: a pane conversation *is* a 
 `per_channel` and `per_user` have no meaning there. Your configured strategy still applies to
 channel threads, so one app can sensibly use `per_channel` in channels and per-thread in the pane.
 
-Today these events are acknowledged and logged but not yet acted on, so the toggle is safe to enable
-early. Streaming replies, agent status, the stop button, and thread context are tracked separately.
+### Streaming replies
+
+In the agent pane, replies render progressively as the agent produces them rather than appearing all
+at once. Channel threads keep posting a single finished message — token-by-token updates in a shared
+channel are noise rather than a feature.
+
+Streaming needs no extra scope beyond `chat:write`. Each agent message is its own stream, so a turn
+that produces several messages shows several replies rather than one merged block, and a run that
+fails or is cancelled closes its stream instead of leaving the message spinning.
+
+The remaining agent-surface behaviour — status, the stop button, and thread context — is tracked
+separately; those events are acknowledged and logged today, so the toggle is safe to enable early.
 
 ## Session Strategies
 
