@@ -27,8 +27,8 @@ use everruns_server::storage::{
     CreateProviderRow, CreateSessionFileRow, CreateSessionRow, CreateSessionScheduleRow,
     CreateUserConnectionRow, CreateUserRow, Database, SessionListFilters, StorageBackend,
     UpdateAgent, UpdateAgentHealthCheckRunRow, UpdateDeclarativeCapability, UpdateEvalRow,
-    UpdateModel, UpdateOrganization, UpdateOrganizationSettings, UpdateProvider, UpdateSession,
-    UpdateSessionFile, UpdateSessionScheduleRow,
+    UpdateMcpServer, UpdateModel, UpdateOrganization, UpdateOrganizationSettings, UpdateProvider,
+    UpdateSession, UpdateSessionFile, UpdateSessionScheduleRow,
 };
 use test_harness::get_database_url;
 
@@ -2305,6 +2305,168 @@ async fn test_mcp_server_crud() {
         .await
         .expect("Failed to delete MCP server");
     assert!(deleted);
+}
+
+/// EVE-964: deleting an MCP server must release its name.
+///
+/// `delete_mcp_server` archives the row rather than removing it, and the
+/// uniqueness index counted archived rows — so a name was taken forever after
+/// one delete. Visible to real users of archived servers, not only to a test
+/// suite run twice against one database.
+#[tokio::test]
+async fn test_mcp_server_name_is_released_after_delete() {
+    let backend = create_test_backend().await;
+    let name = format!("Recycled MCP Server {}", Uuid::now_v7());
+
+    let first = backend
+        .create_mcp_server(
+            TEST_ORG_ID,
+            CreateMcpServerRow {
+                name: name.clone(),
+                description: None,
+                url: "http://localhost:3000".to_string(),
+                transport_type: "http".to_string(),
+                api_key_encrypted: None,
+                headers: None,
+                settings: None,
+            },
+        )
+        .await
+        .expect("Failed to create MCP server");
+
+    assert!(
+        backend
+            .delete_mcp_server(TEST_ORG_ID, first.id.uuid())
+            .await
+            .expect("delete should not error"),
+        "delete should report a row changed"
+    );
+
+    // The name is free again: creating it a second time must succeed.
+    let second = backend
+        .create_mcp_server(
+            TEST_ORG_ID,
+            CreateMcpServerRow {
+                name: name.clone(),
+                description: None,
+                url: "http://localhost:3000".to_string(),
+                transport_type: "http".to_string(),
+                api_key_encrypted: None,
+                headers: None,
+                settings: None,
+            },
+        )
+        .await
+        .expect("an archived server must not hold its name");
+
+    assert_ne!(second.id, first.id);
+    assert_eq!(second.name, name);
+
+    // Lookup resolves to the live row, not the archived one.
+    let by_name = backend
+        .get_mcp_server_by_name(TEST_ORG_ID, &name)
+        .await
+        .expect("lookup failed")
+        .expect("live server should be found");
+    assert_eq!(
+        by_name.id, second.id,
+        "by-name lookup must resolve the live server, not the archived row"
+    );
+}
+
+/// EVE-964: the uniqueness index was global rather than per-organization, so
+/// one org creating a server named `github` stopped every other org from ever
+/// using that name — and the resulting 409 disclosed that some other tenant
+/// held it.
+#[tokio::test]
+async fn test_mcp_server_names_are_scoped_per_org() {
+    let backend = create_test_backend().await;
+    let name = format!("Shared MCP Name {}", Uuid::now_v7());
+
+    let row = |name: String| CreateMcpServerRow {
+        name,
+        description: None,
+        url: "http://localhost:3000".to_string(),
+        transport_type: "http".to_string(),
+        api_key_encrypted: None,
+        headers: None,
+        settings: None,
+    };
+
+    let first = backend
+        .create_mcp_server(TEST_ORG_ID, row(name.clone()))
+        .await
+        .expect("Failed to create MCP server for the first org");
+
+    let other_org = TEST_ORG_ID + 1;
+    let second = backend
+        .create_mcp_server(other_org, row(name.clone()))
+        .await
+        .expect("a second org must be able to use the same server name");
+
+    assert_ne!(second.id, first.id);
+
+    // Each org sees only its own.
+    assert_eq!(
+        backend
+            .get_mcp_server_by_name(TEST_ORG_ID, &name)
+            .await
+            .expect("lookup failed")
+            .expect("first org's server should be found")
+            .id,
+        first.id
+    );
+    assert_eq!(
+        backend
+            .get_mcp_server_by_name(other_org, &name)
+            .await
+            .expect("lookup failed")
+            .expect("second org's server should be found")
+            .id,
+        second.id
+    );
+}
+
+/// The name stays reserved while the server is merely disabled: a disabled
+/// server is live configuration a user can re-enable, so reusing its name
+/// would create an ambiguous pair.
+#[tokio::test]
+async fn test_mcp_server_name_stays_taken_while_disabled() {
+    let backend = create_test_backend().await;
+    let name = format!("Disabled MCP Server {}", Uuid::now_v7());
+
+    let row = |name: String| CreateMcpServerRow {
+        name,
+        description: None,
+        url: "http://localhost:3000".to_string(),
+        transport_type: "http".to_string(),
+        api_key_encrypted: None,
+        headers: None,
+        settings: None,
+    };
+
+    let first = backend
+        .create_mcp_server(TEST_ORG_ID, row(name.clone()))
+        .await
+        .expect("Failed to create MCP server");
+
+    backend
+        .update_mcp_server(
+            TEST_ORG_ID,
+            first.id.uuid(),
+            UpdateMcpServer {
+                status: Some("disabled".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("Failed to disable MCP server");
+
+    let conflict = backend.create_mcp_server(TEST_ORG_ID, row(name)).await;
+    assert!(
+        conflict.is_err(),
+        "a disabled server must keep its name reserved"
+    );
 }
 
 // ============================================
