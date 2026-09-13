@@ -10,6 +10,7 @@ describe("SlackSetupGuidance", () => {
     webhookUrl: "https://example.com/api/v1/apps/app-123/slack/events",
     webhookPath: "/api/v1/apps/app-123/slack/events",
     isLocalhost: false,
+    agentSurfaceEnabled: false,
     onCreateSlackApp: jest.fn(),
     creatingSlackApp: false,
     onConfigure: jest.fn(),
@@ -49,6 +50,27 @@ describe("SlackSetupGuidance", () => {
 
     expect(screen.getByRole("button", { name: "Create Slack App" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Configure" })).toBeInTheDocument();
+  });
+
+  it("offers the agent surface as an upgrade that needs a reinstall, not a config flip", () => {
+    render(<SlackSetupGuidance {...baseProps} isPublished={true} />);
+
+    expect(screen.getByText("Agent surface available")).toBeInTheDocument();
+    expect(screen.getByText(/reinstall it/)).toBeInTheDocument();
+    expect(screen.getByText(/assistant:write/)).toBeInTheDocument();
+  });
+
+  it("still flags the reinstall once the surface is enabled", () => {
+    render(<SlackSetupGuidance {...baseProps} isPublished={true} agentSurfaceEnabled={true} />);
+
+    expect(screen.getByText("Agent surface enabled")).toBeInTheDocument();
+    expect(screen.getByText(/still needs reinstalling/)).toBeInTheDocument();
+  });
+
+  it("does not mention the agent surface before Slack is configured at all", () => {
+    render(<SlackSetupGuidance {...baseProps} hasSlackConfig={false} />);
+
+    expect(screen.queryByText(/Agent surface/)).not.toBeInTheDocument();
   });
 
   it("keeps the manual Request URL path for localhost, which Slack cannot reach", () => {

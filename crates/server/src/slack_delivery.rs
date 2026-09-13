@@ -32,6 +32,66 @@ use crate::event_notifications::EventNotificationPayload;
 use crate::services::run_summary::is_terminal_turn_event;
 use crate::storage::StorageBackend;
 
+/// Which Slack surface a turn belongs to.
+///
+/// One app serves both at once: enabling Slack's Agents feature adds an assistant
+/// container, it does not replace the channel bot. Which surface an event belongs
+/// to is therefore read from the event at runtime, not from config (EVE-973).
+/// Delivery style branches on this in the tickets that follow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SlackSurface {
+    /// An ordinary channel or group thread — the classic channel bot.
+    #[default]
+    Channel,
+    /// The agent pane: a DM to an app with the agent surface enabled.
+    Pane,
+}
+
+/// Pane or channel, from the only two signals Slack gives us.
+///
+/// A live event carries `channel_type` (`"im"` for the agent pane). Recovery has
+/// no event to read — only the channel id stored in the turn's metadata — and
+/// Slack DM channel ids start with `D`. Both paths go through here so the two
+/// cannot drift into disagreeing about the same session.
+///
+/// With the surface disabled the app is a channel bot everywhere, DMs included,
+/// which is exactly how it behaves today.
+pub fn classify_surface(
+    agent_surface_enabled: bool,
+    channel_type: Option<&str>,
+    channel_id: &str,
+) -> SlackSurface {
+    if !agent_surface_enabled {
+        return SlackSurface::Channel;
+    }
+
+    let is_dm = match channel_type {
+        Some(kind) => kind == "im",
+        None => channel_id.starts_with('D'),
+    };
+
+    if is_dm {
+        SlackSurface::Pane
+    } else {
+        SlackSurface::Channel
+    }
+}
+
+/// Everything needed to start watching one turn's delivery.
+///
+/// A struct rather than a parameter list: the turn's identity, its Slack
+/// destination, and its delivery style are three different things, and passing
+/// seven positional arguments made them easy to transpose.
+pub struct DeliveryRegistration {
+    pub session_id: Uuid,
+    pub input_message_id: String,
+    pub bot_token: String,
+    pub channel: String,
+    pub thread_ts: String,
+    pub reply_mode: SlackReplyMode,
+    pub surface: SlackSurface,
+}
+
 /// Context needed to deliver Slack messages for a turn.
 #[derive(Debug, Clone)]
 struct DeliveryContext {
@@ -40,6 +100,9 @@ struct DeliveryContext {
     thread_ts: String,
     input_message_id: String,
     reply_mode: SlackReplyMode,
+    /// Surface this turn arrived on. Carried so delivery can branch on it.
+    #[allow(dead_code)]
+    surface: SlackSurface,
     /// Last event ID we've processed (for cursor-based pagination).
     since_event_id: Option<EventId>,
     /// Whether a reply has already reached Slack for this turn. Terminal states
@@ -122,15 +185,17 @@ impl SlackDeliveryDispatcher {
     ///
     /// Called when a Slack message creates a new agent turn. The dispatcher will
     /// watch for output events and post them to Slack.
-    pub async fn register(
-        &self,
-        session_id: Uuid,
-        input_message_id: String,
-        bot_token: String,
-        channel: String,
-        thread_ts: String,
-        reply_mode: SlackReplyMode,
-    ) {
+    pub async fn register(&self, registration: DeliveryRegistration) {
+        let DeliveryRegistration {
+            session_id,
+            input_message_id,
+            bot_token,
+            channel,
+            thread_ts,
+            reply_mode,
+            surface,
+        } = registration;
+
         let key = DeliveryKey {
             session_id,
             input_message_id: input_message_id.clone(),
@@ -142,6 +207,7 @@ impl SlackDeliveryDispatcher {
             thread_ts,
             input_message_id,
             reply_mode,
+            surface,
             since_event_id: None,
             delivered: false,
         };
@@ -149,6 +215,7 @@ impl SlackDeliveryDispatcher {
         info!(
             %session_id,
             input_message_id = %ctx.input_message_id,
+            ?surface,
             "Registered Slack delivery"
         );
 
@@ -593,14 +660,18 @@ impl SlackDeliveryDispatcher {
                 "Recovering Slack delivery"
             );
 
-            self.register(
-                session.id.uuid(),
+            // No event to read on this path, so the channel id is the only signal.
+            let surface = classify_surface(slack_config.agent_surface_enabled, None, &channel);
+
+            self.register(DeliveryRegistration {
+                session_id: session.id.uuid(),
                 input_message_id,
-                slack_config.bot_token.clone(),
+                bot_token: slack_config.bot_token.clone(),
                 channel,
                 thread_ts,
-                slack_config.reply_mode,
-            )
+                reply_mode: slack_config.reply_mode,
+                surface,
+            })
             .await;
         }
 
@@ -1667,6 +1738,62 @@ mod tests {
         }
     }
 
+    /// EVE-973: one app serves both Slack surfaces, and which one an event
+    /// belongs to is read from the event rather than from config.
+    mod surface_tests {
+        use super::*;
+
+        #[test]
+        fn surface_off_is_channel_everywhere() {
+            // Including DMs — that is exactly today's behaviour, and enabling the
+            // feature must be the only thing that changes it.
+            assert_eq!(
+                classify_surface(false, Some("im"), "D123"),
+                SlackSurface::Channel
+            );
+            assert_eq!(
+                classify_surface(false, Some("channel"), "C123"),
+                SlackSurface::Channel
+            );
+        }
+
+        #[test]
+        fn live_events_classify_on_channel_type() {
+            assert_eq!(
+                classify_surface(true, Some("im"), "D123"),
+                SlackSurface::Pane
+            );
+            for kind in ["channel", "group", "mpim"] {
+                assert_eq!(
+                    classify_surface(true, Some(kind), "C123"),
+                    SlackSurface::Channel,
+                    "{kind} is not the pane"
+                );
+            }
+        }
+
+        /// Recovery has no event to read, only the stored channel id.
+        #[test]
+        fn recovery_classifies_on_channel_id() {
+            assert_eq!(classify_surface(true, None, "D0A1B2C3"), SlackSurface::Pane);
+            assert_eq!(
+                classify_surface(true, None, "C0A1B2C3"),
+                SlackSurface::Channel
+            );
+            assert_eq!(classify_surface(true, None, ""), SlackSurface::Channel);
+        }
+
+        /// An `app_mention` delivered with an explicit channel type is channel-shaped
+        /// even if the id looks like a DM: the event's own word wins.
+        #[test]
+        fn channel_type_wins_over_channel_id() {
+            assert_eq!(
+                classify_surface(true, Some("channel"), "D123"),
+                SlackSurface::Channel
+            );
+        }
+    }
+
     /// EVE-972: every outbound message leaves through `ChannelDeliveryAdapter`,
     /// and transient-vs-permanent is decided in exactly one place.
     mod adapter_routing_tests {
@@ -1734,14 +1861,15 @@ mod tests {
             );
 
             dispatcher
-                .register(
-                    session_id.uuid(),
-                    "msg_turn_one".to_string(),
-                    "xoxb-test-token".to_string(),
-                    "C_ADAPTER".to_string(),
-                    "1700000000.000100".to_string(),
-                    SlackReplyMode::AllMessages,
-                )
+                .register(DeliveryRegistration {
+                    session_id: session_id.uuid(),
+                    input_message_id: "msg_turn_one".to_string(),
+                    bot_token: "xoxb-test-token".to_string(),
+                    channel: "C_ADAPTER".to_string(),
+                    thread_ts: "1700000000.000100".to_string(),
+                    reply_mode: SlackReplyMode::AllMessages,
+                    surface: SlackSurface::Channel,
+                })
                 .await;
 
             terminal_state_tests::emit(
@@ -1966,14 +2094,15 @@ mod tests {
 
         async fn register_turn(dispatcher: &SlackDeliveryDispatcher, session_id: uuid::Uuid) {
             dispatcher
-                .register(
+                .register(DeliveryRegistration {
                     session_id,
-                    INPUT_MSG.to_string(),
-                    "xoxb-test-token".to_string(),
-                    CHANNEL.to_string(),
-                    THREAD_TS.to_string(),
-                    SlackReplyMode::AllMessages,
-                )
+                    input_message_id: INPUT_MSG.to_string(),
+                    bot_token: "xoxb-test-token".to_string(),
+                    channel: CHANNEL.to_string(),
+                    thread_ts: THREAD_TS.to_string(),
+                    reply_mode: SlackReplyMode::AllMessages,
+                    surface: SlackSurface::Channel,
+                })
                 .await;
         }
 
