@@ -478,6 +478,31 @@ async fn test_slack_bot_message_ignored() {
     let expected_tag = format!("slack:thread:{}", bot_ts);
     assert_no_sessions_with_tag(&server, &expected_tag).await;
 }
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_slack_channel_join_ignored() {
+    let server = TestServer::in_memory().await;
+    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let join_ts = unique_ts();
+
+    let payload = json!({
+        "type": "event_callback",
+        "team_id": "T_TEST",
+        "event": {
+            "type": "message",
+            "subtype": "channel_join",
+            "text": "<@U_NEW> has joined the channel",
+            "user": "U_NEW",
+            "channel": "C_JOIN",
+            "ts": join_ts
+        }
+    });
+
+    let resp = send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &payload).await;
+    resp.assert_status(StatusCode::OK);
+
+    let expected_tag = format!("slack:thread:{}", join_ts);
+    assert_no_sessions_with_tag(&server, &expected_tag).await;
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_unpublished_app_rejected() {

@@ -453,8 +453,16 @@ async fn handle_slack_event(
                 }
 
                 // Skip bot messages to avoid loops // THREAT[TM-SLACK-002]
-                if event.bot_id.is_some() || event.subtype.as_deref() == Some("bot_message") {
+                if event.bot_id.is_some() {
                     tracing::debug!(app_id = %app_id, "Skipping bot message");
+                    return Ok((StatusCode::OK, Json(ack_json())));
+                }
+                if !is_supported_slack_message_subtype(event.subtype.as_deref()) {
+                    tracing::debug!(
+                        app_id = %app_id,
+                        subtype = ?event.subtype,
+                        "Ignoring unsupported Slack message subtype"
+                    );
                     return Ok((StatusCode::OK, Json(ack_json())));
                 }
 
@@ -551,6 +559,10 @@ fn event_matches_slack_scope(
     }
 
     true
+}
+
+fn is_supported_slack_message_subtype(subtype: Option<&str>) -> bool {
+    matches!(subtype, None | Some("file_share" | "thread_broadcast"))
 }
 
 /// Process an incoming Slack message: find/create session, create message, wait for response.
@@ -1931,6 +1943,33 @@ mod tests {
         config.channel_id = Some("C123".to_string());
         let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
         assert!(event_matches_slack_scope(&config, Some("T123"), &event));
+    }
+    #[test]
+    fn test_supported_slack_message_subtypes() {
+        for subtype in [None, Some("file_share"), Some("thread_broadcast")] {
+            assert!(
+                is_supported_slack_message_subtype(subtype),
+                "expected {subtype:?} to be supported"
+            );
+        }
+    }
+
+    #[test]
+    fn test_unsupported_slack_message_subtypes() {
+        for subtype in [
+            "bot_message",
+            "channel_join",
+            "channel_leave",
+            "message_changed",
+            "message_deleted",
+            "channel_topic",
+            "unknown_future_subtype",
+        ] {
+            assert!(
+                !is_supported_slack_message_subtype(Some(subtype)),
+                "expected {subtype} to be unsupported"
+            );
+        }
     }
 
     #[test]
