@@ -206,31 +206,70 @@ Each of these is small and independently fixable:
   allowlist, or skipping only our own bot ID, would preserve loop safety while allowing
   it.
 
-## Suggested ordering
+## Agent surface: design decisions
 
-Ordered by user-visible value per unit of work, not by size.
+Settled in review of this analysis. Recorded here because they are not recoverable from
+the code that will implement them.
 
-1. **Terminal-state notices in Slack** (gap 3). Smallest change, removes the worst
-   failure mode.
-2. **Manifest carries `event_subscriptions` and the publish-first reordering** (gap 2).
-   Removes two manual steps and the most error-prone part of setup.
-3. **Subtype allowlist, `Retry-After`, thread pagination** (gap 8). Correctness fixes,
-   each self-contained.
-4. **Native streaming and agent session status** (gap 1). The largest perceived-quality
-   change; needs the agent feature enabled and new scopes, so it pairs naturally with
-   item 2.
-5. **Markdown blocks for output fidelity** (gap 4). Cheap, immediately visible.
-6. **Interactivity endpoint and approval buttons** (gap 5). Unlocks human-in-the-loop.
-7. **Slack tools for the agent, starting with file fetch and reactions** (gap 6). Also
-   the first real exercise of `Capability::tools()` for a channel adapter.
-8. **Workflow Builder custom step** (gap 5). Highest-leverage distribution surface, but
-   it needs items 2 and 6 underneath it.
-9. **OAuth install flow** (gap 2). Requires the per-app-identity decision to be revisited
-   first.
+**The surface is chosen at runtime, not by configuration.** Enabling Slack's Agents
+feature does not replace the channel bot; the same app still answers `@mentions` in a
+channel and *additionally* gains an assistant container. Which surface an event belongs
+to is knowable from the event itself. So configuration carries a single
+`agent_surface_enabled` boolean that governs the manifest and event subscriptions, and
+delivery style is selected per event. A third `reply_mode`, or a separate
+`slack_agent` channel type, were both considered and rejected: they model as static
+configuration something that is a property of the inbound event.
 
-Items 1, 3, and 5 are independent and can land in any order. Item 4 should route its
-outbound calls through `ChannelDeliveryAdapter` rather than widening the direct-call
-path, which retires the dead code in gap 8 as a side effect.
+**`report_progress_only` is scoped rather than retired.** It exists because silence
+during a long turn was unacceptable, and native streaming removes that need in the
+assistant pane. It survives as the channel-thread answer, because token-by-token
+streaming into a shared channel is not wanted. Streaming is the pane answer. Neither
+obsoletes the other, and no existing app needs migrating.
+
+**Tool narration reuses `AgUiToolVisibility`.** Mapping tool names directly to Slack
+status text would leak internals into a user-facing surface. AG-UI already solved this
+with a `None` / `Generic` / `Narrated` policy; Slack consumes the same policy rather
+than growing a second one. What a public surface may reveal stays decided in one place.
+
+**Streaming makes the delivery dispatcher stateful and clocked.** `SlackDeliveryDispatcher`
+is notification-driven and stateless between events. Streaming requires accumulating
+deltas and flushing on a cadence, which needs a timer the dispatcher does not have, and
+per-output-message stream state that must be closed on *every* terminal event including
+`turn.cancelled`. An unstopped stream is a Slack message that spins forever, which is
+worse than the silence it replaces — so correct terminal-state handling is a
+prerequisite for streaming, not a parallel concern.
+
+**Streaming routes through `ChannelDeliveryAdapter`, via a capability probe.** Adapters
+expose optional streaming support rather than being forced to implement it; those that
+do not fall back to discrete delivery. This also requires migrating the existing direct
+Slack calls onto the trait first, which retires the dead-code problem recorded above
+instead of entrenching it.
+
+## Tracked work
+
+Every item below is filed on the EVE team. This concept is the rationale; the issues are
+the plan of record.
+
+| Issue | Item |
+|---|---|
+| EVE-966 | Terminal states are silent in Slack, and `turn.cancelled` leaks a registration |
+| EVE-967 | `channel_join` creates a session and burns a turn |
+| EVE-968 | Rate-limit retry ignores `Retry-After` |
+| EVE-969 | Thread backfill truncates at 100 messages |
+| EVE-970 | Manifest carries `event_subscriptions`; publish before app creation |
+| EVE-971 | Markdown blocks instead of raw `mrkdwn` |
+| EVE-972 | Route delivery through `ChannelDeliveryAdapter` |
+| EVE-973 | Enable the agent surface: manifest, scopes, events, surface detection |
+| EVE-974 | Stream replies via `chat.startStream` |
+| EVE-975 | Agent status and thread title from turn and tool lifecycle |
+| EVE-976 | Stop a running turn via `agent_session_stopped` |
+| EVE-977 | Persist `ThreadContext`; feed it `app_context_changed` |
+| EVE-978 | Decide where suggested prompts come from |
+
+Not filed, and deliberately so: interactivity and approval buttons, Slack tools for the
+agent, the Workflow Builder custom step, and the OAuth install flow. Each needs its own
+design pass first, and the last one requires revisiting the per-app bot identity
+decision.
 
 ## Sources
 

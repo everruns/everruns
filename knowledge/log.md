@@ -13,8 +13,11 @@
   only dispatcher never calls, a `ThreadContext` built and discarded on every
   message, and a missing message-subtype allowlist that lets a `channel_join`
   event start a session and burn a turn. Recorded as
-  [Slack Integration Modernization](integrations/slack-modernization.md) with a
-  suggested ordering; nothing is committed to yet.
+  [Slack Integration Modernization](integrations/slack-modernization.md), now
+  carrying the agent-surface design decisions and the issues they are tracked
+  under. The load-bearing one: the Slack surface is chosen per inbound event, not
+  by configuration, so one app serves both the assistant pane and channel threads
+  and `report_progress_only` is scoped rather than retired.
 
 ## 2026-09-11
 
