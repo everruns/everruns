@@ -156,7 +156,10 @@ impl Database {
             r#"
             SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
             FROM mcp_servers
-            WHERE org_id = $1 AND name = $2
+            -- Live rows only. Archived and deleted rows release their name
+            -- (EVE-964), so a name can now match a dead row and a live one;
+            -- callers asking "which server is called X" mean the live one.
+            WHERE org_id = $1 AND name = $2 AND status IN ('active', 'disabled')
             "#,
         )
         .bind(org_id)
