@@ -1,7 +1,7 @@
 ---
 type: Test Case
 title: "TC003: Workflow lifecycle and detail"
-description: "Verify that the durable workflows UI filters executions, exposes event details and linked sessions, and cancels running work."
+description: "Verify that the durable workflows UI filters executions, exposes event details and linked sessions, and safely cancels purpose-created test work."
 tags:
   - everruns
   - test-case
@@ -12,13 +12,15 @@ tags:
 
 ## Description
 
-Verify that the durable workflows UI filters executions, exposes event details and linked sessions, and cancels running work.
+Verify that the durable workflows UI filters executions, exposes event details and linked sessions, and safely cancels purpose-created test work.
 
 ## Preconditions
 
 - The full stack is running and the user is signed in as an operator.
-- Completed, failed, and running workflows exist.
-- At least one workflow is linked to a session and has multiple event types.
+- Read-only list and detail checks may run on a shared stack.
+- Cancellation approval runs only on an isolated local or test stack.
+- The cancellation target is a purpose-created, idempotent test workflow with no external side effects, a safely cancellable pending activity, a linked session, and multiple event types.
+- Completed and failed workflows exist alongside the test workflow.
 
 ## Test Data
 
@@ -26,20 +28,22 @@ Verify that the durable workflows UI filters executions, exposes event details a
 |---|---|
 | List route | `/durable/workflows` |
 | Detail route | `/durable/workflows/{workflowId}` |
-| Search value | A known workflow type or ID |
+| Search value | The test workflow type or ID |
+| Cancellation target | The purpose-created idempotent test workflow |
 
 ## Steps
 
 1. Open `/durable/workflows` and verify the workflow count and status badges match the seeded executions.
-2. Search for the known workflow, then filter by its status and confirm the list contains only matching rows.
+2. Search for the test workflow, then filter by its status and confirm the list contains only matching rows.
 3. Open **Tasks** and verify active and pending task metadata, including priority, attempt, claimant, schedule time, and workflow link.
 4. Open **Dead Letter Queue** and verify failed activity, attempt, error, dead time, and requeue count fields.
-5. Return to **Workflows** and open the known workflow.
+5. Return to **Workflows** and open the purpose-created test workflow.
 6. Confirm the detail page shows status, timestamps, input, result or error, and an event history ordered by sequence.
-7. For a linked workflow, click **View Session** and confirm it opens that session's transcript, then return.
-8. For the running workflow, click **Shutdown**, reject the prompt, and confirm the workflow remains running.
-9. Click **Cancel**, approve the prompt, and refresh until the status and event history report cancellation.
-10. Return to the list and confirm the canceled workflow appears when the `cancelled` filter is selected.
+7. Click **View Session** and confirm it opens the test workflow's linked session transcript, then return.
+8. For the purpose-created test workflow, click **Shutdown**, reject the prompt, and confirm the workflow remains running.
+9. Click **Cancel**, reject the prompt, and confirm the workflow remains running.
+10. On an isolated local or test stack only, reconfirm the selected workflow is the purpose-created idempotent test workflow, click **Cancel** again, approve the prompt, and refresh until the status and event history report cancellation.
+11. Return to the list and confirm the canceled test workflow appears when the `cancelled` filter is selected.
 
 ## Expected Result
 
@@ -47,4 +51,10 @@ Verify that the durable workflows UI filters executions, exposes event details a
 - Task and dead-letter tabs show operational state and working workflow links.
 - Workflow detail matches the selected ID and exposes input, terminal output, and event history.
 - Session navigation preserves the workflow's linked session identity.
-- Destructive actions require confirmation, and approved cancellation reaches both detail and list views.
+- Destructive actions require confirmation, and approved cancellation of the test workflow reaches both detail and list views.
+- The case never approves cancellation on a shared stack or for a workflow it did not create.
+
+## Cleanup
+
+- Confirm the canceled test workflow has no running or pending activities.
+- Remove any remaining test-only fixtures with the isolated stack's idempotent cleanup procedure.
