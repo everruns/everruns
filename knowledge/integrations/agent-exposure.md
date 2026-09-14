@@ -11,7 +11,8 @@ tags:
 # Agent Exposure (retiring the App abstraction)
 
 > Status: **Accepted, not implemented.** The direction is decided; the phases are
-> tracked as separate issues in Linear (OSS project, EVE team) and none has landed.
+> tracked as separate issues in Linear (OSS project, EVE team), EVE-998 through EVE-1011,
+> and none has landed.
 > [apps.md](apps.md) remains the accurate description of what exists today and stays
 > authoritative until the final phase removes it.
 >
@@ -87,7 +88,7 @@ place — the shared exposure policy is not transport detail). The exposure poli
 Slack and AG-UI already share, `public_tool_activity_text`, is the proof: it lives in
 `platform::app` today and is called from both `slack_delivery.rs` and `api/ag_ui.rs`. It
 belongs in a transport-neutral `everruns_platform::exposure` module, and this design
-forces that move rather than inventing it.
+forces that move rather than inventing it (EVE-1001, independent of every phase).
 
 ### Trigger
 
@@ -296,23 +297,26 @@ into agents.
 Nine independently shippable phases. Phases 0 and 2 are worth landing whether or not the
 rest proceeds.
 
-0. **Hide App from the product surface.** Remove the nav entry and the create path so no
+0. **Hide App from the product surface** (EVE-998). Remove the nav entry and the create path so no
    new Apps are made while the model moves. Reversible, no migration, lands immediately.
-1. **Resolve the grandfathered agent-less Apps.** [apps.md](apps.md) deliberately does not
+1. **Resolve the grandfathered agent-less Apps** (EVE-999). [apps.md](apps.md) deliberately does not
    backfill them, and they block every later phase. Synthesize a hidden Agent per row
    (`system_prompt = ""`, `harness_id = app.harness_id`), which is what such an App already
    means at runtime: the harness with no agent overlay.
-2. **Endpoint-scoped ingress routes**, mounted alongside the app-scoped ones. No model
+2. **Endpoint-scoped ingress routes** (EVE-1000), mounted alongside the app-scoped ones. No model
    change. Fixes the AG-UI addressing gap on its own.
-3. **Reserve the new tag prefixes** before anything writes them, and keep the old ones
+3. **Reserve the new tag prefixes** (EVE-1002) before anything writes them, and keep the old ones
    reserved forever. Must precede phase 4.
-4. **`agent_endpoints`** with an `agent_id` FK, backfilled from `app_channels ⋈ apps`.
-   `sessions.app_id` gains `endpoint_id`. Budget `subject_type` gains `agent_endpoint`
-   (`agent` already exists).
-5. **Unify the binding enums**; move webhook from endpoint to trigger type.
-6. **Per-endpoint publish**, `agent.exposures_suspended`, stop reading `App.status`.
-7. **UI**: Integrations tab, endpoint and trigger editors, Exposures view.
-8. **Delete** the `apps` table and the App domain. Route aliases stay.
+4. **`agent_endpoints`** (EVE-1003) with an `agent_id` FK, backfilled from `app_channels ⋈ apps`.
+   `sessions.app_id` gains `endpoint_id`, and budget `subject_type` gains `agent_endpoint`
+   (`agent` already exists), in EVE-1004.
+5. **Unify the binding enums** (EVE-1005); move webhook from endpoint to trigger type
+   (EVE-1006).
+6. **Per-endpoint publish**, `agent.exposures_suspended`, stop reading `App.status`
+   (EVE-1007). The Slack manifest and bot identity move to the endpoint with it (EVE-1008).
+7. **UI**: Integrations tab with endpoint and trigger editors (EVE-1009), cross-agent
+   Exposures view (EVE-1010).
+8. **Delete** the `apps` table and the App domain (EVE-1011). Route aliases stay.
 
 ## What this costs
 
@@ -330,10 +334,12 @@ rest proceeds.
 
 1. Does `Requester` binding mean the platform user, the external actor, or both keyed
    together? Slack `per_user` and a Public Chat visitor are different principals today.
+   Settled by EVE-1005.
 2. Should an endpoint be allowed to point at an agent in a *different* org-visible scope
    (shared agents), or does the endpoint always live with its agent?
 3. Is `Exposures` an ops page or a nav-level concept? It is the only cross-agent surface
-   the design keeps, so it decides whether "exposure" becomes user vocabulary.
+   the design keeps, so it decides whether "exposure" becomes user vocabulary. Settled by
+   EVE-1010.
 4. EVE-978 (suggested prompts) picks a source per surface. Endpoint config, agent config,
    or both with endpoint winning?
 
