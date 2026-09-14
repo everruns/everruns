@@ -62,6 +62,21 @@ use crate::api::sessions::{CreateSessionRequest, UpdateSessionRequest};
 
 const AGENT_MEMORY_MOUNT_PATH: &str = "/memory/agent";
 const USER_MEMORY_MOUNT_PATH: &str = "/memory/user";
+// THREAT[TM-AUTHZ-009][TM-A2A-007]: Session reuse and budget attribution match these routing
+// namespaces. This list is append-only: removing a retired prefix would let external callers forge
+// tags that older routing paths can still match.
+const RESERVED_SESSION_TAG_PREFIXES: &[&str] = &[
+    "__internal:",
+    "app:",
+    "app_channel:",
+    "slack:app:",
+    "ag_ui:app:",
+    "agent:",
+    "endpoint:",
+];
+const RESERVED_SESSION_TAG_ERROR: &str = "Tags with '__internal:', 'app:', 'app_channel:', \
+    'slack:app:', 'ag_ui:app:', 'agent:', or 'endpoint:' prefixes are reserved for internal \
+    subsystems";
 
 /// Policy: View sessions (read-only).
 pub const SESSION_VIEW: Policy = Policy {
@@ -722,29 +737,14 @@ impl SessionService {
             .as_ref()
             .map(|h| serde_json::to_value(h).unwrap_or_default());
 
-        if !caller.is_internal && req.tags.iter().any(|tag| tag.starts_with("__internal:")) {
-            return Err(BadRequestError::new("Tags with '__internal:' prefix are reserved").into());
-        }
-        // THREAT[TM-AUTHZ-009]: `app:<id>`, `app_channel:<id>` and the legacy
-        // `slack:app:<id>` tags all drive budget hierarchy attribution (see
-        // knowledge/security/budgeting.md and `extract_app_subjects` in
-        // `crates/server/src/domains/budgets/service.rs`). Allowing external
-        // callers to forge any of them would let an org member opt their
-        // session into another app's budget — corrupting spend attribution and
-        // potentially exhausting that app's cap. Only the apps and Slack
-        // domains (both using `Caller::internal`) are permitted to stamp them.
         if !caller.is_internal
             && req.tags.iter().any(|tag| {
-                tag.starts_with("app:")
-                    || tag.starts_with("app_channel:")
-                    || tag.starts_with("slack:app:")
-                    || tag.starts_with("ag_ui:app:")
+                RESERVED_SESSION_TAG_PREFIXES
+                    .iter()
+                    .any(|prefix| tag.starts_with(prefix))
             })
         {
-            return Err(BadRequestError::new(
-                "Tags with 'app:', 'app_channel:', 'slack:app:', or 'ag_ui:app:' prefix are reserved for internal subsystems",
-            )
-            .into());
+            return Err(BadRequestError::new(RESERVED_SESSION_TAG_ERROR).into());
         }
 
         let (owner_principal_id, resolved_owner_user_id) = match owner_override {
@@ -1607,29 +1607,15 @@ impl SessionService {
         req: UpdateSessionRequest,
     ) -> Result<Option<Session>> {
         if !caller.is_internal
-            && req
-                .tags
-                .as_ref()
-                .is_some_and(|tags| tags.iter().any(|tag| tag.starts_with("__internal:")))
-        {
-            return Err(BadRequestError::new("Tags with '__internal:' prefix are reserved").into());
-        }
-        // THREAT[TM-AUTHZ-009]: same reservation enforced on update — see
-        // create() for the rationale. Includes the legacy `slack:app:` tag.
-        if !caller.is_internal
             && req.tags.as_ref().is_some_and(|tags| {
                 tags.iter().any(|tag| {
-                    tag.starts_with("app:")
-                        || tag.starts_with("app_channel:")
-                        || tag.starts_with("slack:app:")
-                        || tag.starts_with("ag_ui:app:")
+                    RESERVED_SESSION_TAG_PREFIXES
+                        .iter()
+                        .any(|prefix| tag.starts_with(prefix))
                 })
             })
         {
-            return Err(BadRequestError::new(
-                "Tags with 'app:', 'app_channel:', 'slack:app:', or 'ag_ui:app:' prefix are reserved for internal subsystems",
-            )
-            .into());
+            return Err(BadRequestError::new(RESERVED_SESSION_TAG_ERROR).into());
         }
 
         let agent_identity_id = match req.agent_identity_id {
@@ -4931,67 +4917,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_rejects_reserved_internal_tags_for_external_callers() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let session_service = SessionService::new(db.clone());
-        let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone()).await;
-
-        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
-            name: "harness".to_string(),
-            display_name: Some("Harness".to_string()),
-            description: None,
-            intro_markdown: None,
-            short_description: None,
-            starters: Vec::new(),
-            system_prompt: Some("Harness prompt".to_string()),
-            parent_harness_id: None,
-            default_model_id: None,
-            tags: vec![],
-            capabilities: vec![],
-            initial_files: vec![],
-            mcp_servers: Default::default(),
-            network_access: None,
-            embedder_metadata: Default::default(),
-        })
-        .execute(&ctx)
-        .await
-        .unwrap();
-
-        let session = session_service
-            .create(
-                &caller,
-                harness.id.uuid(),
-                None,
-                None,
-                SessionSource::Api,
-                build_create_request(harness.id, None, None),
-            )
-            .await
-            .unwrap();
-
-        let err = session_service
-            .update(
-                &external_caller(DEFAULT_ORG_ID),
-                session.id.uuid(),
-                UpdateSessionRequest {
-                    title: None,
-                    goal: None,
-                    agent_identity_id: UpdateField::Unchanged,
-                    locale: None,
-                    tags: Some(vec!["__internal:app_invocation".to_string()]),
-                },
-            )
-            .await
-            .unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("Tags with '__internal:' prefix are reserved")
-        );
-    }
-
-    #[tokio::test]
-    async fn update_rejects_reserved_app_tags_for_external_callers() {
+    async fn update_rejects_reserved_routing_tags_for_external_callers() {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
@@ -5031,10 +4957,13 @@ mod tests {
             .unwrap();
 
         for forbidden in [
+            vec!["__internal:app_invocation".to_string()],
             vec!["app:app_other".to_string()],
             vec!["app_channel:appchan_other".to_string()],
             vec!["slack:app:app_legacy_other".to_string()],
             vec!["ag_ui:app:app_ag_ui_other".to_string()],
+            vec!["agent:agent_other".to_string()],
+            vec!["endpoint:endpoint_other".to_string()],
         ] {
             let err = session_service
                 .update(
@@ -5058,7 +4987,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_rejects_reserved_app_tags_for_external_callers() {
+    async fn create_rejects_reserved_routing_tags_for_external_callers() {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
@@ -5086,10 +5015,13 @@ mod tests {
         .unwrap();
 
         for forbidden in [
+            "__internal:app_invocation",
             "app:app_someone_else",
             "app_channel:appchan_someone_else",
             "slack:app:app_legacy_someone_else",
             "ag_ui:app:app_ag_ui_someone_else",
+            "agent:agent_someone_else",
+            "endpoint:endpoint_someone_else",
         ] {
             let mut req = build_create_request(harness.id, None, None);
             req.tags = vec![forbidden.to_string()];
@@ -5110,6 +5042,73 @@ mod tests {
                 "got: {err} for tag: {forbidden}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn internal_callers_can_set_reserved_routing_tags() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_service = SessionService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
+
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "harness".to_string(),
+            display_name: Some("Harness".to_string()),
+            description: None,
+            intro_markdown: None,
+            short_description: None,
+            starters: Vec::new(),
+            system_prompt: Some("Harness prompt".to_string()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        let mut req = build_create_request(harness.id, None, None);
+        req.tags = RESERVED_SESSION_TAG_PREFIXES
+            .iter()
+            .map(|prefix| format!("{prefix}owned"))
+            .collect();
+        let session = session_service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                None,
+                None,
+                SessionSource::Api,
+                req,
+            )
+            .await
+            .unwrap();
+
+        let updated_tags = RESERVED_SESSION_TAG_PREFIXES
+            .iter()
+            .map(|prefix| format!("{prefix}updated"))
+            .collect::<Vec<_>>();
+        let updated = session_service
+            .update(
+                &caller,
+                session.id.uuid(),
+                UpdateSessionRequest {
+                    title: None,
+                    goal: None,
+                    agent_identity_id: UpdateField::Unchanged,
+                    locale: None,
+                    tags: Some(updated_tags.clone()),
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated.tags, updated_tags);
     }
 
     #[tokio::test]
