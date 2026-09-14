@@ -73,14 +73,25 @@ EOF
 
 assert_rejected() {
   local bundle="$1"
-  local expected="$2"
   local output="$bundle/check-output.txt"
+  shift
 
   if python3 "$CHECKER" "$bundle" >"$output" 2>&1; then
     echo "expected checker to reject $bundle" >&2
     return 1
   fi
-  grep -Fq "$expected" "$output"
+  for expected in "$@"; do
+    grep -Fq "$expected" "$output"
+  done
+}
+
+rename_first_case() {
+  local bundle="$1"
+  local filename="$2"
+
+  mv "$bundle/test-cases/ui/widgets/TC001_first.md" \
+    "$bundle/test-cases/ui/widgets/$filename"
+  sed -i "s/TC001_first.md/$filename/" "$bundle/test-cases/ui/widgets/index.md"
 }
 
 python3 "$CHECKER" "$PROJECT_ROOT/knowledge"
@@ -96,3 +107,37 @@ assert_rejected "$duplicate_bundle" "duplicate test case identifier TC001"
 invalid_title_bundle="$TMP_DIR/invalid-title"
 write_bundle "$invalid_title_bundle" "Create a widget" "TC002" "TC002: Delete a widget"
 assert_rejected "$invalid_title_bundle" "test case title must start with 'TC###: '"
+
+mismatched_heading_bundle="$TMP_DIR/mismatched-heading"
+write_bundle \
+  "$mismatched_heading_bundle" "TC001: Create a widget" "TC002" "TC002: Delete a widget"
+sed -i 's/^# TC001: Create a widget$/# TC002: Create another widget/' \
+  "$mismatched_heading_bundle/test-cases/ui/widgets/TC001_first.md"
+assert_rejected \
+  "$mismatched_heading_bundle" \
+  "test case title must match its first H1" \
+  "test case H1 identifier TC002 must match filename identifier TC001"
+
+malformed_filename_bundle="$TMP_DIR/malformed-filename"
+write_bundle \
+  "$malformed_filename_bundle" "TC001: Create a widget" "TC002" "TC002: Delete a widget"
+rename_first_case "$malformed_filename_bundle" "create_widget.md"
+assert_rejected \
+  "$malformed_filename_bundle" \
+  "test case filename must match 'TC###_short_description.md'"
+
+long_identifier_bundle="$TMP_DIR/long-identifier"
+write_bundle \
+  "$long_identifier_bundle" "TC001: Create a widget" "TC002" "TC002: Delete a widget"
+rename_first_case "$long_identifier_bundle" "TC0010_create_widget.md"
+assert_rejected \
+  "$long_identifier_bundle" \
+  "test case filename must match 'TC###_short_description.md'"
+
+mismatched_identifier_bundle="$TMP_DIR/mismatched-identifier"
+write_bundle \
+  "$mismatched_identifier_bundle" "TC003: Create a widget" "TC002" "TC002: Delete a widget"
+assert_rejected \
+  "$mismatched_identifier_bundle" \
+  "test case title identifier TC003 must match filename identifier TC001" \
+  "test case H1 identifier TC003 must match filename identifier TC001"

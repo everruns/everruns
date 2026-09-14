@@ -13,8 +13,8 @@ DATE_HEADING = re.compile(r"^## \d{4}-\d{2}-\d{2}\s*$")
 LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 EXTERNAL = re.compile(r"\A(?:[a-z][a-z0-9+.-]*:|//|#)")
 CODE = re.compile(r"^```.*?^```|``.*?``|`[^`\n]*`", re.DOTALL | re.MULTILINE)
-TEST_CASE_ID = re.compile(r"^(TC\d{3})")
-TEST_CASE_TITLE = re.compile(r"^TC\d{3}: ")
+TEST_CASE_FILENAME = re.compile(r"^(TC\d{3})_.+\.md$")
+TEST_CASE_HEADING = re.compile(r"^(TC\d{3}): ")
 
 
 def strip_code(text: str) -> str:
@@ -62,6 +62,14 @@ def parse_frontmatter(frontmatter: str) -> dict[str, object]:
         key = key.strip()
         data[key] = value.strip()
     return data
+
+
+def scalar_value(value: object) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
 
 
 def index_targets(path: pathlib.Path) -> set[str]:
@@ -128,27 +136,60 @@ def check_test_cases(root: pathlib.Path, errors: list[str]) -> None:
         return
 
     identifiers: dict[tuple[pathlib.Path, str], list[pathlib.Path]] = {}
-    for path in sorted(test_cases.rglob("TC*.md")):
-        identifier_match = TEST_CASE_ID.match(path.name)
-        if identifier_match is None:
+    for path in sorted(test_cases.rglob("*.md")):
+        if path.name in RESERVED:
             continue
-        identifier = identifier_match.group(1)
-        identifiers.setdefault((path.parent, identifier), []).append(path)
 
         try:
-            frontmatter, _ = split_frontmatter(path.read_text())
+            frontmatter, body = split_frontmatter(path.read_text())
             if frontmatter is None:
                 continue
-            title = parse_frontmatter(frontmatter).get("title")
+            metadata = parse_frontmatter(frontmatter)
         except ValueError:
             continue
-        if not isinstance(title, str) or not title:
+        if scalar_value(metadata.get("type")) != "Test Case":
             continue
-        if len(title) >= 2 and title[0] == title[-1] and title[0] in "\"'":
-            title = title[1:-1]
-        if not TEST_CASE_TITLE.match(title):
-            rel = path.relative_to(root).as_posix()
+
+        rel = path.relative_to(root).as_posix()
+        filename_match = TEST_CASE_FILENAME.fullmatch(path.name)
+        filename_identifier: str | None = None
+        if filename_match is None:
+            errors.append(
+                f"{rel}: test case filename must match "
+                "'TC###_short_description.md'"
+            )
+        else:
+            filename_identifier = filename_match.group(1)
+            identifiers.setdefault((path.parent, filename_identifier), []).append(path)
+
+        title = scalar_value(metadata.get("title"))
+        title_match = TEST_CASE_HEADING.match(title) if title is not None else None
+        if title is not None and title_match is None:
             errors.append(f"{rel}: test case title must start with 'TC###: '")
+        h1 = next(
+            (line[2:].strip() for line in body.splitlines() if line.startswith("# ")),
+            None,
+        )
+        h1_match = TEST_CASE_HEADING.match(h1) if h1 is not None else None
+        if h1 is None:
+            errors.append(f"{rel}: test case must contain an H1 heading")
+        elif h1_match is None:
+            errors.append(f"{rel}: test case H1 must start with 'TC###: '")
+
+        if title is not None and h1 is not None and title != h1:
+            errors.append(f"{rel}: test case title must match its first H1")
+
+        if filename_identifier is not None:
+            if title_match is not None and title_match.group(1) != filename_identifier:
+                errors.append(
+                    f"{rel}: test case title identifier {title_match.group(1)} "
+                    f"must match filename identifier {filename_identifier}"
+                )
+            if h1_match is not None and h1_match.group(1) != filename_identifier:
+                errors.append(
+                    f"{rel}: test case H1 identifier {h1_match.group(1)} "
+                    f"must match filename identifier {filename_identifier}"
+                )
 
     for (directory, identifier), paths in sorted(identifiers.items()):
         if len(paths) < 2:
