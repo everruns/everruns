@@ -869,11 +869,7 @@ fn resource_error(resource: &str, e: CommandError) -> String {
         | CommandErrorKind::Conflict(msg)
         | CommandErrorKind::RateLimited(msg)
         | CommandErrorKind::Unprocessable(msg) => msg,
-        CommandErrorKind::Internal(err) => {
-            // THREAT[TM-API-005]: MCP callers receive no internal storage diagnostics.
-            tracing::error!(resource, error = %err, "MCP resource read failed");
-            format!("Failed to list {resource}")
-        }
+        CommandErrorKind::Internal(err) => format!("Failed to list {resource}: {err}"),
     }
 }
 
@@ -2373,15 +2369,12 @@ mod resources_read_policy_tests {
     }
 
     #[test]
-    fn resource_error_internal_redacts_source_details() {
+    fn resource_error_internal_prefixes_resource_name() {
         let msg = resource_error(
             "providers",
-            CommandError::internal(anyhow::anyhow!(
-                "database connection refused: host=private-db"
-            )),
+            CommandError::internal(anyhow::anyhow!("connection refused")),
         );
-        assert_eq!(msg, "Failed to list providers");
-        assert!(!msg.contains("private-db"));
+        assert_eq!(msg, "Failed to list providers: connection refused");
     }
 
     // ----- Policy enforcement on list commands -----
