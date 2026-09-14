@@ -1,7 +1,7 @@
 ---
 type: Test Case
 title: "TC002: Declarative capability lifecycle"
-description: "Verify that a declarative capability can bundle MCP servers, skills, and files, preserve its immutable name during editing, and be archived."
+description: "Verify that a declarative capability can bundle MCP servers, skills, and files, keep its unique name disabled in the editor, and be archived."
 tags:
   - everruns
   - test-case
@@ -12,12 +12,12 @@ tags:
 
 ## Description
 
-Verify that a declarative capability can bundle MCP servers, skills, and files, preserve its immutable name during editing, and be archived.
+Verify that a declarative capability can bundle MCP servers, skills, and files, keep its unique name disabled in the editor, and be archived.
 
 ## Preconditions
 
 - The full stack is running and the user is signed in.
-- One MCP server and one active skill exist.
+- A reachable test MCP endpoint or local command and one active skill exist.
 
 ## Test Data
 
@@ -32,7 +32,7 @@ Verify that a declarative capability can bundle MCP servers, skills, and files, 
 
 1. Open `/capabilities/declarative/new` and confirm **Create** is disabled while name or description is empty.
 2. Enter the unique name, display name, description, prompt addition, and `medium` risk.
-3. Open **MCP Servers**, add the test server, and configure its exposed tools.
+3. Open **MCP Servers**, add the test server, set its name, transport, URL or command, authentication mode, and **Live tool discovery** state.
 4. Open **Skills**, add the test skill.
 5. Open **Files**, add the test file with recognizable content.
 6. Confirm tab counters and the Summary rail show one MCP server, skill, and file, then create the capability.
@@ -45,7 +45,7 @@ Verify that a declarative capability can bundle MCP servers, skills, and files, 
 ## Expected Result
 
 - Required name and description prevent incomplete creation.
-- MCP server, skill, file, prompt, and risk configuration persist across create and edit.
-- The unique name cannot change after creation and remains the stable declarative reference.
+- MCP server fields and live tool discovery, skill, file, prompt, and risk configuration persist across create and edit.
+- The editor disables the unique name after creation and UI edits keep the displayed declarative reference stable.
 - Search finds the declarative capability by display name or ID.
 - Archive removes it from the active list.

@@ -17,7 +17,8 @@ Verify that an enabled observer can be created, validated, inspected, paused, re
 ## Preconditions
 
 - The full stack is running and the user is signed in.
-- The `observers` feature is enabled for the organization.
+- A dedicated test organization has no other active users, and its `observers` feature is enabled.
+- The original `observers` feature state is recorded before the test.
 - A test agent and harness exist.
 - The configured judge model can score a completed production turn.
 
@@ -53,3 +54,7 @@ Verify that an enabled observer can be created, validated, inspected, paused, re
 - Matching production work produces a navigable quality score.
 - Archive removes the observer from the active list.
 - A disabled feature does not expose list, create, or edit content.
+
+## Cleanup
+
+- Restore the test organization's `observers` feature to its recorded original state and verify `/observers` returns to that state.

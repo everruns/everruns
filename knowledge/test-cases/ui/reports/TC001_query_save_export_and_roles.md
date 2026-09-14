@@ -37,11 +37,12 @@ Verify that reports query only the current organization, support saved reports a
 4. Enter the saved report name and click **Save report**.
 5. Change the query, then run the saved report and confirm the original dataset, dimension, measure, range, and result return.
 6. Export the current query and the saved report; open both CSV files and verify headers and rows match their displayed results.
-7. As the owner, confirm **Backfill**, **Project**, Outbox, Projection Lag, and failed-row diagnostics are visible.
-8. Delete the saved report and confirm it leaves the list.
-9. Sign in as an admin and confirm report save/delete is available but owner-only projection controls and diagnostics are absent.
-10. Sign in as a member and confirm querying and CSV export remain available while save/delete and owner-only controls are absent.
-11. Switch between the two organizations and verify each report result and saved-report list changes to that organization's data.
+7. As the owner, confirm **Backfill**, **Project**, Outbox, and Projection Lag are visible, and verify the Outbox summary shows its failed count.
+8. If the failed count is greater than zero, confirm **Failed Rows** lists failure details; otherwise confirm the card is absent.
+9. Delete the saved report and confirm it leaves the list.
+10. Sign in as an admin and confirm report save/delete is available but owner-only projection controls and diagnostics are absent.
+11. Sign in as a member and confirm querying and CSV export remain available while save/delete and owner-only controls are absent.
+12. Switch between the two organizations and verify each report result and saved-report list changes to that organization's data.
 
 ## Expected Result
 
