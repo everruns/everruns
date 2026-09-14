@@ -118,7 +118,6 @@ function ThreadContent({ threadId }: { threadId: string }) {
       <ChatPanel
         replyToLabel={counterpart}
         showRunCards
-        platformTitle={counterpart}
         platformIcon={harness?.icon}
         platformIntro={platformIntro?.intro ?? null}
         platformStarters={platformIntro?.starters ?? []}
