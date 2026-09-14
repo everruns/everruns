@@ -315,12 +315,10 @@ function MemoryCard({
                   Sync
                 </Button>
               )}
-              <Link href={`/memory/${memory.id}`}>
-                <Button variant="outline" size="sm">
-                  <FolderOpen className="h-4 w-4" />
-                  Open
-                </Button>
-              </Link>
+              <Button variant="outline" size="sm" render={<Link href={`/memory/${memory.id}`} />}>
+                <FolderOpen className="h-4 w-4" />
+                Open
+              </Button>
               <Button
                 variant="outline"
                 size="sm"

@@ -126,11 +126,9 @@ export default function DevDesignReferencePage() {
         </Notice>
 
         <div className="flex flex-wrap gap-2">
-          <Link href={reference.componentShowcase}>
-            <Button variant="accent">
-              <Blocks /> Production components <ArrowRight />
-            </Button>
-          </Link>
+          <Button variant="accent" render={<Link href={reference.componentShowcase} />}>
+            <Blocks /> Production components <ArrowRight />
+          </Button>
           <a href={reference.sourceUrl} target="_blank" rel="noreferrer">
             <Button variant="outline">
               External design project <ExternalLink />

@@ -50,11 +50,15 @@ export default function AllExamplesPage() {
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <Link href="/agents">
-            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Back to agents">
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label="Back to agents"
+            render={<Link href="/agents" />}
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
           <h1 className="text-2xl font-bold">Example Agents</h1>
         </div>
         <SearchInput

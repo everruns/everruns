@@ -144,12 +144,10 @@ export default function EvalsPage() {
           </>
         }
         actions={
-          <Link href="/evals/new">
-            <Button variant="accent">
-              <Plus className="size-4" />
-              New Eval
-            </Button>
-          </Link>
+          <Button variant="accent" render={<Link href="/evals/new" />}>
+            <Plus className="size-4" />
+            New Eval
+          </Button>
         }
       />
 
@@ -171,12 +169,10 @@ export default function EvalsPage() {
             emptyState={
               <div className="py-12 text-center">
                 <p className="mb-4 text-muted-foreground">No evals yet</p>
-                <Link href="/evals/new">
-                  <Button>
-                    <Plus className="mr-2 size-4" />
-                    Create your first eval
-                  </Button>
-                </Link>
+                <Button render={<Link href="/evals/new" />}>
+                  <Plus className="mr-2 size-4" />
+                  Create your first eval
+                </Button>
               </div>
             }
           >

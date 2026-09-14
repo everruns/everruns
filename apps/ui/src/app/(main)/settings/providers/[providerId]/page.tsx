@@ -116,12 +116,13 @@ export default function ProviderDetailPage({
         }
         description={getProviderLabel(provider.provider_type)}
         actions={
-          <Link href={`/models?provider=${encodeURIComponent(provider.id)}`}>
-            <Button variant="outline">
-              <Boxes className="h-4 w-4 mr-2" />
-              View Models
-            </Button>
-          </Link>
+          <Button
+            variant="outline"
+            render={<Link href={`/models?provider=${encodeURIComponent(provider.id)}`} />}
+          >
+            <Boxes className="h-4 w-4 mr-2" />
+            View Models
+          </Button>
         }
       />
 
@@ -194,11 +195,13 @@ export default function ProviderDetailPage({
                   {formatCountLabel(modelCounts.total, "model")} available
                 </span>
                 <Badge variant="outline">{modelCounts.enabled} enabled</Badge>
-                <Link href={`/models?provider=${encodeURIComponent(provider.id)}`}>
-                  <Button variant="outline" size="sm">
-                    View provider models
-                  </Button>
-                </Link>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  render={<Link href={`/models?provider=${encodeURIComponent(provider.id)}`} />}
+                >
+                  View provider models
+                </Button>
               </>
             )}
           </CardContent>

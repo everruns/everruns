@@ -197,12 +197,13 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
         actions={
           <>
             {harness.status === "active" && (
-              <Link href={{ pathname: "/apps/new", query: { harness_id: harnessId } }}>
-                <Button variant="accent">
-                  <Rocket className="size-4" />
-                  Create app
-                </Button>
-              </Link>
+              <Button
+                variant="accent"
+                render={<Link href={{ pathname: "/apps/new", query: { harness_id: harnessId } }} />}
+              >
+                <Rocket className="size-4" />
+                Create app
+              </Button>
             )}
             <Button variant="outline" onClick={handleCopy} disabled={copyHarness.isPending}>
               <Copy className="size-4" />
@@ -211,12 +212,10 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
             {!harness.is_built_in && (
               <>
                 {harness.status === "active" && (
-                  <Link href={`/harnesses/${harnessId}/edit`}>
-                    <Button variant="outline">
-                      <Pencil className="size-4" />
-                      Edit
-                    </Button>
-                  </Link>
+                  <Button variant="outline" render={<Link href={`/harnesses/${harnessId}/edit`} />}>
+                    <Pencil className="size-4" />
+                    Edit
+                  </Button>
                 )}
                 <Button
                   variant="outline"
