@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import EvalsPage from "@/app/(main)/evals/page";
 import ObserversPageClient from "@/app/(main)/observers/observers-page-client";
@@ -96,6 +96,9 @@ it("uses the shared masthead and status tabs for evals", () => {
   expect(
     screen.getByText("Define, run, and track behavioral tests for your agents."),
   ).toBeInTheDocument();
+  const evalsMasthead = document.querySelector<HTMLElement>('[data-slot="page-masthead"]');
+  expect(evalsMasthead).not.toBeNull();
+  expect(within(evalsMasthead!).getByText("2")).toBeInTheDocument();
   expect(screen.getByText("1 active")).toBeInTheDocument();
   expect(screen.getByText("1 archived")).toBeInTheDocument();
   expect(mockUseEvals).toHaveBeenCalledWith({ includeArchived: true });
@@ -127,6 +130,9 @@ it("uses the shared masthead and status tabs for observers", () => {
       "Score production sessions asynchronously with sampling rules and evaluators.",
     ),
   ).toBeInTheDocument();
+  const observersMasthead = document.querySelector<HTMLElement>('[data-slot="page-masthead"]');
+  expect(observersMasthead).not.toBeNull();
+  expect(within(observersMasthead!).getByText("2")).toBeInTheDocument();
   expect(screen.getByText("1 active")).toBeInTheDocument();
   expect(screen.getByText("1 archived")).toBeInTheDocument();
   expect(mockUseObservers).toHaveBeenCalledWith({
