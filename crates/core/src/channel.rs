@@ -393,6 +393,30 @@ pub trait ChannelDeliveryAdapter: Send + Sync {
     fn streaming(&self) -> Option<&dyn ChannelStreamDelivery> {
         None
     }
+
+    /// Live status and thread title, when the platform has an agent surface.
+    ///
+    /// Same capability-probe shape as `streaming`, for the same reason: `None`
+    /// — the default — means the dispatcher skips status and title entirely,
+    /// rather than every adapter stubbing methods for affordances its platform
+    /// does not have (EVE-975).
+    fn agent_surface(&self) -> Option<&dyn ChannelAgentSurface> {
+        None
+    }
+}
+
+/// The agent-pane affordances a platform may offer alongside the reply itself:
+/// a live status line while a turn runs, and a thread title.
+///
+/// Both are advisory. A failure here must never fail the turn — the reply is the
+/// product and the status is decoration — so the dispatcher logs and continues.
+#[async_trait]
+pub trait ChannelAgentSurface: Send + Sync {
+    /// Set the live status line for a thread. An empty `status` clears it.
+    async fn set_status(&self, status: &str, context: &DeliveryContext) -> DeliveryResult;
+
+    /// Set the thread's title.
+    async fn set_title(&self, title: &str, context: &DeliveryContext) -> DeliveryResult;
 }
 
 /// Progressive delivery of one message as it is produced.

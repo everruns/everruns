@@ -1074,16 +1074,15 @@ struct AgUiStreamState {
 }
 
 impl AgUiStreamState {
-    /// Returns the channel-configured generic tool text, trimmed and with a fallback to the
-    /// platform default if the value is empty or whitespace. Used for both `Generic` and
-    /// `Narrated` visibility so the public stream always opens with non-empty safe text.
-    fn safe_public_tool_text(&self) -> String {
-        let trimmed = self.generic_tool_text.trim();
-        if trimmed.is_empty() {
-            everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string()
-        } else {
-            trimmed.to_string()
-        }
+    /// The text this stream may show for tool activity, or `None` when the
+    /// channel's visibility forbids exposing it. The policy itself lives in
+    /// `everruns_platform::app` so the Slack agent pane answers to the same rule
+    /// (EVE-975).
+    fn public_tool_activity_text(&self) -> Option<&str> {
+        everruns_platform::app::public_tool_activity_text(
+            self.tool_visibility,
+            &self.generic_tool_text,
+        )
     }
 }
 
@@ -1341,17 +1340,13 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
         }
         "tool.started" if parse_event_data::<ToolStartedData>(event).is_ok() => {
             state.active_tool_activity_count += 1;
-            match state.tool_visibility {
-                AgUiToolVisibility::None => {}
-                // Both Generic and Narrated emit the safe channel-configured generic text.
-                // Narrated must not forward backend/model-authored narration because narration
-                // may derive from raw tool-call arguments. `safe_public_tool_text` falls back
-                // to the platform default if the configured text is empty/whitespace so we
-                // never push an empty delta on the public stream.
-                AgUiToolVisibility::Generic | AgUiToolVisibility::Narrated => {
-                    let text = state.safe_public_tool_text();
-                    push_public_tool_activity_start(state, text);
-                }
+            // `None` shows nothing; Generic and Narrated both emit the safe
+            // channel-configured text, never backend/model-authored narration,
+            // which may derive from raw tool-call arguments. See
+            // `everruns_platform::app::public_tool_activity_text`.
+            if let Some(text) = state.public_tool_activity_text() {
+                let text = text.to_string();
+                push_public_tool_activity_start(state, text);
             }
         }
         "tool.completed" if parse_event_data::<ToolCompletedData>(event).is_ok() => {

@@ -14,13 +14,16 @@
 
 use async_trait::async_trait;
 use everruns_core::channel::{
-    ChannelDeliveryAdapter, ChannelStreamDelivery, DeliveryContext as ChannelDeliveryContext,
-    DeliveryResult as ChannelDeliveryResult, OutboundChannelMessage,
+    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelStreamDelivery,
+    DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
+    OutboundChannelMessage,
 };
+use everruns_core::events;
 use everruns_core::progress_reporting::{
     ProgressReportPayload, REPORT_PROGRESS_TOOL_NAME, format_progress_report_for_slack,
 };
 use everruns_platform::SlackReplyMode;
+use everruns_platform::app::{AgUiToolVisibility, public_tool_activity_text};
 use everruns_provider::typed_id::{EventId, SessionId};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -94,6 +97,12 @@ const STREAM_FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_mil
 /// waiting out the timer. Well under Slack's 12,000-character append cap.
 const STREAM_FLUSH_CHARS: usize = 2_000;
 
+/// Turn-level status: the agent is working and no tool is running.
+///
+/// Reveals that the turn is alive and nothing else, which is the point — most of
+/// the "is it dead?" ambiguity goes away without narrating anything (EVE-975).
+const SLACK_THINKING_STATUS: &str = "is thinking...";
+
 /// An open stream for one output message.
 ///
 /// Deltas are not accumulated locally: `output.message.delta` carries the full
@@ -134,6 +143,10 @@ pub struct DeliveryRegistration {
     /// when streaming into a channel (EVE-974).
     pub recipient_user_id: Option<String>,
     pub recipient_team_id: Option<String>,
+    /// How much of a running tool the pane's status line may reveal (EVE-975).
+    pub tool_visibility: AgUiToolVisibility,
+    /// Status text for a running tool under `Generic` visibility.
+    pub generic_tool_text: String,
 }
 
 /// Context needed to deliver Slack messages for a turn.
@@ -149,6 +162,15 @@ struct DeliveryContext {
     /// Recipient identity, required by `chat.startStream`.
     recipient_user_id: Option<String>,
     recipient_team_id: Option<String>,
+    /// Tool-activity policy for the pane status line.
+    tool_visibility: AgUiToolVisibility,
+    generic_tool_text: String,
+    /// Tools running right now. The status line reverts to the thinking text
+    /// when this returns to zero, so two overlapping tools do not clear it early.
+    active_tool_count: usize,
+    /// Last status pushed to Slack. Slack takes a `setStatus` per call and the
+    /// same string twice is a wasted round trip on a rate-limited API.
+    last_status: Option<String>,
     /// Open streams for this turn, keyed by output message id. A turn with three
     /// output messages is three streams, not one concatenated blob.
     streams: HashMap<String, StreamState>,
@@ -245,6 +267,8 @@ impl SlackDeliveryDispatcher {
             surface,
             recipient_user_id,
             recipient_team_id,
+            tool_visibility,
+            generic_tool_text,
         } = registration;
 
         let key = DeliveryKey {
@@ -261,6 +285,10 @@ impl SlackDeliveryDispatcher {
             surface,
             recipient_user_id,
             recipient_team_id,
+            tool_visibility,
+            generic_tool_text,
+            active_tool_count: 0,
+            last_status: None,
             streams: HashMap::new(),
             since_event_id: None,
             delivered: false,
@@ -498,6 +526,40 @@ impl SlackDeliveryDispatcher {
                     }
                 }
 
+                // Pane status line. Tool lifecycle is counted rather than
+                // toggled: two overlapping tools must not have the first one to
+                // finish clear the status while the second is still running.
+                match event.event_type.as_str() {
+                    events::TURN_STARTED => {
+                        self.set_status(&key, &ctx, SLACK_THINKING_STATUS).await;
+                    }
+                    // `tool.completed` is emitted for a failed call too — there is
+                    // no `tool.failed` — so the counter cannot strand above zero.
+                    events::TOOL_STARTED | events::TOOL_COMPLETED => {
+                        if let Some(live) = self.deliveries.write().await.get_mut(&key) {
+                            live.active_tool_count = if event.event_type == events::TOOL_STARTED {
+                                live.active_tool_count + 1
+                            } else {
+                                live.active_tool_count.saturating_sub(1)
+                            };
+                        }
+                        let status = self.current_status(&key).await;
+                        self.set_status(&key, &ctx, &status).await;
+                    }
+                    // The agent names the session once it knows what the thread is
+                    // about. That title is worth showing; the synthetic seed title
+                    // (`Slack thread <ts> in <channel>`) is the thread's own
+                    // coordinates and would tell the reader nothing.
+                    events::SESSION_TITLE_UPDATED => {
+                        if let Some(title) = event.data.get("title").and_then(|v| v.as_str())
+                            && !title.trim().is_empty()
+                        {
+                            self.set_title(&key, &ctx, title).await;
+                        }
+                    }
+                    _ => {}
+                }
+
                 // Stop watching when turn ends
                 if is_terminal_turn_event(&event.event_type) {
                     debug!(
@@ -508,6 +570,13 @@ impl SlackDeliveryDispatcher {
                     terminal_event = Some(event.event_type.clone());
                     break;
                 }
+            }
+
+            // Every terminal state clears the status line. A status left set is
+            // the same failure mode as an unstopped stream: the pane keeps saying
+            // the agent is working long after it stopped.
+            if terminal_event.is_some() {
+                self.set_status(&key, &ctx, "").await;
             }
 
             // Every terminal state stops the stream. An unstopped stream is a
@@ -559,6 +628,79 @@ impl SlackDeliveryDispatcher {
                 }
             }
         }
+    }
+
+    /// The agent-surface interface to use for this delivery, if any.
+    ///
+    /// Pane-only, for the same reason streaming is: a channel thread has no
+    /// status line or title to set, and pushing one would be a no-op call per
+    /// tool on a rate-limited API.
+    fn agent_surface_for(&self, ctx: &DeliveryContext) -> Option<&dyn ChannelAgentSurface> {
+        if ctx.surface != SlackSurface::Pane {
+            return None;
+        }
+        self.adapter.agent_surface()
+    }
+
+    /// Push a status line, skipping the call when it would not change anything.
+    ///
+    /// Advisory: a failed status is logged and swallowed. The reply is the
+    /// product; a decoration must never take a turn down with it.
+    async fn set_status(&self, key: &DeliveryKey, ctx: &DeliveryContext, status: &str) {
+        let Some(surface) = self.agent_surface_for(ctx) else {
+            return;
+        };
+        {
+            let deliveries = self.deliveries.read().await;
+            let live = match deliveries.get(key) {
+                Some(live) => live,
+                None => return,
+            };
+            if live.last_status.as_deref() == Some(status) {
+                return;
+            }
+        }
+        if let ChannelDeliveryResult::TransientError(e) | ChannelDeliveryResult::PermanentError(e) =
+            surface
+                .set_status(status, &self.delivery_context(ctx))
+                .await
+        {
+            warn!(session_id = %key.session_id, error = %e, "Failed to set Slack thread status");
+            return;
+        }
+        if let Some(live) = self.deliveries.write().await.get_mut(key) {
+            live.last_status = Some(status.to_string());
+        }
+    }
+
+    /// Push a thread title. Advisory, like `set_status`.
+    async fn set_title(&self, key: &DeliveryKey, ctx: &DeliveryContext, title: &str) {
+        let Some(surface) = self.agent_surface_for(ctx) else {
+            return;
+        };
+        if let ChannelDeliveryResult::TransientError(e) | ChannelDeliveryResult::PermanentError(e) =
+            surface.set_title(title, &self.delivery_context(ctx)).await
+        {
+            warn!(session_id = %key.session_id, error = %e, "Failed to set Slack thread title");
+        }
+    }
+
+    /// The status a delivery should be showing right now.
+    ///
+    /// A running tool narrates only as far as the channel's visibility allows;
+    /// `None` visibility falls back to the turn-level thinking text, which
+    /// reveals that work is happening but nothing about what.
+    async fn current_status(&self, key: &DeliveryKey) -> String {
+        let deliveries = self.deliveries.read().await;
+        let Some(live) = deliveries.get(key) else {
+            return SLACK_THINKING_STATUS.to_string();
+        };
+        if live.active_tool_count == 0 {
+            return SLACK_THINKING_STATUS.to_string();
+        }
+        public_tool_activity_text(live.tool_visibility, &live.generic_tool_text)
+            .unwrap_or(SLACK_THINKING_STATUS)
+            .to_string()
     }
 
     /// The streaming interface to use for this delivery, if any.
@@ -1040,6 +1182,8 @@ impl SlackDeliveryDispatcher {
                 surface,
                 recipient_user_id: recipient_user_id.filter(|u| !u.is_empty()),
                 recipient_team_id: slack_config.team_id.clone(),
+                tool_visibility: slack_config.tool_visibility,
+                generic_tool_text: slack_config.generic_tool_text.clone(),
             })
             .await;
         }
@@ -1247,6 +1391,10 @@ impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
     fn streaming(&self) -> Option<&dyn ChannelStreamDelivery> {
         Some(self)
     }
+
+    fn agent_surface(&self) -> Option<&dyn ChannelAgentSurface> {
+        Some(self)
+    }
 }
 
 /// Keys the Slack adapter reads out of `DeliveryContext::extra`.
@@ -1338,6 +1486,75 @@ impl ChannelStreamDelivery for SlackDeliveryAdapter {
 }
 
 /// Map a Slack transport failure onto a `ChannelDeliveryResult`.
+/// Slack's agent-surface methods, in one place.
+///
+/// Slack documents `assistant.threads.setStatus` / `setTitle` as compatibility
+/// bridges over these, so both name sets work today and one of them will not.
+/// Pinning the `agents.sessions.*` set here — and nowhere else — makes a move a
+/// two-line change rather than a search (EVE-975).
+const SLACK_SET_STATUS_METHOD: &str = "agents.sessions.setStatus";
+const SLACK_SET_TITLE_METHOD: &str = "agents.sessions.rename";
+
+/// Slack rejects a title longer than this.
+const SLACK_TITLE_MAX_CHARS: usize = 250;
+
+#[async_trait]
+impl ChannelAgentSurface for SlackDeliveryAdapter {
+    async fn set_status(
+        &self,
+        status: &str,
+        context: &ChannelDeliveryContext,
+    ) -> ChannelDeliveryResult {
+        // The pane keys status off the thread, so a thread_ts is required; a
+        // channel post has none and has no status line to set either.
+        if context.thread_ref.is_empty() {
+            return ChannelDeliveryResult::Ok;
+        }
+        let payload = serde_json::json!({
+            "channel_id": context.channel_id,
+            "thread_ts": context.thread_ref,
+            "status": status,
+        });
+        match slack_api_call(
+            &self.api_base,
+            &context.auth_token,
+            SLACK_SET_STATUS_METHOD,
+            payload,
+        )
+        .await
+        {
+            Ok(_) => ChannelDeliveryResult::Ok,
+            Err(e) => classify_slack_failure(e),
+        }
+    }
+
+    async fn set_title(
+        &self,
+        title: &str,
+        context: &ChannelDeliveryContext,
+    ) -> ChannelDeliveryResult {
+        if context.thread_ref.is_empty() {
+            return ChannelDeliveryResult::Ok;
+        }
+        let payload = serde_json::json!({
+            "channel_id": context.channel_id,
+            "thread_ts": context.thread_ref,
+            "title": truncate_chars(title, SLACK_TITLE_MAX_CHARS),
+        });
+        match slack_api_call(
+            &self.api_base,
+            &context.auth_token,
+            SLACK_SET_TITLE_METHOD,
+            payload,
+        )
+        .await
+        {
+            Ok(_) => ChannelDeliveryResult::Ok,
+            Err(e) => classify_slack_failure(e),
+        }
+    }
+}
+
 fn classify_slack_failure(error: SlackApiError) -> ChannelDeliveryResult {
     match error {
         SlackApiError::Permanent(message) => ChannelDeliveryResult::PermanentError(message),
@@ -2734,6 +2951,9 @@ mod tests {
                     surface: SlackSurface::Channel,
                     recipient_user_id: None,
                     recipient_team_id: None,
+                    tool_visibility: AgUiToolVisibility::default(),
+                    generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
+                        .to_string(),
                 })
                 .await;
 
@@ -2984,6 +3204,9 @@ mod tests {
                     surface,
                     recipient_user_id: Some("U_HUMAN".to_string()),
                     recipient_team_id: Some("T_TEAM".to_string()),
+                    tool_visibility: AgUiToolVisibility::default(),
+                    generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
+                        .to_string(),
                 })
                 .await;
         }
@@ -3392,6 +3615,287 @@ mod tests {
 
     /// EVE-966: a turn that ends without a delivered reply must say so in the
     /// Slack thread exactly once, and must always release its registration.
+    /// EVE-975: the pane's live status line, driven by turn and tool lifecycle.
+    ///
+    /// What may be shown is not decided here — `public_tool_activity_text` in
+    /// `everruns_platform::app` owns that for every public surface, and AG-UI
+    /// reads the same function. These tests pin that the dispatcher asks it and
+    /// honours the answer.
+    mod agent_surface_tests {
+        use super::*;
+        use crate::storage::StorageBackend;
+        use std::sync::Mutex;
+        use tokio::sync::broadcast;
+
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        enum Surfaced {
+            Status(String),
+            Title(String),
+        }
+
+        struct RecordingSurface {
+            calls: Arc<Mutex<Vec<Surfaced>>>,
+        }
+
+        #[async_trait]
+        impl ChannelDeliveryAdapter for RecordingSurface {
+            fn platform(&self) -> &str {
+                "recording-surface"
+            }
+            async fn deliver(
+                &self,
+                _message: &OutboundChannelMessage,
+                _context: &ChannelDeliveryContext,
+            ) -> ChannelDeliveryResult {
+                ChannelDeliveryResult::Ok
+            }
+            async fn send_ack(
+                &self,
+                _thread_ref: &str,
+                _text: &str,
+                _context: &ChannelDeliveryContext,
+            ) -> ChannelDeliveryResult {
+                ChannelDeliveryResult::Ok
+            }
+            fn format_progress_report(&self, report: &ProgressReportPayload) -> String {
+                format_progress_report_for_slack(report)
+            }
+            fn agent_surface(&self) -> Option<&dyn ChannelAgentSurface> {
+                Some(self)
+            }
+        }
+
+        #[async_trait]
+        impl ChannelAgentSurface for RecordingSurface {
+            async fn set_status(
+                &self,
+                status: &str,
+                _context: &ChannelDeliveryContext,
+            ) -> ChannelDeliveryResult {
+                self.calls
+                    .lock()
+                    .expect("recorder")
+                    .push(Surfaced::Status(status.to_string()));
+                ChannelDeliveryResult::Ok
+            }
+            async fn set_title(
+                &self,
+                title: &str,
+                _context: &ChannelDeliveryContext,
+            ) -> ChannelDeliveryResult {
+                self.calls
+                    .lock()
+                    .expect("recorder")
+                    .push(Surfaced::Title(title.to_string()));
+                ChannelDeliveryResult::Ok
+            }
+        }
+
+        /// Drive one turn's lifecycle and return everything that reached the surface.
+        async fn surfaced_for(
+            surface: SlackSurface,
+            tool_visibility: AgUiToolVisibility,
+            events: &[(&str, serde_json::Value)],
+        ) -> Vec<Surfaced> {
+            let db = Arc::new(StorageBackend::in_memory());
+            let session = terminal_state_tests::seed_session(&db).await;
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let (_tx, rx) = broadcast::channel::<EventNotificationPayload>(16);
+            let dispatcher = SlackDeliveryDispatcher::start_with_adapter(
+                db.clone(),
+                rx,
+                "https://app.example.com".to_string(),
+                Arc::new(RecordingSurface {
+                    calls: calls.clone(),
+                }),
+            );
+            dispatcher
+                .register(DeliveryRegistration {
+                    session_id: session.uuid(),
+                    input_message_id: "msg_turn_one".to_string(),
+                    bot_token: "xoxb-t".to_string(),
+                    channel: "D_PANE".to_string(),
+                    thread_ts: "1700000000.000100".to_string(),
+                    reply_mode: SlackReplyMode::AllMessages,
+                    surface,
+                    recipient_user_id: Some("U_HUMAN".to_string()),
+                    recipient_team_id: Some("T_TEAM".to_string()),
+                    tool_visibility,
+                    generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
+                        .to_string(),
+                })
+                .await;
+
+            for (event_type, data) in events {
+                terminal_state_tests::emit(&db, session, event_type, "msg_turn_one", data.clone())
+                    .await;
+            }
+            dispatcher.process_session_events(session.uuid()).await;
+
+            let recorded = calls.lock().expect("recorder");
+            recorded.clone()
+        }
+
+        fn tool_lifecycle() -> Vec<(&'static str, serde_json::Value)> {
+            vec![
+                ("turn.started", serde_json::json!({})),
+                (
+                    "tool.started",
+                    serde_json::json!({ "tool_name": "read_internal_secrets_db" }),
+                ),
+                (
+                    "tool.completed",
+                    serde_json::json!({ "tool_name": "read_internal_secrets_db" }),
+                ),
+                ("turn.completed", serde_json::json!({})),
+            ]
+        }
+
+        #[tokio::test]
+        async fn a_running_turn_reports_its_phase_and_clears_at_the_end() {
+            let surfaced = surfaced_for(
+                SlackSurface::Pane,
+                AgUiToolVisibility::Generic,
+                &tool_lifecycle(),
+            )
+            .await;
+
+            assert_eq!(
+                surfaced,
+                vec![
+                    Surfaced::Status(SLACK_THINKING_STATUS.to_string()),
+                    Surfaced::Status(
+                        everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string()
+                    ),
+                    Surfaced::Status(SLACK_THINKING_STATUS.to_string()),
+                    // The terminal event clears the line; a status left set says
+                    // the agent is working long after it stopped.
+                    Surfaced::Status(String::new()),
+                ]
+            );
+        }
+
+        #[tokio::test]
+        async fn no_raw_tool_name_reaches_slack() {
+            for visibility in [
+                AgUiToolVisibility::Generic,
+                AgUiToolVisibility::Narrated,
+                AgUiToolVisibility::None,
+            ] {
+                let surfaced =
+                    surfaced_for(SlackSurface::Pane, visibility, &tool_lifecycle()).await;
+                for call in &surfaced {
+                    let Surfaced::Status(status) = call else {
+                        continue;
+                    };
+                    assert!(
+                        !status.contains("read_internal_secrets_db"),
+                        "{visibility:?} leaked the tool name: {status}"
+                    );
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn none_visibility_shows_nothing_about_the_running_tool() {
+            let surfaced = surfaced_for(
+                SlackSurface::Pane,
+                AgUiToolVisibility::None,
+                &tool_lifecycle(),
+            )
+            .await;
+
+            // The turn-level status still says work is happening — that reveals
+            // nothing about it. What `None` removes is any tool-derived text, so
+            // the line never changes while the tool runs.
+            assert_eq!(
+                surfaced,
+                vec![
+                    Surfaced::Status(SLACK_THINKING_STATUS.to_string()),
+                    Surfaced::Status(String::new()),
+                ],
+                "None visibility must not narrate the tool at all"
+            );
+        }
+
+        #[tokio::test]
+        async fn overlapping_tools_do_not_clear_the_status_early() {
+            let surfaced = surfaced_for(
+                SlackSurface::Pane,
+                AgUiToolVisibility::Generic,
+                &[
+                    ("turn.started", serde_json::json!({})),
+                    ("tool.started", serde_json::json!({})),
+                    ("tool.started", serde_json::json!({})),
+                    ("tool.completed", serde_json::json!({})),
+                ],
+            )
+            .await;
+
+            let generic = everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string();
+            assert_eq!(
+                surfaced.last(),
+                Some(&Surfaced::Status(generic)),
+                "one of two running tools finishing must leave the status on the tool text"
+            );
+        }
+
+        #[tokio::test]
+        async fn a_channel_thread_gets_no_status_line() {
+            let surfaced = surfaced_for(
+                SlackSurface::Channel,
+                AgUiToolVisibility::Generic,
+                &tool_lifecycle(),
+            )
+            .await;
+
+            assert!(
+                surfaced.is_empty(),
+                "a channel thread has no status line to set, got {surfaced:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn the_agents_title_reaches_the_thread() {
+            let surfaced = surfaced_for(
+                SlackSurface::Pane,
+                AgUiToolVisibility::Generic,
+                &[
+                    ("turn.started", serde_json::json!({})),
+                    (
+                        "session.title.updated",
+                        serde_json::json!({ "title": "Refund policy for EU orders" }),
+                    ),
+                ],
+            )
+            .await;
+
+            assert!(
+                surfaced.contains(&Surfaced::Title("Refund policy for EU orders".to_string())),
+                "the agent's title should reach the pane, got {surfaced:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn an_unchanged_status_is_not_pushed_twice() {
+            let surfaced = surfaced_for(
+                SlackSurface::Pane,
+                AgUiToolVisibility::Generic,
+                &[
+                    ("turn.started", serde_json::json!({})),
+                    ("turn.started", serde_json::json!({})),
+                ],
+            )
+            .await;
+
+            assert_eq!(
+                surfaced,
+                vec![Surfaced::Status(SLACK_THINKING_STATUS.to_string())],
+                "the same status twice is a wasted call on a rate-limited API"
+            );
+        }
+    }
+
     mod terminal_state_tests {
         use super::*;
         use crate::storage::StorageBackend;
@@ -3523,6 +4027,9 @@ mod tests {
                     surface: SlackSurface::Channel,
                     recipient_user_id: None,
                     recipient_team_id: None,
+                    tool_visibility: AgUiToolVisibility::default(),
+                    generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
+                        .to_string(),
                 })
                 .await;
         }
