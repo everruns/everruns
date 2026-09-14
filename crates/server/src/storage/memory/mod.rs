@@ -231,6 +231,9 @@ pub struct InMemoryDatabase {
     session_list_lookup_count: AtomicUsize,
     #[cfg(test)]
     session_list_lookup_delay_ms: AtomicU64,
+    /// Test-only fault injection: storage methods queued here fail once.
+    #[cfg(test)]
+    forced_failures: RwLock<Vec<String>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -368,6 +371,8 @@ impl Default for InMemoryDatabase {
             session_list_lookup_count: AtomicUsize::new(0),
             #[cfg(test)]
             session_list_lookup_delay_ms: AtomicU64::new(0),
+            #[cfg(test)]
+            forced_failures: RwLock::new(Vec::new()),
         }
     }
 }
@@ -406,5 +411,26 @@ impl InMemoryDatabase {
     #[cfg(test)]
     pub(crate) fn session_list_lookup_delay_ms(&self) -> u64 {
         self.session_list_lookup_delay_ms.load(Ordering::Relaxed)
+    }
+
+    /// Queue a one-shot failure for `method`. The in-memory backend cannot fail on
+    /// its own, so transport-boundary tests that need to see a storage error reach a
+    /// handler ask for one here.
+    #[cfg(test)]
+    pub(crate) fn force_failure(&self, method: &str) {
+        self.forced_failures.write().push(method.to_string());
+    }
+
+    /// Consume a queued failure for `method`, if one was requested.
+    #[cfg(test)]
+    pub(crate) fn take_forced_failure(&self, method: &str) -> bool {
+        let mut forced = self.forced_failures.write();
+        match forced.iter().position(|entry| entry == method) {
+            Some(index) => {
+                forced.remove(index);
+                true
+            }
+            None => false,
+        }
     }
 }

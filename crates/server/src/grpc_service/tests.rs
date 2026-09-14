@@ -456,6 +456,71 @@ async fn test_execute_command_sanitizes_database_conflicts_only() {
     }
 }
 
+/// THREAT[TM-API-005]: workers copy `status.message()` verbatim into runtime errors
+/// (`grpc_status_to_error`), so a storage error embedded in a Status reaches worker
+/// logs and durable failure records. Force a real storage failure on the direct RPCs
+/// and assert the client only ever sees the stable generic message.
+#[tokio::test]
+async fn direct_worker_rpcs_do_not_leak_storage_errors() {
+    use crate::storage::backend::FORCED_STORAGE_FAILURE;
+
+    let service = test_worker_service().await;
+    let uuid = uuid::Uuid::now_v7();
+    let id = proto::Uuid {
+        value: uuid.to_string(),
+    };
+
+    service.db.force_storage_failure("get_agent_by_public_id");
+    let agent = service
+        .get_agent(Request::new(GetAgentRequest {
+            agent_id: Some(id.clone()),
+            org_id: everruns_core::DEFAULT_ORG_ID,
+        }))
+        .await
+        .expect_err("forced storage failure must surface as an error");
+
+    service.db.force_storage_failure("get_harness");
+    let harness = service
+        .get_harness(Request::new(GetHarnessRequest {
+            harness_id: Some(id),
+            org_id: everruns_core::DEFAULT_ORG_ID,
+        }))
+        .await
+        .expect_err("forced storage failure must surface as an error");
+
+    service.db.force_storage_failure("get_session");
+    let authorize = service
+        .authorize_session_creation(Request::new(AuthorizeSessionCreationRequest {
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            session_id: everruns_provider::typed_id::SessionId::from_uuid(uuid).to_string(),
+        }))
+        .await
+        .expect_err("forced storage failure must surface as an error");
+
+    for (rpc, status, expected) in [
+        ("get_agent", agent, "Failed to get agent"),
+        ("get_harness", harness, "Failed to get harness"),
+        (
+            "authorize_session_creation",
+            authorize,
+            "Failed to load session",
+        ),
+    ] {
+        assert_eq!(status.code(), tonic::Code::Internal, "{rpc} code");
+        assert_eq!(status.message(), expected, "{rpc} message");
+        assert!(
+            !status.message().contains(FORCED_STORAGE_FAILURE),
+            "{rpc} leaked the source error"
+        );
+        for fragment in ["sqlx", "relation", "connection/mod.rs"] {
+            assert!(
+                !status.message().contains(fragment),
+                "{rpc} leaked {fragment:?}"
+            );
+        }
+    }
+}
+
 async fn create_grpc_test_session(service: &WorkerServiceImpl) -> proto::Session {
     let harness = service
         .platform_list_harnesses(Request::new(PlatformListHarnessesRequest {

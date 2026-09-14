@@ -17,6 +17,12 @@ use uuid::Uuid;
 
 pub const USER_PREFERENCE_LIMIT_EXCEEDED: &str = "user preference limit exceeded";
 
+/// The error a forced storage failure raises: shaped like a real sqlx/Postgres error,
+/// so a test can assert that none of it survives the trip to a client.
+#[cfg(test)]
+pub(crate) const FORCED_STORAGE_FAILURE: &str = "error returned from database: relation \
+     \"agents\" does not exist at sqlx-postgres-0.8.6/src/connection/mod.rs:666";
+
 use super::memory::InMemoryDatabase;
 use super::models::*;
 use super::reporting::models::ReportingOutboxRow;
@@ -119,6 +125,26 @@ impl StorageBackend {
             Self::InMemory(db) => db.session_list_lookup_count(),
             Self::Postgres(_) => 0,
         }
+    }
+
+    /// Test-only fault injection: the next call to `method` fails with
+    /// [`FORCED_STORAGE_FAILURE`]. Transport-boundary tests use this to prove a
+    /// storage error never reaches a client verbatim.
+    #[cfg(test)]
+    pub(crate) fn force_storage_failure(&self, method: &str) {
+        if let Self::InMemory(db) = self {
+            db.force_failure(method);
+        }
+    }
+
+    #[cfg(test)]
+    fn fail_if_forced(&self, method: &str) -> Result<()> {
+        if let Self::InMemory(db) = self
+            && db.take_forced_failure(method)
+        {
+            anyhow::bail!(FORCED_STORAGE_FAILURE);
+        }
+        Ok(())
     }
 
     #[cfg(test)]
@@ -577,6 +603,8 @@ impl StorageBackend {
         org_id: i64,
         public_id: &str,
     ) -> Result<Option<AgentRow>> {
+        #[cfg(test)]
+        self.fail_if_forced("get_agent_by_public_id")?;
         dispatch!(self, get_agent_by_public_id, org_id, public_id)
     }
 
@@ -789,6 +817,8 @@ impl StorageBackend {
     }
 
     pub async fn get_harness(&self, org_id: i64, id: HarnessId) -> Result<Option<HarnessRow>> {
+        #[cfg(test)]
+        self.fail_if_forced("get_harness")?;
         #[cfg(test)]
         self.record_session_list_lookup().await;
         dispatch!(self, get_harness, org_id, id)
@@ -1080,6 +1110,8 @@ impl StorageBackend {
     }
 
     pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
+        #[cfg(test)]
+        self.fail_if_forced("get_session")?;
         dispatch!(self, get_session, org_id, id)
     }
 
