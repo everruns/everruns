@@ -1,5 +1,26 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-14
+
+* **The Slack channel is now a Slack agent app, not a classic Events API bot.**
+  Slack had shipped a dedicated agent surface — split-view container, app threads,
+  native streaming, session status, suggested prompts — plus manifest fields that
+  carry the event subscription URL, and we used none of it. Eleven changes closed
+  most of that gap. The load-bearing decision: the surface is chosen per inbound
+  event, not by configuration, so one app serves both the assistant pane and channel
+  threads, `report_progress_only` is scoped to channels rather than retired, and the
+  pane forces per-thread routing while channels keep their configured strategy.
+  Streaming made the delivery dispatcher stateful and clocked, which is why correct
+  terminal-state handling had to land first: an unstopped stream is worse than the
+  silence it replaces. Reasoning in
+  [Slack Integration Modernization](integrations/slack-modernization.md).
+
+* **An issue that links to unmerged context has no context.** Thirteen issues for the
+  Slack work were filed pointing at a knowledge concept that had not been merged, so
+  every `Context:` link 404d for the whole time the work was being picked up. The
+  concept lands first, or in the same change, or the reasoning goes in the issue body.
+  Recorded as a filing rule in [Issue Tracking](project/issue-tracking.md).
+
 ## 2026-09-11
 
 * **Session schedules are now safe to poll from more than one server
