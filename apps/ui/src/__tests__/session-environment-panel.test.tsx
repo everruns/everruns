@@ -101,6 +101,19 @@ describe("SessionEnvironmentPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("does not warn about containment when nothing runs", async () => {
+    mockedGet.mockResolvedValue({
+      data: environment({ target: undefined, source_capability: undefined }),
+    });
+
+    renderPanel();
+
+    await screen.findByText("No compute");
+    // "Uncontained" would read as a warning about a session that cannot run
+    // anything at all.
+    expect(screen.queryByText("Uncontained")).not.toBeInTheDocument();
+  });
+
   it("renders nothing when the environment cannot be read", async () => {
     mockedGet.mockRejectedValue(new Error("boom"));
 

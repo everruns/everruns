@@ -76,7 +76,7 @@ function CapabilityRow({ label, enabled }: { label: string; enabled: boolean }) 
 }
 
 export function SessionEnvironmentPanel({ sessionId }: { sessionId: string }) {
-  const { data, isLoading, isError } = useSessionEnvironment(sessionId);
+  const { data, isLoading } = useSessionEnvironment(sessionId);
 
   if (isLoading) {
     return (
@@ -87,7 +87,10 @@ export function SessionEnvironmentPanel({ sessionId }: { sessionId: string }) {
     );
   }
 
-  if (isError || !data) {
+  // Keep the last good answer when a refetch fails: a stale environment is
+  // more useful than a panel that vanishes. Nothing to show only when nothing
+  // was ever read.
+  if (!data) {
     return null;
   }
 
@@ -115,18 +118,25 @@ export function SessionEnvironmentPanel({ sessionId }: { sessionId: string }) {
               {data.target.provider}
             </Badge>
           ) : null}
-          <Badge
-            variant={contained ? "outline" : "destructive"}
-            className="flex items-center gap-1.5"
-          >
-            {contained ? (
-              <ShieldCheck className="h-3 w-3" aria-hidden />
-            ) : (
-              <ShieldOff className="h-3 w-3" aria-hidden />
-            )}
-            {CONTAINMENT_LABELS[data.containment.level] ?? data.containment.level}
-          </Badge>
-          <Badge variant="outline">network {data.containment.network}</Badge>
+          {/* Containment describes running commands. With no compute there is
+              nothing to contain, and "Uncontained" would read as a warning
+              about a session that cannot run anything at all. */}
+          {data.target ? (
+            <>
+              <Badge
+                variant={contained ? "outline" : "destructive"}
+                className="flex items-center gap-1.5"
+              >
+                {contained ? (
+                  <ShieldCheck className="h-3 w-3" aria-hidden />
+                ) : (
+                  <ShieldOff className="h-3 w-3" aria-hidden />
+                )}
+                {CONTAINMENT_LABELS[data.containment.level] ?? data.containment.level}
+              </Badge>
+              <Badge variant="outline">network {data.containment.network}</Badge>
+            </>
+          ) : null}
         </div>
 
         {data.target ? (
