@@ -1,5 +1,5 @@
 ---
-type: Proposal
+type: Decision
 title: "Agent Exposure (retiring the App abstraction)"
 description: "Make Agent the addressable entity by re-homing channels as Endpoints and folding invocation into Triggers, retiring App."
 tags:
@@ -10,8 +10,14 @@ tags:
 ---
 # Agent Exposure (retiring the App abstraction)
 
-> Status: **Proposal.** Not decided, not implemented. It supersedes nothing until
-> accepted. [apps.md](apps.md) remains the description of what exists today.
+> Status: **Accepted, not implemented.** The direction is decided; the phases are
+> tracked as separate issues in Linear (OSS project, EVE team) and none has landed.
+> [apps.md](apps.md) remains the accurate description of what exists today and stays
+> authoritative until the final phase removes it.
+>
+> One decision beyond the original proposal: **App is hidden from the product surface
+> before it is deleted.** Hiding is reversible, needs no migration, and stops new Apps
+> accumulating while the model moves underneath. Deleting the table stays last.
 
 ## Abstract
 
@@ -287,22 +293,26 @@ into agents.
 
 ## Migration
 
-Six independently shippable phases. Phase 1 is worth landing whether or not the rest is
-accepted.
+Nine independently shippable phases. Phases 0 and 2 are worth landing whether or not the
+rest proceeds.
 
-0. **Resolve the grandfathered agent-less Apps.** [apps.md](apps.md) deliberately does not
+0. **Hide App from the product surface.** Remove the nav entry and the create path so no
+   new Apps are made while the model moves. Reversible, no migration, lands immediately.
+1. **Resolve the grandfathered agent-less Apps.** [apps.md](apps.md) deliberately does not
    backfill them, and they block every later phase. Synthesize a hidden Agent per row
    (`system_prompt = ""`, `harness_id = app.harness_id`), which is what such an App already
    means at runtime: the harness with no agent overlay.
-1. **Endpoint-scoped ingress routes**, mounted alongside the app-scoped ones. No model
+2. **Endpoint-scoped ingress routes**, mounted alongside the app-scoped ones. No model
    change. Fixes the AG-UI addressing gap on its own.
-2. **`agent_endpoints`** with an `agent_id` FK, backfilled from `app_channels ⋈ apps`.
+3. **Reserve the new tag prefixes** before anything writes them, and keep the old ones
+   reserved forever. Must precede phase 4.
+4. **`agent_endpoints`** with an `agent_id` FK, backfilled from `app_channels ⋈ apps`.
    `sessions.app_id` gains `endpoint_id`. Budget `subject_type` gains `agent_endpoint`
    (`agent` already exists).
-3. **Unify the binding enums**; move webhook from endpoint to trigger type.
-4. **Per-endpoint publish**, `agent.exposures_suspended`, stop reading `App.status`.
-5. **UI**: Integrations tab, endpoint and trigger editors, Exposures view, retire `/apps`.
-6. **Delete** the `apps` table and the App domain. Route aliases stay.
+5. **Unify the binding enums**; move webhook from endpoint to trigger type.
+6. **Per-endpoint publish**, `agent.exposures_suspended`, stop reading `App.status`.
+7. **UI**: Integrations tab, endpoint and trigger editors, Exposures view.
+8. **Delete** the `apps` table and the App domain. Route aliases stay.
 
 ## What this costs
 
