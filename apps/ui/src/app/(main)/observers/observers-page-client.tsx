@@ -116,7 +116,7 @@ export default function ObserversPageClient() {
           </>
         }
         actions={
-          <Button variant="accent" render={<Link href="/observers/new" />}>
+          <Button variant="accent" nativeButton={false} render={<Link href="/observers/new" />}>
             <Plus className="size-4" />
             New Observer
           </Button>
@@ -141,7 +141,7 @@ export default function ObserversPageClient() {
             emptyState={
               <div className="py-12 text-center">
                 <p className="mb-4 text-muted-foreground">No observers yet</p>
-                <Button render={<Link href="/observers/new" />}>
+                <Button nativeButton={false} render={<Link href="/observers/new" />}>
                   <Plus className="mr-2 size-4" />
                   Create observer
                 </Button>
