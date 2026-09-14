@@ -419,6 +419,43 @@ async fn test_execute_command_unknown_command_returns_bad_request_kind() {
     assert!(error.message.contains("Unknown command"));
 }
 
+#[tokio::test]
+async fn test_execute_command_sanitizes_database_conflicts_only() {
+    use crate::domains::common::transport_error_test_support::{
+        COMMAND_NAME, RAW_DATABASE_DETAIL, SAFE_DOMAIN_DETAIL,
+    };
+
+    let service = test_worker_service().await;
+    for (kind, expected_message) in [
+        ("database", crate::errors::ALREADY_EXISTS_DETAIL),
+        ("domain", SAFE_DOMAIN_DETAIL),
+    ] {
+        let response = service
+            .execute_command(Request::new(ExecuteCommandRequest {
+                name: COMMAND_NAME.to_string(),
+                api_version: "v1".to_string(),
+                params_json: serde_json::to_vec(&serde_json::json!({ "kind": kind }))
+                    .expect("serialize params"),
+                org_id: everruns_core::DEFAULT_ORG_ID,
+                user_id: None,
+                idempotency_key: None,
+                metadata: Default::default(),
+            }))
+            .await
+            .expect("execute_command should return a structured conflict")
+            .into_inner();
+
+        let proto::execute_command_response::Result::Error(error) =
+            response.result.expect("command result should be present")
+        else {
+            panic!("expected Error response");
+        };
+        assert_eq!(error.kind, 4);
+        assert_eq!(error.message, expected_message);
+        assert!(!error.message.contains(RAW_DATABASE_DETAIL));
+    }
+}
+
 async fn create_grpc_test_session(service: &WorkerServiceImpl) -> proto::Session {
     let harness = service
         .platform_list_harnesses(Request::new(PlatformListHarnessesRequest {

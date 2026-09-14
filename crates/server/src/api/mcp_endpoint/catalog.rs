@@ -1320,6 +1320,60 @@ mod tests {
     }
 
     #[test]
+    fn format_dispatch_error_redacts_unique_conflict_details() {
+        let raw = "error returned from database: duplicate key value violates unique constraint \
+                   \"idx_mcp_servers_org_name_live\" at sqlx-postgres/src/connection.rs:666";
+        let error = crate::domains::common::classify_anyhow(anyhow::anyhow!(raw));
+        let formatted = format_dispatch_error(&error);
+
+        assert_eq!(formatted, "conflict: Resource already exists");
+        assert!(!formatted.contains(raw));
+    }
+
+    #[tokio::test]
+    async fn scripted_command_transport_sanitizes_database_conflicts_only() {
+        use crate::domains::common::transport_error_test_support::{
+            COMMAND_NAME, RAW_DATABASE_DETAIL, SAFE_DOMAIN_DETAIL,
+        };
+        use bashkit::{Tool, ToolRequest};
+
+        let context = CatalogContext {
+            domain_ctx: crate::domains::common::Ctx::minimal_for_test(
+                everruns_core::Caller::internal(everruns_core::DEFAULT_ORG_ID),
+                std::sync::Arc::new(crate::storage::StorageBackend::in_memory()),
+                None,
+            ),
+            link_builder: crate::api::common::UrlBuilder::new(
+                "https://api.example/api",
+                "https://app.example",
+            ),
+        };
+        let toolset = build_toolset(context, ToolsetMode::Full);
+
+        let response = Tool::execute(
+            &toolset,
+            ToolRequest::new(format!("{COMMAND_NAME} --kind database")),
+        )
+        .await;
+        let text = format!("{}{}", response.stdout, response.stderr);
+        assert_ne!(response.exit_code, 0);
+        assert!(text.contains("conflict: Resource already exists"), "{text}");
+        assert!(!text.contains(RAW_DATABASE_DETAIL), "{text}");
+
+        let response = Tool::execute(
+            &toolset,
+            ToolRequest::new(format!("{COMMAND_NAME} --kind domain")),
+        )
+        .await;
+        let text = format!("{}{}", response.stdout, response.stderr);
+        assert_ne!(response.exit_code, 0);
+        assert!(
+            text.contains(&format!("conflict: {SAFE_DOMAIN_DETAIL}")),
+            "{text}"
+        );
+    }
+
+    #[test]
     fn read_only_query_excludes_preview_commands_with_network_side_effects() {
         assert!(excluded_from_read_only_query("preview_agent"));
         assert!(excluded_from_read_only_query("preview_harness"));

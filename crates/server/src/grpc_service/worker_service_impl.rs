@@ -96,7 +96,11 @@ fn command_error_kind(error: &crate::domains::common::CommandError) -> i32 {
 
 fn command_error_to_proto(error: crate::domains::common::CommandError) -> ProtoCommandError {
     let message = match &error.kind {
-        CommandErrorKind::Internal(inner) => inner.to_string(),
+        CommandErrorKind::Internal(inner) => {
+            // THREAT[TM-API-005]: ExecuteCommand callers receive no internal diagnostics.
+            tracing::error!(error = %inner, "gRPC command failed");
+            "Internal server error".to_string()
+        }
         _ => error.to_string(),
     };
 
@@ -5032,9 +5036,32 @@ fn proto_to_workflow_status(status: DurableWorkflowStatus) -> WorkflowStatus {
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT, MAX_TURN_CONTEXT_MESSAGE_LIMIT,
+        DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT, MAX_TURN_CONTEXT_MESSAGE_LIMIT, command_error_to_proto,
         normalize_turn_context_message_limit,
     };
+
+    #[test]
+    fn command_error_proto_redacts_internal_details() {
+        let raw = "postgres query failed at sqlx-postgres/src/connection.rs:666";
+
+        let proto = command_error_to_proto(crate::domains::common::CommandError::internal(
+            anyhow::anyhow!(raw),
+        ));
+        assert_eq!(proto.message, "Internal server error");
+        assert!(!proto.message.contains(raw));
+    }
+
+    #[test]
+    fn command_error_proto_redacts_unique_conflict_details() {
+        let raw = "error returned from database: duplicate key value violates unique constraint \
+                   \"idx_memories_org_name_active\" at sqlx-postgres/src/connection.rs:666";
+        let error = crate::domains::common::classify_anyhow(anyhow::anyhow!(raw));
+        let proto = command_error_to_proto(error);
+
+        assert_eq!(proto.kind, 4);
+        assert_eq!(proto.message, crate::errors::ALREADY_EXISTS_DETAIL);
+        assert!(!proto.message.contains(raw));
+    }
 
     #[test]
     fn normalize_turn_context_message_limit_uses_clamped_default() {
