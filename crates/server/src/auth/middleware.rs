@@ -748,9 +748,8 @@ pub(crate) async fn resolve_org_for_user(
                 let header_org = parts
                     .headers
                     .get("x-org-id")
-                    .map(|v| v.to_str().map(String::from))
-                    .transpose()
-                    .map_err(|_| AuthError::unauthorized("Invalid organization ID format"))?;
+                    .and_then(|v| v.to_str().ok())
+                    .map(String::from);
                 let cookie_org = jar.get(ORG_COOKIE_NAME).map(|c| c.value().to_string());
                 let explicit_org = header_org.or(cookie_org);
 
