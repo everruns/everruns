@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC001 Agent Version History"
+title: "TC001: Agent Version History"
 description: "Verifies that a user can save agent versions, compare changes, set a default version, roll back, fork, and configure an App version policy from the UI."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - agent-versions
 ---
-# TC001 Agent Version History
+# TC001: Agent Version History
 
 ## Description
 

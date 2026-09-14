@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC001 Configure an embedding model"
+title: "TC001: Configure an embedding model"
 description: "Verify that an embedding model can be configured and is offered to knowledge indexes without appearing in chat-model selectors."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - models
 ---
-# TC001 Configure an embedding model
+# TC001: Configure an embedding model
 
 ## Description
 

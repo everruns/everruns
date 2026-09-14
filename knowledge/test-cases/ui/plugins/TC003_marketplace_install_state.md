@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "Marketplace plugin install state"
+title: "TC003: Marketplace plugin install state"
 description: "Verify that installing a marketplace plugin reconciles the catalog and installed-plugin views without a reload or duplicate install request."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - plugins
 ---
-# Marketplace plugin install state
+# TC003: Marketplace plugin install state
 
 ## Description
 

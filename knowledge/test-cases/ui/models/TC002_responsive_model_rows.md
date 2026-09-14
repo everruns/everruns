@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "Responsive model rows"
+title: "TC002: Responsive model rows"
 description: "Verify that the Models page remains readable and interactive when the app content area narrows."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - models
 ---
-# Responsive model rows
+# TC002: Responsive model rows
 
 ## Description
 

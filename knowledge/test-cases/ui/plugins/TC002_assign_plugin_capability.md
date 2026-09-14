@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "Assign an installed plugin capability"
+title: "TC002: Assign an installed plugin capability"
 description: "Verify that an installed plugin can be assigned to an agent with stable identity and a valid icon, and that stale plugin assignments remain visible and removable."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - plugins
 ---
-# Assign an installed plugin capability
+# TC002: Assign an installed plugin capability
 
 ## Description
 

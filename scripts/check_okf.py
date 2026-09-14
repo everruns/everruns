@@ -13,6 +13,8 @@ DATE_HEADING = re.compile(r"^## \d{4}-\d{2}-\d{2}\s*$")
 LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 EXTERNAL = re.compile(r"\A(?:[a-z][a-z0-9+.-]*:|//|#)")
 CODE = re.compile(r"^```.*?^```|``.*?``|`[^`\n]*`", re.DOTALL | re.MULTILINE)
+TEST_CASE_ID = re.compile(r"^(TC\d{3})")
+TEST_CASE_TITLE = re.compile(r"^TC\d{3}: ")
 
 
 def strip_code(text: str) -> str:
@@ -120,11 +122,48 @@ def check_log(path: pathlib.Path, rel: str, errors: list[str]) -> None:
             errors.append(f"{rel}: invalid log heading: {heading!r}")
 
 
+def check_test_cases(root: pathlib.Path, errors: list[str]) -> None:
+    test_cases = root / "test-cases"
+    if not test_cases.is_dir():
+        return
+
+    identifiers: dict[tuple[pathlib.Path, str], list[pathlib.Path]] = {}
+    for path in sorted(test_cases.rglob("TC*.md")):
+        identifier_match = TEST_CASE_ID.match(path.name)
+        if identifier_match is None:
+            continue
+        identifier = identifier_match.group(1)
+        identifiers.setdefault((path.parent, identifier), []).append(path)
+
+        try:
+            frontmatter, _ = split_frontmatter(path.read_text())
+            if frontmatter is None:
+                continue
+            title = parse_frontmatter(frontmatter).get("title")
+        except ValueError:
+            continue
+        if not isinstance(title, str) or not title:
+            continue
+        if len(title) >= 2 and title[0] == title[-1] and title[0] in "\"'":
+            title = title[1:-1]
+        if not TEST_CASE_TITLE.match(title):
+            rel = path.relative_to(root).as_posix()
+            errors.append(f"{rel}: test case title must start with 'TC###: '")
+
+    for (directory, identifier), paths in sorted(identifiers.items()):
+        if len(paths) < 2:
+            continue
+        rel = directory.relative_to(root).as_posix()
+        names = ", ".join(path.name for path in paths)
+        errors.append(f"{rel}/: duplicate test case identifier {identifier}: {names}")
+
+
 def check_bundle(root: pathlib.Path) -> tuple[list[str], dict[str, int]]:
     errors: list[str] = []
     counts = {"concepts": 0, "indexes": 0, "logs": 0}
     if not (root / "index.md").exists():
         errors.append("index.md: bundle root index is missing")
+    check_test_cases(root, errors)
 
     directories = sorted(path for path in root.rglob("*") if path.is_dir()) + [root]
     for directory in directories:

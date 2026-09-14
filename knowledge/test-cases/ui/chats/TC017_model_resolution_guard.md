@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC014: Chats - Model Resolution Guard"
+title: "TC017: Chats - Model Resolution Guard"
 description: "Verify that Chat does not admit a turn without a resolvable model and can send a later message once an explicit model becomes available."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - chats
 ---
-# TC014: Chats - Model Resolution Guard
+# TC017: Chats - Model Resolution Guard
 
 ## Description
 

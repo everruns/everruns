@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC004 FCP channel — create, configure, and verify endpoint"
+title: "TC004: FCP channel — create, configure, and verify endpoint"
 description: "Verifies that an FCP channel can be created from the Apps UI, that the form exposes every FCP-specific option (token, handshake override, expiration, per-IP rate limit, response timeout), and that the saved channel's..."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - apps
 ---
-# TC004 FCP channel — create, configure, and verify endpoint
+# TC004: FCP channel — create, configure, and verify endpoint
 
 ## Description
 

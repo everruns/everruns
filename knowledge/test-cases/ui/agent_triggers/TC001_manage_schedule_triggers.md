@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC001 Manage agent schedule triggers"
+title: "TC001: Manage agent schedule triggers"
 description: "Verify that the Agent detail Triggers tab supports the complete schedule-trigger lifecycle and displays recent outcomes."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - agent-triggers
 ---
-# TC001 Manage agent schedule triggers
+# TC001: Manage agent schedule triggers
 
 ## Description
 
