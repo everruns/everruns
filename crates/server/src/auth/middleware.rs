@@ -639,7 +639,9 @@ pub const ORG_COOKIE_MAX_AGE: time::Duration = time::Duration::days(30);
 /// the organization from the authentication context:
 /// - API key auth: org from `X-Org-Id` header or `everruns_org` cookie, validated against membership.
 ///   If user has exactly one org, it is used as a convenience default.
-/// - Session auth (JWT/None): org from everruns_org cookie, validated against user membership
+/// - Session auth (JWT/MCP): org from `X-Org-Id` header or `everruns_org` cookie, validated against
+///   user membership.
+/// - None auth: org from the `everruns_org` cookie.
 ///
 /// The cookie is set via POST /v1/users/me/switch-org endpoint.
 /// Cookies work automatically with SSE (EventSource) unlike headers.
@@ -842,17 +844,21 @@ pub(crate) async fn resolve_org_for_user(
             }
             AuthMethod::Jwt | AuthMethod::Mcp => {
                 // Session auth (and MCP OAuth tokens, which resolve org the same
-                // way): get org from everruns_org cookie. Cookie is set via the
-                // switch-org endpoint and works automatically with SSE unlike
-                // headers. MCP clients can't set cookies, so they fall through to
-                // the first-org default below (and override per-call via
-                // `organization_id`).
+                // way): prefer an explicit header, then fall back to the org
+                // cookie. The cookie is set via the switch-org endpoint and works
+                // automatically with SSE unlike headers.
                 let jar = CookieJar::from_headers(&parts.headers);
+                let header_org = parts
+                    .headers
+                    .get("x-org-id")
+                    .and_then(|v| v.to_str().ok())
+                    .map(String::from);
                 let cookie_org = jar.get(ORG_COOKIE_NAME).map(|c| c.value().to_string());
+                let explicit_org = header_org.or(cookie_org);
 
-                // When no org cookie is present (e.g. MCP OAuth Bearer tokens),
+                // When no explicit org is present (e.g. MCP OAuth Bearer tokens),
                 // fall back to the user's first organization.
-                if cookie_org.is_none() {
+                if explicit_org.is_none() {
                     let org = user
                         .organizations
                         .first()
@@ -870,7 +876,7 @@ pub(crate) async fn resolve_org_for_user(
                     .await);
                 }
 
-                let org_public_id = cookie_org.unwrap();
+                let org_public_id = explicit_org.unwrap();
                 let org_public_id = org_public_id.as_str();
 
                 // Validate format
@@ -1306,6 +1312,138 @@ mod tests {
             system_feature_flags: FeatureFlags::current(),
         };
         (state, db)
+    }
+
+    async fn multi_org_jwt_state() -> (AuthState, Uuid) {
+        let user_id = Uuid::new_v4();
+        let jwt_user = AuthUser {
+            id: user_id,
+            email: "test@example.com".to_string(),
+            name: "Test User".to_string(),
+            roles: vec!["user".to_string()],
+            is_platform_user: false,
+            auth_method: AuthMethod::Jwt,
+            organizations: vec![],
+        };
+        let (state, db) = jwt_auth_state_with_db(jwt_user);
+
+        for (public_id, name, role) in [
+            ("org_00000000000000000000000000000001", "Org A", "owner"),
+            ("org_00000000000000000000000000000002", "Org B", "member"),
+        ] {
+            let org = db
+                .create_organization(CreateOrganizationRow {
+                    public_id: public_id.to_string(),
+                    name: name.to_string(),
+                    created_by: Some(user_id),
+                })
+                .await
+                .expect("create organization");
+            db.add_organization_member(org.org_id, user_id, role)
+                .await
+                .expect("add organization member");
+        }
+
+        (state, user_id)
+    }
+
+    #[tokio::test]
+    async fn test_resolved_org_jwt_x_org_id_header_overrides_cookie() {
+        let (state, user_id) = multi_org_jwt_state().await;
+        let (mut parts, _body) = Request::builder()
+            .header("x-org-id", "org_00000000000000000000000000000002")
+            .header(
+                header::COOKIE,
+                format!(
+                    "access_token=fake-jwt-token; {}=org_00000000000000000000000000000001",
+                    ORG_COOKIE_NAME
+                ),
+            )
+            .body(())
+            .unwrap()
+            .into_parts();
+
+        let resolved = ResolvedOrg::from_request_parts(&mut parts, &state)
+            .await
+            .expect("X-Org-Id should select org B");
+
+        assert_eq!(resolved.public_id, "org_00000000000000000000000000000002");
+        assert_eq!(resolved.name, "Org B");
+        assert_eq!(resolved.user_id, Some(user_id));
+        assert_eq!(resolved.role, OrgRole::Member);
+    }
+
+    #[tokio::test]
+    async fn test_resolved_org_jwt_uses_cookie_without_x_org_id_header() {
+        let (state, user_id) = multi_org_jwt_state().await;
+        let (mut parts, _body) = Request::builder()
+            .header(
+                header::COOKIE,
+                format!(
+                    "access_token=fake-jwt-token; {}=org_00000000000000000000000000000001",
+                    ORG_COOKIE_NAME
+                ),
+            )
+            .body(())
+            .unwrap()
+            .into_parts();
+
+        let resolved = ResolvedOrg::from_request_parts(&mut parts, &state)
+            .await
+            .expect("everruns_org should select org A");
+
+        assert_eq!(resolved.public_id, "org_00000000000000000000000000000001");
+        assert_eq!(resolved.name, "Org A");
+        assert_eq!(resolved.user_id, Some(user_id));
+        assert_eq!(resolved.role, OrgRole::Owner);
+    }
+
+    #[tokio::test]
+    async fn test_resolved_org_jwt_unknown_x_org_id_returns_404() {
+        let (state, _user_id) = multi_org_jwt_state().await;
+        let (mut parts, _body) = Request::builder()
+            .header("x-org-id", "org_00000000000000000000000000000099")
+            .header(
+                header::COOKIE,
+                format!(
+                    "access_token=fake-jwt-token; {}=org_00000000000000000000000000000001",
+                    ORG_COOKIE_NAME
+                ),
+            )
+            .body(())
+            .unwrap()
+            .into_parts();
+
+        let err = ResolvedOrg::from_request_parts(&mut parts, &state)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.status, StatusCode::NOT_FOUND);
+        assert_eq!(err.error, "Organization not found");
+    }
+
+    #[tokio::test]
+    async fn test_resolved_org_jwt_invalid_x_org_id_returns_401() {
+        let (state, _user_id) = multi_org_jwt_state().await;
+        let (mut parts, _body) = Request::builder()
+            .header("x-org-id", "not-a-valid-org-id")
+            .header(
+                header::COOKIE,
+                format!(
+                    "access_token=fake-jwt-token; {}=org_00000000000000000000000000000001",
+                    ORG_COOKIE_NAME
+                ),
+            )
+            .body(())
+            .unwrap()
+            .into_parts();
+
+        let err = ResolvedOrg::from_request_parts(&mut parts, &state)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.status, StatusCode::UNAUTHORIZED);
+        assert_eq!(err.error, "Invalid organization ID format");
     }
 
     #[tokio::test]
