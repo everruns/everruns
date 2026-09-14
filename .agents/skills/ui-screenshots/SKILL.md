@@ -46,3 +46,20 @@ to `everruns/everruns`.
 - **Page hangs on localhost**: the dev server is not up. See the local dev commands in
   [`AGENTS.md`](../../../AGENTS.md).
 - **Blank screenshot**: wait for `networkidle` before capturing.
+- **Every HTTPS page fails with `ERR_CONNECTION_RESET` from a cloud agent**, while `curl` through
+  the same proxy works: Chrome's TLS 1.3 ClientHello carries a post-quantum key share that pushes it
+  to ~2 KB, and the egress relay accepts the `CONNECT` then cuts the tunnel mid-handshake. `curl`
+  and `openssl s_client` never offer a PQ key share, which is why the proxy tests healthy by hand.
+  `take-screenshot.sh` already passes `--ssl-version-max=tls1.2`; when driving `agent-browser`
+  yourself, export the flags instead of passing them per command (EVE-807):
+  ```bash
+  export AGENT_BROWSER_ARGS=$'--ssl-version-max=tls1.2\n--disable-features=PostQuantumKyber'
+  ```
+  Confirm they actually reached Chrome — a daemon relaunch silently drops flags given only on the
+  first `open`, and the symptom is indistinguishable from the bug itself:
+  ```bash
+  pgrep -a chrome | tr ' ' '\n' | grep ssl-version
+  ```
+  Use `AGENT_BROWSER_ARGS` rather than `--args`: `--args` splits on commas, so a multi-value flag
+  like `--disable-features=A,B` becomes two argv entries and Chrome exits with
+  `Multiple targets are not supported in headless mode`.
