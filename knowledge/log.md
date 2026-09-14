@@ -2,6 +2,16 @@
 
 ## 2026-09-14
 
+* **Decided to retire the App abstraction in favor of agent-owned exposure.**
+  App's required `harness_id` duplicates the agent's, its `agent_id` is nullable only to
+  grandfather pre-agent rows, and its publish switch is wider than any single exposure —
+  while everything App genuinely contributes is contributed by its channel rows. The
+  proposal re-homes channels as agent-owned Endpoints, folds webhook invocation into the
+  existing Agent Triggers, unifies the two session-routing enums, and moves ingress URLs
+  onto the endpoint id so nothing installed breaks. App is hidden from the product
+  surface first and its table deleted last. Accepted, not implemented; the phases are
+  tracked as separate OSS issues. See [Agent Exposure](integrations/agent-exposure.md).
+
 * **The Slack channel is now a Slack agent app, not a classic Events API bot.**
   Slack had shipped a dedicated agent surface — split-view container, app threads,
   native streaming, session status, suggested prompts — plus manifest fields that
