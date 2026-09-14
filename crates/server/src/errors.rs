@@ -7,9 +7,27 @@ use thiserror::Error;
 pub(crate) const ALREADY_EXISTS_CODE: &str = "already_exists";
 pub(crate) const ALREADY_EXISTS_DETAIL: &str = "Resource already exists";
 
-pub(crate) fn is_already_exists_error(message: &str) -> bool {
-    let lowered = message.to_ascii_lowercase();
-    lowered.contains("duplicate key") || lowered.contains("already exists")
+pub(crate) fn is_database_unique_violation(error: &anyhow::Error) -> bool {
+    if error.chain().any(|source| {
+        source
+            .downcast_ref::<sqlx::Error>()
+            .and_then(sqlx::Error::as_database_error)
+            .and_then(sqlx::error::DatabaseError::code)
+            .is_some_and(|code| code == "23505")
+    }) {
+        return true;
+    }
+
+    error.chain().any(|source| {
+        source
+            .to_string()
+            .to_ascii_lowercase()
+            .contains("duplicate key value violates unique constraint")
+    })
+}
+
+pub(crate) fn is_domain_already_exists_message(message: &str) -> bool {
+    message.to_ascii_lowercase().contains("already exists")
 }
 
 #[derive(Debug, Error)]

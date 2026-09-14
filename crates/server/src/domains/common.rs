@@ -48,6 +48,86 @@ pub enum CommandErrorKind {
     Internal(#[from] anyhow::Error),
 }
 
+#[cfg(test)]
+pub(crate) mod transport_error_test_support {
+    use super::*;
+    use std::borrow::Cow;
+
+    pub(crate) const COMMAND_NAME: &str = "test_transport_conflict";
+    pub(crate) const RAW_DATABASE_DETAIL: &str = "duplicate key value violates unique constraint \"idx_transport_org_name\" at sqlx-postgres/src/connection.rs:666";
+    pub(crate) const SAFE_DOMAIN_DETAIL: &str = "Agent already exists";
+
+    #[derive(Debug)]
+    struct TestUniqueViolation;
+
+    impl std::fmt::Display for TestUniqueViolation {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str(RAW_DATABASE_DETAIL)
+        }
+    }
+
+    impl std::error::Error for TestUniqueViolation {}
+
+    impl sqlx::error::DatabaseError for TestUniqueViolation {
+        fn message(&self) -> &str {
+            RAW_DATABASE_DETAIL
+        }
+
+        fn code(&self) -> Option<Cow<'_, str>> {
+            Some(Cow::Borrowed("23505"))
+        }
+
+        fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+            self
+        }
+
+        fn as_error_mut(&mut self) -> &mut (dyn std::error::Error + Send + Sync + 'static) {
+            self
+        }
+
+        fn into_error(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync + 'static> {
+            self
+        }
+
+        fn kind(&self) -> sqlx::error::ErrorKind {
+            sqlx::error::ErrorKind::UniqueViolation
+        }
+    }
+
+    #[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
+    pub(crate) struct TransportConflictCommand {
+        pub(crate) kind: String,
+    }
+
+    impl Command for TransportConflictCommand {
+        type Output = serde_json::Value;
+
+        fn meta() -> CommandMeta {
+            CommandMeta {
+                name: COMMAND_NAME,
+                category: "test",
+                description: "Exercise command transport error handling.",
+                method: "GET",
+                path: "/test/transport-conflict",
+            }
+        }
+
+        async fn execute(self, _ctx: &Ctx) -> Result<Self::Output, CommandError> {
+            let error = match self.kind.as_str() {
+                "database" => anyhow::Error::new(sqlx::Error::database(TestUniqueViolation))
+                    .context("create resource"),
+                "domain" => anyhow::anyhow!(SAFE_DOMAIN_DETAIL),
+                other => anyhow::anyhow!("Unknown test conflict kind: {other}"),
+            };
+            Err(classify_anyhow(error))
+        }
+    }
+
+    inventory::submit! {
+        CommandDescriptor::of::<TransportConflictCommand>()
+    }
+}
+
 /// Command failure with optional agent-actionable extensions.
 ///
 /// Carries the `kind`/`message` pair plus the RFC 9457 Problem Details
@@ -205,11 +285,14 @@ pub fn classify_anyhow(e: anyhow::Error) -> CommandError {
     let msg = e.to_string();
     let lowered = msg.to_ascii_lowercase();
 
-    if crate::errors::is_already_exists_error(&msg) {
+    if crate::errors::is_database_unique_violation(&e) {
         // THREAT[TM-API-005]: Keep storage diagnostics in server logs only.
-        tracing::warn!(error = %e, "database uniqueness conflict");
+        tracing::warn!(error = ?e, "database uniqueness conflict");
         return CommandError::conflict(crate::errors::ALREADY_EXISTS_DETAIL)
             .with_code(crate::errors::ALREADY_EXISTS_CODE);
+    }
+    if crate::errors::is_domain_already_exists_message(&msg) {
+        return CommandError::conflict(msg).with_code(crate::errors::ALREADY_EXISTS_CODE);
     }
 
     // EVE-437: this list catches `anyhow::bail!` strings emitted from
@@ -1434,6 +1517,16 @@ mod error_tests {
         assert_eq!(body.0.detail.as_deref(), Some("Resource already exists"));
         assert_eq!(body.0.code.as_deref(), Some("already_exists"));
         assert!(!serde_json::to_string(&body.0).unwrap().contains(raw));
+    }
+
+    #[test]
+    fn domain_conflict_http_response_preserves_safe_detail() {
+        let err = classify_anyhow(anyhow::anyhow!("Agent already exists"));
+        let (status, body) = <(StatusCode, Json<ErrorResponse>)>::from(err);
+
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.0.detail.as_deref(), Some("Agent already exists"));
+        assert_eq!(body.0.code.as_deref(), Some("already_exists"));
     }
 
     // Cardinality contract for the `status` label on `everruns_commands_total`

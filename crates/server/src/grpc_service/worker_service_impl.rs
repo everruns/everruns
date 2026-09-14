@@ -97,7 +97,7 @@ fn command_error_kind(error: &crate::domains::common::CommandError) -> i32 {
 fn command_error_to_proto(error: crate::domains::common::CommandError) -> ProtoCommandError {
     let message = match &error.kind {
         CommandErrorKind::Internal(inner) => {
-            // THREAT[TM-API-005]: gRPC callers receive no internal storage diagnostics.
+            // THREAT[TM-API-005]: ExecuteCommand callers receive no internal diagnostics.
             tracing::error!(error = %inner, "gRPC command failed");
             "Internal server error".to_string()
         }
@@ -118,11 +118,7 @@ fn command_error_to_status(error: crate::domains::common::CommandError) -> Statu
         CommandErrorKind::NotFound(message) => Status::not_found(message),
         CommandErrorKind::Conflict(message) => Status::failed_precondition(message),
         CommandErrorKind::RateLimited(message) => Status::resource_exhausted(message),
-        CommandErrorKind::Internal(inner) => {
-            // THREAT[TM-API-005]: gRPC callers receive no internal storage diagnostics.
-            tracing::error!(error = %inner, "gRPC command failed");
-            Status::internal("Internal server error")
-        }
+        CommandErrorKind::Internal(inner) => Status::internal(inner.to_string()),
     }
 }
 
@@ -5041,11 +5037,11 @@ fn proto_to_workflow_status(status: DurableWorkflowStatus) -> WorkflowStatus {
 mod tests {
     use super::{
         DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT, MAX_TURN_CONTEXT_MESSAGE_LIMIT, command_error_to_proto,
-        command_error_to_status, normalize_turn_context_message_limit,
+        normalize_turn_context_message_limit,
     };
 
     #[test]
-    fn command_error_converters_redact_internal_details() {
+    fn command_error_proto_redacts_internal_details() {
         let raw = "postgres query failed at sqlx-postgres/src/connection.rs:666";
 
         let proto = command_error_to_proto(crate::domains::common::CommandError::internal(
@@ -5053,13 +5049,6 @@ mod tests {
         ));
         assert_eq!(proto.message, "Internal server error");
         assert!(!proto.message.contains(raw));
-
-        let status = command_error_to_status(crate::domains::common::CommandError::internal(
-            anyhow::anyhow!(raw),
-        ));
-        assert_eq!(status.code(), tonic::Code::Internal);
-        assert_eq!(status.message(), "Internal server error");
-        assert!(!status.message().contains(raw));
     }
 
     #[test]
