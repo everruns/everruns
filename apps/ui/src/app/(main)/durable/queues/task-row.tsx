@@ -99,6 +99,7 @@ export function TaskRow({ task }: { task: DurableTask }) {
             <Button
               variant="ghost"
               size="sm"
+              aria-label={`View workflow ${task.workflow_id}`}
               render={<Link href={`/durable/workflows/${task.workflow_id}`} />}
             >
               <ExternalLink className="h-3 w-3" />

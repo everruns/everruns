@@ -82,6 +82,7 @@ export function DlqRow({
             <Button
               variant="ghost"
               size="sm"
+              aria-label={`View workflow ${entry.workflow_id}`}
               render={<Link href={`/durable/workflows/${entry.workflow_id}`} />}
             >
               <ExternalLink className="h-3 w-3" />

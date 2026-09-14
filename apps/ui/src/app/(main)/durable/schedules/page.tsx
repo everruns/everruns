@@ -179,6 +179,7 @@ function ScheduleRow({
           <Button
             variant="ghost"
             size="sm"
+            aria-label={`View schedule ${schedule.name}`}
             render={<Link href={`/durable/schedules/${schedule.id}`} />}
           >
             <Settings className="h-3 w-3" />
