@@ -20,7 +20,7 @@ Verify that the durable queue UI shows live task state, filters tasks, enqueues 
 - At least one worker is active.
 - The queue contains pending, claimed, completed, and failed tasks, including failed tasks from at least two activity types.
 - The dead-letter queue contains one recoverable entry, one entry for single-row deletion, and one entry reserved for purge.
-- Approve delete or purge actions only on an isolated local or test stack whose dead-letter queue contains only entries created for this case; on shared stacks, exercise cancellation only.
+- Approve delete or purge actions only on an isolated local or test stack whose dead-letter queue contains only entries created for this case; on shared stacks, reject the delete and purge confirmation prompts.
 
 ## Test Data
 

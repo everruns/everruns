@@ -19,8 +19,8 @@ Verify that the durable workflows UI filters executions, exposes event details a
 - The full stack is running and the user is signed in as an operator.
 - Read-only list and detail checks may run on a shared stack.
 - Cancellation approval runs only on an isolated local or test stack.
-- The cancellation target is a purpose-created, idempotent test workflow with no external side effects, a safely cancellable pending activity, a linked session, and multiple event types.
-- Completed and failed workflows exist alongside the test workflow.
+- Known completed and failed workflows exist with linked sessions and multiple event types.
+- The cancellation target is a separate purpose-created, idempotent test workflow with no external side effects and a safely cancellable pending activity.
 
 ## Test Data
 
@@ -29,6 +29,7 @@ Verify that the durable workflows UI filters executions, exposes event details a
 | List route | `/durable/workflows` |
 | Detail route | `/durable/workflows/{workflowId}` |
 | Search value | The test workflow type or ID |
+| Terminal workflows | Known completed and failed workflows |
 | Cancellation target | The purpose-created idempotent test workflow |
 
 ## Steps
@@ -37,13 +38,14 @@ Verify that the durable workflows UI filters executions, exposes event details a
 2. Search for the test workflow, then filter by its status and confirm the list contains only matching rows.
 3. Open **Tasks** and verify active and pending task metadata, including priority, attempt, claimant, schedule time, and workflow link.
 4. Open **Dead Letter Queue** and verify failed activity, attempt, error, dead time, and requeue count fields.
-5. Return to **Workflows** and open the purpose-created test workflow.
-6. Confirm the detail page shows status, timestamps, input, result or error, and an event history ordered by sequence.
-7. Click **View Session** and confirm it opens the test workflow's linked session transcript, then return.
-8. For the purpose-created test workflow, click **Shutdown**, reject the prompt, and confirm the workflow remains running.
-9. Click **Cancel**, reject the prompt, and confirm the workflow remains running.
-10. On an isolated local or test stack only, reconfirm the selected workflow is the purpose-created idempotent test workflow, click **Cancel** again, approve the prompt, and refresh until the status and event history report cancellation.
-11. Return to the list and confirm the canceled test workflow appears when the `cancelled` filter is selected.
+5. Return to **Workflows** and open the known completed workflow.
+6. Confirm the detail page shows completed status, timestamps, input, result, and an event history ordered by sequence.
+7. Click **View Session** and confirm it opens the completed workflow's linked session transcript, then return.
+8. Open the known failed workflow and confirm its detail page shows failed status, timestamps, input, error, and an event history ordered by sequence.
+9. Return to **Workflows**, open the separate purpose-created cancellation target, click **Shutdown**, reject the prompt, and confirm the workflow remains running.
+10. Click **Cancel**, reject the prompt, and confirm the workflow remains running.
+11. On an isolated local or test stack only, reconfirm the selected workflow is the purpose-created idempotent test workflow, click **Cancel** again, approve the prompt, and refresh until the status and event history report cancellation.
+12. Return to the list and confirm the canceled test workflow appears when the `cancelled` filter is selected.
 
 ## Expected Result
 
