@@ -748,8 +748,9 @@ pub(crate) async fn resolve_org_for_user(
                 let header_org = parts
                     .headers
                     .get("x-org-id")
-                    .and_then(|v| v.to_str().ok())
-                    .map(String::from);
+                    .map(|v| v.to_str().map(String::from))
+                    .transpose()
+                    .map_err(|_| AuthError::unauthorized("Invalid organization ID format"))?;
                 let cookie_org = jar.get(ORG_COOKIE_NAME).map(|c| c.value().to_string());
                 let explicit_org = header_org.or(cookie_org);
 
@@ -851,8 +852,9 @@ pub(crate) async fn resolve_org_for_user(
                 let header_org = parts
                     .headers
                     .get("x-org-id")
-                    .and_then(|v| v.to_str().ok())
-                    .map(String::from);
+                    .map(|v| v.to_str().map(String::from))
+                    .transpose()
+                    .map_err(|_| AuthError::unauthorized("Invalid organization ID format"))?;
                 let cookie_org = jar.get(ORG_COOKIE_NAME).map(|c| c.value().to_string());
                 let explicit_org = header_org.or(cookie_org);
 
@@ -941,6 +943,7 @@ pub(crate) async fn resolve_org_for_user(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::http::HeaderValue;
 
     #[test]
     fn test_auth_user_anonymous() {
@@ -1344,6 +1347,14 @@ mod tests {
                 .expect("add organization member");
         }
 
+        db.create_organization(CreateOrganizationRow {
+            public_id: "org_00000000000000000000000000000003".to_string(),
+            name: "Org C".to_string(),
+            created_by: None,
+        })
+        .await
+        .expect("create nonmember organization");
+
         (state, user_id)
     }
 
@@ -1444,6 +1455,54 @@ mod tests {
 
         assert_eq!(err.status, StatusCode::UNAUTHORIZED);
         assert_eq!(err.error, "Invalid organization ID format");
+    }
+
+    #[tokio::test]
+    async fn test_resolved_org_jwt_non_utf8_x_org_id_returns_401() {
+        let (state, _user_id) = multi_org_jwt_state().await;
+        let (mut parts, _body) = Request::builder()
+            .header("x-org-id", HeaderValue::from_bytes(b"\xff").unwrap())
+            .header(
+                header::COOKIE,
+                format!(
+                    "access_token=fake-jwt-token; {}=org_00000000000000000000000000000001",
+                    ORG_COOKIE_NAME
+                ),
+            )
+            .body(())
+            .unwrap()
+            .into_parts();
+
+        let err = ResolvedOrg::from_request_parts(&mut parts, &state)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.status, StatusCode::UNAUTHORIZED);
+        assert_eq!(err.error, "Invalid organization ID format");
+    }
+
+    #[tokio::test]
+    async fn test_resolved_org_jwt_nonmember_x_org_id_overrides_cookie() {
+        let (state, _user_id) = multi_org_jwt_state().await;
+        let (mut parts, _body) = Request::builder()
+            .header("x-org-id", "org_00000000000000000000000000000003")
+            .header(
+                header::COOKIE,
+                format!(
+                    "access_token=fake-jwt-token; {}=org_00000000000000000000000000000001",
+                    ORG_COOKIE_NAME
+                ),
+            )
+            .body(())
+            .unwrap()
+            .into_parts();
+
+        let err = ResolvedOrg::from_request_parts(&mut parts, &state)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.status, StatusCode::NOT_FOUND);
+        assert_eq!(err.error, "Organization not found");
     }
 
     #[tokio::test]
