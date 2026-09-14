@@ -19,7 +19,7 @@ export interface StartersEditorProps {
 }
 
 /**
- * Editor for Platform Chat conversation starters. Each starter has prompt
+ * Editor for chat conversation starters. Each starter has prompt
  * text plus an optional icon name from the harness icon set (`HarnessIcon`
  * falls back to the default glyph for unknown names).
  */
@@ -37,7 +37,7 @@ export function StartersEditor({ value, onChange, error, rowErrors = [] }: Start
       <div className="flex items-center justify-between">
         <Label>Conversation starters</Label>
         <span className="text-xs text-muted-foreground">
-          {value.length}/{MAX_STARTERS} · shown on a fresh Platform Chat thread
+          {value.length}/{MAX_STARTERS} · shown on a fresh chat thread
         </span>
       </div>
       {value.length === 0 ? (

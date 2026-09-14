@@ -400,20 +400,6 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="display_name">Display Name</Label>
-                    <Input
-                      id="display_name"
-                      placeholder={formData.name ? undefined : "My Harness"}
-                      value={formData.display_name}
-                      onChange={(e) => handleFormChange("display_name", e.target.value)}
-                      disabled={isSaving || isReadOnly}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Optional human-readable label shown in the UI. Defaults to name if empty.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
                     <Label htmlFor="description">Description</Label>
                     <Textarea
                       id="description"
@@ -442,15 +428,29 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                 </CardContent>
               </Card>
 
-              <Card id="platform-chat" className="scroll-mt-6">
+              <Card id="branding" className="scroll-mt-6">
                 <CardHeader>
-                  <CardTitle>Platform Chat</CardTitle>
+                  <CardTitle>Branding</CardTitle>
                   <CardDescription>
-                    Intro box, header description, and starters for fresh Platform Chat threads.
-                    Applies when the bound agent leaves the field empty.
+                    How the harness presents itself in chat. Intro, short description, and starters
+                    apply when the bound agent leaves the field empty.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="display_name">Display Name</Label>
+                    <Input
+                      id="display_name"
+                      placeholder={formData.name ? undefined : "My Harness"}
+                      value={formData.display_name}
+                      onChange={(e) => handleFormChange("display_name", e.target.value)}
+                      disabled={isSaving || isReadOnly}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Optional human-readable label shown in the UI. Defaults to name if empty.
+                    </p>
+                  </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="intro_markdown">Intro (Markdown)</Label>
                     <Textarea
