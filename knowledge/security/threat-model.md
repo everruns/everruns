@@ -303,7 +303,7 @@ Prior to the command runner, only MCP/gRPC `dispatch` evaluated `Command::policy
 | TM-API-002 | Large payload DoS | High | Input validation with size limits on agent/session/message fields | MITIGATED |
 | TM-API-003 | Path injection in filesystem API | High | Regex constraint: `path ~ '^/([^/\0]+(/[^/\0]+)*)?$'`; no `..`, `//`, or null bytes | MITIGATED |
 | TM-API-004 | Multipart upload abuse | Medium | Max file 100MB; max request 101MB; allowed MIME types: image/png, image/jpeg, image/gif, image/webp | MITIGATED |
-| TM-API-005 | Internal error detail leakage | Medium | Generic `{"error": "Internal server error"}` for 500s; details logged server-side only | MITIGATED |
+| TM-API-005 | Internal or database error detail leakage | Medium | HTTP, MCP, and gRPC command adapters return generic details for internal errors. Recognized uniqueness conflicts keep `409` and `already_exists` while replacing raw database, constraint, and source-location text with `Resource already exists`. Full diagnostics stay in server logs. Focused tests cover both HTTP classifiers and the MCP/gRPC conversion paths. | MITIGATED |
 | TM-API-006 | Missing auth on protected routes | Critical | All protected routes require `AuthUser` extractor; compile-time route registration | MITIGATED |
 | TM-API-007 | CORS misconfiguration | Medium | `CORS_ALLOWED_ORIGINS` not set by default (same-origin only); configurable for cross-origin | MITIGATED |
 | TM-API-008 | WebFetch SSRF to internal services | High | fetchkit v0.1.2 `DnsPolicy::block_private_ips()` blocks loopback, RFC1918, link-local, and reserved IPs via resolve-then-check | MITIGATED |

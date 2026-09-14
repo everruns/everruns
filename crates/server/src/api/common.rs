@@ -407,8 +407,14 @@ pub fn sanitized_bad_gateway(context: &str, error: &dyn std::fmt::Display) -> (S
 fn classify_anyhow_error(message: &str) -> Option<(StatusCode, Json<ErrorResponse>)> {
     let lowered = message.to_ascii_lowercase();
 
-    if lowered.contains("duplicate key") || lowered.contains("already exists") {
-        return Some(ErrorResponse::conflict(message));
+    if crate::errors::is_already_exists_error(message) {
+        // THREAT[TM-API-005]: Keep storage diagnostics in server logs only.
+        tracing::warn!(error = message, "database uniqueness conflict");
+        return Some(
+            ErrorResponse::new(crate::errors::ALREADY_EXISTS_DETAIL)
+                .with_code(crate::errors::ALREADY_EXISTS_CODE)
+                .into_response(StatusCode::CONFLICT),
+        );
     }
 
     let is_bad_request = [
@@ -1851,6 +1857,24 @@ mod tests {
                 .unwrap()
                 .contains("secret-database-marker")
         );
+    }
+
+    #[test]
+    fn classify_unique_conflict_redacts_database_details() {
+        let raw = "error returned from database: duplicate key value violates unique constraint \
+                   \"idx_memories_org_name_active\" at sqlx-postgres/src/connection.rs:666";
+        let (status, body) = classify_anyhow_error(raw).expect("classified conflict");
+
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(
+            body.0.detail.as_deref(),
+            Some(crate::errors::ALREADY_EXISTS_DETAIL)
+        );
+        assert_eq!(
+            body.0.code.as_deref(),
+            Some(crate::errors::ALREADY_EXISTS_CODE)
+        );
+        assert!(!serde_json::to_string(&body.0).unwrap().contains(raw));
     }
 
     #[test]

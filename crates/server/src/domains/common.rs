@@ -205,8 +205,11 @@ pub fn classify_anyhow(e: anyhow::Error) -> CommandError {
     let msg = e.to_string();
     let lowered = msg.to_ascii_lowercase();
 
-    if lowered.contains("duplicate key") || lowered.contains("already exists") {
-        return CommandError::conflict(msg).with_code("already_exists");
+    if crate::errors::is_already_exists_error(&msg) {
+        // THREAT[TM-API-005]: Keep storage diagnostics in server logs only.
+        tracing::warn!(error = %e, "database uniqueness conflict");
+        return CommandError::conflict(crate::errors::ALREADY_EXISTS_DETAIL)
+            .with_code(crate::errors::ALREADY_EXISTS_CODE);
     }
 
     // EVE-437: this list catches `anyhow::bail!` strings emitted from
@@ -1419,6 +1422,18 @@ mod error_tests {
         assert!(
             matches!(err, CommandError { kind: CommandErrorKind::BadRequest(msg), .. } if msg == "bad input")
         );
+    }
+    #[test]
+    fn unique_conflict_http_response_redacts_database_details() {
+        let raw = "error returned from database: duplicate key value violates unique constraint \
+                   \"idx_mcp_servers_org_name_live\" at sqlx-postgres/src/connection.rs:666";
+        let err = classify_anyhow(anyhow::anyhow!(raw));
+        let (status, body) = <(StatusCode, Json<ErrorResponse>)>::from(err);
+
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.0.detail.as_deref(), Some("Resource already exists"));
+        assert_eq!(body.0.code.as_deref(), Some("already_exists"));
+        assert!(!serde_json::to_string(&body.0).unwrap().contains(raw));
     }
 
     // Cardinality contract for the `status` label on `everruns_commands_total`

@@ -4,6 +4,14 @@
 
 use thiserror::Error;
 
+pub(crate) const ALREADY_EXISTS_CODE: &str = "already_exists";
+pub(crate) const ALREADY_EXISTS_DETAIL: &str = "Resource already exists";
+
+pub(crate) fn is_already_exists_error(message: &str) -> bool {
+    let lowered = message.to_ascii_lowercase();
+    lowered.contains("duplicate key") || lowered.contains("already exists")
+}
+
 #[derive(Debug, Error)]
 #[error("{message}")]
 pub struct BadRequestError {

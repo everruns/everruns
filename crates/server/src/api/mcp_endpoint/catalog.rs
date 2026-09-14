@@ -1320,6 +1320,17 @@ mod tests {
     }
 
     #[test]
+    fn format_dispatch_error_redacts_unique_conflict_details() {
+        let raw = "error returned from database: duplicate key value violates unique constraint \
+                   \"idx_mcp_servers_org_name_live\" at sqlx-postgres/src/connection.rs:666";
+        let error = crate::domains::common::classify_anyhow(anyhow::anyhow!(raw));
+        let formatted = format_dispatch_error(&error);
+
+        assert_eq!(formatted, "conflict: Resource already exists");
+        assert!(!formatted.contains(raw));
+    }
+
+    #[test]
     fn read_only_query_excludes_preview_commands_with_network_side_effects() {
         assert!(excluded_from_read_only_query("preview_agent"));
         assert!(excluded_from_read_only_query("preview_harness"));
