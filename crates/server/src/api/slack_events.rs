@@ -85,6 +85,11 @@ struct SlackAssistantThread {
     thread_ts: Option<String>,
     #[serde(default)]
     context: Option<SlackViewContext>,
+    /// Present on a rename. Slack has carried it both here and at the event
+    /// root across the `assistant.threads.*` → `agents.sessions.*` rename, so
+    /// both are read (EVE-975).
+    #[serde(default)]
+    title: Option<String>,
 }
 
 /// What Slack says the user is looking at. Ids only — see
@@ -109,6 +114,10 @@ struct SlackEvent {
     /// Message text.
     #[serde(default)]
     text: Option<String>,
+    /// New thread title on a rename. Slack has carried it at the event root as
+    /// well as under `assistant_thread`; both are read (EVE-975).
+    #[serde(default)]
+    title: Option<String>,
     /// Channel where the event occurred.
     #[serde(default)]
     channel: Option<String>,
@@ -530,10 +539,30 @@ async fn handle_slack_event(
                     return Ok((StatusCode::OK, Json(ack_json())));
                 }
 
-                if matches!(
-                    event.event_type.as_str(),
-                    "app_home_opened" | "agent_session_title_changed"
-                ) {
+                // The user renamed the thread in the pane. We push titles the
+                // other way on `session.title.updated`, so ignoring this would
+                // silently revert their rename the next time the agent retitled
+                // the session — two sources of truth for one name. Write it back
+                // instead, through the same no-op-suppressing helper the agent
+                // path uses, so a rename to the current title emits nothing and
+                // the two directions cannot echo each other.
+                if event.event_type == "agent_session_title_changed" {
+                    if let Err(error) =
+                        handle_agent_session_title_changed(&state, &app, &slack_config, &event)
+                            .await
+                    {
+                        // Non-fatal, like the stop button: a lost rename is not
+                        // worth a Slack redelivery storm.
+                        tracing::warn!(
+                            app_id = %app_id,
+                            %error,
+                            "Failed to apply Slack thread rename"
+                        );
+                    }
+                    return Ok((StatusCode::OK, Json(ack_json())));
+                }
+
+                if event.event_type == "app_home_opened" {
                     tracing::debug!(
                         app_id = %app_id,
                         event_type = %event.event_type,
@@ -1015,6 +1044,8 @@ async fn process_slack_message(
                 surface,
                 recipient_user_id: (!slack_user_id.is_empty()).then(|| slack_user_id.clone()),
                 recipient_team_id: slack_config.team_id.clone(),
+                tool_visibility: slack_config.tool_visibility,
+                generic_tool_text: slack_config.generic_tool_text.clone(),
             })
             .await;
     } else {
@@ -1264,6 +1295,94 @@ async fn handle_agent_session_stopped(
     .await?;
 
     tracing::info!(session_id = %row.id, "Cancelled Slack session turn on stop request");
+    Ok(())
+}
+
+/// Apply a thread rename made in the Slack pane to the session it belongs to.
+///
+/// Deliberately as narrow as the stop button (EVE-976): it resolves a session
+/// the *receiving app* owns, and can change that session's title and nothing
+/// else. A rename for a pane with no session yet is a no-op — the first message
+/// creates the session, and Slack's own title is what the user already sees.
+///
+/// Write-back rather than ignore, because the pane is not the only writer: the
+/// agent retitles the session and we push that title to Slack, so an ignored
+/// rename would be silently reverted the next time it did. `session_title_updated_event`
+/// suppresses a no-op change, so the two directions settle instead of echoing.
+async fn handle_agent_session_title_changed(
+    state: &SlackState,
+    app: &App,
+    slack_config: &SlackChannelConfig,
+    event: &SlackEvent,
+) -> anyhow::Result<()> {
+    let Some(thread) = event.assistant_thread.as_ref() else {
+        tracing::debug!(
+            app_id = %app.public_id,
+            "Slack rename carried no assistant_thread; ignoring"
+        );
+        return Ok(());
+    };
+
+    let title = thread
+        .title
+        .as_deref()
+        .or(event.title.as_deref())
+        .map(str::trim)
+        .filter(|title| !title.is_empty());
+    let Some(title) = title else {
+        tracing::debug!(
+            app_id = %app.public_id,
+            "Slack rename carried no title; ignoring"
+        );
+        return Ok(());
+    };
+
+    // The pane reports its thread under `assistant_thread`, not at the event
+    // root, so normalize before tag-building — same as the context path.
+    let mut routing_event = event.clone();
+    routing_event.channel = thread.channel_id.clone().or(routing_event.channel);
+    routing_event.thread_ts = thread.thread_ts.clone().or(routing_event.thread_ts);
+
+    let routing_tags = build_session_tags(app, slack_config, &routing_event, SlackSurface::Pane);
+    let Some(row) = state
+        .db
+        .find_app_session_by_tags(app.org_id, app.internal_id, &routing_tags)
+        .await?
+    else {
+        tracing::debug!(
+            app_id = %app.public_id,
+            tags = ?routing_tags,
+            "Slack rename for a pane with no session yet; ignoring"
+        );
+        return Ok(());
+    };
+
+    let Some(event_request) =
+        everruns_host::session_services::capabilities::session::session_title_updated_event(
+            row.id,
+            everruns_core::events::EventContext::empty(),
+            row.title.clone(),
+            title.to_string(),
+        )
+    else {
+        // Already the stored title — the rename came from our own push.
+        return Ok(());
+    };
+
+    state
+        .db
+        .update_session(
+            app.org_id,
+            row.id,
+            crate::storage::models::UpdateSession {
+                title: Some(title.to_string()),
+                ..Default::default()
+            },
+        )
+        .await?;
+    state.event_service.emit(event_request).await?;
+
+    tracing::info!(session_id = %row.id, "Applied Slack thread rename to session title");
     Ok(())
 }
 
@@ -2759,6 +2878,8 @@ mod tests {
             reply_mode: SlackReplyMode::AllMessages,
             webhook_verified_at: None,
             first_message_received_at: None,
+            tool_visibility: Default::default(),
+            generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
         }
     }
 
@@ -2795,6 +2916,7 @@ mod tests {
             event_type: "message".to_string(),
             user: None,
             text: Some("Hello".to_string()),
+            title: None,
             channel: Some(channel.to_string()),
             thread_ts: thread_ts.map(String::from),
             ts: ts.map(String::from),
@@ -3127,6 +3249,213 @@ mod tests {
     }
 
     /// Helper: create an in-memory session for dedup tests
+    /// EVE-975: a rename in the pane is the user naming their own thread. We push
+    /// titles the other way, so ignoring it would silently revert them.
+    mod pane_rename_tests {
+        use super::*;
+        use crate::storage::models::CreateSessionRow;
+
+        const PANE_CHANNEL: &str = "D_PANE";
+        const PANE_TS: &str = "1700000000.000100";
+
+        fn pane_config() -> SlackChannelConfig {
+            let mut config = test_config(SessionStrategy::PerThread);
+            config.agent_surface_enabled = true;
+            config
+        }
+
+        fn rename_event(title: Option<&str>) -> SlackEvent {
+            let mut event = test_event(PANE_CHANNEL, Some(PANE_TS), Some(PANE_TS));
+            event.event_type = "agent_session_title_changed".to_string();
+            event.assistant_thread = Some(SlackAssistantThread {
+                channel_id: Some(PANE_CHANNEL.to_string()),
+                thread_ts: Some(PANE_TS.to_string()),
+                context: None,
+                title: title.map(str::to_string),
+            });
+            event
+        }
+
+        async fn state_with_pane_session(
+            app: &App,
+            stored_title: &str,
+        ) -> (SlackState, everruns_provider::typed_id::SessionId) {
+            let db = Arc::new(StorageBackend::in_memory());
+            let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+            let state = SlackState::new(
+                db,
+                None,
+                runner,
+                None,
+                false,
+                crate::event_delivery::EventDelivery::in_memory(),
+                "https://example.com/api".to_string(),
+            );
+
+            let tags =
+                build_session_tags(app, &pane_config(), &rename_event(None), SlackSurface::Pane);
+            let session = state
+                .db
+                .create_session(CreateSessionRow {
+                    source: everruns_platform::SessionSource::Api,
+                    workspace_id: None,
+                    org_id: app.org_id,
+                    app_id: Some(app.internal_id),
+                    harness_id: Some(everruns_provider::typed_id::HarnessId::from_uuid(
+                        uuid::Uuid::nil(),
+                    )),
+                    agent_id: None,
+                    agent_version_id: None,
+                    agent_config_hash: None,
+                    agent_identity_id: None,
+                    owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+                    resolved_owner_user_id: None,
+                    title: Some(stored_title.to_string()),
+                    locale: None,
+                    tags,
+                    model_id: None,
+                    capabilities: serde_json::json!([]),
+                    tools: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    system_prompt: None,
+                    initial_files: serde_json::Value::Array(vec![]),
+                    hints: None,
+                    max_iterations: None,
+                    parallel_tool_calls: None,
+                    blueprint_id: None,
+                    blueprint_config: None,
+                    network_access: None,
+                    parent_session_id: None,
+                    budget_root_session_id: None,
+                })
+                .await
+                .expect("create pane session");
+            (state, session.id)
+        }
+
+        async fn title_events(
+            state: &SlackState,
+            session: everruns_provider::typed_id::SessionId,
+        ) -> usize {
+            state
+                .db
+                .list_events(
+                    session,
+                    None,
+                    None,
+                    &[everruns_core::SESSION_TITLE_UPDATED.to_string()],
+                    &[],
+                    None,
+                    None,
+                )
+                .await
+                .expect("list title events")
+                .len()
+        }
+
+        #[tokio::test]
+        async fn a_rename_becomes_the_session_title() {
+            let app = test_app();
+            let (state, session) =
+                state_with_pane_session(&app, "Slack thread 1700000000.000100").await;
+
+            handle_agent_session_title_changed(
+                &state,
+                &app,
+                &pane_config(),
+                // Slack pads nothing, but a user can; the stored title should not.
+                &rename_event(Some("  Refund policy for EU orders  ")),
+            )
+            .await
+            .expect("apply rename");
+
+            let row = state
+                .db
+                .get_session(app.org_id, session)
+                .await
+                .expect("load session")
+                .expect("session exists");
+            assert_eq!(row.title.as_deref(), Some("Refund policy for EU orders"));
+            assert_eq!(title_events(&state, session).await, 1);
+        }
+
+        /// The pane echoes back the title we just pushed it. Writing that again
+        /// would emit an event, which the dispatcher would push to Slack, which
+        /// would echo — so a no-op rename has to stay a no-op.
+        #[tokio::test]
+        async fn a_rename_to_the_current_title_changes_nothing() {
+            let app = test_app();
+            let (state, session) = state_with_pane_session(&app, "Refund policy").await;
+
+            handle_agent_session_title_changed(
+                &state,
+                &app,
+                &pane_config(),
+                &rename_event(Some("Refund policy")),
+            )
+            .await
+            .expect("apply rename");
+
+            assert_eq!(title_events(&state, session).await, 0);
+        }
+
+        #[tokio::test]
+        async fn an_empty_rename_is_ignored() {
+            let app = test_app();
+            let (state, session) = state_with_pane_session(&app, "Original").await;
+
+            for title in [Some("   "), None] {
+                handle_agent_session_title_changed(
+                    &state,
+                    &app,
+                    &pane_config(),
+                    &rename_event(title),
+                )
+                .await
+                .expect("apply rename");
+            }
+
+            let row = state
+                .db
+                .get_session(app.org_id, session)
+                .await
+                .expect("load session")
+                .expect("session exists");
+            assert_eq!(row.title.as_deref(), Some("Original"));
+            assert_eq!(title_events(&state, session).await, 0);
+        }
+
+        /// Same scoping as the stop button (EVE-976): a rename can only touch a
+        /// session the receiving app owns.
+        #[tokio::test]
+        async fn a_rename_for_another_apps_thread_is_ignored() {
+            let app = test_app();
+            let (state, session) = state_with_pane_session(&app, "Original").await;
+
+            let mut other_app = test_app();
+            other_app.internal_id = uuid::Uuid::from_u128(9_999);
+            other_app.public_id =
+                everruns_provider::typed_id::AppId::from_uuid(uuid::Uuid::from_u128(9_999));
+
+            handle_agent_session_title_changed(
+                &state,
+                &other_app,
+                &pane_config(),
+                &rename_event(Some("Hijacked")),
+            )
+            .await
+            .expect("apply rename");
+
+            let row = state
+                .db
+                .get_session(app.org_id, session)
+                .await
+                .expect("load session")
+                .expect("session exists");
+            assert_eq!(row.title.as_deref(), Some("Original"));
+        }
+    }
+
     async fn setup_test_session(db: &StorageBackend) -> everruns_provider::typed_id::SessionId {
         use crate::storage::models::CreateSessionRow;
 

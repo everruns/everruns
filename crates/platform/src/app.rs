@@ -500,6 +500,18 @@ pub struct SlackChannelConfig {
     /// from config (EVE-973).
     #[serde(default)]
     pub agent_surface_enabled: bool,
+    /// Tool activity visibility for the agent pane's live status line.
+    ///
+    /// The pane is a user-facing surface like a published AG-UI endpoint, so it
+    /// answers to the same policy rather than a second, divergent one (EVE-975).
+    #[serde(default)]
+    pub tool_visibility: AgUiToolVisibility,
+    /// Status text shown while a tool runs, when `tool_visibility` is `generic`.
+    #[serde(
+        default = "default_ag_ui_generic_tool_text",
+        skip_serializing_if = "is_default_ag_ui_generic_tool_text"
+    )]
+    pub generic_tool_text: String,
 }
 
 /// Default session expiration for public channel threads (6 hours).
@@ -520,6 +532,34 @@ pub enum AgUiToolVisibility {
     Generic,
     /// Expose backend-authored narration, without raw tool names, args, or output.
     Narrated,
+}
+
+/// The only tool-activity text a public surface may show, or `None` when tool
+/// activity must not be exposed at all.
+///
+/// One place decides this for every public surface. AG-UI enforced it inline and
+/// Slack's agent pane needs the same answer (EVE-975); two copies of a rule about
+/// what a public surface reveals is one copy too many.
+///
+/// `Narrated` deliberately resolves to the same generic text as `Generic`:
+/// backend- or model-authored narration can derive from raw tool-call arguments,
+/// so it is not safe to forward. The empty-value fallback exists because the text
+/// is user-editable and an empty status is worse than a generic one.
+pub fn public_tool_activity_text(
+    visibility: AgUiToolVisibility,
+    generic_tool_text: &str,
+) -> Option<&str> {
+    match visibility {
+        AgUiToolVisibility::None => None,
+        AgUiToolVisibility::Generic | AgUiToolVisibility::Narrated => {
+            let trimmed = generic_tool_text.trim();
+            Some(if trimmed.is_empty() {
+                DEFAULT_AG_UI_GENERIC_TOOL_TEXT
+            } else {
+                trimmed
+            })
+        }
+    }
 }
 
 /// App-published endpoint authentication mode.
@@ -1131,6 +1171,39 @@ mod tests {
         assert_eq!(json, r#""per_user""#);
     }
 
+    /// EVE-975: one rule about what a public surface may reveal about a running
+    /// tool, shared by AG-UI and the Slack agent pane.
+    #[test]
+    fn public_tool_activity_text_is_the_one_policy() {
+        assert_eq!(
+            public_tool_activity_text(AgUiToolVisibility::None, "Reading the payroll table"),
+            None,
+            "None must expose nothing, including a configured string"
+        );
+
+        // Narrated is not a licence to forward narration: it can derive from raw
+        // tool-call arguments, so it resolves to the same safe text as Generic.
+        for visibility in [AgUiToolVisibility::Generic, AgUiToolVisibility::Narrated] {
+            assert_eq!(
+                public_tool_activity_text(visibility, "Looking that up"),
+                Some("Looking that up"),
+                "{visibility:?}"
+            );
+            assert_eq!(
+                public_tool_activity_text(visibility, "  Looking that up  "),
+                Some("Looking that up"),
+                "{visibility:?} must trim"
+            );
+            // The text is user-editable, and an empty status is worse than a
+            // generic one.
+            assert_eq!(
+                public_tool_activity_text(visibility, "   "),
+                Some(DEFAULT_AG_UI_GENERIC_TOOL_TEXT),
+                "{visibility:?} must fall back when the configured text is blank"
+            );
+        }
+    }
+
     #[test]
     fn test_slack_channel_config_full() {
         let json = r#"{
@@ -1201,9 +1274,14 @@ mod tests {
             webhook_verified_at: None,
             first_message_received_at: None,
             agent_surface_enabled: false,
+            tool_visibility: AgUiToolVisibility::default(),
+            generic_tool_text: DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
         };
         let json = serde_json::to_value(&config).unwrap();
         assert!(json.get("webhook_verified_at").is_none());
+        // The default text is a knob nobody turned; serialising it into every
+        // stored Slack config would be noise, same as the AG-UI config.
+        assert!(json.get("generic_tool_text").is_none());
         assert!(json.get("first_message_received_at").is_none());
     }
 

@@ -199,6 +199,7 @@ everruns_core::capability_types::MountSource::Virtual	variant
 everruns_core::capability_types::VirtualFile	struct
 everruns_core::capability_types::VirtualFileTree	struct
 everruns_core::channel	module
+everruns_core::channel::ChannelAgentSurface	trait
 everruns_core::channel::ChannelDeliveryAdapter	trait
 everruns_core::channel::ChannelReplyMode	enum
 everruns_core::channel::ChannelReplyMode::AllMessages	variant

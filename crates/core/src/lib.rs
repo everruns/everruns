@@ -304,10 +304,10 @@ pub use workspace_roots::{
 
 // Channel abstraction re-exports
 pub use channel::{
-    ChannelDeliveryAdapter, ChannelReplyMode, ChannelStreamDelivery, ChannelViewContext,
-    DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
-    InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant,
-    SessionRoutingStrategy, ThreadContext,
+    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelReplyMode, ChannelStreamDelivery,
+    ChannelViewContext, DeliveryContext as ChannelDeliveryContext,
+    DeliveryResult as ChannelDeliveryResult, InboundAttachment, InboundChannelEvent,
+    OutboundChannelMessage, Participant, SessionRoutingStrategy, ThreadContext,
 };
 
 // Narrow subagent-session delegation contract (EVE-839). The full hosted

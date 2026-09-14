@@ -55,7 +55,10 @@ obsoletes the other, and no existing app needed migrating.
 status text would leak internals into a user-facing surface. AG-UI already solved this
 with a `None` / `Generic` / `Narrated` policy; Slack consumes the same policy rather
 than growing a second one. What a public surface may reveal stays decided in one place.
-This is the one decision not yet exercised — it belongs to the open status work below.
+Exercised by EVE-975: the policy moved out of `api/ag_ui.rs` into
+`everruns_platform::app::public_tool_activity_text`, which both surfaces now call. Slack
+channels grew the same `tool_visibility` / `generic_tool_text` knobs so the pane is
+configured like any other public surface rather than hard-coded.
 
 **Streaming makes the delivery dispatcher stateful and clocked.** The dispatcher was
 notification-driven and stateless between events. Streaming requires accumulating deltas
@@ -94,13 +97,24 @@ from a classic Events API bot to a Slack agent app.
 
 | Issue | Item |
 |---|---|
-| EVE-975 | Agent status and thread title from turn and tool lifecycle |
 | EVE-978 | Decide where suggested prompts come from, or decide not to have them |
-| EVE-988 | Startup recovery re-registers deliveries for cancelled turns |
 
-EVE-975 is the last piece of the agent surface proper: the pane streams, but shows no
-status while a tool runs. EVE-988 is a defect found verifying the above — terminal-state
-handling was fixed in the live path and not in the recovery path.
+EVE-975 and EVE-988 have since shipped. Two decisions from EVE-975 are worth keeping:
+
+**Status is a capability, not a required method.** `ChannelAgentSurface` sits behind an
+`agent_surface()` probe on `ChannelDeliveryAdapter`, the same shape streaming uses, so a
+platform without a status line returns `None` instead of stubbing methods. It is pane-only
+for the same reason streaming is — a channel thread has neither a status line nor a title.
+Both calls are advisory: a failed status is logged and swallowed, because the reply is the
+product and a decoration must never take a turn down with it.
+
+**A pane rename writes back to the session title.** Titles already flow outward on
+`session.title.updated`, so ignoring the inbound `agent_session_title_changed` would have
+silently reverted a user's rename the next time the agent retitled the session — two
+writers, one name. The write-back is scoped exactly like the stop button (a session the
+receiving app owns, title and nothing else) and goes through
+`session_title_updated_event`, whose no-op suppression is what stops the two directions
+echoing each other.
 
 Deliberately not tracked, each needing its own design pass first: interactivity and
 approval buttons, Slack tools for the agent (including fetching the files users attach,
