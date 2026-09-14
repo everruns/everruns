@@ -135,12 +135,10 @@ export default function AgentIdentitiesPage() {
           </>
         }
         actions={
-          <Link href="/agent-identities/new">
-            <Button variant="accent">
-              <Plus className="size-4" />
-              New identity
-            </Button>
-          </Link>
+          <Button variant="accent" render={<Link href="/agent-identities/new" />}>
+            <Plus className="size-4" />
+            New identity
+          </Button>
         }
       />
 
@@ -187,12 +185,10 @@ export default function AgentIdentitiesPage() {
               action={
                 !search &&
                 statusTab === "active" && (
-                  <Link href="/agent-identities/new">
-                    <Button variant="accent">
-                      <Plus className="size-4" />
-                      Create your first identity
-                    </Button>
-                  </Link>
+                  <Button variant="accent" render={<Link href="/agent-identities/new" />}>
+                    <Plus className="size-4" />
+                    Create your first identity
+                  </Button>
                 )
               }
             />

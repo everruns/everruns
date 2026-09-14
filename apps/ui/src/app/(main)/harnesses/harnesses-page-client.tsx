@@ -154,12 +154,10 @@ export default function HarnessesPageClient() {
           </>
         }
         actions={
-          <Link href="/harnesses/new">
-            <Button variant="accent">
-              <Plus className="size-4" />
-              New harness
-            </Button>
-          </Link>
+          <Button variant="accent" render={<Link href="/harnesses/new" />}>
+            <Plus className="size-4" />
+            New harness
+          </Button>
         }
       />
 
@@ -226,12 +224,10 @@ export default function HarnessesPageClient() {
                 action={
                   !search &&
                   statusTab === "active" && (
-                    <Link href="/harnesses/new">
-                      <Button variant="accent">
-                        <Plus className="size-4" />
-                        Create your first harness
-                      </Button>
-                    </Link>
+                    <Button variant="accent" render={<Link href="/harnesses/new" />}>
+                      <Plus className="size-4" />
+                      Create your first harness
+                    </Button>
                   )
                 }
               />

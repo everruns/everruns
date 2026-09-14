@@ -82,11 +82,15 @@ export function AgentCard({
           actions={
             showEditButton &&
             agent.status === "active" && (
-              <Link href={`/agents/${agent.id}/edit`}>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <Pencil className="icon-sharp h-4 w-4" />
-                </Button>
-              </Link>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                aria-label={`Edit ${getDisplayName(agent)}`}
+                render={<Link href={`/agents/${agent.id}/edit`} />}
+              >
+                <Pencil className="icon-sharp h-4 w-4" />
+              </Button>
             )
           }
         />

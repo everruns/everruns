@@ -95,12 +95,10 @@ export default function EvalsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Evals</h1>
-        <Link href="/evals/new">
-          <Button variant="accent">
-            <Plus className="w-4 h-4 mr-2" />
-            New Eval
-          </Button>
-        </Link>
+        <Button variant="accent" render={<Link href="/evals/new" />}>
+          <Plus className="w-4 h-4 mr-2" />
+          New Eval
+        </Button>
       </div>
 
       {/* Eval grid */}
@@ -112,12 +110,10 @@ export default function EvalsPage() {
         emptyState={
           <div className="text-center py-12">
             <p className="text-muted-foreground mb-4">No evals yet</p>
-            <Link href="/evals/new">
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                Create your first eval
-              </Button>
-            </Link>
+            <Button render={<Link href="/evals/new" />}>
+              <Plus className="w-4 h-4 mr-2" />
+              Create your first eval
+            </Button>
           </div>
         }
       >

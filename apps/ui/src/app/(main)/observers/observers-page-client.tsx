@@ -65,12 +65,10 @@ export default function ObserversPageClient() {
     <div className="container mx-auto space-y-6 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Observers</h1>
-        <Link href="/observers/new">
-          <Button variant="accent">
-            <Plus className="mr-2 h-4 w-4" />
-            New Observer
-          </Button>
-        </Link>
+        <Button variant="accent" render={<Link href="/observers/new" />}>
+          <Plus className="mr-2 h-4 w-4" />
+          New Observer
+        </Button>
       </div>
 
       <QueryStateWrapper
@@ -81,12 +79,10 @@ export default function ObserversPageClient() {
         emptyState={
           <div className="py-12 text-center">
             <p className="mb-4 text-muted-foreground">No observers yet</p>
-            <Link href="/observers/new">
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Create observer
-              </Button>
-            </Link>
+            <Button render={<Link href="/observers/new" />}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create observer
+            </Button>
           </div>
         }
       >

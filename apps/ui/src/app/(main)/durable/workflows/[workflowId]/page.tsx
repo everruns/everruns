@@ -187,12 +187,10 @@ export default function WorkflowDetailPage({
               The workflow could not be loaded. It may not exist or the API is unavailable.
             </p>
             <div className="flex gap-2">
-              <Link href="/durable/workflows">
-                <Button variant="outline">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to Workflows
-                </Button>
-              </Link>
+              <Button variant="outline" render={<Link href="/durable/workflows" />}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Workflows
+              </Button>
               <Button onClick={() => refetch()} variant="outline">
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Retry
