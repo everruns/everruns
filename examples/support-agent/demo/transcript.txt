@@ -1,7 +1,7 @@
 MODEL: gpt-5.6-terra
 
 QUESTION
-Customer cust_mfa reset their password but still cannot sign in. Diagnose the next safe step; do not ask for secrets.
+Customer cust_mfa reset their password but cannot sign in. What is the next safe step?
 
 > lookup_customer
   customer_id: cust_mfa
@@ -29,10 +29,8 @@ verified: true
 
 ANSWER
 
-Your password reset completed, but MFA is still enabled. The account has no active lockout; however, no authenticator or recovery codes are available.
+Your password reset completed, but MFA remains enabled. Since no authenticator or recovery codes are available, use verified identity recovery: https://support.example.com/recovery.
 
-Next safe step: start verified identity recovery at https://support.example.com/recovery to restore access. Do not share passwords or codes.
-
-If recovery cannot be completed, contact support through the recovery process; chat support cannot disable MFA based only on a request.
+This is the safe path to restore access; support cannot disable MFA from a chat request. If recovery cannot be completed, contact support through that recovery page for further assistance.
 
 Completed: 2 iterations, 2 tool calls

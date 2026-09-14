@@ -7,7 +7,7 @@ description: Typed read-only tools, separating facts from policy, and choosing d
 
 Diagnose a sign-in problem by combining account facts with an explicit recovery policy. The interesting decision is whether the user needs MFA recovery, must wait for a lockout, or should try a clean browser session.
 
-![Support Agent terminal demo](https://raw.githubusercontent.com/everruns/everruns/main/examples/support-agent/src/demo.gif)
+![Support Agent terminal demo](https://raw.githubusercontent.com/everruns/everruns/main/examples/support-agent/demo/demo.gif)
 
 ## What you learn
 
@@ -39,20 +39,28 @@ cargo run -p everruns-support-agent -- "cust_locked reset their password but can
 cargo run -p everruns-support-agent -- "cust_browser cannot sign in after a reset. What next?"
 ```
 
+Or enter a question interactively:
+
+```bash
+cargo run -p everruns-support-agent -- --interactive
+```
+
 ## Build the agent
 
-This is the actual builder from `src/main.rs`. The prompt is `src/instructions.md`. Tools/capabilities supply evidence and actions; the model chooses how to use them.
+The agent definition lives in `src/agent.rs`; `main.rs` only handles input and runs the session. The prompt and bundled data live under `src/resources/`. Tools supply evidence; the model chooses how to use it.
 
 ```rust
-let agent = Agent::builder()
-    .name("support-agent")
-    .instructions(include_str!("instructions.md"))
-    .provider(OpenAI::new(api_key))
-    .model(MODEL)
-    .max_iterations(12)
-    .tool(tools::lookup_customer())
-    .tool(tools::read_support_policy())
-    .build()?;
+pub fn build(api_key: String) -> Result<Agent, BuildError> {
+    Agent::builder()
+        .name("support-agent")
+        .instructions(include_str!("resources/instructions.md"))
+        .provider(OpenAI::new(api_key))
+        .model(MODEL)
+        .max_iterations(12)
+        .tool(tools::lookup_customer())
+        .tool(tools::read_support_policy())
+        .build()
+}
 ```
 
 ## Send, observe, and wait
@@ -60,9 +68,11 @@ let agent = Agent::builder()
 The Framework interaction stays readable in `main.rs`. The shared demo helper subscribes before sending, filters events to this turn, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. It changes presentation only; use `session.send_and_wait(question).await?` when you do not need the live tool timeline.
 
 ```rust
+let agent = agent::build(api_key)?;
 let engine = Engine::new();
 let session = engine.create(agent);
-println!("MODEL: {MODEL}");
+
+println!("MODEL: {}", agent::MODEL);
 demo::run(&session, question).await?;
 ```
 
@@ -70,13 +80,13 @@ This engine is in-memory. It does not demonstrate durable session storage; the E
 
 ## How the tools work
 
-`lookup_customer` reads one of three fictional records from `src/customers.json`. It returns facts, not a prewritten recommendation. `read_support_policy` returns the recovery rules from `src/policy.md`. The model combines the two; no tool disables MFA or changes a real account.
+`lookup_customer` reads one of three fictional records from `src/resources/customers.json`. It returns facts, not a prewritten recommendation. `read_support_policy` returns the recovery rules from `src/resources/policy.md`. The model combines the two; no tool disables MFA or changes a real account.
 
 ## Validate the behavior
 
 ```bash
 cargo test -p everruns-support-agent
-python3 examples/support-agent/src/render_demo.py --check
+bash examples/support-agent/demo/record.sh --check
 ```
 
 Tests cover the distinct account states and rejection of unknown IDs. They do not grade the model's recommendation: compare a live response with the expected outcomes above.
@@ -85,19 +95,15 @@ CI runs these offline checks without provider credentials. Live model behavior i
 
 ## Demo and recording
 
-The screencast is a paged replay of a successful live run of this workflow,
-with provider wait time removed. Read the [complete displayed
-transcript](https://github.com/everruns/everruns/blob/main/examples/support-agent/src/demo.txt)
-at your own pace.
+The screencast runs the same `cargo run -q -p everruns-support-agent` command shown above. VHS hides most provider wait time but does not replace the model or tools with scripted output. Read the [captured transcript](https://github.com/everruns/everruns/blob/main/examples/support-agent/demo/transcript.txt) at your own pace.
 
-With credentials exported and Python 3, VHS, ffmpeg, and a VHS-compatible browser installed:
+With credentials exported and VHS, ffmpeg, and a VHS-compatible browser installed:
 
 ```bash
-cd examples/support-agent
-bash src/record.sh
+bash examples/support-agent/demo/record.sh
 ```
 
-The script captures a successful run, generates correctly wrapped pages and page durations, and renders `src/demo.gif`. It preserves the previous transcript when the provider run fails. To replay an existing transcript without another model call, run `(cd src && python3 render_demo.py && vhs demo.tape)`. `src/demo.txt` retains the displayed output; `.demo-pages/` is generated and ignored. Inspect results before sharing: public/demo data is safe here, but adapting tools may expose private data.
+The recording script uses an exported `OPENAI_API_KEY` when present, otherwise Doppler project `everruns-dev`, config `dev`. It runs the real command inside VHS and updates `demo/demo.gif` plus `demo/transcript.txt` only after a successful turn. Public/demo data is safe here, but adapting tools may expose private data.
 
 ## Adapt it
 
@@ -109,4 +115,4 @@ All customers, policy rules, and support.example.com URLs are fictional. This is
 
 ## Source map
 
-`src/main.rs`: agent and session; `src/tools.rs`: bounded account lookup and policy tool; `src/customers.json`: three contrasting cases; `src/policy.md`: recovery rules; `src/instructions.md`: agent instructions. `examples/demo-support` handles shared terminal presentation; `src/record.sh` and `src/render_demo.py` handle recording.
+`src/main.rs`: input and session execution; `src/agent.rs`: agent definition; `src/tools.rs`: bounded account lookup and policy tool; `src/resources/`: prompt and bundled support data; `demo/`: live VHS recording, transcript, and recording script. `examples/demo-support` handles shared terminal presentation.
