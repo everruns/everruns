@@ -14,6 +14,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::exposure::{DEFAULT_PUBLIC_TOOL_ACTIVITY_TEXT, PublicToolVisibility};
 use everruns_core::principal::PrincipalSummary;
 use everruns_provider::typed_id::{
     AgentId, AgentIdentityId, AgentVersionId, AppChannelId, AppId, HarnessId, PrincipalId,
@@ -505,7 +506,7 @@ pub struct SlackChannelConfig {
     /// The pane is a user-facing surface like a published AG-UI endpoint, so it
     /// answers to the same policy rather than a second, divergent one (EVE-975).
     #[serde(default)]
-    pub tool_visibility: AgUiToolVisibility,
+    pub tool_visibility: PublicToolVisibility,
     /// Status text shown while a tool runs, when `tool_visibility` is `generic`.
     #[serde(
         default = "default_ag_ui_generic_tool_text",
@@ -518,49 +519,7 @@ pub struct SlackChannelConfig {
 pub const DEFAULT_SESSION_EXPIRATION_SECONDS: u32 = 6 * 60 * 60;
 
 /// Default public AG-UI text shown while a tool call is running.
-pub const DEFAULT_AG_UI_GENERIC_TOOL_TEXT: &str = "Working...";
-
-/// Public AG-UI tool activity visibility.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-#[serde(rename_all = "snake_case")]
-pub enum AgUiToolVisibility {
-    /// Do not expose tool activity in public AG-UI streams.
-    None,
-    /// Expose only editable generic text, without tool names, args, or output.
-    #[default]
-    Generic,
-    /// Expose backend-authored narration, without raw tool names, args, or output.
-    Narrated,
-}
-
-/// The only tool-activity text a public surface may show, or `None` when tool
-/// activity must not be exposed at all.
-///
-/// One place decides this for every public surface. AG-UI enforced it inline and
-/// Slack's agent pane needs the same answer (EVE-975); two copies of a rule about
-/// what a public surface reveals is one copy too many.
-///
-/// `Narrated` deliberately resolves to the same generic text as `Generic`:
-/// backend- or model-authored narration can derive from raw tool-call arguments,
-/// so it is not safe to forward. The empty-value fallback exists because the text
-/// is user-editable and an empty status is worse than a generic one.
-pub fn public_tool_activity_text(
-    visibility: AgUiToolVisibility,
-    generic_tool_text: &str,
-) -> Option<&str> {
-    match visibility {
-        AgUiToolVisibility::None => None,
-        AgUiToolVisibility::Generic | AgUiToolVisibility::Narrated => {
-            let trimmed = generic_tool_text.trim();
-            Some(if trimmed.is_empty() {
-                DEFAULT_AG_UI_GENERIC_TOOL_TEXT
-            } else {
-                trimmed
-            })
-        }
-    }
-}
+pub const DEFAULT_AG_UI_GENERIC_TOOL_TEXT: &str = DEFAULT_PUBLIC_TOOL_ACTIVITY_TEXT;
 
 /// App-published endpoint authentication mode.
 ///
@@ -691,7 +650,7 @@ pub struct AgUiChannelConfig {
     pub rate_limit_per_minute: Option<u32>,
     /// Public tool activity visibility for anonymous AG-UI streams.
     #[serde(default)]
-    pub tool_visibility: AgUiToolVisibility,
+    pub tool_visibility: PublicToolVisibility,
     /// Generic public text shown when `tool_visibility` is `generic`.
     #[serde(
         default = "default_ag_ui_generic_tool_text",
@@ -1012,7 +971,7 @@ pub struct PublicChatChannelConfig {
     /// Public tool activity visibility. Same rules as AG-UI: raw tool names,
     /// args, results, and internal IDs are never exposed on public streams.
     #[serde(default)]
-    pub tool_visibility: AgUiToolVisibility,
+    pub tool_visibility: PublicToolVisibility,
     /// Generic public text shown when `tool_visibility` is `generic`/`narrated`.
     #[serde(
         default = "default_ag_ui_generic_tool_text",
@@ -1171,39 +1130,6 @@ mod tests {
         assert_eq!(json, r#""per_user""#);
     }
 
-    /// EVE-975: one rule about what a public surface may reveal about a running
-    /// tool, shared by AG-UI and the Slack agent pane.
-    #[test]
-    fn public_tool_activity_text_is_the_one_policy() {
-        assert_eq!(
-            public_tool_activity_text(AgUiToolVisibility::None, "Reading the payroll table"),
-            None,
-            "None must expose nothing, including a configured string"
-        );
-
-        // Narrated is not a licence to forward narration: it can derive from raw
-        // tool-call arguments, so it resolves to the same safe text as Generic.
-        for visibility in [AgUiToolVisibility::Generic, AgUiToolVisibility::Narrated] {
-            assert_eq!(
-                public_tool_activity_text(visibility, "Looking that up"),
-                Some("Looking that up"),
-                "{visibility:?}"
-            );
-            assert_eq!(
-                public_tool_activity_text(visibility, "  Looking that up  "),
-                Some("Looking that up"),
-                "{visibility:?} must trim"
-            );
-            // The text is user-editable, and an empty status is worse than a
-            // generic one.
-            assert_eq!(
-                public_tool_activity_text(visibility, "   "),
-                Some(DEFAULT_AG_UI_GENERIC_TOOL_TEXT),
-                "{visibility:?} must fall back when the configured text is blank"
-            );
-        }
-    }
-
     #[test]
     fn test_slack_channel_config_full() {
         let json = r#"{
@@ -1274,7 +1200,7 @@ mod tests {
             webhook_verified_at: None,
             first_message_received_at: None,
             agent_surface_enabled: false,
-            tool_visibility: AgUiToolVisibility::default(),
+            tool_visibility: PublicToolVisibility::default(),
             generic_tool_text: DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
         };
         let json = serde_json::to_value(&config).unwrap();
@@ -1310,7 +1236,7 @@ mod tests {
         assert!(config.rate_limit_per_minute.is_none());
         assert!(config.token.is_none());
         assert!(config.auth.is_none());
-        assert_eq!(config.tool_visibility, AgUiToolVisibility::Generic);
+        assert_eq!(config.tool_visibility, PublicToolVisibility::Generic);
         assert_eq!(config.generic_tool_text, DEFAULT_AG_UI_GENERIC_TOOL_TEXT);
         assert!(!config.reasoning_summary_visible);
     }
@@ -1322,7 +1248,7 @@ mod tests {
             token: Some("agui-token".to_string()),
             session_expiration_seconds: 3600,
             rate_limit_per_minute: Some(120),
-            tool_visibility: AgUiToolVisibility::None,
+            tool_visibility: PublicToolVisibility::None,
             generic_tool_text: "Please wait".to_string(),
             reasoning_summary_visible: true,
             auth: None,
@@ -1333,7 +1259,7 @@ mod tests {
         assert_eq!(parsed.token.as_deref(), Some("agui-token"));
         assert_eq!(parsed.session_expiration_seconds, 3600);
         assert_eq!(parsed.rate_limit_per_minute, Some(120));
-        assert_eq!(parsed.tool_visibility, AgUiToolVisibility::None);
+        assert_eq!(parsed.tool_visibility, PublicToolVisibility::None);
         assert_eq!(parsed.generic_tool_text, "Please wait");
         assert!(parsed.reasoning_summary_visible);
     }
@@ -1352,7 +1278,7 @@ mod tests {
             token: None,
             session_expiration_seconds: DEFAULT_SESSION_EXPIRATION_SECONDS,
             rate_limit_per_minute: None,
-            tool_visibility: AgUiToolVisibility::Generic,
+            tool_visibility: PublicToolVisibility::Generic,
             generic_tool_text: DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
             reasoning_summary_visible: false,
             auth: None,
@@ -1673,7 +1599,7 @@ mod tests {
             DEFAULT_SESSION_EXPIRATION_SECONDS
         );
         assert!(config.rate_limit_per_minute.is_none());
-        assert_eq!(config.tool_visibility, AgUiToolVisibility::Generic);
+        assert_eq!(config.tool_visibility, PublicToolVisibility::Generic);
         assert_eq!(config.generic_tool_text, DEFAULT_AG_UI_GENERIC_TOOL_TEXT);
         assert!(config.auth.is_none());
         assert!(config.branding.is_empty());
@@ -1717,7 +1643,7 @@ mod tests {
         assert_eq!(config.token.as_deref(), Some("shared-secret"));
         assert_eq!(config.session_expiration_seconds, 3600);
         assert_eq!(config.rate_limit_per_minute, Some(30));
-        assert_eq!(config.tool_visibility, AgUiToolVisibility::Narrated);
+        assert_eq!(config.tool_visibility, PublicToolVisibility::Narrated);
         let branding = &config.branding;
         assert_eq!(branding.display_name.as_deref(), Some("Support"));
         assert_eq!(branding.primary_color.as_deref(), Some("#0A1636"));
