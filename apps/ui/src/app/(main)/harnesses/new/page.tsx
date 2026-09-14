@@ -168,6 +168,7 @@ export default function NewHarnessPage() {
         <PageJumpNav
           items={[
             { href: "#identity", label: "Identity" },
+            { href: "#branding", label: "Branding" },
             { href: "#behavior", label: "Behavior" },
             { href: "#files", label: "Files" },
             { href: "#network", label: "Network" },
@@ -224,19 +225,6 @@ export default function NewHarnessPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="display_name">Display Name</Label>
-                  <Input
-                    id="display_name"
-                    placeholder={formData.name ? undefined : "My Harness"}
-                    value={formData.display_name}
-                    onChange={(e) => handleDisplayNameChange(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Optional human-readable label shown in the UI. Defaults to name if empty.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
                   <Label htmlFor="description">Description</Label>
                   <Textarea
                     id="description"
@@ -264,14 +252,27 @@ export default function NewHarnessPage() {
               </CardContent>
             </Card>
 
-            <Card id="platform-chat" className="scroll-mt-6">
+            <Card id="branding" className="scroll-mt-6">
               <CardContent>
-                <CardTitle className="mb-1 text-base font-semibold">Platform Chat</CardTitle>
+                <CardTitle className="mb-1 text-base font-semibold">Branding</CardTitle>
                 <p className="mb-4 text-sm text-muted-foreground">
-                  Intro box, header description, and starters for fresh Platform Chat threads.
-                  Applies when the bound agent leaves the field empty.
+                  How the harness presents itself in chat. Intro, short description, and starters
+                  apply when the bound agent leaves the field empty.
                 </p>
                 <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="display_name">Display Name</Label>
+                    <Input
+                      id="display_name"
+                      placeholder={formData.name ? undefined : "My Harness"}
+                      value={formData.display_name}
+                      onChange={(e) => handleDisplayNameChange(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Optional human-readable label shown in the UI. Defaults to name if empty.
+                    </p>
+                  </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="intro_markdown">Intro (Markdown)</Label>
                     <Textarea

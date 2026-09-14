@@ -162,6 +162,7 @@ export default function NewAgentPage() {
         <PageJumpNav
           items={[
             { href: "#identity", label: "Identity" },
+            { href: "#branding", label: "Branding" },
             { href: "#behavior", label: "Behavior" },
             { href: "#files", label: "Files" },
             { href: "#network", label: "Network" },
@@ -218,19 +219,6 @@ export default function NewAgentPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="display_name">Display Name</Label>
-                  <Input
-                    id="display_name"
-                    placeholder={formData.name ? undefined : "Customer Support Agent"}
-                    value={formData.display_name}
-                    onChange={(e) => handleDisplayNameChange(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Optional human-readable label shown in the UI. Defaults to name if empty.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
                   <Label htmlFor="description">Description</Label>
                   <Textarea
                     id="description"
@@ -258,14 +246,26 @@ export default function NewAgentPage() {
               </CardContent>
             </Card>
 
-            <Card id="platform-chat" className="scroll-mt-6">
+            <Card id="branding" className="scroll-mt-6">
               <CardContent>
-                <CardTitle className="mb-1 text-base font-semibold">Platform Chat</CardTitle>
+                <CardTitle className="mb-1 text-base font-semibold">Branding</CardTitle>
                 <p className="mb-4 text-sm text-muted-foreground">
-                  Intro box, header description, and starters for fresh Platform Chat threads. The
-                  agent values win over the harness values.
+                  How the agent presents itself in chat. These values win over the harness defaults.
                 </p>
                 <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="display_name">Display Name</Label>
+                    <Input
+                      id="display_name"
+                      placeholder={formData.name ? undefined : "Customer Support Agent"}
+                      value={formData.display_name}
+                      onChange={(e) => handleDisplayNameChange(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Optional human-readable label shown in the UI. Defaults to name if empty.
+                    </p>
+                  </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="intro_markdown">Intro (Markdown)</Label>
                     <Textarea

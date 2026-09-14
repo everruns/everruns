@@ -400,20 +400,6 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="display_name">Display Name</Label>
-                    <Input
-                      id="display_name"
-                      placeholder={formData.name ? undefined : "Customer Support Agent"}
-                      value={formData.display_name}
-                      onChange={(e) => handleFormChange("display_name", e.target.value)}
-                      disabled={isSaving || isReadOnly}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Optional human-readable label shown in the UI. Defaults to name if empty.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
                     <Label htmlFor="description">Description</Label>
                     <Textarea
                       id="description"
@@ -442,15 +428,29 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                 </CardContent>
               </Card>
 
-              <Card id="platform-chat" className="scroll-mt-6">
+              <Card id="branding" className="scroll-mt-6">
                 <CardHeader>
-                  <CardTitle>Platform Chat</CardTitle>
+                  <CardTitle>Branding</CardTitle>
                   <CardDescription>
-                    Intro box, header description, and starters for fresh Platform Chat threads. The
-                    agent values win over the harness values.
+                    How the agent presents itself in chat. These values win over the harness
+                    defaults.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="display_name">Display Name</Label>
+                    <Input
+                      id="display_name"
+                      placeholder={formData.name ? undefined : "Customer Support Agent"}
+                      value={formData.display_name}
+                      onChange={(e) => handleFormChange("display_name", e.target.value)}
+                      disabled={isSaving || isReadOnly}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Optional human-readable label shown in the UI. Defaults to name if empty.
+                    </p>
+                  </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="intro_markdown">Intro (Markdown)</Label>
                     <Textarea
