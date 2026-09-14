@@ -303,28 +303,30 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
               {exportAgent.isPending ? "Exporting..." : "Export"}
             </Button>
             {agent.status === "active" && (
-              <Link href={`/agents/${agentId}/edit`}>
-                <Button variant="outline">
-                  <Pencil className="size-4" />
-                  Edit
-                </Button>
-              </Link>
+              <Button variant="outline" render={<Link href={`/agents/${agentId}/edit`} />}>
+                <Pencil className="size-4" />
+                Edit
+              </Button>
             )}
             {agent.status === "active" && (
-              <Link href={{ pathname: "/apps/new", query: { agent_id: agentId } }}>
-                <Button variant="outline">
-                  <Rocket className="size-4" />
-                  Create app
-                </Button>
-              </Link>
+              <Button
+                variant="outline"
+                render={<Link href={{ pathname: "/apps/new", query: { agent_id: agentId } }} />}
+              >
+                <Rocket className="size-4" />
+                Create app
+              </Button>
             )}
             {observersEnabled && agent.status === "active" && (
-              <Link href={{ pathname: "/observers/new", query: { agent_id: agentId } }}>
-                <Button variant="outline">
-                  <Telescope className="size-4" />
-                  Observe this agent
-                </Button>
-              </Link>
+              <Button
+                variant="outline"
+                render={
+                  <Link href={{ pathname: "/observers/new", query: { agent_id: agentId } }} />
+                }
+              >
+                <Telescope className="size-4" />
+                Observe this agent
+              </Button>
             )}
             <Button
               variant="accent"
@@ -427,20 +429,19 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         compactActionStrip={
           <>
             {agent.status === "active" && (
-              <Link href={`/agents/${agentId}/edit`}>
-                <Button variant="outline">
-                  <Pencil className="size-4" />
-                  Edit
-                </Button>
-              </Link>
+              <Button variant="outline" render={<Link href={`/agents/${agentId}/edit`} />}>
+                <Pencil className="size-4" />
+                Edit
+              </Button>
             )}
             {agent.status === "active" && (
-              <Link href={{ pathname: "/apps/new", query: { agent_id: agentId } }}>
-                <Button variant="outline">
-                  <Rocket className="size-4" />
-                  Create app
-                </Button>
-              </Link>
+              <Button
+                variant="outline"
+                render={<Link href={{ pathname: "/apps/new", query: { agent_id: agentId } }} />}
+              >
+                <Rocket className="size-4" />
+                Create app
+              </Button>
             )}
             <Button variant="outline" onClick={handleCopy} disabled={copyAgent.isPending}>
               <Copy className="size-4" />

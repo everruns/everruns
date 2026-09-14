@@ -96,11 +96,13 @@ export function TaskRow({ task }: { task: DurableTask }) {
       <TableCell>
         <div className="flex items-center gap-1">
           {task.workflow_id ? (
-            <Link href={`/durable/workflows/${task.workflow_id}`}>
-              <Button variant="ghost" size="sm">
-                <ExternalLink className="h-3 w-3" />
-              </Button>
-            </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              render={<Link href={`/durable/workflows/${task.workflow_id}`} />}
+            >
+              <ExternalLink className="h-3 w-3" />
+            </Button>
           ) : (
             <Badge variant="outline" className="text-xs">
               standalone

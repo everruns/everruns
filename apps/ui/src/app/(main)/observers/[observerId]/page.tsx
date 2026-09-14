@@ -340,12 +340,10 @@ export default function ObserverDetailPage({
         </div>
         <div className="flex gap-2">
           {!isArchived && (
-            <Link href={`/observers/${observerId}/edit`}>
-              <Button variant="outline">
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit
-              </Button>
-            </Link>
+            <Button variant="outline" render={<Link href={`/observers/${observerId}/edit`} />}>
+              <Pencil className="mr-2 h-4 w-4" />
+              Edit
+            </Button>
           )}
           {!isArchived && (
             <Button

@@ -90,11 +90,15 @@ export function HarnessCard({
             showEditButton &&
             !harness.is_built_in &&
             harness.status === "active" && (
-              <Link href={`/harnesses/${harness.id}/edit`}>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <Pencil className="icon-sharp h-4 w-4" />
-                </Button>
-              </Link>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                aria-label={`Edit ${getDisplayName(harness)}`}
+                render={<Link href={`/harnesses/${harness.id}/edit`} />}
+              >
+                <Pencil className="icon-sharp h-4 w-4" />
+              </Button>
             )
           }
         />

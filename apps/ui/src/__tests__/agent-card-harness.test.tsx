@@ -87,6 +87,14 @@ describe("AgentCard harness metadata", () => {
     expect(screen.getByText("Explicit")).toBeInTheDocument();
   });
 
+  it("renders the edit action as one named link", () => {
+    render(<AgentCard agent={agent()} showEditButton />);
+
+    const edit = screen.getByRole("link", { name: "Edit Researcher" });
+    expect(edit).toHaveAttribute("href", "/agents/agent_019fda100f037c008024046d6b3d74c0/edit");
+    expect(edit.querySelector("button")).not.toBeInTheDocument();
+  });
+
   it("labels a harness inherited from the organization default", () => {
     render(
       <AgentCard

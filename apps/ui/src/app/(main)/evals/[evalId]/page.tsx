@@ -440,12 +440,10 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
           )}
         </div>
         <div className="flex gap-2">
-          <Link href={`/evals/${evalId}/edit`}>
-            <Button variant="outline">
-              <Pencil className="w-4 h-4 mr-2" />
-              Edit
-            </Button>
-          </Link>
+          <Button variant="outline" render={<Link href={`/evals/${evalId}/edit`} />}>
+            <Pencil className="w-4 h-4 mr-2" />
+            Edit
+          </Button>
           <Button
             variant="accent"
             onClick={handleStartRun}

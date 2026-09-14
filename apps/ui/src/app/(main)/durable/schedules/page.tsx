@@ -176,11 +176,13 @@ function ScheduleRow({
               </Tooltip>
             </TooltipProvider>
           )}
-          <Link href={`/durable/schedules/${schedule.id}`}>
-            <Button variant="ghost" size="sm">
-              <Settings className="h-3 w-3" />
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            size="sm"
+            render={<Link href={`/durable/schedules/${schedule.id}`} />}
+          >
+            <Settings className="h-3 w-3" />
+          </Button>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

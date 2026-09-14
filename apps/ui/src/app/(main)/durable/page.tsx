@@ -186,11 +186,13 @@ export default function DurableDashboardPage() {
                       <Inbox className="h-4 w-4 inline mr-2" />
                       {health.dlq_size} items in dead letter queue
                     </span>
-                    <Link href="/durable/workflows?tab=dlq">
-                      <Button variant="outline" size="sm">
-                        View DLQ
-                      </Button>
-                    </Link>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      render={<Link href="/durable/workflows?tab=dlq" />}
+                    >
+                      View DLQ
+                    </Button>
                   </div>
                 )}
                 {health.open_circuit_breakers && health.open_circuit_breakers.length > 0 && (
@@ -200,11 +202,13 @@ export default function DurableDashboardPage() {
                       {health.open_circuit_breakers.length} circuit breakers open:{" "}
                       {health.open_circuit_breakers.join(", ")}
                     </span>
-                    <Link href="/durable/circuit-breakers">
-                      <Button variant="outline" size="sm">
-                        Manage
-                      </Button>
-                    </Link>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      render={<Link href="/durable/circuit-breakers" />}
+                    >
+                      Manage
+                    </Button>
                   </div>
                 )}
               </CardContent>
@@ -228,11 +232,9 @@ export default function DurableDashboardPage() {
                   {schedulesData.data.filter((s) => !s.enabled).length} paused
                 </CardDescription>
               </div>
-              <Link href="/durable/schedules">
-                <Button variant="outline" size="sm">
-                  View All
-                </Button>
-              </Link>
+              <Button variant="outline" size="sm" render={<Link href="/durable/schedules" />}>
+                View All
+              </Button>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
@@ -281,11 +283,9 @@ export default function DurableDashboardPage() {
                 <CardTitle>Workers</CardTitle>
                 <CardDescription>Active worker pool status</CardDescription>
               </div>
-              <Link href="/durable/workers">
-                <Button variant="outline" size="sm">
-                  View All
-                </Button>
-              </Link>
+              <Button variant="outline" size="sm" render={<Link href="/durable/workers" />}>
+                View All
+              </Button>
             </CardHeader>
             <CardContent>
               {workersData && workersData.data.length > 0 ? (
@@ -376,11 +376,9 @@ export default function DurableDashboardPage() {
                 <CardTitle>Recent Workflows</CardTitle>
                 <CardDescription>Latest workflow executions</CardDescription>
               </div>
-              <Link href="/durable/workflows">
-                <Button variant="outline" size="sm">
-                  View All
-                </Button>
-              </Link>
+              <Button variant="outline" size="sm" render={<Link href="/durable/workflows" />}>
+                View All
+              </Button>
             </CardHeader>
             <CardContent>
               {workflowsData && workflowsData.data.length > 0 ? (
