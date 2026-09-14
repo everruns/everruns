@@ -984,8 +984,16 @@ impl SlackDeliveryDispatcher {
                 .and_then(|v| v.as_str())
                 .map(str::to_string);
 
-            // Check if this turn already completed
-            let turn_events = vec!["turn.completed".to_string(), "turn.failed".to_string()];
+            // Check if this turn already reached a terminal state.
+            //
+            // EVE-988: terminal state is interpreted here and in
+            // `process_session_events`, and only the live path learned about
+            // cancellation. Share the list rather than keep a second copy that
+            // drifts again.
+            let turn_events: Vec<String> = crate::services::run_summary::TERMINAL_TURN_EVENTS
+                .iter()
+                .map(|event_type| (*event_type).to_string())
+                .collect();
             let completion_events = self
                 .db
                 .list_events(
@@ -1001,8 +1009,13 @@ impl SlackDeliveryDispatcher {
                 .unwrap_or_default();
 
             let turn_done = completion_events.iter().any(|e| {
-                e.context.get("input_message_id").and_then(|v| v.as_str())
-                    == Some(&input_message_id)
+                // `turn.cancelled` is session-scoped, not turn-scoped: both cancel
+                // paths mint a fresh `input_message_id` for the synthetic event
+                // because neither knows the in-flight turn's id, so a per-turn
+                // match would never fire. Same rule the live path applies.
+                e.event_type == "turn.cancelled"
+                    || e.context.get("input_message_id").and_then(|v| v.as_str())
+                        == Some(&input_message_id)
             });
 
             if turn_done {
@@ -2580,6 +2593,50 @@ mod tests {
                 dispatcher.active_delivery_count().await,
                 0,
                 "missing slack:app:* lookup must not leak recovery to any app"
+            );
+        }
+
+        /// EVE-988: a turn cancelled before a restart is finished. Nothing will
+        /// ever emit another terminal event for it, so re-registering a delivery
+        /// leaks the registration and its `active_sessions` entry until the next
+        /// restart — the leak EVE-966 fixed on the live path, on the recovery path.
+        #[tokio::test]
+        async fn recover_treats_a_cancelled_turn_as_finished() {
+            use crate::storage::models::CreateEventRow;
+
+            let db = Arc::new(StorageBackend::in_memory());
+            let app_id = seed_slack_app(&db, ORG_APP_OWNER, LEGIT_APP_PUBLIC_ID).await;
+            let session_id = seed_active_slack_delivery_session(
+                &db,
+                ORG_APP_OWNER,
+                Some(app_id),
+                LEGIT_APP_PUBLIC_ID,
+            )
+            .await;
+
+            // Production shape: both cancel paths build the synthetic event with a
+            // fresh `MessageId::new()`, so it does not carry the cancelled turn's
+            // own `input_message_id`. Adding `turn.cancelled` to the queried event
+            // types is not enough on its own — the match has to be session-scoped.
+            db.create_event(CreateEventRow {
+                session_id,
+                event_type: "turn.cancelled".to_string(),
+                ts: chrono::Utc::now(),
+                context: serde_json::json!({ "input_message_id": "msg_fresh_cancel_id" }),
+                data: serde_json::json!({ "reason": "stopped from Slack" }),
+                metadata: None,
+                tags: None,
+            })
+            .await
+            .expect("seed turn.cancelled");
+
+            let dispatcher = build_dispatcher(db);
+            dispatcher.recover(None).await;
+
+            assert_eq!(
+                dispatcher.active_delivery_count().await,
+                0,
+                "a cancelled last turn must not be re-registered on recovery"
             );
         }
 
