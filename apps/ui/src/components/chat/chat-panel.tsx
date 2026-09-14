@@ -157,8 +157,7 @@ export function ChatPanel({
   const intelligence = useIntelligenceStatus();
   const showNoIntelligence = !intelligence.isLoading && !intelligence.available;
   const transcriptEmpty = chatEvents.length === 0;
-  const showPlatformIntro =
-    transcriptEmpty && (platformIntro || platformStarters.length > 0);
+  const showPlatformIntro = transcriptEmpty && (platformIntro || platformStarters.length > 0);
   const { data: participants, refetch: refetchParticipants } = useSessionParticipants(sessionId);
   const { data: agents } = useAgents();
   const [inputValue, setInputValue] = useState("");
@@ -700,13 +699,13 @@ export function ChatPanel({
             dropZoneProps={dropZoneProps}
             handlePaste={handlePaste}
             placeholder={
-              showPlatformIntro ? (
-                !modelReady ? t("type_message_pick_model") : undefined
-              ) : replyToLabel ? (
-                t("reply_to", { name: replyToLabel })
-              ) : (
-                undefined
-              )
+              showPlatformIntro
+                ? !modelReady
+                  ? t("type_message_pick_model")
+                  : undefined
+                : replyToLabel
+                  ? t("reply_to", { name: replyToLabel })
+                  : undefined
             }
             selectedModelId={selectedModelId}
             recentModels={recentModels}

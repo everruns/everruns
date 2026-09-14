@@ -230,7 +230,9 @@ mod tests {
         let seed = definition();
         assert_eq!(
             seed.intro_markdown.as_deref(),
-            Some("I know your agents, harnesses, models and runs. Ask me anything, or start with one of these:")
+            Some(
+                "I know your agents, harnesses, models and runs. Ask me anything, or start with one of these:"
+            )
         );
         assert_eq!(
             seed.starters
