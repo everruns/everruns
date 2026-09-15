@@ -12,6 +12,7 @@ repository: these Cargo packages depend on local workspace crates.
 | [Research](research-agent/) | Search and fetch primary sources | `cargo run -p everruns-research-agent` |
 | [Incident Commander](incident-commander-agent/) | Investigate evidence and persist a safe update | `cargo run -p everruns-incident-commander-agent` |
 | [Bashkit Repo](bashkit-repo-agent/) | Modify and verify a repository through a sandboxed shell | `cargo run -p everruns-bashkit-repo-agent` |
+| [Environment](environment-agent/) | Choose where commands run, and report that before the first turn | `cargo run -p everruns-environment-agent` |
 
 Each README lists credentials, contrasting scenarios, expected outcomes, and
 limits. Support Agent and Everruns Support Agent use the reference layout: crate

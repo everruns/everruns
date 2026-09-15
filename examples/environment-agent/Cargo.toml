@@ -1,0 +1,24 @@
+# An agent that states where its commands run before it runs any, using the
+# Framework's Environment contract. Its only dependency on the framework is the
+# public `everruns` facade, with the `bashkit` execution runtime and the
+# `openai` provider turned on. Add `--features host-compute` to also build the
+# uncontained host target and read its real capabilities off the `Compute` trait.
+
+[package]
+name = "everruns-environment-agent"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+publish = false
+description = "Selecting and reporting a session's execution environment from the Framework"
+
+[features]
+# Compile `HostCompute` so the `host` target reports its real capabilities
+# instead of a reason it is unavailable. No agent tool routes through it yet.
+host-compute = ["everruns/host-compute"]
+
+[dependencies]
+everruns = { path = "../../crates/everruns", features = ["bashkit", "openai"] }
+everruns-example-demo = { path = "../demo-support" }
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

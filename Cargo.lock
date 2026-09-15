@@ -2442,6 +2442,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-environment-agent"
+version = "0.1.0"
+dependencies = [
+ "everruns",
+ "everruns-example-demo",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-example-demo"
 version = "0.1.0"
 dependencies = [
