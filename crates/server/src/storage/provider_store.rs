@@ -125,16 +125,15 @@ impl ProviderStore for DbProviderStore {
             .db
             .get_provider_with_api_key(&row, &self.encryption)
             .store_err()?;
-        Ok(Some(everruns_provider::driver_registry::ProviderConfig {
-            provider: provider.clone(),
-            provider_type: parse_provider_type(&with_key.provider_type)?,
-            api_key: with_key.api_key,
-            base_url: with_key.base_url,
-            metadata: everruns_provider::driver_registry::ProviderMetadata::default(),
-            request_options: crate::services::provider_resolver::provider_request_options(
-                &row.settings,
-            ),
-        }))
+        let mut config = everruns_provider::driver_registry::ProviderConfig::for_provider(
+            provider.clone(),
+            parse_provider_type(&with_key.provider_type)?,
+        );
+        config.api_key = with_key.api_key;
+        config.base_url = with_key.base_url;
+        config.request_options =
+            crate::services::provider_resolver::provider_request_options(&row.settings);
+        Ok(Some(config))
     }
 }
 

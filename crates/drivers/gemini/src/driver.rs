@@ -155,6 +155,9 @@ impl GeminiChatDriver {
                             })
                         }
                     }
+                    // `LlmContentPart` is `#[non_exhaustive]`: a part this build
+                    // does not know is dropped rather than failing the request.
+                    _ => None,
                 })
                 .collect(),
         }
@@ -803,24 +806,21 @@ impl GeminiStreamState {
         if self.finish_reason.is_none() && !calls.is_empty() {
             self.pending.push_back(LlmStreamEvent::ToolCalls(calls));
         }
-        self.pending
-            .push_back(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
-                total_tokens: Some(self.input_tokens + self.output_tokens),
-                prompt_tokens: Some(disjoint_prompt_tokens(
-                    self.input_tokens,
-                    self.cached_tokens,
-                )),
-                completion_tokens: Some(self.output_tokens),
-                cache_read_tokens: self.cached_tokens,
-                cache_creation_tokens: None,
-                provider_cost_usd: None,
-                model: Some(self.model.clone()),
-                finish_reason: Some(self.finish_reason.take().unwrap_or_else(|| "stop".into())),
-                retry_metadata: self.retry_metadata.take(),
-                response_id: None,
-                phase: None,
-                cache_diagnostics: None,
-            })));
+        self.pending.push_back(LlmStreamEvent::Done(Box::new({
+            let mut metadata = LlmCompletionMetadata::default();
+            metadata.total_tokens = Some(self.input_tokens + self.output_tokens);
+            metadata.prompt_tokens = Some(disjoint_prompt_tokens(
+                self.input_tokens,
+                self.cached_tokens,
+            ));
+            metadata.completion_tokens = Some(self.output_tokens);
+            metadata.cache_read_tokens = self.cached_tokens;
+            metadata.model = Some(self.model.clone());
+            metadata.finish_reason =
+                Some(self.finish_reason.take().unwrap_or_else(|| "stop".into()));
+            metadata.retry_metadata = self.retry_metadata.take();
+            metadata
+        })));
         self.done = true;
     }
 }
@@ -1371,32 +1371,17 @@ mod tests {
             Mock::given(method("POST")).and(path(format!("/v1beta/models/{model}:streamGenerateContent"))).and(query_param("alt", "sse")).and(header("x-goog-api-key", "synthetic-key")).respond_with(ResponseTemplate::new(200).insert_header("content-type", "text/event-stream").set_body_string("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"}]},\"finishReason\":\"STOP\"}]}\n\n")).expect(1).mount(&server).await;
             let service =
                 provider("test", "synthetic-key").base_url(format!("{}/v1beta", server.uri()));
-            let config = LlmCallConfig {
-                reasoning_state: None,
-                model: model.into(),
-                temperature: Some(0.25),
-                max_tokens: limit,
-                tools: vec![],
-                reasoning_effort: None,
-                speed: None,
-                verbosity: None,
-                metadata: Default::default(),
-                previous_response_id: None,
-                provider_opaque_context: None,
-                tool_search: None,
-                prompt_cache: cache.map(|(enabled, handle)| {
-                    everruns_provider::driver_registry::PromptCacheConfig {
-                        enabled,
-                        strategy: Default::default(),
-                        gemini_cached_content: handle.map(str::to_string),
-                    }
-                }),
-                driver_options: Default::default(),
-                parallel_tool_calls: parallel,
-                volatile_suffix_len: 0,
-                extra_headers: vec![],
-                cache_diagnostics: None,
-            };
+            let mut config = LlmCallConfig::new(model);
+            config.temperature = Some(0.25);
+            config.max_tokens = limit;
+            config.prompt_cache = cache.map(|(enabled, handle)| {
+                everruns_provider::driver_registry::PromptCacheConfig {
+                    enabled,
+                    strategy: Default::default(),
+                    gemini_cached_content: handle.map(str::to_string),
+                }
+            });
+            config.parallel_tool_calls = parallel;
             let response = service
                 .chat_completion(vec![LlmMessage::text(LlmMessageRole::User, "hi")], &config)
                 .await

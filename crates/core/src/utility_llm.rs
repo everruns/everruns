@@ -92,26 +92,11 @@ impl UtilityLlmRequest {
             ));
         }
 
-        let config = LlmCallConfig {
-            speed: None,
-            verbosity: None,
-            model: UTILITY_LLM_MODEL.to_string(),
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            tools: Vec::new(),
-            reasoning_effort: self.reasoning_effort.map(Into::into),
-            metadata: self.metadata,
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: None,
-            driver_options: Default::default(),
-            parallel_tool_calls: None,
-            volatile_suffix_len: 0,
-            extra_headers: Vec::new(),
-            cache_diagnostics: None,
-            reasoning_state: None,
-        };
+        let mut config = LlmCallConfig::new(UTILITY_LLM_MODEL);
+        config.temperature = self.temperature;
+        config.max_tokens = self.max_tokens;
+        config.reasoning_effort = self.reasoning_effort.map(Into::into);
+        config.metadata = self.metadata;
         Ok((self.messages, config))
     }
 }

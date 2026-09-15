@@ -30,26 +30,10 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
     let mut metadata = std::collections::HashMap::new();
     metadata.insert("session_id".to_string(), "session_live_smoke".to_string());
 
-    let mut config = LlmCallConfig {
-        speed: None,
-        verbosity: None,
-        model: "openai/gpt-5.6-luna".to_string(),
-        temperature: None,
-        max_tokens: Some(128),
-        tools: vec![],
-        reasoning_effort: Some(ReasoningEffort::Low),
-        metadata,
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        reasoning_state: None,
-    };
+    let mut config = LlmCallConfig::new("openai/gpt-5.6-luna");
+    config.max_tokens = Some(128);
+    config.reasoning_effort = Some(ReasoningEffort::Low);
+    config.metadata = metadata;
     // Exercise the routing-decoration path alongside session_id forwarding.
     insert_routing_option(
         &mut config.driver_options,

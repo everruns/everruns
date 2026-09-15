@@ -482,6 +482,9 @@ fn build_user_content(msg: &LlmMessage) -> Result<Vec<ContentBlock>> {
                             blocks.push(block);
                         }
                     }
+                    // `LlmContentPart` is `#[non_exhaustive]`: a part this build
+                    // does not know is skipped rather than failing the request.
+                    _ => {}
                 }
             }
         }
@@ -939,26 +942,9 @@ mod tests {
             name: "inspect".into(),
             arguments: arguments.clone(),
         }]);
-        let config = LlmCallConfig {
-            reasoning_state: None,
-            model: "model".into(),
-            temperature: Some(0.25),
-            max_tokens: Some(32),
-            tools: vec![],
-            reasoning_effort: None,
-            speed: None,
-            verbosity: None,
-            metadata: Default::default(),
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: None,
-            driver_options: Default::default(),
-            parallel_tool_calls: None,
-            volatile_suffix_len: 0,
-            extra_headers: vec![],
-            cache_diagnostics: None,
-        };
+        let mut config = LlmCallConfig::new("model");
+        config.temperature = Some(0.25);
+        config.max_tokens = Some(32);
         let response = service
             .chat_completion(vec![message], &config)
             .await

@@ -212,13 +212,9 @@ impl OpenRouterPricing {
             .or(self.cache_read.as_deref())
             .and_then(openrouter_price_per_million);
 
-        Some(everruns_provider::model::ModelCost {
-            input,
-            output,
-            cache_read,
-            cache_write: None,
-            cost_tiers: Vec::new(),
-        })
+        let mut cost = everruns_provider::model::ModelCost::new(input, output);
+        cost.cache_read = cache_read;
+        Some(cost)
     }
 }
 

@@ -421,6 +421,10 @@ fn estimate_message_tokens(message: &Message) -> usize {
                     + reasoning.encrypted.as_ref().map_or(0, String::len)
                     + reasoning.display_text().map_or(0, |text| text.len())
             }
+            // `ContentPart` is `#[non_exhaustive]`, so this arm is required
+            // from outside `everruns-core`. Unreachable in-workspace: every
+            // crate here compiles against the same core version.
+            _ => 0,
         })
         .sum();
     (role_overhead + content_len) / TOKEN_CHARS

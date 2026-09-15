@@ -40,8 +40,14 @@ impl std::fmt::Display for ServiceKind {
 }
 
 /// Cost information for the model (per million tokens)
+///
+/// `#[non_exhaustive]`: pricing dimensions keep arriving (`cache_read`,
+/// `cache_write`, `cost_tiers` were each added after the fact), and a new one
+/// must not break every downstream consumer. Construct with
+/// [`ModelCost::new`] and assign the optional fields.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[non_exhaustive]
 pub struct ModelCost {
     /// Input cost per million tokens (USD)
     pub input: f64,
@@ -60,10 +66,27 @@ pub struct ModelCost {
     pub cost_tiers: Vec<CostTier>,
 }
 
+impl ModelCost {
+    /// Base per-million-token rates, with every optional dimension unset.
+    pub fn new(input: f64, output: f64) -> Self {
+        Self {
+            input,
+            output,
+            cache_read: None,
+            cache_write: None,
+            cost_tiers: Vec::new(),
+        }
+    }
+}
+
 /// A pricing tier that activates above a context token threshold.
 /// For example, OpenAI charges higher rates for prompts exceeding 200K tokens.
+///
+/// `#[non_exhaustive]` for the same reason as [`ModelCost`]; construct with
+/// [`CostTier::new`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[non_exhaustive]
 pub struct CostTier {
     /// Context token threshold above which this tier applies
     pub above_tokens: i32,
@@ -77,6 +100,19 @@ pub struct CostTier {
     /// Cache write cost per million tokens (USD); absent falls back to input.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_write: Option<f64>,
+}
+
+impl CostTier {
+    /// Tier rates that replace the base rates above `above_tokens`.
+    pub fn new(above_tokens: i32, input: f64, output: f64) -> Self {
+        Self {
+            above_tokens,
+            input,
+            output,
+            cache_read: None,
+            cache_write: None,
+        }
+    }
 }
 
 /// Token limits for the model

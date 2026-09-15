@@ -820,16 +820,16 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 tracing::error!(%error, "Failed to resolve provider");
                 store_error("Failed to resolve provider")
             })?;
-        Ok(
-            resolved.map(|value| everruns_provider::driver_registry::ProviderConfig {
-                provider: provider.clone(),
-                provider_type: string_to_provider_type(&value.provider_type),
-                api_key: value.api_key,
-                base_url: value.base_url,
-                metadata: everruns_provider::driver_registry::ProviderMetadata::default(),
-                request_options: value.request_options,
-            }),
-        )
+        Ok(resolved.map(|value| {
+            let mut config = everruns_provider::driver_registry::ProviderConfig::for_provider(
+                provider.clone(),
+                string_to_provider_type(&value.provider_type),
+            );
+            config.api_key = value.api_key;
+            config.base_url = value.base_url;
+            config.request_options = value.request_options;
+            config
+        }))
     }
 
     // =========================================================================

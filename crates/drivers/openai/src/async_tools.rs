@@ -138,26 +138,7 @@ mod tests {
     use super::*;
     use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints};
     fn config(model: &str) -> LlmCallConfig {
-        LlmCallConfig {
-            speed: None,
-            verbosity: None,
-            model: model.to_string(),
-            temperature: None,
-            max_tokens: None,
-            tools: vec![],
-            reasoning_effort: None,
-            reasoning_state: None,
-            metadata: std::collections::HashMap::new(),
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: None,
-            driver_options: Default::default(),
-            parallel_tool_calls: None,
-            volatile_suffix_len: 0,
-            extra_headers: Vec::new(),
-            cache_diagnostics: None,
-        }
+        LlmCallConfig::new(model)
     }
 
     fn tool(name: &str) -> ToolDefinition {

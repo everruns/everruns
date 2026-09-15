@@ -69,6 +69,7 @@ pub(crate) struct AgentCapabilityConfigSchema {
 /// is still attached.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum CapabilityStatus {
     /// Capability is available for use
     Available,

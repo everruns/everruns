@@ -22,26 +22,7 @@ use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn config(model: &str) -> LlmCallConfig {
-    LlmCallConfig {
-        speed: None,
-        verbosity: None,
-        model: model.to_string(),
-        temperature: None,
-        max_tokens: None,
-        tools: vec![],
-        reasoning_effort: None,
-        metadata: std::collections::HashMap::new(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        reasoning_state: None,
-    }
+    LlmCallConfig::new(model)
 }
 
 #[derive(Debug, PartialEq)]
