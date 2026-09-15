@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import re
 import sys
@@ -68,7 +69,9 @@ def scalar_value(value: object) -> str | None:
     if not isinstance(value, str) or not value:
         return None
     if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-        return value[1:-1]
+        if value[0] == "'":
+            return value[1:-1].replace("''", "'")
+        return json.loads(value)
     return value
 
 
