@@ -8,10 +8,11 @@
 mod auth;
 mod browser;
 mod commands;
+mod contract;
 mod output;
 mod user_dirs;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use everruns_sdk::Everruns;
 
 #[derive(Parser)]
@@ -173,8 +174,40 @@ pub enum CapabilitiesCommand {
 async fn main() -> anyhow::Result<()> {
     everruns_provider::install_default_crypto_provider();
 
-    let cli = Cli::parse();
-    let output_format = output::OutputFormat::from_str(&cli.output);
+    // The CLI's own tree, plus every contract command it does not hand-write.
+    // Parsing happens once, against the merged tree, so a mounted command gets
+    // the same global flags and the same help as a hand-written one.
+    let root = contract::augment(Cli::command());
+    let matches = root.clone().get_matches();
+
+    let output_format = output::OutputFormat::from_str(
+        matches
+            .get_one::<String>("output")
+            .map(String::as_str)
+            .unwrap_or("text"),
+    );
+
+    if contract_is_selected(&matches) {
+        let creds = auth::resolve_credentials(
+            matches.get_one::<String>("api_key").map(String::as_str),
+            matches.get_one::<String>("api_url").map(String::as_str),
+            matches.get_one::<String>("profile").map(String::as_str),
+        )?;
+        if let Some(result) = contract::dispatch(
+            &root,
+            &matches,
+            &creds.api_url,
+            &creds.api_key,
+            creds.org_id.as_deref(),
+            output_format,
+        )
+        .await
+        {
+            return result;
+        }
+    }
+
+    let cli = Cli::from_arg_matches(&matches)?;
 
     // Commands that don't need authentication
     match &cli.command {
@@ -1161,22 +1194,23 @@ mod tests {
 }
 
 #[cfg(test)]
-mod contract {
+mod contract_golden {
     use super::*;
     use clap::CommandFactory;
 
-    /// The command line this CLI ships, as a diffable rendering.
+    /// The command line this CLI ships, as a diffable rendering: the commands
+    /// written by hand here, and the contract commands mounted beside them.
     ///
-    /// Humans and their scripts already type these words, so the contract they
-    /// depend on is pinned here rather than described somewhere. The agent-facing
-    /// command tree is being brought onto the same contract, and pinning this
-    /// first is what makes that a merge rather than a renegotiation: the surface
-    /// with users is the one that does not move.
+    /// Humans and their scripts already type these words, so what they depend
+    /// on is pinned rather than described. It guards in both directions now: a
+    /// hand-written flag that moves shows up as a changed line, and so does a
+    /// command added or re-spelled in the control plane, which reaches this
+    /// binary through the contract without anyone editing this crate.
     const GOLDEN: &str = include_str!("../contract.golden");
 
     #[test]
     fn the_shipped_command_line_has_not_changed() {
-        let rendered = everruns_cli_contract::render::tree(&Cli::command());
+        let rendered = everruns_cli_contract::render::tree(&contract::augment(Cli::command()));
 
         if std::env::var("UPDATE_CLI_CONTRACT").is_ok() {
             std::fs::write(
@@ -1197,4 +1231,33 @@ mod contract {
             );
         }
     }
+}
+
+/// Whether the caller typed a command the CLI does not hand-write.
+///
+/// Checked before credentials are resolved so a hand-written command that needs
+/// none — `login`, `status` — is not made to produce one.
+fn contract_is_selected(matches: &clap::ArgMatches) -> bool {
+    let mut node = matches;
+    let mut path = Vec::new();
+    while let Some((name, child)) = node.subcommand() {
+        path.push(name.to_string());
+        node = child;
+    }
+    let Some((verb, nouns)) = path.split_last() else {
+        return false;
+    };
+    everruns_cli_contract::commands()
+        .iter()
+        .any(|contract| contract.path == nouns && &contract.verb == verb)
+        && Cli::command()
+            .find_subcommand(nouns.first().map(String::as_str).unwrap_or(verb))
+            .and_then(|node| {
+                nouns
+                    .iter()
+                    .skip(1)
+                    .try_fold(node, |node, segment| node.find_subcommand(segment))
+            })
+            .map(|node| node.find_subcommand(verb).is_none())
+            .unwrap_or(true)
 }

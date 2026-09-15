@@ -99,6 +99,20 @@ Where the two disagreed, the surface with users did not move: the shipped CLI's
 spellings are pinned by a golden snapshot in `crates/cli/contract.golden`, and
 the catalog's route is what changes.
 
+The CLI mounts the contract commands it does not hand-write, dispatching them
+through the `method` and `http_path` each one already declares, so it spells
+every routed command without a hand-written implementation for each. A
+hand-written command always wins where one exists: `everruns agents create`
+reads a file, normalizes TOML the import endpoint cannot parse, and walks a
+directory into `initial_files`, which no catalog command can do because the
+catalog runs on the server and the files are here.
+
+The contracts travel as a checked-in artifact, `crates/cli-contract/commands.json`,
+because generation needs the command types in `everruns-server` and the CLI
+cannot link them. A guard in the server asserts the artifact still matches
+inventory. Fetching the catalog at runtime instead would make `everruns --help`
+need a network round trip and a credential, which is the wrong trade for a CLI.
+
 What this buys over hand-parsing `--flag value` pairs:
 
 - **An unknown flag is an error.** The previous parsers kept `--limti 10` as a

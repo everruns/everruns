@@ -1,0 +1,2361 @@
+[
+  {
+    "wire_name": "analyze_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "analyze",
+    "description": "Run advisory checks (built-in rules plus LLM analysis) against an agent configuration.",
+    "method": "POST",
+    "http_path": "/v1/agents/analyze",
+    "args": [
+      {
+        "field": "capabilities",
+        "long": "capabilities",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "mcp_servers",
+        "long": "mcp-servers",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "system_prompt",
+        "long": "system-prompt",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "tools",
+        "long": "tools",
+        "kind": "json",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check a draft configuration for problems before creating the agent",
+        "command": "everruns agents analyze --system-prompt 'Triage incoming issues' --tools '[\"bash\"]'"
+      }
+    ]
+  },
+  {
+    "wire_name": "check_agent_name",
+    "path": [
+      "agents"
+    ],
+    "verb": "check-name",
+    "description": "Check whether an agent name is available.",
+    "method": "GET",
+    "http_path": "/v1/agents/check-name",
+    "args": [
+      {
+        "field": "exclude_id",
+        "long": "exclude-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable name."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See whether a name is free before creating an agent",
+        "command": "everruns agents check-name --name triage"
+      }
+    ]
+  },
+  {
+    "wire_name": "copy_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "copy",
+    "description": "Copy an agent. Generates a unique name.",
+    "method": "POST",
+    "http_path": "/v1/agents/{id}/copy",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Duplicate an agent to try a change without touching the original",
+        "command": "everruns agents copy agt_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "create_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "create",
+    "description": "Create a new agent with a name, system prompt, and optional capabilities. Agent name must contain only lowercase letters, digits, and hyphens (e.g. joke-telling-agent).",
+    "method": "POST",
+    "http_path": "/v1/agents",
+    "args": [
+      {
+        "field": "capabilities",
+        "long": "capabilities",
+        "kind": "json",
+        "required": false,
+        "help": "Capabilities to enable for this agent with per-agent configuration. Each capability has a `re..."
+      },
+      {
+        "field": "default_model_id",
+        "long": "default-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "The ID of the default LLM model to use for this agent. If not specified, the system default m..."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "A human-readable description of what the agent does."
+      },
+      {
+        "field": "display_name",
+        "long": "display-name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable display name shown in UI. Falls back to `name` when absent."
+      },
+      {
+        "field": "harness_name",
+        "long": "harness",
+        "short": "H",
+        "kind": "string",
+        "required": false,
+        "help": "Addressable harness name."
+      },
+      {
+        "field": "harness_id",
+        "long": "harness-id",
+        "kind": "string",
+        "required": false,
+        "help": "Harness ID used as this agent's base execution environment."
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": false,
+        "help": "Client-supplied agent ID (format: agent_{32-hex}). If not provided, one is auto-generated."
+      },
+      {
+        "field": "initial_files",
+        "long": "initial-files",
+        "kind": "json",
+        "required": false,
+        "help": "Starter files copied into each new session for this agent."
+      },
+      {
+        "field": "intro_markdown",
+        "long": "intro-markdown",
+        "kind": "string",
+        "required": false,
+        "help": "Markdown intro shown as an intro box on a fresh Platform Chat thread. Images are allowed."
+      },
+      {
+        "field": "max_iterations",
+        "long": "max-iterations",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of LLM iterations per turn for this agent."
+      },
+      {
+        "field": "mcpServers",
+        "long": "mcpServers",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Name, unique per org."
+      },
+      {
+        "field": "network_access",
+        "long": "network-access",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "parallel_tool_calls",
+        "long": "parallel-tool-calls",
+        "kind": "boolean",
+        "required": false,
+        "help": "Request-level parallel tool calling preference (EVE-598)."
+      },
+      {
+        "field": "short_description",
+        "long": "short-description",
+        "kind": "string",
+        "required": false,
+        "help": "One-line description in simplified Markdown, shown below the chat title once the intro is hid..."
+      },
+      {
+        "field": "starters",
+        "long": "starters",
+        "kind": "json",
+        "required": false,
+        "help": "Conversation starters for a fresh Platform Chat thread."
+      },
+      {
+        "field": "system_prompt",
+        "long": "system-prompt",
+        "kind": "string",
+        "required": true,
+        "help": "The system prompt that defines the agent's behavior and capabilities. This is sent as the fir..."
+      },
+      {
+        "field": "tags",
+        "long": "tags",
+        "kind": "string_list",
+        "required": false,
+        "help": "Tags for organizing and filtering agents."
+      },
+      {
+        "field": "tools",
+        "long": "tools",
+        "kind": "json",
+        "required": false,
+        "help": "Client-side tools for this agent. These tools are sent to the LLM but executed by the client,..."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Create an agent on the organization's default harness",
+        "command": "everruns agents create --name triage --system-prompt 'Triage incoming issues' --harness generic"
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "delete",
+    "description": "Archive an agent (soft delete). Can be restored.",
+    "method": "DELETE",
+    "http_path": "/v1/agents/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Archive an agent, keeping it restorable",
+        "command": "everruns agents delete agt_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "destroy_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "destroy",
+    "description": "Permanently delete an archived agent.",
+    "method": "POST",
+    "http_path": "/v1/agents/{id}/delete",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Permanently remove an already-archived agent",
+        "command": "everruns agents destroy agt_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "export_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "export",
+    "description": "Export agent as JSON.",
+    "method": "GET",
+    "http_path": "/v1/agents/{id}/export",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Save an agent's definition to a file",
+        "command": "everruns agents export agt_01h9 > agent.json"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "get",
+    "description": "Get a single agent by ID or name.",
+    "method": "GET",
+    "http_path": "/v1/agents/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Show one agent's full configuration",
+        "command": "everruns agents get agt_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "import_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "import",
+    "description": "Import an agent from a definition.",
+    "method": "POST",
+    "http_path": "/v1/agents/import",
+    "args": [
+      {
+        "field": "capabilities",
+        "long": "capabilities",
+        "kind": "json",
+        "required": false,
+        "help": "Capabilities to enable for this agent with per-agent configuration. Each capability has a `re..."
+      },
+      {
+        "field": "default_model_id",
+        "long": "default-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "The ID of the default LLM model to use for this agent. If not specified, the system default m..."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "A human-readable description of what the agent does."
+      },
+      {
+        "field": "display_name",
+        "long": "display-name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable display name shown in UI. Falls back to `name` when absent."
+      },
+      {
+        "field": "harness_id",
+        "long": "harness-id",
+        "kind": "string",
+        "required": false,
+        "help": "Harness ID used as this agent's base execution environment."
+      },
+      {
+        "field": "harness_name",
+        "long": "harness-name",
+        "kind": "string",
+        "required": false,
+        "help": "Addressable harness name."
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": false,
+        "help": "Client-supplied agent ID (format: agent_{32-hex}). If not provided, one is auto-generated."
+      },
+      {
+        "field": "initial_files",
+        "long": "initial-files",
+        "kind": "json",
+        "required": false,
+        "help": "Starter files copied into each new session for this agent."
+      },
+      {
+        "field": "intro_markdown",
+        "long": "intro-markdown",
+        "kind": "string",
+        "required": false,
+        "help": "Markdown intro shown as an intro box on a fresh Platform Chat thread. Images are allowed."
+      },
+      {
+        "field": "max_iterations",
+        "long": "max-iterations",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of LLM iterations per turn for this agent."
+      },
+      {
+        "field": "mcpServers",
+        "long": "mcpServers",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Name, unique per org."
+      },
+      {
+        "field": "network_access",
+        "long": "network-access",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "parallel_tool_calls",
+        "long": "parallel-tool-calls",
+        "kind": "boolean",
+        "required": false,
+        "help": "Request-level parallel tool calling preference (EVE-598)."
+      },
+      {
+        "field": "short_description",
+        "long": "short-description",
+        "kind": "string",
+        "required": false,
+        "help": "One-line description in simplified Markdown, shown below the chat title once the intro is hid..."
+      },
+      {
+        "field": "starters",
+        "long": "starters",
+        "kind": "json",
+        "required": false,
+        "help": "Conversation starters for a fresh Platform Chat thread."
+      },
+      {
+        "field": "system_prompt",
+        "long": "system-prompt",
+        "kind": "string",
+        "required": true,
+        "help": "The system prompt that defines the agent's behavior and capabilities. This is sent as the fir..."
+      },
+      {
+        "field": "tags",
+        "long": "tags",
+        "kind": "string_list",
+        "required": false,
+        "help": "Tags for organizing and filtering agents."
+      },
+      {
+        "field": "tools",
+        "long": "tools",
+        "kind": "json",
+        "required": false,
+        "help": "Client-side tools for this agent. These tools are sent to the LLM but executed by the client,..."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Recreate an agent from a definition you already have",
+        "command": "everruns agents import --name triage --system-prompt 'Triage incoming issues'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agents",
+    "path": [
+      "agents"
+    ],
+    "verb": "list",
+    "description": "List all active agents. Use search for name search, include_archived=true to include archived. Supports pagination (limit/offset).",
+    "method": "GET",
+    "http_path": "/v1/agents",
+    "args": [
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of items returned in this page."
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false,
+        "help": "Zero-based offset into the result set."
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find agents by name when you do not know the id",
+        "command": "everruns agents list --search triage --limit 20"
+      }
+    ]
+  },
+  {
+    "wire_name": "preview_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "preview",
+    "description": "Preview the final agent shape with capabilities applied.",
+    "method": "POST",
+    "http_path": "/v1/agents/preview",
+    "args": [
+      {
+        "field": "capabilities",
+        "long": "capabilities",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "mcp_servers",
+        "long": "mcp-servers",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "system_prompt",
+        "long": "system-prompt",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "tools",
+        "long": "tools",
+        "kind": "json",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See the prompt a draft configuration would produce, without creating it",
+        "command": "everruns agents preview --system-prompt 'Triage incoming issues'"
+      }
+    ]
+  },
+  {
+    "wire_name": "update_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "update",
+    "description": "Update an agent. Only provided fields are changed.",
+    "method": "PATCH",
+    "http_path": "/v1/agents/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      },
+      {
+        "field": "capabilities",
+        "long": "capabilities",
+        "kind": "json",
+        "required": false,
+        "help": "Capabilities to enable for this agent with per-agent configuration. Replaces existing capabil..."
+      },
+      {
+        "field": "default_model_id",
+        "long": "default-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "The ID of the default LLM model to use for this agent."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "A human-readable description of what the agent does."
+      },
+      {
+        "field": "display_name",
+        "long": "display-name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable display name shown in UI."
+      },
+      {
+        "field": "harness_name",
+        "long": "harness",
+        "short": "H",
+        "kind": "string",
+        "required": false,
+        "help": "Addressable harness name."
+      },
+      {
+        "field": "harness_id",
+        "long": "harness-id",
+        "kind": "string",
+        "required": false,
+        "help": "Harness ID used as this agent's base execution environment."
+      },
+      {
+        "field": "initial_files",
+        "long": "initial-files",
+        "kind": "json",
+        "required": false,
+        "help": "Starter files copied into each new session for this agent."
+      },
+      {
+        "field": "intro_markdown",
+        "long": "intro-markdown",
+        "kind": "string",
+        "required": false,
+        "help": "Markdown intro for fresh Platform Chat threads."
+      },
+      {
+        "field": "max_iterations",
+        "long": "max-iterations",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of LLM iterations per turn for this agent."
+      },
+      {
+        "field": "mcpServers",
+        "long": "mcpServers",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "Name, unique per org."
+      },
+      {
+        "field": "network_access",
+        "long": "network-access",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "parallel_tool_calls",
+        "long": "parallel-tool-calls",
+        "kind": "boolean",
+        "required": false,
+        "help": "Request-level parallel tool calling preference (EVE-598)."
+      },
+      {
+        "field": "short_description",
+        "long": "short-description",
+        "kind": "string",
+        "required": false,
+        "help": "One-line description in simplified Markdown."
+      },
+      {
+        "field": "starters",
+        "long": "starters",
+        "kind": "json",
+        "required": false,
+        "help": "Conversation starters; omit to leave unchanged, send empty to clear. `icon` reuses the harnes..."
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "system_prompt",
+        "long": "system-prompt",
+        "kind": "string",
+        "required": false,
+        "help": "The system prompt that defines the agent's behavior and capabilities."
+      },
+      {
+        "field": "tags",
+        "long": "tags",
+        "kind": "string_list",
+        "required": false,
+        "help": "Tags for organizing and filtering agents."
+      },
+      {
+        "field": "tools",
+        "long": "tools",
+        "kind": "json",
+        "required": false,
+        "help": "Client-side tools for this agent. Replaces existing tools if provided."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Rename an agent, leaving the rest of it alone",
+        "command": "everruns agents update agt_01h9 --name triage-v2"
+      }
+    ]
+  },
+  {
+    "wire_name": "upsert_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "upsert",
+    "description": "Upsert agent — create (201) or update (200) by ID.",
+    "method": "PUT",
+    "http_path": "/v1/agents/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Client-supplied agent ID (format: agent_{32-hex}). If not provided, one is auto-generated."
+      },
+      {
+        "field": "capabilities",
+        "long": "capabilities",
+        "kind": "json",
+        "required": false,
+        "help": "Capabilities to enable for this agent with per-agent configuration. Each capability has a `re..."
+      },
+      {
+        "field": "default_model_id",
+        "long": "default-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "The ID of the default LLM model to use for this agent. If not specified, the system default m..."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "A human-readable description of what the agent does."
+      },
+      {
+        "field": "display_name",
+        "long": "display-name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable display name shown in UI. Falls back to `name` when absent."
+      },
+      {
+        "field": "harness_name",
+        "long": "harness",
+        "short": "H",
+        "kind": "string",
+        "required": false,
+        "help": "Addressable harness name."
+      },
+      {
+        "field": "harness_id",
+        "long": "harness-id",
+        "kind": "string",
+        "required": false,
+        "help": "Harness ID used as this agent's base execution environment."
+      },
+      {
+        "field": "initial_files",
+        "long": "initial-files",
+        "kind": "json",
+        "required": false,
+        "help": "Starter files copied into each new session for this agent."
+      },
+      {
+        "field": "intro_markdown",
+        "long": "intro-markdown",
+        "kind": "string",
+        "required": false,
+        "help": "Markdown intro shown as an intro box on a fresh Platform Chat thread. Images are allowed."
+      },
+      {
+        "field": "max_iterations",
+        "long": "max-iterations",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of LLM iterations per turn for this agent."
+      },
+      {
+        "field": "mcpServers",
+        "long": "mcpServers",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Name, unique per org."
+      },
+      {
+        "field": "network_access",
+        "long": "network-access",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "parallel_tool_calls",
+        "long": "parallel-tool-calls",
+        "kind": "boolean",
+        "required": false,
+        "help": "Request-level parallel tool calling preference (EVE-598)."
+      },
+      {
+        "field": "short_description",
+        "long": "short-description",
+        "kind": "string",
+        "required": false,
+        "help": "One-line description in simplified Markdown, shown below the chat title once the intro is hid..."
+      },
+      {
+        "field": "starters",
+        "long": "starters",
+        "kind": "json",
+        "required": false,
+        "help": "Conversation starters for a fresh Platform Chat thread."
+      },
+      {
+        "field": "system_prompt",
+        "long": "system-prompt",
+        "kind": "string",
+        "required": true,
+        "help": "The system prompt that defines the agent's behavior and capabilities. This is sent as the fir..."
+      },
+      {
+        "field": "tags",
+        "long": "tags",
+        "kind": "string_list",
+        "required": false,
+        "help": "Tags for organizing and filtering agents."
+      },
+      {
+        "field": "tools",
+        "long": "tools",
+        "kind": "json",
+        "required": false,
+        "help": "Client-side tools for this agent. These tools are sent to the LLM but executed by the client,..."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Create or replace an agent at a known id, for a scripted deploy",
+        "command": "everruns agents upsert agt_01h9 --name triage --system-prompt 'Triage incoming issues'"
+      }
+    ]
+  },
+  {
+    "wire_name": "create_agent_version",
+    "path": [
+      "agents",
+      "versions"
+    ],
+    "verb": "create",
+    "description": "Save the current agent draft as an immutable version.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/versions",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      },
+      {
+        "field": "req",
+        "long": "req",
+        "kind": "json",
+        "required": true,
+        "help": "Request body for the `create_agent_version` operation."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Snapshot an agent before a risky change",
+        "command": "everruns agents versions create --agent agt_01h9 --req '{\"summary\":\"before the rewrite\"}'"
+      }
+    ]
+  },
+  {
+    "wire_name": "diff_agent_versions",
+    "path": [
+      "agents",
+      "versions"
+    ],
+    "verb": "diff",
+    "description": "Compare two immutable agent versions.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      },
+      {
+        "field": "from_version_id",
+        "long": "from-version-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'agentver' prefix"
+      },
+      {
+        "field": "to_version_id",
+        "long": "to-version-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'agentver' prefix"
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See what changed between two snapshots",
+        "command": "everruns agents versions diff --agent agt_01h9 --from-version-id ver_01h9 --to-version-id ver_01ha"
+      }
+    ]
+  },
+  {
+    "wire_name": "fork_agent_version",
+    "path": [
+      "agents",
+      "versions"
+    ],
+    "verb": "fork",
+    "description": "Fork an agent version into a new editable agent.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/versions/{version_id}/fork",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      },
+      {
+        "field": "req",
+        "long": "req",
+        "kind": "json",
+        "required": true,
+        "help": "Request body for the `fork_agent_version` operation."
+      },
+      {
+        "field": "version_id",
+        "long": "version-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'agentver' prefix"
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Start a new agent from an old snapshot",
+        "command": "everruns agents versions fork --agent agt_01h9 --version-id ver_01h9 --req '{\"name\":\"triage-fork\"}'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_versions",
+    "path": [
+      "agents",
+      "versions"
+    ],
+    "verb": "list",
+    "description": "List immutable versions for an agent.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/versions",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find the version to roll back to",
+        "command": "everruns agents versions list --agent agt_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "rollback_agent_version",
+    "path": [
+      "agents",
+      "versions"
+    ],
+    "verb": "rollback",
+    "description": "Copy an immutable version back into the editable agent draft.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/versions/{version_id}/rollback",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      },
+      {
+        "field": "req",
+        "long": "req",
+        "kind": "json",
+        "required": true,
+        "help": "Request body for the `rollback_agent_version` operation."
+      },
+      {
+        "field": "version_id",
+        "long": "version-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'agentver' prefix"
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Undo a bad change by restoring a snapshot",
+        "command": "everruns agents versions rollback --agent agt_01h9 --version-id ver_01h9 --req '{\"save_version\":true}'"
+      }
+    ]
+  },
+  {
+    "wire_name": "set_default_agent_version",
+    "path": [
+      "agents",
+      "versions"
+    ],
+    "verb": "set-default",
+    "description": "Set an agent's default immutable version.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/versions/default",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      },
+      {
+        "field": "req",
+        "long": "req",
+        "kind": "json",
+        "required": true,
+        "help": "Request body for the `set_default_agent_version` operation."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Point new sessions at a different version",
+        "command": "everruns agents versions set-default --agent agt_01h9 --req '{\"version_id\":\"ver_01h9\"}'"
+      }
+    ]
+  },
+  {
+    "wire_name": "create_mcp_server",
+    "path": [
+      "mcp-servers"
+    ],
+    "verb": "create",
+    "description": "Create a new MCP server with a name, URL, and optional authentication.",
+    "method": "POST",
+    "http_path": "/v1/mcp-servers",
+    "args": [
+      {
+        "field": "api_key",
+        "long": "api-key",
+        "kind": "string",
+        "required": false,
+        "help": "API key for authentication (optional)."
+      },
+      {
+        "field": "auth_mode",
+        "long": "auth-mode",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "A human-readable description of what the MCP server provides."
+      },
+      {
+        "field": "headers",
+        "long": "headers",
+        "kind": "json",
+        "required": false,
+        "help": "Additional HTTP headers for authentication."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "The name of the MCP server."
+      },
+      {
+        "field": "protocol_mode",
+        "long": "protocol-mode",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "transport_type",
+        "long": "transport-type",
+        "kind": "string",
+        "required": false,
+        "help": "MCP Server transport type.",
+        "choices": [
+          "http",
+          "stdio"
+        ]
+      },
+      {
+        "field": "url",
+        "long": "url",
+        "kind": "string",
+        "required": true,
+        "help": "The URL of the MCP server endpoint."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Register an MCP server so agents can use its tools",
+        "command": "everruns mcp-servers create --name github --url https://api.example.com/mcp"
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_mcp_server",
+    "path": [
+      "mcp-servers"
+    ],
+    "verb": "delete",
+    "description": "Archive an MCP server (soft delete). Can be restored.",
+    "method": "DELETE",
+    "http_path": "/v1/mcp-servers/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Archive an MCP server, keeping it restorable",
+        "command": "everruns mcp-servers delete mcp_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "destroy_mcp_server",
+    "path": [
+      "mcp-servers"
+    ],
+    "verb": "destroy",
+    "description": "Permanently delete an archived MCP server.",
+    "method": "POST",
+    "http_path": "/v1/mcp-servers/{id}/delete",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Permanently remove an already-archived MCP server",
+        "command": "everruns mcp-servers destroy mcp_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_mcp_server",
+    "path": [
+      "mcp-servers"
+    ],
+    "verb": "get",
+    "description": "Get a single MCP server by ID.",
+    "method": "GET",
+    "http_path": "/v1/mcp-servers/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Show one MCP server's URL and configuration",
+        "command": "everruns mcp-servers get mcp_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_mcp_servers",
+    "path": [
+      "mcp-servers"
+    ],
+    "verb": "list",
+    "description": "List all active MCP servers. Use search for name/description search, include_archived=true to include archived.",
+    "method": "GET",
+    "http_path": "/v1/mcp-servers",
+    "args": [
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find a registered MCP server by name",
+        "command": "everruns mcp-servers list --search github"
+      }
+    ]
+  },
+  {
+    "wire_name": "update_mcp_server",
+    "path": [
+      "mcp-servers"
+    ],
+    "verb": "update",
+    "description": "Update an MCP server. Only provided fields are changed.",
+    "method": "PATCH",
+    "http_path": "/v1/mcp-servers/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      },
+      {
+        "field": "api_key",
+        "long": "api-key",
+        "kind": "string",
+        "required": false,
+        "help": "API key for authentication."
+      },
+      {
+        "field": "auth_mode",
+        "long": "auth-mode",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "A human-readable description of what the MCP server provides."
+      },
+      {
+        "field": "headers",
+        "long": "headers",
+        "kind": "json",
+        "required": false,
+        "help": "Additional HTTP headers for authentication."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "The name of the MCP server."
+      },
+      {
+        "field": "protocol_mode",
+        "long": "protocol-mode",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "transport_type",
+        "long": "transport-type",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "url",
+        "long": "url",
+        "kind": "string",
+        "required": false,
+        "help": "The URL of the MCP server endpoint."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Repoint an MCP server at a new URL",
+        "command": "everruns mcp-servers update mcp_01h9 --name github-prod"
+      }
+    ]
+  },
+  {
+    "wire_name": "archive_session",
+    "path": [
+      "sessions"
+    ],
+    "verb": "archive",
+    "description": "Archive a session so it drops out of default lists.",
+    "method": "PUT",
+    "http_path": "/v1/sessions/{session_id}/archive",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Move a finished session out of the active list",
+        "command": "everruns sessions archive ses_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "cancel_session",
+    "path": [
+      "sessions"
+    ],
+    "verb": "cancel",
+    "description": "Cancel the currently executing turn in a session.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/cancel",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Stop a session that is running away",
+        "command": "everruns sessions cancel ses_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_context_report",
+    "path": [
+      "sessions"
+    ],
+    "verb": "context",
+    "description": "Get the latest estimated context token breakdown for a session, grouped by system prompt, tools, rules, skills, MCP, subagents, and conversation.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/context-report",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See what is filling a session's context window",
+        "command": "everruns sessions context ses_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "create_session",
+    "path": [
+      "sessions"
+    ],
+    "verb": "create",
+    "description": "Create a new session. Optionally assign an agent and harness. Assign the agent with --agent_id or --agent_name (the everruns CLI spelling of this flag is --agent).",
+    "method": "POST",
+    "http_path": "/v1/sessions",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "short": "a",
+        "kind": "string",
+        "required": false,
+        "help": "ID of the agent to work in this session (optional, format: agent_{32-hex}). When supplied wit..."
+      },
+      {
+        "field": "agent_identity_id",
+        "long": "agent-identity-id",
+        "kind": "string",
+        "required": false,
+        "help": "Optional resident agent identity used for unattended/background execution."
+      },
+      {
+        "field": "agent_name",
+        "long": "agent-name",
+        "kind": "string",
+        "required": false,
+        "help": "Name of the agent to work in this session (optional). Alternative to `agent_id` — looked up b..."
+      },
+      {
+        "field": "capabilities",
+        "long": "capabilities",
+        "kind": "json",
+        "required": false,
+        "help": "Session-level capabilities (additive to agent capabilities). Applied after agent capabilities..."
+      },
+      {
+        "field": "goal",
+        "long": "goal",
+        "kind": "string",
+        "required": false,
+        "help": "Optional objective for the session."
+      },
+      {
+        "field": "harness_name",
+        "long": "harness",
+        "short": "H",
+        "kind": "string",
+        "required": false,
+        "help": "Harness name (e.g."
+      },
+      {
+        "field": "harness_id",
+        "long": "harness-id",
+        "kind": "string",
+        "required": false,
+        "help": "ID of the harness for this session (format: harness_{32-hex}). If omitted, the harness is der..."
+      },
+      {
+        "field": "hints",
+        "long": "hints",
+        "kind": "json",
+        "required": false,
+        "help": "Session-level client hints — arbitrary key-value pairs that tell the server what the client c..."
+      },
+      {
+        "field": "initial_files",
+        "long": "initial-files",
+        "kind": "json",
+        "required": false,
+        "help": "Session-level initial files (additive to agent initial_files). Files with matching paths over..."
+      },
+      {
+        "field": "locale",
+        "long": "locale",
+        "kind": "string",
+        "required": false,
+        "help": "Session locale (BCP 47, e.g."
+      },
+      {
+        "field": "max_iterations",
+        "long": "max-iterations",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of LLM iterations per turn for this session."
+      },
+      {
+        "field": "mcpServers",
+        "long": "mcpServers",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "model_id",
+        "long": "model-id",
+        "kind": "string",
+        "required": false,
+        "help": "The ID of the LLM model to use for this session. Overrides the agent's default model if speci..."
+      },
+      {
+        "field": "network_access",
+        "long": "network-access",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "parallel_tool_calls",
+        "long": "parallel-tool-calls",
+        "kind": "boolean",
+        "required": false,
+        "help": "Request-level parallel tool calling preference (EVE-598)."
+      },
+      {
+        "field": "source",
+        "long": "source",
+        "kind": "string",
+        "required": false,
+        "help": "How this session was started."
+      },
+      {
+        "field": "system_prompt",
+        "long": "system-prompt",
+        "kind": "string",
+        "required": false,
+        "help": "Optional session-level system prompt override. Prepended to the agent's system prompt when bu..."
+      },
+      {
+        "field": "tags",
+        "long": "tags",
+        "kind": "string_list",
+        "required": false,
+        "help": "Tags for organizing and filtering sessions."
+      },
+      {
+        "field": "title",
+        "long": "title",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable title for the session."
+      },
+      {
+        "field": "tools",
+        "long": "tools",
+        "kind": "json",
+        "required": false,
+        "help": "Client-side tools for this session (additive to agent tools). These tools are sent to the LLM..."
+      },
+      {
+        "field": "workspace_id",
+        "long": "workspace-id",
+        "kind": "string",
+        "required": false,
+        "help": "Attach this session to an existing Workspace (format: `wsp_<32-hex>`) instead of auto-creatin..."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Start a session for an agent",
+        "command": "everruns sessions create --agent agt_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_session",
+    "path": [
+      "sessions"
+    ],
+    "verb": "delete",
+    "description": "Delete a session.",
+    "method": "DELETE",
+    "http_path": "/v1/sessions/{session_id}",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Archive a session, keeping it restorable",
+        "command": "everruns sessions delete ses_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_facets",
+    "path": [
+      "sessions"
+    ],
+    "verb": "facets",
+    "description": "Counts per status, source, and agent plus masthead metrics for the sessions list, over the same filters as list_sessions.",
+    "method": "GET",
+    "http_path": "/v1/sessions/facets",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "created_after",
+        "long": "created-after",
+        "kind": "string",
+        "required": false,
+        "help": "Inclusive lower bound on `created_at` (RFC 3339)."
+      },
+      {
+        "field": "created_before",
+        "long": "created-before",
+        "kind": "string",
+        "required": false,
+        "help": "Exclusive upper bound on `created_at` (RFC 3339)."
+      },
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false,
+        "help": "Include archived sessions."
+      },
+      {
+        "field": "mine",
+        "long": "mine",
+        "kind": "boolean",
+        "required": false,
+        "help": "Restrict to sessions owned by the calling user."
+      },
+      {
+        "field": "order",
+        "long": "order",
+        "kind": "string",
+        "required": false,
+        "help": "`created_at` (default) or `last_activity`."
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false,
+        "help": "Case-insensitive title substring match."
+      },
+      {
+        "field": "source",
+        "long": "source",
+        "kind": "string",
+        "required": false,
+        "help": "Comma-separated sources (`chat`, `api`, `slack`, `ag_ui`, `fcp`, `schedule`, `webhook`, `a2a`..."
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false,
+        "help": "Comma-separated derived activities (`running`, `paused`, `failed`, `completed`, `idle`)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Break the session list down by status, agent and source",
+        "command": "everruns sessions facets --search triage"
+      }
+    ]
+  },
+  {
+    "wire_name": "fork_session",
+    "path": [
+      "sessions"
+    ],
+    "verb": "fork",
+    "description": "Fork a session into a new, independent session that copies its conversation history and workspace files.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/fork",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session to fork (prefixed public id)."
+      },
+      {
+        "field": "overrides",
+        "long": "overrides",
+        "kind": "json",
+        "required": false,
+        "help": "Request to fork a session (knowledge/runtime-resources/forking-sessions.md)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Branch from a session to try a different direction",
+        "command": "everruns sessions fork ses_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session",
+    "path": [
+      "sessions"
+    ],
+    "verb": "get",
+    "description": "Get session details including status, agent, harness, and model.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Show one session's state and configuration",
+        "command": "everruns sessions get ses_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_sessions",
+    "path": [
+      "sessions"
+    ],
+    "verb": "list",
+    "description": "List sessions. Filter by agent_id, source, status, owner (mine), and creation window; search by title; order by created_at or last_activity. Supports pagination (limit/offset).",
+    "method": "GET",
+    "http_path": "/v1/sessions",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "created_after",
+        "long": "created-after",
+        "kind": "string",
+        "required": false,
+        "help": "Inclusive lower bound on `created_at` (RFC 3339)."
+      },
+      {
+        "field": "created_before",
+        "long": "created-before",
+        "kind": "string",
+        "required": false,
+        "help": "Exclusive upper bound on `created_at` (RFC 3339)."
+      },
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false,
+        "help": "Include archived sessions."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of items returned in this page."
+      },
+      {
+        "field": "mine",
+        "long": "mine",
+        "kind": "boolean",
+        "required": false,
+        "help": "Restrict to sessions owned by the calling user."
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false,
+        "help": "Zero-based offset into the result set."
+      },
+      {
+        "field": "order",
+        "long": "order",
+        "kind": "string",
+        "required": false,
+        "help": "`created_at` (default) or `last_activity`."
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false,
+        "help": "Case-insensitive title substring match."
+      },
+      {
+        "field": "source",
+        "long": "source",
+        "kind": "string",
+        "required": false,
+        "help": "Comma-separated sources (`chat`, `api`, `slack`, `ag_ui`, `fcp`, `schedule`, `webhook`, `a2a`..."
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false,
+        "help": "Comma-separated derived activities (`running`, `paused`, `failed`, `completed`, `idle`)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find recent sessions when you do not know the id",
+        "command": "everruns sessions list --limit 20"
+      }
+    ]
+  },
+  {
+    "wire_name": "add_session_participant",
+    "path": [
+      "sessions",
+      "participants"
+    ],
+    "verb": "add",
+    "description": "Add a member participant to a session.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/participants",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "Agent to add when `kind` is `agent`."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": true,
+        "help": "Kind of actor participating in a session.",
+        "choices": [
+          "agent",
+          "user"
+        ]
+      },
+      {
+        "field": "role",
+        "long": "role",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "session_id",
+        "long": "session",
+        "kind": "string",
+        "required": true,
+        "help": "Session that receives the participant."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Bring a user into a running session",
+        "command": "everruns sessions participants add --session ses_01h9 --kind user"
+      }
+    ]
+  },
+  {
+    "wire_name": "leave_session_participant",
+    "path": [
+      "sessions",
+      "participants"
+    ],
+    "verb": "leave",
+    "description": "Mark a session member participant as having left.",
+    "method": "DELETE",
+    "http_path": "/v1/sessions/{session_id}/participants/{participant_id}",
+    "args": [
+      {
+        "field": "participant_id",
+        "long": "participant-id",
+        "kind": "string",
+        "required": true,
+        "help": "Participant row to mark as left."
+      },
+      {
+        "field": "session_id",
+        "long": "session",
+        "kind": "string",
+        "required": true,
+        "help": "Session that owns the participant."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Remove one participant from a session",
+        "command": "everruns sessions participants leave --session ses_01h9 --participant-id par_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_participants",
+    "path": [
+      "sessions",
+      "participants"
+    ],
+    "verb": "list",
+    "description": "List the participant history for a session.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/participants",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "kind": "string",
+        "required": true,
+        "help": "Session whose participant history should be returned."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See who is attached to a session",
+        "command": "everruns sessions participants list --session ses_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "pin_session",
+    "path": [
+      "sessions"
+    ],
+    "verb": "pin",
+    "description": "Pin a session for the current user.",
+    "method": "PUT",
+    "http_path": "/v1/sessions/{session_id}/pin",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Keep a session at the top of the list",
+        "command": "everruns sessions pin ses_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_stats",
+    "path": [
+      "sessions"
+    ],
+    "verb": "stats",
+    "description": "Get session counts by status.",
+    "method": "GET",
+    "http_path": "/v1/sessions/stats",
+    "args": [],
+    "examples": [
+      {
+        "intent": "Check token and cost totals across sessions",
+        "command": "everruns sessions stats"
+      }
+    ]
+  },
+  {
+    "wire_name": "unarchive_session",
+    "path": [
+      "sessions"
+    ],
+    "verb": "unarchive",
+    "description": "Restore an archived session to default lists.",
+    "method": "DELETE",
+    "http_path": "/v1/sessions/{session_id}/archive",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Bring an archived session back to the active list",
+        "command": "everruns sessions unarchive ses_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "unpin_session",
+    "path": [
+      "sessions"
+    ],
+    "verb": "unpin",
+    "description": "Unpin a session for the current user.",
+    "method": "DELETE",
+    "http_path": "/v1/sessions/{session_id}/pin",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Stop keeping a session at the top of the list",
+        "command": "everruns sessions unpin ses_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "update_session",
+    "path": [
+      "sessions"
+    ],
+    "verb": "update",
+    "description": "Update session title, tags, or locale.",
+    "method": "PATCH",
+    "http_path": "/v1/sessions/{session_id}",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "agent_identity_id",
+        "long": "agent-identity-id",
+        "kind": "string",
+        "required": false,
+        "help": "Optional resident agent identity used for unattended/background execution."
+      },
+      {
+        "field": "goal",
+        "long": "goal",
+        "kind": "string",
+        "required": false,
+        "help": "Updated session objective."
+      },
+      {
+        "field": "locale",
+        "long": "locale",
+        "kind": "string",
+        "required": false,
+        "help": "Session locale (BCP 47, e.g."
+      },
+      {
+        "field": "tags",
+        "long": "tags",
+        "kind": "string_list",
+        "required": false,
+        "help": "Tags for organizing and filtering sessions."
+      },
+      {
+        "field": "title",
+        "long": "title",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable title for the session."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Retitle a session so it is findable later",
+        "command": "everruns sessions update ses_01h9 --title 'Release triage'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_skill_content",
+    "path": [
+      "skills"
+    ],
+    "verb": "content",
+    "description": "Get full skill content (SKILL.md + files).",
+    "method": "GET",
+    "http_path": "/v1/skills/{id}/content",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read a skill's body to see what it instructs",
+        "command": "everruns skills content skl_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "create_skill",
+    "path": [
+      "skills"
+    ],
+    "verb": "create",
+    "description": "Create a new skill from SKILL.md content.",
+    "method": "POST",
+    "http_path": "/v1/skills",
+    "args": [
+      {
+        "field": "skill_md",
+        "long": "skill-md",
+        "kind": "string",
+        "required": true,
+        "help": "Full SKILL.md content (YAML frontmatter + markdown body)"
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Add a skill from a local file",
+        "command": "everruns skills create --skill-md \"$(cat SKILL.md)\""
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_skill",
+    "path": [
+      "skills"
+    ],
+    "verb": "delete",
+    "description": "Archive a skill (soft delete). Can be restored.",
+    "method": "DELETE",
+    "http_path": "/v1/skills/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Archive a skill, keeping it restorable",
+        "command": "everruns skills delete skl_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "destroy_skill",
+    "path": [
+      "skills"
+    ],
+    "verb": "destroy",
+    "description": "Permanently delete an archived skill.",
+    "method": "POST",
+    "http_path": "/v1/skills/{id}/delete",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Permanently remove an already-archived skill",
+        "command": "everruns skills destroy skl_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_skill",
+    "path": [
+      "skills"
+    ],
+    "verb": "get",
+    "description": "Get a single skill by ID.",
+    "method": "GET",
+    "http_path": "/v1/skills/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Show one skill's metadata without its body",
+        "command": "everruns skills get skl_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_skills",
+    "path": [
+      "skills"
+    ],
+    "verb": "list",
+    "description": "List all active skills. Use search for name search, include_archived=true to include archived.",
+    "method": "GET",
+    "http_path": "/v1/skills",
+    "args": [
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find skills by name when you do not know the id",
+        "command": "everruns skills list --search code-review"
+      }
+    ]
+  },
+  {
+    "wire_name": "update_skill",
+    "path": [
+      "skills"
+    ],
+    "verb": "update",
+    "description": "Update a skill. Only provided fields are changed.",
+    "method": "PATCH",
+    "http_path": "/v1/skills/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      },
+      {
+        "field": "skill_md",
+        "long": "skill-md",
+        "kind": "string",
+        "required": false,
+        "help": "Updated SKILL.md content (re-parses frontmatter)"
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Replace a skill's content from a local file",
+        "command": "everruns skills update skl_01h9 --skill-md \"$(cat SKILL.md)\""
+      }
+    ]
+  },
+  {
+    "wire_name": "list_skills_usage",
+    "path": [
+      "skills"
+    ],
+    "verb": "usage",
+    "description": "Count agents and harnesses referencing each skill capability.",
+    "method": "GET",
+    "http_path": "/v1/skills/usage",
+    "args": [],
+    "examples": [
+      {
+        "intent": "See which agents use which skills",
+        "command": "everruns skills usage"
+      }
+    ]
+  }
+]

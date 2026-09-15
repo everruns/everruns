@@ -55,7 +55,14 @@ fn argument(arg: &clap::Arg) -> String {
         spelling.push_str(&format!("/-{short}"));
     }
     if arg.is_positional() {
-        spelling.push_str(&format!("<{}>", arg.get_id()));
+        // The argument id, minus the suffix that keeps a bare-word spelling
+        // distinct from its own flag. Clap's value name would do, but it
+        // defaults differently for derive and builder arguments, so rendering
+        // it would make this snapshot report a format change as a contract
+        // change.
+        let id = arg.get_id().as_str();
+        let name = id.split('\u{1}').next().unwrap_or(id);
+        spelling.push_str(&format!("<{name}>"));
     }
     if arg.is_required_set() {
         spelling.push('!');

@@ -1,8 +1,22 @@
+agents analyze	--capabilities --mcp-servers --system-prompt --tools
+agents check-name	--exclude-id --name!
+agents copy	--id <id>
 agents create	--description --file/-f --harness/-H --initial-files-dir --model --name --system-prompt --tag/-t... --writable
 agents delete	<agent_id>!
+agents destroy	--id <id>
+agents export	--id <id>
 agents get	<agent_id>!
+agents import	--capabilities --default-model-id --description --display-name --harness-id --harness-name --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --short-description --starters --system-prompt! --tags... --tools
 agents list	
+agents preview	--capabilities --mcp-servers --system-prompt --tools
 agents update	--description --file/-f --harness/-H --initial-files-dir --model --name --system-prompt --tag/-t... --writable <agent_id>
+agents upsert	--capabilities --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --short-description --starters --system-prompt! --tags... --tools <id>
+agents versions create	--agent! --req!
+agents versions diff	--agent! --from-version-id! --to-version-id!
+agents versions fork	--agent! --req! --version-id!
+agents versions list	--agent!
+agents versions rollback	--agent! --req! --version-id!
+agents versions set-default	--agent! --req!
 capabilities list	--status
 chat	--no-stream --session/-s! --timeout <message>!
 connections list	
@@ -18,6 +32,12 @@ knowledge-bases get	<id>!
 knowledge-bases list	
 login	--token
 logout	
+mcp-servers create	--api-key --auth-mode --description --headers --name! --protocol-mode --transport-type --url!
+mcp-servers delete	--id <id>
+mcp-servers destroy	--id <id>
+mcp-servers get	--id <id>
+mcp-servers list	--include-archived --search
+mcp-servers update	--api-key --auth-mode --description --headers --id --name --protocol-mode --status --transport-type --url <id>
 orgs select	
 participants add	--agent!
 participants list	
@@ -26,15 +46,33 @@ plugins get	<id>!
 plugins install	<marketplace_id>! <plugin_name>!
 plugins list	
 plugins uninstall	<id>!
+sessions archive	--session <session_id>
+sessions cancel	--session <session_id>
+sessions context	--session <session_id>
 sessions create	--agent-identity --agent/-a --budget-limit... --budget-soft-limit... --capability... --harness/-H --hint... --hints-json --locale --max-iterations --model --network-allow... --network-block... --secret... --system-prompt --tag/-t... --title
+sessions delete	--session <session_id>
 sessions export	--format --output/-o <session>!
+sessions facets	--agent-id --created-after --created-before --include-archived --mine --order --search --source --status
+sessions fork	--overrides --session <session_id>
 sessions get	<session>!
 sessions list	
+sessions participants add	--agent-id --kind! --role --session!
+sessions participants leave	--participant-id! --session!
+sessions participants list	--session!
+sessions pin	--session <session_id>
+sessions stats	
+sessions unarchive	--session <session_id>
+sessions unpin	--session <session_id>
+sessions update	--agent-identity-id --goal --locale --session --tags... --title <session_id>
 sessions watch	<session>!
+skills content	--id <id>
 skills create	<path>!
 skills delete	<id>!
+skills destroy	--id <id>
 skills get	<id>!
 skills list	
+skills update	--id --skill-md --status <id>
+skills usage	
 status	
 triggers create	--cron! --disabled --message! --session-mode --timezone
 triggers disable	<trigger>!
