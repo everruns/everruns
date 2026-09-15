@@ -523,37 +523,16 @@ async fn handle_slack_event(
     let slack_channel_internal_id = slack_channel.internal_id;
 
     // 4. Verify Slack signing secret // THREAT[TM-SLACK-001]
-    //
-    // A channel may exist before its credentials do: the manifest that hands the
-    // operator those credentials is served per-channel, so the channel comes
-    // first (EVE-1015). Such a channel answers exactly one thing — Slack's
-    // `url_verification` handshake, which carries no workspace data and is what
-    // Slack sends while saving the manifest that has not yet produced a secret.
-    // Everything else is rejected, so an unconfigured endpoint can neither start
-    // a session nor reach the workspace.
-    let credentials_configured = !slack_config.signing_secret.trim().is_empty();
-    if credentials_configured {
-        verify_slack_signature(&headers, &body, &slack_config.signing_secret).map_err(|e| {
-            tracing::warn!(app_id = %app_id, error = %e, "Slack signature verification failed");
-            ErrorResponse::new("Invalid signature").into_response(StatusCode::UNAUTHORIZED)
-        })?;
-    }
+    verify_slack_signature(&headers, &body, &slack_config.signing_secret).map_err(|e| {
+        tracing::warn!(app_id = %app_id, error = %e, "Slack signature verification failed");
+        ErrorResponse::new("Invalid signature").into_response(StatusCode::UNAUTHORIZED)
+    })?;
 
     // 5. Parse the event envelope
     let envelope: SlackEventEnvelope = serde_json::from_slice(&body).map_err(|e| {
         tracing::warn!(app_id = %app_id, error = %e, "Failed to parse Slack event");
         ErrorResponse::new("Invalid request body").into_response(StatusCode::BAD_REQUEST)
     })?;
-
-    if !credentials_configured && envelope.event_type != "url_verification" {
-        tracing::warn!(
-            app_id = %app_id,
-            event_type = %envelope.event_type,
-            "Slack event rejected: channel has no signing secret configured"
-        );
-        return Err(ErrorResponse::new("Slack channel is not configured")
-            .into_response(StatusCode::UNAUTHORIZED));
-    }
 
     // 6. Handle based on event type
     match envelope.event_type.as_str() {
@@ -2297,8 +2276,7 @@ fn verify_slack_signature(
     body: &[u8],
     signing_secret: &str,
 ) -> Result<(), String> {
-    // HMAC over an empty key is computable by anyone, so an unconfigured
-    // channel must never reach the comparison below (EVE-1015).
+    // An empty HMAC key is public, so it cannot authenticate a request.
     if signing_secret.trim().is_empty() {
         return Err("Slack channel has no signing secret configured".to_string());
     }
@@ -2656,8 +2634,6 @@ mod tests {
         assert!(verify_slack_signature(&headers, body.as_bytes(), secret).is_err());
     }
 
-    /// An empty signing secret is a key anyone can compute over, so a
-    /// correctly-shaped signature over it must still be rejected (EVE-1015).
     #[test]
     fn test_verify_slack_signature_rejects_empty_secret() {
         let body = "body";

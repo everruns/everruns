@@ -334,14 +334,8 @@ fn normalize_and_validate_channel_config(
     }
     match channel_type {
         ChannelType::Slack => {
-            // Credentials are deliberately optional. Slack's setup order is
-            // publish → fetch the manifest → create the Slack app → copy the
-            // signing secret and bot token back, and the manifest is served
-            // per-channel, so the channel has to exist before either secret
-            // does. Requiring them here made first-run setup circular and
-            // forced operators to invent placeholders (EVE-1015). An empty
-            // signing secret leaves the webhook inert — see
-            // `handle_slack_event` in `crates/server/src/api/slack_events.rs`.
+            // The channel must exist before its manifest can be generated, while
+            // Slack provides credentials only after the app is created.
             serde_json::from_value::<SlackChannelConfig>(channel_config.clone()).map_err(|e| {
                 CommandError::bad_request(format!("Invalid Slack channel config: {e}"))
             })?;
@@ -815,10 +809,6 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
     };
     match channel_type {
         ChannelType::Slack => {
-            // Only a non-empty value counts as configured: a channel created
-            // before the Slack app exists carries empty credentials, and the
-            // setup checklist reads these flags to decide whether step 3 is
-            // still outstanding (EVE-1015).
             for (key, flag) in [
                 ("signing_secret", "signing_secret_configured"),
                 ("bot_token", "bot_token_configured"),
@@ -4147,9 +4137,6 @@ mod tests {
         }
     }
 
-    /// Slack's own setup order hands the operator credentials only after the
-    /// channel exists, so a credential-less channel must be creatable and must
-    /// not read back as configured (EVE-1015).
     #[test]
     fn slack_channel_config_accepts_absent_credentials() {
         let config = normalize_and_validate_channel_config(

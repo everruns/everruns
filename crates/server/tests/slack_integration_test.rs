@@ -1660,19 +1660,13 @@ async fn test_slack_replay_attack_old_timestamp() {
     resp.assert_status(StatusCode::UNAUTHORIZED);
 }
 
-/// The first-run order the setup checklist prescribes, end to end (EVE-1015):
-/// create an app with a credential-less Slack channel → publish → fetch the
-/// manifest → create the Slack app → paste the credentials back. Before this
-/// test the sequence was impossible: the manifest needed a channel, and a
-/// channel needed the credentials the manifest exists to obtain.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_first_run_order_without_placeholder_credentials() {
     init_tracing();
     let server = TestServer::in_memory().await;
     let agent_id = create_test_agent(&server).await;
 
-    // 1. Create the app with a Slack channel and no credentials — exactly the
-    //    payload the UI sends when both secret fields are left blank.
+    // Create the app with the payload sent by the UI before credentials exist.
     let app: App = server
         .post(
             "/v1/apps",
@@ -1693,7 +1687,6 @@ async fn test_slack_first_run_order_without_placeholder_credentials() {
     let app_id = app.public_id;
     let channel_id = app.channels[0].public_id;
 
-    // Nothing is advertised as configured yet.
     let channels: Value = server
         .get(&format!("/v1/apps/{app_id}/channels"))
         .await
@@ -1709,14 +1702,12 @@ async fn test_slack_first_run_order_without_placeholder_credentials() {
         "empty credentials must not read as configured: {config}"
     );
 
-    // 2. The manifest is still withheld while the app is a draft: Slack checks
-    //    the request URL the moment the manifest is saved.
+    // The manifest remains unavailable until the app is published.
     server
         .get(&format!("/v1/e/{channel_id}/slack/manifest"))
         .await
         .assert_status(StatusCode::NOT_FOUND);
 
-    // 3. Publish, then the manifest is reachable without inventing credentials.
     server
         .post(&format!("/v1/apps/{app_id}/publish"), json!({}))
         .await
@@ -1732,21 +1723,22 @@ async fn test_slack_first_run_order_without_placeholder_credentials() {
         manifest_yaml.contains(&format!("/v1/e/{channel_id}/slack/events")),
         "manifest must name this channel's webhook:\n{manifest_yaml}"
     );
+    assert!(
+        manifest_yaml.contains("event_subscriptions:")
+            && manifest_yaml.contains("bot_events:")
+            && manifest_yaml.contains("app_mention"),
+        "manifest must preserve Slack event subscriptions:\n{manifest_yaml}"
+    );
 
-    // 4. Slack saves the manifest and calls the request URL. The handshake is
-    //    answered before any credential exists — that is the whole point of the
-    //    ordering — and the checklist's webhook step ticks from it.
     let events_path = format!("/v1/e/{channel_id}/slack/events");
-    let challenge = send_slack_event_to_path(
+    send_slack_event_to_path(
         &server,
         &events_path,
         "not-the-real-secret",
         &json!({ "type": "url_verification", "challenge": "c-first-run" }),
     )
     .await
-    .assert_success()
-    .json::<Value>();
-    assert_eq!(challenge["challenge"], "c-first-run");
+    .assert_status(StatusCode::UNAUTHORIZED);
 
     let channels: Value = server
         .get(&format!("/v1/apps/{app_id}/channels"))
@@ -1754,12 +1746,12 @@ async fn test_slack_first_run_order_without_placeholder_credentials() {
         .assert_success()
         .json();
     assert!(
-        channels["data"][0]["channel_config"]["webhook_verified_at"].is_string(),
-        "url_verification must record webhook_verified_at"
+        channels["data"][0]["channel_config"]
+            .get("webhook_verified_at")
+            .is_none(),
+        "an unauthenticated challenge must not record webhook verification"
     );
 
-    // 5. Until the credentials land, the endpoint is inert: a message event is
-    //    rejected whatever it is signed with, and starts no session.
     let orphan_ts = unique_ts();
     let message = json!({
         "type": "event_callback",
@@ -1777,7 +1769,6 @@ async fn test_slack_first_run_order_without_placeholder_credentials() {
         .assert_status(StatusCode::UNAUTHORIZED);
     assert_no_sessions_with_tag(&server, &format!("slack:thread:{orphan_ts}")).await;
 
-    // 6. Paste the credentials back from the Slack app.
     let updated: Value = server
         .patch(
             &format!("/v1/apps/{app_id}/channels/{channel_id}"),
@@ -1802,8 +1793,26 @@ async fn test_slack_first_run_order_without_placeholder_credentials() {
         json!(true)
     );
 
-    // 7. Now the webhook accepts a correctly signed event, and rejects a wrongly
-    //    signed one.
+    let challenge = send_slack_event_to_path(
+        &server,
+        &events_path,
+        TEST_SIGNING_SECRET,
+        &json!({ "type": "url_verification", "challenge": "c-first-run" }),
+    )
+    .await
+    .assert_success()
+    .json::<Value>();
+    assert_eq!(challenge["challenge"], "c-first-run");
+
+    let channels: Value = server
+        .get(&format!("/v1/apps/{app_id}/channels"))
+        .await
+        .assert_success()
+        .json();
+    assert!(
+        channels["data"][0]["channel_config"]["webhook_verified_at"].is_string(),
+        "an authenticated challenge must record webhook verification"
+    );
     let thread_ts = unique_ts();
     let message = json!({
         "type": "event_callback",
