@@ -213,7 +213,7 @@ happens only in `ServerPaymentAuthority`; external workers call the control-plan
 |----|--------|----------|------------|--------|
 | TM-TENANT-001 | Cross-org resource access | Critical | All DB queries include `WHERE org_id = $org_id`; enforced at repository layer | MITIGATED |
 | TM-TENANT-002 | Org enumeration via error codes | Medium | 404 returned for cross-org access (not 403); prevents existence discovery | MITIGATED |
-| TM-TENANT-003 | Org cookie manipulation | High | Cookie value is `public_id`; server validates user membership against DB | MITIGATED |
+| TM-TENANT-003 | Org cookie manipulation | High | Cookie value is `public_id`; server validates user membership against DB. The browser UI selects its org per request with `X-Org-Id` and keeps the cookie as the fallback for header-less transports (SSE, browser-navigated downloads); both selectors go through the same membership validation, and the header additionally closes the window in which a cookie set asynchronously left a request answered under the previously selected org | MITIGATED |
 | TM-TENANT-004 | Personal access token cross-org access | High | Personal access tokens are user-scoped; org resolved per-request via `X-Org-Id` header or cookie, validated against user's org memberships loaded from DB | MITIGATED |
 | TM-TENANT-005 | Internal org_id exposure | Medium | `org_id` (BIGINT) never in APIs, URLs, logs, or error messages; only `public_id` exposed | MITIGATED |
 | TM-TENANT-006 | Session inherits wrong org | Medium | Sessions scoped via agent FK; agent scoped to org; query joins enforce chain | MITIGATED |

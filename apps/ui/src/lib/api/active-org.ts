@@ -19,6 +19,11 @@
  * readable synchronously, before any effect runs.
  */
 
+// THREAT[TM-TENANT-003]: naming the org in a header grants nothing. The value is
+// a `public_id` the user's own browser chose; the server validates it against
+// the caller's memberships and answers 404 for unknown or non-member orgs, the
+// same check the cookie already went through. This only removes the window in
+// which a request was answered under a *different* org than the client believed.
 export const ORG_HEADER = "X-Org-Id";
 
 let activeOrgId: string | null = null;
