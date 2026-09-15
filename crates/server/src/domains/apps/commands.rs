@@ -342,10 +342,9 @@ fn normalize_and_validate_channel_config(
             // forced operators to invent placeholders (EVE-1015). An empty
             // signing secret leaves the webhook inert — see
             // `handle_slack_event` in `crates/server/src/api/slack_events.rs`.
-            let _config: SlackChannelConfig = serde_json::from_value(channel_config.clone())
-                .map_err(|e| {
-                    CommandError::bad_request(format!("Invalid Slack channel config: {e}"))
-                })?;
+            serde_json::from_value::<SlackChannelConfig>(channel_config.clone()).map_err(|e| {
+                CommandError::bad_request(format!("Invalid Slack channel config: {e}"))
+            })?;
         }
         ChannelType::AgUi => {
             let config: AgUiChannelConfig = serde_json::from_value(channel_config.clone())
