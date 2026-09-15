@@ -161,10 +161,9 @@ fn prepare_trigger_config(
 fn redact_trigger_for_response(mut trigger: AgentTrigger) -> AgentTrigger {
     if trigger.trigger_type == AgentTriggerType::Webhook
         && let Some(config) = trigger.config.as_object_mut()
+        && config.remove("token").is_some()
     {
-        if config.remove("token").is_some() {
-            config.insert("token_configured".to_string(), Value::Bool(true));
-        }
+        config.insert("token_configured".to_string(), Value::Bool(true));
     }
     trigger
 }
