@@ -146,10 +146,11 @@ mod tests {
     use super::*;
 
     fn system_with_everything() -> FeatureFlags {
-        let mut flags = FeatureFlags::default();
-        flags.environments = true;
-        flags.skills = true;
-        flags
+        FeatureFlags {
+            environments: true,
+            skills: true,
+            ..FeatureFlags::default()
+        }
     }
 
     #[test]
