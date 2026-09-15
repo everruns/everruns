@@ -3913,13 +3913,13 @@ mod tests {
     #[test]
     fn test_slack_webhook_url_shape() {
         assert_eq!(
-            slack_webhook_url("https://example.com/api", "app_abc"),
-            "https://example.com/api/v1/apps/app_abc/slack/events"
+            slack_webhook_url("https://example.com/api", "channel_abc"),
+            "https://example.com/api/v1/e/channel_abc/slack/events"
         );
         // A configured base with a trailing slash must not double up.
         assert_eq!(
-            slack_webhook_url("https://example.com/api/", "app_abc"),
-            "https://example.com/api/v1/apps/app_abc/slack/events"
+            slack_webhook_url("https://example.com/api/", "channel_abc"),
+            "https://example.com/api/v1/e/channel_abc/slack/events"
         );
     }
 
