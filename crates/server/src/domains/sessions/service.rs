@@ -4944,6 +4944,8 @@ mod tests {
         .await
         .unwrap();
 
+        let mut create_req = build_create_request(harness.id, None, None);
+        create_req.tags = vec!["baseline".to_string()];
         let session = session_service
             .create(
                 &caller,
@@ -4951,7 +4953,7 @@ mod tests {
                 None,
                 None,
                 SessionSource::Api,
-                build_create_request(harness.id, None, None),
+                create_req,
             )
             .await
             .unwrap();
@@ -4983,6 +4985,12 @@ mod tests {
                 err.to_string().contains("reserved for internal subsystems"),
                 "got: {err} for tags: {forbidden:?}"
             );
+            let reloaded = session_service
+                .get(&external_caller(DEFAULT_ORG_ID), session.id.uuid(), None)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(reloaded.tags, ["baseline"]);
         }
     }
 
