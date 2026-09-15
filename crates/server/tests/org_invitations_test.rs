@@ -17,6 +17,7 @@ mod test_harness;
 
 use axum::http::StatusCode;
 use chrono::{Duration, Utc};
+use everruns_core::DEFAULT_ORG_ID;
 use everruns_platform::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID};
 use everruns_server::{
     api::org_invitations::accept_pending_invitation,
@@ -478,6 +479,205 @@ async fn concurrent_pending_invitations_cannot_exceed_the_member_limit() {
                 .expect("second membership lookup")
         ),
         1
+    );
+}
+
+#[tokio::test]
+async fn direct_add_and_invitation_acceptance_share_the_member_limit() {
+    const ADVISORY_LOCK_KEY: i64 = 9_833_603;
+
+    let server = TestServer::new().await;
+    let org = server
+        .db
+        .get_organization(DEFAULT_ORG_ID)
+        .await
+        .expect("get default organization")
+        .expect("default organization exists");
+    let initial_member_count = server
+        .db
+        .count_organization_members(org.org_id)
+        .await
+        .expect("count initial members");
+    assert!(initial_member_count <= 49);
+    let mut test_member_ids = Vec::new();
+    for index in initial_member_count..49 {
+        let user = create_verified_user(
+            &server,
+            &format!("mixed-member-{index}-{}@example.com", Uuid::new_v4()),
+        )
+        .await;
+        server
+            .db
+            .add_organization_member(org.org_id, user, "member")
+            .await
+            .expect("add member");
+        test_member_ids.push(user);
+    }
+    let direct_user =
+        create_verified_user(&server, &format!("direct-{}@example.com", Uuid::new_v4())).await;
+    let invitee_email = format!("invitee-{}@example.com", Uuid::new_v4());
+    let invitee = create_verified_user(&server, &invitee_email).await;
+    let invitation = create_invitation(
+        &server,
+        org.org_id,
+        &invitee_email,
+        Utc::now() + Duration::days(1),
+    )
+    .await;
+
+    let suffix = Uuid::new_v4().simple().to_string();
+    let function_name = format!("pause_direct_member_add_{suffix}");
+    let trigger_name = format!("pause_direct_member_add_{suffix}");
+    let trigger_sql = format!(
+        r#"
+        CREATE FUNCTION {function_name}() RETURNS trigger AS $$
+        BEGIN
+            IF NEW.org_id = {org_id} AND NEW.user_id = '{direct_user}'::uuid THEN
+                PERFORM pg_advisory_lock({ADVISORY_LOCK_KEY});
+                PERFORM pg_advisory_unlock({ADVISORY_LOCK_KEY});
+            END IF;
+            RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        CREATE TRIGGER {trigger_name}
+        BEFORE INSERT ON organization_members
+        FOR EACH ROW EXECUTE FUNCTION {function_name}();
+        "#,
+        org_id = org.org_id,
+    );
+    sqlx::raw_sql(sqlx::AssertSqlSafe(trigger_sql.as_str()))
+        .execute(&server.pool)
+        .await
+        .expect("create direct-add pause trigger");
+
+    let mut lock_connection = server
+        .pool
+        .acquire()
+        .await
+        .expect("acquire lock connection");
+    sqlx::query("SELECT pg_advisory_lock($1)")
+        .bind(ADVISORY_LOCK_KEY)
+        .execute(&mut *lock_connection)
+        .await
+        .expect("hold direct-add pause lock");
+
+    let member_path = format!("/v1/orgs/{}/members", org.public_id);
+    let direct_add = server.post(
+        &member_path,
+        json!({ "user_id": direct_user, "role": "member" }),
+    );
+    tokio::pin!(direct_add);
+    let wait_for_direct_add = async {
+        for _ in 0..100 {
+            let waiting = sqlx::query_scalar::<_, bool>(
+                r#"
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM pg_locks
+                    WHERE locktype = 'advisory'
+                      AND classid::bigint = 0
+                      AND objid::bigint = $1
+                      AND NOT granted
+                )
+                "#,
+            )
+            .bind(ADVISORY_LOCK_KEY)
+            .fetch_one(&server.pool)
+            .await
+            .expect("check direct-add pause lock");
+            if waiting {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        panic!("direct member add did not reach the pause trigger");
+    };
+    tokio::select! {
+        response = direct_add.as_mut() => {
+            panic!("direct member add completed before the pause: {}", response.status());
+        }
+        _ = wait_for_direct_add => {}
+    }
+
+    let acceptance = accept_pending_invitation(&server.db, &invitation.public_id, invitee, 50);
+    tokio::pin!(acceptance);
+    let early_acceptance = tokio::select! {
+        result = acceptance.as_mut() => Some(result),
+        _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => None,
+    };
+
+    sqlx::query("SELECT pg_advisory_unlock($1)")
+        .bind(ADVISORY_LOCK_KEY)
+        .execute(&mut *lock_connection)
+        .await
+        .expect("release direct-add pause lock");
+    let direct_response = direct_add.await;
+    let acceptance_result = match early_acceptance {
+        Some(result) => result,
+        None => acceptance.await,
+    };
+
+    let cleanup_sql = format!(
+        "DROP TRIGGER {trigger_name} ON organization_members; DROP FUNCTION {function_name}();"
+    );
+    sqlx::raw_sql(sqlx::AssertSqlSafe(cleanup_sql.as_str()))
+        .execute(&server.pool)
+        .await
+        .expect("remove direct-add pause trigger");
+
+    let direct_succeeded = direct_response.status() == StatusCode::CREATED;
+    let acceptance_succeeded = acceptance_result.is_ok();
+    let final_member_count = server
+        .db
+        .count_organization_members(org.org_id)
+        .await
+        .expect("count members");
+    let direct_is_member = server
+        .db
+        .is_organization_member(org.org_id, direct_user)
+        .await
+        .expect("direct membership lookup");
+    let invitee_is_member = server
+        .db
+        .is_organization_member(org.org_id, invitee)
+        .await
+        .expect("invitee membership lookup");
+    let current_invitation = server
+        .db
+        .get_org_invitation_by_public_id_and_email(&invitation.public_id, &invitee_email)
+        .await
+        .expect("get invitation")
+        .expect("invitation exists");
+
+    test_member_ids.extend([direct_user, invitee]);
+    for user_id in test_member_ids {
+        server
+            .db
+            .remove_organization_member(org.org_id, user_id)
+            .await
+            .expect("remove test member");
+    }
+
+    assert_eq!(
+        usize::from(direct_succeeded) + usize::from(acceptance_succeeded),
+        1
+    );
+    if !direct_succeeded {
+        direct_response.assert_status(StatusCode::CONFLICT);
+    }
+    if let Err(error) = &acceptance_result {
+        assert_eq!(error.code, "member_limit_reached");
+    }
+    assert_eq!(final_member_count, 50);
+    assert_eq!(direct_is_member, direct_succeeded);
+    assert_eq!(invitee_is_member, acceptance_succeeded);
+    assert_eq!(
+        current_invitation.accepted_at.is_some(),
+        acceptance_succeeded
+    );
+    assert_eq!(
+        current_invitation.accepted_by == Some(invitee),
+        acceptance_succeeded
     );
 }
 

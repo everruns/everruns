@@ -3,7 +3,113 @@
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;
+use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
+
+#[derive(Clone, Copy)]
+enum ExistingMemberAction {
+    Reject,
+    UpdateRole,
+}
+
+async fn add_organization_member_with_limit_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    org_id: i64,
+    user_id: Uuid,
+    role: &str,
+    max_members: i64,
+    existing_member_action: ExistingMemberAction,
+) -> Result<AddOrganizationMemberResult> {
+    let org_exists = sqlx::query_scalar::<_, i64>(
+        "SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE",
+    )
+    .bind(org_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    if org_exists.is_none() {
+        return Ok(AddOrganizationMemberResult::OrganizationNotFound);
+    }
+
+    let existing = sqlx::query_as::<_, OrganizationMemberRow>(
+        r#"
+        SELECT org_id, user_id, role, created_at
+        FROM organization_members
+        WHERE org_id = $1 AND user_id = $2
+        "#,
+    )
+    .bind(org_id)
+    .bind(user_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    if existing.is_some() {
+        return match existing_member_action {
+            ExistingMemberAction::Reject => Ok(AddOrganizationMemberResult::AlreadyMember),
+            ExistingMemberAction::UpdateRole => {
+                let updated = sqlx::query_as::<_, OrganizationMemberRow>(
+                    r#"
+                    UPDATE organization_members
+                    SET role = $3
+                    WHERE org_id = $1 AND user_id = $2
+                    RETURNING org_id, user_id, role, created_at
+                    "#,
+                )
+                .bind(org_id)
+                .bind(user_id)
+                .bind(role)
+                .fetch_one(&mut **tx)
+                .await?;
+                Ok(AddOrganizationMemberResult::Added(updated))
+            }
+        };
+    }
+
+    let member_count =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM organization_members WHERE org_id = $1")
+            .bind(org_id)
+            .fetch_one(&mut **tx)
+            .await?;
+    if member_count >= max_members {
+        return Ok(AddOrganizationMemberResult::MemberLimitReached);
+    }
+
+    let added = match existing_member_action {
+        ExistingMemberAction::Reject => {
+            let added = sqlx::query_as::<_, OrganizationMemberRow>(
+                r#"
+                INSERT INTO organization_members (org_id, user_id, role)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (org_id, user_id) DO NOTHING
+                RETURNING org_id, user_id, role, created_at
+                "#,
+            )
+            .bind(org_id)
+            .bind(user_id)
+            .bind(role)
+            .fetch_optional(&mut **tx)
+            .await?;
+            let Some(added) = added else {
+                return Ok(AddOrganizationMemberResult::AlreadyMember);
+            };
+            added
+        }
+        ExistingMemberAction::UpdateRole => {
+            sqlx::query_as::<_, OrganizationMemberRow>(
+                r#"
+                INSERT INTO organization_members (org_id, user_id, role)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role
+                RETURNING org_id, user_id, role, created_at
+                "#,
+            )
+            .bind(org_id)
+            .bind(user_id)
+            .bind(role)
+            .fetch_one(&mut **tx)
+            .await?
+        }
+    };
+    Ok(AddOrganizationMemberResult::Added(added))
+}
 
 impl Database {
     // ============================================
@@ -302,6 +408,30 @@ impl Database {
         .await?;
 
         Ok(row)
+    }
+
+    pub async fn add_organization_member_with_limit(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        role: &str,
+        max_members: i64,
+    ) -> Result<AddOrganizationMemberResult> {
+        let mut tx = self.pool.begin().await?;
+        let result = add_organization_member_with_limit_in_transaction(
+            &mut tx,
+            org_id,
+            user_id,
+            role,
+            max_members,
+            ExistingMemberAction::Reject,
+        )
+        .await?;
+        match result {
+            AddOrganizationMemberResult::Added(_) => tx.commit().await?,
+            _ => tx.rollback().await?,
+        }
+        Ok(result)
     }
 
     pub async fn remove_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
@@ -917,16 +1047,6 @@ impl Database {
         max_members: i64,
     ) -> Result<AcceptOrgInvitationResult> {
         let mut tx = self.pool.begin().await?;
-        let org_exists = sqlx::query_scalar::<_, i64>(
-            "SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE",
-        )
-        .bind(org_id)
-        .fetch_optional(&mut *tx)
-        .await?;
-        if org_exists.is_none() {
-            tx.rollback().await?;
-            return Ok(AcceptOrgInvitationResult::NotFound);
-        }
 
         let accepted = sqlx::query_as::<_, OrgInvitationRow>(
             r#"
@@ -975,39 +1095,29 @@ impl Database {
                 Some(_) => AcceptOrgInvitationResult::NotFound,
             });
         };
-
-        let already_member = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM organization_members WHERE org_id = $1 AND user_id = $2)",
+        match add_organization_member_with_limit_in_transaction(
+            &mut tx,
+            org_id,
+            accepted_by,
+            &accepted.role,
+            max_members,
+            ExistingMemberAction::UpdateRole,
         )
-        .bind(org_id)
-        .bind(accepted_by)
-        .fetch_one(&mut *tx)
-        .await?;
-        if !already_member {
-            let member_count = sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM organization_members WHERE org_id = $1",
-            )
-            .bind(org_id)
-            .fetch_one(&mut *tx)
-            .await?;
-            if member_count >= max_members {
+        .await?
+        {
+            AddOrganizationMemberResult::Added(_) => {}
+            AddOrganizationMemberResult::OrganizationNotFound => {
+                tx.rollback().await?;
+                return Ok(AcceptOrgInvitationResult::NotFound);
+            }
+            AddOrganizationMemberResult::MemberLimitReached => {
                 tx.rollback().await?;
                 return Ok(AcceptOrgInvitationResult::MemberLimitReached);
             }
+            AddOrganizationMemberResult::AlreadyMember => {
+                unreachable!("existing members are updated when accepting an invitation")
+            }
         }
-
-        sqlx::query(
-            r#"
-            INSERT INTO organization_members (org_id, user_id, role)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role
-            "#,
-        )
-        .bind(org_id)
-        .bind(accepted_by)
-        .bind(&accepted.role)
-        .execute(&mut *tx)
-        .await?;
         tx.commit().await?;
         Ok(AcceptOrgInvitationResult::Accepted(Box::new(accepted)))
     }

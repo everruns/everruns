@@ -3184,6 +3184,23 @@ impl StorageBackend {
         dispatch!(self, add_organization_member, org_id, user_id, role)
     }
 
+    pub async fn add_organization_member_with_limit(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        role: &str,
+        max_members: i64,
+    ) -> Result<AddOrganizationMemberResult> {
+        dispatch!(
+            self,
+            add_organization_member_with_limit,
+            org_id,
+            user_id,
+            role,
+            max_members
+        )
+    }
+
     pub async fn remove_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
         dispatch!(self, remove_organization_member, org_id, user_id)
     }

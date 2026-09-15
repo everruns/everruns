@@ -69,6 +69,15 @@ pub struct OrganizationMemberRow {
     pub created_at: DateTime<Utc>,
 }
 
+/// Result of adding an organization member under the organization capacity lock.
+#[derive(Debug, Clone)]
+pub enum AddOrganizationMemberResult {
+    Added(OrganizationMemberRow),
+    OrganizationNotFound,
+    AlreadyMember,
+    MemberLimitReached,
+}
+
 /// Organization member with user info (for API responses)
 #[derive(Debug, Clone, FromRow)]
 pub struct OrganizationMemberWithUserRow {

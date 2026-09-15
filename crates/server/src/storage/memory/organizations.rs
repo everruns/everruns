@@ -4,7 +4,51 @@ use super::super::models::*;
 use super::InMemoryDatabase;
 use anyhow::Result;
 use everruns_provider::typed_id::ModelId;
+use std::collections::HashMap;
 use uuid::Uuid;
+
+#[derive(Clone, Copy)]
+enum ExistingMemberAction {
+    Reject,
+    UpdateRole,
+}
+
+fn add_organization_member_with_limit_to_map(
+    members: &mut HashMap<(i64, Uuid), OrganizationMemberRow>,
+    org_id: i64,
+    user_id: Uuid,
+    role: &str,
+    max_members: i64,
+    existing_member_action: ExistingMemberAction,
+) -> AddOrganizationMemberResult {
+    let member_key = (org_id, user_id);
+    if let Some(existing) = members.get_mut(&member_key) {
+        return match existing_member_action {
+            ExistingMemberAction::Reject => AddOrganizationMemberResult::AlreadyMember,
+            ExistingMemberAction::UpdateRole => {
+                existing.role = role.to_string();
+                AddOrganizationMemberResult::Added(existing.clone())
+            }
+        };
+    }
+    if members
+        .values()
+        .filter(|member| member.org_id == org_id)
+        .count() as i64
+        >= max_members
+    {
+        return AddOrganizationMemberResult::MemberLimitReached;
+    }
+
+    let row = OrganizationMemberRow {
+        org_id,
+        user_id,
+        role: role.to_string(),
+        created_at: InMemoryDatabase::now(),
+    };
+    members.insert(member_key, row.clone());
+    AddOrganizationMemberResult::Added(row)
+}
 
 impl InMemoryDatabase {
     // ============================================
@@ -210,6 +254,28 @@ impl InMemoryDatabase {
             .write()
             .insert((org_id, user_id), row.clone());
         Ok(row)
+    }
+
+    pub async fn add_organization_member_with_limit(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        role: &str,
+        max_members: i64,
+    ) -> Result<AddOrganizationMemberResult> {
+        let organizations = self.organizations.read();
+        if !organizations.contains_key(&org_id) {
+            return Ok(AddOrganizationMemberResult::OrganizationNotFound);
+        }
+        let mut members = self.organization_members.write();
+        Ok(add_organization_member_with_limit_to_map(
+            &mut members,
+            org_id,
+            user_id,
+            role,
+            max_members,
+            ExistingMemberAction::Reject,
+        ))
     }
 
     pub async fn remove_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
@@ -741,6 +807,10 @@ impl InMemoryDatabase {
         max_members: i64,
     ) -> Result<AcceptOrgInvitationResult> {
         let now = Self::now();
+        let organizations = self.organizations.read();
+        if !organizations.contains_key(&org_id) {
+            return Ok(AcceptOrgInvitationResult::NotFound);
+        }
         let mut invitations = self.org_invitations.write();
         let Some(inv) = invitations
             .iter_mut()
@@ -759,28 +829,28 @@ impl InMemoryDatabase {
         }
 
         let mut members = self.organization_members.write();
-        let member_key = (org_id, accepted_by);
-        if !members.contains_key(&member_key)
-            && members
-                .values()
-                .filter(|member| member.org_id == org_id)
-                .count() as i64
-                >= max_members
-        {
-            return Ok(AcceptOrgInvitationResult::MemberLimitReached);
+        match add_organization_member_with_limit_to_map(
+            &mut members,
+            org_id,
+            accepted_by,
+            &inv.role,
+            max_members,
+            ExistingMemberAction::UpdateRole,
+        ) {
+            AddOrganizationMemberResult::Added(_) => {}
+            AddOrganizationMemberResult::MemberLimitReached => {
+                return Ok(AcceptOrgInvitationResult::MemberLimitReached);
+            }
+            AddOrganizationMemberResult::OrganizationNotFound => {
+                unreachable!("organization existence is checked before invitation acceptance")
+            }
+            AddOrganizationMemberResult::AlreadyMember => {
+                unreachable!("existing members are updated when accepting an invitation")
+            }
         }
         inv.accepted_at = Some(now);
         inv.accepted_by = Some(accepted_by);
         inv.updated_at = now;
-        members
-            .entry(member_key)
-            .and_modify(|member| member.role = inv.role.clone())
-            .or_insert_with(|| OrganizationMemberRow {
-                org_id,
-                user_id: accepted_by,
-                role: inv.role.clone(),
-                created_at: now,
-            });
         Ok(AcceptOrgInvitationResult::Accepted(Box::new(inv.clone())))
     }
 }
