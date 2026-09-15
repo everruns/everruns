@@ -157,6 +157,12 @@ const sessionFixture = {
   active_schedule_count: 1,
 };
 
+// Flag on, so the read-only assertions below also cover the environment panel:
+// it must read the environment and nothing else.
+jest.mock("@/providers/feature-flags-provider", () => ({
+  useFeatureFlag: () => true,
+}));
+
 jest.mock("../app/(main)/sessions/[sessionId]/session-context", () => ({
   SessionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useSessionContext: () => ({

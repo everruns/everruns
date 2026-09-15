@@ -1694,7 +1694,11 @@ impl ServerAppBuilder {
 
         // Environments describe every session, including the ones with no
         // sandbox at all, so they are not gated on the sandbox feature flag.
-        api_routes = api_routes.merge(api::environments::routes(environments_state));
+        // They are gated on their own deployment flag while the view is still
+        // derived from capabilities rather than stored profiles.
+        if feature_flags.environments {
+            api_routes = api_routes.merge(api::environments::routes(environments_state));
+        }
         if let Some(session_sandbox_state) = session_sandbox_state {
             api_routes = api_routes.merge(api::session_sandbox::routes(session_sandbox_state));
         }

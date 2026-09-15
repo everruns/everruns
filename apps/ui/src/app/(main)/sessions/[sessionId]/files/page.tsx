@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api/client";
 import { useQuery } from "@tanstack/react-query";
 import { SessionEnvironmentPanel } from "@/components/session/session-environment-panel";
+import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useSessionContext } from "../session-context";
 
 function useSessionStorage(sessionId: string, enabled: boolean) {
@@ -117,6 +118,10 @@ export default function WorkspacePage() {
   const workspaceId = session?.workspace_id;
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
 
+  // Gated at the call site, not inside the panel: the panel stays a pure
+  // component the dev showcase can render without a flags provider.
+  const environmentsEnabled = useFeatureFlag("environments");
+
   const features = new Set(session?.features ?? []);
   const hasStorage = features.has("secrets") || features.has("key_value");
 
@@ -151,7 +156,7 @@ export default function WorkspacePage() {
           )}
         </div>
 
-        <SessionEnvironmentPanel sessionId={sessionId} />
+        {environmentsEnabled ? <SessionEnvironmentPanel sessionId={sessionId} /> : null}
 
         <StoragePanel sessionId={sessionId} enabled={hasStorage} />
       </div>

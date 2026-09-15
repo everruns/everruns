@@ -68,6 +68,13 @@ pub struct FeatureFlags {
     /// Experimental remote-control surface; requires deployment enablement and
     /// per-org opt-in. See `knowledge/ui/webmcp.md`.
     pub webmcp: bool,
+    /// Session environments: where a session's commands run and what they may
+    /// touch. Deployment-controlled and not org-configurable, like
+    /// `machine_payments`: it describes the sandbox surface, so turning it on is
+    /// a platform decision rather than a per-org preference. Defaults to on
+    /// wherever sandboxes are already enabled.
+    /// See `knowledge/harnesses/execution-environments.md`.
+    pub environments: bool,
     /// Machine-payment custody, policy, audit, and paid capability surfaces.
     /// Deployment-controlled and off by default on every grade because spend is
     /// irreversible. Unlike experimental flags, this is not org-configurable.
@@ -110,8 +117,20 @@ pub struct FeatureFlagDefinition {
     pub experimental: bool,
 }
 
+/// Whether this deployment runs sandboxes at all.
+///
+/// Sandbox enablement is an internal, env-controlled decision
+/// (`crates/core/src/execution_features.rs`); the environments surface follows
+/// it so an operator who turned sandboxes on does not have to find a second
+/// switch to see what those sandboxes can do.
+fn sandboxes_enabled() -> bool {
+    let internal = everruns_core::InternalFeatureFlags::from_env();
+    internal.session_sandbox || internal.container_sandbox
+}
+
 /// API-visible flags that organizations may opt into when the deployment allows them.
-/// Deployment-only UI gates such as `machine_payments` intentionally stay out of this catalog.
+/// Deployment-only UI gates such as `machine_payments` and `environments` intentionally stay
+/// out of this catalog.
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
     FeatureFlagDefinition {
         name: "notifications",
@@ -234,6 +253,7 @@ impl FeatureFlags {
             observers: opt_in("observers", system.observers),
             public_chat: opt_in("public_chat", system.public_chat),
             webmcp: opt_in("webmcp", system.webmcp),
+            environments: system.environments,
             machine_payments: system.machine_payments,
         }
     }
@@ -254,6 +274,14 @@ impl FeatureFlags {
             observers: experimental_flag("FEATURE_OBSERVERS", grade),
             public_chat: experimental_flag("FEATURE_PUBLIC_CHAT", grade),
             webmcp: experimental_flag("FEATURE_WEBMCP", grade),
+            // Environments describe the sandbox surface, so a deployment that
+            // has already turned sandboxes on gets them without a second
+            // switch. Dev keeps the experimental convenience of being on by
+            // default; everywhere else this is an explicit platform decision.
+            environments: standard_flag(
+                "FEATURE_ENVIRONMENTS",
+                sandboxes_enabled() || grade.experimental_features_enabled(),
+            ),
             machine_payments: standard_flag("FEATURE_MACHINE_PAYMENTS", false),
         }
     }
@@ -283,6 +311,7 @@ impl FeatureFlags {
             ("voice".to_string(), self.voice),
             ("agent_delegation".to_string(), self.agent_delegation),
             ("observers".to_string(), self.observers),
+            ("environments".to_string(), self.environments),
             ("public_chat".to_string(), self.public_chat),
             ("webmcp".to_string(), self.webmcp),
             ("machine_payments".to_string(), self.machine_payments),
@@ -303,6 +332,7 @@ impl FeatureFlags {
             "voice" => self.voice,
             "agent_delegation" => self.agent_delegation,
             "observers" => self.observers,
+            "environments" => self.environments,
             "public_chat" => self.public_chat,
             "webmcp" => self.webmcp,
             "machine_payments" => self.machine_payments,
@@ -343,6 +373,7 @@ impl FeatureFlags {
             voice: true,
             agent_delegation: true,
             observers: true,
+            environments: true,
             public_chat: true,
             webmcp: true,
             machine_payments: true,
@@ -413,6 +444,60 @@ mod tests {
     }
 
     #[test]
+    fn environments_follows_sandbox_enablement_in_prod() {
+        let _lock = lock_env();
+        let previous_environments = std::env::var("FEATURE_ENVIRONMENTS").ok();
+        let previous_sandbox = std::env::var("FEATURE_SESSION_SANDBOX").ok();
+        unsafe { std::env::remove_var("FEATURE_ENVIRONMENTS") };
+
+        unsafe { std::env::remove_var("FEATURE_SESSION_SANDBOX") };
+        assert!(
+            !FeatureFlags::from_env(&DeploymentGrade::Prod).environments,
+            "a prod deployment with no sandboxes has nothing to describe"
+        );
+
+        unsafe { std::env::set_var("FEATURE_SESSION_SANDBOX", "true") };
+        assert!(
+            FeatureFlags::from_env(&DeploymentGrade::Prod).environments,
+            "turning sandboxes on should not need a second switch"
+        );
+
+        // The explicit env var still wins, so a platform admin can opt out.
+        unsafe { std::env::set_var("FEATURE_ENVIRONMENTS", "false") };
+        assert!(!FeatureFlags::from_env(&DeploymentGrade::Prod).environments);
+
+        restore_env("FEATURE_ENVIRONMENTS", previous_environments);
+        restore_env("FEATURE_SESSION_SANDBOX", previous_sandbox);
+    }
+
+    #[test]
+    fn environments_is_not_an_org_preference() {
+        // Not in the opt-in catalog: an org admin has no toggle for it.
+        assert!(
+            !API_FEATURE_FLAG_DEFINITIONS
+                .iter()
+                .any(|definition| definition.name == "environments"),
+            "environments is a platform decision, not an org preference"
+        );
+
+        // And it reaches an org on the deployment flag alone, with no opt-in row.
+        let system = FeatureFlags {
+            environments: true,
+            ..FeatureFlags::default()
+        };
+        let effective = FeatureFlags::for_org(&system, &std::collections::HashMap::new());
+        assert!(effective.environments);
+
+        let system_off = FeatureFlags::default();
+        let mut opted_in = std::collections::HashMap::new();
+        opted_in.insert("environments".to_string(), true);
+        assert!(
+            !FeatureFlags::for_org(&system_off, &opted_in).environments,
+            "an org cannot enable what the deployment withholds"
+        );
+    }
+
+    #[test]
     fn test_is_enabled_dynamic() {
         let flags = FeatureFlags {
             notifications: true,
@@ -426,6 +511,7 @@ mod tests {
             voice: true,
             agent_delegation: true,
             observers: true,
+            environments: true,
             public_chat: true,
             webmcp: true,
             machine_payments: true,
@@ -496,6 +582,7 @@ mod tests {
             voice: true,
             agent_delegation: true,
             observers: true,
+            environments: true,
             public_chat: true,
             webmcp: true,
             machine_payments: true,

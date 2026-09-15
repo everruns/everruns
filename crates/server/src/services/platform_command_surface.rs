@@ -439,6 +439,7 @@ mod tests {
                 voice: true,
                 agent_delegation: true,
                 observers: true,
+                environments: true,
                 public_chat: true,
                 webmcp: true,
                 machine_payments: true,

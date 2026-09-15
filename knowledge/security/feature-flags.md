@@ -39,6 +39,9 @@ System-level feature flags that control feature availability across the platform
 
 - **Experimental**: Auto-enabled in dev, disabled in prod. Use for features under active development.
 - **Standard**: Off by default everywhere. Enabled explicitly via env var.
+- **Deployment-only**: API-visible but absent from the org opt-in catalog, so only a platform
+  operator can turn it on (`machine_payments`, `environments`). A standard flag whose default may
+  follow another deployment decision.
 
 ### Flag Visibility
 
@@ -66,6 +69,15 @@ Current API-visible experimental flags include:
 - `agent_delegation`: gates outbound agent delegation capabilities (`a2a_agent_delegation`, `agent_handoff`). Deployment disablement prevents registration; org-effective disablement removes them from API and Platform listings, assignment, and runtime tool construction. Env var: `FEATURE_AGENT_DELEGATION`. See EVE-506.
 - `observers`: gates online scoring of production sessions (`/v1/observers`), the `turn.completed` matching listener, and the background scoring worker. When off, no observer routes are mounted and no listener/worker is registered. Env var: `FEATURE_OBSERVERS`. See `knowledge/evaluation/online-evals.md`.
 - `public_chat`: gates the Public Chat feature, the public endpoints (`/v1/apps/{app_id}/public-chat[/config]`), `public_chat` channel creation/editing, the builder UI (channel-type picker), and the public web route. The public endpoints are gated on the deployment flag; channel creation and the builder UI are gated on the org-effective flag. Env var: `FEATURE_PUBLIC_CHAT`. See `knowledge/integrations/public-chat.md`.
+- `environments`: gates the session environment surface, `GET /v1/sessions/{id}/environment` and
+  `GET /v1/environment-targets`, plus the Workspace-tab panel. Deployment-controlled and **not
+  org-configurable**, like `machine_payments`: it describes the sandbox surface, so enabling it is a
+  platform decision rather than a per-org preference, and it stays out of
+  `API_FEATURE_FLAG_DEFINITIONS` so no org settings toggle exists for it. It defaults to on wherever
+  sandboxes are already enabled (`FEATURE_SESSION_SANDBOX` or `FEATURE_CONTAINER_SANDBOX`), so an
+  operator who turned sandboxes on does not have to find a second switch, and to on in dev. An
+  explicit `FEATURE_ENVIRONMENTS=false` still wins. Disablement leaves the routes unmounted and the
+  commands returning `feature_not_enabled`. See `knowledge/harnesses/execution-environments.md`.
 - `webmcp`: gates browser-native tools exposed by the authenticated UI. The deployment gate also controls the `tools` Permissions Policy; org opt-in controls registration. Env var: `FEATURE_WEBMCP`. See `knowledge/ui/webmcp.md`.
 
 ## Architecture

@@ -884,6 +884,8 @@ export interface FeatureFlags {
   agent_delegation: boolean;
   /** Observers: online scoring of production sessions. Experimental. */
   observers: boolean;
+  /** Session environments: where a session's commands run and what they can do. Experimental. */
+  environments: boolean;
   /** Public Chat (isolated public-facing chat web app + `public_chat` channel). Experimental. */
   public_chat: boolean;
   /** Browser-native tools exposed by the authenticated Everruns UI. Experimental. */

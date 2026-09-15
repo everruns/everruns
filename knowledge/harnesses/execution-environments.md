@@ -28,6 +28,16 @@ What exists in code today:
   `resolved_from: "capabilities"`;
 - the Workspace-tab environment panel in the UI.
 
+All of it sits behind the `environments` feature flag, which is
+deployment-controlled rather than org-configurable: describing the sandbox
+surface is a platform decision, so there is no per-org toggle. It defaults to on
+wherever sandboxes are already enabled, because an operator who turned sandboxes
+on should not have to find a second switch to see what those sandboxes can do,
+and to on in dev. The flag is what makes shipping a provisional view safe: the
+derived `resolved_from: "capabilities"` answer reaches users only where a
+platform operator allowed it, and the flag comes down once profiles replace the
+derivation. See [Feature Flags](../security/feature-flags.md).
+
 Not yet: environment profiles as agent configuration, the machine target,
 kernel containment, and the provider ports. That concept solved the durable
 logical sandbox: one working filesystem, provider-neutral drivers, checkpoints,

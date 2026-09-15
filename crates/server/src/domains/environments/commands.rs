@@ -75,3 +75,22 @@ impl Command for ListEnvironmentTargets {
 }
 
 inventory::submit! { CommandDescriptor::of::<ListEnvironmentTargets>() }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn both_commands_are_gated_on_the_environments_flag() {
+        // Route mounting gates the deployment; this gates the org opt-in, and
+        // covers the Platform and MCP surfaces that never touch the router.
+        assert_eq!(
+            GetSessionEnvironment::meta().required_feature(),
+            Some("environments")
+        );
+        assert_eq!(
+            ListEnvironmentTargets::meta().required_feature(),
+            Some("environments")
+        );
+    }
+}
