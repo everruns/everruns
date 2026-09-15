@@ -25,7 +25,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "./auth-provider";
 import { switchOrg as switchOrgApi } from "@/lib/api/users";
-import { setActiveOrgId } from "@/lib/api/active-org";
+import { getActiveOrgId, setActiveOrgId } from "@/lib/api/active-org";
 import type { OrganizationMembership, OrgRole } from "@/lib/api/types";
 
 // Default organization public ID (matches backend DEFAULT_ORG_PUBLIC_ID)
@@ -99,6 +99,14 @@ interface OrgProviderProps {
 
 export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps) {
   const { user, isLoading: authLoading } = useAuth();
+  // Published during render, not from an effect: children hydrate their
+  // server-seeded query entries while rendering, and those entries were hashed
+  // on the server under this same cookie org (see lib/server-query.ts). An
+  // effect runs after that, too late to match. Idempotent, so a double render
+  // costs nothing.
+  if (initialOrgId && getActiveOrgId() === null) {
+    setActiveOrgId(initialOrgId);
+  }
   const [currentOrg, setCurrentOrgStateRaw] = useState<OrganizationMembership | null>(null);
   // Publish to the API layer before the state commit, so the very first request
   // a consumer makes in the new org already carries `X-Org-Id`.

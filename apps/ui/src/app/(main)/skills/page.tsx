@@ -18,8 +18,8 @@ import type { FeatureFlags, ResourceConfigResponse, Skill } from "@/lib/api/type
 import SkillsPageClient from "./skills-page-client";
 
 export default async function SkillsPage() {
-  const queryClient = createServerQueryClient();
   const requestContext = await getServerRequestContext();
+  const queryClient = createServerQueryClient(requestContext);
   const { currentOrgId } = await prefetchAuthBootstrap(queryClient, requestContext);
 
   if (currentOrgId) {
