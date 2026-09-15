@@ -23,7 +23,7 @@ use everruns_core::progress_reporting::{
     ProgressReportPayload, REPORT_PROGRESS_TOOL_NAME, format_progress_report_for_slack,
 };
 use everruns_platform::SlackReplyMode;
-use everruns_platform::app::{AgUiToolVisibility, public_tool_activity_text};
+use everruns_platform::exposure::{PublicToolVisibility, public_tool_activity_text};
 use everruns_provider::typed_id::{EventId, SessionId};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -144,7 +144,7 @@ pub struct DeliveryRegistration {
     pub recipient_user_id: Option<String>,
     pub recipient_team_id: Option<String>,
     /// How much of a running tool the pane's status line may reveal (EVE-975).
-    pub tool_visibility: AgUiToolVisibility,
+    pub tool_visibility: PublicToolVisibility,
     /// Status text for a running tool under `Generic` visibility.
     pub generic_tool_text: String,
 }
@@ -163,7 +163,7 @@ struct DeliveryContext {
     recipient_user_id: Option<String>,
     recipient_team_id: Option<String>,
     /// Tool-activity policy for the pane status line.
-    tool_visibility: AgUiToolVisibility,
+    tool_visibility: PublicToolVisibility,
     generic_tool_text: String,
     /// Tools running right now. The status line reverts to the thinking text
     /// when this returns to zero, so two overlapping tools do not clear it early.
@@ -3008,7 +3008,7 @@ mod tests {
                     surface: SlackSurface::Channel,
                     recipient_user_id: None,
                     recipient_team_id: None,
-                    tool_visibility: AgUiToolVisibility::default(),
+                    tool_visibility: PublicToolVisibility::default(),
                     generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
                         .to_string(),
                 })
@@ -3261,7 +3261,7 @@ mod tests {
                     surface,
                     recipient_user_id: Some("U_HUMAN".to_string()),
                     recipient_team_id: Some("T_TEAM".to_string()),
-                    tool_visibility: AgUiToolVisibility::default(),
+                    tool_visibility: PublicToolVisibility::default(),
                     generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
                         .to_string(),
                 })
@@ -3675,7 +3675,7 @@ mod tests {
     /// EVE-975: the pane's live status line, driven by turn and tool lifecycle.
     ///
     /// What may be shown is not decided here — `public_tool_activity_text` in
-    /// `everruns_platform::app` owns that for every public surface, and AG-UI
+    /// `everruns_platform::exposure` owns that for every public surface, and AG-UI
     /// reads the same function. These tests pin that the dispatcher asks it and
     /// honours the answer.
     mod agent_surface_tests {
@@ -3751,7 +3751,7 @@ mod tests {
         /// Drive one turn's lifecycle and return everything that reached the surface.
         async fn surfaced_for(
             surface: SlackSurface,
-            tool_visibility: AgUiToolVisibility,
+            tool_visibility: PublicToolVisibility,
             events: &[(&str, serde_json::Value)],
         ) -> Vec<Surfaced> {
             let db = Arc::new(StorageBackend::in_memory());
@@ -3812,7 +3812,7 @@ mod tests {
         async fn a_running_turn_reports_its_phase_and_clears_at_the_end() {
             let surfaced = surfaced_for(
                 SlackSurface::Pane,
-                AgUiToolVisibility::Generic,
+                PublicToolVisibility::Generic,
                 &tool_lifecycle(),
             )
             .await;
@@ -3835,9 +3835,9 @@ mod tests {
         #[tokio::test]
         async fn no_raw_tool_name_reaches_slack() {
             for visibility in [
-                AgUiToolVisibility::Generic,
-                AgUiToolVisibility::Narrated,
-                AgUiToolVisibility::None,
+                PublicToolVisibility::Generic,
+                PublicToolVisibility::Narrated,
+                PublicToolVisibility::None,
             ] {
                 let surfaced =
                     surfaced_for(SlackSurface::Pane, visibility, &tool_lifecycle()).await;
@@ -3857,7 +3857,7 @@ mod tests {
         async fn none_visibility_shows_nothing_about_the_running_tool() {
             let surfaced = surfaced_for(
                 SlackSurface::Pane,
-                AgUiToolVisibility::None,
+                PublicToolVisibility::None,
                 &tool_lifecycle(),
             )
             .await;
@@ -3879,7 +3879,7 @@ mod tests {
         async fn overlapping_tools_do_not_clear_the_status_early() {
             let surfaced = surfaced_for(
                 SlackSurface::Pane,
-                AgUiToolVisibility::Generic,
+                PublicToolVisibility::Generic,
                 &[
                     ("turn.started", serde_json::json!({})),
                     ("tool.started", serde_json::json!({})),
@@ -3901,7 +3901,7 @@ mod tests {
         async fn a_channel_thread_gets_no_status_line() {
             let surfaced = surfaced_for(
                 SlackSurface::Channel,
-                AgUiToolVisibility::Generic,
+                PublicToolVisibility::Generic,
                 &tool_lifecycle(),
             )
             .await;
@@ -3916,7 +3916,7 @@ mod tests {
         async fn the_agents_title_reaches_the_thread() {
             let surfaced = surfaced_for(
                 SlackSurface::Pane,
-                AgUiToolVisibility::Generic,
+                PublicToolVisibility::Generic,
                 &[
                     ("turn.started", serde_json::json!({})),
                     (
@@ -3937,7 +3937,7 @@ mod tests {
         async fn an_unchanged_status_is_not_pushed_twice() {
             let surfaced = surfaced_for(
                 SlackSurface::Pane,
-                AgUiToolVisibility::Generic,
+                PublicToolVisibility::Generic,
                 &[
                     ("turn.started", serde_json::json!({})),
                     ("turn.started", serde_json::json!({})),
@@ -4084,7 +4084,7 @@ mod tests {
                     surface: SlackSurface::Channel,
                     recipient_user_id: None,
                     recipient_team_id: None,
-                    tool_visibility: AgUiToolVisibility::default(),
+                    tool_visibility: PublicToolVisibility::default(),
                     generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
                         .to_string(),
                 })

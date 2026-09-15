@@ -30,9 +30,10 @@ use everruns_durable::{
 };
 use everruns_platform::app::{ScheduleChannelConfig, SessionBinding, WebhookChannelConfig};
 use everruns_platform::{
-    A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, ApiEndpointChannelConfig, App,
-    AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
-    AppStatus, ChannelType, FcpChannelConfig, PublicChatChannelConfig, SlackChannelConfig,
+    A2aChannelConfig, AgUiChannelConfig, ApiEndpointChannelConfig, App, AppChannel,
+    AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig, AppStatus,
+    ChannelType, FcpChannelConfig, PublicChatChannelConfig, PublicToolVisibility,
+    SlackChannelConfig,
 };
 use everruns_platform::{AgentAction, AuditEvent};
 use everruns_provider::typed_id::{
@@ -376,7 +377,7 @@ fn normalize_and_validate_channel_config(
             // for both Generic and Narrated.
             if matches!(
                 config.tool_visibility,
-                AgUiToolVisibility::Generic | AgUiToolVisibility::Narrated
+                PublicToolVisibility::Generic | PublicToolVisibility::Narrated
             ) && config.generic_tool_text.trim().is_empty()
             {
                 return Err(CommandError::bad_request(
@@ -563,7 +564,7 @@ fn normalize_and_validate_channel_config(
             }
             if matches!(
                 config.tool_visibility,
-                AgUiToolVisibility::Generic | AgUiToolVisibility::Narrated
+                PublicToolVisibility::Generic | PublicToolVisibility::Narrated
             ) && config.generic_tool_text.trim().is_empty()
             {
                 return Err(CommandError::bad_request(

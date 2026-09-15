@@ -55,7 +55,8 @@ use everruns_core::events::{
     ToolCompletedData, ToolStartedData, TurnFailedData,
 };
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
-use everruns_platform::{AgUiChannelConfig, AgUiToolVisibility, App, AppStatus, ChannelType};
+use everruns_platform::exposure::{PublicToolVisibility, public_tool_activity_text};
+use everruns_platform::{AgUiChannelConfig, App, AppStatus, ChannelType};
 use everruns_provider::execution_phase::ExecutionPhase;
 use everruns_provider::typed_id::ImageId;
 #[cfg(test)]
@@ -1187,7 +1188,7 @@ struct AgUiStreamState {
     assistant_emitted_delta: bool,
     thinking_started: bool,
     thinking_text_started: bool,
-    tool_visibility: AgUiToolVisibility,
+    tool_visibility: PublicToolVisibility,
     generic_tool_text: String,
     reasoning_summary_visible: bool,
     active_tool_activity_count: usize,
@@ -1198,14 +1199,9 @@ struct AgUiStreamState {
 
 impl AgUiStreamState {
     /// The text this stream may show for tool activity, or `None` when the
-    /// channel's visibility forbids exposing it. The policy itself lives in
-    /// `everruns_platform::app` so the Slack agent pane answers to the same rule
-    /// (EVE-975).
+    /// channel's visibility forbids exposing it.
     fn public_tool_activity_text(&self) -> Option<&str> {
-        everruns_platform::app::public_tool_activity_text(
-            self.tool_visibility,
-            &self.generic_tool_text,
-        )
+        public_tool_activity_text(self.tool_visibility, &self.generic_tool_text)
     }
 }
 
@@ -1466,7 +1462,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             // `None` shows nothing; Generic and Narrated both emit the safe
             // channel-configured text, never backend/model-authored narration,
             // which may derive from raw tool-call arguments. See
-            // `everruns_platform::app::public_tool_activity_text`.
+            // `everruns_platform::exposure::public_tool_activity_text`.
             if let Some(text) = state.public_tool_activity_text() {
                 let text = text.to_string();
                 push_public_tool_activity_start(state, text);
@@ -1727,7 +1723,7 @@ mod tests {
             assistant_emitted_delta: false,
             thinking_started: false,
             thinking_text_started: false,
-            tool_visibility: AgUiToolVisibility::Generic,
+            tool_visibility: PublicToolVisibility::Generic,
             generic_tool_text: "Working...".to_string(),
             reasoning_summary_visible: false,
             active_tool_activity_count: 0,
@@ -2571,7 +2567,7 @@ mod tests {
     #[tokio::test]
     async fn test_none_tool_visibility_hides_public_tool_activity() {
         let mut state = test_stream_state().await;
-        state.tool_visibility = AgUiToolVisibility::None;
+        state.tool_visibility = PublicToolVisibility::None;
         let turn_id = TurnId::new();
         let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
         let context = EventContext::turn(turn_id, input_message_id);
@@ -2620,7 +2616,7 @@ mod tests {
     #[tokio::test]
     async fn test_narrated_tool_visibility_falls_back_to_generic_text() {
         let mut state = test_stream_state().await;
-        state.tool_visibility = AgUiToolVisibility::Narrated;
+        state.tool_visibility = PublicToolVisibility::Narrated;
         let turn_id = TurnId::new();
         let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
         let context = EventContext::turn(turn_id, input_message_id);
@@ -2656,7 +2652,10 @@ mod tests {
     async fn test_public_tool_text_falls_back_when_configured_value_is_empty() {
         // Existing channels may have stored an empty/whitespace generic_tool_text from
         // before validation tightened. The public stream must never emit an empty delta.
-        for visibility in [AgUiToolVisibility::Generic, AgUiToolVisibility::Narrated] {
+        for visibility in [
+            PublicToolVisibility::Generic,
+            PublicToolVisibility::Narrated,
+        ] {
             for configured in ["", "   ", "\n\t"] {
                 let mut state = test_stream_state().await;
                 state.tool_visibility = visibility;
