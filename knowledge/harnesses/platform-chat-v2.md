@@ -12,11 +12,10 @@ tags:
 # Platform Chat v2
 
 Status: partly implemented, running beside v1. The `platform-chat-v2` harness is
-provisioned with a session filesystem, and `/memory/shared` is live. The
-`everruns` CLI builtin inside the session shell is not wired yet; v2 reaches the
-catalog through `discover`/`query`/`execute`, which already accept the tree
-spelling. Supersedes nothing until the acceptance bar in
-[Acceptance](#acceptance) is met against the v1 harness.
+provisioned with a session filesystem, `/memory/shared` is live, and `everruns`
+is a builtin of the session shell. What remains is coverage (most commands have
+no CLI route yet) and the prompt diet. Supersedes nothing until the acceptance
+bar in [Acceptance](#acceptance) is met against the v1 harness.
 
 ## Abstract
 
@@ -54,15 +53,36 @@ real gap: a Memory mount that is live rather than a snapshot.
 Replace the `platform` capability's three tools with `bashkit_shell` plus the
 `everruns` CLI builtin, over the session filesystem.
 
-Bashkit already supports this exactly. `integrations/bashkit/src/lib.rs`
-installs an `EverrunsBuiltin` into the interpreter whenever a
-`CliCommandSourceHandle` is present on the tool context
-(`install_cli_tree`). Today **no host inserts that handle**, so the builtin is
-dead code on the server and the command tree is reachable only through
-`cli_tree::rewrite` inside the filesystem-less `ScriptedTool`. The v2 delta on
-this axis is a server-side `CliCommandSource` whose `dispatch` actually runs a
-domain command with the caller's identity, inserted into the tool context for
-sessions carrying the capability.
+Implemented, by a second route rather than the one the tree was written for.
+
+`install_cli_tree` already installed an `EverrunsBuiltin` whenever a
+`CliCommandSourceHandle` was present, and no host inserted one, so the builtin
+was dead code on the server. Supplying that handle from the worker turns out to
+be impossible as written: `CliRoute` is `&'static`, so a tree cannot be rebuilt
+from specs fetched at runtime, and the commands live behind the control plane
+anyway. The local tree fits a host that links its commands in, which is the
+Framework application, not the worker.
+
+So the worker **forwards**. A tool that already accepts a script declares a
+`CliSpelling` (`Tool::cli_spelling`, a neutral contract in core), and the shell
+installs a builtin that renders argv back into one command line and hands it to
+that tool. The `platform` capability's `execute` declares it; `query` and
+`discover` do not, because one token cannot mean two tools and the read-only
+split is a per-command property the catalog already enforces.
+
+Installing from the session's **tool registry** is what keeps this from widening
+anything: the builtin exists only where the model could have called the tool
+directly, so the shell re-spells a surface rather than granting one. A harness
+that withholds `platform` withholds the command, with no capability list to keep
+in sync. Grammar, help, authorization, and error shaping stay on the far side of
+the tool call, unchanged.
+
+Two properties the forwarded route has to earn back, both tested:
+arguments are re-quoted so a value the model built from tool output arrives as
+data rather than syntax; and invocations are capped per shell call, because each
+one is a control-plane round trip and a shell loop would amplify one tool call
+into hundreds. The cap's message points at the right shape: pass the loop to
+`execute`, whose script runs server-side.
 
 Consequences worth stating:
 
@@ -335,12 +355,9 @@ v2 ships when it passes, against the same models, the cases v1 is graded on:
 1. **P0, the harness.** Done: `platform-chat-v2` is provisioned beside v1 with
    `bashkit_shell` + `session_file_system` + the docs mount, claiming no harness
    role so nothing switches. Bar: TC001-TC005 pass.
-2. **P1, the shell's CLI.** Insert a `CliCommandSourceHandle` so `everruns` is a
-   builtin of the session shell, not only of the catalog's. On the hosted server
-   the source has to dispatch back through the control plane: `CliRoute` is
-   `&'static`, so a worker cannot rebuild the tree from data fetched at runtime,
-   and the builtin forwards instead. Then route the remaining domains onto the
-   tree, add `everruns search`, and bound rendered help size per node.
+2. **P1, coverage.** The builtin is in (see above). What is left is the tree it
+   spells: route the remaining domains onto it, add `everruns search`, and bound
+   rendered help size per node.
 3. **P2, memory.** Live mount and server-managed shared Memory: done. Still
    open: a conditional update on `memory_files` so the stale-edit guard is
    atomic, the folder conventions, and the INDEX disclosure block.

@@ -2,6 +2,18 @@
 
 ## 2026-09-15
 
+* **`everruns` is a builtin of the agent's own shell, by forwarding rather than a
+  local tree.** The tree in `integrations/bashkit/src/cli.rs` resolves in-process,
+  and a hosted worker cannot do that: `CliRoute` is `&'static`, so a tree cannot
+  be rebuilt from specs fetched at runtime, and the commands live behind the
+  control plane. A tool that already accepts a script now declares a
+  `CliSpelling` and the shell installs a builtin that hands it the rendered
+  command line, keeping grammar, help, authorization, and error shaping where
+  they already are. The builtin is installed from the session's tool registry, so
+  it re-spells a surface the session already has rather than granting one: a
+  harness that withholds the capability withholds the command, with no capability
+  list to keep in sync. See [Platform Chat v2](harnesses/platform-chat-v2.md).
+
 * **Memory mounts are live, not snapshots.** `memory.md` always specified
   write-through, but the implementation copied a Memory's files into
   `session_files` at session creation, so every session was a private fork: a

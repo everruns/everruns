@@ -301,6 +301,22 @@ impl Tool for PlatformCommandTool {
         true
     }
 
+    /// `everruns <noun> <verb>` inside a shell that hosts one.
+    ///
+    /// Only `execute` claims the root token. One token cannot mean two tools,
+    /// and `execute` is the whole catalog: the read-only/mutating split is a
+    /// per-command property the catalog already enforces, not a second
+    /// spelling. A session without this capability has no `execute` in its tool
+    /// registry, so no shell of its gets the builtin.
+    fn cli_spelling(&self) -> Option<everruns_core::tools::CliSpelling> {
+        match self.operation {
+            PlatformCommandOperation::Execute => Some(everruns_core::tools::CliSpelling::new(
+                "everruns", "commands",
+            )),
+            PlatformCommandOperation::Discover | PlatformCommandOperation::Query => None,
+        }
+    }
+
     fn required_context_services(&self) -> &'static [ToolContextService] {
         &[]
     }
