@@ -157,7 +157,6 @@ that cost something, and it is gone. The routing **tag** segments (`thread`, `ch
 `user`) are load-bearing in the same way and are pinned by test — a renamed segment
 silently orphans every live session keyed under it.
 
-
 Two properties follow, and both are already decided behavior rather than new invention:
 
 **The transport constrains which bindings are offerable.** A trigger can only key on
