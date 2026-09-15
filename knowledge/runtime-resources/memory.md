@@ -200,15 +200,32 @@ memory archival/deletion is handled gracefully against this snapshot.
 
 ### Scoped Memory Mounts
 
-When creating a session, the server lazily creates missing scoped Memories and
-mounts their current file tree into the session workspace:
+Server-managed mounts are **resolved per access, not copied**. Session creation
+lazily creates any missing scoped Memory and nothing else; the session file
+service routes every read and write under a mount straight to `memory_files`.
+That is what makes a Memory shared: a note written in one session is readable in
+the next, and in another session running concurrently.
+
+Mount resolution is derived from the session row alone, so it survives a restart
+without a mount table, and a workspace with no session row of its own (an
+attached shared workspace) resolves to no mounts at all. That is the privacy
+boundary: a shared workspace can never route into a private Memory.
 
 * Host agent memory: `/memory/agent`, read-write, one Memory per active agent.
-* User memory: `/memory/user`, read-write, one Memory per user. V1 mounts this
-  only into the default one-session workspace where the workspace is private to
-  that session owner. It is intentionally not materialized into caller-attached
-  shared workspaces until runtime mounts are participant-local rather than
-  workspace-wide.
+* User memory: `/memory/user`, read-write, one Memory per user, and only in the
+  default one-session workspace, where the workspace is private to the session
+  owner. Never in caller-attached shared workspaces, until runtime mounts are
+  participant-local rather than workspace-wide.
+* Shared surface memory: `/memory/shared`, read-write, one org-scoped Memory per
+  harness that declares one, keyed by a reserved `memories.name`. Every session
+  of that harness reads and writes the same files. See
+  `knowledge/harnesses/platform-chat-v2.md`.
+
+Mounts configured through the `memory` capability's `mounts[]` still copy the
+Memory's files into the session at creation, because an arbitrary `mem_` id is
+known only to the session's capability config and not to the file service.
+Making those live needs that config persisted where the file service can read
+it.
 
 Guest agent memory follows the same ownership model, but fully isolated
 `/memory/agent` paths for multiple agent participants in one shared workspace
@@ -236,7 +253,10 @@ workspace-wide `/memory/agent` path.
   moves into the mount root, and copies that overwrite mounted content.
 * Read-write mounted paths write through to `memory_files`. The Memory row's
   `updated_at` is refreshed.
-* Stale-edit protection uses `content_hash` exactly like workspace files.
+* Stale-edit protection on a mounted path is compare-then-write rather than the
+  single conditional statement the session store uses, because `memory_files`
+  has no conditional update yet. Two writers racing on the same file can still
+  interleave; the convention that keeps that rare is one file per writer.
 * Writes outside mounted paths continue to use workspace-local files.
 
 ## Source Sync

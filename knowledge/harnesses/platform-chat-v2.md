@@ -11,8 +11,12 @@ tags:
 ---
 # Platform Chat v2
 
-Status: proposed. Not implemented. Supersedes nothing until the acceptance bar
-in [Acceptance](#acceptance) is met against the v1 harness.
+Status: partly implemented, running beside v1. The `platform-chat-v2` harness is
+provisioned with a session filesystem, and `/memory/shared` is live. The
+`everruns` CLI builtin inside the session shell is not wired yet; v2 reaches the
+catalog through `discover`/`query`/`execute`, which already accept the tree
+spelling. Supersedes nothing until the acceptance bar in
+[Acceptance](#acceptance) is met against the v1 harness.
 
 ## Abstract
 
@@ -105,6 +109,9 @@ decision.
 
 ### 4. Memory is a writable folder
 
+Implemented. A durable Memory is mounted read-write at `/memory/shared`, and the
+model's writes there are visible to every other session of the same harness.
+
 Mount a durable Memory read-write at `/memory`. The model writes notes,
 conventions, and org context there; the next thread reads them.
 
@@ -133,7 +140,21 @@ For Platform Chat this is fatal by construction: each UI thread is its own
 session, so N threads are N divergent copies. Platform Chat v1 also has no
 agent, so `/memory/agent` never mounts at all; only `/memory/user` does.
 
-### Fix 1: make the mount live (required)
+### Fix 1: make the mount live (required) — implemented
+
+Done for the server-managed mounts (`/memory/agent`, `/memory/user`,
+`/memory/shared`) in `crates/server/src/domains/session_files/memory_mounts.rs`.
+Mounts resolve from the session row per access rather than from a copy, so they
+survive a restart with no mount table, and a workspace with no session row of
+its own resolves to no mounts at all. Mounts configured through the `memory`
+capability's `mounts[]` still snapshot; see
+`knowledge/runtime-resources/memory.md`.
+
+One gap remains against the description below: the stale-edit guard on a mounted
+path is compare-then-write, not a conditional statement, because `memory_files`
+has no conditional update. Two writers racing on the same file can still
+interleave, which is what Fix 2 is for.
+
 
 Add a mount source resolved at access time rather than copy time, and teach the
 session file service to route reads and writes under a memory mount to
@@ -207,12 +228,12 @@ The inbox sharding of Fix 2 applies to both, for different reasons: the shared
 tree has many concurrent writers, and the private tree still has one user's
 several concurrent threads.
 
-Resolving the shared memory needs no migration and no new scope. `memories`
-already enforces `UNIQUE(org_id, name)` for live rows, so a reserved name
-(`platform-chat`) is enough; the session service resolves or creates it the way
-`get_or_create_scoped_memory` already resolves the agent and user ones. Only a
-lookup-by-name is missing from the repository, which today offers
-`get_memory_by_scope_owner` and `list_memories`.
+Resolving the shared memory needs no migration and no new scope, and that is how
+it shipped: `memories` enforces `UNIQUE(org_id, name)` for live rows, so the
+reserved name is the whole key. Session creation resolves or creates it beside
+the agent and user ones. Which harnesses get one is declared in code
+(`shared_memory_name_for_harness`) rather than configured, so the name cannot
+drift between the service that creates the Memory and the one that mounts it.
 
 There is a tempting shortcut: back v2 with a real Agent instead of a bare
 harness, and `/memory/agent` becomes the shared surface memory for free. It is
@@ -311,14 +332,18 @@ v2 ships when it passes, against the same models, the cases v1 is graded on:
 
 ## Rollout
 
-1. **P0, wiring.** Server `CliCommandSource` with real dispatch; insert the
-   handle into the tool context; seed `platform-chat-v2` beside v1 behind a
-   feature flag, with `bashkit_shell` + `session_file_system` + the docs mount.
-   Bar: TC001-TC005 pass.
-2. **P1, coverage.** Route the remaining domains onto the tree; `everruns
-   search`; a test that bounds rendered help size per node.
-3. **P2, memory.** Live memory mount with write-through and CAS; server-managed
-   Platform Chat Memory; folder conventions and the INDEX disclosure block.
+1. **P0, the harness.** Done: `platform-chat-v2` is provisioned beside v1 with
+   `bashkit_shell` + `session_file_system` + the docs mount, claiming no harness
+   role so nothing switches. Bar: TC001-TC005 pass.
+2. **P1, the shell's CLI.** Insert a `CliCommandSourceHandle` so `everruns` is a
+   builtin of the session shell, not only of the catalog's. On the hosted server
+   the source has to dispatch back through the control plane: `CliRoute` is
+   `&'static`, so a worker cannot rebuild the tree from data fetched at runtime,
+   and the builtin forwards instead. Then route the remaining domains onto the
+   tree, add `everruns search`, and bound rendered help size per node.
+3. **P2, memory.** Live mount and server-managed shared Memory: done. Still
+   open: a conditional update on `memory_files` so the stale-edit guard is
+   atomic, the folder conventions, and the INDEX disclosure block.
 4. **P3, discipline.** Move prompt prose into tool descriptions, results, and
    skills; approval driven by `read_only`; the curator trigger for the inbox.
 5. **P4, convergence.** Extract the CLI tree into a host-neutral crate both

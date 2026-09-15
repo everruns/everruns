@@ -2,6 +2,17 @@
 
 ## 2026-09-15
 
+* **Memory mounts are live, not snapshots.** `memory.md` always specified
+  write-through, but the implementation copied a Memory's files into
+  `session_files` at session creation, so every session was a private fork: a
+  note written in one was invisible to the next and died with the session. The
+  server-managed mounts (`/memory/agent`, `/memory/user`, and the new
+  `/memory/shared`) now resolve per access against `memory_files`. Resolution is
+  derived from the session row, so it survives a restart with no mount table and
+  a workspace without a session row of its own resolves to no mounts, which is
+  the privacy boundary for `/memory/user`. Capability-configured `mounts[]` still
+  snapshot. See [Memory](runtime-resources/memory.md).
+
 * **Proposed Platform Chat v2: one Bashkit shell instead of three bespoke tools.**
   v1 runs bash without a filesystem, so its `discover`/`query`/`execute` split is a
   toolset boundary rather than a permission one, and its rules live in ~4 KB of prompt
