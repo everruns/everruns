@@ -1663,7 +1663,7 @@ path to any management API. Mitigations live in
 | Task ownership | TM-DURABLE | Verified on completion, heartbeat-based reclaim |
 | Daytona sandbox isolation | TM-DAYTONA | Session-scoped secrets, encrypted API key, auto-stop, short-lived git tokens |
 | E2B sandbox isolation | TM-E2B | Session-scoped secrets, envd access tokens, timeout refresh, leased-resource cleanup |
-| Slack webhook forgery | TM-SLACK-001 | HMAC-SHA256 signing secret verification, 5-min replay window |
+| Slack webhook forgery | TM-SLACK-001 | HMAC-SHA256 signing secret verification, 5-min replay window; a channel whose secret is not yet configured rejects every request with 401, including `url_verification`, and an empty secret is refused by the verifier itself rather than keying an HMAC anyone can compute |
 | Slack bot loop | TM-SLACK-002 | Skip events with `bot_id` or `subtype` to prevent infinite loops |
 | Slack signing secret exposure | TM-SLACK-003 | Stored in `channel_config` (org-scoped access), not logged |
 | A2A API key forgery | TM-A2A-001, TM-A2A-002 | SHA-256 hashed at rest, constant-time compare, 128-bit entropy |

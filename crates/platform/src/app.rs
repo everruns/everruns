@@ -477,8 +477,15 @@ impl From<everruns_core::channel::ChannelReplyMode> for SlackReplyMode {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct SlackChannelConfig {
     /// Slack signing secret for verifying webhook requests.
+    ///
+    /// May be empty while the channel is being configured. An empty value
+    /// causes all incoming requests to fail signature verification.
+    #[serde(default)]
     pub signing_secret: String,
     /// Slack Bot OAuth token for sending responses.
+    ///
+    /// May be empty while the channel is being configured.
+    #[serde(default)]
     pub bot_token: String,
     /// Slack channel ID to listen on (e.g., "C0123456789").
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1249,9 +1256,10 @@ mod tests {
     }
 
     #[test]
-    fn test_slack_channel_config_missing_required_field() {
-        let json = r#"{"signing_secret": "s"}"#;
-        assert!(serde_json::from_str::<SlackChannelConfig>(json).is_err());
+    fn test_slack_channel_config_defaults_omitted_credentials() {
+        let config: SlackChannelConfig = serde_json::from_str("{}").unwrap();
+        assert!(config.signing_secret.is_empty());
+        assert!(config.bot_token.is_empty());
     }
 
     #[test]
@@ -1417,7 +1425,10 @@ mod tests {
 
     #[test]
     fn test_app_channel_slack_config_invalid_json() {
-        let ch = test_channel(ChannelType::Slack, serde_json::json!({"bad": "data"}));
+        let ch = test_channel(
+            ChannelType::Slack,
+            serde_json::json!({"signing_secret": 42}),
+        );
         assert!(ch.slack_config().is_none());
     }
 

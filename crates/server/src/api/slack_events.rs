@@ -2276,6 +2276,11 @@ fn verify_slack_signature(
     body: &[u8],
     signing_secret: &str,
 ) -> Result<(), String> {
+    // An empty HMAC key is public, so it cannot authenticate a request.
+    if signing_secret.trim().is_empty() {
+        return Err("Slack channel has no signing secret configured".to_string());
+    }
+
     let timestamp = headers
         .get("X-Slack-Request-Timestamp")
         .and_then(|v| v.to_str().ok())
@@ -2627,6 +2632,26 @@ mod tests {
         headers.insert("X-Slack-Signature", HeaderValue::from_static("v0=deadbeef"));
 
         assert!(verify_slack_signature(&headers, body.as_bytes(), secret).is_err());
+    }
+
+    #[test]
+    fn test_verify_slack_signature_rejects_empty_secret() {
+        let body = "body";
+        let timestamp = chrono::Utc::now().timestamp().to_string();
+        let signature = make_signature("", &timestamp, body);
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-Slack-Request-Timestamp",
+            HeaderValue::from_str(&timestamp).unwrap(),
+        );
+        headers.insert(
+            "X-Slack-Signature",
+            HeaderValue::from_str(&signature).unwrap(),
+        );
+
+        assert!(verify_slack_signature(&headers, body.as_bytes(), "").is_err());
+        assert!(verify_slack_signature(&headers, body.as_bytes(), "  ").is_err());
     }
 
     #[test]

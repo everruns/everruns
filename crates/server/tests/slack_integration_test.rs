@@ -1659,3 +1659,178 @@ async fn test_slack_replay_attack_old_timestamp() {
 
     resp.assert_status(StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_slack_first_run_order_without_placeholder_credentials() {
+    init_tracing();
+    let server = TestServer::in_memory().await;
+    let agent_id = create_test_agent(&server).await;
+
+    // Create the app with the payload sent by the UI before credentials exist.
+    let app: App = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Slack First Run",
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent_id,
+                "channel_type": "slack",
+                "channel_config": {
+                    "team_id": "T_TEST",
+                    "session_strategy": "per_thread"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let app_id = app.public_id;
+    let channel_id = app.channels[0].public_id;
+
+    let channels: Value = server
+        .get(&format!("/v1/apps/{app_id}/channels"))
+        .await
+        .assert_success()
+        .json();
+    let config = &channels["data"][0]["channel_config"];
+    assert!(
+        config.get("signing_secret_configured").is_none(),
+        "empty credentials must not read as configured: {config}"
+    );
+    assert!(
+        config.get("bot_token_configured").is_none(),
+        "empty credentials must not read as configured: {config}"
+    );
+
+    // The manifest remains unavailable until the app is published.
+    server
+        .get(&format!("/v1/e/{channel_id}/slack/manifest"))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+
+    server
+        .post(&format!("/v1/apps/{app_id}/publish"), json!({}))
+        .await
+        .assert_success();
+
+    let manifest: Value = server
+        .get(&format!("/v1/e/{channel_id}/slack/manifest"))
+        .await
+        .assert_success()
+        .json();
+    let manifest_yaml = manifest["manifest_yaml"].as_str().expect("manifest yaml");
+    assert!(
+        manifest_yaml.contains(&format!("/v1/e/{channel_id}/slack/events")),
+        "manifest must name this channel's webhook:\n{manifest_yaml}"
+    );
+    assert!(
+        manifest_yaml.contains("event_subscriptions:")
+            && manifest_yaml.contains("bot_events:")
+            && manifest_yaml.contains("app_mention"),
+        "manifest must preserve Slack event subscriptions:\n{manifest_yaml}"
+    );
+
+    let events_path = format!("/v1/e/{channel_id}/slack/events");
+    send_slack_event_to_path(
+        &server,
+        &events_path,
+        "not-the-real-secret",
+        &json!({ "type": "url_verification", "challenge": "c-first-run" }),
+    )
+    .await
+    .assert_status(StatusCode::UNAUTHORIZED);
+
+    let channels: Value = server
+        .get(&format!("/v1/apps/{app_id}/channels"))
+        .await
+        .assert_success()
+        .json();
+    assert!(
+        channels["data"][0]["channel_config"]
+            .get("webhook_verified_at")
+            .is_none(),
+        "an unauthenticated challenge must not record webhook verification"
+    );
+
+    let orphan_ts = unique_ts();
+    let message = json!({
+        "type": "event_callback",
+        "team_id": "T_TEST",
+        "event": {
+            "type": "message",
+            "text": "hello",
+            "user": "U_FIRSTRUN",
+            "channel": "C_FIRSTRUN",
+            "ts": orphan_ts
+        }
+    });
+    send_slack_event_to_path(&server, &events_path, TEST_SIGNING_SECRET, &message)
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+    assert_no_sessions_with_tag(&server, &format!("slack:thread:{orphan_ts}")).await;
+
+    let updated: Value = server
+        .patch(
+            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
+            json!({
+                "channel_config": {
+                    "signing_secret": TEST_SIGNING_SECRET,
+                    "bot_token": "xoxb-test-token-for-integration",
+                    "team_id": "T_TEST",
+                    "session_strategy": "per_thread"
+                }
+            }),
+        )
+        .await
+        .assert_success()
+        .json();
+    assert_eq!(
+        updated["channel_config"]["signing_secret_configured"],
+        json!(true)
+    );
+    assert_eq!(
+        updated["channel_config"]["bot_token_configured"],
+        json!(true)
+    );
+
+    let challenge = send_slack_event_to_path(
+        &server,
+        &events_path,
+        TEST_SIGNING_SECRET,
+        &json!({ "type": "url_verification", "challenge": "c-first-run" }),
+    )
+    .await
+    .assert_success()
+    .json::<Value>();
+    assert_eq!(challenge["challenge"], "c-first-run");
+
+    let channels: Value = server
+        .get(&format!("/v1/apps/{app_id}/channels"))
+        .await
+        .assert_success()
+        .json();
+    assert!(
+        channels["data"][0]["channel_config"]["webhook_verified_at"].is_string(),
+        "an authenticated challenge must record webhook verification"
+    );
+    let thread_ts = unique_ts();
+    let message = json!({
+        "type": "event_callback",
+        "team_id": "T_TEST",
+        "event": {
+            "type": "message",
+            "text": "hello",
+            "user": "U_FIRSTRUN",
+            "channel": "C_FIRSTRUN",
+            "ts": thread_ts
+        }
+    });
+    send_slack_event_to_path(&server, &events_path, TEST_SIGNING_SECRET, &message)
+        .await
+        .assert_success();
+    wait_for_sessions_with_tag(&server, &format!("slack:thread:{thread_ts}"), 1).await;
+
+    send_slack_event_to_path(&server, &events_path, "wrong-secret", &message)
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+}
