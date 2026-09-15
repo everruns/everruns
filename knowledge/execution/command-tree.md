@@ -76,6 +76,50 @@ and stops consuming at the first flag-like token. Help wins over execution, so
 `--help` anywhere in a command's flags prints help rather than reaching a
 builtin that has no such flag.
 
+## Flags are parsed by clap
+
+Raw argv is what makes the difference between the adapters real: where a host
+surfaces it, the tree resolves a leaf and everything after it goes to that
+leaf's own `clap::Command`, compiled from the JSON Schema the command already
+publishes. A command therefore declares its arguments exactly once, in its Rust
+type, and the parse and the `--help` are generated from that one declaration
+and cannot drift.
+
+`crates/cli` cannot lend its definition. It is a different surface, clap derive
+over the SDK, and it does client-side work the control plane's commands do not:
+reading an agent file, normalizing TOML, walking `initial_files`. Same nouns,
+two surfaces. What is shared is the parser and its conventions, which is what a
+caller actually feels.
+
+Three properties follow that no hand-rolled parser had:
+
+- **An unknown flag is an error.** The previous parsers kept `--limti 10` as a
+  string property and passed it on, so a typo became a silently dropped
+  argument. clap rejects it and names the flag that was meant.
+- **A required field is enforced before dispatch**, with the usage block
+  attached, rather than surfacing as a deserialization error from the far side.
+- **A positional is declared, not faked.** `get_agent agt_1` is an ordinary
+  clap positional, so the statement-boundary pre-rewrite that inserts `--id`
+  before a bare word has nothing to do on this path.
+
+Two conventions are deliberate. Flags answer to both the schema's snake_case
+and its kebab spelling, because schemas are generated from Rust structs while
+callers type kebab. And colour is pinned off: the workspace links clap with its
+default features for `crates/cli`, cargo unifies that across the build, so a
+command that does not say `ColorChoice::Never` emits escape bytes into a tool
+result.
+
+Short flags are not invented. `crates/cli` chooses its own per command; deriving
+them from field names would collide and would shift as fields are added.
+
+The `ScriptedTool` adapter does not get this. Its builtins are `ToolDef`s parsed
+by bashkit from the same schema, and `ToolArgs` carries only the parsed
+parameters, so raw argv never reaches this repository. Closing that gap is an
+upstream change in [`everruns/bashkit`](https://github.com/everruns/bashkit):
+the filesystem-less shell profile is `pub(crate)`, so the path cannot be rebuilt
+here on `Bash::builder()` without giving `execute` a filesystem it is
+deliberately denied.
+
 ## Where commands come from
 
 `CliCommandSource` is the seam between the tree and the host's operations. The
@@ -85,8 +129,10 @@ catalog involved. This is why the contract lives in the bashkit integration
 rather than in the server: a tree that only a server could source would not be
 one grammar across surfaces.
 
-See [`integrations/bashkit/src/cli.rs`](../../integrations/bashkit/src/cli.rs)
-for the contract, `crates/server/src/api/mcp_endpoint/cli_tree.rs` for the
+See [`integrations/bashkit/src/cli/mod.rs`](../../integrations/bashkit/src/cli/mod.rs)
+for the contract,
+[`integrations/bashkit/src/cli/args.rs`](../../integrations/bashkit/src/cli/args.rs)
+for the schema-to-clap compilation, `crates/server/src/api/mcp_endpoint/cli_tree.rs` for the
 inventory-backed source, and
 [`examples/framework-cli-host`](../../examples/framework-cli-host) for a host
 with no server behind it.

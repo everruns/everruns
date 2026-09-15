@@ -84,21 +84,51 @@ impl FleetCommands {
 #[async_trait]
 impl CliCommandSource for FleetCommands {
     fn specs(&self) -> Vec<CliCommandSpec> {
+        // A command declares its arguments as a JSON Schema and gets a parser
+        // and a `--help` for free: required fields are enforced, `--replicas`
+        // arrives as a number rather than as text this source has to coerce,
+        // and a misspelled flag is rejected with the usage block attached. A
+        // server generates these schemas from its command types; an
+        // application this size writes them out.
         vec![
             CliCommandSpec {
                 wire_name: "list_services".into(),
                 description: "List services and their replica counts.".into(),
                 route: LIST,
+                params: json!({ "type": "object", "properties": {} }),
+                positional: None,
             },
             CliCommandSpec {
                 wire_name: "get_service".into(),
                 description: "Show one service.".into(),
                 route: GET,
+                params: json!({
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string", "description": "Service name." }
+                    },
+                    "required": ["name"]
+                }),
+                // `everruns fleet get api` reads better than `--name api`, and
+                // costs one declaration.
+                positional: Some("name".into()),
             },
             CliCommandSpec {
                 wire_name: "scale_service".into(),
                 description: "Set a service's replica count.".into(),
                 route: SCALE,
+                params: json!({
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string", "description": "Service name." },
+                        "replicas": {
+                            "type": "integer",
+                            "description": "Desired replica count."
+                        }
+                    },
+                    "required": ["name", "replicas"]
+                }),
+                positional: Some("name".into()),
             },
         ]
     }
@@ -108,17 +138,6 @@ impl CliCommandSource for FleetCommands {
             "fleet".to_string(),
             "Services this deployment runs, and their scale.".to_string(),
         )]
-    }
-
-    fn usage(&self, wire_name: &str, display_name: &str) -> String {
-        // A source renders its own flags. A server generates this from each
-        // command's JSON Schema; a small application can spell them out.
-        let flags = match wire_name {
-            "get_service" => " --name <service>",
-            "scale_service" => " --name <service> --replicas <count>",
-            _ => "",
-        };
-        format!("Usage: {display_name}{flags}\n")
     }
 
     async fn dispatch(&self, wire_name: &str, params: Value) -> Result<String, String> {
@@ -154,14 +173,14 @@ impl CliCommandSource for FleetCommands {
             }
             "scale_service" => {
                 let name = Self::required(&params, "name")?.to_string();
+                // Typed by the schema before dispatch: a non-numeric
+                // `--replicas` never reaches here, and neither does a missing
+                // one, so there is no coercion to write.
                 let replicas = params
                     .get("replicas")
-                    .and_then(|value| match value {
-                        Value::String(text) => text.parse::<u32>().ok(),
-                        Value::Number(number) => number.as_u64().map(|n| n as u32),
-                        _ => None,
-                    })
-                    .ok_or("missing or non-numeric --replicas")?;
+                    .and_then(Value::as_u64)
+                    .ok_or("missing or non-numeric --replicas")?
+                    as u32;
 
                 let mut services = self
                     .fleet

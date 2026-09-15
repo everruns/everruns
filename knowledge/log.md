@@ -173,6 +173,20 @@
   renders as a table, and that no turn ends in silence while a successful turn
   never double-posts a reply and a notice. See
   [Slack App test cases](test-cases/ui/slack_app/).
+* **A leaf's flags are parsed by clap, compiled from the schema the command
+  already publishes.** The tree hand-parsed `--flag value` pairs, which kept an
+  unknown flag as a string property and passed it on, so `--limti 10` became a
+  silently dropped argument; required fields surfaced as deserialization errors
+  from the far side of a dispatch; and a positional had to be faked by rewriting
+  the command string before the interpreter saw it. `CliCommandSpec` now carries
+  the command's JSON Schema, a leaf compiles into a `clap::Command`, and the
+  parse and the `--help` are generated from that one declaration. `crates/cli`
+  cannot lend its definition: it is clap derive over the SDK with client-side
+  work of its own. What is shared is the parser and its conventions. Note that
+  `clap::Command` is a runtime builder over owned strings, which is why a tree
+  assembled from specs fetched at runtime is possible where `CliRoute`, being
+  `&'static`, is not. See [Command tree](execution/command-tree.md).
+
 * **`everruns` is a builtin of the agent's own shell, by forwarding rather than a
   local tree.** The tree in `integrations/bashkit/src/cli.rs` resolves in-process,
   and a hosted worker cannot do that: `CliRoute` is `&'static`, so a tree cannot
