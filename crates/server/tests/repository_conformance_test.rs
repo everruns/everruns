@@ -15,9 +15,10 @@ use everruns_provider::typed_id::TriggerId;
 use everruns_provider::typed_id::{AgentId, HarnessId, PrincipalId};
 use everruns_server::org_init;
 use everruns_server::storage::{
-    CreateAgentRow, CreateAgentTriggerRow, CreateBudgetRow, CreateEventRow, CreatePrincipalRow,
-    CreateProviderRow, CreateSessionRow, CreateUsageJournalRow, CreateUsageLedgerRow, Database,
-    MESSAGE_SAFETY_LIMIT, Repository, StorageBackend, UpdateAgentTrigger,
+    CreateAgentRow, CreateAgentTriggerRow, CreateBudgetRow, CreateEventRow, CreateOrgInvitation,
+    CreateOrganizationRow, CreatePrincipalRow, CreateProviderRow, CreateSessionRow,
+    CreateUsageJournalRow, CreateUsageLedgerRow, CreateUserRow, Database, MESSAGE_SAFETY_LIMIT,
+    Repository, StorageBackend, UpdateAgentTrigger,
 };
 use test_harness::get_database_url;
 
@@ -420,12 +421,129 @@ async fn run_agent_trigger_conformance(
     );
 }
 
+async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
+    let user = backend
+        .create_user(CreateUserRow {
+            email: format!("inviter-{label}-{}@example.com", Uuid::now_v7()),
+            name: "Invitation Conformance".to_string(),
+            avatar_url: None,
+            roles: vec![],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .expect("create invitation user");
+    let active_org = backend
+        .create_organization(CreateOrganizationRow {
+            public_id: everruns_platform::generate_org_public_id(),
+            name: format!("Active Invitation Org {label}"),
+            created_by: Some(user.id),
+        })
+        .await
+        .expect("create active invitation org");
+    let resolved_org = backend
+        .create_organization(CreateOrganizationRow {
+            public_id: everruns_platform::generate_org_public_id(),
+            name: format!("Resolved Invitation Org {label}"),
+            created_by: Some(user.id),
+        })
+        .await
+        .expect("create resolved invitation org");
+    let target_email = format!("target-{label}-{}@example.com", Uuid::now_v7());
+
+    let create_invitation = |org_id, email: String, expires_at| CreateOrgInvitation {
+        public_id: format!("orginv_{}", Uuid::now_v7().simple()),
+        org_id,
+        email,
+        role: "admin".to_string(),
+        invited_by: user.id,
+        token_hash: format!("hash-{}", Uuid::now_v7()),
+        expires_at,
+    };
+    let active = backend
+        .create_org_invitation(create_invitation(
+            active_org.org_id,
+            target_email.clone(),
+            Utc::now() + chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create active invitation");
+    backend
+        .create_org_invitation(create_invitation(
+            resolved_org.org_id,
+            format!("other-{label}@example.com"),
+            Utc::now() + chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create other-addressee invitation");
+    let revoked = backend
+        .create_org_invitation(create_invitation(
+            resolved_org.org_id,
+            target_email.clone(),
+            Utc::now() + chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create revoked invitation");
+    assert!(
+        backend
+            .revoke_org_invitation(resolved_org.org_id, &revoked.public_id)
+            .await
+            .expect("revoke invitation")
+    );
+    let accepted = backend
+        .create_org_invitation(create_invitation(
+            resolved_org.org_id,
+            target_email.clone(),
+            Utc::now() + chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create accepted invitation");
+    assert!(
+        backend
+            .accept_org_invitation(accepted.id, user.id)
+            .await
+            .expect("accept invitation")
+            .is_some()
+    );
+    let expired = backend
+        .create_org_invitation(create_invitation(
+            resolved_org.org_id,
+            target_email.clone(),
+            Utc::now() - chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create expired invitation");
+
+    let rows = backend
+        .list_outstanding_org_invitations_by_email(&target_email)
+        .await
+        .expect("list actionable invitations");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].public_id, active.public_id);
+    assert_eq!(rows[0].org_id, active_org.org_id);
+    assert_eq!(rows[0].org_name, active_org.name);
+    assert_eq!(rows[0].email, target_email);
+    assert_eq!(rows[0].role, "admin");
+    assert!(rows[0].expires_at > Utc::now());
+    assert!(
+        backend
+            .accept_org_invitation(expired.id, user.id)
+            .await
+            .expect("reject expired invitation")
+            .is_none()
+    );
+}
+
 #[tokio::test]
 async fn in_memory_repository_conformance() {
     let backend = StorageBackend::in_memory();
     let harness_id = HarnessId::from_uuid(Uuid::nil());
     run_repository_conformance(&backend, "memory", harness_id).await;
     run_agent_trigger_conformance(&backend, "memory", harness_id).await;
+    run_org_invitation_conformance(&backend, "memory").await;
 }
 
 #[tokio::test]
@@ -439,6 +557,7 @@ async fn postgres_repository_conformance() {
         .expect("generic harness id");
     run_repository_conformance(&backend, "postgres", harness_id).await;
     run_agent_trigger_conformance(&backend, "postgres", harness_id).await;
+    run_org_invitation_conformance(&backend, "postgres").await;
 }
 
 /// EVE-870: the reconciliation half of the checkpoint crash window.

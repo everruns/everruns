@@ -21,7 +21,7 @@
 use crate::auth::audit;
 use crate::auth::middleware::{AuthState, AuthUser, OrgAdmin};
 use crate::storage::StorageBackend;
-use crate::storage::models::CreateOrgInvitation;
+use crate::storage::models::{CreateOrgInvitation, OrgInvitationRow};
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Extension, Path, State},
@@ -88,6 +88,11 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/v1/orgs/{org}/invites/{invite_id}",
             axum::routing::delete(revoke_invite),
+        )
+        .route("/v1/me/invitations", get(list_my_invitations))
+        .route(
+            "/v1/me/invitations/{public_id}/accept",
+            post(accept_my_invitation),
         )
         .route("/v1/invites/{token}/accept", post(accept_invite))
         .with_state(state)
@@ -231,6 +236,13 @@ pub struct CreateInviteResponse {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AcceptInviteResponse {
     pub org_id: String,
+    pub role: String,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct MyInvitationResponse {
+    pub id: String,
+    pub org_name: String,
     pub role: String,
 }
 
@@ -467,35 +479,58 @@ pub struct AcceptedInvitation {
     pub role: String,
 }
 
-/// Validate a token and accept the invite for the authenticated principal,
-/// creating local membership. Distinct error codes are returned per failure mode
-/// without revealing token internals.
-pub async fn accept_invitation(
+fn invalid_invitation() -> InviteError {
+    InviteError::new(
+        StatusCode::NOT_FOUND,
+        "invite_invalid",
+        "Invitation not found",
+    )
+}
+
+/// Load verified mailbox ownership from storage instead of trusting auth claims.
+async fn accepting_user(
     db: &StorageBackend,
-    token: &str,
+    user_id: Uuid,
+) -> Result<crate::storage::models::UserRow, InviteError> {
+    let user = db
+        .get_user(user_id)
+        .await
+        .map_err(|e| internal("lookup accepting user", e))?
+        .ok_or_else(|| {
+            InviteError::new(
+                StatusCode::UNAUTHORIZED,
+                "user_not_found",
+                "Authenticated user not found",
+            )
+        })?;
+
+    if !user.email_verified {
+        return Err(InviteError::new(
+            StatusCode::FORBIDDEN,
+            "invite_email_unverified",
+            "Verify your email address before accepting this invitation",
+        ));
+    }
+
+    Ok(user)
+}
+
+async fn accept_invitation_row(
+    db: &StorageBackend,
+    row: OrgInvitationRow,
     user_id: Uuid,
     max_members: i64,
 ) -> Result<AcceptedInvitation, InviteError> {
-    let invalid = || {
-        InviteError::new(
-            StatusCode::NOT_FOUND,
-            "invite_invalid",
-            "Invitation not found",
-        )
-    };
+    let user = accepting_user(db, user_id).await?;
 
-    if !token.starts_with(INVITE_TOKEN_PREFIX) {
-        return Err(invalid());
+    if normalize_email(&user.email) != row.email {
+        return Err(InviteError::new(
+            StatusCode::FORBIDDEN,
+            "invite_email_mismatch",
+            "This invitation was issued to a different email address",
+        ));
     }
 
-    let token_hash = hash_invite_token(token);
-    let row = db
-        .get_org_invitation_by_token_hash(&token_hash)
-        .await
-        .map_err(|e| internal("lookup invite by token", e))?
-        .ok_or_else(invalid)?;
-
-    // Resolved-state checks return distinct codes for UI handling.
     if row.revoked_at.is_some() {
         return Err(InviteError::new(
             StatusCode::CONFLICT,
@@ -518,41 +553,6 @@ pub async fn accept_invitation(
         ));
     }
 
-    let user = db
-        .get_user(user_id)
-        .await
-        .map_err(|e| internal("lookup accepting user", e))?
-        .ok_or_else(|| {
-            InviteError::new(
-                StatusCode::UNAUTHORIZED,
-                "user_not_found",
-                "Authenticated user not found",
-            )
-        })?;
-
-    // Re-load the user row instead of trusting the authenticated session/JWT
-    // email claim. Invite acceptance grants tenant membership, so the matching
-    // address must be verified mailbox ownership, not a self-asserted local
-    // signup address (TM-AUTH-023, TM-TENANT-011).
-    if !user.email_verified {
-        return Err(InviteError::new(
-            StatusCode::FORBIDDEN,
-            "invite_email_unverified",
-            "Verify your email address before accepting this invitation",
-        ));
-    }
-
-    // Authenticated, verified email must match the invited email under the same
-    // normalization used at creation.
-    if normalize_email(&user.email) != row.email {
-        return Err(InviteError::new(
-            StatusCode::FORBIDDEN,
-            "invite_email_mismatch",
-            "This invitation was issued to a different email address",
-        ));
-    }
-
-    // Capacity guard at acceptance, matching add-member behavior.
     if !db
         .is_organization_member(row.org_id, user_id)
         .await
@@ -571,7 +571,6 @@ pub async fn accept_invitation(
         }
     }
 
-    // Atomically claim the invite; a concurrent accept loses here.
     let accepted = db
         .accept_org_invitation(row.id, user_id)
         .await
@@ -579,12 +578,11 @@ pub async fn accept_invitation(
         .ok_or_else(|| {
             InviteError::new(
                 StatusCode::CONFLICT,
-                "invite_already_accepted",
-                "This invitation has already been accepted",
+                "invite_not_actionable",
+                "This invitation is no longer actionable",
             )
         })?;
 
-    // Membership is local-DB authoritative; no external identity provider call.
     db.add_organization_member(accepted.org_id, user_id, &accepted.role)
         .await
         .map_err(|e| internal("add member", e))?;
@@ -600,6 +598,42 @@ pub async fn accept_invitation(
         org_public_id: org.public_id,
         role: accepted.role,
     })
+}
+
+/// Validate a token and accept the invite for the authenticated principal.
+pub async fn accept_invitation(
+    db: &StorageBackend,
+    token: &str,
+    user_id: Uuid,
+    max_members: i64,
+) -> Result<AcceptedInvitation, InviteError> {
+    if !token.starts_with(INVITE_TOKEN_PREFIX) {
+        return Err(invalid_invitation());
+    }
+
+    let token_hash = hash_invite_token(token);
+    let row = db
+        .get_org_invitation_by_token_hash(&token_hash)
+        .await
+        .map_err(|e| internal("lookup invite by token", e))?
+        .ok_or_else(invalid_invitation)?;
+
+    accept_invitation_row(db, row, user_id, max_members).await
+}
+
+pub async fn accept_invitation_by_public_id(
+    db: &StorageBackend,
+    public_id: &str,
+    user_id: Uuid,
+    max_members: i64,
+) -> Result<AcceptedInvitation, InviteError> {
+    let row = db
+        .get_org_invitation_by_public_id(public_id)
+        .await
+        .map_err(|e| internal("lookup invite by public id", e))?
+        .ok_or_else(invalid_invitation)?;
+
+    accept_invitation_row(db, row, user_id, max_members).await
 }
 
 // ============================================================================
@@ -664,6 +698,38 @@ pub async fn list_invites(
     Ok(Json(ListResponse::new(items)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/me/invitations",
+    responses(
+        (status = 200, description = "Actionable invitations for the authenticated user", body = ListResponse<MyInvitationResponse>),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Email address is not verified"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "organization invitations"
+)]
+pub async fn list_my_invitations(
+    State(state): State<AppState>,
+    user: AuthUser,
+) -> Result<Json<ListResponse<MyInvitationResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    let user = accepting_user(&state.db, user.id).await?;
+    let rows = state
+        .db
+        .list_outstanding_org_invitations_by_email(&normalize_email(&user.email))
+        .await
+        .map_err(|e| internal("list invitations for user", e))?;
+    let items = rows
+        .into_iter()
+        .map(|row| MyInvitationResponse {
+            id: row.public_id,
+            org_name: row.org_name,
+            role: row.role,
+        })
+        .collect();
+    Ok(Json(ListResponse::new(items)))
+}
+
 /// DELETE /v1/orgs/{org}/invites/{invite_id} — revoke a pending invite (Admin+).
 pub async fn revoke_invite(
     State(state): State<AppState>,
@@ -720,6 +786,55 @@ pub async fn accept_invite(
         AuditEvent::management(ManagementAction::InvitationAccepted, org_id, Some(user.id))
             .target("member", user.id.to_string())
             .detail("role", accepted.role.clone());
+    if let Some(ip) = audit::client_ip_from_connect_info(connect_info, &headers) {
+        builder = builder.ip(ip);
+    }
+    audit::emit_event(state.db.clone(), builder.build());
+
+    Ok(Json(AcceptInviteResponse {
+        org_id: accepted.org_public_id,
+        role: accepted.role,
+    }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/me/invitations/{public_id}/accept",
+    params(
+        ("public_id" = String, Path, description = "Public invitation ID")
+    ),
+    responses(
+        (status = 200, description = "Invitation accepted", body = AcceptInviteResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Email is unverified or does not match"),
+        (status = 404, description = "Invitation not found"),
+        (status = 409, description = "Invitation is revoked, accepted, or no longer actionable"),
+        (status = 410, description = "Invitation expired")
+    ),
+    tag = "organization invitations"
+)]
+pub async fn accept_my_invitation(
+    State(state): State<AppState>,
+    user: AuthUser,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
+    headers: HeaderMap,
+    Path(public_id): Path<String>,
+) -> Result<Json<AcceptInviteResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let accepted = accept_invitation_by_public_id(
+        &state.db,
+        &public_id,
+        user.id,
+        state.resource_limits.max_members_per_org,
+    )
+    .await?;
+
+    let mut builder = AuditEvent::management(
+        ManagementAction::InvitationAccepted,
+        accepted.org_id,
+        Some(user.id),
+    )
+    .target("member", user.id.to_string())
+    .detail("role", accepted.role.clone());
     if let Some(ip) = audit::client_ip_from_connect_info(connect_info, &headers) {
         builder = builder.ip(ip);
     }

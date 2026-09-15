@@ -810,21 +810,42 @@ impl Database {
 
     pub async fn get_org_invitation_by_public_id(
         &self,
-        org_id: i64,
         public_id: &str,
     ) -> Result<Option<OrgInvitationRow>> {
         let row = sqlx::query_as::<_, OrgInvitationRow>(
             r#"
             SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
             FROM org_invitations
-            WHERE org_id = $1 AND public_id = $2
+            WHERE public_id = $1
             "#,
         )
-        .bind(org_id)
         .bind(public_id)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)
+    }
+
+    pub async fn list_outstanding_org_invitations_by_email(
+        &self,
+        email: &str,
+    ) -> Result<Vec<OutstandingOrgInvitationRow>> {
+        let rows = sqlx::query_as::<_, OutstandingOrgInvitationRow>(
+            r#"
+            SELECT i.public_id, i.org_id, o.name AS org_name, i.email, i.role,
+                   i.expires_at, i.created_at
+            FROM org_invitations i
+            JOIN organizations o ON o.org_id = i.org_id
+            WHERE i.email = $1
+              AND i.accepted_at IS NULL
+              AND i.revoked_at IS NULL
+              AND i.expires_at > NOW()
+            ORDER BY i.created_at DESC
+            "#,
+        )
+        .bind(email)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
     }
 
     /// The outstanding (not accepted, not revoked) invitation for an email, if
@@ -867,8 +888,7 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    /// Atomically mark an invitation accepted. The `WHERE` guard ensures only a
-    /// still-pending invite transitions, so concurrent accepts cannot both win.
+    /// Atomically mark an actionable invitation accepted.
     pub async fn accept_org_invitation(
         &self,
         invitation_id: i64,
@@ -878,7 +898,10 @@ impl Database {
             r#"
             UPDATE org_invitations
             SET accepted_at = NOW(), accepted_by = $2
-            WHERE id = $1 AND accepted_at IS NULL AND revoked_at IS NULL
+            WHERE id = $1
+              AND accepted_at IS NULL
+              AND revoked_at IS NULL
+              AND expires_at > NOW()
             RETURNING id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
             "#,
         )

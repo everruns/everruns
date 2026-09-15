@@ -223,6 +223,18 @@ pub struct OrgInvitationRow {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Actionable invitation with organization display data.
+#[derive(Debug, Clone, FromRow)]
+pub struct OutstandingOrgInvitationRow {
+    pub public_id: String,
+    pub org_id: i64,
+    pub org_name: String,
+    pub email: String,
+    pub role: String,
+    pub expires_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
 /// Input for creating an organization invitation.
 #[derive(Debug, Clone)]
 pub struct CreateOrgInvitation {

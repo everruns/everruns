@@ -2116,6 +2116,38 @@ export interface paths {
     patch: operations["update_mcp_server"];
     trace?: never;
   };
+  "/v1/me/invitations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["list_my_invitations"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/me/invitations/{public_id}/accept": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["accept_my_invitation"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/memories": {
     parameters: {
       query?: never;
@@ -4260,6 +4292,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /** @description Accept response: where the caller now has membership. */
+    AcceptInviteResponse: {
+      org_id: string;
+      role: string;
+    };
     /** @description Data for act.completed event */
     ActCompletedData: {
       /** @description Whether all tool calls completed */
@@ -10742,6 +10779,18 @@ export interface components {
      * @description Response wrapper for list endpoints.
      *     All list endpoints return responses wrapped in a `data` field.
      */
+    ListResponse_MyInvitationResponse: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        id: string;
+        org_name: string;
+        role: string;
+      }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
     ListResponse_OrganizationResponse: {
       /** @description Array of items returned by the list operation. */
       data: {
@@ -12673,6 +12722,11 @@ export interface components {
        * @example drafts/migration-plan.md
        */
       src_path: string;
+    };
+    MyInvitationResponse: {
+      id: string;
+      org_name: string;
+      role: string;
     };
     /**
      * @description A complete provider-native call, retaining its original identity and payload.
@@ -26516,6 +26570,105 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  list_my_invitations: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Actionable invitations for the authenticated user */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_MyInvitationResponse"];
+        };
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Email address is not verified */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  accept_my_invitation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Public invitation ID */
+        public_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Invitation accepted */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AcceptInviteResponse"];
+        };
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Email is unverified or does not match */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invitation not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invitation is revoked, accepted, or no longer actionable */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invitation expired */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

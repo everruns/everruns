@@ -8347,6 +8347,81 @@
         }
       }
     },
+    "/v1/me/invitations": {
+      "get": {
+        "tags": [
+          "organization invitations"
+        ],
+        "operationId": "list_my_invitations",
+        "responses": {
+          "200": {
+            "description": "Actionable invitations for the authenticated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_MyInvitationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Email address is not verified"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/me/invitations/{public_id}/accept": {
+      "post": {
+        "tags": [
+          "organization invitations"
+        ],
+        "operationId": "accept_my_invitation",
+        "parameters": [
+          {
+            "name": "public_id",
+            "in": "path",
+            "description": "Public invitation ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Invitation accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptInviteResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Email is unverified or does not match"
+          },
+          "404": {
+            "description": "Invitation not found"
+          },
+          "409": {
+            "description": "Invitation is revoked, accepted, or no longer actionable"
+          },
+          "410": {
+            "description": "Invitation expired"
+          }
+        }
+      }
+    },
     "/v1/memories": {
       "get": {
         "tags": [
@@ -16878,6 +16953,22 @@
   },
   "components": {
     "schemas": {
+      "AcceptInviteResponse": {
+        "type": "object",
+        "description": "Accept response: where the caller now has membership.",
+        "required": [
+          "org_id",
+          "role"
+        ],
+        "properties": {
+          "org_id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        }
+      },
       "ActCompletedData": {
         "type": "object",
         "description": "Data for act.completed event",
@@ -28288,6 +28379,38 @@
           }
         }
       },
+      "ListResponse_MyInvitationResponse": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "org_name",
+                "role"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "org_name": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
       "ListResponse_OrganizationResponse": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -31927,6 +32050,25 @@
             "type": "string",
             "description": "Source path (relative to the workspace filesystem root).",
             "example": "drafts/migration-plan.md"
+          }
+        }
+      },
+      "MyInvitationResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "org_name",
+          "role"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "org_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
           }
         }
       },
