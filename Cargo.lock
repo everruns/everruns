@@ -2480,6 +2480,7 @@ name = "everruns-framework-cli-host"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "clap",
  "everruns-anthropic",
  "everruns-core",
  "everruns-host",
@@ -3224,6 +3225,7 @@ dependencies = [
  "everruns-ard",
  "everruns-builtins",
  "everruns-capability",
+ "everruns-cli-contract",
  "everruns-core",
  "everruns-durable",
  "everruns-host",

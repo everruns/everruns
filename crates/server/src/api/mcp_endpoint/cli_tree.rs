@@ -10,9 +10,9 @@
 use std::sync::OnceLock;
 
 use async_trait::async_trait;
-use serde_json::Value;
 
 use crate::domains::common::CommandDescriptor;
+use everruns_cli_contract::ContractCommand;
 use everruns_integrations_bashkit::cli::{CliCommandSource, CliCommandSpec, CliTree};
 
 pub use everruns_integrations_bashkit::cli::{HELP_BUILTIN, ROOT, render_help, rewrite};
@@ -48,22 +48,14 @@ pub struct InventoryCommandSource;
 #[async_trait]
 impl CliCommandSource for InventoryCommandSource {
     fn specs(&self) -> Vec<CliCommandSpec> {
-        inventory::iter::<CommandDescriptor>
-            .into_iter()
-            .filter_map(|desc| {
-                let route = (desc.cli)()?;
-                let meta = (desc.meta)();
-                Some(CliCommandSpec {
-                    wire_name: meta.name.to_string(),
-                    description: meta.description.to_string(),
-                    route,
-                    // The same schema the MCP catalog publishes and the
-                    // scripted host coerces against. A leaf's flags and its
-                    // `--help` are generated from it, so the command declares
-                    // its arguments exactly once, in its Rust type.
-                    params: (desc.param_schema)(),
-                    positional: (desc.positional_arg)().map(ToOwned::to_owned),
-                })
+        contracts()
+            .iter()
+            .map(|contract| CliCommandSpec {
+                wire_name: contract.wire_name.clone(),
+                description: contract.description.clone(),
+                path: contract.path.clone(),
+                verb: contract.verb.clone(),
+                command: contract.clap_command(&format!("{ROOT} {}", contract.spelling())),
             })
             .collect()
     }
@@ -75,12 +67,60 @@ impl CliCommandSource for InventoryCommandSource {
             .collect()
     }
 
-    async fn dispatch(&self, _wire_name: &str, _params: Value) -> Result<String, String> {
+    async fn dispatch(
+        &self,
+        _wire_name: &str,
+        _matches: clap::ArgMatches,
+    ) -> Result<String, String> {
         // The scripted host dispatches through its own per-command builtins,
-        // which already carry schema coercion, policy, and error handling.
-        // This source exists to describe the tree, not to re-enter dispatch.
+        // which already carry policy and error handling. This source exists to
+        // describe the command line, not to re-enter dispatch.
         Err("dispatch is owned by the scripted toolset on this host".to_string())
     }
+}
+
+/// Every routed command's contract, built once from inventory.
+///
+/// One command declares its parameters as a Rust type and its presentation as
+/// a `CliRoute`; this is where the two meet. `everruns-cli` mounts the same
+/// values, so the flags a person types and the flags an agent types are the
+/// same flags by construction rather than by review.
+pub fn contracts() -> &'static [ContractCommand] {
+    static CONTRACTS: OnceLock<Vec<ContractCommand>> = OnceLock::new();
+    CONTRACTS.get_or_init(|| {
+        let mut built: Vec<ContractCommand> = inventory::iter::<CommandDescriptor>
+            .into_iter()
+            .filter_map(|desc| {
+                let route = (desc.cli)()?;
+                let meta = (desc.meta)();
+                Some(everruns_cli_contract::schema::contract_for(
+                    meta.name,
+                    meta.description,
+                    meta.method,
+                    meta.path,
+                    &route,
+                    &(desc.param_schema)(),
+                ))
+            })
+            .collect();
+        built.sort_by_key(|contract| contract.spelling());
+        built
+    })
+}
+
+/// One routed command's contract, by its wire name.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "`everruns-cli` mounts these \
+    next; the lookup is here because it belongs beside `contracts`"
+    )
+)]
+pub fn contract(wire_name: &str) -> Option<&'static ContractCommand> {
+    contracts()
+        .iter()
+        .find(|contract| contract.wire_name == wire_name)
 }
 
 static TREE: OnceLock<CliTree> = OnceLock::new();
@@ -99,6 +139,10 @@ pub fn tree() -> &'static CliTree {
 mod tests {
     use super::*;
 
+    fn rw(input: &str) -> String {
+        rewrite(input, tree())
+    }
+
     /// Every routed command compiles into a parser, against the schemas the
     /// catalog really publishes rather than a fixture.
     ///
@@ -108,29 +152,133 @@ mod tests {
     /// discovering that at runtime.
     #[test]
     fn every_routed_command_compiles_into_a_parser() {
-        let tree = tree();
-        let mut built = 0;
-
-        for spec in InventoryCommandSource.specs() {
-            let spelling = spec.route.spelling();
-            let leaf = tree.leaf(&spelling).expect("declared leaf is in the tree");
-            let command = everruns_integrations_bashkit::cli::args::LeafCommand::new(
-                &format!("{ROOT} {spelling}"),
-                &leaf.description,
-                &leaf.params,
-                leaf.positional.as_deref(),
-                &[],
-                &leaf.command,
+        assert!(!contracts().is_empty(), "no commands declare a CLI route");
+        for contract in contracts() {
+            let help = contract
+                .clap_command(&format!("{ROOT} {}", contract.spelling()))
+                .render_long_help()
+                .to_string();
+            assert!(
+                help.contains(&format!("Wire name: {}", contract.wire_name)),
+                "{}: {help}",
+                contract.spelling()
             );
-            // Rendering help walks every argument, so a command that is
-            // structurally wrong fails here rather than on a caller's line.
-            command
-                .parse(&["--help".to_string()])
-                .expect_err("--help is a clap response, not parameters");
-            built += 1;
         }
+    }
 
-        assert!(built > 0, "no commands declare a CLI route");
+    /// Yolop's bar, made structural: a command an agent cannot learn from
+    /// `--help` is one it will guess at instead. An intent line without a
+    /// command teaches nothing runnable, and a command line without an intent
+    /// only restates syntax the caller could have guessed.
+    #[test]
+    fn every_routed_command_carries_a_worked_example() {
+        let bare: Vec<&str> = contracts()
+            .iter()
+            .filter(|contract| {
+                contract.examples.is_empty()
+                    || contract
+                        .examples
+                        .iter()
+                        .any(|example| example.intent.is_empty() || example.command.is_empty())
+            })
+            .map(|contract| contract.wire_name.as_str())
+            .collect();
+        assert!(
+            bare.is_empty(),
+            "commands without a worked example: {bare:?}"
+        );
+    }
+
+    /// An example is the line a caller copies, so it has to parse. These used
+    /// to be prose: twelve commands documented a bare-word form
+    /// (`everruns sessions archive ses_01h9`) that no parser accepted, because
+    /// the command never declared a positional.
+    #[test]
+    fn every_worked_example_parses_against_its_own_command() {
+        for contract in contracts() {
+            let display = format!("{ROOT} {}", contract.spelling());
+            for example in &contract.examples {
+                // Only the arguments: the spelling itself is the command name.
+                let Some(rest) = example.command.strip_prefix(&display) else {
+                    panic!(
+                        "example for {} does not start with `{display}`: {}",
+                        contract.wire_name, example.command
+                    );
+                };
+                let argv = shell_words(rest);
+
+                let parser = contract.clap_command(&display);
+                let full = std::iter::once(display.clone()).chain(argv);
+                if let Err(error) = parser.try_get_matches_from(full) {
+                    panic!(
+                        "example for {} does not parse:\n  {}\n{error}",
+                        contract.wire_name, example.command
+                    );
+                }
+            }
+        }
+    }
+
+    /// Split an example's arguments the way a shell would, so a quoted value
+    /// stays one argument. An example is written to be pasted into a shell, so
+    /// `--skill-md "$(cat SKILL.md)"` is one argument, not two; splitting on
+    /// whitespace would fail examples that are perfectly correct. Redirection
+    /// and pipes past the command are the shell's business, not the parser's.
+    fn shell_words(line: &str) -> Vec<String> {
+        let mut words = Vec::new();
+        let mut current = String::new();
+        let mut quote: Option<char> = None;
+        let mut started = false;
+
+        for ch in line.chars() {
+            match (quote, ch) {
+                (Some(open), _) if ch == open => quote = None,
+                (Some(_), _) => current.push(ch),
+                (None, '\'' | '"') => {
+                    quote = Some(ch);
+                    started = true;
+                }
+                (None, c) if c.is_whitespace() => {
+                    if started {
+                        words.push(std::mem::take(&mut current));
+                        started = false;
+                    }
+                }
+                (None, '>' | '|' | '&') => break,
+                (None, c) => {
+                    current.push(c);
+                    started = true;
+                }
+            }
+        }
+        if started {
+            words.push(current);
+        }
+        words
+    }
+
+    /// The flat command surface rewrites a bare word into `--<field>` for
+    /// commands declaring `positional_arg`. The contract declares the same
+    /// thing as `.at(1)`. Two declarations of one fact drift, so assert they
+    /// agree rather than hoping.
+    #[test]
+    fn declared_positionals_agree_with_the_flat_surface() {
+        for desc in inventory::iter::<CommandDescriptor> {
+            let Some(route) = (desc.cli)() else { continue };
+            let meta = (desc.meta)();
+            let flat = (desc.positional_arg)();
+            let declared = route.args.iter().find(|arg| arg.position.is_some());
+
+            match (flat, declared) {
+                (Some(field), Some(arg)) => assert_eq!(
+                    field, arg.field,
+                    "{}: flat surface takes `{field}` positionally, the contract takes `{}`",
+                    meta.name, arg.field
+                ),
+                (None, Some(_)) | (Some(_), None) => {}
+                (None, None) => {}
+            }
+        }
     }
 
     /// Pagination reaches commands through `#[serde(flatten)]`, which renders
@@ -138,30 +286,33 @@ mod tests {
     /// properties would call `--limit` an unknown flag.
     #[test]
     fn a_flattened_field_is_a_real_flag() {
-        let tree = tree();
-        let leaf = tree.leaf("agents list").expect("agents list is routed");
-        let command = everruns_integrations_bashkit::cli::args::LeafCommand::new(
-            &format!("{ROOT} agents list"),
-            &leaf.description,
-            &leaf.params,
-            leaf.positional.as_deref(),
-            &[],
-            &leaf.command,
-        );
-
-        let params = command
-            .parse(&["--limit".to_string(), "10".to_string()])
-            .expect("--limit parses")
-            .expect("parameters");
+        let contract = contract("list_agents").expect("agents list is routed");
+        let parser = contract.clap_command("everruns agents list");
+        let matches = parser
+            .try_get_matches_from(["everruns agents list", "--limit", "10"])
+            .expect("--limit parses");
+        let params = everruns_cli_contract::params_from(contract, &matches);
         assert_eq!(params["limit"], 10);
     }
 
-    fn stub_usage(_wire: &str, display: &str) -> String {
-        format!("Usage: {display} [--flags]\n")
-    }
-
-    fn rw(input: &str) -> String {
-        rewrite(input, tree())
+    /// The presentation the shipped CLI chose reaches the agent-facing tree.
+    #[test]
+    fn a_short_option_from_the_cli_works_here_too() {
+        let contract = contract("create_agent").expect("agents create is routed");
+        let parser = contract.clap_command("everruns agents create");
+        let matches = parser
+            .try_get_matches_from([
+                "everruns agents create",
+                "--name",
+                "triage",
+                "--system-prompt",
+                "Triage incoming issues",
+                "-H",
+                "generic",
+            ])
+            .expect("-H parses");
+        let params = everruns_cli_contract::params_from(contract, &matches);
+        assert_eq!(params["harness_name"], "generic");
     }
 
     #[test]
@@ -280,7 +431,7 @@ mod tests {
         // The root is bounded because it lists nouns, never the verbs beneath
         // them: this is what makes `--help` affordable where the flat
         // 312-command namespace had to forbid it.
-        let text = render_help(tree(), "", None, stub_usage).expect("root help");
+        let text = render_help(tree(), "", None).expect("root help");
         assert_eq!(
             listed_commands(&text),
             vec!["agents", "mcp-servers", "sessions", "skills"],
@@ -290,7 +441,7 @@ mod tests {
 
     #[test]
     fn node_help_lists_direct_children_only() {
-        let listed = listed_commands(&render_help(tree(), "agents", None, stub_usage).unwrap());
+        let listed = listed_commands(&render_help(tree(), "agents", None).unwrap());
         assert!(listed.contains(&"list".to_string()), "{listed:?}");
         assert!(listed.contains(&"versions".to_string()), "{listed:?}");
         // A grandchild verb belongs to `agents versions`, not to `agents`.
@@ -299,7 +450,7 @@ mod tests {
 
     #[test]
     fn leaf_help_carries_flags_examples_and_the_wire_name() {
-        let text = render_help(tree(), "agents list", None, stub_usage).expect("leaf help");
+        let text = render_help(tree(), "agents list", None).expect("leaf help");
         // The usage line reads back what the caller typed, not the alias.
         assert!(text.contains("Usage: everruns agents list"), "{text}");
         assert!(text.contains("Examples:"), "{text}");
@@ -309,8 +460,7 @@ mod tests {
 
     #[test]
     fn unknown_verb_help_is_an_error_naming_real_neighbours() {
-        let error =
-            render_help(tree(), "agents", Some("lst"), stub_usage).expect_err("should be an error");
+        let error = render_help(tree(), "agents", Some("lst")).expect_err("should be an error");
         assert!(error.contains("unknown command `lst`"), "{error}");
         assert!(error.contains("list"), "{error}");
     }
@@ -368,28 +518,24 @@ mod tests {
 #[cfg(test)]
 mod usage_tests {
     use super::*;
-    use crate::api::mcp_endpoint::catalog::bash_usage;
 
     /// The leaf help has to show real, typeable flags: the whole reason a tree
     /// can afford `--help` is that each leaf is small. If this ever renders an
     /// empty flag list the surface silently regresses to "guess the schema".
+    ///
+    /// It is the contract's parser that renders this, on a host that cannot
+    /// reach clap to parse. Help needs no argv, so the words describing a
+    /// command are the same words `everruns-cli` uses for it.
     #[test]
     fn leaf_usage_renders_real_flags_under_the_tree_spelling() {
-        let schema = inventory::iter::<CommandDescriptor>
-            .into_iter()
-            .find(|desc| (desc.meta)().name == "create_mcp_server")
-            .map(|desc| (desc.param_schema)())
-            .expect("create_mcp_server is registered");
-
-        let text = render_help(tree(), "mcp-servers create", None, |_wire, display| {
-            bash_usage(display, &schema)
-        })
-        .expect("leaf help");
+        let text = render_help(tree(), "mcp-servers create", None).expect("leaf help");
 
         assert!(text.contains("everruns mcp-servers create"), "{text}");
         assert!(text.contains("--name"), "{text}");
         assert!(text.contains("--url"), "{text}");
         assert!(text.contains("Wire name: create_mcp_server"), "{text}");
+        // The worked example is part of what makes a leaf learnable.
+        assert!(text.contains("Register an MCP server"), "{text}");
     }
 }
 

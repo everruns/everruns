@@ -10,8 +10,8 @@
 //!
 //! ```text
 //! everruns fleet list
-//! everruns fleet get --name api
-//! everruns fleet scale --name api --replicas 4
+//! everruns fleet get api
+//! everruns fleet scale api --replicas 4
 //! everruns fleet --help
 //! ```
 
@@ -19,8 +19,9 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use clap::{CommandFactory, FromArgMatches, Parser};
 use everruns_integrations_bashkit::cli::{
-    CliCommandSource, CliCommandSourceHandle, CliCommandSpec, CliRoute,
+    CliCommandSource, CliCommandSourceHandle, CliCommandSpec,
 };
 use serde_json::{Value, json};
 
@@ -49,11 +50,42 @@ impl Fleet {
     }
 }
 
-const LIST: CliRoute = CliRoute::new(&["fleet"], "list").with_examples(&["everruns fleet list"]);
-const GET: CliRoute =
-    CliRoute::new(&["fleet"], "get").with_examples(&["everruns fleet get --name api"]);
-const SCALE: CliRoute = CliRoute::new(&["fleet"], "scale")
-    .with_examples(&["everruns fleet scale --name api --replicas 4"]);
+/// This application's commands, spelled with clap derive.
+///
+/// A host that writes each command by hand wants derive, and gets it: the tree
+/// takes a `clap::Command` and hands back the `ArgMatches` clap produced, so
+/// nothing here is translated through a schema or a description of a schema.
+/// The hosted product builds the same values from its command catalog instead,
+/// because it has hundreds of commands and their parameters are already Rust
+/// types.
+#[derive(Parser)]
+#[command(name = "list", about = "List services and their replica counts.")]
+struct ListArgs {}
+
+#[derive(Parser)]
+#[command(
+    name = "get",
+    about = "Show one service.",
+    after_help = "Examples:\n  Check what a service is currently running at:\n    everruns fleet get api"
+)]
+struct GetArgs {
+    /// Service name.
+    name: String,
+}
+
+#[derive(Parser)]
+#[command(
+    name = "scale",
+    about = "Set a service's replica count.",
+    after_help = "Examples:\n  Take a service up to four replicas:\n    everruns fleet scale api --replicas 4"
+)]
+struct ScaleArgs {
+    /// Service name.
+    name: String,
+    /// Desired replica count.
+    #[arg(long, short = 'r')]
+    replicas: u32,
+}
 
 /// This application's command source.
 #[derive(Debug)]
@@ -72,64 +104,33 @@ impl FleetCommands {
     pub fn handle(fleet: Arc<Fleet>) -> CliCommandSourceHandle {
         CliCommandSourceHandle(Arc::new(Self::new(fleet)))
     }
-
-    fn required<'a>(params: &'a Value, field: &str) -> Result<&'a str, String> {
-        params
-            .get(field)
-            .and_then(Value::as_str)
-            .ok_or_else(|| format!("missing --{field}"))
-    }
 }
 
 #[async_trait]
 impl CliCommandSource for FleetCommands {
     fn specs(&self) -> Vec<CliCommandSpec> {
-        // A command declares its arguments as a JSON Schema and gets a parser
-        // and a `--help` for free: required fields are enforced, `--replicas`
-        // arrives as a number rather than as text this source has to coerce,
-        // and a misspelled flag is rejected with the usage block attached. A
-        // server generates these schemas from its command types; an
-        // application this size writes them out.
+        fn spec<T: CommandFactory>(
+            wire_name: &str,
+            verb: &str,
+            description: &str,
+        ) -> CliCommandSpec {
+            CliCommandSpec {
+                wire_name: wire_name.into(),
+                description: description.into(),
+                path: vec!["fleet".into()],
+                verb: verb.into(),
+                command: T::command().color(clap::ColorChoice::Never),
+            }
+        }
+
         vec![
-            CliCommandSpec {
-                wire_name: "list_services".into(),
-                description: "List services and their replica counts.".into(),
-                route: LIST,
-                params: json!({ "type": "object", "properties": {} }),
-                positional: None,
-            },
-            CliCommandSpec {
-                wire_name: "get_service".into(),
-                description: "Show one service.".into(),
-                route: GET,
-                params: json!({
-                    "type": "object",
-                    "properties": {
-                        "name": { "type": "string", "description": "Service name." }
-                    },
-                    "required": ["name"]
-                }),
-                // `everruns fleet get api` reads better than `--name api`, and
-                // costs one declaration.
-                positional: Some("name".into()),
-            },
-            CliCommandSpec {
-                wire_name: "scale_service".into(),
-                description: "Set a service's replica count.".into(),
-                route: SCALE,
-                params: json!({
-                    "type": "object",
-                    "properties": {
-                        "name": { "type": "string", "description": "Service name." },
-                        "replicas": {
-                            "type": "integer",
-                            "description": "Desired replica count."
-                        }
-                    },
-                    "required": ["name", "replicas"]
-                }),
-                positional: Some("name".into()),
-            },
+            spec::<ListArgs>(
+                "list_services",
+                "list",
+                "List services and their replica counts.",
+            ),
+            spec::<GetArgs>("get_service", "get", "Show one service."),
+            spec::<ScaleArgs>("scale_service", "scale", "Set a service's replica count."),
         ]
     }
 
@@ -140,7 +141,11 @@ impl CliCommandSource for FleetCommands {
         )]
     }
 
-    async fn dispatch(&self, wire_name: &str, params: Value) -> Result<String, String> {
+    async fn dispatch(
+        &self,
+        wire_name: &str,
+        mut matches: clap::ArgMatches,
+    ) -> Result<String, String> {
         match wire_name {
             "list_services" => {
                 let services = self
@@ -155,43 +160,44 @@ impl CliCommandSource for FleetCommands {
                 Ok(json!({ "services": rows }).to_string())
             }
             "get_service" => {
-                let name = Self::required(&params, "name")?;
+                // Typed by the parser before dispatch, so there is no coercion
+                // here and no missing-argument check: clap enforced both.
+                let args =
+                    GetArgs::from_arg_matches_mut(&mut matches).map_err(|e| e.to_string())?;
                 let services = self
                     .fleet
                     .services
                     .lock()
                     .map_err(|_| "fleet unavailable")?;
-                match services.get(name) {
-                    Some(replicas) => Ok(json!({ "name": name, "replicas": replicas }).to_string()),
+                match services.get(&args.name) {
+                    Some(replicas) => {
+                        Ok(json!({ "name": args.name, "replicas": replicas }).to_string())
+                    }
                     // Errors name the real options so a caller can correct
                     // itself without asking a human.
                     None => Err(format!(
-                        "unknown service `{name}`. Known: {}",
+                        "unknown service `{}`. Known: {}",
+                        args.name,
                         services.keys().cloned().collect::<Vec<_>>().join(", ")
                     )),
                 }
             }
             "scale_service" => {
-                let name = Self::required(&params, "name")?.to_string();
-                // Typed by the schema before dispatch: a non-numeric
-                // `--replicas` never reaches here, and neither does a missing
-                // one, so there is no coercion to write.
-                let replicas = params
-                    .get("replicas")
-                    .and_then(Value::as_u64)
-                    .ok_or("missing or non-numeric --replicas")?
-                    as u32;
-
+                let args =
+                    ScaleArgs::from_arg_matches_mut(&mut matches).map_err(|e| e.to_string())?;
                 let mut services = self
                     .fleet
                     .services
                     .lock()
                     .map_err(|_| "fleet unavailable")?;
-                if !services.contains_key(&name) {
-                    return Err(format!("unknown service `{name}`"));
+                if !services.contains_key(&args.name) {
+                    return Err(format!("unknown service `{}`", args.name));
                 }
-                services.insert(name.clone(), replicas);
-                Ok(json!({ "name": name, "replicas": replicas, "scaled": true }).to_string())
+                services.insert(args.name.clone(), args.replicas);
+                Ok(
+                    json!({ "name": args.name, "replicas": args.replicas, "scaled": true })
+                        .to_string(),
+                )
             }
             other => Err(format!("unknown command `{other}`")),
         }
