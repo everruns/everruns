@@ -68,6 +68,13 @@ pub struct OrganizationMemberRow {
     pub role: String,
     pub created_at: DateTime<Utc>,
 }
+/// Result of adding an organization member under the member-capacity guard.
+#[derive(Debug, Clone)]
+pub enum AddOrganizationMemberOutcome {
+    Added(OrganizationMemberRow),
+    AlreadyMember(OrganizationMemberRow),
+    MemberLimitReached,
+}
 
 /// Organization member with user info (for API responses)
 #[derive(Debug, Clone, FromRow)]
@@ -221,6 +228,26 @@ pub struct OrgInvitationRow {
     pub revoked_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// Actionable invitation with organization display data.
+#[derive(Debug, Clone, FromRow)]
+pub struct OutstandingOrgInvitationRow {
+    pub public_id: String,
+    pub org_id: i64,
+    pub org_name: String,
+    pub email: String,
+    pub role: String,
+    pub expires_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Result of atomically claiming an invitation and ensuring its membership.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AcceptOrgInvitationOutcome {
+    Accepted { org_id: i64, role: String },
+    MemberLimitReached,
+    NotActionable,
 }
 
 /// Input for creating an organization invitation.

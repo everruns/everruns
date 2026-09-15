@@ -15,10 +15,50 @@
 mod test_harness;
 
 use axum::http::StatusCode;
+use chrono::{Duration, Utc};
+use everruns_platform::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID};
+use everruns_server::storage::{
+    CreateOrgInvitation, CreateOrganizationRow, OrgInvitationRow, UpdateUser,
+};
 use serde_json::{Value, json};
 use test_harness::TestServer;
+use uuid::Uuid;
 
 const DEFAULT_ORG: &str = "org_00000000000000000000000000000001";
+
+async fn create_org(server: &TestServer, name: &str) -> everruns_server::storage::OrganizationRow {
+    server
+        .db
+        .create_organization(CreateOrganizationRow {
+            public_id: everruns_platform::generate_org_public_id(),
+            name: name.to_string(),
+            created_by: Some(ANONYMOUS_USER_ID),
+        })
+        .await
+        .expect("create organization")
+}
+
+async fn seed_invitation(
+    server: &TestServer,
+    org_id: i64,
+    email: &str,
+    expires_at: chrono::DateTime<Utc>,
+) -> OrgInvitationRow {
+    let unique = Uuid::now_v7().simple().to_string();
+    server
+        .db
+        .create_org_invitation(CreateOrgInvitation {
+            public_id: format!("orginv_{unique}"),
+            org_id,
+            email: email.to_string(),
+            role: "member".to_string(),
+            invited_by: ANONYMOUS_USER_ID,
+            token_hash: format!("hash-{unique}"),
+            expires_at,
+        })
+        .await
+        .expect("create invitation")
+}
 
 #[tokio::test]
 async fn create_list_revoke_invite_flow() {
@@ -102,4 +142,207 @@ async fn accept_invalid_token_returns_not_found() {
         .assert_status(StatusCode::NOT_FOUND);
     let body: Value = resp.json();
     assert_eq!(body["code"], "invite_invalid");
+}
+
+#[tokio::test]
+async fn lists_only_actionable_invitations_for_verified_email() {
+    let server = TestServer::in_memory().await;
+    let actionable_org = create_org(&server, "Actionable Org").await;
+    let other_org = create_org(&server, "Other Org").await;
+    let now = Utc::now();
+
+    let actionable = seed_invitation(
+        &server,
+        actionable_org.org_id,
+        ANONYMOUS_USER_EMAIL,
+        now + Duration::days(1),
+    )
+    .await;
+    seed_invitation(
+        &server,
+        other_org.org_id,
+        "other@example.com",
+        now + Duration::days(1),
+    )
+    .await;
+    seed_invitation(
+        &server,
+        other_org.org_id,
+        ANONYMOUS_USER_EMAIL,
+        now - Duration::days(1),
+    )
+    .await;
+    let revoked = seed_invitation(
+        &server,
+        other_org.org_id,
+        ANONYMOUS_USER_EMAIL,
+        now + Duration::days(1),
+    )
+    .await;
+    server
+        .db
+        .revoke_org_invitation(other_org.org_id, &revoked.public_id)
+        .await
+        .expect("revoke invitation");
+    let accepted = seed_invitation(
+        &server,
+        other_org.org_id,
+        ANONYMOUS_USER_EMAIL,
+        now + Duration::days(1),
+    )
+    .await;
+    server
+        .db
+        .accept_org_invitation(accepted.id, ANONYMOUS_USER_ID)
+        .await
+        .expect("accept invitation");
+
+    let body: Value = server
+        .get("/v1/me/invitations")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let items = body["data"].as_array().expect("invitation data");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["id"], actionable.public_id);
+    assert_eq!(items[0]["org_name"], "Actionable Org");
+    assert_eq!(items[0]["role"], "member");
+}
+
+#[tokio::test]
+async fn accepts_own_invitation_by_public_id() {
+    let server = TestServer::in_memory().await;
+    let org = create_org(&server, "Inviting Org").await;
+    let invitation = seed_invitation(
+        &server,
+        org.org_id,
+        ANONYMOUS_USER_EMAIL,
+        Utc::now() + Duration::days(1),
+    )
+    .await;
+
+    let body: Value = server
+        .post(
+            &format!("/v1/me/invitations/{}/accept", invitation.public_id),
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(body["org_id"], org.public_id);
+    assert_eq!(body["role"], "member");
+    assert!(
+        server
+            .db
+            .is_organization_member(org.org_id, ANONYMOUS_USER_ID)
+            .await
+            .expect("check membership")
+    );
+    assert!(
+        server
+            .get("/v1/me/invitations")
+            .await
+            .assert_status(StatusCode::OK)
+            .json::<Value>()["data"]
+            .as_array()
+            .expect("invitation data")
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn denies_unverified_email_for_list_and_accept() {
+    let server = TestServer::in_memory().await;
+    let org = create_org(&server, "Inviting Org").await;
+    let invitation = seed_invitation(
+        &server,
+        org.org_id,
+        ANONYMOUS_USER_EMAIL,
+        Utc::now() + Duration::days(1),
+    )
+    .await;
+    server
+        .db
+        .update_user(
+            ANONYMOUS_USER_ID,
+            UpdateUser {
+                email_verified: Some(false),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update user");
+
+    let list: Value = server
+        .get("/v1/me/invitations")
+        .await
+        .assert_status(StatusCode::FORBIDDEN)
+        .json();
+    assert_eq!(list["code"], "invite_email_unverified");
+    let accept: Value = server
+        .post(
+            &format!("/v1/me/invitations/{}/accept", invitation.public_id),
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::FORBIDDEN)
+        .json();
+    assert_eq!(accept["code"], "invite_email_unverified");
+    let missing: Value = server
+        .post(
+            "/v1/me/invitations/orginv_00000000000000000000000000000000/accept",
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::FORBIDDEN)
+        .json();
+    assert_eq!(missing, accept);
+}
+
+#[tokio::test]
+async fn public_id_accept_hides_wrong_addressee_and_rejects_expired_invite() {
+    let server = TestServer::in_memory().await;
+    let org = create_org(&server, "Inviting Org").await;
+    let wrong_addressee = seed_invitation(
+        &server,
+        org.org_id,
+        "other@example.com",
+        Utc::now() + Duration::days(1),
+    )
+    .await;
+    let expired = seed_invitation(
+        &server,
+        org.org_id,
+        ANONYMOUS_USER_EMAIL,
+        Utc::now() - Duration::days(1),
+    )
+    .await;
+
+    let wrong: Value = server
+        .post(
+            &format!("/v1/me/invitations/{}/accept", wrong_addressee.public_id),
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND)
+        .json();
+    let missing: Value = server
+        .post(
+            "/v1/me/invitations/orginv_00000000000000000000000000000000/accept",
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND)
+        .json();
+    assert_eq!(wrong, missing);
+    assert_eq!(wrong["code"], "invite_invalid");
+    let stale: Value = server
+        .post(
+            &format!("/v1/me/invitations/{}/accept", expired.public_id),
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::GONE)
+        .json();
+    assert_eq!(stale["code"], "invite_expired");
 }

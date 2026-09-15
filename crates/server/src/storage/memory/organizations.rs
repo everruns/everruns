@@ -4,7 +4,36 @@ use super::super::models::*;
 use super::InMemoryDatabase;
 use anyhow::Result;
 use everruns_provider::typed_id::ModelId;
+use std::collections::HashMap;
 use uuid::Uuid;
+
+fn add_organization_member_with_capacity_locked(
+    members: &mut HashMap<(i64, Uuid), OrganizationMemberRow>,
+    org_id: i64,
+    user_id: Uuid,
+    role: &str,
+    max_members: i64,
+    now: chrono::DateTime<chrono::Utc>,
+) -> AddOrganizationMemberOutcome {
+    if let Some(existing) = members.get(&(org_id, user_id)) {
+        return AddOrganizationMemberOutcome::AlreadyMember(existing.clone());
+    }
+    let member_count = members
+        .values()
+        .filter(|member| member.org_id == org_id)
+        .count() as i64;
+    if member_count >= max_members {
+        return AddOrganizationMemberOutcome::MemberLimitReached;
+    }
+    let member = OrganizationMemberRow {
+        org_id,
+        user_id,
+        role: role.to_string(),
+        created_at: now,
+    };
+    members.insert((org_id, user_id), member.clone());
+    AddOrganizationMemberOutcome::Added(member)
+}
 
 impl InMemoryDatabase {
     // ============================================
@@ -210,6 +239,24 @@ impl InMemoryDatabase {
             .write()
             .insert((org_id, user_id), row.clone());
         Ok(row)
+    }
+
+    pub async fn add_organization_member_with_capacity(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        role: &str,
+        max_members: i64,
+    ) -> Result<AddOrganizationMemberOutcome> {
+        let mut members = self.organization_members.write();
+        Ok(add_organization_member_with_capacity_locked(
+            &mut members,
+            org_id,
+            user_id,
+            role,
+            max_members,
+            Self::now(),
+        ))
     }
 
     pub async fn remove_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
@@ -646,17 +693,50 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    pub async fn get_org_invitation_by_public_id(
+    pub async fn get_org_invitation_by_public_id_and_email(
         &self,
-        org_id: i64,
         public_id: &str,
+        email: &str,
     ) -> Result<Option<OrgInvitationRow>> {
         Ok(self
             .org_invitations
             .read()
             .iter()
-            .find(|i| i.org_id == org_id && i.public_id == public_id)
+            .find(|i| i.public_id == public_id && i.email == email)
             .cloned())
+    }
+
+    pub async fn list_outstanding_org_invitations_by_email(
+        &self,
+        email: &str,
+    ) -> Result<Vec<OutstandingOrgInvitationRow>> {
+        let now = Self::now();
+        let organizations = self.organizations.read();
+        let mut rows: Vec<_> = self
+            .org_invitations
+            .read()
+            .iter()
+            .filter(|i| {
+                i.email == email
+                    && i.accepted_at.is_none()
+                    && i.revoked_at.is_none()
+                    && i.expires_at > now
+            })
+            .filter_map(|i| {
+                let org = organizations.get(&i.org_id)?;
+                Some(OutstandingOrgInvitationRow {
+                    public_id: i.public_id.clone(),
+                    org_id: i.org_id,
+                    org_name: org.name.clone(),
+                    email: i.email.clone(),
+                    role: i.role.clone(),
+                    expires_at: i.expires_at,
+                    created_at: i.created_at,
+                })
+            })
+            .collect();
+        rows.sort_by_key(|i| std::cmp::Reverse(i.created_at));
+        Ok(rows)
     }
 
     /// The outstanding (not accepted, not revoked) invitation for an email in an
@@ -698,8 +778,7 @@ impl InMemoryDatabase {
         Ok(false)
     }
 
-    /// Atomically mark an invitation accepted. Returns the updated row only when
-    /// it was still pending, so concurrent accepts cannot both win.
+    /// Atomically mark an actionable invitation accepted.
     pub async fn accept_org_invitation(
         &self,
         invitation_id: i64,
@@ -707,15 +786,60 @@ impl InMemoryDatabase {
     ) -> Result<Option<OrgInvitationRow>> {
         let now = Self::now();
         let mut invitations = self.org_invitations.write();
-        if let Some(inv) = invitations
-            .iter_mut()
-            .find(|i| i.id == invitation_id && i.accepted_at.is_none() && i.revoked_at.is_none())
-        {
+        if let Some(inv) = invitations.iter_mut().find(|i| {
+            i.id == invitation_id
+                && i.accepted_at.is_none()
+                && i.revoked_at.is_none()
+                && i.expires_at > now
+        }) {
             inv.accepted_at = Some(now);
             inv.accepted_by = Some(accepted_by);
             inv.updated_at = now;
             return Ok(Some(inv.clone()));
         }
         Ok(None)
+    }
+
+    pub async fn accept_org_invitation_with_membership(
+        &self,
+        invitation_id: i64,
+        accepted_by: Uuid,
+        max_members: i64,
+    ) -> Result<AcceptOrgInvitationOutcome> {
+        let now = Self::now();
+        let mut invitations = self.org_invitations.write();
+        let Some(invitation) = invitations.iter_mut().find(|i| i.id == invitation_id) else {
+            return Ok(AcceptOrgInvitationOutcome::NotActionable);
+        };
+        if invitation.accepted_at.is_some()
+            || invitation.revoked_at.is_some()
+            || invitation.expires_at <= now
+        {
+            return Ok(AcceptOrgInvitationOutcome::NotActionable);
+        }
+
+        let mut members = self.organization_members.write();
+        let role = match add_organization_member_with_capacity_locked(
+            &mut members,
+            invitation.org_id,
+            accepted_by,
+            &invitation.role,
+            max_members,
+            now,
+        ) {
+            AddOrganizationMemberOutcome::Added(member)
+            | AddOrganizationMemberOutcome::AlreadyMember(member) => member.role,
+            AddOrganizationMemberOutcome::MemberLimitReached => {
+                return Ok(AcceptOrgInvitationOutcome::MemberLimitReached);
+            }
+        };
+
+        invitation.accepted_at = Some(now);
+        invitation.accepted_by = Some(accepted_by);
+        invitation.updated_at = now;
+        Ok(AcceptOrgInvitationOutcome::Accepted {
+            org_id: invitation.org_id,
+            role,
+        })
     }
 }
