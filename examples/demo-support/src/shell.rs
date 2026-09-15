@@ -108,16 +108,23 @@ pub fn check(passed: bool, label: &str) {
     println!("  {mark} {text}");
 }
 
-/// Render one `bash` tool result: exit status plus bounded output.
+/// Render one successful tool result.
 ///
 /// The Bashkit capability returns a JSON payload (`exit_code`, `stdout`,
-/// `stderr`, `success`); showing the fields beats dumping the envelope.
+/// `stderr`, `success`); showing the fields beats dumping the envelope. Any
+/// other tool's payload is printed bounded, without a fabricated exit status.
 fn shell_result(text: &str) {
     let Ok(payload) = serde_json::from_str::<serde_json::Value>(text) else {
         body_capped(text, DIM, "", MAX_OUTPUT_LINES);
         return;
     };
-    let exit_code = payload["exit_code"].as_i64().unwrap_or(-1);
+    // Only a shell result carries an exit status. A file tool's payload has
+    // none, and `shell_result` is reached only for calls that succeeded, so
+    // inventing -1 here painted every successful file tool red.
+    let Some(exit_code) = payload["exit_code"].as_i64() else {
+        body_capped(text, DIM, "", MAX_OUTPUT_LINES);
+        return;
+    };
     let status = if exit_code == 0 {
         paint(GREEN, "exit 0")
     } else {
