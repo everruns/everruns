@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC001 Manage session participants"
+title: "TC001: Manage session participants"
 description: "Verify that the session participant rail identifies the host and members, supports inviting and addressing an agent member, attributes its reply, and renders a leave system line."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - session-participants
 ---
-# TC001 Manage session participants
+# TC001: Manage session participants
 
 ## Description
 

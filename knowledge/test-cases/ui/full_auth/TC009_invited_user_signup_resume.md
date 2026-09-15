@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC009 — Invited user signs up and accepts invitation"
+title: "TC009: Invited user signs up and accepts invitation"
 description: "Verifies that an organization invite link preserves its target through the login → signup → email verification path and resumes invitation acceptance for a brand-new user."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - full-auth
 ---
-# TC009 — Invited user signs up and accepts invitation
+# TC009: Invited user signs up and accepts invitation
 
 ## Description
 

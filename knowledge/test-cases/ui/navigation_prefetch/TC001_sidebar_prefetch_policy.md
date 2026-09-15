@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "Sidebar Prefetch Policy"
+title: "TC001: Sidebar Prefetch Policy"
 description: "Verify that authenticated app startup does not automatically prefetch visible sidebar destinations, while intent and click navigation remain responsive and Settings does not fan out to child routes."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - navigation-prefetch
 ---
-# Sidebar Prefetch Policy
+# TC001: Sidebar Prefetch Policy
 
 ## Description
 

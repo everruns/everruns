@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC001: Knowledge Index Diagnostic Status"
+title: "TC003: Knowledge Index Diagnostic Status"
 description: "Verify that an active knowledge index with an invalid embedding model is not presented as healthy, and that list and detail views show the same diagnostic with the correct remediation."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - knowledge-indexes
 ---
-# TC001: Knowledge Index Diagnostic Status
+# TC003: Knowledge Index Diagnostic Status
 
 ## Description
 

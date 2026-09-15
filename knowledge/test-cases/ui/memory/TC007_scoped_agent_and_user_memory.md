@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC007 Scoped agent and user memory"
+title: "TC007: Scoped agent and user memory"
 description: "Verify that host-agent memory is mounted at `/memory/agent` and persists across two sessions of the same agent, while user memory is mounted only in sessions where that user participates."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - memory
 ---
-# TC007 Scoped agent and user memory
+# TC007: Scoped agent and user memory
 
 ## Description
 
