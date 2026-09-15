@@ -808,18 +808,20 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_org_invitation_by_public_id(
+    pub async fn get_org_invitation_by_public_id_and_email(
         &self,
         public_id: &str,
+        email: &str,
     ) -> Result<Option<OrgInvitationRow>> {
         let row = sqlx::query_as::<_, OrgInvitationRow>(
             r#"
             SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
             FROM org_invitations
-            WHERE public_id = $1
+            WHERE public_id = $1 AND email = $2
             "#,
         )
         .bind(public_id)
+        .bind(email)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)
@@ -910,5 +912,120 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)
+    }
+
+    pub async fn accept_org_invitation_with_membership(
+        &self,
+        invitation_id: i64,
+        accepted_by: Uuid,
+        max_members: i64,
+    ) -> Result<AcceptOrgInvitationOutcome> {
+        let mut tx = self.pool.begin().await?;
+        let Some(invitation) = sqlx::query_as::<_, OrgInvitationRow>(
+            r#"
+            SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at,
+                   accepted_at, accepted_by, revoked_at, created_at, updated_at
+            FROM org_invitations
+            WHERE id = $1
+            FOR UPDATE
+            "#,
+        )
+        .bind(invitation_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        else {
+            tx.rollback().await?;
+            return Ok(AcceptOrgInvitationOutcome::NotActionable);
+        };
+
+        if invitation.accepted_at.is_some()
+            || invitation.revoked_at.is_some()
+            || invitation.expires_at <= chrono::Utc::now()
+        {
+            tx.rollback().await?;
+            return Ok(AcceptOrgInvitationOutcome::NotActionable);
+        }
+
+        sqlx::query("SELECT pg_advisory_xact_lock($1)")
+            .bind(invitation.org_id)
+            .execute(&mut *tx)
+            .await?;
+
+        let existing_role: Option<(String,)> = sqlx::query_as(
+            "SELECT role FROM organization_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE",
+        )
+        .bind(invitation.org_id)
+        .bind(accepted_by)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        if existing_role.is_none() {
+            let (member_count,): (i64,) =
+                sqlx::query_as("SELECT COUNT(*) FROM organization_members WHERE org_id = $1")
+                    .bind(invitation.org_id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+            if member_count >= max_members {
+                tx.rollback().await?;
+                return Ok(AcceptOrgInvitationOutcome::MemberLimitReached);
+            }
+        }
+
+        let claimed: Option<(i64,)> = sqlx::query_as(
+            r#"
+            UPDATE org_invitations
+            SET accepted_at = NOW(), accepted_by = $2
+            WHERE id = $1
+              AND accepted_at IS NULL
+              AND revoked_at IS NULL
+              AND expires_at > NOW()
+            RETURNING id
+            "#,
+        )
+        .bind(invitation.id)
+        .bind(accepted_by)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if claimed.is_none() {
+            tx.rollback().await?;
+            return Ok(AcceptOrgInvitationOutcome::NotActionable);
+        }
+
+        let role = if let Some((role,)) = existing_role {
+            role
+        } else {
+            let inserted: Option<(String,)> = sqlx::query_as(
+                r#"
+                INSERT INTO organization_members (org_id, user_id, role)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (org_id, user_id) DO NOTHING
+                RETURNING role
+                "#,
+            )
+            .bind(invitation.org_id)
+            .bind(accepted_by)
+            .bind(&invitation.role)
+            .fetch_optional(&mut *tx)
+            .await?;
+            match inserted {
+                Some((role,)) => role,
+                None => {
+                    let (role,): (String,) = sqlx::query_as(
+                        "SELECT role FROM organization_members WHERE org_id = $1 AND user_id = $2",
+                    )
+                    .bind(invitation.org_id)
+                    .bind(accepted_by)
+                    .fetch_one(&mut *tx)
+                    .await?;
+                    role
+                }
+            }
+        };
+
+        tx.commit().await?;
+        Ok(AcceptOrgInvitationOutcome::Accepted {
+            org_id: invitation.org_id,
+            role,
+        })
     }
 }

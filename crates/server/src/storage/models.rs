@@ -235,6 +235,14 @@ pub struct OutstandingOrgInvitationRow {
     pub created_at: DateTime<Utc>,
 }
 
+/// Result of atomically claiming an invitation and ensuring its membership.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AcceptOrgInvitationOutcome {
+    Accepted { org_id: i64, role: String },
+    MemberLimitReached,
+    NotActionable,
+}
+
 /// Input for creating an organization invitation.
 #[derive(Debug, Clone)]
 pub struct CreateOrgInvitation {

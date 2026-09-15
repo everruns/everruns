@@ -288,10 +288,19 @@ async fn denies_unverified_email_for_list_and_accept() {
         .assert_status(StatusCode::FORBIDDEN)
         .json();
     assert_eq!(accept["code"], "invite_email_unverified");
+    let missing: Value = server
+        .post(
+            "/v1/me/invitations/orginv_00000000000000000000000000000000/accept",
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::FORBIDDEN)
+        .json();
+    assert_eq!(missing, accept);
 }
 
 #[tokio::test]
-async fn public_id_accept_denies_wrong_addressee_and_expired_invite() {
+async fn public_id_accept_hides_wrong_addressee_and_rejects_expired_invite() {
     let server = TestServer::in_memory().await;
     let org = create_org(&server, "Inviting Org").await;
     let wrong_addressee = seed_invitation(
@@ -315,9 +324,18 @@ async fn public_id_accept_denies_wrong_addressee_and_expired_invite() {
             json!({}),
         )
         .await
-        .assert_status(StatusCode::FORBIDDEN)
+        .assert_status(StatusCode::NOT_FOUND)
         .json();
-    assert_eq!(wrong["code"], "invite_email_mismatch");
+    let missing: Value = server
+        .post(
+            "/v1/me/invitations/orginv_00000000000000000000000000000000/accept",
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND)
+        .json();
+    assert_eq!(wrong, missing);
+    assert_eq!(wrong["code"], "invite_invalid");
     let stale: Value = server
         .post(
             &format!("/v1/me/invitations/{}/accept", expired.public_id),

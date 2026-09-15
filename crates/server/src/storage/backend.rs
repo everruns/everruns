@@ -3351,11 +3351,17 @@ impl StorageBackend {
         dispatch!(self, get_org_invitation_by_token_hash, token_hash)
     }
 
-    pub async fn get_org_invitation_by_public_id(
+    pub async fn get_org_invitation_by_public_id_and_email(
         &self,
         public_id: &str,
+        email: &str,
     ) -> Result<Option<OrgInvitationRow>> {
-        dispatch!(self, get_org_invitation_by_public_id, public_id)
+        dispatch!(
+            self,
+            get_org_invitation_by_public_id_and_email,
+            public_id,
+            email
+        )
     }
 
     pub async fn list_outstanding_org_invitations_by_email(
@@ -3383,6 +3389,21 @@ impl StorageBackend {
         accepted_by: Uuid,
     ) -> Result<Option<OrgInvitationRow>> {
         dispatch!(self, accept_org_invitation, invitation_id, accepted_by)
+    }
+
+    pub async fn accept_org_invitation_with_membership(
+        &self,
+        invitation_id: i64,
+        accepted_by: Uuid,
+        max_members: i64,
+    ) -> Result<AcceptOrgInvitationOutcome> {
+        dispatch!(
+            self,
+            accept_org_invitation_with_membership,
+            invitation_id,
+            accepted_by,
+            max_members
+        )
     }
 
     // ============================================

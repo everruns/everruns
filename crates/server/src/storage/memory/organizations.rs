@@ -646,15 +646,16 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    pub async fn get_org_invitation_by_public_id(
+    pub async fn get_org_invitation_by_public_id_and_email(
         &self,
         public_id: &str,
+        email: &str,
     ) -> Result<Option<OrgInvitationRow>> {
         Ok(self
             .org_invitations
             .read()
             .iter()
-            .find(|i| i.public_id == public_id)
+            .find(|i| i.public_id == public_id && i.email == email)
             .cloned())
     }
 
@@ -750,5 +751,56 @@ impl InMemoryDatabase {
             return Ok(Some(inv.clone()));
         }
         Ok(None)
+    }
+
+    pub async fn accept_org_invitation_with_membership(
+        &self,
+        invitation_id: i64,
+        accepted_by: Uuid,
+        max_members: i64,
+    ) -> Result<AcceptOrgInvitationOutcome> {
+        let now = Self::now();
+        let mut invitations = self.org_invitations.write();
+        let Some(invitation) = invitations.iter_mut().find(|i| i.id == invitation_id) else {
+            return Ok(AcceptOrgInvitationOutcome::NotActionable);
+        };
+        if invitation.accepted_at.is_some()
+            || invitation.revoked_at.is_some()
+            || invitation.expires_at <= now
+        {
+            return Ok(AcceptOrgInvitationOutcome::NotActionable);
+        }
+
+        let mut members = self.organization_members.write();
+        let key = (invitation.org_id, accepted_by);
+        let role = if let Some(member) = members.get(&key) {
+            member.role.clone()
+        } else {
+            let member_count = members
+                .values()
+                .filter(|member| member.org_id == invitation.org_id)
+                .count() as i64;
+            if member_count >= max_members {
+                return Ok(AcceptOrgInvitationOutcome::MemberLimitReached);
+            }
+            members.insert(
+                key,
+                OrganizationMemberRow {
+                    org_id: invitation.org_id,
+                    user_id: accepted_by,
+                    role: invitation.role.clone(),
+                    created_at: now,
+                },
+            );
+            invitation.role.clone()
+        };
+
+        invitation.accepted_at = Some(now);
+        invitation.accepted_by = Some(accepted_by);
+        invitation.updated_at = now;
+        Ok(AcceptOrgInvitationOutcome::Accepted {
+            org_id: invitation.org_id,
+            role,
+        })
     }
 }

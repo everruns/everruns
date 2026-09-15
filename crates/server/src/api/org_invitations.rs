@@ -21,7 +21,9 @@
 use crate::auth::audit;
 use crate::auth::middleware::{AuthState, AuthUser, OrgAdmin};
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateOrgInvitation, OrgInvitationRow};
+use crate::storage::models::{
+    AcceptOrgInvitationOutcome, CreateOrgInvitation, OrgInvitationRow, UserRow,
+};
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Extension, Path, State},
@@ -508,7 +510,7 @@ async fn accepting_user(
         return Err(InviteError::new(
             StatusCode::FORBIDDEN,
             "invite_email_unverified",
-            "Verify your email address before accepting this invitation",
+            "Verify your email address to manage invitations",
         ));
     }
 
@@ -518,11 +520,9 @@ async fn accepting_user(
 async fn accept_invitation_row(
     db: &StorageBackend,
     row: OrgInvitationRow,
-    user_id: Uuid,
+    user: &UserRow,
     max_members: i64,
 ) -> Result<AcceptedInvitation, InviteError> {
-    let user = accepting_user(db, user_id).await?;
-
     if normalize_email(&user.email) != row.email {
         return Err(InviteError::new(
             StatusCode::FORBIDDEN,
@@ -553,50 +553,38 @@ async fn accept_invitation_row(
         ));
     }
 
-    if !db
-        .is_organization_member(row.org_id, user_id)
+    let (org_id, role) = match db
+        .accept_org_invitation_with_membership(row.id, user.id, max_members)
         .await
-        .map_err(|e| internal("check membership", e))?
+        .map_err(|e| internal("accept invite and add membership", e))?
     {
-        let member_count = db
-            .count_organization_members(row.org_id)
-            .await
-            .map_err(|e| internal("count members", e))?;
-        if member_count >= max_members {
+        AcceptOrgInvitationOutcome::Accepted { org_id, role } => (org_id, role),
+        AcceptOrgInvitationOutcome::MemberLimitReached => {
             return Err(InviteError::new(
                 StatusCode::CONFLICT,
                 "member_limit_reached",
                 format!("Member limit reached (max {max_members})"),
             ));
         }
-    }
-
-    let accepted = db
-        .accept_org_invitation(row.id, user_id)
-        .await
-        .map_err(|e| internal("accept invite", e))?
-        .ok_or_else(|| {
-            InviteError::new(
+        AcceptOrgInvitationOutcome::NotActionable => {
+            return Err(InviteError::new(
                 StatusCode::CONFLICT,
                 "invite_not_actionable",
                 "This invitation is no longer actionable",
-            )
-        })?;
-
-    db.add_organization_member(accepted.org_id, user_id, &accepted.role)
-        .await
-        .map_err(|e| internal("add member", e))?;
+            ));
+        }
+    };
 
     let org = db
-        .get_organization(accepted.org_id)
+        .get_organization(org_id)
         .await
         .map_err(|e| internal("get organization", e))?
         .ok_or_else(|| internal("get organization", anyhow::anyhow!("org missing")))?;
 
     Ok(AcceptedInvitation {
-        org_id: accepted.org_id,
+        org_id,
         org_public_id: org.public_id,
-        role: accepted.role,
+        role,
     })
 }
 
@@ -607,6 +595,7 @@ pub async fn accept_invitation(
     user_id: Uuid,
     max_members: i64,
 ) -> Result<AcceptedInvitation, InviteError> {
+    let user = accepting_user(db, user_id).await?;
     if !token.starts_with(INVITE_TOKEN_PREFIX) {
         return Err(invalid_invitation());
     }
@@ -618,7 +607,7 @@ pub async fn accept_invitation(
         .map_err(|e| internal("lookup invite by token", e))?
         .ok_or_else(invalid_invitation)?;
 
-    accept_invitation_row(db, row, user_id, max_members).await
+    accept_invitation_row(db, row, &user, max_members).await
 }
 
 pub async fn accept_invitation_by_public_id(
@@ -627,13 +616,14 @@ pub async fn accept_invitation_by_public_id(
     user_id: Uuid,
     max_members: i64,
 ) -> Result<AcceptedInvitation, InviteError> {
+    let user = accepting_user(db, user_id).await?;
+    let email = normalize_email(&user.email);
     let row = db
-        .get_org_invitation_by_public_id(public_id)
+        .get_org_invitation_by_public_id_and_email(public_id, &email)
         .await
         .map_err(|e| internal("lookup invite by public id", e))?
         .ok_or_else(invalid_invitation)?;
-
-    accept_invitation_row(db, row, user_id, max_members).await
+    accept_invitation_row(db, row, &user, max_members).await
 }
 
 // ============================================================================
