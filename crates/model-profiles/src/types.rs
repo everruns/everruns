@@ -40,11 +40,14 @@ impl std::fmt::Display for ServiceKind {
 }
 
 /// Cost information for the model (per million tokens)
-///
-/// `#[non_exhaustive]`: pricing dimensions keep arriving (`cache_read`,
-/// `cache_write`, `cost_tiers` were each added after the fact), and a new one
-/// must not break every downstream consumer. Construct with
-/// [`ModelCost::new`] and assign the optional fields.
+// Rationale for `#[non_exhaustive]`: pricing dimensions keep arriving
+// (`cache_read`, `cache_write`, `cost_tiers` were each added after the fact),
+// and a new one must not break every downstream consumer. Construct with
+// `ModelCost::new` and assign the optional fields.
+//
+// Deliberately a plain comment, not rustdoc: utoipa copies the doc comment
+// into this schema's `description` in `docs/api/openapi.json`, and internal
+// versioning rationale does not belong in the public API spec.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[non_exhaustive]
@@ -81,9 +84,8 @@ impl ModelCost {
 
 /// A pricing tier that activates above a context token threshold.
 /// For example, OpenAI charges higher rates for prompts exceeding 200K tokens.
-///
-/// `#[non_exhaustive]` for the same reason as [`ModelCost`]; construct with
-/// [`CostTier::new`].
+// `#[non_exhaustive]` for the same reason as `ModelCost` above, and a plain
+// comment for the same reason; construct with `CostTier::new`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[non_exhaustive]
