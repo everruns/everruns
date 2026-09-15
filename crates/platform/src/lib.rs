@@ -211,13 +211,14 @@ pub use vector_store::{
 
 // Hosted control-plane orchestration records (EVE-841).
 pub use agent_trigger::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig};
+pub use everruns_core::channel::SessionBinding;
+
 pub use app::{
     A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentVersionPolicy,
     ApiEndpointChannelConfig, App, AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode,
     AppEndpointAuthProviderConfig, AppEndpointAuthRequirements, AppStatus, CaptchaProvider,
-    ChannelType, FcpChannelConfig, InvocationSessionMode, PublicChatBranding,
-    PublicChatCaptchaConfig, PublicChatChannelConfig, SessionStrategy, SlackChannelConfig,
-    SlackReplyMode,
+    ChannelType, FcpChannelConfig, PublicChatBranding, PublicChatCaptchaConfig,
+    PublicChatChannelConfig, SlackChannelConfig, SlackReplyMode,
 };
 
 // Payment accounting records (EVE-838). The execution-contract types

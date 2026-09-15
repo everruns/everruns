@@ -10,7 +10,7 @@ tags:
 
 ## Abstract
 
-Messaging integrations connect agents to external messaging platforms (Slack, Discord, Teams, Telegram). A shared abstraction layer decouples platform-specific protocols from the core runtime: channel adapters translate inbound platform events into `InboundChannelEvent`, route them to sessions via `SessionRoutingStrategy`, and deliver agent output back via `ChannelDeliveryAdapter`. Multi-user threads are tracked via `ThreadContext` with per-message `ExternalActor` attribution.
+Messaging integrations connect agents to external messaging platforms (Slack, Discord, Teams, Telegram). A shared abstraction layer decouples platform-specific protocols from the core runtime: channel adapters translate inbound platform events into `InboundChannelEvent`, route them to sessions via `SessionBinding`, and deliver agent output back via `ChannelDeliveryAdapter`. Multi-user threads are tracked via `ThreadContext` with per-message `ExternalActor` attribution.
 
 ## Design Decisions
 
@@ -54,9 +54,9 @@ See `crates/core/src/channel.rs` for full definitions.
 
 | Type | Purpose |
 |------|---------|
-| `SessionRoutingStrategy` | PerThread (default), PerChannel, PerUser |
+| `SessionBinding` | Thread (default), Conversation, Requester, Endpoint, Ephemeral |
 | `ChannelReplyMode` | AllMessages (default), ReportProgressOnly |
-| `build_session_routing_tag()` | Generates `{platform}:{strategy}:{ref}` session tag |
+| `build_session_routing_tag()` | Generates `{platform}:{thread\|channel\|user}:{ref}` session tag. The segment keeps the pre-EVE-1005 word, not the binding name: renaming it orphans live sessions. |
 
 ## Adapter Lifecycle
 
@@ -182,7 +182,7 @@ The plumbing exists (`Capability::tools()` returns `Vec<Box<dyn Tool>>`), but no
 ## Files
 
 - `crates/core/src/channel.rs`, All types and traits defined here
-- `crates/platform/src/app.rs`, `SlackChannelConfig`, `SessionStrategy` (→ `SessionRoutingStrategy`), `SlackReplyMode` (→ `ChannelReplyMode`)
+- `crates/platform/src/app.rs`, `SlackChannelConfig`, `session_strategy: SessionBinding`, `SlackReplyMode` (→ `ChannelReplyMode`)
 - `crates/core/src/progress_reporting.rs`, Generalized tag handling, backward compat
 - `crates/core/src/lib.rs`, Module registration and re-exports
 - `crates/server/src/messaging/`, Platform-specific webhook handlers and delivery adapters

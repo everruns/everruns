@@ -1,12 +1,21 @@
 const PAGES: &[(&str, &str)] = &[
-    ("persistence", include_str!("docs/persistence.md")),
-    ("session-history", include_str!("docs/session-history.md")),
+    ("persistence", include_str!("resources/docs/persistence.md")),
+    (
+        "session-history",
+        include_str!("resources/docs/session-history.md"),
+    ),
     (
         "models-and-providers",
-        include_str!("docs/models-and-providers.md"),
+        include_str!("resources/docs/models-and-providers.md"),
     ),
-    ("tools-and-macros", include_str!("docs/tools-and-macros.md")),
-    ("custom-providers", include_str!("docs/custom-providers.md")),
+    (
+        "tools-and-macros",
+        include_str!("resources/docs/tools-and-macros.md"),
+    ),
+    (
+        "custom-providers",
+        include_str!("resources/docs/custom-providers.md"),
+    ),
 ];
 
 fn search(query: &str) -> Result<String, String> {

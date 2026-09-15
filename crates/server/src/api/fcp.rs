@@ -14,9 +14,8 @@
 // other channels.
 //
 // Design Decision: FCP has its own `ChannelRateLimiter` namespace. The
-// per-app cap counts in a bucket that no other channel can share or
-// exhaust. The global API limit still applies; this is an additional
-// per-channel layer.
+// per-channel cap counts in a bucket that no other channel can share or
+// exhaust. The global API limit still applies as an additional layer.
 //
 // Design Decision: Every response — success **and** error — is rendered as
 // Markdown with actionable instructions that point back at the `GET`
@@ -40,7 +39,7 @@ use everruns_core::events::{
     TurnCancelledData, TurnFailedData,
 };
 use everruns_core::{Caller, ContentPart, ExternalActor};
-use everruns_platform::{App, AppStatus, FcpChannelConfig};
+use everruns_platform::{App, AppChannel, AppStatus, ChannelType, FcpChannelConfig};
 use everruns_provider::execution_phase::ExecutionPhase;
 use serde::Deserialize;
 use serde_json::Value;
@@ -105,44 +104,78 @@ impl FcpState {
 
 pub fn routes(state: FcpState) -> Router {
     Router::new()
-        .route("/v1/apps/{app_id}/fcp", get(handshake).post(message))
+        .route("/v1/apps/{app_id}/fcp", get(handshake).post(message_legacy))
+        .route(
+            "/v1/e/{channel_id}/fcp",
+            axum::routing::post(message_endpoint),
+        )
         .with_state(state)
+}
+enum FcpTarget {
+    LegacyApp(String),
+    Endpoint(String),
 }
 
 /// Resolved channel context, used by both `GET` and `POST`. The lookup is
 /// shared so we apply the same "exists at all?" sanitization in one place.
 struct FcpContext {
     app: App,
+    channel: AppChannel,
     config: FcpChannelConfig,
 }
 
-async fn resolve_context(state: &FcpState, app_id: &str) -> Result<FcpContext, Response> {
+async fn resolve_context(state: &FcpState, target: FcpTarget) -> Result<FcpContext, Response> {
     // Sanitization rule: any failure path here returns the same generic
     // not-found body. We must not reveal:
     //   - whether the app id was malformed vs. unknown
     //   - whether an app exists but is not published
     //   - whether an app is published but has no FCP channel
     //   - whether a channel exists but is disabled
-    let app = match crate::domains::apps::queries::get_by_public_id_unscoped(
-        &state.db,
-        state.encryption.as_ref(),
-        app_id,
-    )
-    .await
-    {
-        Ok(Some(app)) => app,
-        Ok(None) => return Err(not_found_response()),
-        Err(err) => {
-            tracing::error!(error = %err, "FCP app lookup failed");
-            return Err(internal_error_response());
+    let (app, endpoint_channel) = match target {
+        FcpTarget::LegacyApp(app_id) => {
+            let app = match crate::domains::apps::queries::get_by_public_id_unscoped(
+                &state.db,
+                state.encryption.as_ref(),
+                &app_id,
+            )
+            .await
+            {
+                Ok(Some(app)) => app,
+                Ok(None) => return Err(not_found_response()),
+                Err(err) => {
+                    tracing::error!(error = %err, "FCP app lookup failed");
+                    return Err(internal_error_response());
+                }
+            };
+            (app, None)
+        }
+        FcpTarget::Endpoint(channel_id) => {
+            match crate::api::app_ingress::resolve_endpoint(
+                &state.db,
+                state.encryption.as_ref(),
+                &channel_id,
+            )
+            .await
+            {
+                Ok(Some((app, channel))) => (app, Some(channel)),
+                Ok(None) => return Err(not_found_response()),
+                Err(err) => {
+                    tracing::error!(error = %err, "FCP endpoint lookup failed");
+                    return Err(internal_error_response());
+                }
+            }
         }
     };
     if app.status != AppStatus::Published {
         return Err(not_found_response());
     }
-    let channel = match app.fcp_channel() {
-        Some(channel) => channel,
-        None => return Err(not_found_response()),
+    let channel = match endpoint_channel {
+        Some(channel) if channel.channel_type == ChannelType::Fcp && channel.enabled => channel,
+        Some(_) => return Err(not_found_response()),
+        None => match app.fcp_channel() {
+            Some(channel) => channel.clone(),
+            None => return Err(not_found_response()),
+        },
     };
     let config = match channel.fcp_config() {
         Some(config) => config,
@@ -151,7 +184,11 @@ async fn resolve_context(state: &FcpState, app_id: &str) -> Result<FcpContext, R
             return Err(internal_error_response());
         }
     };
-    Ok(FcpContext { app, config })
+    Ok(FcpContext {
+        app,
+        channel,
+        config,
+    })
 }
 
 /// Verify the caller's token (if one is required) using constant-time
@@ -183,13 +220,14 @@ fn check_token(headers: &HeaderMap, config: &FcpChannelConfig) -> Result<(), Box
     Ok(())
 }
 
-/// Enforce the per-app FCP rate limit. Returns a 429 body that tells the
+/// Enforce the per-channel FCP rate limit. Returns a 429 body that tells the
 /// caller exactly when to retry.
 async fn check_rate_limit(
     state: &FcpState,
     headers: &HeaderMap,
     peer_addr: Option<std::net::SocketAddr>,
     app: &App,
+    channel: &AppChannel,
     config: &FcpChannelConfig,
 ) -> Result<(), Response> {
     let Some(limit) = config.rate_limit_per_minute else {
@@ -201,7 +239,11 @@ async fn check_rate_limit(
     let client_ip = extract_client_ip_from_parts(peer_addr, headers);
     if state
         .rate_limiter
-        .check(&app.public_id.to_string(), client_ip, limit)
+        .check(
+            &format!("{}:{}", app.public_id, channel.public_id),
+            client_ip,
+            limit,
+        )
         .await
         .is_err()
     {
@@ -233,7 +275,7 @@ async fn check_rate_limit(
         ),
         (
             status = 429,
-            description = "Per-app FCP rate limit exceeded. `Retry-After: 60` header is set.",
+            description = "Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set.",
             content_type = "text/markdown",
         ),
     ),
@@ -246,15 +288,22 @@ pub async fn handshake(
     headers: HeaderMap,
 ) -> Response {
     // Per the FCP SPEC, the handshake is meant to be open. We still apply
-    // the per-app rate limit (when configured) so a single client can't
+    // the per-channel rate limit (when configured) so a single client can't
     // hammer the handshake either.
-    let context = match resolve_context(&state, &app_id).await {
+    let context = match resolve_context(&state, FcpTarget::LegacyApp(app_id)).await {
         Ok(ctx) => ctx,
         Err(resp) => return resp,
     };
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
-    if let Err(resp) =
-        check_rate_limit(&state, &headers, peer_addr, &context.app, &context.config).await
+    if let Err(resp) = check_rate_limit(
+        &state,
+        &headers,
+        peer_addr,
+        &context.app,
+        &context.channel,
+        &context.config,
+    )
+    .await
     {
         return resp;
     }
@@ -312,7 +361,7 @@ pub async fn handshake(
         ),
         (
             status = 429,
-            description = "Per-app FCP rate limit exceeded. `Retry-After: 60` header is set.",
+            description = "Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set.",
             content_type = "text/markdown",
         ),
         (
@@ -325,9 +374,69 @@ pub async fn handshake(
     ),
     tag = "apps"
 )]
-pub async fn message(
+pub async fn message_legacy(
     State(state): State<FcpState>,
     Path(app_id): Path<String>,
+    req_id: Option<Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    message(
+        state,
+        FcpTarget::LegacyApp(app_id),
+        req_id,
+        connect_info,
+        headers,
+        body,
+    )
+    .await
+}
+
+#[utoipa::path(
+    description = "Send a message to a published FCP endpoint. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the endpoint requires a token.",
+    post,
+    path = "/v1/e/{channel_id}/fcp",
+    params(("channel_id" = String, Path, description = "FCP endpoint channel ID")),
+    request_body(
+        content = String,
+        description = "Plain UTF-8 text or JSON with a message field. Maximum 256 KiB.",
+        content_type = "text/plain"
+    ),
+    responses(
+        (status = 200, description = "Agent reply as Markdown", content_type = "text/markdown"),
+        (status = 400, description = "Malformed or empty message", content_type = "text/markdown"),
+        (status = 401, description = "Missing or invalid FCP token", content_type = "text/markdown"),
+        (status = 404, description = "Endpoint not found, app not published, or channel disabled", content_type = "text/markdown"),
+        (status = 410, description = "FCP session expired", content_type = "text/markdown"),
+        (status = 413, description = "Body exceeds 256 KiB", content_type = "text/markdown"),
+        (status = 429, description = "Per-channel FCP rate limit exceeded", content_type = "text/markdown"),
+        (status = 504, description = "Agent response timeout", content_type = "text/markdown")
+    ),
+    tag = "apps"
+)]
+pub async fn message_endpoint(
+    State(state): State<FcpState>,
+    Path(channel_id): Path<String>,
+    req_id: Option<Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    message(
+        state,
+        FcpTarget::Endpoint(channel_id),
+        req_id,
+        connect_info,
+        headers,
+        body,
+    )
+    .await
+}
+
+async fn message(
+    state: FcpState,
+    target: FcpTarget,
     req_id: Option<Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
@@ -340,18 +449,25 @@ pub async fn message(
         return payload_too_large_response();
     }
 
-    let context = match resolve_context(&state, &app_id).await {
+    let context = match resolve_context(&state, target).await {
         Ok(ctx) => ctx,
         Err(resp) => return resp,
     };
-
-    if let Err(resp) =
-        check_rate_limit(&state, &headers, peer_addr, &context.app, &context.config).await
-    {
-        return resp;
-    }
     if let Err(resp) = check_token(&headers, &context.config) {
         return *resp;
+    }
+
+    if let Err(resp) = check_rate_limit(
+        &state,
+        &headers,
+        peer_addr,
+        &context.app,
+        &context.channel,
+        &context.config,
+    )
+    .await
+    {
+        return resp;
     }
 
     let user_text = match extract_user_text(&headers, &body) {
@@ -365,6 +481,7 @@ pub async fn message(
     let resolved = match resolve_session(
         &state,
         &context.app,
+        &context.channel,
         &context.config,
         parse_session_cookie(&headers),
     )
@@ -410,7 +527,7 @@ pub async fn message(
                 },
                 addressed_participant_id: None,
                 controls: None,
-                metadata: Some(fcp_message_metadata(&context.app)),
+                metadata: Some(fcp_message_metadata(&context.app, &context.channel)),
                 tags: None,
                 external_actor: Some(ExternalActor {
                     actor_id: "fcp".to_string(),
@@ -625,14 +742,18 @@ struct ResolvedSession {
 async fn resolve_session(
     state: &FcpState,
     app: &App,
+    channel: &AppChannel,
     config: &FcpChannelConfig,
     cookie_session_id: Option<Uuid>,
 ) -> Result<ResolvedSession, Response> {
-    let routing_tag = format!("fcp:app:{}", app.public_id);
+    let app_tag = format!("fcp:app:{}", app.public_id);
+    let endpoint_tag = format!("fcp:endpoint:{}", channel.public_id);
     if let Some(session_id) = cookie_session_id {
         match state.db.get_session(app.org_id, session_id.into()).await {
             Ok(Some(row))
-                if row.app_id == Some(app.internal_id) && row.tags.contains(&routing_tag) =>
+                if row.app_id == Some(app.internal_id)
+                    && row.tags.contains(&app_tag)
+                    && row.tags.contains(&endpoint_tag) =>
             {
                 if let Some(age) = expired_age_seconds(
                     row.created_at,
@@ -682,7 +803,7 @@ async fn resolve_session(
                 title: Some(format!("FCP session for {}", app.name)),
                 goal: None,
                 locale: None,
-                tags: vec![routing_tag],
+                tags: vec![app_tag, endpoint_tag],
                 model_id: None,
                 capabilities: vec![],
                 tools: vec![],
@@ -747,11 +868,15 @@ fn expired_age_seconds(
     (age > max_seconds as i64).then_some(age)
 }
 
-fn fcp_message_metadata(app: &App) -> HashMap<String, Value> {
+fn fcp_message_metadata(app: &App, channel: &AppChannel) -> HashMap<String, Value> {
     let mut map = HashMap::new();
     map.insert(
         "_app_id".to_string(),
         Value::String(app.public_id.to_string()),
+    );
+    map.insert(
+        "_app_channel_id".to_string(),
+        Value::String(channel.public_id.to_string()),
     );
     map.insert("source".to_string(), Value::String("fcp".to_string()));
     map

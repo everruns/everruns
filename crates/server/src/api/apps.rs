@@ -473,9 +473,9 @@ pub async fn delete_channel(
 /// Request body for the `add_a2a_channel_http` operation.
 #[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
 pub struct AddA2aChannelHttpRequest {
-    /// How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `InvocationSessionMode`.
+    /// How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `SessionBinding`.
     #[serde(default)]
-    pub session_mode: everruns_platform::app::InvocationSessionMode,
+    pub session_mode: everruns_platform::SessionBinding,
     /// First user message sent to the agent on each invocation; can reference incoming A2A payload via templating.
     #[schema(example = "Process incoming A2A request and return a structured response.")]
     pub message: String,
@@ -564,7 +564,7 @@ pub struct AddApiEndpointChannelHttpRequest {
     /// How invocations route into sessions (`shared_session` to reuse one
     /// durable session, or `session_per_invocation` for a fresh session).
     #[serde(default)]
-    pub session_mode: everruns_platform::app::InvocationSessionMode,
+    pub session_mode: everruns_platform::SessionBinding,
     /// Optional endpoint auth. Example shape is defined on `AppEndpointAuthConfig`.
     #[serde(default)]
     pub auth: Option<everruns_platform::AppEndpointAuthConfig>,

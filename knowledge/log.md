@@ -1,5 +1,18 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-15
+
+* **Slack had no manual test cases, and it is the reference messaging
+  integration.** [Messaging Integrations](integrations/messaging-integrations.md)
+  lists a UI test case as a parity requirement every platform must ship; FCP has
+  one, Slack never did. Four cases now cover what the 25-case integration suite
+  structurally cannot reach: that Slack *accepts* the generated manifest (not
+  merely that we emit YAML), that a pane reply appears progressively rather than
+  arriving whole, that a status line carries no tool name, that a markdown table
+  renders as a table, and that no turn ends in silence while a successful turn
+  never double-posts a reply and a notice. See
+  [Slack App test cases](test-cases/ui/slack_app/).
+
 ## 2026-09-14
 
 * **Decided to retire the App abstraction in favor of agent-owned exposure.**

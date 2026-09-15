@@ -1,9 +1,9 @@
 // App A2A (Agent2Agent) ingress — JSON-RPC + API key authenticated invocation.
 //
-// Design Decision: A2A channels are app-scoped and channel-scoped
-// (`POST /v1/apps/{app_id}/a2a/{channel_id}`) so a single app can expose
-// multiple agent-to-agent endpoints with independent keys, agent cards, and
-// session routing.
+// Design Decision: A2A channels use endpoint-scoped routes
+// (`POST /v1/e/{channel_id}/a2a`) so a single app can expose multiple
+// agent-to-agent endpoints with independent keys, agent cards, and session
+// routing. App-and-channel routes remain permanent aliases.
 //
 // Supported methods: `message/send` (single JSON-RPC response),
 // `message/stream` (SSE stream of JSON-RPC frames), `tasks/get` (poll task
@@ -127,10 +127,18 @@ impl AppA2aState {
 
 pub fn routes(state: AppA2aState) -> Router {
     Router::new()
-        .route("/v1/apps/{app_id}/a2a/{channel_id}", post(invoke_a2a))
+        .route(
+            "/v1/apps/{app_id}/a2a/{channel_id}",
+            post(invoke_a2a_legacy),
+        )
         .route(
             "/v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json",
-            get(agent_card),
+            get(agent_card_legacy),
+        )
+        .route("/v1/e/{channel_id}/a2a", post(invoke_a2a_endpoint))
+        .route(
+            "/v1/e/{channel_id}/a2a/.well-known/agent-card.json",
+            get(agent_card_endpoint),
         )
         .with_state(state)
 }
@@ -235,9 +243,69 @@ fn legacy_task_json(mut task: Value) -> Value {
     ),
     tag = "apps"
 )]
-pub async fn invoke_a2a(
+pub async fn invoke_a2a_legacy(
     State(state): State<AppA2aState>,
     Path((app_id, channel_id)): Path<(String, String)>,
+    req_id: Option<axum::Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    invoke_a2a(
+        state,
+        app_id,
+        channel_id,
+        req_id,
+        connect_info,
+        headers,
+        body,
+    )
+    .await
+}
+
+#[utoipa::path(
+    description = "Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration.",
+    post,
+    path = "/v1/e/{channel_id}/a2a",
+    params(("channel_id" = String, Path, description = "A2A endpoint channel ID")),
+    request_body(content = serde_json::Value, content_type = "application/json"),
+    responses(
+        (status = 200, description = "JSON-RPC response or event stream"),
+        (status = 400, description = "Invalid JSON-RPC request"),
+        (status = 401, description = "Missing or invalid endpoint credentials", body = ErrorResponse),
+        (status = 404, description = "Endpoint not found, app not published, or channel disabled", body = ErrorResponse),
+        (status = 429, description = "Per-channel or SSE connection limit exceeded", body = ErrorResponse)
+    ),
+    tag = "apps"
+)]
+pub async fn invoke_a2a_endpoint(
+    State(state): State<AppA2aState>,
+    Path(channel_id): Path<String>,
+    req_id: Option<axum::Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let app_id = match endpoint_app_id(&state, &channel_id).await {
+        Ok(app_id) => app_id,
+        Err(err) => return err.into_response(),
+    };
+    invoke_a2a(
+        state,
+        app_id,
+        channel_id,
+        req_id,
+        connect_info,
+        headers,
+        body,
+    )
+    .await
+}
+
+async fn invoke_a2a(
+    state: AppA2aState,
+    app_id: String,
+    channel_id: String,
     req_id: Option<axum::Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
@@ -341,7 +409,7 @@ struct AuthorizedA2a {
     org_id: i64,
     app_public_id: String,
     channel_public_id: everruns_provider::typed_id::AppChannelId,
-    session_mode: everruns_platform::app::InvocationSessionMode,
+    session_mode: everruns_platform::SessionBinding,
 }
 
 async fn authenticate_request(
@@ -952,7 +1020,7 @@ async fn handle_message_stream(
     channel_id: String,
     req_id: Option<axum::Extension<RequestId>>,
 ) -> Response {
-    if auth.session_mode != everruns_platform::app::InvocationSessionMode::SessionPerInvocation {
+    if auth.session_mode != everruns_platform::app::SessionBinding::Ephemeral {
         return (
             StatusCode::OK,
             rpc_error(
@@ -1261,10 +1329,52 @@ fn command_error_response(
     ),
     tag = "apps"
 )]
-pub async fn agent_card(
+pub async fn agent_card_legacy(
     State(state): State<AppA2aState>,
     OriginalUri(original_uri): OriginalUri,
     Path((app_id, channel_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
+    agent_card(state, original_uri, app_id, channel_id, headers).await
+}
+
+#[utoipa::path(
+    description = "Get the public Agent Card for a published A2A endpoint.",
+    get,
+    path = "/v1/e/{channel_id}/a2a/.well-known/agent-card.json",
+    params(("channel_id" = String, Path, description = "A2A endpoint channel ID")),
+    responses(
+        (status = 200, description = "Agent Card JSON"),
+        (status = 404, description = "Endpoint not found, app not published, or channel disabled", body = ErrorResponse)
+    ),
+    tag = "apps"
+)]
+pub async fn agent_card_endpoint(
+    State(state): State<AppA2aState>,
+    OriginalUri(original_uri): OriginalUri,
+    Path(channel_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
+    let app_id = endpoint_app_id(&state, &channel_id).await?;
+    agent_card(state, original_uri, app_id, channel_id, headers).await
+}
+
+async fn endpoint_app_id(
+    state: &AppA2aState,
+    channel_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    crate::api::app_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
+        .await
+        .map_err(internal_error)?
+        .map(|(app, _)| app.public_id.to_string())
+        .ok_or_else(not_found)
+}
+
+async fn agent_card(
+    state: AppA2aState,
+    original_uri: axum::http::Uri,
+    app_id: String,
+    channel_id: String,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
     let app = app_queries::get_by_public_id_unscoped(&state.db, state.encryption.as_ref(), &app_id)
@@ -1329,7 +1439,7 @@ pub async fn agent_card(
             // Streaming is only supported on session_per_invocation channels.
             // Shared-session channels reject message/stream because events
             // cannot be safely correlated across concurrent callers.
-            "streaming": config.session_mode == everruns_platform::app::InvocationSessionMode::SessionPerInvocation,
+            "streaming": config.session_mode == everruns_platform::app::SessionBinding::Ephemeral,
             "pushNotifications": false,
             "stateTransitionHistory": false,
         },
@@ -1520,7 +1630,7 @@ mod tests {
         let config = everruns_platform::A2aChannelConfig {
             api_key_hash: "hash".to_string(),
             api_key_prefix: "evra2a_abcd...".to_string(),
-            session_mode: everruns_platform::app::InvocationSessionMode::SharedSession,
+            session_mode: everruns_platform::app::SessionBinding::Endpoint,
             message: "{{a2a.text}}".to_string(),
             agent_card_name: None,
             agent_card_description: None,

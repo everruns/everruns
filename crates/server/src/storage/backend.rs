@@ -4115,6 +4115,18 @@ impl StorageBackend {
         dispatch!(self, get_app_by_public_id_unscoped, public_id)
     }
 
+    /// Lookup an app through a globally unique channel public ID.
+    pub async fn get_app_by_channel_public_id_unscoped(
+        &self,
+        channel_public_id: &str,
+    ) -> Result<Option<AppRow>> {
+        dispatch!(
+            self,
+            get_app_by_channel_public_id_unscoped,
+            channel_public_id
+        )
+    }
+
     pub async fn list_apps(
         &self,
         org_id: i64,

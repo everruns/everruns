@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 
 // Reuse the app-side invocation/schedule config so schedule triggers and
 // schedule channels share one shape. Do not duplicate these.
-use crate::app::InvocationSessionMode;
+use crate::app::default_invocation_binding;
+use everruns_core::channel::SessionBinding;
 use everruns_provider::typed_id::{AgentId, TriggerId};
 
 #[cfg(feature = "openapi")]
@@ -57,8 +58,8 @@ pub struct ScheduleTriggerConfig {
     #[serde(default = "default_timezone")]
     pub timezone: String,
     /// Whether invocations reuse a stable session or create a new one.
-    #[serde(default)]
-    pub session_mode: InvocationSessionMode,
+    #[serde(default = "default_invocation_binding")]
+    pub session_mode: SessionBinding,
     /// Message content or template sent when the schedule fires.
     pub message: String,
 }

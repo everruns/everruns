@@ -1,9 +1,10 @@
-// AG-UI app channel — anonymous, app-scoped streaming endpoint
+// AG-UI app channel — public streaming endpoint
 //
-// Design Decision: AG-UI ingress is app-scoped (POST /v1/apps/{app_id}/ag-ui)
-// so the App controls the agent, harness, identity, and publication lifecycle.
+// Design Decision: AG-UI ingress is keyed by channel ID at
+// `POST /v1/e/{channel_id}/ag-ui`. The app-scoped route remains a permanent
+// alias when the App has exactly one enabled AG-UI channel.
 //
-// Design Decision: The endpoint is public and app-scoped. Requests are accepted
+// Design Decision: The endpoint is public. Requests are accepted
 // without user API auth when the app is published and an enabled AG-UI channel
 // is present, but a channel may require its own shared bearer token.
 //
@@ -54,7 +55,7 @@ use everruns_core::events::{
     ToolCompletedData, ToolStartedData, TurnFailedData,
 };
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
-use everruns_platform::{AgUiChannelConfig, AgUiToolVisibility, App, AppStatus};
+use everruns_platform::{AgUiChannelConfig, AgUiToolVisibility, App, AppStatus, ChannelType};
 use everruns_provider::execution_phase::ExecutionPhase;
 use everruns_provider::typed_id::ImageId;
 #[cfg(test)]
@@ -138,35 +139,63 @@ impl AgUiState {
 
 pub fn routes(state: AgUiState) -> Router {
     Router::new()
-        .route("/v1/apps/{app_id}/ag-ui", post(run_agent))
+        .route("/v1/apps/{app_id}/ag-ui", post(run_agent_legacy))
         .route(
             "/v1/apps/{app_id}/ag-ui/images",
-            post(upload_image).layer(DefaultBodyLimit::max(
+            post(upload_image_legacy).layer(DefaultBodyLimit::max(
+                MAX_PUBLIC_AG_UI_IMAGE_SIZE + 1024 * 1024,
+            )),
+        )
+        .route("/v1/e/{channel_id}/ag-ui", post(run_agent_endpoint))
+        .route(
+            "/v1/e/{channel_id}/ag-ui/images",
+            post(upload_image_endpoint).layer(DefaultBodyLimit::max(
                 MAX_PUBLIC_AG_UI_IMAGE_SIZE + 1024 * 1024,
             )),
         )
         .with_state(state)
 }
+enum AgUiTarget {
+    LegacyApp(String),
+    Endpoint(String),
+}
 
 struct AuthorizedAgUiRequest {
     app: App,
+    channel_id: String,
     channel_config: AgUiChannelConfig,
 }
 
 async fn authorize_ag_ui_request(
     state: &AgUiState,
-    app_id: &str,
+    target: AgUiTarget,
     headers: &HeaderMap,
     peer_addr: Option<std::net::SocketAddr>,
 ) -> Result<AuthorizedAgUiRequest, Response> {
-    let app = crate::domains::apps::queries::get_by_public_id_unscoped(
-        &state.db,
-        state.encryption.as_ref(),
-        app_id,
-    )
-    .await
-    .map_err(internal_error)?
-    .ok_or_else(not_found)?;
+    let (app, endpoint_channel) = match target {
+        AgUiTarget::LegacyApp(app_id) => {
+            let app = crate::domains::apps::queries::get_by_public_id_unscoped(
+                &state.db,
+                state.encryption.as_ref(),
+                &app_id,
+            )
+            .await
+            .map_err(internal_error)?
+            .ok_or_else(not_found)?;
+            (app, None)
+        }
+        AgUiTarget::Endpoint(channel_id) => {
+            let (app, channel) = crate::api::app_ingress::resolve_endpoint(
+                &state.db,
+                state.encryption.as_ref(),
+                &channel_id,
+            )
+            .await
+            .map_err(internal_error)?
+            .ok_or_else(not_found)?;
+            (app, Some(channel))
+        }
+    };
 
     // THREAT[TM-AUTHZ-005]: Anonymous AG-UI requests must not reach draft or
     // private app configurations.
@@ -183,9 +212,25 @@ async fn authorize_ag_ui_request(
         return Err(not_found());
     }
 
-    let Some(channel) = app.ag_ui_channel() else {
-        tracing::debug!(app_id = %app.public_id, "AG-UI request rejected: no enabled AG-UI channel");
-        return Err(not_found());
+    let channel = match endpoint_channel {
+        Some(channel) => {
+            if channel.channel_type != ChannelType::AgUi || !channel.enabled {
+                return Err(not_found());
+            }
+            channel
+        }
+        None => match crate::api::app_ingress::resolve_legacy_channel(&app, ChannelType::AgUi) {
+            crate::api::app_ingress::LegacyChannelMatch::One(channel) => channel,
+            crate::api::app_ingress::LegacyChannelMatch::NotFound => {
+                tracing::debug!(app_id = %app.public_id, "AG-UI request rejected: no enabled AG-UI channel");
+                return Err(not_found());
+            }
+            crate::api::app_ingress::LegacyChannelMatch::Ambiguous => {
+                return Err(conflict(
+                    "Multiple enabled AG-UI channels; use an endpoint-scoped /v1/e/{channel_id}/ag-ui URL",
+                ));
+            }
+        },
     };
     let Some(channel_config) = channel.ag_ui_config() else {
         tracing::error!(app_id = %app.public_id, "AG-UI channel config did not deserialize");
@@ -231,7 +276,11 @@ async fn authorize_ag_ui_request(
         let client_ip = extract_client_ip_from_parts(peer_addr, headers);
         if state
             .rate_limiter
-            .check(&app.public_id.to_string(), client_ip, limit)
+            .check(
+                &format!("{}:{}", app.public_id, channel.public_id),
+                client_ip,
+                limit,
+            )
             .await
             .is_err()
         {
@@ -241,20 +290,55 @@ async fn authorize_ag_ui_request(
 
     Ok(AuthorizedAgUiRequest {
         app,
+        channel_id: channel.public_id.to_string(),
         channel_config,
     })
 }
 
-async fn upload_image(
+async fn upload_image_legacy(
     State(state): State<AgUiState>,
     Path(app_id): Path<String>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    multipart: Multipart,
+) -> Result<(StatusCode, Json<ImageUploadResponse>), Response> {
+    upload_image(
+        state,
+        AgUiTarget::LegacyApp(app_id),
+        connect_info,
+        headers,
+        multipart,
+    )
+    .await
+}
+
+async fn upload_image_endpoint(
+    State(state): State<AgUiState>,
+    Path(channel_id): Path<String>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    multipart: Multipart,
+) -> Result<(StatusCode, Json<ImageUploadResponse>), Response> {
+    upload_image(
+        state,
+        AgUiTarget::Endpoint(channel_id),
+        connect_info,
+        headers,
+        multipart,
+    )
+    .await
+}
+
+async fn upload_image(
+    state: AgUiState,
+    target: AgUiTarget,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<ImageUploadResponse>), Response> {
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
     let AuthorizedAgUiRequest { app, .. } =
-        authorize_ag_ui_request(&state, &app_id, &headers, peer_addr).await?;
+        authorize_ag_ui_request(&state, target, &headers, peer_addr).await?;
 
     // THREAT[TM-DOS-010]: Public AG-UI image uploads are anonymous ingress.
     // Mitigation: reuse the per-app public AG-UI gate/rate limit above, cap the
@@ -331,9 +415,47 @@ async fn upload_image(
     ))
 }
 
-async fn run_agent(
+async fn run_agent_legacy(
     State(state): State<AgUiState>,
     Path(app_id): Path<String>,
+    req_id: Option<Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    request: Request,
+) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {
+    run_agent(
+        state,
+        AgUiTarget::LegacyApp(app_id),
+        req_id,
+        connect_info,
+        headers,
+        request,
+    )
+    .await
+}
+
+async fn run_agent_endpoint(
+    State(state): State<AgUiState>,
+    Path(channel_id): Path<String>,
+    req_id: Option<Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    request: Request,
+) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {
+    run_agent(
+        state,
+        AgUiTarget::Endpoint(channel_id),
+        req_id,
+        connect_info,
+        headers,
+        request,
+    )
+    .await
+}
+
+async fn run_agent(
+    state: AgUiState,
+    target: AgUiTarget,
     req_id: Option<Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
@@ -343,15 +465,16 @@ async fn run_agent(
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
     let AuthorizedAgUiRequest {
         app,
+        channel_id,
         channel_config,
-    } = authorize_ag_ui_request(&state, &app_id, &headers, peer_addr).await?;
+    } = authorize_ag_ui_request(&state, target, &headers, peer_addr).await?;
 
     run_app_agent_stream(
         state,
         app,
         channel_config,
         "ag_ui",
-        Vec::new(),
+        vec![format!("ag_ui:channel:{channel_id}")],
         request,
         request_id,
     )
@@ -1380,7 +1503,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             state.finished = true;
         }
         "turn.failed" => {
-            // AG-UI is a public, app-scoped channel — see knowledge/execution/public-endpoints.md.
+            // AG-UI is a public channel — see knowledge/execution/public-endpoints.md.
             // Sanitize via the shared `PublicError` so internal codes, provider
             // strings, model IDs, and quota state never reach the wire.
             let internal_code = parse_event_data::<TurnFailedData>(event)
@@ -1500,6 +1623,11 @@ fn validate_input_messages(messages: &[AgUiMessage]) -> Result<(), Box<Response>
 fn bad_request(message: &str) -> Response {
     ErrorResponse::new(message.to_string())
         .into_response(StatusCode::BAD_REQUEST)
+        .into_response()
+}
+fn conflict(message: &str) -> Response {
+    ErrorResponse::new(message.to_string())
+        .into_response(StatusCode::CONFLICT)
         .into_response()
 }
 

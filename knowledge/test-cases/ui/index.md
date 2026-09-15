@@ -50,5 +50,6 @@
 * [Sessions](sessions/) - 2 manual UI cases.
 * [Sidebar footer](sidebar_footer/) - 1 manual UI case.
 * [Skills](skills/) - 1 manual UI case.
+* [Slack App](slack_app/) - 4 manual UI cases.
 * [Tag editor](tag_editor/) - 1 manual UI case.
 * [Webmcp](webmcp/) - 1 manual UI case.

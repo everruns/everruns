@@ -83,7 +83,7 @@ Auto-registered via `inventory` plugin system. Each crate has a `SPEC.md`.
 
 ## Messaging Integrations (`crates/server/`)
 
-Platform adapters connecting agents to messaging channels. Uses the channel abstraction layer defined in [`knowledge/integrations/messaging-integrations.md`](messaging-integrations.md) (`InboundChannelEvent`, `ChannelDeliveryAdapter`, `SessionRoutingStrategy`, `ThreadContext`).
+Platform adapters connecting agents to messaging channels. Uses the channel abstraction layer defined in [`knowledge/integrations/messaging-integrations.md`](messaging-integrations.md) (`InboundChannelEvent`, `ChannelDeliveryAdapter`, `SessionBinding`, `ThreadContext`).
 
 | Integration | Spec | Summary |
 |---|---|---|

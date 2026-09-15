@@ -138,13 +138,17 @@ async fn send_fcp_post(
     body: impl Into<Vec<u8>>,
     headers: Vec<(&str, &str)>,
 ) -> test_harness::TestResponse {
+    send_fcp_post_to_path(server, &format!("/v1/apps/{}/fcp", app_id), body, headers).await
+}
+
+async fn send_fcp_post_to_path(
+    server: &TestServer,
+    path: &str,
+    body: impl Into<Vec<u8>>,
+    headers: Vec<(&str, &str)>,
+) -> test_harness::TestResponse {
     server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{}/fcp", app_id),
-            headers,
-            body.into(),
-        )
+        .request_raw(Method::POST, path, headers, body.into())
         .await
 }
 
@@ -470,6 +474,7 @@ async fn fcp_post_requires_token_when_configured() {
         json!({"anonymous": true, "token": "fcp-secret", "response_timeout_seconds": 2}),
     )
     .await;
+    let channel_id = app.channels[0].public_id;
 
     // No header — 401 with actionable Markdown body.
     let response = send_fcp_post(
@@ -502,6 +507,18 @@ async fn fcp_post_requires_token_when_configured() {
     .await;
     wrong.assert_status(StatusCode::UNAUTHORIZED);
 
+    send_fcp_post_to_path(
+        &server,
+        &format!("/v1/e/{channel_id}/fcp"),
+        "hi",
+        vec![
+            ("content-type", "text/plain"),
+            ("authorization", "Bearer not-the-token"),
+        ],
+    )
+    .await
+    .assert_status(StatusCode::UNAUTHORIZED);
+
     // Right token via Authorization header.
     let ok = send_fcp_post(
         &server,
@@ -515,6 +532,18 @@ async fn fcp_post_requires_token_when_configured() {
     .await;
     assert_accepted_or_timeout(ok.status());
 
+    let endpoint_ok = send_fcp_post_to_path(
+        &server,
+        &format!("/v1/e/{channel_id}/fcp"),
+        "hi",
+        vec![
+            ("content-type", "text/plain"),
+            ("authorization", "Bearer fcp-secret"),
+        ],
+    )
+    .await;
+    assert_accepted_or_timeout(endpoint_ok.status());
+
     // Right token via dedicated header.
     let ok2 = send_fcp_post(
         &server,
@@ -527,6 +556,44 @@ async fn fcp_post_requires_token_when_configured() {
     )
     .await;
     assert_accepted_or_timeout(ok2.status());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fcp_invalid_token_does_not_consume_channel_rate_limit() {
+    let server = TestServer::in_memory().await;
+    let app = create_published_fcp_app(
+        &server,
+        json!({
+            "token": "fcp-secret",
+            "rate_limit_per_minute": 1,
+            "response_timeout_seconds": 2
+        }),
+    )
+    .await;
+    let path = format!("/v1/e/{}/fcp", app.channels[0].public_id);
+    let client_headers = || {
+        vec![
+            ("content-type", "text/plain"),
+            ("x-forwarded-for", "198.51.100.20"),
+        ]
+    };
+
+    let mut invalid_headers = client_headers();
+    invalid_headers.push(("authorization", "Bearer wrong"));
+    send_fcp_post_to_path(&server, &path, "invalid", invalid_headers)
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+
+    let mut valid_headers = client_headers();
+    valid_headers.push(("authorization", "Bearer fcp-secret"));
+    let valid = send_fcp_post_to_path(&server, &path, "valid", valid_headers).await;
+    assert_accepted_or_timeout(valid.status());
+
+    let mut exhausted_headers = client_headers();
+    exhausted_headers.push(("authorization", "Bearer fcp-secret"));
+    send_fcp_post_to_path(&server, &path, "valid again", exhausted_headers)
+        .await
+        .assert_status(StatusCode::TOO_MANY_REQUESTS);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -667,7 +734,7 @@ async fn fcp_post_oversized_body_returns_413() {
 // ----------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fcp_per_app_rate_limit_returns_429_with_retry_after() {
+async fn fcp_per_channel_rate_limit_returns_429_with_retry_after() {
     let server = TestServer::in_memory().await;
     let app = create_published_fcp_app(
         &server,
@@ -708,7 +775,94 @@ async fn fcp_per_app_rate_limit_returns_429_with_retry_after() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fcp_rate_limit_zero_disables_per_app_cap() {
+async fn fcp_endpoint_channels_isolate_rate_limits_and_session_cookies() {
+    let server = TestServer::in_memory().await;
+    let app = create_published_fcp_app(
+        &server,
+        json!({"rate_limit_per_minute": 1, "response_timeout_seconds": 2}),
+    )
+    .await;
+    let first_channel_id = app.channels[0].public_id;
+    let second_channel: Value = server
+        .post(
+            &format!("/v1/apps/{}/channels", app.public_id),
+            json!({
+                "channel_type": "fcp",
+                "channel_config": {
+                    "rate_limit_per_minute": 1,
+                    "response_timeout_seconds": 2
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let second_channel_id = second_channel["id"].as_str().unwrap();
+
+    let first_path = format!("/v1/e/{first_channel_id}/fcp");
+    let first = send_fcp_post_to_path(
+        &server,
+        &first_path,
+        "first endpoint",
+        vec![
+            ("content-type", "text/plain"),
+            ("x-forwarded-for", "198.51.100.10"),
+        ],
+    )
+    .await;
+    assert_accepted_or_timeout(first.status());
+    let first_cookie = test_harness::extract_cookie(first.headers(), "fcp_session");
+
+    send_fcp_post_to_path(
+        &server,
+        &first_path,
+        "first endpoint again",
+        vec![
+            ("content-type", "text/plain"),
+            ("x-forwarded-for", "198.51.100.10"),
+        ],
+    )
+    .await
+    .assert_status(StatusCode::TOO_MANY_REQUESTS);
+
+    let second_path = format!("/v1/e/{second_channel_id}/fcp");
+    let second = send_fcp_post_to_path(
+        &server,
+        &second_path,
+        "second endpoint with first endpoint cookie",
+        vec![
+            ("content-type", "text/plain"),
+            ("x-forwarded-for", "198.51.100.10"),
+            ("cookie", &first_cookie),
+        ],
+    )
+    .await;
+    assert_accepted_or_timeout(second.status());
+
+    assert_eq!(
+        count_sessions_with_tag(&server, &format!("fcp:endpoint:{first_channel_id}")).await,
+        1
+    );
+    assert_eq!(
+        count_sessions_with_tag(&server, &format!("fcp:endpoint:{second_channel_id}")).await,
+        1,
+        "a cookie from another FCP endpoint must create a channel-owned session"
+    );
+
+    send_fcp_post_to_path(
+        &server,
+        &second_path,
+        "second endpoint again",
+        vec![
+            ("content-type", "text/plain"),
+            ("x-forwarded-for", "198.51.100.10"),
+        ],
+    )
+    .await
+    .assert_status(StatusCode::TOO_MANY_REQUESTS);
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fcp_rate_limit_zero_disables_per_channel_cap() {
     let server = TestServer::in_memory().await;
     let app = create_published_fcp_app(
         &server,
@@ -730,7 +884,7 @@ async fn fcp_rate_limit_zero_disables_per_app_cap() {
         assert_ne!(
             response.status(),
             StatusCode::TOO_MANY_REQUESTS,
-            "rate_limit_per_minute=0 must disable the per-app cap; turn {i} got 429"
+            "rate_limit_per_minute=0 must disable the per-channel cap; turn {i} got 429"
         );
         assert_accepted_or_timeout(response.status());
     }
