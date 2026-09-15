@@ -345,6 +345,24 @@ fn json_or_text(text: &str) -> serde_json::Value {
     serde_json::from_str(text).unwrap_or_else(|_| serde_json::Value::String(text.to_string()))
 }
 
+/// Every command the control plane routes, as a checked-in artifact.
+///
+/// The contracts are derived from the command types in `everruns-server`, which
+/// the CLI cannot link: it would pull a database, a scheduler and a web server
+/// into a binary that talks HTTP. So generation happens where the commands are
+/// and the result travels as data, with a guard in the server asserting that
+/// this file still matches inventory.
+///
+/// Fetching the catalog at runtime instead would make `everruns --help` need a
+/// network round trip and a credential, which is the wrong trade for a CLI.
+pub fn commands() -> &'static [ContractCommand] {
+    static COMMANDS: std::sync::OnceLock<Vec<ContractCommand>> = std::sync::OnceLock::new();
+    COMMANDS.get_or_init(|| {
+        serde_json::from_str(include_str!("../commands.json"))
+            .expect("commands.json is generated and checked in; a parse failure means it is stale")
+    })
+}
+
 #[cfg(test)]
 mod round_trip {
     use super::*;

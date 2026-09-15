@@ -143,6 +143,34 @@ mod tests {
         rewrite(input, tree())
     }
 
+    /// The checked-in contract artifact still matches inventory.
+    ///
+    /// `everruns-cli` reads the artifact, this crate owns the commands, and
+    /// nothing links both. A guard is what keeps them the same thing: without
+    /// it, a new command or a re-spelled flag reaches the agent-facing tree
+    /// immediately and the CLI never hears about it.
+    #[test]
+    fn the_checked_in_contract_matches_inventory() {
+        let generated =
+            serde_json::to_string_pretty(contracts()).expect("contracts serialize") + "\n";
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../cli-contract/commands.json");
+
+        if std::env::var("UPDATE_CLI_CONTRACT_COMMANDS").is_ok() {
+            std::fs::write(path, &generated).expect("write commands.json");
+            return;
+        }
+
+        let checked_in = std::fs::read_to_string(path).expect("read commands.json");
+        assert_eq!(
+            checked_in.trim(),
+            generated.trim(),
+            "crates/cli-contract/commands.json is stale. Run \
+             `UPDATE_CLI_CONTRACT_COMMANDS=1 cargo test -p everruns-server \
+             the_checked_in_contract_matches_inventory`, then check what moved: \
+             everruns-cli mounts this file, so a change here changes what people type."
+        );
+    }
+
     /// Every routed command compiles into a parser, against the schemas the
     /// catalog really publishes rather than a fixture.
     ///

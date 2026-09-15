@@ -183,8 +183,11 @@
   worked examples) beside itself, and the rest comes from the schema. The
   shipped CLI's spellings are pinned by a golden snapshot, so where the two
   disagree the surface with users does not move. Turning on the guard that
-  parses every documented example found that most of them did not run. See
-  [Command tree](execution/command-tree.md).
+  parses every documented example found that most of them did not run. The CLI
+  mounts the contract commands it does not hand-write, dispatching them through
+  the method and path each already declares, so it grew from 44 to 82 commands
+  without a hand-written implementation for any of them and without a single
+  shipped spelling changing. See [Command tree](execution/command-tree.md).
 
 * **A leaf's flags are parsed by clap, compiled from the schema the command
   already publishes.** The tree hand-parsed `--flag value` pairs, which kept an
