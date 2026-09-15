@@ -1571,7 +1571,9 @@ everruns_core::tool_output_sanitizer::sanitize_exec_output	function
 everruns_core::tool_output_sanitizer::strip_ansi	function
 everruns_core::tool_output_sanitizer::truncate_exec_stream	function
 everruns_core::tools	module
+everruns_core::tools::CliSpelling	struct
 everruns_core::tools::Tool	trait
+everruns_core::tools::Tool::cli_spelling	function
 everruns_core::tools::Tool::narrate	function
 everruns_core::tools::Tool::required_context_services	function
 everruns_core::tools::ToolExecutionResult	enum

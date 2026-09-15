@@ -367,7 +367,9 @@ pub(crate) use driver_registry::{
 pub(crate) use everruns_provider::compact::CompactOutputItem;
 
 // Tool abstraction re-exports
-pub use tools::{Tool, ToolExecutionResult, ToolInternalError, ToolRegistry, ToolRegistryBuilder};
+pub use tools::{
+    CliSpelling, Tool, ToolExecutionResult, ToolInternalError, ToolRegistry, ToolRegistryBuilder,
+};
 
 // EVE-881: `BuiltInHarnessDefinition`, `BuiltInHarnessRole`, and
 // `BuiltInCapabilityDefinition` moved to the `everruns-platform` crate —

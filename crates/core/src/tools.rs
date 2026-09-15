@@ -52,6 +52,7 @@ use crate::tool_execution::ToolExecutor;
 /// Internal errors are logged but replaced with a generic message when
 /// returned to the LLM. This prevents leaking sensitive information like
 /// database errors, API keys, or internal system details.
+
 #[derive(Debug)]
 pub enum ToolExecutionResult {
     /// Successful execution with a JSON result
@@ -325,6 +326,30 @@ impl std::error::Error for ToolInternalError {
 // Tool Trait - Core Tool Abstraction
 // ============================================================================
 
+/// How a tool is invoked as a shell command.
+///
+/// Returned by [`Tool::cli_spelling`]. The shell renders the caller's argv back
+/// into one command line and passes it to the tool in `script_parameter`, so
+/// the tool keeps owning the grammar, the help, and the dispatch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CliSpelling {
+    /// Token the builtin answers to, e.g. `everruns`.
+    pub root: &'static str,
+    /// Tool parameter the rendered command line is passed in, e.g. `commands`.
+    pub script_parameter: &'static str,
+}
+
+impl CliSpelling {
+    /// Spell a tool as `root <args...>`, passing the rendered line to the tool
+    /// in `script_parameter`.
+    pub const fn new(root: &'static str, script_parameter: &'static str) -> Self {
+        Self {
+            root,
+            script_parameter,
+        }
+    }
+}
+
 /// Trait for implementing tools that can be executed by the agent loop.
 ///
 /// # Example
@@ -435,6 +460,22 @@ pub trait Tool: Send + Sync {
     ) -> ToolExecutionResult {
         // Default: delegate to execute(), ignoring context
         self.execute(arguments).await
+    }
+
+    /// How this tool is spelled as a command when a shell capability hosts one.
+    ///
+    /// A shell installs a builtin for every registered tool that answers
+    /// `Some`, so a surface the session already has gains a second spelling
+    /// without gaining any authority: the tool is reached through the same
+    /// `execute_with_context` call the model would make directly, with the same
+    /// authorization and error shaping. A tool the harness withheld is not in
+    /// the session's registry, so no builtin appears for it.
+    ///
+    /// This is a neutral contract on purpose. Core knows that a tool can be
+    /// spelled as a command; it does not know which tool, which shell, or what
+    /// the command tree looks like.
+    fn cli_spelling(&self) -> Option<CliSpelling> {
+        None
     }
 
     /// Returns true if this tool requires context for execution.
