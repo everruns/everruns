@@ -559,6 +559,44 @@ async fn fcp_post_requires_token_when_configured() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fcp_invalid_token_does_not_consume_channel_rate_limit() {
+    let server = TestServer::in_memory().await;
+    let app = create_published_fcp_app(
+        &server,
+        json!({
+            "token": "fcp-secret",
+            "rate_limit_per_minute": 1,
+            "response_timeout_seconds": 2
+        }),
+    )
+    .await;
+    let path = format!("/v1/e/{}/fcp", app.channels[0].public_id);
+    let client_headers = || {
+        vec![
+            ("content-type", "text/plain"),
+            ("x-forwarded-for", "198.51.100.20"),
+        ]
+    };
+
+    let mut invalid_headers = client_headers();
+    invalid_headers.push(("authorization", "Bearer wrong"));
+    send_fcp_post_to_path(&server, &path, "invalid", invalid_headers)
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+
+    let mut valid_headers = client_headers();
+    valid_headers.push(("authorization", "Bearer fcp-secret"));
+    let valid = send_fcp_post_to_path(&server, &path, "valid", valid_headers).await;
+    assert_accepted_or_timeout(valid.status());
+
+    let mut exhausted_headers = client_headers();
+    exhausted_headers.push(("authorization", "Bearer fcp-secret"));
+    send_fcp_post_to_path(&server, &path, "valid again", exhausted_headers)
+        .await
+        .assert_status(StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_rejects_empty_token_config() {
     let server = TestServer::in_memory().await;
     let agent_id = create_llmsim_agent(&server).await;
@@ -696,7 +734,7 @@ async fn fcp_post_oversized_body_returns_413() {
 // ----------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fcp_per_app_rate_limit_returns_429_with_retry_after() {
+async fn fcp_per_channel_rate_limit_returns_429_with_retry_after() {
     let server = TestServer::in_memory().await;
     let app = create_published_fcp_app(
         &server,
@@ -824,7 +862,7 @@ async fn fcp_endpoint_channels_isolate_rate_limits_and_session_cookies() {
     .assert_status(StatusCode::TOO_MANY_REQUESTS);
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fcp_rate_limit_zero_disables_per_app_cap() {
+async fn fcp_rate_limit_zero_disables_per_channel_cap() {
     let server = TestServer::in_memory().await;
     let app = create_published_fcp_app(
         &server,
@@ -846,7 +884,7 @@ async fn fcp_rate_limit_zero_disables_per_app_cap() {
         assert_ne!(
             response.status(),
             StatusCode::TOO_MANY_REQUESTS,
-            "rate_limit_per_minute=0 must disable the per-app cap; turn {i} got 429"
+            "rate_limit_per_minute=0 must disable the per-channel cap; turn {i} got 429"
         );
         assert_accepted_or_timeout(response.status());
     }

@@ -14,9 +14,8 @@
 // other channels.
 //
 // Design Decision: FCP has its own `ChannelRateLimiter` namespace. The
-// per-app cap counts in a bucket that no other channel can share or
-// exhaust. The global API limit still applies; this is an additional
-// per-channel layer.
+// per-channel cap counts in a bucket that no other channel can share or
+// exhaust. The global API limit still applies as an additional layer.
 //
 // Design Decision: Every response — success **and** error — is rendered as
 // Markdown with actionable instructions that point back at the `GET`
@@ -221,7 +220,7 @@ fn check_token(headers: &HeaderMap, config: &FcpChannelConfig) -> Result<(), Box
     Ok(())
 }
 
-/// Enforce the per-app FCP rate limit. Returns a 429 body that tells the
+/// Enforce the per-channel FCP rate limit. Returns a 429 body that tells the
 /// caller exactly when to retry.
 async fn check_rate_limit(
     state: &FcpState,
@@ -276,7 +275,7 @@ async fn check_rate_limit(
         ),
         (
             status = 429,
-            description = "Per-app FCP rate limit exceeded. `Retry-After: 60` header is set.",
+            description = "Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set.",
             content_type = "text/markdown",
         ),
     ),
@@ -289,7 +288,7 @@ pub async fn handshake(
     headers: HeaderMap,
 ) -> Response {
     // Per the FCP SPEC, the handshake is meant to be open. We still apply
-    // the per-app rate limit (when configured) so a single client can't
+    // the per-channel rate limit (when configured) so a single client can't
     // hammer the handshake either.
     let context = match resolve_context(&state, FcpTarget::LegacyApp(app_id)).await {
         Ok(ctx) => ctx,
@@ -362,7 +361,7 @@ pub async fn handshake(
         ),
         (
             status = 429,
-            description = "Per-app FCP rate limit exceeded. `Retry-After: 60` header is set.",
+            description = "Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set.",
             content_type = "text/markdown",
         ),
         (
@@ -454,6 +453,9 @@ async fn message(
         Ok(ctx) => ctx,
         Err(resp) => return resp,
     };
+    if let Err(resp) = check_token(&headers, &context.config) {
+        return *resp;
+    }
 
     if let Err(resp) = check_rate_limit(
         &state,
@@ -466,9 +468,6 @@ async fn message(
     .await
     {
         return resp;
-    }
-    if let Err(resp) = check_token(&headers, &context.config) {
-        return *resp;
     }
 
     let user_text = match extract_user_text(&headers, &body) {
