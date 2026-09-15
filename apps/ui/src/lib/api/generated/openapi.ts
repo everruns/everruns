@@ -2123,6 +2123,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description List actionable organization invitations addressed to the authenticated user's verified email. */
     get: operations["list_my_invitations"];
     put?: never;
     post?: never;
@@ -2141,6 +2142,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** @description Accept an actionable organization invitation addressed to the authenticated user's verified email. */
     post: operations["accept_my_invitation"];
     delete?: never;
     options?: never;

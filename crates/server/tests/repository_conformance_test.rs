@@ -746,14 +746,19 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
             1,
         ),
     );
-    assert!(matches!(
-        direct_result.expect("direct capacity-checked member add"),
-        AddOrganizationMemberOutcome::Added(_)
-    ));
-    assert_eq!(
-        invitation_result.expect("mixed invitation acceptance"),
-        AcceptOrgInvitationOutcome::MemberLimitReached
-    );
+    let direct_result = direct_result.expect("direct capacity-checked member add");
+    let invitation_result = invitation_result.expect("mixed invitation acceptance");
+    let invitation_lost = match (&direct_result, &invitation_result) {
+        (
+            AddOrganizationMemberOutcome::Added(_),
+            AcceptOrgInvitationOutcome::MemberLimitReached,
+        ) => true,
+        (
+            AddOrganizationMemberOutcome::MemberLimitReached,
+            AcceptOrgInvitationOutcome::Accepted { .. },
+        ) => false,
+        _ => panic!("exactly one mixed capacity operation must succeed"),
+    };
     assert_eq!(
         backend
             .count_organization_members(mixed_org.org_id)
@@ -761,14 +766,61 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
             .expect("count mixed capacity org members"),
         1
     );
-    let mixed_losing_row = backend
-        .get_org_invitation_by_public_id_and_email(&mixed_invitation.public_id, &second_user.email)
+    if invitation_lost {
+        let mixed_losing_row = backend
+            .get_org_invitation_by_public_id_and_email(
+                &mixed_invitation.public_id,
+                &second_user.email,
+            )
+            .await
+            .expect("lookup mixed losing invitation")
+            .expect("mixed losing invitation remains");
+        assert!(mixed_losing_row.accepted_at.is_none());
+        assert!(mixed_losing_row.revoked_at.is_none());
+        assert!(mixed_losing_row.expires_at > Utc::now());
+    }
+
+    let full_org = backend
+        .create_organization(CreateOrganizationRow {
+            public_id: everruns_platform::generate_org_public_id(),
+            name: format!("Full Capacity Invitation Org {label}"),
+            created_by: Some(user.id),
+        })
         .await
-        .expect("lookup mixed losing invitation")
-        .expect("mixed losing invitation remains");
-    assert!(mixed_losing_row.accepted_at.is_none());
-    assert!(mixed_losing_row.revoked_at.is_none());
-    assert!(mixed_losing_row.expires_at > Utc::now());
+        .expect("create full capacity invitation org");
+    assert!(matches!(
+        backend
+            .add_organization_member_with_capacity(full_org.org_id, first_user.id, "member", 1,)
+            .await
+            .expect("fill member capacity"),
+        AddOrganizationMemberOutcome::Added(_)
+    ));
+    let full_org_invitation = backend
+        .create_org_invitation(create_invitation(
+            full_org.org_id,
+            second_user.email.clone(),
+            Utc::now() + chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create full capacity invitation");
+    assert_eq!(
+        backend
+            .accept_org_invitation_with_membership(full_org_invitation.id, second_user.id, 1,)
+            .await
+            .expect("reject full capacity invitation"),
+        AcceptOrgInvitationOutcome::MemberLimitReached
+    );
+    let full_org_losing_row = backend
+        .get_org_invitation_by_public_id_and_email(
+            &full_org_invitation.public_id,
+            &second_user.email,
+        )
+        .await
+        .expect("lookup full capacity invitation")
+        .expect("full capacity invitation remains");
+    assert!(full_org_losing_row.accepted_at.is_none());
+    assert!(full_org_losing_row.revoked_at.is_none());
+    assert!(full_org_losing_row.expires_at > Utc::now());
 }
 
 #[tokio::test]

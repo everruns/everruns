@@ -8352,6 +8352,7 @@
         "tags": [
           "organization invitations"
         ],
+        "description": "List actionable organization invitations addressed to the authenticated user's verified email.",
         "operationId": "list_my_invitations",
         "responses": {
           "200": {
@@ -8381,6 +8382,7 @@
         "tags": [
           "organization invitations"
         ],
+        "description": "Accept an actionable organization invitation addressed to the authenticated user's verified email.",
         "operationId": "accept_my_invitation",
         "parameters": [
           {

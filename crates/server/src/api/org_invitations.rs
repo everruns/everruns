@@ -691,6 +691,7 @@ pub async fn list_invites(
 #[utoipa::path(
     get,
     path = "/v1/me/invitations",
+    description = "List actionable organization invitations addressed to the authenticated user's verified email.",
     responses(
         (status = 200, description = "Actionable invitations for the authenticated user", body = ListResponse<MyInvitationResponse>),
         (status = 401, description = "Unauthorized"),
@@ -790,6 +791,7 @@ pub async fn accept_invite(
 #[utoipa::path(
     post,
     path = "/v1/me/invitations/{public_id}/accept",
+    description = "Accept an actionable organization invitation addressed to the authenticated user's verified email.",
     params(
         ("public_id" = String, Path, description = "Public invitation ID")
     ),
