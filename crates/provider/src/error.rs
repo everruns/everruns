@@ -15,6 +15,15 @@ use thiserror::Error;
 
 /// Result type alias for agent loop operations
 pub type Result<T> = std::result::Result<T, AgentLoopError>;
+/// Machine-readable reason for provider billing pressure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BillingPressureReason {
+    /// Existing requests temporarily consume the account's available budget.
+    InFlightBudgetExhausted,
+    /// The provider account does not have enough credits for the request.
+    InsufficientCredits,
+}
 
 /// Semantic classification of an LLM provider error, assigned by the driver
 /// at the provider boundary where the HTTP status and response body are still
@@ -29,6 +38,15 @@ pub enum LlmErrorKind {
     /// Provider account is out of credits/quota (billing). Non-transient:
     /// needs operator action, unlike a regular rate limit.
     QuotaExhausted,
+    /// Provider billing pressure with the stable machine-readable reason and
+    /// the provider's suggested retry delay. This is non-transient at the
+    /// runtime layer: consumers decide whether to wait or add credits.
+    BillingPressure {
+        /// Stable provider reason for the billing refusal.
+        reason: BillingPressureReason,
+        /// Provider-requested delay before another attempt, in seconds.
+        retry_after_secs: Option<u64>,
+    },
     /// Transient rate limit (429).
     RateLimited,
     /// Provider outage or unreachable (5xx, 529, network failure).
@@ -432,6 +450,7 @@ impl AgentLoopError {
                 LlmErrorKind::RateLimited | LlmErrorKind::Unavailable => true,
                 LlmErrorKind::Authentication
                 | LlmErrorKind::QuotaExhausted
+                | LlmErrorKind::BillingPressure { .. }
                 | LlmErrorKind::AttestationRequired
                 | LlmErrorKind::InvalidRequest => false,
                 LlmErrorKind::Other => crate::llm_retry::is_transient_error_message(&err.message),
@@ -507,6 +526,14 @@ impl AgentLoopError {
                     LlmErrorKind::QuotaExhausted => {
                         Some(user_facing_error_codes::PROVIDER_QUOTA_EXHAUSTED)
                     }
+                    LlmErrorKind::BillingPressure { reason, .. } => Some(match reason {
+                        BillingPressureReason::InFlightBudgetExhausted => {
+                            user_facing_error_codes::PROVIDER_RATE_LIMITED
+                        }
+                        BillingPressureReason::InsufficientCredits => {
+                            user_facing_error_codes::PROVIDER_QUOTA_EXHAUSTED
+                        }
+                    }),
                     LlmErrorKind::RateLimited => {
                         Some(user_facing_error_codes::PROVIDER_RATE_LIMITED)
                     }
@@ -524,12 +551,17 @@ impl AgentLoopError {
                             .with_optional_field("provider", context.provider)
                             .with_optional_field("model_id", context.model_id);
                         if code == user_facing_error_codes::PROVIDER_RATE_LIMITED {
-                            error.with_optional_field("retry_after", context.retry_after)
+                            let retry_after = match err.kind {
+                                LlmErrorKind::BillingPressure {
+                                    retry_after_secs, ..
+                                } => retry_after_secs,
+                                _ => context.retry_after,
+                            };
+                            error.with_optional_field("retry_after", retry_after)
                         } else if code == user_facing_error_codes::PROVIDER_ATTESTATION_REQUIRED {
-                            // `LlmErrorKind` is `Copy` and payload-free, so the
-                            // confirmations and the URL that clears them are
-                            // read back out of the raw body the driver kept in
-                            // `message` rather than carried on the kind.
+                            // The attestation variant carries no payload, so
+                            // the confirmations and URL are read from the raw
+                            // body the driver retained in `message`.
                             parse_attestation_requirement(&err.message)
                                 .unwrap_or_else(AttestationRequirement::fallback)
                                 .apply_fields(error)
@@ -1276,6 +1308,61 @@ mod tests {
         assert!(matches!(non_llm, AgentLoopError::Cancelled));
         assert_eq!(non_llm.llm_retry_attempts(), 0);
         assert!(!non_llm.llm_retry_handled());
+    }
+
+    #[test]
+    fn billing_pressure_preserves_typed_payload_and_safe_user_fields() {
+        let kind = LlmErrorKind::BillingPressure {
+            reason: BillingPressureReason::InFlightBudgetExhausted,
+            retry_after_secs: Some(120),
+        };
+        let error = AgentLoopError::llm_kind(kind, "private provider body");
+        assert_eq!(error.llm_error_kind(), Some(kind));
+        assert!(!error.is_transient_llm_error());
+        assert_eq!(
+            serde_json::to_value(
+                error.user_facing_error(
+                    UserFacingErrorContext::default()
+                        .with_provider("openrouter")
+                        .with_model_id("vendor/model")
+                )
+            )
+            .unwrap(),
+            json!({
+                "code": "provider_rate_limited",
+                "fields": {
+                    "provider": "openrouter",
+                    "model_id": "vendor/model",
+                    "retry_after": 120,
+                }
+            })
+        );
+        let AgentLoopError::Llm(error) = error else {
+            panic!("lost LLM variant")
+        };
+        assert_eq!(
+            serde_json::to_value(error.kind).unwrap(),
+            json!({
+                "billing_pressure": {
+                    "reason": "in_flight_budget_exhausted",
+                    "retry_after_secs": 120,
+                }
+            })
+        );
+
+        let exhausted = AgentLoopError::llm_kind(
+            LlmErrorKind::BillingPressure {
+                reason: BillingPressureReason::InsufficientCredits,
+                retry_after_secs: None,
+            },
+            "private provider body",
+        );
+        assert_eq!(
+            exhausted
+                .user_facing_error(UserFacingErrorContext::default())
+                .code,
+            "provider_quota_exhausted"
+        );
     }
 
     #[test]

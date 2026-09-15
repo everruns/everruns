@@ -335,7 +335,7 @@ describe("Sidebar", () => {
     expect(screen.getByText("Identities")).toBeInTheDocument();
     expect(screen.getByText("Knowledge indexes")).toBeInTheDocument();
     expect(screen.getByText("Memory")).toBeInTheDocument();
-    expect(screen.getByText("Apps")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Apps" })).not.toBeInTheDocument();
     expect(screen.getByText("Models")).toBeInTheDocument();
     expect(screen.getByText("MCP servers")).toBeInTheDocument();
     expect(screen.getByText("Skills")).toBeInTheDocument();

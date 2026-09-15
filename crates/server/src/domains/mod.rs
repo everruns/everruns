@@ -12,6 +12,7 @@ pub mod apps;
 pub mod audit_logs;
 pub mod budgets;
 pub mod capabilities;
+pub mod environments;
 pub mod evals;
 pub mod events;
 pub mod git_fetch;

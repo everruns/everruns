@@ -26,6 +26,7 @@ pub mod commands;
 pub mod common;
 pub mod dispatch;
 pub mod durable;
+pub mod environments;
 pub mod evals;
 pub mod events;
 pub mod fcp;

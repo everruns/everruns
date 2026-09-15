@@ -73,6 +73,12 @@ pub use everruns_builtins::{
     AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
     ToolSearch,
 };
+pub use everruns_host::{
+    Compute, ComputeCapabilities, ComputeError, ComputeKind, ComputeSession, Containment,
+    ContainmentLevel, Durability, EnvironmentError, ExecRequest, ExecResult, NetworkPolicy,
+};
+#[cfg(feature = "host-compute")]
+pub use everruns_host::{HostCompute, HostComputeSession};
 #[cfg(feature = "bashkit")]
 pub use everruns_integrations_bashkit::BashkitShell;
 #[cfg(feature = "duckduckgo")]
@@ -176,9 +182,10 @@ pub use everruns_provider::driver_registry::{
 pub use everruns_provider::model::ReasoningEffort;
 pub use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 pub use everruns_provider::{ExecutionPhase, PhaseSource};
-// Required by the public `ChatDriver` SPI: downstream drivers must be able to
-// name its error type without adding an implementation-crate dependency.
-pub use everruns_provider::error::AgentLoopError;
+// Required by the public `ChatDriver` SPI and runtime error contract:
+// downstream consumers can inspect provider failures without depending on an
+// implementation crate.
+pub use everruns_provider::error::{AgentLoopError, BillingPressureReason, LlmError, LlmErrorKind};
 pub use everruns_provider::runtime_provider::{
     BearerAuth, Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey,
     StaticHeaderAuth,

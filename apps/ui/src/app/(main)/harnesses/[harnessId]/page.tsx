@@ -24,16 +24,7 @@ import { ProviderIcon } from "@/components/providers/provider-icon";
 import { HarnessPreview } from "@/components/harnesses/harness-preview";
 import { IntegrationGuide } from "@/components/integration/integration-guide";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
-import {
-  Pencil,
-  Copy,
-  Trash2,
-  Eye,
-  LayoutDashboard,
-  BarChart3,
-  Rocket,
-  Terminal,
-} from "lucide-react";
+import { Pencil, Copy, Trash2, Eye, LayoutDashboard, BarChart3, Terminal } from "lucide-react";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import {
@@ -196,15 +187,6 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
         }
         actions={
           <>
-            {harness.status === "active" && (
-              <Button
-                variant="accent"
-                render={<Link href={{ pathname: "/apps/new", query: { harness_id: harnessId } }} />}
-              >
-                <Rocket className="size-4" />
-                Create app
-              </Button>
-            )}
             <Button variant="outline" onClick={handleCopy} disabled={copyHarness.isPending}>
               <Copy className="size-4" />
               {copyHarness.isPending ? "Copying..." : "Copy"}

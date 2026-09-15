@@ -67,7 +67,9 @@ bashkit = ["filesystem", "dep:everruns-integrations-bashkit", "direct-egress"]
 web-fetch = ["dep:everruns-integrations-web-fetch", "direct-egress"]
 duckduckgo = ["dep:everruns-integrations-duckduckgo", "direct-egress"]
 lua = ["dep:everruns-integrations-lua", "direct-egress"]
-process = []
+# `compute::HostCompute` and the skill command executor both spawn and time
+# out real processes; unification from other crates is not a contract.
+process = ["tokio/process", "tokio/time"]
 utility-openai = ["everruns-provider/http"]
 observability = [
     "direct-egress",

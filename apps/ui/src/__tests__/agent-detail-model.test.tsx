@@ -296,6 +296,7 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
 
     // Agent name should be visible
     expect(screen.getByRole("heading", { name: "Test Agent" })).toBeInTheDocument();
+    expect(screen.queryByText("Create app")).not.toBeInTheDocument();
     // Sessions section header should be visible
     expect(screen.getByText("Sessions")).toBeInTheDocument();
   });

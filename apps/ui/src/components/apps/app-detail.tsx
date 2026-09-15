@@ -22,6 +22,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { ChannelRow } from "@/components/apps/channel-row";
+import { AppRetirementNotice } from "@/components/apps/app-retirement-notice";
 import { LiveActivityRail } from "@/components/apps/live-activity-rail";
 import { MiniTimeline } from "@/components/apps/mini-timeline";
 import { type StatStripStats } from "@/components/apps/stat-strip";
@@ -206,6 +207,13 @@ export function AppDetail({ appId }: { appId: string }) {
         }
       />
 
+      <AppRetirementNotice
+        agents={
+          app.agent_id
+            ? [{ id: app.agent_id, name: agent ? getDisplayName(agent) : app.agent_id }]
+            : []
+        }
+      />
       {stats && (
         <PageControlStrip>
           <StatGrid>

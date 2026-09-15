@@ -22,7 +22,6 @@ import {
   ListTodo,
   MessageCircle,
   MessageSquare,
-  Rocket,
   Server,
   Settings,
   Shield,
@@ -77,7 +76,6 @@ export const defaultBuildingNavigation: NavigationItem[] = [
     experimental: true,
   },
   { name: "Memory", href: "/memory", icon: Brain, flag: "memory", experimental: true },
-  { name: "Apps", href: "/apps", icon: Rocket },
 ];
 
 export const defaultRegistriesNavigation: NavigationItem[] = registryNavigationItems.map(

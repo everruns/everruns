@@ -148,7 +148,7 @@ test.describe("Page masthead responsive layout", () => {
     await expect(page.getByRole("menuitem", { name: "Copy" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Export" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Edit" })).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "Create app" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Create app" })).toHaveCount(0);
     await expect(page.getByRole("menuitem", { name: "Observe this agent" })).toBeVisible();
 
     await page.keyboard.press("Escape");
@@ -204,7 +204,7 @@ test.describe("Page masthead responsive layout", () => {
       await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Export", exact: true })).toBeVisible();
       await expect(page.getByRole("link", { name: "Edit" })).toBeVisible();
-      await expect(page.getByRole("link", { name: "Create app" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Create app" })).toHaveCount(0);
       await expect(page.getByRole("link", { name: "Observe this agent" })).toBeHidden();
 
       await page.getByRole("button", { name: "More actions" }).click();
@@ -256,7 +256,7 @@ test.describe("Page masthead responsive layout", () => {
     const edit = page.getByRole("link", { name: "Edit" });
 
     await expect(title).toBeVisible();
-    await expect(page.getByRole("link", { name: "Create app" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Create app" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
     await expect(edit).toBeVisible();
     await expect(page.getByRole("button", { name: "Archive" })).toBeVisible();

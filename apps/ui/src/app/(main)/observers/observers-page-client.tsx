@@ -1,16 +1,32 @@
 "use client";
+import { useMemo, useState } from "react";
 
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Telescope } from "lucide-react";
 import { useObservers, usePageTitle } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { EntityCard } from "@/components/ui/entity-card";
 import { Badge } from "@/components/ui/badge";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
-import { getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
+import { getEntityStatusBadgeVariant, isArchivedStatus } from "@/lib/entity-lifecycle";
 import { pluralize } from "@/lib/formatting";
 import type { Observer } from "@/lib/api/types";
+import {
+  PageBreadcrumb,
+  PageContainer,
+  PageControlStrip,
+  PageFooter,
+  PageMain,
+  PageMasthead,
+  PageColumns,
+  PageRail,
+  RailSection,
+  SectionTabs,
+} from "@/components/layout";
+import { cn } from "@/lib/utils";
+
+type StatusTab = "active" | "archived";
 
 function ObserverCard({ observer }: { observer: Observer }) {
   return (
@@ -41,14 +57,33 @@ function ObserverCard({ observer }: { observer: Observer }) {
 export default function ObserversPageClient() {
   usePageTitle("Observers");
   const observersEnabled = useFeatureFlag("observers");
+  const [statusTab, setStatusTab] = useState<StatusTab>("active");
   const {
     data: observers,
     isLoading,
     error,
   } = useObservers({
-    includeArchived: false,
+    includeArchived: true,
     enabled: observersEnabled,
   });
+  const counts = useMemo(() => {
+    const list = observers ?? [];
+    const archived = list.filter((observer) => isArchivedStatus(observer.status)).length;
+    return { all: list.length, active: list.length - archived, archived };
+  }, [observers]);
+  const filteredObservers = useMemo(
+    () =>
+      (observers ?? []).filter((observer) =>
+        statusTab === "archived"
+          ? isArchivedStatus(observer.status)
+          : !isArchivedStatus(observer.status),
+      ),
+    [observers, statusTab],
+  );
+  const statusItems = [
+    { value: "active" as const, label: "Active" },
+    { value: "archived" as const, label: "Archived" },
+  ];
 
   if (!observersEnabled) {
     return (
@@ -62,38 +97,103 @@ export default function ObserversPageClient() {
   }
 
   return (
-    <div className="container mx-auto space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Observers</h1>
-        <Button variant="accent" render={<Link href="/observers/new" />}>
-          <Plus className="mr-2 h-4 w-4" />
-          New Observer
-        </Button>
-      </div>
+    <PageContainer>
+      <PageBreadcrumb items={[{ label: "Observers" }]} />
 
-      <QueryStateWrapper
-        isLoading={isLoading}
-        error={error}
-        data={observers}
-        errorMessagePrefix="Failed to load observers"
-        emptyState={
-          <div className="py-12 text-center">
-            <p className="mb-4 text-muted-foreground">No observers yet</p>
-            <Button render={<Link href="/observers/new" />}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create observer
-            </Button>
-          </div>
+      <PageMasthead
+        icon={<Telescope />}
+        title="Observers"
+        badges={
+          <Badge variant="outline" className="font-mono">
+            {counts.all}
+          </Badge>
         }
-      >
-        {(items) => (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {items.map((observer) => (
-              <ObserverCard key={observer.id} observer={observer} />
-            ))}
-          </div>
+        description="Score production sessions asynchronously with sampling rules and evaluators."
+        meta={
+          <>
+            <span>{counts.active} active</span>
+            <span>{counts.archived} archived</span>
+          </>
+        }
+        actions={
+          <Button variant="accent" nativeButton={false} render={<Link href="/observers/new" />}>
+            <Plus className="size-4" />
+            New Observer
+          </Button>
+        }
+      />
+
+      <PageControlStrip className="flex justify-end">
+        <SectionTabs
+          value={statusTab}
+          onValueChange={(value) => setStatusTab(value as StatusTab)}
+          items={statusItems}
+        />
+      </PageControlStrip>
+
+      <PageColumns>
+        <PageMain>
+          <QueryStateWrapper
+            isLoading={isLoading}
+            error={error}
+            data={filteredObservers}
+            errorMessagePrefix="Failed to load observers"
+            emptyState={
+              <div className="py-12 text-center">
+                <p className="mb-4 text-muted-foreground">No observers yet</p>
+                <Button nativeButton={false} render={<Link href="/observers/new" />}>
+                  <Plus className="mr-2 size-4" />
+                  Create observer
+                </Button>
+              </div>
+            }
+          >
+            {(items) => (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {items.map((observer) => (
+                  <ObserverCard key={observer.id} observer={observer} />
+                ))}
+              </div>
+            )}
+          </QueryStateWrapper>
+        </PageMain>
+
+        <PageRail>
+          <RailSection label="Status">
+            <div className="flex flex-col gap-1.5 text-[13px]">
+              {statusItems.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => setStatusTab(item.value)}
+                  className={cn(
+                    "flex items-center justify-between transition-colors hover:text-foreground",
+                    statusTab === item.value ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  <span>{item.label}</span>
+                  <span className="text-muted-foreground">{counts[item.value]}</span>
+                </button>
+              ))}
+            </div>
+          </RailSection>
+        </PageRail>
+      </PageColumns>
+
+      <PageFooter>
+        <span>
+          Showing {filteredObservers.length} of {counts.all} {pluralize(counts.all, "observer")}
+        </span>
+        {counts.archived > 0 && statusTab !== "archived" && (
+          <button
+            type="button"
+            onClick={() => setStatusTab("archived")}
+            className="text-primary transition-colors hover:underline"
+          >
+            View archived →
+          </button>
         )}
-      </QueryStateWrapper>
-    </div>
+      </PageFooter>
+    </PageContainer>
   );
 }

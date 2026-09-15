@@ -41,6 +41,7 @@ mod builders;
 mod capabilities;
 mod command_host;
 mod composition;
+pub mod compute;
 #[cfg(feature = "direct-egress")]
 mod egress;
 pub mod events;
@@ -78,6 +79,12 @@ pub use builders::{
 };
 pub use command_host::StoreCommandHost;
 pub use composition::{HostComposition, HostCompositionBuilder};
+pub use compute::{
+    Compute, ComputeCapabilities, ComputeError, ComputeKind, ComputeSession, Containment,
+    ContainmentLevel, Durability, ExecRequest, ExecResult, NetworkPolicy,
+};
+#[cfg(feature = "process")]
+pub use compute::{HostCompute, HostComputeSession};
 #[cfg(feature = "direct-egress")]
 pub use egress::DirectEgressService;
 pub use events::{
@@ -91,6 +98,7 @@ pub use events::{
 pub use everruns_core::AssembledTurnContext;
 pub use everruns_core::task_observer::{TaskTransition, TaskTransitionObserver};
 pub use everruns_core::turn::TurnStopReason;
+pub use everruns_provider::error::{AgentLoopError, BillingPressureReason, LlmError, LlmErrorKind};
 pub use everruns_provider::typed_id::WorkspaceId;
 pub use execution_snapshot::{load_execution_snapshot, load_execution_snapshot_for_session};
 pub use extensions::{HostToolAugmentor, SubagentDelegateFactory, ToolContextExtensionsFactory};
@@ -142,8 +150,9 @@ pub use utility_llm::{
 };
 pub use workspace::{
     Environment, EnvironmentBindingError, EnvironmentBindingStore, EnvironmentBuilder,
-    InMemoryEnvironmentBindingStore, Workspace, WorkspaceBinding, WorkspaceCheckpoint,
-    WorkspaceDescriptor, WorkspaceDiff, WorkspaceError, WorkspaceHead, WorkspaceHeadAccess,
-    WorkspaceHeadBuilder, WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest,
-    WorkspaceHeadResource, WorkspaceHeadStatus, WorkspaceProvider, WorkspaceProviderId,
+    EnvironmentError, InMemoryEnvironmentBindingStore, Workspace, WorkspaceBinding,
+    WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff, WorkspaceError, WorkspaceHead,
+    WorkspaceHeadAccess, WorkspaceHeadBuilder, WorkspaceHeadDescriptor, WorkspaceHeadId,
+    WorkspaceHeadRequest, WorkspaceHeadResource, WorkspaceHeadStatus, WorkspaceProvider,
+    WorkspaceProviderId,
 };
