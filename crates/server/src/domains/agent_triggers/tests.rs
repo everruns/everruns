@@ -118,10 +118,14 @@ fn test_ctx(db: Arc<StorageBackend>, store: Arc<InMemoryWorkflowEventStore>) -> 
 
 fn create_req(cron: &str, message: &str, enabled: bool) -> CreateAgentTriggerRequest {
     CreateAgentTriggerRequest {
-        cron_expression: cron.to_string(),
+        trigger_type: AgentTriggerType::Schedule,
+        cron_expression: Some(cron.to_string()),
         timezone: "UTC".to_string(),
         session_mode: SessionBinding::Endpoint,
         message: message.to_string(),
+        token: None,
+        rate_limit_per_minute: None,
+        auth: None,
         enabled,
     }
 }
@@ -184,7 +188,9 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         org_id: DEFAULT_ORG_ID,
         agent_id: agent.id,
         trigger_type: "schedule".to_string(),
+        ingress_id: None,
         config: serde_json::json!({}),
+        config_encrypted: None,
         enabled: true,
         durable_schedule_id: None,
         execution_harness_id: Some(app_harness_id),
@@ -294,6 +300,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
         preserved_harness.id,
         owner.id,
         "scheduled message".to_string(),
+        None,
     )
     .await
     .unwrap();

@@ -94,13 +94,16 @@ fn require_app_agent(agent_id: Option<Uuid>) -> Result<Uuid, CommandError> {
     })
 }
 
-fn reject_new_schedule_channel(channel_type: &ChannelType) -> Result<(), CommandError> {
-    if *channel_type == ChannelType::Schedule {
-        return Err(CommandError::bad_request(
+fn reject_new_trigger_channel(channel_type: &ChannelType) -> Result<(), CommandError> {
+    match channel_type {
+        ChannelType::Schedule => Err(CommandError::bad_request(
             "App schedule channels are deprecated. Create a schedule trigger on the app's agent instead.",
-        ));
+        )),
+        ChannelType::Webhook => Err(CommandError::bad_request(
+            "App webhook channels are deprecated. Create a webhook trigger on the app's agent instead.",
+        )),
+        _ => Ok(()),
     }
-    Ok(())
 }
 
 async fn validate_agent_identity(
@@ -2117,7 +2120,7 @@ impl Command for CreateApp {
         let mut channel_config = channel_config.unwrap_or_default();
 
         if let Some(channel_type) = channel_type.clone() {
-            reject_new_schedule_channel(&channel_type)?;
+            reject_new_trigger_channel(&channel_type)?;
             ensure_channel_type_enabled(ctx, &channel_type)?;
             if channel_type == ChannelType::Schedule {
                 let _ = durable_store(ctx)?;
@@ -3199,7 +3202,7 @@ impl Command for AddChannel {
         }
 
         ensure_channel_type_enabled(ctx, &self.req.channel_type)?;
-        reject_new_schedule_channel(&self.req.channel_type)?;
+        reject_new_trigger_channel(&self.req.channel_type)?;
 
         if self.req.channel_type == ChannelType::Schedule {
             let _ = durable_store(ctx)?;
@@ -3960,7 +3963,9 @@ impl Command for UpdateChannelCmd {
             .channel_type
             .clone()
             .unwrap_or(current_channel_type.clone());
-        reject_new_schedule_channel(&final_channel_type)?;
+        if final_channel_type != current_channel_type {
+            reject_new_trigger_channel(&final_channel_type)?;
+        }
         let existing_decrypted = q::decrypt_channel_config(
             encryption,
             channel_row.channel_config_encrypted.as_deref(),
@@ -4273,7 +4278,7 @@ mod tests {
 
     #[test]
     fn new_schedule_channels_point_to_agent_triggers() {
-        let err = reject_new_schedule_channel(&ChannelType::Schedule)
+        let err = reject_new_trigger_channel(&ChannelType::Schedule)
             .expect_err("new App schedule channels must be rejected");
         assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
         assert!(err.to_string().contains("app's agent"));
@@ -4284,13 +4289,12 @@ mod tests {
         for channel_type in [
             ChannelType::Slack,
             ChannelType::AgUi,
-            ChannelType::Webhook,
             ChannelType::A2a,
             ChannelType::Fcp,
             ChannelType::ApiEndpoint,
             ChannelType::PublicChat,
         ] {
-            reject_new_schedule_channel(&channel_type)
+            reject_new_trigger_channel(&channel_type)
                 .unwrap_or_else(|err| panic!("{channel_type} unexpectedly rejected: {err}"));
         }
     }
