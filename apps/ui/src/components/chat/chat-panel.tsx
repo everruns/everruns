@@ -113,8 +113,6 @@ export interface ChatPanelProps {
    * a task subscription, and only the Chats thread surface wants it.
    */
   showRunCards?: boolean;
-  /** Display name for the Platform Chat intro card (agent or harness). */
-  platformTitle?: string;
   /** Icon name for the Platform Chat intro card (harness icon set). */
   platformIcon?: string | null;
   /** Markdown intro; the intro box renders while the transcript is empty. */
@@ -126,7 +124,6 @@ export interface ChatPanelProps {
 export function ChatPanel({
   replyToLabel,
   showRunCards = false,
-  platformTitle,
   platformIcon,
   platformIntro,
   platformStarters = [],
@@ -152,12 +149,16 @@ export function ChatPanel({
   } = useSessionContext();
 
   const { data: models = [], isLoading: modelsLoading } = useModels();
-  // One message, not two: when the org has no model to chat with, the notice
-  // *replaces* the transcript's "No messages yet" card on a fresh thread, and
-  // only sits above the composer once there is history to sit under.
+  // One guiding block on a fresh platform thread: the intro + starters render
+  // *as* the transcript empty state (centered welcome), so there is no
+  // "No messages yet" card, no repeated thread name, and no model-notice
+  // paragraph above the composer. The composer's model picker is the single
+  // model cue.
   const intelligence = useIntelligenceStatus();
   const showNoIntelligence = !intelligence.isLoading && !intelligence.available;
-  const transcriptEmpty = chatEvents.length === 0;
+  const transcriptEmpty = !eventsLoading && chatEvents.length === 0;
+  const showPlatformIntro =
+    transcriptEmpty && Boolean(platformIntro || platformStarters.length > 0);
   const { data: participants, refetch: refetchParticipants } = useSessionParticipants(sessionId);
   const { data: agents } = useAgents();
   const [inputValue, setInputValue] = useState("");
@@ -635,6 +636,16 @@ export function ChatPanel({
             emptyState={
               showNoIntelligence ? (
                 <NoIntelligenceMessage canManage={intelligence.canManage} />
+              ) : showPlatformIntro ? (
+                <PlatformChatIntroBox
+                  icon={platformIcon ?? null}
+                  intro={platformIntro ?? null}
+                  starters={platformStarters}
+                  onSelect={(text) => {
+                    setInputValue(text);
+                    textareaRef.current?.focus();
+                  }}
+                />
               ) : undefined
             }
             footer={
@@ -663,18 +674,6 @@ export function ChatPanel({
             hasTasksFeature={hasTasksFeature}
           />
 
-          {transcriptEmpty && (platformIntro || platformStarters.length > 0) ? (
-            <PlatformChatIntroBox
-              title={platformTitle ?? "Platform Chat"}
-              icon={platformIcon ?? null}
-              intro={platformIntro ?? null}
-              starters={platformStarters}
-              onSelect={(text) => {
-                setInputValue(text);
-                textareaRef.current?.focus();
-              }}
-            />
-          ) : null}
           {showNoIntelligence && !transcriptEmpty && (
             <NoIntelligenceMessage canManage={intelligence.canManage} className="mb-3" />
           )}
@@ -700,11 +699,21 @@ export function ChatPanel({
             isDraggingOver={isDraggingOver}
             dropZoneProps={dropZoneProps}
             handlePaste={handlePaste}
-            placeholder={replyToLabel ? t("reply_to", { name: replyToLabel }) : undefined}
+            placeholder={
+              showPlatformIntro
+                ? !modelReady
+                  ? t("type_message_pick_model")
+                  : undefined
+                : replyToLabel
+                  ? t("reply_to", { name: replyToLabel })
+                  : undefined
+            }
             selectedModelId={selectedModelId}
             recentModels={recentModels}
             onModelChange={handleModelChange}
-            modelTriggerLabel={modelTriggerLabel}
+            modelTriggerLabel={
+              showPlatformIntro && !modelReady ? t("choose_model") : modelTriggerLabel
+            }
             defaultModelOptionLabel={defaultModelOptionLabel}
             supportsReasoning={supportsReasoning}
             reasoningEffort={reasoningEffort}
@@ -723,6 +732,7 @@ export function ChatPanel({
             canSubmit={canSubmit}
             modelReady={modelReady}
             modelLoading={modelLoading}
+            hideModelNotice={showPlatformIntro}
             isUploading={isUploading}
             sendPending={
               sendMessage.isPending || sendMessageWithImages.isPending || executeCommand.isPending
