@@ -69,7 +69,7 @@ exclude = [
     "evals/generic",
     # Fixture repository materialized by the bashkit-repo-agent example; it is a
     # standalone Cargo workspace, not a member of this one.
-    "examples/bashkit-repo-agent/src/sample-repo",
+    "examples/bashkit-repo-agent/src/resources/sample-repo",
 ]
 
 [workspace.package]
