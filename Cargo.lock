@@ -2570,6 +2570,7 @@ dependencies = [
  "async-trait",
  "bashkit",
  "chrono",
+ "clap",
  "everruns-capability",
  "everruns-core",
  "everruns-provider",

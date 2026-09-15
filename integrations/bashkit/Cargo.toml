@@ -24,6 +24,14 @@ async-trait.workspace = true
 # `default-features = false` drops bashkit's default `ring`; the rest of its
 # default set is restored explicitly so only the crypto backend changes (EVE-924).
 bashkit = { version = "0.18.0", default-features = false, features = ["jq", "http_client", "bot-auth", "bash_tool", "tzdata", "aws-lc-rs"] }
+# The tree's leaves are parsed by clap, the same crate `crates/cli` is parsed
+# by, so a caller gets one set of conventions across both. Depended on directly
+# rather than through `bashkit::clap` for two features bashkit does not itself
+# need: `string`, because a tree built from runtime data owns its names and
+# cannot hand clap `&'static str`, and `color`, so `ColorChoice::Never` is a
+# call that exists rather than one that compiles only when some other crate in
+# the build happens to have turned colour on.
+clap = { workspace = true, features = ["string", "color"] }
 serde_json.workspace = true
 futures.workspace = true
 tokio = { workspace = true, features = ["rt", "sync", "time"] }

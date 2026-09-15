@@ -57,6 +57,12 @@ impl CliCommandSource for InventoryCommandSource {
                     wire_name: meta.name.to_string(),
                     description: meta.description.to_string(),
                     route,
+                    // The same schema the MCP catalog publishes and the
+                    // scripted host coerces against. A leaf's flags and its
+                    // `--help` are generated from it, so the command declares
+                    // its arguments exactly once, in its Rust type.
+                    params: (desc.param_schema)(),
+                    positional: (desc.positional_arg)().map(ToOwned::to_owned),
                 })
             })
             .collect()
@@ -92,6 +98,63 @@ pub fn tree() -> &'static CliTree {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every routed command compiles into a parser, against the schemas the
+    /// catalog really publishes rather than a fixture.
+    ///
+    /// clap panics on a malformed command (a duplicate argument id, a bad
+    /// value-parser pairing), and it would panic inside the agent's shell.
+    /// Building all of them here is what keeps a newly routed command from
+    /// discovering that at runtime.
+    #[test]
+    fn every_routed_command_compiles_into_a_parser() {
+        let tree = tree();
+        let mut built = 0;
+
+        for spec in InventoryCommandSource.specs() {
+            let spelling = spec.route.spelling();
+            let leaf = tree.leaf(&spelling).expect("declared leaf is in the tree");
+            let command = everruns_integrations_bashkit::cli::args::LeafCommand::new(
+                &format!("{ROOT} {spelling}"),
+                &leaf.description,
+                &leaf.params,
+                leaf.positional.as_deref(),
+                &[],
+                &leaf.command,
+            );
+            // Rendering help walks every argument, so a command that is
+            // structurally wrong fails here rather than on a caller's line.
+            command
+                .parse(&["--help".to_string()])
+                .expect_err("--help is a clap response, not parameters");
+            built += 1;
+        }
+
+        assert!(built > 0, "no commands declare a CLI route");
+    }
+
+    /// Pagination reaches commands through `#[serde(flatten)]`, which renders
+    /// as an `allOf` branch in the schema. A parser that only read top-level
+    /// properties would call `--limit` an unknown flag.
+    #[test]
+    fn a_flattened_field_is_a_real_flag() {
+        let tree = tree();
+        let leaf = tree.leaf("agents list").expect("agents list is routed");
+        let command = everruns_integrations_bashkit::cli::args::LeafCommand::new(
+            &format!("{ROOT} agents list"),
+            &leaf.description,
+            &leaf.params,
+            leaf.positional.as_deref(),
+            &[],
+            &leaf.command,
+        );
+
+        let params = command
+            .parse(&["--limit".to_string(), "10".to_string()])
+            .expect("--limit parses")
+            .expect("parameters");
+        assert_eq!(params["limit"], 10);
+    }
 
     fn stub_usage(_wire: &str, display: &str) -> String {
         format!("Usage: {display} [--flags]\n")

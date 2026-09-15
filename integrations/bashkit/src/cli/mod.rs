@@ -27,6 +27,8 @@
 // makes `--help` affordable where a flat namespace of hundreds of commands has
 // to forbid it.
 
+pub mod args;
+
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
@@ -94,6 +96,17 @@ pub struct CliCommandSpec {
     /// One-line summary, rendered in help.
     pub description: String,
     pub route: CliRoute,
+    /// JSON Schema for the command's parameters.
+    ///
+    /// This is the leaf's grammar: it compiles into the `clap::Command` that
+    /// parses the flags and renders `--help`, so a command describes its
+    /// arguments once and the parser and the help cannot drift apart. A
+    /// source with nothing to declare passes an empty object, and the leaf
+    /// then takes no flags.
+    pub params: Value,
+    /// Field a single leading bare word binds to, if the command nominates
+    /// one: `get_agent agt_1` rather than `get_agent --id agt_1`.
+    pub positional: Option<String>,
 }
 
 /// Where a host's commands come from, and how one runs.
@@ -142,6 +155,8 @@ pub struct Leaf {
     pub command: String,
     pub description: String,
     pub route: CliRoute,
+    pub params: Value,
+    pub positional: Option<String>,
 }
 
 /// The assembled tree. Nodes are keyed by their full path so lookup is a
@@ -233,6 +248,8 @@ impl CliTree {
                 command: spec.wire_name,
                 description: spec.description,
                 route: spec.route,
+                params: spec.params,
+                positional: spec.positional,
             });
         }
         tree
@@ -622,12 +639,16 @@ fn first_sentence(description: &str) -> String {
 
 /// The `everruns` builtin for a plain bash tool.
 ///
-/// Unlike a `ScriptedTool` host, a builtin here receives raw argv, so the tree
-/// is walked directly and no source rewriting is involved. Flags after the
-/// resolved leaf are parsed into the parameter object the source dispatches
-/// on: `--name x` becomes `{"name": "x"}`, a bare `--flag` becomes `true`, and
-/// a lone leading value is bound to the leaf's positional field when the
-/// source declares one through its usage.
+/// Unlike a `ScriptedTool` host, a builtin here receives raw argv. That is the
+/// whole difference, and it is what lets this path parse properly: the tree is
+/// walked directly to resolve a leaf, and everything after the leaf goes to
+/// the leaf's own [`clap::Command`], compiled from the schema the command
+/// already publishes. See [`args`] for what that buys over hand-parsing.
+///
+/// Help splits along the same line. Nodes and the root are the tree's to
+/// render, because their content *is* the tree. A leaf's help is clap's,
+/// generated from the same schema as the parse, so what a caller reads and
+/// what they are then held to are one artifact.
 pub struct CliBuiltin {
     source: Arc<dyn CliCommandSource>,
     tree: CliTree,
@@ -664,18 +685,22 @@ impl CliBuiltin {
 
         let spelling = path.join(" ");
 
-        if wants_help {
-            // Help beats execution: a caller asking what a command does must
-            // never accidentally run it. It must still fail when the path is
-            // not real, or a typo renders as a working help page.
-            let (path, unknown) = split_at_unknown(&self.tree, &spelling);
-            return CliPlan::Help { path, unknown };
-        }
+        // A resolved leaf handles its own `--help`, so the flag rides along
+        // with the rest of argv rather than being intercepted here. Help still
+        // beats execution: clap renders it and parses nothing.
         if let Some(leaf) = self.tree.leaf(&spelling) {
             return CliPlan::Run {
+                spelling,
                 wire_name: leaf.command.clone(),
                 args: args[rest.min(args.len())..].to_vec(),
             };
+        }
+        if wants_help {
+            // No leaf: the caller is asking what exists under a node, which is
+            // the tree's question to answer. It must still fail when the path
+            // is not real, or a typo renders as a working help page.
+            let (path, unknown) = split_at_unknown(&self.tree, &spelling);
+            return CliPlan::Help { path, unknown };
         }
         if spelling.is_empty() || self.tree.is_node(&spelling) {
             return CliPlan::Help {
@@ -696,9 +721,35 @@ impl CliBuiltin {
                     self.source.usage(wire, display)
                 })
             }
-            CliPlan::Run { wire_name, args } => {
-                let params = parse_flags(&args)?;
-                self.source.dispatch(&wire_name, params).await
+            CliPlan::Run {
+                spelling,
+                wire_name,
+                args,
+            } => {
+                let leaf = self
+                    .tree
+                    .leaf(&spelling)
+                    .ok_or_else(|| format!("unknown command `{spelling}`"))?;
+                let command = args::LeafCommand::new(
+                    &format!("{} {spelling}", self.tree.root()),
+                    &leaf.description,
+                    &leaf.params,
+                    leaf.positional.as_deref(),
+                    &leaf
+                        .route
+                        .examples
+                        .iter()
+                        .map(|example| (*example).to_string())
+                        .collect::<Vec<_>>(),
+                    &wire_name,
+                );
+                match command.parse(&args) {
+                    Ok(Some(params)) => self.source.dispatch(&wire_name, params).await,
+                    // clap rendered help. Nothing ran, and nothing failed.
+                    Ok(None) => Ok(String::new()),
+                    Err(failure) if failure.is_help => Ok(failure.message),
+                    Err(failure) => Err(failure.message),
+                }
             }
         }
     }
@@ -710,6 +761,8 @@ enum CliPlan {
         unknown: Option<String>,
     },
     Run {
+        /// Tree spelling the caller typed, for usage and errors.
+        spelling: String,
         wire_name: String,
         args: Vec<String>,
     },
@@ -738,64 +791,6 @@ fn split_at_unknown(tree: &CliTree, path: &str) -> (String, Option<String>) {
     }
 
     (known.join(" "), None)
-}
-
-/// Parse `--flag value` pairs into a JSON object.
-///
-/// Values stay strings unless they are unambiguous JSON scalars or documents:
-/// the source validates against its own schema, and guessing a type here would
-/// turn a version string like `1.20` into a float.
-fn parse_flags(args: &[String]) -> Result<Value, String> {
-    let mut object = serde_json::Map::new();
-    let mut index = 0;
-
-    while index < args.len() {
-        let arg = &args[index];
-        let Some(name) = arg.strip_prefix("--") else {
-            return Err(format!(
-                "unexpected argument `{arg}`: pass values as `--flag value`"
-            ));
-        };
-        if name.is_empty() {
-            return Err("unexpected `--`".to_string());
-        }
-
-        // `--flag=value` and `--flag value` are both accepted.
-        if let Some((key, value)) = name.split_once('=') {
-            object.insert(key.to_string(), scalar(value));
-            index += 1;
-            continue;
-        }
-
-        match args.get(index + 1) {
-            Some(value) if !value.starts_with("--") => {
-                object.insert(name.to_string(), scalar(value));
-                index += 2;
-            }
-            // A trailing or flag-followed switch is a boolean.
-            _ => {
-                object.insert(name.to_string(), Value::Bool(true));
-                index += 1;
-            }
-        }
-    }
-
-    Ok(Value::Object(object))
-}
-
-fn scalar(value: &str) -> Value {
-    let trimmed = value.trim();
-    if matches!(trimmed, "true" | "false") {
-        return Value::Bool(trimmed == "true");
-    }
-    // JSON documents passed as text (`--capabilities '["bash"]'`) reach the
-    // source structured, matching how the scripted host delivers them.
-    if (trimmed.starts_with('[') || trimmed.starts_with('{'))
-        && let Ok(parsed) = serde_json::from_str::<Value>(trimmed)
-    {
-        return parsed;
-    }
-    Value::String(value.to_string())
 }
 
 /// Host-supplied command source, carried on `ToolContext` extensions.
@@ -927,16 +922,42 @@ mod tests {
                     wire_name: "list_widgets".into(),
                     description: "List widgets.".into(),
                     route: LIST.with_examples(&["everruns widgets list --limit 5"]),
+                    params: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "limit": { "type": "integer", "description": "Maximum rows." },
+                            "include_archived": { "type": "boolean" },
+                            "status": { "type": "string", "enum": ["active", "retired"] },
+                            "tag": { "type": "array", "items": { "type": "string" } },
+                            "filter": { "type": "object" },
+                            "agent_id": { "type": ["string", "null"] },
+                            "version": { "type": "string" }
+                        }
+                    }),
+                    positional: None,
                 },
                 CliCommandSpec {
                     wire_name: "create_widget".into(),
                     description: "Create a widget.".into(),
                     route: CREATE,
+                    params: serde_json::json!({
+                        "type": "object",
+                        "properties": { "name": { "type": "string" } },
+                        "required": ["name"]
+                    }),
+                    positional: None,
                 },
                 CliCommandSpec {
                     wire_name: "list_widget_parts".into(),
                     description: "List the parts of a widget.".into(),
                     route: PARTS,
+                    params: serde_json::json!({
+                        "type": "object",
+                        "properties": { "id": { "type": "string" } },
+                        "required": ["id"]
+                    }),
+                    // Exercises the bare-word spelling: `widgets parts list w_1`.
+                    positional: Some("id".into()),
                 },
             ]
         }
@@ -946,8 +967,10 @@ mod tests {
         }
 
         async fn dispatch(&self, wire_name: &str, params: Value) -> Result<String, String> {
-            if wire_name == "create_widget" && params.get("name").is_none() {
-                return Err("create_widget: missing --name".to_string());
+            // A name clap cannot know is taken: the errors a source still owns
+            // are the ones about its own state, not about argument shape.
+            if wire_name == "create_widget" && params.get("name") == Some(&Value::from("taken")) {
+                return Err("create_widget: `taken` already exists".to_string());
             }
             Ok(serde_json::json!({ "ran": wire_name, "params": params }).to_string())
         }
@@ -968,7 +991,9 @@ mod tests {
             .await
             .expect("runs");
         assert!(out.contains("\"ran\":\"list_widgets\""), "{out}");
-        assert!(out.contains("\"limit\":\"5\""), "{out}");
+        // A number, not the string "5": the schema said integer, so the source
+        // is handed the type it declared instead of text to coerce.
+        assert!(out.contains("\"limit\":5"), "{out}");
     }
 
     #[tokio::test]
@@ -983,11 +1008,22 @@ mod tests {
     #[tokio::test]
     async fn a_bare_switch_is_a_boolean_and_equals_form_works() {
         let out = builtin()
-            .run(&argv("widgets list --archived --name=blue"))
+            .run(&argv("widgets list --include_archived --status=active"))
             .await
             .expect("runs");
-        assert!(out.contains("\"archived\":true"), "{out}");
-        assert!(out.contains("\"name\":\"blue\""), "{out}");
+        assert!(out.contains("\"include_archived\":true"), "{out}");
+        assert!(out.contains("\"status\":\"active\""), "{out}");
+    }
+
+    /// Both spellings of a switch work. Models write either, and one of them
+    /// erroring is a round trip spent on syntax rather than on the task.
+    #[tokio::test]
+    async fn a_switch_also_accepts_an_explicit_value() {
+        let out = builtin()
+            .run(&argv("widgets list --include_archived false"))
+            .await
+            .expect("runs");
+        assert!(out.contains("\"include_archived\":false"), "{out}");
     }
 
     #[tokio::test]
@@ -996,20 +1032,18 @@ mod tests {
         // one shape regardless of which adapter it was called through.
         let args = vec![
             "widgets".to_string(),
-            "create".to_string(),
-            "--tags".to_string(),
-            "[\"a\",\"b\"]".to_string(),
-            "--name".to_string(),
-            "w".to_string(),
+            "list".to_string(),
+            "--filter".to_string(),
+            "{\"colour\":\"blue\"}".to_string(),
         ];
         let out = builtin().run(&args).await.expect("runs");
-        assert!(out.contains("\"tags\":[\"a\",\"b\"]"), "{out}");
+        assert!(out.contains("\"filter\":{\"colour\":\"blue\"}"), "{out}");
     }
 
     #[tokio::test]
     async fn a_version_like_value_stays_a_string() {
-        // Guessing types here would turn `1.20` into 1.2 before the source's
-        // own schema ever sees it.
+        // The schema decides, so nothing has to guess: `version` is declared a
+        // string, and a parser sniffing at `1.20` would have made it 1.2.
         let out = builtin()
             .run(&argv("widgets list --version 1.20"))
             .await
@@ -1044,6 +1078,11 @@ mod tests {
                 wire_name: "send_invoice".into(),
                 description: "Send an invoice.".into(),
                 route: CliRoute::new(&["invoices"], "send"),
+                params: serde_json::json!({
+                    "type": "object",
+                    "properties": { "to": { "type": "string" } }
+                }),
+                positional: None,
             }]
         }
 
@@ -1059,7 +1098,7 @@ mod tests {
     #[tokio::test]
     async fn a_host_names_its_own_root() {
         let out = branded()
-            .run(&argv("invoices send --id 7"))
+            .run(&argv("invoices send --to acme"))
             .await
             .expect("runs under the host's own root");
         assert!(out.contains("\"ran\":\"send_invoice\""), "{out}");
@@ -1150,10 +1189,10 @@ mod tests {
     #[tokio::test]
     async fn a_source_error_reaches_the_caller() {
         let error = builtin()
-            .run(&argv("widgets create"))
+            .run(&argv("widgets create --name taken"))
             .await
             .expect_err("source rejects");
-        assert!(error.contains("missing --name"), "{error}");
+        assert!(error.contains("already exists"), "{error}");
     }
 
     #[tokio::test]
@@ -1162,7 +1201,166 @@ mod tests {
             .run(&argv("widgets list oops"))
             .await
             .expect_err("bare value is not a flag");
-        assert!(error.contains("--flag value"), "{error}");
+        assert!(error.contains("unexpected argument 'oops'"), "{error}");
+        // The usage block rides along, so the correction is in the same
+        // response as the complaint.
+        assert!(error.contains("Usage: everruns widgets list"), "{error}");
+    }
+
+    // ========================================================================
+    // What parsing with clap buys
+    //
+    // Each of these is a shape the hand-rolled parser accepted or mangled.
+    // ========================================================================
+
+    /// The headline fix. The old parser kept an unrecognized flag as a string
+    /// property and passed it on, so a typo became a silently dropped argument
+    /// or an error from somewhere with no idea what the caller typed.
+    #[tokio::test]
+    async fn an_unknown_flag_is_rejected_where_the_caller_can_still_fix_it() {
+        let error = builtin()
+            .run(&argv("widgets list --limti 10"))
+            .await
+            .expect_err("a misspelled flag is not a parameter");
+        assert!(error.contains("--limti"), "{error}");
+        // clap knows the real flags, so it can name the one that was meant.
+        assert!(
+            error.contains("--limit"),
+            "did not suggest --limit: {error}"
+        );
+    }
+
+    /// A required field is enforced before dispatch, with usage attached,
+    /// rather than surfacing as a deserialization error from the far side.
+    #[tokio::test]
+    async fn a_required_field_is_enforced_before_dispatch() {
+        let error = builtin()
+            .run(&argv("widgets create"))
+            .await
+            .expect_err("--name is required");
+        assert!(error.contains("--name"), "{error}");
+        assert!(!error.contains("\"ran\""), "must not dispatch: {error}");
+    }
+
+    /// Schemas name fields in snake_case because they are generated from Rust
+    /// structs. A CLI caller reasonably types kebab, and `crates/cli` spells
+    /// it that way, so both reach the same parameter.
+    #[tokio::test]
+    async fn a_flag_answers_to_both_snake_case_and_kebab_case() {
+        for line in ["widgets list --agent_id a_1", "widgets list --agent-id a_1"] {
+            let out = builtin().run(&argv(line)).await.expect("runs");
+            assert!(out.contains("\"agent_id\":\"a_1\""), "{line}: {out}");
+        }
+    }
+
+    /// A nominated positional is a real clap positional, so the bare-word form
+    /// parses here rather than being faked by rewriting the command string
+    /// before the interpreter sees it.
+    #[tokio::test]
+    async fn a_nominated_field_also_takes_a_bare_word() {
+        let out = builtin()
+            .run(&argv("widgets parts list w_1"))
+            .await
+            .expect("runs");
+        assert!(out.contains("\"id\":\"w_1\""), "{out}");
+
+        let flagged = builtin()
+            .run(&argv("widgets parts list --id w_1"))
+            .await
+            .expect("the flag spelling still works");
+        assert!(flagged.contains("\"id\":\"w_1\""), "{flagged}");
+    }
+
+    /// Giving both spellings is ambiguous, so it is an error rather than a
+    /// silent winner.
+    #[tokio::test]
+    async fn the_two_spellings_of_one_field_conflict() {
+        let error = builtin()
+            .run(&argv("widgets parts list w_1 --id w_2"))
+            .await
+            .expect_err("one field, one value");
+        assert!(error.contains("cannot be used with"), "{error}");
+    }
+
+    /// A declared `enum` reaches clap, so a wrong value is corrected against
+    /// the real options instead of dispatched and rejected downstream.
+    #[tokio::test]
+    async fn a_declared_enum_lists_its_options_on_a_wrong_value() {
+        let error = builtin()
+            .run(&argv("widgets list --status bogus"))
+            .await
+            .expect_err("not a declared status");
+        assert!(error.contains("active"), "{error}");
+        assert!(error.contains("retired"), "{error}");
+    }
+
+    /// An array field repeats and comma-splits, and arrives as a JSON array.
+    #[tokio::test]
+    async fn an_array_field_repeats_and_comma_splits() {
+        let out = builtin()
+            .run(&argv("widgets list --tag a,b --tag c"))
+            .await
+            .expect("runs");
+        assert!(out.contains("\"tag\":[\"a\",\"b\",\"c\"]"), "{out}");
+    }
+
+    /// A typed field rejects a value of the wrong type here, where the usage
+    /// block is, rather than after a dispatch.
+    #[tokio::test]
+    async fn an_integer_field_rejects_a_non_number() {
+        let error = builtin()
+            .run(&argv("widgets list --limit soon"))
+            .await
+            .expect_err("not a number");
+        assert!(error.contains("soon"), "{error}");
+    }
+
+    /// A leaf's help is clap's, generated from the same schema as the parse,
+    /// so the flags a caller reads are exactly the ones they are held to.
+    #[tokio::test]
+    async fn leaf_help_comes_from_the_schema_and_names_the_wire_command() {
+        let out = builtin()
+            .run(&argv("widgets list --help"))
+            .await
+            .expect("help");
+        assert!(out.contains("Usage: everruns widgets list"), "{out}");
+        assert!(out.contains("--limit"), "{out}");
+        assert!(out.contains("Maximum rows."), "{out}");
+        // The flat name still works, and help is where a caller learns it.
+        assert!(out.contains("Wire name: list_widgets"), "{out}");
+        // Declared examples ride along with the leaf that has them.
+        assert!(!out.contains("\"ran\""), "help must not run it: {out}");
+    }
+
+    /// The workspace links clap with its default features for `crates/cli`,
+    /// and cargo unifies that across the build, so colour is on unless a
+    /// command says otherwise. Escape bytes in a tool result are noise the
+    /// model pays for and reads past.
+    #[tokio::test]
+    async fn output_carries_no_terminal_escapes() {
+        let error = builtin()
+            .run(&argv("widgets list --limti 10"))
+            .await
+            .expect_err("a misspelled flag");
+        assert!(
+            !error.contains('\u{1b}'),
+            "escape bytes in output: {error:?}"
+        );
+
+        let help = builtin()
+            .run(&argv("widgets list --help"))
+            .await
+            .expect("help");
+        assert!(!help.contains('\u{1b}'), "escape bytes in help: {help:?}");
+    }
+
+    /// Defaults belong to the command, not to the parser in front of it.
+    /// Sending clap's view of an untouched flag would overwrite a server-side
+    /// default with a guess made here.
+    #[tokio::test]
+    async fn an_untouched_flag_is_not_sent() {
+        let out = builtin().run(&argv("widgets list")).await.expect("runs");
+        assert!(out.contains("\"params\":{}"), "{out}");
     }
 }
 
@@ -1181,6 +1379,8 @@ mod rewrite_safety_tests {
                 wire_name: "list_widgets".into(),
                 description: "List widgets.".into(),
                 route: CliRoute::new(&["widgets"], "list"),
+                params: serde_json::json!({ "type": "object", "properties": {} }),
+                positional: None,
             }]
         }
         async fn dispatch(&self, _wire: &str, _params: Value) -> Result<String, String> {
