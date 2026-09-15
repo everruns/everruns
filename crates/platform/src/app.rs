@@ -1256,9 +1256,10 @@ mod tests {
     }
 
     #[test]
-    fn test_slack_channel_config_missing_required_field() {
-        let json = r#"{"signing_secret": "s"}"#;
-        assert!(serde_json::from_str::<SlackChannelConfig>(json).is_err());
+    fn test_slack_channel_config_defaults_omitted_credentials() {
+        let config: SlackChannelConfig = serde_json::from_str("{}").unwrap();
+        assert!(config.signing_secret.is_empty());
+        assert!(config.bot_token.is_empty());
     }
 
     #[test]
@@ -1424,7 +1425,10 @@ mod tests {
 
     #[test]
     fn test_app_channel_slack_config_invalid_json() {
-        let ch = test_channel(ChannelType::Slack, serde_json::json!({"bad": "data"}));
+        let ch = test_channel(
+            ChannelType::Slack,
+            serde_json::json!({"signing_secret": 42}),
+        );
         assert!(ch.slack_config().is_none());
     }
 
