@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC002 New channel full-page route"
+title: "TC002: New channel full-page route"
 description: "Verifies Add channel opens a reload-safe full-page route with channel type cards, kind-specific configuration, and sticky footer actions."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - apps
 ---
-# TC002 New channel full-page route
+# TC002: New channel full-page route
 
 ## Description
 

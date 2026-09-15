@@ -26,7 +26,10 @@ use crate::message::ExternalActor;
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+
 use std::collections::HashMap;
+#[cfg(feature = "openapi")]
+use utoipa::ToSchema;
 
 // ============================================
 // Thread & Participant tracking
@@ -489,35 +492,112 @@ pub enum DeliveryResult {
 ///
 /// Given platform metadata from an InboundChannelEvent, produces the
 /// session tags used to find or create the correct session.
+///
+/// The tag segment is deliberately NOT the binding's name: these tags key live
+/// sessions, so `Thread` must keep emitting `thread`, `Conversation` `channel`,
+/// and `Requester` `user`. Renaming a segment silently orphans every session
+/// routed under the old one (EVE-1005).
+///
+/// `Endpoint` and `Ephemeral` return `None`: they are not keyed off inbound
+/// message metadata at all. Their tags come from the exposure that owns the
+/// invocation — see `trigger_session_tags` in the agent-triggers domain.
 pub fn build_session_routing_tag(
     platform: &str,
-    strategy: &SessionRoutingStrategy,
+    binding: &SessionBinding,
     metadata: &HashMap<String, String>,
 ) -> Option<String> {
-    match strategy {
-        SessionRoutingStrategy::PerThread => metadata
+    match binding {
+        SessionBinding::Thread => metadata
             .get("thread_ref")
             .map(|t| format!("{}:thread:{}", platform, t)),
-        SessionRoutingStrategy::PerChannel => metadata
+        SessionBinding::Conversation => metadata
             .get("channel_id")
             .map(|c| format!("{}:channel:{}", platform, c)),
-        SessionRoutingStrategy::PerUser => metadata
+        SessionBinding::Requester => metadata
             .get("user_id")
             .map(|u| format!("{}:user:{}", platform, u)),
+        SessionBinding::Endpoint | SessionBinding::Ephemeral => None,
     }
 }
 
-/// How incoming messages map to sessions — generalized from Slack's SessionStrategy.
+/// Resolve the binding actually used for one inbound event.
+///
+/// The declared binding is a default the transport may override per event,
+/// because the surface is a property of the event rather than of configuration.
+/// Slack's assistant pane is the existing case: a pane is inherently one thread,
+/// so `Conversation` and `Requester` have no meaning there — but rejecting them
+/// at write time would be wrong, since the same exposure also serves channels
+/// where they are legitimate (`knowledge/integrations/slack-modernization.md`).
+///
+/// Expressing that as one function keeps the pane from being a special case in
+/// the Slack adapter, and gives the next transport somewhere to put the same
+/// rule instead of re-deriving it (EVE-1005).
+pub fn resolve_session_binding(
+    declared: SessionBinding,
+    event_override: Option<SessionBinding>,
+) -> SessionBinding {
+    event_override.unwrap_or(declared)
+}
+
+/// What identity keys a session, for every exposure and every transport.
+///
+/// One enum replaces the former `SessionStrategy` (messaging channels) and
+/// `InvocationSessionMode` (triggers and request/reply endpoints), which asked
+/// the same question with disjoint vocabularies and forced every new surface to
+/// pick a side (EVE-1005).
+///
+/// **The serialized values are deliberately the legacy ones.** Every variant
+/// renames in Rust but serializes exactly as it did before, with the new name
+/// accepted as a read alias. Persisted `channel_config` JSONB therefore needs no
+/// migration, and the API and UI keep exchanging the values they already do.
+/// Moving the wire vocabulary is a separate, migration-bearing change.
+///
+/// `Requester` keys on the **transport's own external actor id** — the Slack
+/// user id, the Public Chat visitor id — never on an Everruns principal. Those
+/// actors are unrelated to Everruns accounts (a Public Chat visitor is anonymous
+/// or Google-signed-in), so there is one consistent answer rather than a split
+/// variant: whatever the transport calls the requester, scoped by the
+/// `{platform}:` tag prefix that already namespaces it.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum SessionRoutingStrategy {
-    /// Each thread gets its own session (default).
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "per_thread"))]
+pub enum SessionBinding {
+    /// One session per thread. Was `per_thread`.
     #[default]
-    PerThread,
-    /// One session per channel/conversation.
-    PerChannel,
-    /// One session per user across all threads.
-    PerUser,
+    #[serde(rename = "per_thread", alias = "thread")]
+    Thread,
+    /// One session per channel/conversation/room. Was `per_channel`.
+    #[serde(rename = "per_channel", alias = "conversation")]
+    Conversation,
+    /// One session per external actor. Was `per_user`.
+    #[serde(rename = "per_user", alias = "requester")]
+    Requester,
+    /// One durable session shared by every invocation of the exposure.
+    /// Was `shared_session`.
+    #[serde(rename = "shared_session", alias = "endpoint")]
+    Endpoint,
+    /// A fresh session per invocation. Was `session_per_invocation`.
+    #[serde(rename = "session_per_invocation", alias = "ephemeral")]
+    Ephemeral,
+}
+
+impl SessionBinding {
+    /// Bindings keyed off an inbound message's metadata.
+    pub const MESSAGE_KEYED: [SessionBinding; 3] = [
+        SessionBinding::Thread,
+        SessionBinding::Conversation,
+        SessionBinding::Requester,
+    ];
+
+    /// Bindings available where nothing is listening on a thread — triggers and
+    /// request/reply endpoints.
+    pub const INVOCATION_KEYED: [SessionBinding; 2] =
+        [SessionBinding::Endpoint, SessionBinding::Ephemeral];
+
+    /// Whether this binding is keyed off inbound message metadata.
+    pub fn is_message_keyed(self) -> bool {
+        Self::MESSAGE_KEYED.contains(&self)
+    }
 }
 
 // TODO(platform-tools): Channel adapters should optionally contribute
@@ -596,41 +676,87 @@ mod tests {
             ("channel_id".into(), "C0123".into()),
             ("user_id".into(), "U999".into()),
         ]);
-        for (strategy, platform, key, expected) in [
+        for (binding, platform, key, expected) in [
             (
-                SessionRoutingStrategy::PerThread,
+                SessionBinding::Thread,
                 "slack",
                 "thread_ref",
                 "slack:thread:1234.5678",
             ),
             (
-                SessionRoutingStrategy::PerChannel,
+                SessionBinding::Conversation,
                 "discord",
                 "channel_id",
                 "discord:channel:C0123",
             ),
             (
-                SessionRoutingStrategy::PerUser,
+                SessionBinding::Requester,
                 "teams",
                 "user_id",
                 "teams:user:U999",
             ),
         ] {
             assert_eq!(
-                build_session_routing_tag(platform, &strategy, &metadata).as_deref(),
+                build_session_routing_tag(platform, &binding, &metadata).as_deref(),
                 Some(expected)
             );
             let mut missing = metadata.clone();
             missing.remove(key);
             assert_eq!(
-                build_session_routing_tag(platform, &strategy, &missing),
+                build_session_routing_tag(platform, &binding, &missing),
                 None
             );
             assert_eq!(
-                build_session_routing_tag(platform, &strategy, &HashMap::new()),
+                build_session_routing_tag(platform, &binding, &HashMap::new()),
                 None
             );
         }
+    }
+
+    /// EVE-1005: the tag segment is the old strategy word, not the new binding
+    /// name. A rename here silently orphans every live session keyed under it,
+    /// so the exact strings are pinned rather than derived.
+    #[test]
+    fn session_binding_tags_keep_their_legacy_segments() {
+        let metadata = HashMap::from([
+            ("thread_ref".into(), "T1".into()),
+            ("channel_id".into(), "C1".into()),
+            ("user_id".into(), "U1".into()),
+        ]);
+        for (binding, expected) in [
+            (SessionBinding::Thread, Some("slack:thread:T1")),
+            (SessionBinding::Conversation, Some("slack:channel:C1")),
+            (SessionBinding::Requester, Some("slack:user:U1")),
+            // Not keyed off inbound metadata: the exposure that owns the
+            // invocation supplies these tags.
+            (SessionBinding::Endpoint, None),
+            (SessionBinding::Ephemeral, None),
+        ] {
+            assert_eq!(
+                build_session_routing_tag("slack", &binding, &metadata).as_deref(),
+                expected,
+                "{binding:?}"
+            );
+        }
+    }
+
+    /// EVE-1005: the declared binding is a default the event may override.
+    #[test]
+    fn resolve_session_binding_lets_the_event_override_the_declaration() {
+        // No override: configuration wins, whatever it says.
+        for declared in SessionBinding::MESSAGE_KEYED {
+            assert_eq!(resolve_session_binding(declared, None), declared);
+        }
+        // The Slack pane case: a one-thread surface forces Thread even though
+        // the exposure legitimately declares Conversation for its channels.
+        assert_eq!(
+            resolve_session_binding(SessionBinding::Conversation, Some(SessionBinding::Thread)),
+            SessionBinding::Thread
+        );
+        assert_eq!(
+            resolve_session_binding(SessionBinding::Requester, Some(SessionBinding::Thread)),
+            SessionBinding::Thread
+        );
     }
 
     #[test]
@@ -651,21 +777,49 @@ mod tests {
         }
     }
 
+    /// EVE-1005: every value persisted in `channel_config` JSONB before the
+    /// enums were unified must still deserialize, and must still serialize back
+    /// to the same string. This is what makes the change migration-free; if it
+    /// fails, stored channel configs are unreadable.
     #[test]
-    fn test_session_routing_strategy_wire_contract() {
-        assert_eq!(
-            SessionRoutingStrategy::default(),
-            SessionRoutingStrategy::PerThread
-        );
-        for (strategy, wire) in [
-            (SessionRoutingStrategy::PerThread, "\"per_thread\""),
-            (SessionRoutingStrategy::PerChannel, "\"per_channel\""),
-            (SessionRoutingStrategy::PerUser, "\"per_user\""),
+    fn test_session_binding_wire_contract() {
+        assert_eq!(SessionBinding::default(), SessionBinding::Thread);
+        for (binding, wire) in [
+            // Legacy `SessionBinding` values.
+            (SessionBinding::Thread, "\"per_thread\""),
+            (SessionBinding::Conversation, "\"per_channel\""),
+            (SessionBinding::Requester, "\"per_user\""),
+            // Legacy `SessionBinding` values.
+            (SessionBinding::Endpoint, "\"shared_session\""),
+            (SessionBinding::Ephemeral, "\"session_per_invocation\""),
         ] {
-            assert_eq!(serde_json::to_string(&strategy).unwrap(), wire);
             assert_eq!(
-                serde_json::from_str::<SessionRoutingStrategy>(wire).unwrap(),
-                strategy
+                serde_json::to_string(&binding).unwrap(),
+                wire,
+                "{binding:?} must still serialize to its legacy value"
+            );
+            assert_eq!(
+                serde_json::from_str::<SessionBinding>(wire).unwrap(),
+                binding,
+                "{wire} must still deserialize"
+            );
+        }
+    }
+
+    /// The new vocabulary is accepted on read, so a config written with the
+    /// binding names is understood even though nothing emits them yet.
+    #[test]
+    fn test_session_binding_accepts_new_names_as_aliases() {
+        for (alias, binding) in [
+            ("\"thread\"", SessionBinding::Thread),
+            ("\"conversation\"", SessionBinding::Conversation),
+            ("\"requester\"", SessionBinding::Requester),
+            ("\"endpoint\"", SessionBinding::Endpoint),
+            ("\"ephemeral\"", SessionBinding::Ephemeral),
+        ] {
+            assert_eq!(
+                serde_json::from_str::<SessionBinding>(alias).unwrap(),
+                binding
             );
         }
     }

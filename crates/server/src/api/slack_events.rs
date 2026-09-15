@@ -26,12 +26,12 @@ use axum::{
 use chrono::Utc;
 use everruns_core::Caller;
 use everruns_core::channel::{
-    InboundAttachment, InboundChannelEvent, SessionRoutingStrategy, ThreadContext,
-    build_session_routing_tag,
+    InboundAttachment, InboundChannelEvent, SessionBinding, ThreadContext,
+    build_session_routing_tag, resolve_session_binding,
 };
 use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
 use everruns_platform::{
-    App, AppChannel, AppStatus, ChannelType, SessionStrategy, SlackChannelConfig, SlackReplyMode,
+    App, AppChannel, AppStatus, ChannelType, SlackChannelConfig, SlackReplyMode,
 };
 use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 use everruns_provider::url_validation::validate_safe_url;
@@ -988,7 +988,7 @@ async fn process_slack_message(
     // holds. per_thread is the only strategy where "new session" and "thread
     // the agent has not seen" are the same statement (EVE-969).
     if is_new_session
-        && slack_config.session_strategy == SessionStrategy::PerThread
+        && slack_config.session_strategy == SessionBinding::Thread
         && event.thread_ts.is_some()
     {
         let thread_ts = event.thread_ts.as_deref().unwrap();
@@ -1345,10 +1345,11 @@ fn build_attachment_content_parts(attachments: &[SlackAttachment]) -> Vec<InputC
         .collect()
 }
 
-/// Build session tags for finding/creating sessions based on strategy.
+/// Build session tags for finding/creating sessions based on the binding.
 ///
-/// Uses the generic `build_session_routing_tag()` from channel abstractions,
-/// converting the Slack-specific `SessionStrategy` to `SessionRoutingStrategy`.
+/// Uses the generic `build_session_routing_tag()` from channel abstractions.
+/// Since EVE-1005 there is no Slack-specific strategy type to convert from —
+/// the channel config stores `SessionBinding` directly.
 /// Cancel the turn running in the pane thread the stop button was pressed in.
 ///
 /// Authorization comes from the lookup, not a separate check:
@@ -1613,17 +1614,23 @@ fn build_session_tags(
         routing_metadata.insert("user_id".to_string(), user.clone());
     }
 
-    // An agent pane is inherently one thread, so `per_channel` and `per_user` have
-    // no meaning there. Rejecting the combination at config time would be wrong —
-    // the same app also serves channels, where those strategies are legitimate — so
-    // the pane forces per-thread and config keeps meaning what it says for channels.
-    let generic_strategy: SessionRoutingStrategy = match surface {
-        SlackSurface::Pane => SessionRoutingStrategy::PerThread,
-        SlackSurface::Channel => slack_config.session_strategy.into(),
-    };
-    if let Some(routing_tag) =
-        build_session_routing_tag("slack", &generic_strategy, &routing_metadata)
-    {
+    // An agent pane is inherently one thread, so `Conversation` and `Requester`
+    // have no meaning there. Rejecting the combination at config time would be
+    // wrong — the same exposure also serves channels, where those bindings are
+    // legitimate — so the pane overrides per event and config keeps meaning what
+    // it says for channels.
+    //
+    // The override goes through `resolve_session_binding` rather than a match
+    // here, so the pane is an instance of a general rule instead of a Slack
+    // special case (EVE-1005).
+    let binding = resolve_session_binding(
+        slack_config.session_strategy,
+        match surface {
+            SlackSurface::Pane => Some(SessionBinding::Thread),
+            SlackSurface::Channel => None,
+        },
+    );
+    if let Some(routing_tag) = build_session_routing_tag("slack", &binding, &routing_metadata) {
         tags.push(routing_tag);
     }
 
@@ -1640,7 +1647,7 @@ fn desired_session_tags(routing_tags: &[String], reply_mode: SlackReplyMode) -> 
 fn build_session_title(slack_config: &SlackChannelConfig, event: &SlackEvent) -> String {
     let channel = event.channel.as_deref().unwrap_or("unknown");
     match slack_config.session_strategy {
-        SessionStrategy::PerThread => {
+        SessionBinding::Thread => {
             let ts = event
                 .thread_ts
                 .as_deref()
@@ -1648,10 +1655,17 @@ fn build_session_title(slack_config: &SlackChannelConfig, event: &SlackEvent) ->
                 .unwrap_or("?");
             format!("Slack thread {} in {}", ts, channel)
         }
-        SessionStrategy::PerChannel => format!("Slack channel {}", channel),
-        SessionStrategy::PerUser => {
+        SessionBinding::Conversation => format!("Slack channel {}", channel),
+        SessionBinding::Requester => {
             let user = event.user.as_deref().unwrap_or("unknown");
             format!("Slack user {} in {}", user, channel)
+        }
+        // Not offerable on Slack — `ChannelType::Slack.allowed_bindings()`
+        // rejects both at write time. Reachable only from a config stored
+        // before that guard existed, so title it by the channel rather than
+        // panicking on a live inbound event (EVE-1005).
+        SessionBinding::Endpoint | SessionBinding::Ephemeral => {
+            format!("Slack channel {}", channel)
         }
     }
 }
@@ -2696,7 +2710,7 @@ mod tests {
     fn test_slack_channel_config_defaults() {
         let json = r#"{"signing_secret": "sec", "bot_token": "tok"}"#;
         let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.session_strategy, SessionStrategy::PerThread);
+        assert_eq!(config.session_strategy, SessionBinding::Thread);
         assert_eq!(config.reply_mode, SlackReplyMode::AllMessages);
         assert!(config.channel_id.is_none());
         assert!(config.team_id.is_none());
@@ -2704,14 +2718,14 @@ mod tests {
 
     #[test]
     fn test_event_matches_slack_scope_unrestricted() {
-        let config = test_config(SessionStrategy::PerThread);
+        let config = test_config(SessionBinding::Thread);
         let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
         assert!(event_matches_slack_scope(&config, Some("T123"), &event));
     }
 
     #[test]
     fn test_event_matches_slack_scope_rejects_team_mismatch() {
-        let mut config = test_config(SessionStrategy::PerThread);
+        let mut config = test_config(SessionBinding::Thread);
         config.team_id = Some("T123".to_string());
         let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
         assert!(!event_matches_slack_scope(&config, Some("T999"), &event));
@@ -2720,7 +2734,7 @@ mod tests {
 
     #[test]
     fn test_event_matches_slack_scope_rejects_channel_mismatch() {
-        let mut config = test_config(SessionStrategy::PerThread);
+        let mut config = test_config(SessionBinding::Thread);
         config.channel_id = Some("C123".to_string());
         let event = test_event("C999", Some("1234.5678"), Some("1234.0000"));
         assert!(!event_matches_slack_scope(&config, Some("T123"), &event));
@@ -2728,7 +2742,7 @@ mod tests {
 
     #[test]
     fn test_event_matches_slack_scope_accepts_matching_team_and_channel() {
-        let mut config = test_config(SessionStrategy::PerThread);
+        let mut config = test_config(SessionBinding::Thread);
         config.team_id = Some("T123".to_string());
         config.channel_id = Some("C123".to_string());
         let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
@@ -2765,7 +2779,7 @@ mod tests {
     #[test]
     fn test_build_session_tags_per_thread() {
         let app = test_app();
-        let config = test_config(SessionStrategy::PerThread);
+        let config = test_config(SessionBinding::Thread);
         let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
 
         let tags = build_session_tags(
@@ -2784,7 +2798,7 @@ mod tests {
     #[test]
     fn test_build_session_tags_per_thread_no_thread_ts() {
         let app = test_app();
-        let config = test_config(SessionStrategy::PerThread);
+        let config = test_config(SessionBinding::Thread);
         let event = test_event("C123", Some("1234.5678"), None);
 
         let tags = build_session_tags(
@@ -2800,7 +2814,7 @@ mod tests {
     #[test]
     fn test_build_session_tags_per_channel() {
         let app = test_app();
-        let config = test_config(SessionStrategy::PerChannel);
+        let config = test_config(SessionBinding::Conversation);
         let event = test_event("C123", Some("1234.5678"), None);
 
         let tags = build_session_tags(
@@ -2816,7 +2830,7 @@ mod tests {
     #[test]
     fn test_build_session_tags_per_user() {
         let app = test_app();
-        let config = test_config(SessionStrategy::PerUser);
+        let config = test_config(SessionBinding::Requester);
         let mut event = test_event("C123", Some("1234.5678"), None);
         event.user = Some("U999".to_string());
 
@@ -3024,7 +3038,7 @@ mod tests {
         }
     }
 
-    fn test_config(strategy: SessionStrategy) -> SlackChannelConfig {
+    fn test_config(strategy: SessionBinding) -> SlackChannelConfig {
         SlackChannelConfig {
             agent_surface_enabled: false,
             signing_secret: "secret".to_string(),
@@ -3046,7 +3060,7 @@ mod tests {
     #[test]
     fn test_pane_forces_per_thread_routing() {
         let app = test_app();
-        let mut config = test_config(SessionStrategy::PerChannel);
+        let mut config = test_config(SessionBinding::Conversation);
         config.agent_surface_enabled = true;
         let event = test_event("D_PANE", Some("1234.5678"), None);
 
@@ -3133,7 +3147,7 @@ mod tests {
 
     #[test]
     fn test_parse_slack_inbound_event_basic() {
-        let config = test_config(SessionStrategy::PerThread);
+        let config = test_config(SessionBinding::Thread);
         let mut event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
         event.user = Some("U001".to_string());
 
@@ -3155,7 +3169,7 @@ mod tests {
 
     #[test]
     fn test_parse_slack_inbound_event_with_image_files() {
-        let config = test_config(SessionStrategy::PerThread);
+        let config = test_config(SessionBinding::Thread);
         let mut event = test_event("C123", Some("1234.5678"), None);
         event.files = vec![test_slack_file(
             "photo.png",
@@ -3178,7 +3192,7 @@ mod tests {
 
     #[test]
     fn test_parse_slack_inbound_event_with_non_image_file() {
-        let config = test_config(SessionStrategy::PerThread);
+        let config = test_config(SessionBinding::Thread);
         let mut event = test_event("C123", Some("1234.5678"), None);
         event.files = vec![test_slack_file("doc.pdf", "application/pdf", "pdf", None)];
 
@@ -3196,7 +3210,7 @@ mod tests {
 
     #[test]
     fn test_parse_slack_inbound_event_routing_metadata_no_thread_ts() {
-        let config = test_config(SessionStrategy::PerThread);
+        let config = test_config(SessionBinding::Thread);
         let event = test_event("C123", Some("1234.5678"), None);
 
         let inbound = parse_slack_inbound_event(&event, &config, None);
@@ -3214,7 +3228,7 @@ mod tests {
         // Verify that build_session_tags produces the same tags via
         // build_session_routing_tag() as the old hand-rolled implementation
         let app = test_app();
-        let config = test_config(SessionStrategy::PerThread);
+        let config = test_config(SessionBinding::Thread);
         let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
 
         let tags = build_session_tags(
@@ -3226,7 +3240,7 @@ mod tests {
         );
         assert_eq!(tags[2], "slack:thread:1234.0000");
 
-        let config_channel = test_config(SessionStrategy::PerChannel);
+        let config_channel = test_config(SessionBinding::Conversation);
         let tags_channel = build_session_tags(
             &app,
             &app.channels[0],
@@ -3238,7 +3252,7 @@ mod tests {
 
         let mut event_user = test_event("C123", Some("1234.5678"), None);
         event_user.user = Some("U999".to_string());
-        let config_user = test_config(SessionStrategy::PerUser);
+        let config_user = test_config(SessionBinding::Requester);
         let tags_user = build_session_tags(
             &app,
             &app.channels[0],
@@ -3447,7 +3461,7 @@ mod tests {
         const PANE_TS: &str = "1700000000.000100";
 
         fn pane_config() -> SlackChannelConfig {
-            let mut config = test_config(SessionStrategy::PerThread);
+            let mut config = test_config(SessionBinding::Thread);
             config.agent_surface_enabled = true;
             config
         }
@@ -4520,21 +4534,21 @@ mod tests {
     #[test]
     fn test_thread_context_triggers_only_for_per_thread_with_thread_ts() {
         // PerThread + thread_ts present → should trigger context injection
-        let config = test_config(SessionStrategy::PerThread);
+        let config = test_config(SessionBinding::Thread);
         let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
-        assert!(config.session_strategy == SessionStrategy::PerThread && event.thread_ts.is_some());
+        assert!(config.session_strategy == SessionBinding::Thread && event.thread_ts.is_some());
 
         // PerThread + no thread_ts → should NOT trigger (new thread, no prior context)
         let event_no_thread = test_event("C123", Some("1234.5678"), None);
         assert!(event_no_thread.thread_ts.is_none());
 
         // PerChannel → should NOT trigger
-        let config_channel = test_config(SessionStrategy::PerChannel);
-        assert!(config_channel.session_strategy != SessionStrategy::PerThread);
+        let config_channel = test_config(SessionBinding::Conversation);
+        assert!(config_channel.session_strategy != SessionBinding::Thread);
 
         // PerUser → should NOT trigger
-        let config_user = test_config(SessionStrategy::PerUser);
-        assert!(config_user.session_strategy != SessionStrategy::PerThread);
+        let config_user = test_config(SessionBinding::Requester);
+        assert!(config_user.session_strategy != SessionBinding::Thread);
     }
 
     #[test]

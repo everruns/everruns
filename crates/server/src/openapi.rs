@@ -516,7 +516,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             everruns_platform::AgentTrigger,
             everruns_platform::AgentTriggerType,
             everruns_platform::ScheduleTriggerConfig,
-            everruns_platform::InvocationSessionMode,
+            everruns_platform::SessionBinding,
             domains::agent_triggers::types::CreateAgentTriggerRequest,
             domains::agent_triggers::types::UpdateAgentTriggerRequest,
             domains::agent_triggers::types::AgentTriggerRun,

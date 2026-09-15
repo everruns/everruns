@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC001 Edit-Tab Agent Checks"
+title: "TC001: Edit-Tab Agent Checks"
 description: "Verifies that advisory agent checks are discoverable and actionable while editing, while Preview contains only the rendered system prompt, tools, and initial files."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - agent-checks
 ---
-# TC001 Edit-Tab Agent Checks
+# TC001: Edit-Tab Agent Checks
 
 ## Description
 

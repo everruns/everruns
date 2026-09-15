@@ -73,7 +73,7 @@ carries:
 - The generated key material, `api_key_hash` (SHA-256 hex) and non-secret
   `api_key_prefix` for display. Plaintext is returned **once** at create / rotate
   and never persisted; the hash is redacted on read. Mirrors A2A key handling.
-- `session_mode: InvocationSessionMode`, `shared_session` vs
+- `session_mode: SessionBinding`, `shared_session` vs
   `session_per_invocation`, reusing app-channel routing semantics.
 - Optional `rate_limit_per_minute`, reusing the shared `ChannelRateLimiter`
   primitive (namespace `apikey`, disjoint from `a2a` / `agui` / `fcp`).

@@ -36,7 +36,7 @@ An agent trigger is an org-scoped row owned by one agent:
 - **config** (JSONB), per-type configuration. For `schedule`
   (`ScheduleTriggerConfig`): `cron_expression`, `timezone` (IANA, default
   `UTC`), `session_mode`, and `message` (also the `{{…}}` template body).
-- **session_mode**: reuses `app::InvocationSessionMode`: `shared_session`
+- **session_mode**: reuses `SessionBinding`: `shared_session`
   (one durable session the agent returns to) or `session_per_invocation` (a
   fresh session each fire).
 - **enabled**: whether the trigger's durable schedule is active.

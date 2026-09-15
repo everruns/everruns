@@ -16775,8 +16775,8 @@
             "example": "Process incoming A2A request and return a structured response."
           },
           "session_mode": {
-            "$ref": "#/components/schemas/InvocationSessionMode",
-            "description": "How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `InvocationSessionMode`."
+            "$ref": "#/components/schemas/SessionBinding",
+            "description": "How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `SessionBinding`."
           }
         }
       },
@@ -16822,7 +16822,7 @@
             "example": true
           },
           "session_mode": {
-            "$ref": "#/components/schemas/InvocationSessionMode",
+            "$ref": "#/components/schemas/SessionBinding",
             "description": "How invocations route into sessions (`shared_session` to reuse one\ndurable session, or `session_per_invocation` for a fresh session)."
           }
         }
@@ -20514,7 +20514,7 @@
             "example": "Run the daily digest"
           },
           "session_mode": {
-            "$ref": "#/components/schemas/InvocationSessionMode",
+            "$ref": "#/components/schemas/SessionBinding",
             "description": "Whether invocations reuse a stable session or create a new one."
           },
           "timezone": {
@@ -25432,15 +25432,6 @@
             "example": "microsoft-docs"
           }
         }
-      },
-      "InvocationSessionMode": {
-        "type": "string",
-        "description": "How app-triggered invocations route into sessions.",
-        "enum": [
-          "shared_session",
-          "session_per_invocation"
-        ],
-        "example": "shared_session"
       },
       "KeyValueInfo": {
         "type": "object",
@@ -35797,7 +35788,7 @@
             "description": "Message content or template sent when the schedule fires."
           },
           "session_mode": {
-            "$ref": "#/components/schemas/InvocationSessionMode",
+            "$ref": "#/components/schemas/SessionBinding",
             "description": "Whether invocations reuse a stable session or create a new one."
           },
           "timezone": {
@@ -36311,6 +36302,18 @@
           "completed",
           "idle"
         ]
+      },
+      "SessionBinding": {
+        "type": "string",
+        "description": "What identity keys a session, for every exposure and every transport.\n\nOne enum replaces the former `SessionStrategy` (messaging channels) and\n`InvocationSessionMode` (triggers and request/reply endpoints), which asked\nthe same question with disjoint vocabularies and forced every new surface to\npick a side (EVE-1005).\n\n**The serialized values are deliberately the legacy ones.** Every variant\nrenames in Rust but serializes exactly as it did before, with the new name\naccepted as a read alias. Persisted `channel_config` JSONB therefore needs no\nmigration, and the API and UI keep exchanging the values they already do.\nMoving the wire vocabulary is a separate, migration-bearing change.\n\n`Requester` keys on the **transport's own external actor id** — the Slack\nuser id, the Public Chat visitor id — never on an Everruns principal. Those\nactors are unrelated to Everruns accounts (a Public Chat visitor is anonymous\nor Google-signed-in), so there is one consistent answer rather than a split\nvariant: whatever the transport calls the requester, scoped by the\n`{platform}:` tag prefix that already namespaces it.",
+        "enum": [
+          "per_thread",
+          "per_channel",
+          "per_user",
+          "shared_session",
+          "session_per_invocation"
+        ],
+        "example": "per_thread"
       },
       "SessionContextReport": {
         "type": "object",
@@ -39344,7 +39347,7 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/InvocationSessionMode",
+                "$ref": "#/components/schemas/SessionBinding",
                 "description": "Replacement session reuse strategy."
               }
             ]

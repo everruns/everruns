@@ -1568,13 +1568,15 @@ async fn send_password_reset_email(state: &BuiltinAuthBackend, to: &str, raw_tok
         "{}/reset-password?token={raw_token}",
         state.config.frontend_url.trim_end_matches('/')
     );
+    use everruns_platform::email::branded_button;
+    let button = branded_button(&url, "Reset your password");
     let subject = "Reset your Everruns password";
     let text = format!(
         "We received a request to reset your Everruns password.Reset it here:{url}This link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email."
     );
     let html = format!(
         "<p>We received a request to reset your Everruns password.</p>\
-         <p><a href=\"{url}\">Reset your password</a></p>\
+         {button}\
          <p>This link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email.</p>"
     );
     deliver_account_email(state, to, subject, text, html).await;
@@ -1590,6 +1592,8 @@ async fn send_verification_email(state: &BuiltinAuthBackend, to: &str, raw_token
         state.config.frontend_url.trim_end_matches('/'),
         urlencoding::encode(to),
     );
+    use everruns_platform::email::branded_button;
+    let button = branded_button(&url, "Verify your email");
     let subject = "Verify your Everruns email";
     let text = format!(
         "Welcome to Everruns!Please confirm your email address:{url}If you didn't create an Everruns account, you can ignore this email."
@@ -1597,7 +1601,7 @@ async fn send_verification_email(state: &BuiltinAuthBackend, to: &str, raw_token
     let html = format!(
         "<p>Welcome to <strong>Everruns</strong>!</p>\
          <p>Please confirm your email address:</p>\
-         <p><a href=\"{url}\">Verify your email</a></p>\
+         {button}\
          <p>If you didn't create an Everruns account, you can ignore this email.</p>"
     );
     deliver_account_email(state, to, subject, text, html).await;
@@ -1611,13 +1615,15 @@ async fn send_account_exists_email(state: &BuiltinAuthBackend, to: &str) {
         "{}/login",
         state.config.login_origin().trim_end_matches('/')
     );
+    use everruns_platform::email::branded_button;
+    let button = branded_button(&url, "Log in to Everruns");
     let subject = "You already have an Everruns account";
     let text = format!(
         "Someone (probably you) tried to create an Everruns account with this email — but you already have one.Log in here:{url}Forgot your password? Use \"Reset your password\" on the login page. If this wasn't you, you can safely ignore this email."
     );
     let html = format!(
         "<p>Someone (probably you) tried to create an Everruns account with this email — but you already have one.</p>\
-         <p><a href=\"{url}\">Log in to Everruns</a></p>\
+         {button}\
          <p>Forgot your password? Use \"Reset your password\" on the login page. If this wasn't you, you can safely ignore this email.</p>"
     );
     deliver_account_email(state, to, subject, text, html).await;

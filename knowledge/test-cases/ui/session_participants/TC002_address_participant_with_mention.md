@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC002 Address participant with composer mention"
+title: "TC002: Address participant with composer mention"
 description: "Verify that a message can address an active guest agent through an accessible `@` mention in the shared chat composer without changing default session routing."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - session-participants
 ---
-# TC002 Address participant with composer mention
+# TC002: Address participant with composer mention
 
 ## Description
 

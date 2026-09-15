@@ -133,7 +133,10 @@ jest.mock("@/providers/notifications-provider", () => ({
 }));
 
 jest.mock("@/providers/locale-provider", () => ({
-  useLocale: () => ({ locale: "en", t: (key: string) => key }),
+  useLocale: () => ({
+    locale: "en",
+    t: (key: string) => (key === "fork_into_chat" ? "Fork into chat" : key),
+  }),
 }));
 
 // Mock providers hook (used by the layout to resolve the session trace link).

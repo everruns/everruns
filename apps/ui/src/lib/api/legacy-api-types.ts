@@ -510,11 +510,37 @@ export type ChannelType =
   | "fcp"
   | "public_chat";
 
-export type SessionStrategy = "per_thread" | "per_channel" | "per_user";
+/**
+ * What identity keys a session. Mirrors `everruns_core::channel::SessionBinding`.
+ *
+ * The values are the pre-EVE-1005 wire strings and did not change when the Rust
+ * enums were unified — the backend renamed its variants but kept serializing
+ * these, so nothing here needed a migration.
+ */
+export type SessionBinding =
+  | "per_thread"
+  | "per_channel"
+  | "per_user"
+  | "shared_session"
+  | "session_per_invocation";
+
+/**
+ * The bindings a messaging transport can offer — it keys off an inbound message.
+ * Mirrors `ChannelType::allowed_bindings()` for Slack.
+ */
+export type SessionStrategy = Extract<SessionBinding, "per_thread" | "per_channel" | "per_user">;
 
 export type SlackReplyMode = "all_messages" | "report_progress_only";
 
-export type InvocationSessionMode = "shared_session" | "session_per_invocation";
+/**
+ * The bindings a trigger or request/reply endpoint can offer — nothing is
+ * listening on a thread, so the exposure owns the session. Mirrors
+ * `ChannelType::allowed_bindings()` for schedule, webhook, A2A and api_endpoint.
+ */
+export type InvocationSessionMode = Extract<
+  SessionBinding,
+  "shared_session" | "session_per_invocation"
+>;
 
 export type AgUiToolVisibility = "none" | "generic" | "narrated";
 

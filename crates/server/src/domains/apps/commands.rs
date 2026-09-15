@@ -28,7 +28,7 @@ use everruns_durable::{
     ScheduleExecutionStatus, ScheduleTargetType, StoreError, UpdateField, UpdateSchedule,
     WorkflowEventStore,
 };
-use everruns_platform::app::{InvocationSessionMode, ScheduleChannelConfig, WebhookChannelConfig};
+use everruns_platform::app::{ScheduleChannelConfig, SessionBinding, WebhookChannelConfig};
 use everruns_platform::{
     A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, ApiEndpointChannelConfig, App,
     AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
@@ -1410,11 +1410,11 @@ async fn find_or_create_invocation_session(
     session_service: &SessionService,
     app: &App,
     channel: &AppChannel,
-    session_mode: InvocationSessionMode,
+    session_mode: SessionBinding,
     source: AppInvocationSource,
 ) -> Result<(SessionId, bool), CommandError> {
     let shared_tags = app_session_tags(app, channel);
-    if session_mode == InvocationSessionMode::SharedSession
+    if session_mode == SessionBinding::Endpoint
         && let Some(existing) = db
             .find_app_session_by_tags_and_owner(
                 app.org_id,
@@ -1429,11 +1429,11 @@ async fn find_or_create_invocation_session(
     }
 
     let mut tags = shared_tags;
-    if session_mode == InvocationSessionMode::SessionPerInvocation {
+    if session_mode == SessionBinding::Ephemeral {
         tags.push(format!("app_invocation:{}", Uuid::now_v7()));
     }
 
-    let title = if session_mode == InvocationSessionMode::SharedSession {
+    let title = if session_mode == SessionBinding::Endpoint {
         shared_session_title(app, source)
     } else {
         invocation_session_title(app, source)
@@ -1547,7 +1547,7 @@ struct InvocationServices<'a> {
 struct InvocationRequest {
     app: App,
     channel: AppChannel,
-    session_mode: InvocationSessionMode,
+    session_mode: SessionBinding,
     source: AppInvocationSource,
     template_context: Value,
     request_id: Option<String>,
@@ -3239,7 +3239,7 @@ pub struct AddScheduleChannelCmd {
     pub cron_expression: String,
     pub timezone: Option<String>,
     #[serde(default)]
-    pub session_mode: InvocationSessionMode,
+    pub session_mode: SessionBinding,
     pub message: String,
     // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
     // so the lenient deserializer is required to accept `--enabled true`.
@@ -3364,7 +3364,7 @@ pub struct AddWebhookChannelCmd {
     pub app_id: String,
     pub token: String,
     #[serde(default)]
-    pub session_mode: InvocationSessionMode,
+    pub session_mode: SessionBinding,
     pub message: String,
     // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
     // so the lenient deserializer is required to accept `--enabled true`.
@@ -3455,7 +3455,7 @@ pub struct AddA2aChannelCmd {
     /// App's prefixed public identifier.
     pub app_id: String,
     #[serde(default)]
-    pub session_mode: InvocationSessionMode,
+    pub session_mode: SessionBinding,
     pub message: String,
     pub agent_card_name: Option<String>,
     pub agent_card_description: Option<String>,
@@ -3686,7 +3686,7 @@ pub struct AddApiEndpointChannelCmd {
     /// App's prefixed public identifier.
     pub app_id: String,
     #[serde(default)]
-    pub session_mode: InvocationSessionMode,
+    pub session_mode: SessionBinding,
     #[serde(default)]
     pub auth: Option<AppEndpointAuthConfig>,
     #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
