@@ -87,6 +87,8 @@ check_node_deps() {
 }
 
 GIT_AGENT_IDENTITY_PATTERN="(claude|cursor|copilot|github-actions|bot|ai-agent|openai|anthropic|gpt)"
+WARP_FACTORY_ALLOWLISTED_AUTHOR_NAME="warp-factories[bot]"
+WARP_FACTORY_ALLOWLISTED_AUTHOR_EMAIL="243557089+warp-factories[bot]@users.noreply.github.com"
 
 git_identity_looks_agent_like() {
   local value="${1:-}"
@@ -98,9 +100,33 @@ git_identity_looks_agent_like() {
   printf '%s\n' "$value" | grep -iEq "$GIT_AGENT_IDENTITY_PATTERN"
 }
 
+git_identity_matches_warp_factory_allowlist() {
+  local name="${1:-}"
+  local email="${2:-}"
+
+  [ "$name" = "$WARP_FACTORY_ALLOWLISTED_AUTHOR_NAME" ] &&
+    [ "$email" = "$WARP_FACTORY_ALLOWLISTED_AUTHOR_EMAIL" ]
+}
+
+git_commit_author_is_allowed() {
+  local name="${1:-}"
+  local email="${2:-}"
+
+  if [ -z "$name" ] || [ -z "$email" ]; then
+    return 1
+  fi
+
+  if git_identity_matches_warp_factory_allowlist "$name" "$email"; then
+    return 0
+  fi
+
+  ! git_identity_looks_agent_like "$name" &&
+    ! git_identity_looks_agent_like "$email"
+}
+
 # Resolve the commit identity to use.
-# Prefer existing human git config. If git config is agent-like or incomplete,
-# fall back to GIT_USER_NAME/GIT_USER_EMAIL and reject agent-like values there too.
+# Prefer existing human or allowlisted git config. If git config is prohibited or incomplete,
+# fall back to GIT_USER_NAME/GIT_USER_EMAIL and validate those values too.
 resolve_commit_git_identity() {
   local current_name current_email
   current_name="$(git config user.name 2>/dev/null || true)"
@@ -110,9 +136,7 @@ resolve_commit_git_identity() {
   RESOLVED_GIT_AUTHOR_EMAIL=""
   RESOLVED_GIT_AUTHOR_SOURCE=""
 
-  if [ -n "$current_name" ] && [ -n "$current_email" ] && \
-    ! git_identity_looks_agent_like "$current_name" && \
-    ! git_identity_looks_agent_like "$current_email"; then
+  if git_commit_author_is_allowed "$current_name" "$current_email"; then
     RESOLVED_GIT_AUTHOR_NAME="$current_name"
     RESOLVED_GIT_AUTHOR_EMAIL="$current_email"
     RESOLVED_GIT_AUTHOR_SOURCE="git"
@@ -127,8 +151,8 @@ resolve_commit_git_identity() {
     RESOLVED_GIT_AUTHOR_SOURCE="env"
   fi
 
-  if git_identity_looks_agent_like "$RESOLVED_GIT_AUTHOR_NAME" || \
-    git_identity_looks_agent_like "$RESOLVED_GIT_AUTHOR_EMAIL"; then
+  if ! git_commit_author_is_allowed \
+    "$RESOLVED_GIT_AUTHOR_NAME" "$RESOLVED_GIT_AUTHOR_EMAIL"; then
     echo "resolved git commit identity looks agent-like: '$RESOLVED_GIT_AUTHOR_NAME <$RESOLVED_GIT_AUTHOR_EMAIL>'" >&2
     return 1
   fi
@@ -164,6 +188,9 @@ find_agent_like_outgoing_commit() {
   while IFS=$'\t' read -r sha name email; do
     [ -n "$sha" ] || continue
 
+    if git_identity_matches_warp_factory_allowlist "$name" "$email"; then
+      continue
+    fi
     if git_identity_looks_agent_like "$name" || git_identity_looks_agent_like "$email"; then
       printf '%s\t%s\t%s\n' "$sha" "$name" "$email"
       return 0

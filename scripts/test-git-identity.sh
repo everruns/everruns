@@ -113,6 +113,45 @@ test_agent_git_config_uses_human_env_override() {
   rm -rf "$tmp"
 }
 
+test_allowlisted_warp_factory_git_config_is_allowed() {
+  local tmp
+  tmp="$(mktemp -d)"
+  (
+    with_isolated_git_env "$tmp"
+    make_repo "$tmp"
+    git config user.name "warp-factories[bot]"
+    git config user.email "243557089+warp-factories[bot]@users.noreply.github.com"
+    unset GIT_USER_NAME GIT_USER_EMAIL || true
+
+    resolve_commit_git_identity
+
+    assert_eq "warp-factories[bot]" "$RESOLVED_GIT_AUTHOR_NAME" "allowlisted Warp Factory name"
+    assert_eq "243557089+warp-factories[bot]@users.noreply.github.com" "$RESOLVED_GIT_AUTHOR_EMAIL" "allowlisted Warp Factory email"
+    assert_eq "git" "$RESOLVED_GIT_AUTHOR_SOURCE" "allowlisted Warp Factory source"
+  )
+  rm -rf "$tmp"
+}
+
+test_warp_factory_git_config_case_variant_is_rejected() {
+  local tmp output
+  tmp="$(mktemp -d)"
+  (
+    with_isolated_git_env "$tmp"
+    make_repo "$tmp"
+    git config user.name "Warp-factories[bot]"
+    git config user.email "243557089+warp-factories[bot]@users.noreply.github.com"
+    unset GIT_USER_NAME GIT_USER_EMAIL || true
+
+    if output="$(resolve_commit_git_identity 2>&1)"; then
+      echo "FAIL: case-variant Warp Factory git config should be rejected" >&2
+      exit 1
+    fi
+
+    assert_contains "$output" "set GIT_USER_NAME and GIT_USER_EMAIL" "case-variant config rejection"
+  )
+  rm -rf "$tmp"
+}
+
 test_agent_like_outgoing_commit_is_detected() {
   local tmp offender
   tmp="$(mktemp -d)"
@@ -132,6 +171,89 @@ test_agent_like_outgoing_commit_is_detected() {
 
     assert_contains "$offender" "Claude" "offending author name"
     assert_contains "$offender" "claude@example.com" "offending author email"
+  )
+  rm -rf "$tmp"
+}
+
+test_allowlisted_warp_factory_outgoing_commit_is_allowed() {
+  local tmp
+  tmp="$(mktemp -d)"
+  (
+    with_isolated_git_env "$tmp"
+    make_repo "$tmp"
+    git checkout -q -b fix/test
+    printf 'change\n' >> README.md
+    git add README.md
+    GIT_AUTHOR_NAME="warp-factories[bot]" \
+      GIT_AUTHOR_EMAIL="243557089+warp-factories[bot]@users.noreply.github.com" \
+      GIT_COMMITTER_NAME="warp-factories[bot]" \
+      GIT_COMMITTER_EMAIL="243557089+warp-factories[bot]@users.noreply.github.com" \
+      git commit -q -m "fix: Factory authored"
+
+    if find_agent_like_outgoing_commit >/dev/null; then
+      echo "FAIL: allowlisted Warp Factory outgoing commit should not be flagged" >&2
+      exit 1
+    fi
+  )
+  rm -rf "$tmp"
+}
+
+test_warp_factory_outgoing_email_case_variant_is_detected() {
+  local tmp offender
+  tmp="$(mktemp -d)"
+  (
+    with_isolated_git_env "$tmp"
+    make_repo "$tmp"
+    git checkout -q -b fix/test
+    printf 'email case variant\n' >> README.md
+    git add README.md
+    GIT_AUTHOR_NAME="warp-factories[bot]" \
+      GIT_AUTHOR_EMAIL="243557089+warp-Factories[bot]@users.noreply.github.com" \
+      GIT_COMMITTER_NAME="warp-factories[bot]" \
+      GIT_COMMITTER_EMAIL="243557089+warp-Factories[bot]@users.noreply.github.com" \
+      git commit -q -m "fix: email case variant"
+
+    offender="$(find_agent_like_outgoing_commit)"
+    assert_contains "$offender" "warp-Factories[bot]" "Warp Factory outgoing email case variant"
+  )
+  rm -rf "$tmp"
+}
+
+test_warp_factory_identity_near_misses_are_detected() {
+  local tmp offender
+  tmp="$(mktemp -d)"
+  (
+    with_isolated_git_env "$tmp"
+    make_repo "$tmp"
+    git checkout -q -b fix/test
+    printf 'name near miss\n' >> README.md
+    git add README.md
+    GIT_AUTHOR_NAME="warp-factories-preview[bot]" \
+      GIT_AUTHOR_EMAIL="243557089+warp-factories[bot]@users.noreply.github.com" \
+      GIT_COMMITTER_NAME="warp-factories-preview[bot]" \
+      GIT_COMMITTER_EMAIL="243557089+warp-factories[bot]@users.noreply.github.com" \
+      git commit -q -m "fix: name near miss"
+
+    offender="$(find_agent_like_outgoing_commit)"
+    assert_contains "$offender" "warp-factories-preview[bot]" "Warp Factory name near miss"
+  )
+  rm -rf "$tmp"
+
+  tmp="$(mktemp -d)"
+  (
+    with_isolated_git_env "$tmp"
+    make_repo "$tmp"
+    git checkout -q -b fix/test
+    printf 'email near miss\n' >> README.md
+    git add README.md
+    GIT_AUTHOR_NAME="warp-factories[bot]" \
+      GIT_AUTHOR_EMAIL="243557090+warp-factories[bot]@users.noreply.github.com" \
+      GIT_COMMITTER_NAME="warp-factories[bot]" \
+      GIT_COMMITTER_EMAIL="243557090+warp-factories[bot]@users.noreply.github.com" \
+      git commit -q -m "fix: email near miss"
+
+    offender="$(find_agent_like_outgoing_commit)"
+    assert_contains "$offender" "243557090+warp-factories[bot]@users.noreply.github.com" "Warp Factory email near miss"
   )
   rm -rf "$tmp"
 }
@@ -158,7 +280,12 @@ test_human_outgoing_commit_is_allowed() {
 test_human_git_config_without_env_uses_git_identity
 test_agent_git_config_requires_env_override
 test_agent_git_config_uses_human_env_override
+test_allowlisted_warp_factory_git_config_is_allowed
+test_warp_factory_git_config_case_variant_is_rejected
 test_agent_like_outgoing_commit_is_detected
+test_allowlisted_warp_factory_outgoing_commit_is_allowed
+test_warp_factory_outgoing_email_case_variant_is_detected
+test_warp_factory_identity_near_misses_are_detected
 test_human_outgoing_commit_is_allowed
 
 echo "git identity checks passed"
