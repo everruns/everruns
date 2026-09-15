@@ -22,4 +22,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 regex = "1"
+# The real contract, so an offline run parses a command line with the same
+# clap::Command the server builds rather than an approximation of it.
+everruns-cli-contract = { path = "../../crates/cli-contract" }
 async-trait = "0.1"

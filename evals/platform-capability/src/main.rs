@@ -19,12 +19,15 @@
 //! Configure the target server and model matrix via env (see `subject.rs` and
 //! `EVERRUNS_EVAL_TARGETS`).
 
+mod control_plane;
+mod offline;
 mod scorers;
 mod subject;
 
 use mira::scorer::succeeded;
 use mira::{Dataset, Eval, Target, eval};
 
+use crate::offline::OfflineSubject;
 use crate::scorers::{
     confirmation_boundary, expected_tools, forbidden_tools, platform_commands, response_matches,
     scheduled_agent_state, tool_budget,
@@ -51,14 +54,43 @@ fn targets() -> Vec<Target> {
     }
 }
 
+/// Whether this run drives a real server or the in-process control plane.
+///
+/// Two subjects rather than one with a flag: they measure different things.
+/// The live one is the only way to grade authorization and persistence; the
+/// offline one is the only way to run at all without a stack, which is why the
+/// command-line cases were going unrun. `EVERRUNS_EVAL_MODE=offline` selects it.
+fn offline() -> bool {
+    std::env::var("EVERRUNS_EVAL_MODE").is_ok_and(|mode| mode.eq_ignore_ascii_case("offline"))
+}
+
+/// Repetitions per case. A single trial is not a measurement here: the same
+/// case flips between pass and fail across runs, because the model sometimes
+/// reaches for the tree spelling and sometimes the flat name, and because
+/// budget failures sit close to their thresholds. `EVERRUNS_EVAL_TRIALS=5`
+/// buys a rate instead of a coin flip, at five times the tokens.
+fn trials() -> usize {
+    std::env::var("EVERRUNS_EVAL_TRIALS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .filter(|count| *count > 0)
+        .unwrap_or(1)
+}
+
 #[eval]
 fn platform_capability() -> Eval {
     let dataset = Dataset::from_jsonl_str(DATASET).expect("embedded dataset.jsonl must parse");
-    Eval::new("platform_capability")
+    let eval = Eval::new("platform_capability")
         .describe("Drive the everruns platform via discover/query/execute from natural language")
         .dataset(dataset)
         .targets(targets())
-        .subject(EverrunsServerSubject::from_env())
+        .trials(trials());
+    let eval = if offline() {
+        eval.subject(OfflineSubject::from_env())
+    } else {
+        eval.subject(EverrunsServerSubject::from_env())
+    };
+    eval
         // succeeded(): the turn(s) ran without a subject error.
         .scorer(succeeded())
         // expected_tools()/forbidden_tools()/response_matches(): per-sample,
@@ -75,7 +107,67 @@ fn platform_capability() -> Eval {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    mira::Study::registered().serve().await
+    // `--run` runs the suite in this process and prints a report. The study
+    // protocol on stdin is still the default, because that is how a Mira host
+    // drives it; this exists so the suite does not need a host CLI to be run at
+    // all. `--tag`, `--sample` and `--filter` narrow it the same way a host
+    // would.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if !args.iter().any(|a| a == "--run") {
+        return mira::Study::registered().serve().await;
+    }
+
+    let value_of = |flag: &str| -> Option<String> {
+        args.iter()
+            .position(|a| a == flag)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
+
+    let report = mira::Runner::new()
+        .extend(mira::registered_evals())
+        .tag(value_of("--tag"))
+        .filter(value_of("--filter"))
+        .samples(value_of("--sample").map(|s| s.split(',').map(str::to_string).collect()))
+        .run()
+        .await;
+
+    for outcome in &report.outcomes {
+        let mark = if outcome.passed { "PASS" } else { "FAIL" };
+        println!("{mark}  {}", outcome.key());
+        for score in &outcome.scores {
+            // N/A scorers are noise until something fails; then they explain
+            // which dimensions this subject could not grade.
+            if score.na && outcome.passed {
+                continue;
+            }
+            println!(
+                "        {:<24} {}  {}",
+                score.scorer,
+                if score.na {
+                    "n/a ".to_string()
+                } else {
+                    format!("{:.2}", score.value)
+                },
+                score.reason
+            );
+        }
+        if let Some(error) = &outcome.transcript.error {
+            println!("        error: {error}");
+        }
+    }
+    println!(
+        "\n{} passed, {} failed, {} total",
+        report.passed(),
+        report.failed(),
+        report.total()
+    );
+
+    if report.all_passed() {
+        Ok(())
+    } else {
+        std::process::exit(1);
+    }
 }
 
 #[cfg(test)]

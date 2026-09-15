@@ -25,3 +25,9 @@ tag = "smoke"
 # the target organization and validates their persisted state.
 [presets.provisioning]
 tag = "provisioning"
+
+# Command-line cases: the tree spelling, and the flags a model reads out of
+# `--help`. Cheap, read-only, and the subset most worth running offline
+# (`EVERRUNS_EVAL_MODE=offline`). `mira run --preset cli`.
+[presets.cli]
+tag = "cli-tree"
