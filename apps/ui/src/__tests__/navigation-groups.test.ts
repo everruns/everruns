@@ -34,6 +34,7 @@ describe("navigationGroupForPath", () => {
     expect(navigationGroupForPath("/chats")).toBeUndefined();
     expect(navigationGroupForPath("/chats/thread-1")).toBeUndefined();
     expect(navigationGroupForPath("/settings/organization")).toBeUndefined();
+    expect(navigationGroupForPath("/apps")).toBeUndefined();
     expect(navigationGroupForPath("/not-a-route")).toBeUndefined();
   });
 

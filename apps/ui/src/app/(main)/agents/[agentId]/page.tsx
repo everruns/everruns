@@ -26,17 +26,7 @@ import { SessionCard } from "@/components/session/session-card";
 import { AgentPreview } from "@/components/agents/agent-preview";
 import { AgentVersionHistory } from "@/components/agents/agent-version-history";
 import { IntegrationGuide } from "@/components/integration/integration-guide";
-import {
-  Plus,
-  Pencil,
-  Download,
-  Copy,
-  Zap,
-  Rocket,
-  Telescope,
-  Boxes,
-  MoreHorizontal,
-} from "lucide-react";
+import { Plus, Pencil, Download, Copy, Zap, Telescope, Boxes, MoreHorizontal } from "lucide-react";
 import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
 import { AgentCredentialsPanel } from "@/components/agents/agent-credentials-panel";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
@@ -308,15 +298,6 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                 Edit
               </Button>
             )}
-            {agent.status === "active" && (
-              <Button
-                variant="outline"
-                render={<Link href={{ pathname: "/apps/new", query: { agent_id: agentId } }} />}
-              >
-                <Rocket className="size-4" />
-                Create app
-              </Button>
-            )}
             {observersEnabled && agent.status === "active" && (
               <Button
                 variant="outline"
@@ -398,16 +379,6 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                         Edit
                       </DropdownMenuItem>
                     )}
-                    {agent.status === "active" && (
-                      <DropdownMenuItem
-                        render={
-                          <Link href={{ pathname: "/apps/new", query: { agent_id: agentId } }} />
-                        }
-                      >
-                        <Rocket className="size-4" />
-                        Create app
-                      </DropdownMenuItem>
-                    )}
                     {observersEnabled && agent.status === "active" && (
                       <DropdownMenuItem
                         render={
@@ -432,15 +403,6 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
               <Button variant="outline" render={<Link href={`/agents/${agentId}/edit`} />}>
                 <Pencil className="size-4" />
                 Edit
-              </Button>
-            )}
-            {agent.status === "active" && (
-              <Button
-                variant="outline"
-                render={<Link href={{ pathname: "/apps/new", query: { agent_id: agentId } }} />}
-              >
-                <Rocket className="size-4" />
-                Create app
               </Button>
             )}
             <Button variant="outline" onClick={handleCopy} disabled={copyAgent.isPending}>
