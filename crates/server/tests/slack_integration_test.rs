@@ -267,7 +267,21 @@ async fn send_slack_event(
     signing_secret: &str,
     event_payload: &Value,
 ) -> test_harness::TestResponse {
-    let app_id = app_id.to_string();
+    send_slack_event_to_path(
+        server,
+        &format!("/v1/apps/{}/slack/events", app_id),
+        signing_secret,
+        event_payload,
+    )
+    .await
+}
+
+async fn send_slack_event_to_path(
+    server: &TestServer,
+    path: &str,
+    signing_secret: &str,
+    event_payload: &Value,
+) -> test_harness::TestResponse {
     let body = serde_json::to_vec(event_payload).unwrap();
     let timestamp = format!(
         "{}",
@@ -281,7 +295,7 @@ async fn send_slack_event(
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{}/slack/events", app_id),
+            path,
             vec![
                 ("content-type", "application/json"),
                 ("x-slack-request-timestamp", &timestamp),
@@ -292,13 +306,77 @@ async fn send_slack_event(
         .await
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_slack_endpoint_channels_isolate_identical_routing_keys() {
+    let server = TestServer::in_memory().await;
+    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let first_channel_id = app.channels[0].public_id;
+    let second_channel: Value = server
+        .post(
+            &format!("/v1/apps/{}/channels", app.public_id),
+            json!({
+                "channel_type": "slack",
+                "channel_config": {
+                    "signing_secret": TEST_SIGNING_SECRET,
+                    "bot_token": "xoxb-second-test-token",
+                    "team_id": "T_TEST",
+                    "session_strategy": "per_thread"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let second_channel_id = second_channel["id"].as_str().unwrap();
+    let thread_ts = unique_ts();
+    let payload = json!({
+        "type": "event_callback",
+        "team_id": "T_TEST",
+        "event": {
+            "type": "message",
+            "text": "same Slack event route",
+            "channel": "C_TESTCHAN",
+            "ts": thread_ts
+        }
+    });
+
+    for channel_id in [first_channel_id.to_string(), second_channel_id.to_string()] {
+        send_slack_event_to_path(
+            &server,
+            &format!("/v1/e/{channel_id}/slack/events"),
+            TEST_SIGNING_SECRET,
+            &payload,
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    }
+
+    let sessions =
+        wait_for_sessions_with_tag(&server, &format!("slack:thread:{thread_ts}"), 2).await;
+    assert_eq!(sessions.len(), 2);
+    for channel_id in [first_channel_id.to_string(), second_channel_id.to_string()] {
+        let endpoint_tag = format!("slack:endpoint:{channel_id}");
+        assert_eq!(
+            sessions
+                .iter()
+                .filter(|session| {
+                    session["tags"]
+                        .as_array()
+                        .is_some_and(|tags| tags.iter().any(|tag| tag == &endpoint_tag))
+                })
+                .count(),
+            1,
+            "each Slack endpoint must own one session for the shared routing key"
+        );
+    }
+}
 // ============================================
 // Webhook Integration Tests (no real Slack needed)
 // ============================================
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_url_verification_challenge() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
 
     let payload = json!({
@@ -306,15 +384,25 @@ async fn test_slack_url_verification_challenge() {
         "challenge": "test_challenge_string_abc123",
         "token": "ignored"
     });
+    let endpoint_resp = send_slack_event_to_path(
+        &server,
+        &format!("/v1/e/{}/slack/events", app.channels[0].public_id),
+        TEST_SIGNING_SECRET,
+        &payload,
+    )
+    .await;
+    let endpoint_body: Value = endpoint_resp.assert_status(StatusCode::OK).json();
+    assert_eq!(endpoint_body["challenge"], "test_challenge_string_abc123");
 
-    let resp = send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &payload).await;
-    let body: Value = resp.assert_status(StatusCode::OK).json();
-    assert_eq!(body["challenge"], "test_challenge_string_abc123");
+    let legacy_resp =
+        send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &payload).await;
+    let legacy_body: Value = legacy_resp.assert_status(StatusCode::OK).json();
+    assert_eq!(legacy_body["challenge"], endpoint_body["challenge"]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_invalid_signature_rejected() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
 
     let payload = json!({
@@ -336,7 +424,7 @@ async fn test_slack_invalid_signature_rejected() {
     let resp = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{}/slack/events", app.public_id),
+            &format!("/v1/e/{}/slack/events", app.channels[0].public_id),
             vec![
                 ("content-type", "application/json"),
                 ("x-slack-request-timestamp", &timestamp),
@@ -1099,11 +1187,16 @@ async fn test_slack_empty_message_ignored() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_manifest_endpoint() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let channel_id = app.channels[0].public_id;
 
-    let resp = server
+    server
         .get(&format!("/v1/apps/{}/slack/manifest", app.public_id))
+        .await
+        .assert_success();
+    let resp = server
+        .get(&format!("/v1/e/{channel_id}/slack/manifest"))
         .await
         .assert_success();
 
@@ -1126,6 +1219,49 @@ async fn test_slack_manifest_endpoint() {
         manifest.contains("app_mentions:read"),
         "Manifest should include app_mentions:read scope"
     );
+    assert!(manifest.contains(&format!("/v1/e/{channel_id}/slack/events")));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_slack_legacy_routes_reject_multiple_enabled_channels() {
+    let server = TestServer::in_memory().await;
+    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let first_channel_id = app.channels[0].public_id;
+    let second_channel: Value = server
+        .post(
+            &format!("/v1/apps/{}/channels", app.public_id),
+            json!({
+                "channel_type": "slack",
+                "channel_config": {
+                    "signing_secret": "second-signing-secret",
+                    "bot_token": "xoxb-second-test-token",
+                    "team_id": "T_SECOND",
+                    "session_strategy": "per_thread"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let second_channel_id = second_channel["id"].as_str().unwrap();
+
+    let legacy = server
+        .get(&format!("/v1/apps/{}/slack/manifest", app.public_id))
+        .await
+        .assert_status(StatusCode::CONFLICT);
+    assert_eq!(
+        legacy.json::<Value>()["detail"],
+        "Multiple enabled Slack channels; use an endpoint-scoped /v1/e/{channel_id}/slack/... URL"
+    );
+
+    server
+        .get(&format!("/v1/e/{first_channel_id}/slack/manifest"))
+        .await
+        .assert_success();
+    server
+        .get(&format!("/v1/e/{second_channel_id}/slack/manifest"))
+        .await
+        .assert_success();
 }
 
 // ============================================

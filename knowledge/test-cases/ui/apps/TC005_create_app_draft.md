@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC005 Create App draft"
+title: "TC005: Create App draft"
 description: "Verify that an App draft can be created before channel configuration and opens in the channels-first detail view."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - apps
 ---
-# TC005 Create App draft
+# TC005: Create App draft
 
 ## Description
 

@@ -39,6 +39,15 @@ System-level feature flags that control feature availability across the platform
 
 - **Experimental**: Auto-enabled in dev, disabled in prod. Use for features under active development.
 - **Standard**: Off by default everywhere. Enabled explicitly via env var.
+- **Deployment-only**: API-visible but absent from the org opt-in catalog, so it is on or off for
+  the whole deployment and no org can differ (`machine_payments`).
+- **Platform-managed**: in the catalog and therefore org-scoped, so the platform can enable it for
+  one tenant and not another, but only a platform user may set it (`environments`). Marked
+  `platform_managed: true` on the `FeatureFlagDefinition`. The tenant settings route omits these
+  rows, the tenant `PATCH` refuses them in both directions, and
+  `PATCH /v1/orgs/{org}/feature-flags/platform` is the only path that writes them. Use it when the
+  cost or risk of a feature is the platform's rather than the tenant's, the same reason LLM service
+  enrolment lives in the operator console.
 
 ### Flag Visibility
 
@@ -66,6 +75,15 @@ Current API-visible experimental flags include:
 - `agent_delegation`: gates outbound agent delegation capabilities (`a2a_agent_delegation`, `agent_handoff`). Deployment disablement prevents registration; org-effective disablement removes them from API and Platform listings, assignment, and runtime tool construction. Env var: `FEATURE_AGENT_DELEGATION`. See EVE-506.
 - `observers`: gates online scoring of production sessions (`/v1/observers`), the `turn.completed` matching listener, and the background scoring worker. When off, no observer routes are mounted and no listener/worker is registered. Env var: `FEATURE_OBSERVERS`. See `knowledge/evaluation/online-evals.md`.
 - `public_chat`: gates the Public Chat feature, the public endpoints (`/v1/apps/{app_id}/public-chat[/config]`), `public_chat` channel creation/editing, the builder UI (channel-type picker), and the public web route. The public endpoints are gated on the deployment flag; channel creation and the builder UI are gated on the org-effective flag. Env var: `FEATURE_PUBLIC_CHAT`. See `knowledge/integrations/public-chat.md`.
+- `environments`: gates the session environment surface, `GET /v1/sessions/{id}/environment` and
+  `GET /v1/environment-targets`, plus the Workspace-tab panel. **Platform-managed**: org-scoped, so
+  an operator enrols one tenant at a time, but the tenant cannot enrol itself. The deployment gate
+  defaults to on wherever sandboxes are already enabled (`FEATURE_SESSION_SANDBOX` or
+  `FEATURE_CONTAINER_SANDBOX`) and in dev, so turning sandboxes on does not need a second switch; an
+  explicit `FEATURE_ENVIRONMENTS=false` still wins. Deployment disablement leaves the routes
+  unmounted; without enrolment the commands return `feature_not_enabled`. Enrolment is a
+  platform-user action, reached from the super-admin console. See
+  `knowledge/harnesses/execution-environments.md`.
 - `webmcp`: gates browser-native tools exposed by the authenticated UI. The deployment gate also controls the `tools` Permissions Policy; org opt-in controls registration. Env var: `FEATURE_WEBMCP`. See `knowledge/ui/webmcp.md`.
 
 ## Architecture
@@ -76,6 +94,9 @@ Current API-visible experimental flags include:
 - **Core**: `crates/core/src/execution_features.rs`, `InternalFeatureFlags` and the resolved `ExecutionFeatureDecisions` consumed at capability registration; execution never loads feature-management records
 - **API**: `GET /v1/feature-flags`, public endpoint, returns deployment-level `FeatureFlags` as JSON
 - **Org API**: `GET/PATCH /v1/orgs/{org}/feature-flags`, `GET /v1/orgs/{org}/feature-flags/settings`, org opt-in (admin for PATCH)
+- **Platform API**: `GET/PATCH /v1/orgs/{org}/feature-flags/platform`, platform users only, the one
+  path that sets platform-managed flags for an org. `PATCH` merges rather than replaces, so
+  enrolling an org cannot clear that org's own opt-ins
 - **Server**: `crates/server/src/api/feature_flags.rs`, `crates/server/src/api/org_feature_flags.rs`
 - **Storage**: `org_feature_flags` table (migration `046_org_feature_flags.sql`)
 

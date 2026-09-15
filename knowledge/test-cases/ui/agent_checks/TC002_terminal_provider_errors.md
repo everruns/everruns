@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC002 Terminal Provider Errors"
+title: "TC002: Terminal Provider Errors"
 description: "Verifies that utility-provider failures remain actionable in the agent Edit rail and that a terminal health-check run replaces its live loading state without a page reload."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - agent-checks
 ---
-# TC002 Terminal Provider Errors
+# TC002: Terminal Provider Errors
 
 ## Description
 

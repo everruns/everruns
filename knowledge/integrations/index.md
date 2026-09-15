@@ -5,6 +5,7 @@
 * [Runtime MCP Client Specification](runtime-mcp.md) - MCP client in the in-process runtime: shared `everruns-mcp` crate, transport abstraction (HTTP + optional stdio), pluggable auth.
 * [Integrations](integrations.md) - Integration specs index.
 * [Apps](apps.md) - Apps system.
+* [Agent Exposure (retiring the App abstraction)](agent-exposure.md) - Make Agent the addressable entity by re-homing channels as Endpoints and folding invocation into Triggers, retiring App.
 * [Public Chat (Hosted Chat App)](public-chat.md) - Public Chat (hosted, isolated chat app), product spec/proposal.
 * [App Invocation Channels](app-invocation-channels.md) - App schedule/webhook invocation channels.
 * [App Endpoint Authentication](app-endpoint-auth.md) - Shared inbound auth framework for App-published endpoints.

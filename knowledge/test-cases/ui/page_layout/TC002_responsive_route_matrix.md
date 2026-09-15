@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "Responsive route matrix"
+title: "TC002: Responsive route matrix"
 description: "Verify that first-party routes keep their content and actions reachable across the supported narrow and desktop widths."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - page-layout
 ---
-# Responsive route matrix
+# TC002: Responsive route matrix
 
 ## Description
 

@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC001 Edit Agent and Harness Tags"
+title: "TC001: Edit Agent and Harness Tags"
 description: "Verifies that agent and harness tags are edited as individual chips instead of a raw comma-separated field."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - tag-editor
 ---
-# TC001 Edit Agent and Harness Tags
+# TC001: Edit Agent and Harness Tags
 
 ## Description
 

@@ -2364,7 +2364,7 @@
           "apps"
         ],
         "summary": "POST /v1/apps/{app_id}/a2a/{channel_id}",
-        "operationId": "invoke_a2a",
+        "operationId": "invoke_a2a_legacy",
         "parameters": [
           {
             "name": "app_id",
@@ -2436,7 +2436,7 @@
           "apps"
         ],
         "summary": "GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json",
-        "operationId": "agent_card",
+        "operationId": "agent_card_legacy",
         "parameters": [
           {
             "name": "app_id",
@@ -3040,7 +3040,7 @@
             }
           },
           "429": {
-            "description": "Per-app FCP rate limit exceeded. `Retry-After: 60` header is set.",
+            "description": "Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set.",
             "content": {
               "text/markdown": {}
             }
@@ -3052,7 +3052,7 @@
           "apps"
         ],
         "summary": "`POST /v1/apps/{app_id}/fcp` — text-in, text-out.",
-        "operationId": "message",
+        "operationId": "message_legacy",
         "parameters": [
           {
             "name": "app_id",
@@ -3113,7 +3113,7 @@
             }
           },
           "429": {
-            "description": "Per-app FCP rate limit exceeded. `Retry-After: 60` header is set.",
+            "description": "Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set.",
             "content": {
               "text/markdown": {}
             }
@@ -3321,7 +3321,7 @@
           "apps"
         ],
         "description": "Invoke a webhook channel for a published App. The body is forwarded to the agent as a message.",
-        "operationId": "invoke_webhook",
+        "operationId": "invoke_webhook_legacy",
         "parameters": [
           {
             "name": "app_id",
@@ -5540,6 +5540,626 @@
           },
           "503": {
             "description": "Durable store not available"
+          }
+        }
+      }
+    },
+    "/v1/e/{channel_id}/a2a": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "description": "Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration.",
+        "operationId": "invoke_a2a_endpoint",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "A2A endpoint channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "JSON-RPC response or event stream"
+          },
+          "400": {
+            "description": "Invalid JSON-RPC request"
+          },
+          "401": {
+            "description": "Missing or invalid endpoint credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpoint not found, app not published, or channel disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-channel or SSE connection limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/e/{channel_id}/a2a/.well-known/agent-card.json": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "description": "Get the public Agent Card for a published A2A endpoint.",
+        "operationId": "agent_card_endpoint",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "A2A endpoint channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent Card JSON"
+          },
+          "404": {
+            "description": "Endpoint not found, app not published, or channel disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/e/{channel_id}/fcp": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "description": "Send a message to a published FCP endpoint. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the endpoint requires a token.",
+        "operationId": "message_endpoint",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "FCP endpoint channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Plain UTF-8 text or JSON with a message field. Maximum 256 KiB.",
+          "content": {
+            "text/plain": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Agent reply as Markdown",
+            "content": {
+              "text/markdown": {}
+            }
+          },
+          "400": {
+            "description": "Malformed or empty message",
+            "content": {
+              "text/markdown": {}
+            }
+          },
+          "401": {
+            "description": "Missing or invalid FCP token",
+            "content": {
+              "text/markdown": {}
+            }
+          },
+          "404": {
+            "description": "Endpoint not found, app not published, or channel disabled",
+            "content": {
+              "text/markdown": {}
+            }
+          },
+          "410": {
+            "description": "FCP session expired",
+            "content": {
+              "text/markdown": {}
+            }
+          },
+          "413": {
+            "description": "Body exceeds 256 KiB",
+            "content": {
+              "text/markdown": {}
+            }
+          },
+          "429": {
+            "description": "Per-channel FCP rate limit exceeded",
+            "content": {
+              "text/markdown": {}
+            }
+          },
+          "504": {
+            "description": "Agent response timeout",
+            "content": {
+              "text/markdown": {}
+            }
+          }
+        }
+      }
+    },
+    "/v1/e/{channel_id}/sessions": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "description": "Create a session through an api_endpoint channel. Authenticate with the channel bearer key or configured endpoint auth.",
+        "operationId": "create_session_endpoint",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api_endpoint channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Session created and message dispatched",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRef"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid endpoint credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "App not published or channel disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpoint not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-channel rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/e/{channel_id}/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "description": "Get derived status and completed agent messages for a session owned by an api_endpoint channel.",
+        "operationId": "get_session_endpoint",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api_endpoint channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Derived session status and completed agent messages",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid endpoint credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "App not published or channel disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpoint or session not found, or session not owned by this channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-channel rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/e/{channel_id}/sessions/{session_id}/cancel": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "description": "Cancel the active turn for a session owned by an api_endpoint channel.",
+        "operationId": "cancel_session_endpoint",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api_endpoint channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "In-flight turn canceled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRef"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid endpoint credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "App not published or channel disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpoint or session not found, or session not owned by this channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-channel rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/e/{channel_id}/sessions/{session_id}/messages": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "description": "Post a follow-up message to a session owned by an api_endpoint channel.",
+        "operationId": "post_message_endpoint",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api_endpoint channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Follow-up message dispatched",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRef"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid endpoint credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "App not published or channel disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpoint or session not found, or session not owned by this channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-channel rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/e/{channel_id}/webhook": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "description": "Invoke a published webhook endpoint. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token.",
+        "operationId": "invoke_webhook_endpoint",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "Webhook endpoint channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Webhook accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookInvocationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing webhook token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpoint not found, app not published, or channel disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-channel rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/environment-targets": {
+      "get": {
+        "tags": [
+          "environments"
+        ],
+        "description": "List the environment targets this deployment can offer, with the capabilities each one actually has.",
+        "operationId": "list_environment_targets",
+        "responses": {
+          "200": {
+            "description": "Available environment targets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentTargetsResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -8995,6 +9615,146 @@
         ]
       }
     },
+    "/v1/orgs/{org}/feature-flags/platform": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "GET /v1/orgs/{org}/feature-flags/platform — every flag, including the\nplatform-managed ones, for the operator console.",
+        "description": "Platform users only. The tenant-facing settings route deliberately omits\nthese rows, so this is where an operator sees what a tenant is enrolled in.",
+        "operationId": "get_platform_feature_flag_settings",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Feature flag settings, platform view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgFeatureFlagsSettingsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Platform user access required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "PATCH /v1/orgs/{org}/feature-flags/platform — enrol an organization in a\nplatform-managed feature.",
+        "description": "Platform users only, and limited to platform-managed flags: an operator\nsetting a tenant's own preferences would be acting as the tenant, which this\nsurface does not do. Omitted flags are unchanged, so enrolling one org in one\nfeature cannot disturb another setting.",
+        "operationId": "update_platform_feature_flags",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrgFeatureFlagsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated effective flags",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeatureFlagMap"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a platform-managed flag",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Platform user access required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
     "/v1/orgs/{org}/feature-flags/settings": {
       "get": {
         "tags": [
@@ -12132,6 +12892,62 @@
           },
           "404": {
             "description": "Database not found"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/environment": {
+      "get": {
+        "tags": [
+          "environments"
+        ],
+        "description": "Get the environment a session runs in: target, containment, and what it can actually do.",
+        "operationId": "get_session_environment",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resolved session environment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionEnvironmentResponse"
+                },
+                "example": {
+                  "capabilities": {
+                    "native_processes": false,
+                    "network_enforced": true,
+                    "packages": false,
+                    "portable_checkpoint": true,
+                    "ports": false,
+                    "pty": false
+                  },
+                  "containment": {
+                    "level": "isolated",
+                    "network": "deny"
+                  },
+                  "durability": "checkpointed",
+                  "resolved_from": "capabilities",
+                  "source_capability": "bashkit_shell",
+                  "target": {
+                    "kind": "vfs",
+                    "provider": "bashkit"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
           }
         }
       }
@@ -16176,8 +16992,8 @@
             "example": "Process incoming A2A request and return a structured response."
           },
           "session_mode": {
-            "$ref": "#/components/schemas/InvocationSessionMode",
-            "description": "How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `InvocationSessionMode`."
+            "$ref": "#/components/schemas/SessionBinding",
+            "description": "How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `SessionBinding`."
           }
         }
       },
@@ -16223,7 +17039,7 @@
             "example": true
           },
           "session_mode": {
-            "$ref": "#/components/schemas/InvocationSessionMode",
+            "$ref": "#/components/schemas/SessionBinding",
             "description": "How invocations route into sessions (`shared_session` to reuse one\ndurable session, or `session_per_invocation` for a fresh session)."
           }
         }
@@ -19915,7 +20731,7 @@
             "example": "Run the daily digest"
           },
           "session_mode": {
-            "$ref": "#/components/schemas/InvocationSessionMode",
+            "$ref": "#/components/schemas/SessionBinding",
             "description": "Whether invocations reuse a stable session or create a new one."
           },
           "timezone": {
@@ -22001,6 +22817,137 @@
             "type": "string",
             "format": "uuid",
             "description": "Durable task's identifier."
+          }
+        }
+      },
+      "EnvironmentCapabilities": {
+        "type": "object",
+        "description": "What the environment can actually do.\n\nRead this before assuming a shell behaves like Linux. Bashkit reports\n`native_processes: false`, which is why a build fails there; the answer is\navailable before the first turn rather than after a confusing tool error.",
+        "required": [
+          "native_processes",
+          "packages",
+          "pty",
+          "ports",
+          "portable_checkpoint",
+          "network_enforced"
+        ],
+        "properties": {
+          "native_processes": {
+            "type": "boolean"
+          },
+          "network_enforced": {
+            "type": "boolean"
+          },
+          "packages": {
+            "type": "boolean"
+          },
+          "portable_checkpoint": {
+            "type": "boolean"
+          },
+          "ports": {
+            "type": "boolean"
+          },
+          "pty": {
+            "type": "boolean"
+          }
+        }
+      },
+      "EnvironmentContainment": {
+        "type": "object",
+        "description": "What commands may touch, and who enforces it.",
+        "required": [
+          "level",
+          "network"
+        ],
+        "properties": {
+          "level": {
+            "type": "string",
+            "description": "`none`, `native`, or `isolated`."
+          },
+          "network": {
+            "type": "string",
+            "description": "Outbound network policy: `deny`, `allowlist`, or `allow`."
+          }
+        }
+      },
+      "EnvironmentTarget": {
+        "type": "object",
+        "description": "Where a session's commands run.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "Shape of the target: `host`, `machine`, `vfs`, `container`, `managed`."
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Concrete provider, when the kind has one (`bashkit`, `daytona`, ...)."
+          }
+        }
+      },
+      "EnvironmentTargetDescriptor": {
+        "type": "object",
+        "description": "One target this deployment can offer, and what it can do.",
+        "required": [
+          "kind",
+          "available",
+          "capabilities",
+          "containment_levels",
+          "durability"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Whether this deployment can actually run it right now."
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/EnvironmentCapabilities"
+          },
+          "containment_levels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Containment levels this target supports, weakest first."
+          },
+          "durability": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it is unavailable. Present only when `available` is false."
+          }
+        }
+      },
+      "EnvironmentTargetsResponse": {
+        "type": "object",
+        "description": "Response body for the `list_environment_targets` operation.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentTargetDescriptor"
+            }
           }
         }
       },
@@ -24833,15 +25780,6 @@
             "example": "microsoft-docs"
           }
         }
-      },
-      "InvocationSessionMode": {
-        "type": "string",
-        "description": "How app-triggered invocations route into sessions.",
-        "enum": [
-          "shared_session",
-          "session_per_invocation"
-        ],
-        "example": "shared_session"
       },
       "KeyValueInfo": {
         "type": "object",
@@ -31170,6 +32108,7 @@
           "label",
           "description",
           "experimental",
+          "platform_managed",
           "system_enabled",
           "org_enabled",
           "effective"
@@ -31194,6 +32133,10 @@
           "org_enabled": {
             "type": "boolean",
             "description": "Whether the organization has opted in."
+          },
+          "platform_managed": {
+            "type": "boolean",
+            "description": "Whether only a platform user may enable this flag for the org."
           },
           "system_enabled": {
             "type": "boolean",
@@ -35198,7 +36141,7 @@
             "description": "Message content or template sent when the schedule fires."
           },
           "session_mode": {
-            "$ref": "#/components/schemas/InvocationSessionMode",
+            "$ref": "#/components/schemas/SessionBinding",
             "description": "Whether invocations reuse a stable session or create a new one."
           },
           "timezone": {
@@ -35713,6 +36656,18 @@
           "idle"
         ]
       },
+      "SessionBinding": {
+        "type": "string",
+        "description": "What identity keys a session, for every exposure and every transport.\n\nOne enum replaces the former `SessionStrategy` (messaging channels) and\n`InvocationSessionMode` (triggers and request/reply endpoints), which asked\nthe same question with disjoint vocabularies and forced every new surface to\npick a side (EVE-1005).\n\n**The serialized values are deliberately the legacy ones.** Every variant\nrenames in Rust but serializes exactly as it did before, with the new name\naccepted as a read alias. Persisted `channel_config` JSONB therefore needs no\nmigration, and the API and UI keep exchanging the values they already do.\nMoving the wire vocabulary is a separate, migration-bearing change.\n\n`Requester` keys on the **transport's own external actor id** — the Slack\nuser id, the Public Chat visitor id — never on an Everruns principal. Those\nactors are unrelated to Everruns accounts (a Public Chat visitor is anonymous\nor Google-signed-in), so there is one consistent answer rather than a split\nvariant: whatever the transport calls the requester, scoped by the\n`{platform}:` tag prefix that already namespaces it.",
+        "enum": [
+          "per_thread",
+          "per_channel",
+          "per_user",
+          "shared_session",
+          "session_per_invocation"
+        ],
+        "example": "per_thread"
+      },
       "SessionContextReport": {
         "type": "object",
         "description": "Token-budget report for a session — a model-aware breakdown of the\ncontext window into named sections plus per-source contributions, so\ncallers can answer \"what's filling the context?\" without reverse-\nengineering the prompt assembly.",
@@ -35771,6 +36726,50 @@
           "session_id": {
             "type": "string",
             "description": "Prefixed session identifier this report describes."
+          }
+        }
+      },
+      "SessionEnvironmentResponse": {
+        "type": "object",
+        "description": "The environment a session is running in.",
+        "required": [
+          "containment",
+          "durability",
+          "capabilities",
+          "resolved_from"
+        ],
+        "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/EnvironmentCapabilities"
+          },
+          "containment": {
+            "$ref": "#/components/schemas/EnvironmentContainment"
+          },
+          "durability": {
+            "type": "string",
+            "description": "`checkpointed`, `provider_snapshot`, or `none`. Declared per target, so a\nsession on somebody else's machine is never reported as recoverable."
+          },
+          "resolved_from": {
+            "type": "string",
+            "description": "How this view was produced. `capabilities` means it was derived from the\nsession's effective capability set rather than read from a stored\nenvironment profile."
+          },
+          "source_capability": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Capability that supplied the compute, for operators tracing a surprise."
+          },
+          "target": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EnvironmentTarget",
+                "description": "Target, absent when the session has no compute at all and only reads and\nwrites files. That is a real configuration, not a misconfiguration."
+              }
+            ]
           }
         }
       },
@@ -38745,7 +39744,7 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/InvocationSessionMode",
+                "$ref": "#/components/schemas/SessionBinding",
                 "description": "Replacement session reuse strategy."
               }
             ]

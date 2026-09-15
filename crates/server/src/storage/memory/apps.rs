@@ -68,6 +68,21 @@ impl InMemoryDatabase {
         Ok(apps.values().find(|a| a.public_id == public_id).cloned())
     }
 
+    /// Lookup an app through a globally unique channel public ID.
+    pub async fn get_app_by_channel_public_id_unscoped(
+        &self,
+        channel_public_id: &str,
+    ) -> Result<Option<AppRow>> {
+        let app_id = self
+            .app_channels
+            .read()
+            .values()
+            .find(|channel| channel.public_id == channel_public_id)
+            .map(|channel| channel.app_id);
+        let apps = self.apps.read();
+        Ok(app_id.and_then(|app_id| apps.get(&app_id).cloned()))
+    }
+
     /// Look up the owning org for an app by its public_id (cross-org resolver).
     pub async fn get_app_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
         Ok(self

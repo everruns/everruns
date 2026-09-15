@@ -86,6 +86,7 @@ export function ChatComposer({
   canSubmit,
   modelReady,
   modelLoading,
+  hideModelNotice = false,
   isUploading,
   sendPending,
   textareaRef,
@@ -138,6 +139,8 @@ export function ChatComposer({
   canSubmit: boolean;
   modelReady: boolean;
   modelLoading: boolean;
+  /** Hide the model-required notice above the input; the surrounding empty state already guides model choice. */
+  hideModelNotice?: boolean;
   isUploading: boolean;
   sendPending: boolean;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -222,7 +225,7 @@ export function ChatComposer({
   return (
     <div className={chatSurfaceStyles.composerSection}>
       <form onSubmit={handleSubmit} className="space-y-3">
-        {!modelReady && (
+        {!modelReady && !hideModelNotice && (
           <p className="text-sm text-muted-foreground" role="status">
             {modelLoading ? t("chat_model_loading") : t("chat_model_required")}
           </p>

@@ -33,9 +33,7 @@ use everruns_durable::{
     ScheduleTargetType, StoreError, UpdateField, UpdateSchedule, WorkflowEventStore,
 };
 use everruns_platform::{AgentAction, AuditEvent};
-use everruns_platform::{
-    AgentTrigger, AgentTriggerType, InvocationSessionMode, ScheduleTriggerConfig,
-};
+use everruns_platform::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig, SessionBinding};
 use everruns_provider::typed_id::{AgentId, SessionId, TriggerId};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -80,6 +78,27 @@ fn agent_trigger_max_per_org() -> i64 {
 // ============================================================================
 
 /// Validate a schedule config's message + cron, returning the normalized cron.
+/// A trigger fires into nothing that is listening, so only the invocation-keyed
+/// bindings mean anything on it.
+///
+/// Before EVE-1005 this was enforced by the type system alone — triggers used
+/// `InvocationSessionMode`, which simply had no `per_thread` to express. Now
+/// that one `SessionBinding` spans both worlds, the constraint has to be
+/// checked rather than merely unrepresentable.
+fn validate_trigger_binding(binding: SessionBinding) -> Result<(), CommandError> {
+    if binding.is_message_keyed() {
+        return Err(CommandError::bad_request(format!(
+            "session_mode {} is not valid for an agent trigger: a trigger has no thread, \
+             conversation or requester to key a session on. Use shared_session or \
+             session_per_invocation.",
+            serde_json::to_string(&binding)
+                .unwrap_or_default()
+                .trim_matches('"')
+        )));
+    }
+    Ok(())
+}
+
 fn validate_schedule_config(cron_expression: &str, message: &str) -> Result<String, CommandError> {
     if message.trim().is_empty() {
         return Err(CommandError::bad_request(
@@ -391,6 +410,8 @@ impl Command for CreateAgentTrigger {
             }
         }
 
+        validate_trigger_binding(req.session_mode)?;
+
         let config = ScheduleTriggerConfig {
             cron_expression: normalized_cron,
             timezone: req.timezone,
@@ -621,6 +642,7 @@ impl Command for UpdateAgentTriggerCmd {
             config.timezone = tz;
         }
         if let Some(mode) = req.session_mode {
+            validate_trigger_binding(mode)?;
             config.session_mode = mode;
         }
         if let Some(message) = req.message {
@@ -1085,10 +1107,10 @@ async fn find_or_create_trigger_session(
     agent: &AgentRow,
     execution_context: &TriggerExecutionContext,
     trigger_id: TriggerId,
-    session_mode: InvocationSessionMode,
+    session_mode: SessionBinding,
 ) -> Result<(SessionId, bool), CommandError> {
     let shared_tags = trigger_session_tags(trigger_id);
-    if session_mode == InvocationSessionMode::SharedSession
+    if session_mode == SessionBinding::Endpoint
         && let Some(existing) = db
             .find_session_by_tags_and_owner(
                 org_id,
@@ -1102,11 +1124,11 @@ async fn find_or_create_trigger_session(
     }
 
     let mut tags = shared_tags;
-    if session_mode == InvocationSessionMode::SessionPerInvocation {
+    if session_mode == SessionBinding::Ephemeral {
         tags.push(format!("agent_invocation:{}", Uuid::now_v7()));
     }
 
-    let title = if session_mode == InvocationSessionMode::SharedSession {
+    let title = if session_mode == SessionBinding::Endpoint {
         format!("{} agent_trigger", agent.name)
     } else {
         format!("{} agent_trigger {}", agent.name, Utc::now().to_rfc3339())

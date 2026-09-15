@@ -1,6 +1,29 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-15
+
+* **Slack had no manual test cases, and it is the reference messaging
+  integration.** [Messaging Integrations](integrations/messaging-integrations.md)
+  lists a UI test case as a parity requirement every platform must ship; FCP has
+  one, Slack never did. Four cases now cover what the 25-case integration suite
+  structurally cannot reach: that Slack *accepts* the generated manifest (not
+  merely that we emit YAML), that a pane reply appears progressively rather than
+  arriving whole, that a status line carries no tool name, that a markdown table
+  renders as a table, and that no turn ends in silence while a successful turn
+  never double-posts a reply and a notice. See
+  [Slack App test cases](test-cases/ui/slack_app/).
+
 ## 2026-09-14
+
+* **Decided to retire the App abstraction in favor of agent-owned exposure.**
+  App's required `harness_id` duplicates the agent's, its `agent_id` is nullable only to
+  grandfather pre-agent rows, and its publish switch is wider than any single exposure —
+  while everything App genuinely contributes is contributed by its channel rows. The
+  proposal re-homes channels as agent-owned Endpoints, folds webhook invocation into the
+  existing Agent Triggers, unifies the two session-routing enums, and moves ingress URLs
+  onto the endpoint id so nothing installed breaks. App is hidden from the product
+  surface first and its table deleted last. Accepted, not implemented; the phases are
+  tracked as separate OSS issues. See [Agent Exposure](integrations/agent-exposure.md).
 
 * **The Slack channel is now a Slack agent app, not a classic Events API bot.**
   Slack had shipped a dedicated agent surface — split-view container, app threads,
@@ -60,6 +83,20 @@
   outside the bundle, in `.local/test-results/`.
 
 ## 2026-09-09
+
+* **Where commands run, and what they may touch.** Everruns' sandbox providers
+  answered only the first question and Yolop's only the second, so neither could
+  express "run on this machine but deny the network" or "no sandbox at all". The
+  proposed environment model makes target and containment orthogonal fields of
+  one profile, keeps a single model-facing toolset across Bashkit, Daytona,
+  Docker, a registered machine, and the host, and lets an agent pick among
+  preapproved environments rather than authoring one. Named Environment on both
+  surfaces, with a domain model separating the pinned profile from the durable
+  Environment row and its disposable instances. The Framework's existing
+  `Environment` seam is the anchor: it already carries a workspace head and an
+  extension point documented for compute. Includes proposed Framework and HTTP
+  API shapes. See
+  [Execution Environments](harnesses/execution-environments.md).
 
 * **One command grammar, several hosts.** Operations reached through the
   scripted MCP surface, a session's shell, and (eventually) the external CLI had

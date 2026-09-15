@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC003 Edit channel full-page route"
+title: "TC003: Edit channel full-page route"
 description: "Verifies the Edit Channel page supports webhook editing, pause/enable, delete, and sticky footer actions on a deep-linkable route."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - apps
 ---
-# TC003 Edit channel full-page route
+# TC003: Edit channel full-page route
 
 ## Description
 

@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "Responsive marketplace card actions"
+title: "TC001: Responsive marketplace card actions"
 description: "Verify that marketplace card actions stay within the card and adapt to the card's available width."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - plugins
 ---
-# Responsive marketplace card actions
+# TC001: Responsive marketplace card actions
 
 ## Description
 

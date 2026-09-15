@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "Default model autosave"
+title: "TC001: Default model autosave"
 description: "Verify that organization default-model changes save independently, remain scoped to the selected organization, and show contextual status and errors."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - organization-settings
 ---
-# Default model autosave
+# TC001: Default model autosave
 
 ## Description
 

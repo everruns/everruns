@@ -407,6 +407,7 @@ impl CommandMeta {
             "knowledge_indexes" | "knowledge_bases" => Some("knowledge"),
             "plugins" => Some("plugins"),
             "observers" => Some("observers"),
+            "environments" => Some("environments"),
             "notifications" => Some("notifications"),
             "payments" => Some("machine_payments"),
             _ => match self.name {
@@ -449,6 +450,7 @@ pub(crate) fn all_feature_flags_for_test() -> FeatureFlags {
         voice: true,
         agent_delegation: true,
         observers: true,
+        environments: true,
         public_chat: true,
         webmcp: true,
         machine_payments: true,

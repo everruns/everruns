@@ -101,8 +101,11 @@ doppler run -- bash -lc 'TOKEN="$SOME_TOKEN" <command>'
 ### Commits
 
 - Conventional Commits (`type(scope): description`); use `chore` for `knowledge/` and `AGENTS.md`.
-- Commit as the real human user. If `git config user.name`/`user.email` are missing or agent-like,
-  set them from `GIT_USER_NAME`/`GIT_USER_EMAIL`; if those are absent, ask instead of committing
-  with a bot identity.
+- Commit as the real human user. The only automated exception is the exact allowlisted author
+  metadata tuple with name `warp-factories[bot]` and email
+  `243557089+warp-factories[bot]@users.noreply.github.com`; all other agent-like identities remain
+  prohibited. This local check is a policy heuristic, not cryptographic or server-side provenance.
+  If `git config user.name`/`user.email` are missing or prohibited, set them from
+  `GIT_USER_NAME`/`GIT_USER_EMAIL`; if those are absent, ask instead of committing.
 - No AI attribution anywhere, commits, PRs, docs, code comments. The sole exception is yolop's
   standard `Co-Authored-By` trailer and `Generated with yolop` PR footer for work yolop performed.

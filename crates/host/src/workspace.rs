@@ -11,6 +11,8 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use everruns_core::session_files::SessionFileSystem;
+
+use crate::compute::{Compute, ComputeCapabilities, Containment, ContainmentLevel, Durability};
 use everruns_provider::typed_id::{SessionId, WorkspaceId};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -470,11 +472,18 @@ impl fmt::Debug for WorkspaceHead {
     }
 }
 
-/// Session execution resources. Workspace is first; future compute/network
-/// resources attach through the open type-keyed extension seam.
+/// Session execution resources: the workspace head every file tool addresses,
+/// the compute that runs commands against it, and what that compute may touch.
+///
+/// Compute and containment were an open extension seam until EVE-1042; they are
+/// named members now because a caller has to be able to read them without
+/// guessing a type. An Environment with no compute is still valid: plenty of
+/// agents only ever read and write files.
 #[derive(Clone)]
 pub struct Environment {
     head: WorkspaceHead,
+    compute: Option<Arc<dyn Compute>>,
+    containment: Containment,
     extensions: Arc<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
 }
 
@@ -483,6 +492,8 @@ impl Environment {
     pub fn new(head: WorkspaceHead) -> Self {
         Self {
             head,
+            compute: None,
+            containment: Containment::none(),
             extensions: Arc::new(HashMap::new()),
         }
     }
@@ -493,6 +504,35 @@ impl Environment {
 
     pub fn workspace_head(&self) -> &WorkspaceHead {
         &self.head
+    }
+
+    /// The compute this session runs commands on, if it has any.
+    pub fn compute(&self) -> Option<Arc<dyn Compute>> {
+        self.compute.clone()
+    }
+
+    /// What commands may touch. Without compute this is
+    /// [`Containment::none`] and says nothing, since nothing runs.
+    pub fn containment(&self) -> &Containment {
+        &self.containment
+    }
+
+    /// What this environment can actually do. A file-only environment can do
+    /// none of it, which is the honest answer rather than an absent one.
+    pub fn capabilities(&self) -> ComputeCapabilities {
+        self.compute
+            .as_ref()
+            .map(|compute| compute.capabilities())
+            .unwrap_or_default()
+    }
+
+    /// What survives losing the compute. Read from the target, never claimed by
+    /// a profile, so nothing can promise recovery a provider cannot deliver.
+    pub fn durability(&self) -> Durability {
+        self.compute
+            .as_ref()
+            .map(|compute| compute.durability())
+            .unwrap_or(Durability::Checkpointed)
     }
 
     pub fn extension<T: Any + Send + Sync>(&self) -> Option<Arc<T>> {
@@ -507,6 +547,11 @@ impl fmt::Debug for Environment {
         formatter
             .debug_struct("Environment")
             .field("head", &self.head)
+            .field(
+                "compute",
+                &self.compute.as_ref().map(|compute| compute.id()),
+            )
+            .field("containment", &self.containment.level)
             .field("extension_count", &self.extensions.len())
             .finish()
     }
@@ -515,12 +560,30 @@ impl fmt::Debug for Environment {
 #[derive(Default)]
 pub struct EnvironmentBuilder {
     head: Option<WorkspaceHead>,
+    compute: Option<Arc<dyn Compute>>,
+    containment: Option<Containment>,
     extensions: HashMap<TypeId, Arc<dyn Any + Send + Sync>>,
 }
 
 impl EnvironmentBuilder {
     pub fn workspace(mut self, head: WorkspaceHead) -> Self {
         self.head = Some(head);
+        self
+    }
+
+    /// Select where commands run.
+    pub fn compute(mut self, compute: Arc<dyn Compute>) -> Self {
+        self.compute = Some(compute);
+        self
+    }
+
+    /// State what commands may touch.
+    ///
+    /// Stating it is the point: an omitted field that silently means "nothing
+    /// contains this" is how a trusted-operator default becomes an accident.
+    /// Omit it only to accept whatever the target enforces.
+    pub fn containment(mut self, containment: Containment) -> Self {
+        self.containment = Some(containment);
         self
     }
 
@@ -537,23 +600,83 @@ impl EnvironmentBuilder {
     pub fn workspace_extension<T: Any + Send + Sync>(
         mut self,
         create: impl FnOnce(&WorkspaceHead) -> Arc<T>,
-    ) -> Result<Self, WorkspaceError> {
-        let head = self.head.as_ref().ok_or_else(|| {
-            WorkspaceError::InvalidRequest(
-                "workspace must be selected before a workspace extension".into(),
-            )
-        })?;
+    ) -> Result<Self, EnvironmentError> {
+        let head = self
+            .head
+            .as_ref()
+            .ok_or(EnvironmentError::MissingWorkspace)?;
         self.extensions.insert(TypeId::of::<T>(), create(head));
         Ok(self)
     }
 
-    pub fn build(self) -> Result<Environment, WorkspaceError> {
+    pub fn build(self) -> Result<Environment, EnvironmentError> {
+        let head = self.head.ok_or(EnvironmentError::MissingWorkspace)?;
+        let enforced = self
+            .compute
+            .as_ref()
+            .map(|compute| compute.enforced_containment())
+            .unwrap_or(ContainmentLevel::None);
+
+        let containment = match self.containment {
+            // Nothing asked for, so record what the target already enforces.
+            None => match enforced {
+                ContainmentLevel::Isolated => Containment::isolated(),
+                ContainmentLevel::Native => Containment::native(),
+                ContainmentLevel::None => Containment::none(),
+            },
+            Some(requested) => {
+                // Claiming less than the target enforces would make the profile
+                // lie about a boundary that is there regardless; claiming more
+                // would promise one that nothing implements yet. Both are
+                // errors rather than a silent correction.
+                if requested.level < enforced {
+                    return Err(EnvironmentError::ContainmentWeakerThanTarget {
+                        requested: requested.level,
+                        enforced,
+                    });
+                }
+                if requested.level > enforced {
+                    return Err(EnvironmentError::ContainmentUnavailable {
+                        requested: requested.level,
+                    });
+                }
+                requested
+            }
+        };
+
         Ok(Environment {
-            head: self.head.ok_or_else(|| {
-                WorkspaceError::InvalidRequest("environment requires a workspace head".into())
-            })?,
+            head,
+            compute: self.compute,
+            containment,
             extensions: Arc::new(self.extensions),
         })
+    }
+}
+
+/// Why an Environment could not be assembled.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum EnvironmentError {
+    #[error("environment requires a workspace head")]
+    MissingWorkspace,
+    #[error(
+        "containment `{requested}` is weaker than the `{enforced}` this target enforces; \
+         a target's own boundary cannot be opted out of"
+    )]
+    ContainmentWeakerThanTarget {
+        requested: ContainmentLevel,
+        enforced: ContainmentLevel,
+    },
+    #[error("containment `{requested}` is not implemented for this target yet")]
+    ContainmentUnavailable { requested: ContainmentLevel },
+}
+
+impl From<EnvironmentError> for WorkspaceError {
+    /// Facade paths that assemble a default Environment still return
+    /// `WorkspaceError`. Assembly failures are request errors from their point
+    /// of view, and the message keeps the specific reason.
+    fn from(error: EnvironmentError) -> Self {
+        Self::InvalidRequest(error.to_string())
     }
 }
 

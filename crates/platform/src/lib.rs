@@ -199,6 +199,7 @@ pub use eval::{
 pub use exposure::PublicToolVisibility;
 pub use feature_flags::{
     API_FEATURE_FLAG_DEFINITIONS, FeatureFlagDefinition, FeatureFlagMap, FeatureFlags,
+    is_platform_managed,
 };
 pub use observer::{
     LlmJudgeConfig, Observer, ObserverMatch, ObserverScope, ObserverScorerConfig, ObserverStatus,
@@ -212,12 +213,14 @@ pub use vector_store::{
 
 // Hosted control-plane orchestration records (EVE-841).
 pub use agent_trigger::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig};
+pub use everruns_core::channel::SessionBinding;
+
 pub use app::{
     A2aChannelConfig, AgUiChannelConfig, AgentVersionPolicy, ApiEndpointChannelConfig, App,
     AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
     AppEndpointAuthRequirements, AppStatus, CaptchaProvider, ChannelType, FcpChannelConfig,
-    InvocationSessionMode, PublicChatBranding, PublicChatCaptchaConfig, PublicChatChannelConfig,
-    SessionStrategy, SlackChannelConfig, SlackReplyMode,
+    PublicChatBranding, PublicChatCaptchaConfig, PublicChatChannelConfig, SlackChannelConfig,
+    SlackReplyMode,
 };
 
 // Payment accounting records (EVE-838). The execution-contract types

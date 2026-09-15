@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::exposure::{DEFAULT_PUBLIC_TOOL_ACTIVITY_TEXT, PublicToolVisibility};
+pub use everruns_core::channel::SessionBinding;
 use everruns_core::principal::PrincipalSummary;
 use everruns_provider::typed_id::{
     AgentId, AgentIdentityId, AgentVersionId, AppChannelId, AppId, HarnessId, PrincipalId,
@@ -123,6 +124,38 @@ pub enum ChannelType {
     /// shared App endpoint auth verifier. See `knowledge/integrations/public-chat.md`.
     #[serde(rename = "public_chat")]
     PublicChat,
+}
+
+impl ChannelType {
+    /// The bindings this transport can actually offer.
+    ///
+    /// A transport constrains the binding because of what it *is*, not because
+    /// of a second enum: a schedule or webhook has no thread and no requester to
+    /// key on, so only `Endpoint` and `Ephemeral` mean anything there, while a
+    /// messaging channel has no single "the endpoint's session" to share. Before
+    /// EVE-1005 this distinction was carried by having two enums, which is why
+    /// every new surface had to pick a side.
+    ///
+    /// `AgUi`, `Fcp`, `ApiEndpoint` and `PublicChat` carry no binding field
+    /// today — their session handling is decided by the caller per request — so
+    /// they offer none and reject every value.
+    pub fn allowed_bindings(&self) -> &'static [SessionBinding] {
+        match self {
+            // Messaging: keyed off the inbound message.
+            ChannelType::Slack => &SessionBinding::MESSAGE_KEYED,
+            // Nothing is listening on a thread; the exposure owns the session.
+            ChannelType::Schedule
+            | ChannelType::Webhook
+            | ChannelType::A2a
+            | ChannelType::ApiEndpoint => &SessionBinding::INVOCATION_KEYED,
+            ChannelType::AgUi | ChannelType::Fcp | ChannelType::PublicChat => &[],
+        }
+    }
+
+    /// Whether this transport can offer `binding`.
+    pub fn allows_binding(&self, binding: SessionBinding) -> bool {
+        self.allowed_bindings().contains(&binding)
+    }
 }
 
 impl std::fmt::Display for ChannelType {
@@ -393,41 +426,14 @@ impl App {
     }
 }
 
-/// Session strategy for incoming messages (how messages map to sessions).
+/// The binding a schedule, webhook, A2A or api_endpoint exposure declares.
 ///
-/// This is the Slack-specific config type that serializes in `SlackChannelConfig`.
-/// Converts to/from the generic `SessionRoutingStrategy` in `crate::channel`.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-#[serde(rename_all = "snake_case")]
-pub enum SessionStrategy {
-    /// Each Slack thread gets its own session (default).
-    #[default]
-    PerThread,
-    /// One session per channel.
-    PerChannel,
-    /// One session per user.
-    PerUser,
-}
-
-impl From<SessionStrategy> for everruns_core::channel::SessionRoutingStrategy {
-    fn from(s: SessionStrategy) -> Self {
-        match s {
-            SessionStrategy::PerThread => Self::PerThread,
-            SessionStrategy::PerChannel => Self::PerChannel,
-            SessionStrategy::PerUser => Self::PerUser,
-        }
-    }
-}
-
-impl From<everruns_core::channel::SessionRoutingStrategy> for SessionStrategy {
-    fn from(s: everruns_core::channel::SessionRoutingStrategy) -> Self {
-        match s {
-            everruns_core::channel::SessionRoutingStrategy::PerThread => Self::PerThread,
-            everruns_core::channel::SessionRoutingStrategy::PerChannel => Self::PerChannel,
-            everruns_core::channel::SessionRoutingStrategy::PerUser => Self::PerUser,
-        }
-    }
+/// Those transports have no thread to key on, so they default to one durable
+/// session shared by every invocation — the former `shared_session`. Spelled as
+/// a function because `SessionBinding::default()` is `Thread`, which is the
+/// right default for messaging and the wrong one here (EVE-1005).
+pub(crate) fn default_invocation_binding() -> SessionBinding {
+    SessionBinding::Endpoint
 }
 
 /// How replies are delivered back to Slack.
@@ -480,9 +486,9 @@ pub struct SlackChannelConfig {
     /// Slack team/workspace ID.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub team_id: Option<String>,
-    /// How incoming messages map to sessions.
+    /// What identity keys the session for incoming messages.
     #[serde(default)]
-    pub session_strategy: SessionStrategy,
+    pub session_strategy: SessionBinding,
     /// How replies are delivered back to Slack.
     #[serde(default)]
     pub reply_mode: SlackReplyMode,
@@ -746,19 +752,6 @@ fn default_fcp_response_timeout_seconds() -> u32 {
     DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS
 }
 
-/// How app-triggered invocations route into sessions.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-#[cfg_attr(feature = "openapi", schema(example = "shared_session"))]
-#[serde(rename_all = "snake_case")]
-pub enum InvocationSessionMode {
-    /// Reuse a single durable session for every invocation of the channel.
-    #[default]
-    SharedSession,
-    /// Create a fresh session for every invocation.
-    SessionPerInvocation,
-}
-
 /// Typed schedule channel configuration.
 ///
 /// `message` is also the template body. `{{path.to.value}}` placeholders are
@@ -772,8 +765,8 @@ pub struct ScheduleChannelConfig {
     #[serde(default = "default_timezone")]
     pub timezone: String,
     /// Whether invocations reuse a stable session or create a new one.
-    #[serde(default)]
-    pub session_mode: InvocationSessionMode,
+    #[serde(default = "default_invocation_binding")]
+    pub session_mode: SessionBinding,
     /// Message content or template sent when the schedule fires.
     pub message: String,
 }
@@ -788,8 +781,8 @@ pub struct WebhookChannelConfig {
     /// Shared secret required from the incoming webhook request.
     pub token: String,
     /// Whether invocations reuse a stable session or create a new one.
-    #[serde(default)]
-    pub session_mode: InvocationSessionMode,
+    #[serde(default = "default_invocation_binding")]
+    pub session_mode: SessionBinding,
     /// Message content or template sent when the webhook arrives.
     pub message: String,
     /// Optional per-IP rate limit applied to this app's webhook endpoint, in
@@ -821,8 +814,8 @@ pub struct A2aChannelConfig {
     /// Public, non-secret display prefix (e.g. `evra2a_abc1...`).
     pub api_key_prefix: String,
     /// Whether invocations reuse a stable session or create a new one.
-    #[serde(default)]
-    pub session_mode: InvocationSessionMode,
+    #[serde(default = "default_invocation_binding")]
+    pub session_mode: SessionBinding,
     /// Message template rendered into the session per invocation.
     pub message: String,
     /// Optional human-readable agent name surfaced in the Agent Card.
@@ -873,8 +866,8 @@ pub struct ApiEndpointChannelConfig {
     /// Public, non-secret display prefix (e.g. `evr_app_abc1...`).
     pub api_key_prefix: String,
     /// Whether invocations reuse a stable session or create a new one.
-    #[serde(default)]
-    pub session_mode: InvocationSessionMode,
+    #[serde(default = "default_invocation_binding")]
+    pub session_mode: SessionBinding,
     /// Optional per-IP rate limit applied to this app's api_endpoint, in
     /// requests per minute. `None` or `Some(0)` disables the per-channel limit
     /// (the global API limit still applies). Mirrors
@@ -1116,18 +1109,54 @@ mod tests {
 
     #[test]
     fn test_session_strategy_default() {
-        assert_eq!(SessionStrategy::default(), SessionStrategy::PerThread);
+        assert_eq!(SessionBinding::default(), SessionBinding::Thread);
     }
 
     #[test]
     fn test_session_strategy_serde() {
-        let json = serde_json::to_string(&SessionStrategy::PerChannel).unwrap();
+        let json = serde_json::to_string(&SessionBinding::Conversation).unwrap();
         assert_eq!(json, r#""per_channel""#);
-        let parsed: SessionStrategy = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, SessionStrategy::PerChannel);
+        let parsed: SessionBinding = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, SessionBinding::Conversation);
 
-        let json = serde_json::to_string(&SessionStrategy::PerUser).unwrap();
+        let json = serde_json::to_string(&SessionBinding::Requester).unwrap();
         assert_eq!(json, r#""per_user""#);
+    }
+
+    /// EVE-1005: a transport offers only the bindings that mean something on it.
+    /// This replaces the old "two enums" split — messaging could not express
+    /// `shared_session` and triggers could not express `per_thread` because they
+    /// used different types, not because anything checked.
+    #[test]
+    fn transports_only_offer_bindings_that_mean_something() {
+        assert!(ChannelType::Slack.allows_binding(SessionBinding::Thread));
+        assert!(ChannelType::Slack.allows_binding(SessionBinding::Conversation));
+        assert!(ChannelType::Slack.allows_binding(SessionBinding::Requester));
+        assert!(!ChannelType::Slack.allows_binding(SessionBinding::Endpoint));
+        assert!(!ChannelType::Slack.allows_binding(SessionBinding::Ephemeral));
+
+        for transport in [
+            ChannelType::Schedule,
+            ChannelType::Webhook,
+            ChannelType::A2a,
+            ChannelType::ApiEndpoint,
+        ] {
+            assert!(
+                transport.allows_binding(SessionBinding::Endpoint),
+                "{transport}"
+            );
+            assert!(
+                transport.allows_binding(SessionBinding::Ephemeral),
+                "{transport}"
+            );
+            // Nothing is listening on a thread, so these have no meaning here.
+            for message_keyed in SessionBinding::MESSAGE_KEYED {
+                assert!(
+                    !transport.allows_binding(message_keyed),
+                    "{transport} must not offer {message_keyed:?}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -1145,7 +1174,7 @@ mod tests {
         assert_eq!(config.bot_token, "xoxb-tok");
         assert_eq!(config.channel_id.as_deref(), Some("C123"));
         assert_eq!(config.team_id.as_deref(), Some("T123"));
-        assert_eq!(config.session_strategy, SessionStrategy::PerChannel);
+        assert_eq!(config.session_strategy, SessionBinding::Conversation);
         assert_eq!(config.reply_mode, SlackReplyMode::ReportProgressOnly);
     }
 
@@ -1155,7 +1184,7 @@ mod tests {
         let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
         assert!(config.channel_id.is_none());
         assert!(config.team_id.is_none());
-        assert_eq!(config.session_strategy, SessionStrategy::PerThread);
+        assert_eq!(config.session_strategy, SessionBinding::Thread);
         assert_eq!(config.reply_mode, SlackReplyMode::AllMessages);
         assert!(config.webhook_verified_at.is_none());
         assert!(config.first_message_received_at.is_none());
@@ -1195,7 +1224,7 @@ mod tests {
             bot_token: "t".into(),
             channel_id: None,
             team_id: None,
-            session_strategy: SessionStrategy::PerThread,
+            session_strategy: SessionBinding::Thread,
             reply_mode: SlackReplyMode::AllMessages,
             webhook_verified_at: None,
             first_message_received_at: None,
@@ -1288,12 +1317,15 @@ mod tests {
         assert!(json.get("generic_tool_text").is_none());
     }
 
+    /// EVE-1005: `SessionBinding::default()` is `Thread`, which is correct for
+    /// messaging and wrong for invocations. Every invocation-shaped config must
+    /// therefore carry an explicit field default of `Endpoint` — the former
+    /// `shared_session`. A config that silently fell back to `Thread` would
+    /// route every schedule firing to a different session.
     #[test]
-    fn test_invocation_session_mode_defaults_to_shared_session() {
-        assert_eq!(
-            InvocationSessionMode::default(),
-            InvocationSessionMode::SharedSession
-        );
+    fn invocation_configs_default_to_the_endpoint_binding() {
+        assert_eq!(default_invocation_binding(), SessionBinding::Endpoint);
+        assert_ne!(SessionBinding::default(), SessionBinding::Endpoint);
     }
 
     #[test]
@@ -1302,7 +1334,7 @@ mod tests {
             serde_json::from_str(r#"{"cron_expression":"0 * * * * * *","message":"Run checks"}"#)
                 .unwrap();
         assert_eq!(config.timezone, "UTC");
-        assert_eq!(config.session_mode, InvocationSessionMode::SharedSession);
+        assert_eq!(config.session_mode, SessionBinding::Endpoint);
     }
 
     #[test]
@@ -1310,7 +1342,7 @@ mod tests {
         let config: WebhookChannelConfig =
             serde_json::from_str(r#"{"token":"top-secret","message":"{{payload.action}}"}"#)
                 .unwrap();
-        assert_eq!(config.session_mode, InvocationSessionMode::SharedSession);
+        assert_eq!(config.session_mode, SessionBinding::Endpoint);
         // EVE-627: rate limit is optional and absent by default.
         assert!(config.rate_limit_per_minute.is_none());
     }
@@ -1501,7 +1533,7 @@ mod tests {
             r#"{"api_key_hash":"abc","api_key_prefix":"evra2a_abc1...","message":"{{a2a.text}}"}"#,
         )
         .unwrap();
-        assert_eq!(config.session_mode, InvocationSessionMode::SharedSession);
+        assert_eq!(config.session_mode, SessionBinding::Endpoint);
         assert!(config.agent_card_name.is_none());
         assert!(config.agent_card_description.is_none());
         assert!(config.rate_limit_per_minute.is_none());
@@ -1514,7 +1546,7 @@ mod tests {
         let config = A2aChannelConfig {
             api_key_hash: "deadbeef".into(),
             api_key_prefix: "evra2a_dead...".into(),
-            session_mode: InvocationSessionMode::SessionPerInvocation,
+            session_mode: SessionBinding::Ephemeral,
             message: "{{a2a.text}}".into(),
             agent_card_name: Some("Inbox triage".into()),
             agent_card_description: Some("Triages github events".into()),
@@ -1525,10 +1557,7 @@ mod tests {
         let json = serde_json::to_string(&config).unwrap();
         let parsed: A2aChannelConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.api_key_hash, "deadbeef");
-        assert_eq!(
-            parsed.session_mode,
-            InvocationSessionMode::SessionPerInvocation
-        );
+        assert_eq!(parsed.session_mode, SessionBinding::Ephemeral);
         assert_eq!(parsed.agent_card_name.as_deref(), Some("Inbox triage"));
         assert_eq!(parsed.rate_limit_per_minute, Some(120));
     }
@@ -1538,7 +1567,7 @@ mod tests {
         let config = A2aChannelConfig {
             api_key_hash: "h".into(),
             api_key_prefix: "evra2a_h...".into(),
-            session_mode: InvocationSessionMode::SharedSession,
+            session_mode: SessionBinding::Endpoint,
             message: "m".into(),
             agent_card_name: None,
             agent_card_description: None,
