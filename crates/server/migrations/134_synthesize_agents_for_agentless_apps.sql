@@ -1,5 +1,8 @@
 -- Give grandfathered Apps an equivalent Agent before App-owned endpoints move
 -- to Agent ownership.
+-- Serialize App writers so an Agent assigned during a rolling deployment is
+-- visible before the snapshot instead of being overwritten by this migration.
+LOCK TABLE apps IN SHARE ROW EXCLUSIVE MODE;
 
 CREATE TEMPORARY TABLE synthesized_app_agents ON COMMIT DROP AS
 SELECT
@@ -41,8 +44,8 @@ SELECT
             ),
             'app'
         ),
-        216
-    ) || '-agent-' || replace(synthesized.app_id::text, '-', ''),
+        25
+    ) || '-agent-' || replace(synthesized.agent_id::text, '-', ''),
     synthesized.app_name || ' Agent',
     '',
     synthesized.harness_id,
