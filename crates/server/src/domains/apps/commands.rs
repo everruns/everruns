@@ -334,15 +334,18 @@ fn normalize_and_validate_channel_config(
     }
     match channel_type {
         ChannelType::Slack => {
-            let config: SlackChannelConfig = serde_json::from_value(channel_config.clone())
+            // Credentials are deliberately optional. Slack's setup order is
+            // publish → fetch the manifest → create the Slack app → copy the
+            // signing secret and bot token back, and the manifest is served
+            // per-channel, so the channel has to exist before either secret
+            // does. Requiring them here made first-run setup circular and
+            // forced operators to invent placeholders (EVE-1015). An empty
+            // signing secret leaves the webhook inert — see
+            // `handle_slack_event` in `crates/server/src/api/slack_events.rs`.
+            let _config: SlackChannelConfig = serde_json::from_value(channel_config.clone())
                 .map_err(|e| {
                     CommandError::bad_request(format!("Invalid Slack channel config: {e}"))
                 })?;
-            if config.signing_secret.trim().is_empty() || config.bot_token.trim().is_empty() {
-                return Err(CommandError::bad_request(
-                    "Slack channel config requires non-empty signing_secret and bot_token",
-                ));
-            }
         }
         ChannelType::AgUi => {
             let config: AgUiChannelConfig = serde_json::from_value(channel_config.clone())
@@ -813,11 +816,22 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
     };
     match channel_type {
         ChannelType::Slack => {
-            if map.remove("signing_secret").is_some() {
-                map.insert("signing_secret_configured".to_string(), Value::Bool(true));
-            }
-            if map.remove("bot_token").is_some() {
-                map.insert("bot_token_configured".to_string(), Value::Bool(true));
+            // Only a non-empty value counts as configured: a channel created
+            // before the Slack app exists carries empty credentials, and the
+            // setup checklist reads these flags to decide whether step 3 is
+            // still outstanding (EVE-1015).
+            for (key, flag) in [
+                ("signing_secret", "signing_secret_configured"),
+                ("bot_token", "bot_token_configured"),
+            ] {
+                let removed = map.remove(key);
+                let is_configured = removed
+                    .as_ref()
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| !s.trim().is_empty());
+                if is_configured {
+                    map.insert(flag.to_string(), Value::Bool(true));
+                }
             }
         }
         ChannelType::AgUi => {
@@ -4132,6 +4146,54 @@ mod tests {
             reject_new_schedule_channel(&channel_type)
                 .unwrap_or_else(|err| panic!("{channel_type} unexpectedly rejected: {err}"));
         }
+    }
+
+    /// Slack's own setup order hands the operator credentials only after the
+    /// channel exists, so a credential-less channel must be creatable and must
+    /// not read back as configured (EVE-1015).
+    #[test]
+    fn slack_channel_config_accepts_absent_credentials() {
+        let config = normalize_and_validate_channel_config(
+            ChannelType::Slack,
+            json!({ "team_id": "T_TEST", "session_strategy": "per_thread" }),
+        )
+        .expect("a Slack channel without credentials must be accepted");
+
+        let mut redacted = config;
+        redact_channel_config(&ChannelType::Slack, &mut redacted);
+        assert!(
+            redacted.get("signing_secret_configured").is_none(),
+            "empty signing_secret must not read as configured: {redacted}"
+        );
+        assert!(
+            redacted.get("bot_token_configured").is_none(),
+            "empty bot_token must not read as configured: {redacted}"
+        );
+    }
+
+    #[test]
+    fn slack_channel_config_reports_real_credentials_as_configured() {
+        let mut config = normalize_and_validate_channel_config(
+            ChannelType::Slack,
+            json!({ "signing_secret": "s3cret", "bot_token": "xoxb-token" }),
+        )
+        .expect("a fully configured Slack channel must be accepted");
+
+        redact_channel_config(&ChannelType::Slack, &mut config);
+        assert!(config.get("signing_secret").is_none());
+        assert!(config.get("bot_token").is_none());
+        assert_eq!(config["signing_secret_configured"], json!(true));
+        assert_eq!(config["bot_token_configured"], json!(true));
+    }
+
+    #[test]
+    fn slack_channel_config_still_rejects_malformed_json() {
+        let err = normalize_and_validate_channel_config(
+            ChannelType::Slack,
+            json!({ "signing_secret": 42 }),
+        )
+        .expect_err("a non-string signing_secret is still a bad request");
+        assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
     }
 
     fn test_app_and_channel() -> (App, AppChannel) {

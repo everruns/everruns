@@ -476,8 +476,18 @@ impl From<everruns_core::channel::ChannelReplyMode> for SlackReplyMode {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct SlackChannelConfig {
     /// Slack signing secret for verifying webhook requests.
+    ///
+    /// Empty (or absent) until the operator copies it back from the Slack app.
+    /// First-run order is publish → manifest → create the Slack app → paste
+    /// credentials, so the channel exists before either secret does (EVE-1015).
+    /// An empty secret means the endpoint is inert: see
+    /// `handle_slack_event` in `crates/server/src/api/slack_events.rs`.
+    #[serde(default)]
     pub signing_secret: String,
     /// Slack Bot OAuth token for sending responses.
+    ///
+    /// Empty (or absent) until the operator copies it back from the Slack app.
+    #[serde(default)]
     pub bot_token: String,
     /// Slack channel ID to listen on (e.g., "C0123456789").
     #[serde(skip_serializing_if = "Option::is_none")]
