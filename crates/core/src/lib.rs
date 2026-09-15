@@ -307,7 +307,7 @@ pub use channel::{
     ChannelAgentSurface, ChannelDeliveryAdapter, ChannelReplyMode, ChannelStreamDelivery,
     ChannelViewContext, DeliveryContext as ChannelDeliveryContext,
     DeliveryResult as ChannelDeliveryResult, InboundAttachment, InboundChannelEvent,
-    OutboundChannelMessage, Participant, SessionRoutingStrategy, ThreadContext,
+    OutboundChannelMessage, Participant, SessionBinding, ThreadContext,
 };
 
 // Narrow subagent-session delegation contract (EVE-839). The full hosted

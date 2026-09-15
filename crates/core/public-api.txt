@@ -217,10 +217,12 @@ everruns_core::channel::InboundAttachment::Image	variant
 everruns_core::channel::InboundChannelEvent	struct
 everruns_core::channel::OutboundChannelMessage	struct
 everruns_core::channel::Participant	struct
-everruns_core::channel::SessionRoutingStrategy	enum
-everruns_core::channel::SessionRoutingStrategy::PerChannel	variant
-everruns_core::channel::SessionRoutingStrategy::PerThread	variant
-everruns_core::channel::SessionRoutingStrategy::PerUser	variant
+everruns_core::channel::SessionBinding	enum
+everruns_core::channel::SessionBinding::Conversation	variant
+everruns_core::channel::SessionBinding::Endpoint	variant
+everruns_core::channel::SessionBinding::Ephemeral	variant
+everruns_core::channel::SessionBinding::Requester	variant
+everruns_core::channel::SessionBinding::Thread	variant
 everruns_core::channel::THREAD_CONTEXT_KV_KEY	constant
 everruns_core::channel::ThreadContext	struct
 everruns_core::channel::ThreadContext::view_summary	function
@@ -228,6 +230,7 @@ everruns_core::channel::build_session_routing_tag	function
 everruns_core::channel::decode_thread_context	function
 everruns_core::channel::encode_thread_context	function
 everruns_core::channel::load_thread_context	function
+everruns_core::channel::resolve_session_binding	function
 everruns_core::channel::save_thread_context	function
 everruns_core::command	module
 everruns_core::command::CommandArg	struct
