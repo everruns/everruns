@@ -353,8 +353,11 @@ rest proceeds.
 3. Is `Exposures` an ops page or a nav-level concept? It is the only cross-agent surface
    the design keeps, so it decides whether "exposure" becomes user vocabulary. Settled by
    EVE-1010.
-4. EVE-978 (suggested prompts) picks a source per surface. Endpoint config, agent config,
-   or both with endpoint winning?
+4. ~~EVE-978 (suggested prompts) picks a source per surface.~~ Settled: **agent config**,
+   falling back to the harness, resolved by `everruns_platform::exposure::resolve_starters`
+   over the `starters` field Platform Chat already uses. Endpoint config was not available
+   to choose — it does not exist until EVE-1003 — and an endpoint-level override remains
+   strictly additive on top of that order, so nothing here is foreclosed.
 
 ## References
 
