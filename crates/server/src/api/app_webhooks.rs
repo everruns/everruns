@@ -128,6 +128,21 @@ pub async fn invoke_webhook_legacy(
     .await
 }
 
+#[utoipa::path(
+    description = "Invoke a published webhook endpoint. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token.",
+    post,
+    path = "/v1/e/{channel_id}/webhook",
+    params(("channel_id" = String, Path, description = "Webhook endpoint channel ID")),
+    request_body(content = String, content_type = "application/octet-stream"),
+    responses(
+        (status = 202, description = "Webhook accepted", body = WebhookInvocationResponse),
+        (status = 401, description = "Invalid or missing webhook token", body = ErrorResponse),
+        (status = 404, description = "Endpoint not found, app not published, or channel disabled", body = ErrorResponse),
+        (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "apps"
+)]
 pub async fn invoke_webhook_endpoint(
     State(state): State<AppWebhookState>,
     Path(channel_id): Path<String>,

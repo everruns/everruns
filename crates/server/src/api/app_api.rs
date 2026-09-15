@@ -125,7 +125,22 @@ async fn endpoint_app_id(
         .ok_or_else(not_found)
 }
 
-async fn create_session_endpoint(
+#[utoipa::path(
+    description = "Create a session through an api_endpoint channel. Authenticate with the channel bearer key or configured endpoint auth.",
+    post,
+    path = "/v1/e/{channel_id}/sessions",
+    params(("channel_id" = String, Path, description = "api_endpoint channel ID")),
+    request_body = MessageBody,
+    responses(
+        (status = 201, description = "Session created and message dispatched", body = SessionRef),
+        (status = 401, description = "Missing or invalid endpoint credentials", body = ErrorResponse),
+        (status = 403, description = "App not published or channel disabled", body = ErrorResponse),
+        (status = 404, description = "Endpoint not found", body = ErrorResponse),
+        (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse)
+    ),
+    tag = "apps"
+)]
+pub async fn create_session_endpoint(
     State(state): State<AppApiState>,
     Path(channel_id): Path<String>,
     req_id: Option<Extension<RequestId>>,
@@ -148,7 +163,25 @@ async fn create_session_endpoint(
     .await
 }
 
-async fn post_message_endpoint(
+#[utoipa::path(
+    description = "Post a follow-up message to a session owned by an api_endpoint channel.",
+    post,
+    path = "/v1/e/{channel_id}/sessions/{session_id}/messages",
+    params(
+        ("channel_id" = String, Path, description = "api_endpoint channel ID"),
+        ("session_id" = String, Path, description = "Session ID")
+    ),
+    request_body = MessageBody,
+    responses(
+        (status = 202, description = "Follow-up message dispatched", body = SessionRef),
+        (status = 401, description = "Missing or invalid endpoint credentials", body = ErrorResponse),
+        (status = 403, description = "App not published or channel disabled", body = ErrorResponse),
+        (status = 404, description = "Endpoint or session not found, or session not owned by this channel", body = ErrorResponse),
+        (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse)
+    ),
+    tag = "apps"
+)]
+pub async fn post_message_endpoint(
     State(state): State<AppApiState>,
     Path((channel_id, session_id)): Path<(String, String)>,
     req_id: Option<Extension<RequestId>>,
@@ -171,7 +204,24 @@ async fn post_message_endpoint(
     .await
 }
 
-async fn get_session_endpoint(
+#[utoipa::path(
+    description = "Get derived status and completed agent messages for a session owned by an api_endpoint channel.",
+    get,
+    path = "/v1/e/{channel_id}/sessions/{session_id}",
+    params(
+        ("channel_id" = String, Path, description = "api_endpoint channel ID"),
+        ("session_id" = String, Path, description = "Session ID")
+    ),
+    responses(
+        (status = 200, description = "Derived session status and completed agent messages", body = SessionStatus),
+        (status = 401, description = "Missing or invalid endpoint credentials", body = ErrorResponse),
+        (status = 403, description = "App not published or channel disabled", body = ErrorResponse),
+        (status = 404, description = "Endpoint or session not found, or session not owned by this channel", body = ErrorResponse),
+        (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse)
+    ),
+    tag = "apps"
+)]
+pub async fn get_session_endpoint(
     State(state): State<AppApiState>,
     Path((channel_id, session_id)): Path<(String, String)>,
     headers: HeaderMap,
@@ -190,7 +240,24 @@ async fn get_session_endpoint(
     .await
 }
 
-async fn cancel_session_endpoint(
+#[utoipa::path(
+    description = "Cancel the active turn for a session owned by an api_endpoint channel.",
+    post,
+    path = "/v1/e/{channel_id}/sessions/{session_id}/cancel",
+    params(
+        ("channel_id" = String, Path, description = "api_endpoint channel ID"),
+        ("session_id" = String, Path, description = "Session ID")
+    ),
+    responses(
+        (status = 200, description = "In-flight turn canceled", body = SessionRef),
+        (status = 401, description = "Missing or invalid endpoint credentials", body = ErrorResponse),
+        (status = 403, description = "App not published or channel disabled", body = ErrorResponse),
+        (status = 404, description = "Endpoint or session not found, or session not owned by this channel", body = ErrorResponse),
+        (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse)
+    ),
+    tag = "apps"
+)]
+pub async fn cancel_session_endpoint(
     State(state): State<AppApiState>,
     Path((channel_id, session_id)): Path<(String, String)>,
     headers: HeaderMap,

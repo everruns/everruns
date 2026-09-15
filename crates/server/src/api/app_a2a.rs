@@ -263,6 +263,21 @@ pub async fn invoke_a2a_legacy(
     .await
 }
 
+#[utoipa::path(
+    description = "Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration.",
+    post,
+    path = "/v1/e/{channel_id}/a2a",
+    params(("channel_id" = String, Path, description = "A2A endpoint channel ID")),
+    request_body(content = serde_json::Value, content_type = "application/json"),
+    responses(
+        (status = 200, description = "JSON-RPC response or event stream"),
+        (status = 400, description = "Invalid JSON-RPC request"),
+        (status = 401, description = "Missing or invalid endpoint credentials", body = ErrorResponse),
+        (status = 404, description = "Endpoint not found, app not published, or channel disabled", body = ErrorResponse),
+        (status = 429, description = "Per-channel or SSE connection limit exceeded", body = ErrorResponse)
+    ),
+    tag = "apps"
+)]
 pub async fn invoke_a2a_endpoint(
     State(state): State<AppA2aState>,
     Path(channel_id): Path<String>,
@@ -1323,6 +1338,17 @@ pub async fn agent_card_legacy(
     agent_card(state, original_uri, app_id, channel_id, headers).await
 }
 
+#[utoipa::path(
+    description = "Get the public Agent Card for a published A2A endpoint.",
+    get,
+    path = "/v1/e/{channel_id}/a2a/.well-known/agent-card.json",
+    params(("channel_id" = String, Path, description = "A2A endpoint channel ID")),
+    responses(
+        (status = 200, description = "Agent Card JSON"),
+        (status = 404, description = "Endpoint not found, app not published, or channel disabled", body = ErrorResponse)
+    ),
+    tag = "apps"
+)]
 pub async fn agent_card_endpoint(
     State(state): State<AppA2aState>,
     OriginalUri(original_uri): OriginalUri,

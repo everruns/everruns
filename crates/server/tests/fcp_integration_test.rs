@@ -737,6 +737,93 @@ async fn fcp_per_app_rate_limit_returns_429_with_retry_after() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fcp_endpoint_channels_isolate_rate_limits_and_session_cookies() {
+    let server = TestServer::in_memory().await;
+    let app = create_published_fcp_app(
+        &server,
+        json!({"rate_limit_per_minute": 1, "response_timeout_seconds": 2}),
+    )
+    .await;
+    let first_channel_id = app.channels[0].public_id;
+    let second_channel: Value = server
+        .post(
+            &format!("/v1/apps/{}/channels", app.public_id),
+            json!({
+                "channel_type": "fcp",
+                "channel_config": {
+                    "rate_limit_per_minute": 1,
+                    "response_timeout_seconds": 2
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let second_channel_id = second_channel["id"].as_str().unwrap();
+
+    let first_path = format!("/v1/e/{first_channel_id}/fcp");
+    let first = send_fcp_post_to_path(
+        &server,
+        &first_path,
+        "first endpoint",
+        vec![
+            ("content-type", "text/plain"),
+            ("x-forwarded-for", "198.51.100.10"),
+        ],
+    )
+    .await;
+    assert_accepted_or_timeout(first.status());
+    let first_cookie = test_harness::extract_cookie(first.headers(), "fcp_session");
+
+    send_fcp_post_to_path(
+        &server,
+        &first_path,
+        "first endpoint again",
+        vec![
+            ("content-type", "text/plain"),
+            ("x-forwarded-for", "198.51.100.10"),
+        ],
+    )
+    .await
+    .assert_status(StatusCode::TOO_MANY_REQUESTS);
+
+    let second_path = format!("/v1/e/{second_channel_id}/fcp");
+    let second = send_fcp_post_to_path(
+        &server,
+        &second_path,
+        "second endpoint with first endpoint cookie",
+        vec![
+            ("content-type", "text/plain"),
+            ("x-forwarded-for", "198.51.100.10"),
+            ("cookie", &first_cookie),
+        ],
+    )
+    .await;
+    assert_accepted_or_timeout(second.status());
+
+    assert_eq!(
+        count_sessions_with_tag(&server, &format!("fcp:endpoint:{first_channel_id}")).await,
+        1
+    );
+    assert_eq!(
+        count_sessions_with_tag(&server, &format!("fcp:endpoint:{second_channel_id}")).await,
+        1,
+        "a cookie from another FCP endpoint must create a channel-owned session"
+    );
+
+    send_fcp_post_to_path(
+        &server,
+        &second_path,
+        "second endpoint again",
+        vec![
+            ("content-type", "text/plain"),
+            ("x-forwarded-for", "198.51.100.10"),
+        ],
+    )
+    .await
+    .assert_status(StatusCode::TOO_MANY_REQUESTS);
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_rate_limit_zero_disables_per_app_cap() {
     let server = TestServer::in_memory().await;
     let app = create_published_fcp_app(

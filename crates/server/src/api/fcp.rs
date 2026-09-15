@@ -40,7 +40,7 @@ use everruns_core::events::{
     TurnCancelledData, TurnFailedData,
 };
 use everruns_core::{Caller, ContentPart, ExternalActor};
-use everruns_platform::{App, AppStatus, ChannelType, FcpChannelConfig};
+use everruns_platform::{App, AppChannel, AppStatus, ChannelType, FcpChannelConfig};
 use everruns_provider::execution_phase::ExecutionPhase;
 use serde::Deserialize;
 use serde_json::Value;
@@ -121,6 +121,7 @@ enum FcpTarget {
 /// shared so we apply the same "exists at all?" sanitization in one place.
 struct FcpContext {
     app: App,
+    channel: AppChannel,
     config: FcpChannelConfig,
 }
 
@@ -184,7 +185,11 @@ async fn resolve_context(state: &FcpState, target: FcpTarget) -> Result<FcpConte
             return Err(internal_error_response());
         }
     };
-    Ok(FcpContext { app, config })
+    Ok(FcpContext {
+        app,
+        channel,
+        config,
+    })
 }
 
 /// Verify the caller's token (if one is required) using constant-time
@@ -223,6 +228,7 @@ async fn check_rate_limit(
     headers: &HeaderMap,
     peer_addr: Option<std::net::SocketAddr>,
     app: &App,
+    channel: &AppChannel,
     config: &FcpChannelConfig,
 ) -> Result<(), Response> {
     let Some(limit) = config.rate_limit_per_minute else {
@@ -234,7 +240,11 @@ async fn check_rate_limit(
     let client_ip = extract_client_ip_from_parts(peer_addr, headers);
     if state
         .rate_limiter
-        .check(&app.public_id.to_string(), client_ip, limit)
+        .check(
+            &format!("{}:{}", app.public_id, channel.public_id),
+            client_ip,
+            limit,
+        )
         .await
         .is_err()
     {
@@ -286,8 +296,15 @@ pub async fn handshake(
         Err(resp) => return resp,
     };
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
-    if let Err(resp) =
-        check_rate_limit(&state, &headers, peer_addr, &context.app, &context.config).await
+    if let Err(resp) = check_rate_limit(
+        &state,
+        &headers,
+        peer_addr,
+        &context.app,
+        &context.channel,
+        &context.config,
+    )
+    .await
     {
         return resp;
     }
@@ -377,6 +394,28 @@ pub async fn message_legacy(
     .await
 }
 
+#[utoipa::path(
+    description = "Send a message to a published FCP endpoint. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the endpoint requires a token.",
+    post,
+    path = "/v1/e/{channel_id}/fcp",
+    params(("channel_id" = String, Path, description = "FCP endpoint channel ID")),
+    request_body(
+        content = String,
+        description = "Plain UTF-8 text or JSON with a message field. Maximum 256 KiB.",
+        content_type = "text/plain"
+    ),
+    responses(
+        (status = 200, description = "Agent reply as Markdown", content_type = "text/markdown"),
+        (status = 400, description = "Malformed or empty message", content_type = "text/markdown"),
+        (status = 401, description = "Missing or invalid FCP token", content_type = "text/markdown"),
+        (status = 404, description = "Endpoint not found, app not published, or channel disabled", content_type = "text/markdown"),
+        (status = 410, description = "FCP session expired", content_type = "text/markdown"),
+        (status = 413, description = "Body exceeds 256 KiB", content_type = "text/markdown"),
+        (status = 429, description = "Per-channel FCP rate limit exceeded", content_type = "text/markdown"),
+        (status = 504, description = "Agent response timeout", content_type = "text/markdown")
+    ),
+    tag = "apps"
+)]
 pub async fn message_endpoint(
     State(state): State<FcpState>,
     Path(channel_id): Path<String>,
@@ -416,8 +455,15 @@ async fn message(
         Err(resp) => return resp,
     };
 
-    if let Err(resp) =
-        check_rate_limit(&state, &headers, peer_addr, &context.app, &context.config).await
+    if let Err(resp) = check_rate_limit(
+        &state,
+        &headers,
+        peer_addr,
+        &context.app,
+        &context.channel,
+        &context.config,
+    )
+    .await
     {
         return resp;
     }
@@ -436,6 +482,7 @@ async fn message(
     let resolved = match resolve_session(
         &state,
         &context.app,
+        &context.channel,
         &context.config,
         parse_session_cookie(&headers),
     )
@@ -481,7 +528,7 @@ async fn message(
                 },
                 addressed_participant_id: None,
                 controls: None,
-                metadata: Some(fcp_message_metadata(&context.app)),
+                metadata: Some(fcp_message_metadata(&context.app, &context.channel)),
                 tags: None,
                 external_actor: Some(ExternalActor {
                     actor_id: "fcp".to_string(),
@@ -696,14 +743,18 @@ struct ResolvedSession {
 async fn resolve_session(
     state: &FcpState,
     app: &App,
+    channel: &AppChannel,
     config: &FcpChannelConfig,
     cookie_session_id: Option<Uuid>,
 ) -> Result<ResolvedSession, Response> {
-    let routing_tag = format!("fcp:app:{}", app.public_id);
+    let app_tag = format!("fcp:app:{}", app.public_id);
+    let endpoint_tag = format!("fcp:endpoint:{}", channel.public_id);
     if let Some(session_id) = cookie_session_id {
         match state.db.get_session(app.org_id, session_id.into()).await {
             Ok(Some(row))
-                if row.app_id == Some(app.internal_id) && row.tags.contains(&routing_tag) =>
+                if row.app_id == Some(app.internal_id)
+                    && row.tags.contains(&app_tag)
+                    && row.tags.contains(&endpoint_tag) =>
             {
                 if let Some(age) = expired_age_seconds(
                     row.created_at,
@@ -753,7 +804,7 @@ async fn resolve_session(
                 title: Some(format!("FCP session for {}", app.name)),
                 goal: None,
                 locale: None,
-                tags: vec![routing_tag],
+                tags: vec![app_tag, endpoint_tag],
                 model_id: None,
                 capabilities: vec![],
                 tools: vec![],
@@ -818,11 +869,15 @@ fn expired_age_seconds(
     (age > max_seconds as i64).then_some(age)
 }
 
-fn fcp_message_metadata(app: &App) -> HashMap<String, Value> {
+fn fcp_message_metadata(app: &App, channel: &AppChannel) -> HashMap<String, Value> {
     let mut map = HashMap::new();
     map.insert(
         "_app_id".to_string(),
         Value::String(app.public_id.to_string()),
+    );
+    map.insert(
+        "_app_channel_id".to_string(),
+        Value::String(channel.public_id.to_string()),
     );
     map.insert("source".to_string(), Value::String("fcp".to_string()));
     map

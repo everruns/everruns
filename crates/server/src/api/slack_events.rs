@@ -590,8 +590,14 @@ async fn handle_slack_event(
                 // log and the model's history for a field only the latest value of
                 // which matters (EVE-977).
                 if event.event_type == "app_context_changed" {
-                    if let Err(error) =
-                        handle_app_context_changed(&state, &app, &slack_config, &event).await
+                    if let Err(error) = handle_app_context_changed(
+                        &state,
+                        &app,
+                        &slack_channel,
+                        &slack_config,
+                        &event,
+                    )
+                    .await
                     {
                         // Non-fatal: Slack retries a non-200, and a lost context
                         // hint is not worth a redelivery storm.
@@ -611,8 +617,14 @@ async fn handle_slack_event(
                 // resolves must belong to the app that received the event
                 // (EVE-976).
                 if event.event_type == "agent_session_stopped" {
-                    if let Err(error) =
-                        handle_agent_session_stopped(&state, &app, &slack_config, &event).await
+                    if let Err(error) = handle_agent_session_stopped(
+                        &state,
+                        &app,
+                        &slack_channel,
+                        &slack_config,
+                        &event,
+                    )
+                    .await
                     {
                         // Non-fatal: Slack retries a non-200, and a failed stop
                         // is not worth a redelivery storm. The user can press
@@ -634,9 +646,14 @@ async fn handle_slack_event(
                 // path uses, so a rename to the current title emits nothing and
                 // the two directions cannot echo each other.
                 if event.event_type == "agent_session_title_changed" {
-                    if let Err(error) =
-                        handle_agent_session_title_changed(&state, &app, &slack_config, &event)
-                            .await
+                    if let Err(error) = handle_agent_session_title_changed(
+                        &state,
+                        &app,
+                        &slack_channel,
+                        &slack_config,
+                        &event,
+                    )
+                    .await
                     {
                         // Non-fatal, like the stop button: a lost rename is not
                         // worth a Slack redelivery storm.
@@ -713,12 +730,14 @@ async fn handle_slack_event(
                 // Process message in background (Slack requires 200 within 3 seconds)
                 let state = state.clone();
                 let app = app.clone();
+                let slack_channel = slack_channel.clone();
                 let slack_config = slack_config.clone();
                 let spawned_request_id = request_id.clone();
                 tokio::spawn(async move {
                     if let Err(e) = process_slack_message(
                         &state,
                         &app,
+                        &slack_channel,
                         &slack_config,
                         &event,
                         spawned_request_id,
@@ -780,6 +799,7 @@ fn is_supported_slack_message_subtype(subtype: Option<&str>) -> bool {
 async fn process_slack_message(
     state: &SlackState,
     app: &App,
+    slack_channel: &AppChannel,
     slack_config: &SlackChannelConfig,
     event: &SlackEvent,
     request_id: Option<String>,
@@ -825,7 +845,7 @@ async fn process_slack_message(
     let org_public_id = org_row.public_id;
 
     // Build session tags based on strategy
-    let routing_tags = build_session_tags(app, slack_config, event, surface);
+    let routing_tags = build_session_tags(app, slack_channel, slack_config, event, surface);
     let desired_tags = desired_session_tags(&routing_tags, slack_config.reply_mode);
 
     // Find or create session
@@ -1031,6 +1051,7 @@ async fn process_slack_message(
         controls: None,
         metadata: Some(slack_message_metadata(
             app,
+            slack_channel,
             event,
             speaker_participant.as_ref(),
         )),
@@ -1185,6 +1206,7 @@ async fn ensure_slack_user_participant(
 
 fn slack_message_metadata(
     app: &App,
+    slack_channel: &AppChannel,
     event: &SlackEvent,
     participant: Option<&SessionParticipantRow>,
 ) -> HashMap<String, serde_json::Value> {
@@ -1192,6 +1214,10 @@ fn slack_message_metadata(
         (
             "_app_id".to_string(),
             serde_json::Value::String(app.public_id.to_string()),
+        ),
+        (
+            "_app_channel_id".to_string(),
+            serde_json::Value::String(slack_channel.public_id.to_string()),
         ),
         (
             "slack_channel".to_string(),
@@ -1342,6 +1368,7 @@ fn build_attachment_content_parts(attachments: &[SlackAttachment]) -> Vec<InputC
 async fn handle_agent_session_stopped(
     state: &SlackState,
     app: &App,
+    slack_channel: &AppChannel,
     slack_config: &SlackChannelConfig,
     event: &SlackEvent,
 ) -> anyhow::Result<()> {
@@ -1359,7 +1386,13 @@ async fn handle_agent_session_stopped(
     routing_event.channel = thread.channel_id.clone().or(routing_event.channel);
     routing_event.thread_ts = thread.thread_ts.clone().or(routing_event.thread_ts);
 
-    let routing_tags = build_session_tags(app, slack_config, &routing_event, SlackSurface::Pane);
+    let routing_tags = build_session_tags(
+        app,
+        slack_channel,
+        slack_config,
+        &routing_event,
+        SlackSurface::Pane,
+    );
     let Some(row) = state
         .db
         .find_app_session_by_tags(app.org_id, app.internal_id, &routing_tags)
@@ -1399,6 +1432,7 @@ async fn handle_agent_session_stopped(
 async fn handle_agent_session_title_changed(
     state: &SlackState,
     app: &App,
+    slack_channel: &AppChannel,
     slack_config: &SlackChannelConfig,
     event: &SlackEvent,
 ) -> anyhow::Result<()> {
@@ -1430,7 +1464,13 @@ async fn handle_agent_session_title_changed(
     routing_event.channel = thread.channel_id.clone().or(routing_event.channel);
     routing_event.thread_ts = thread.thread_ts.clone().or(routing_event.thread_ts);
 
-    let routing_tags = build_session_tags(app, slack_config, &routing_event, SlackSurface::Pane);
+    let routing_tags = build_session_tags(
+        app,
+        slack_channel,
+        slack_config,
+        &routing_event,
+        SlackSurface::Pane,
+    );
     let Some(row) = state
         .db
         .find_app_session_by_tags(app.org_id, app.internal_id, &routing_tags)
@@ -1482,6 +1522,7 @@ async fn handle_agent_session_title_changed(
 async fn handle_app_context_changed(
     state: &SlackState,
     app: &App,
+    slack_channel: &AppChannel,
     slack_config: &SlackChannelConfig,
     event: &SlackEvent,
 ) -> anyhow::Result<()> {
@@ -1496,7 +1537,13 @@ async fn handle_app_context_changed(
     routing_event.channel = thread.channel_id.clone().or(routing_event.channel);
     routing_event.thread_ts = thread.thread_ts.clone().or(routing_event.thread_ts);
 
-    let routing_tags = build_session_tags(app, slack_config, &routing_event, SlackSurface::Pane);
+    let routing_tags = build_session_tags(
+        app,
+        slack_channel,
+        slack_config,
+        &routing_event,
+        SlackSurface::Pane,
+    );
     let Some(row) = state
         .db
         .find_app_session_by_tags(app.org_id, app.internal_id, &routing_tags)
@@ -1541,11 +1588,15 @@ async fn handle_app_context_changed(
 
 fn build_session_tags(
     app: &App,
+    slack_channel: &AppChannel,
     slack_config: &SlackChannelConfig,
     event: &SlackEvent,
     surface: SlackSurface,
 ) -> Vec<String> {
-    let mut tags = vec![format!("slack:app:{}", app.public_id)];
+    let mut tags = vec![
+        format!("slack:app:{}", app.public_id),
+        format!("slack:endpoint:{}", slack_channel.public_id),
+    ];
 
     // Build routing metadata from the Slack event
     let mut routing_metadata = HashMap::new();
@@ -2717,10 +2768,17 @@ mod tests {
         let config = test_config(SessionStrategy::PerThread);
         let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
 
-        let tags = build_session_tags(&app, &config, &event, SlackSurface::Channel);
-        assert_eq!(tags.len(), 2);
+        let tags = build_session_tags(
+            &app,
+            &app.channels[0],
+            &config,
+            &event,
+            SlackSurface::Channel,
+        );
+        assert_eq!(tags.len(), 3);
         assert!(tags[0].starts_with("slack:app:"));
-        assert_eq!(tags[1], "slack:thread:1234.0000"); // uses thread_ts
+        assert!(tags[1].starts_with("slack:endpoint:"));
+        assert_eq!(tags[2], "slack:thread:1234.0000"); // uses thread_ts
     }
 
     #[test]
@@ -2729,8 +2787,14 @@ mod tests {
         let config = test_config(SessionStrategy::PerThread);
         let event = test_event("C123", Some("1234.5678"), None);
 
-        let tags = build_session_tags(&app, &config, &event, SlackSurface::Channel);
-        assert_eq!(tags[1], "slack:thread:1234.5678"); // falls back to ts
+        let tags = build_session_tags(
+            &app,
+            &app.channels[0],
+            &config,
+            &event,
+            SlackSurface::Channel,
+        );
+        assert_eq!(tags[2], "slack:thread:1234.5678"); // falls back to ts
     }
 
     #[test]
@@ -2739,8 +2803,14 @@ mod tests {
         let config = test_config(SessionStrategy::PerChannel);
         let event = test_event("C123", Some("1234.5678"), None);
 
-        let tags = build_session_tags(&app, &config, &event, SlackSurface::Channel);
-        assert_eq!(tags[1], "slack:channel:C123");
+        let tags = build_session_tags(
+            &app,
+            &app.channels[0],
+            &config,
+            &event,
+            SlackSurface::Channel,
+        );
+        assert_eq!(tags[2], "slack:channel:C123");
     }
 
     #[test]
@@ -2750,8 +2820,14 @@ mod tests {
         let mut event = test_event("C123", Some("1234.5678"), None);
         event.user = Some("U999".to_string());
 
-        let tags = build_session_tags(&app, &config, &event, SlackSurface::Channel);
-        assert_eq!(tags[1], "slack:user:U999");
+        let tags = build_session_tags(
+            &app,
+            &app.channels[0],
+            &config,
+            &event,
+            SlackSurface::Channel,
+        );
+        assert_eq!(tags[2], "slack:user:U999");
     }
 
     #[test]
@@ -2974,7 +3050,8 @@ mod tests {
         config.agent_surface_enabled = true;
         let event = test_event("D_PANE", Some("1234.5678"), None);
 
-        let pane_tags = build_session_tags(&app, &config, &event, SlackSurface::Pane);
+        let pane_tags =
+            build_session_tags(&app, &app.channels[0], &config, &event, SlackSurface::Pane);
         assert!(
             pane_tags.iter().any(|t| t == "slack:thread:1234.5678"),
             "pane must route per thread, got {pane_tags:?}"
@@ -2985,7 +3062,13 @@ mod tests {
         );
 
         // Same config, channel surface: per_channel still means per_channel.
-        let channel_tags = build_session_tags(&app, &config, &event, SlackSurface::Channel);
+        let channel_tags = build_session_tags(
+            &app,
+            &app.channels[0],
+            &config,
+            &event,
+            SlackSurface::Channel,
+        );
         assert!(
             channel_tags.iter().any(|t| t == "slack:channel:D_PANE"),
             "channel surface must keep the configured strategy, got {channel_tags:?}"
@@ -3026,11 +3109,17 @@ mod tests {
         let app = test_app();
         let event = test_event("C123", Some("1234.5678"), None);
 
-        let metadata = slack_message_metadata(&app, &event, None);
+        let metadata = slack_message_metadata(&app, &app.channels[0], &event, None);
 
         assert_eq!(
             metadata.get("_app_id"),
             Some(&serde_json::Value::String(app.public_id.to_string()))
+        );
+        assert_eq!(
+            metadata.get("_app_channel_id"),
+            Some(&serde_json::Value::String(
+                app.channels[0].public_id.to_string()
+            ))
         );
         assert_eq!(
             metadata.get("slack_ts"),
@@ -3128,18 +3217,36 @@ mod tests {
         let config = test_config(SessionStrategy::PerThread);
         let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
 
-        let tags = build_session_tags(&app, &config, &event, SlackSurface::Channel);
-        assert_eq!(tags[1], "slack:thread:1234.0000");
+        let tags = build_session_tags(
+            &app,
+            &app.channels[0],
+            &config,
+            &event,
+            SlackSurface::Channel,
+        );
+        assert_eq!(tags[2], "slack:thread:1234.0000");
 
         let config_channel = test_config(SessionStrategy::PerChannel);
-        let tags_channel = build_session_tags(&app, &config_channel, &event, SlackSurface::Channel);
-        assert_eq!(tags_channel[1], "slack:channel:C123");
+        let tags_channel = build_session_tags(
+            &app,
+            &app.channels[0],
+            &config_channel,
+            &event,
+            SlackSurface::Channel,
+        );
+        assert_eq!(tags_channel[2], "slack:channel:C123");
 
         let mut event_user = test_event("C123", Some("1234.5678"), None);
         event_user.user = Some("U999".to_string());
         let config_user = test_config(SessionStrategy::PerUser);
-        let tags_user = build_session_tags(&app, &config_user, &event_user, SlackSurface::Channel);
-        assert_eq!(tags_user[1], "slack:user:U999");
+        let tags_user = build_session_tags(
+            &app,
+            &app.channels[0],
+            &config_user,
+            &event_user,
+            SlackSurface::Channel,
+        );
+        assert_eq!(tags_user[2], "slack:user:U999");
     }
 
     // ==========================================
@@ -3373,8 +3480,13 @@ mod tests {
                 "https://example.com/api".to_string(),
             );
 
-            let tags =
-                build_session_tags(app, &pane_config(), &rename_event(None), SlackSurface::Pane);
+            let tags = build_session_tags(
+                app,
+                &app.channels[0],
+                &pane_config(),
+                &rename_event(None),
+                SlackSurface::Pane,
+            );
             let session = state
                 .db
                 .create_session(CreateSessionRow {
@@ -3443,6 +3555,7 @@ mod tests {
             handle_agent_session_title_changed(
                 &state,
                 &app,
+                &app.channels[0],
                 &pane_config(),
                 // Slack pads nothing, but a user can; the stored title should not.
                 &rename_event(Some("  Refund policy for EU orders  ")),
@@ -3471,6 +3584,7 @@ mod tests {
             handle_agent_session_title_changed(
                 &state,
                 &app,
+                &app.channels[0],
                 &pane_config(),
                 &rename_event(Some("Refund policy")),
             )
@@ -3489,6 +3603,7 @@ mod tests {
                 handle_agent_session_title_changed(
                     &state,
                     &app,
+                    &app.channels[0],
                     &pane_config(),
                     &rename_event(title),
                 )
@@ -3521,6 +3636,7 @@ mod tests {
             handle_agent_session_title_changed(
                 &state,
                 &other_app,
+                &other_app.channels[0],
                 &pane_config(),
                 &rename_event(Some("Hijacked")),
             )
