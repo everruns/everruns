@@ -21,7 +21,7 @@
 use crate::auth::audit;
 use crate::auth::middleware::{AuthState, AuthUser, OrgAdmin};
 use crate::storage::StorageBackend;
-use crate::storage::models::CreateOrgInvitation;
+use crate::storage::models::{AcceptOrgInvitationResult, CreateOrgInvitation};
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Extension, Path, State},
@@ -304,6 +304,14 @@ fn internal(context: &str, err: anyhow::Error) -> InviteError {
     )
 }
 
+fn invalid_invite() -> InviteError {
+    InviteError::new(
+        StatusCode::NOT_FOUND,
+        "invite_invalid",
+        "Invitation not found",
+    )
+}
+
 // ============================================================================
 // Core operations (testable without HTTP)
 // ============================================================================
@@ -526,25 +534,25 @@ pub async fn accept_invitation(
     user_id: Uuid,
     max_members: i64,
 ) -> Result<AcceptedInvitation, InviteError> {
-    let invalid = || {
-        InviteError::new(
-            StatusCode::NOT_FOUND,
-            "invite_invalid",
-            "Invitation not found",
-        )
-    };
-
     if !token.starts_with(INVITE_TOKEN_PREFIX) {
-        return Err(invalid());
+        return Err(invalid_invite());
     }
-
+    let user = verified_user(db, user_id).await?;
+    let recipient_email = normalize_email(&user.email);
     let token_hash = hash_invite_token(token);
     let row = db
         .get_org_invitation_by_token_hash(&token_hash)
         .await
         .map_err(|e| internal("lookup invite by token", e))?
-        .ok_or_else(invalid)?;
-    accept_invitation_row(db, row, user_id, max_members).await
+        .ok_or_else(invalid_invite)?;
+    if row.email != recipient_email {
+        return Err(InviteError::new(
+            StatusCode::FORBIDDEN,
+            "invite_email_mismatch",
+            "This invitation was issued to a different email address",
+        ));
+    }
+    accept_invitation_row(db, row, user_id, &recipient_email, max_members).await
 }
 
 /// Accept the invitation selected during onboarding by its stable public ID.
@@ -554,22 +562,17 @@ pub async fn accept_pending_invitation(
     user_id: Uuid,
     max_members: i64,
 ) -> Result<AcceptedInvitation, InviteError> {
-    let invalid = || {
-        InviteError::new(
-            StatusCode::NOT_FOUND,
-            "invite_invalid",
-            "Invitation not found",
-        )
-    };
     if !invitation_id.starts_with(INVITE_PUBLIC_ID_PREFIX) {
-        return Err(invalid());
+        return Err(invalid_invite());
     }
+    let user = verified_user(db, user_id).await?;
+    let recipient_email = normalize_email(&user.email);
     let row = db
-        .get_org_invitation_by_public_id_global(invitation_id)
+        .get_org_invitation_by_public_id_and_email(invitation_id, &recipient_email)
         .await
         .map_err(|e| internal("lookup invite by public id", e))?
-        .ok_or_else(invalid)?;
-    accept_invitation_row(db, row, user_id, max_members).await
+        .ok_or_else(invalid_invite)?;
+    accept_invitation_row(db, row, user_id, &recipient_email, max_members).await
 }
 
 async fn verified_user(
@@ -601,90 +604,57 @@ async fn accept_invitation_row(
     db: &StorageBackend,
     row: crate::storage::models::OrgInvitationRow,
     user_id: Uuid,
+    recipient_email: &str,
     max_members: i64,
 ) -> Result<AcceptedInvitation, InviteError> {
-    // Resolved-state checks return distinct codes for UI handling.
-    if row.revoked_at.is_some() {
-        return Err(InviteError::new(
-            StatusCode::CONFLICT,
-            "invite_revoked",
-            "This invitation has been revoked",
-        ));
-    }
-    if row.accepted_at.is_some() {
-        return Err(InviteError::new(
-            StatusCode::CONFLICT,
-            "invite_already_accepted",
-            "This invitation has already been accepted",
-        ));
-    }
-    if row.expires_at <= chrono::Utc::now() {
-        return Err(InviteError::new(
-            StatusCode::GONE,
-            "invite_expired",
-            "This invitation has expired",
-        ));
-    }
-
-    // Re-load the user row instead of trusting the authenticated session/JWT
-    // email claim. Invite acceptance grants tenant membership, so the matching
-    // address must be verified mailbox ownership, not a self-asserted local
-    // signup address (TM-AUTH-023, TM-TENANT-011).
-    let user = verified_user(db, user_id).await?;
-
-    // Authenticated, verified email must match the invited email under the same
-    // normalization used at creation.
-    if normalize_email(&user.email) != row.email {
-        return Err(InviteError::new(
-            StatusCode::FORBIDDEN,
-            "invite_email_mismatch",
-            "This invitation was issued to a different email address",
-        ));
-    }
-
-    // Capacity guard at acceptance, matching add-member behavior.
-    if !db
-        .is_organization_member(row.org_id, user_id)
+    let outcome = db
+        .accept_org_invitation_with_membership(
+            row.id,
+            row.org_id,
+            recipient_email,
+            user_id,
+            max_members,
+        )
         .await
-        .map_err(|e| internal("check membership", e))?
-    {
-        let member_count = db
-            .count_organization_members(row.org_id)
-            .await
-            .map_err(|e| internal("count members", e))?;
-        if member_count >= max_members {
+        .map_err(|e| internal("accept invite", e))?;
+    let accepted = match outcome {
+        AcceptOrgInvitationResult::Accepted(accepted) => accepted,
+        AcceptOrgInvitationResult::NotFound => return Err(invalid_invite()),
+        AcceptOrgInvitationResult::Revoked => {
+            return Err(InviteError::new(
+                StatusCode::CONFLICT,
+                "invite_revoked",
+                "This invitation has been revoked",
+            ));
+        }
+        AcceptOrgInvitationResult::AlreadyAccepted => {
+            return Err(InviteError::new(
+                StatusCode::CONFLICT,
+                "invite_already_accepted",
+                "This invitation has already been accepted",
+            ));
+        }
+        AcceptOrgInvitationResult::Expired => {
+            return Err(InviteError::new(
+                StatusCode::GONE,
+                "invite_expired",
+                "This invitation has expired",
+            ));
+        }
+        AcceptOrgInvitationResult::MemberLimitReached => {
             return Err(InviteError::new(
                 StatusCode::CONFLICT,
                 "member_limit_reached",
                 format!("Member limit reached (max {max_members})"),
             ));
         }
-    }
-
-    // Atomically claim the invite; a concurrent accept loses here.
-    let accepted = db
-        .accept_org_invitation(row.id, user_id)
-        .await
-        .map_err(|e| internal("accept invite", e))?
-        .ok_or_else(|| {
-            InviteError::new(
-                StatusCode::CONFLICT,
-                "invite_already_accepted",
-                "This invitation has already been accepted",
-            )
-        })?;
-
-    // Membership is local-DB authoritative; no external identity provider call.
-    db.add_organization_member(accepted.org_id, user_id, &accepted.role)
-        .await
-        .map_err(|e| internal("add member", e))?;
+    };
 
     let org = db
         .get_organization(accepted.org_id)
         .await
         .map_err(|e| internal("get organization", e))?
         .ok_or_else(|| internal("get organization", anyhow::anyhow!("org missing")))?;
-
     Ok(AcceptedInvitation {
         org_id: accepted.org_id,
         org_public_id: org.public_id,

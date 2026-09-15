@@ -680,15 +680,16 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    pub async fn get_org_invitation_by_public_id_global(
+    pub async fn get_org_invitation_by_public_id_and_email(
         &self,
         public_id: &str,
+        email: &str,
     ) -> Result<Option<OrgInvitationRow>> {
         Ok(self
             .org_invitations
             .read()
             .iter()
-            .find(|i| i.public_id == public_id)
+            .find(|i| i.public_id == public_id && i.email == email)
             .cloned())
     }
 
@@ -731,24 +732,55 @@ impl InMemoryDatabase {
         Ok(false)
     }
 
-    /// Atomically mark an invitation accepted. Returns the updated row only when
-    /// it was still pending, so concurrent accepts cannot both win.
-    pub async fn accept_org_invitation(
+    pub async fn accept_org_invitation_with_membership(
         &self,
         invitation_id: i64,
+        org_id: i64,
+        recipient_email: &str,
         accepted_by: Uuid,
-    ) -> Result<Option<OrgInvitationRow>> {
+        max_members: i64,
+    ) -> Result<AcceptOrgInvitationResult> {
         let now = Self::now();
         let mut invitations = self.org_invitations.write();
-        if let Some(inv) = invitations
+        let Some(inv) = invitations
             .iter_mut()
-            .find(|i| i.id == invitation_id && i.accepted_at.is_none() && i.revoked_at.is_none())
-        {
-            inv.accepted_at = Some(now);
-            inv.accepted_by = Some(accepted_by);
-            inv.updated_at = now;
-            return Ok(Some(inv.clone()));
+            .find(|i| i.id == invitation_id && i.org_id == org_id && i.email == recipient_email)
+        else {
+            return Ok(AcceptOrgInvitationResult::NotFound);
+        };
+        if inv.revoked_at.is_some() {
+            return Ok(AcceptOrgInvitationResult::Revoked);
         }
-        Ok(None)
+        if inv.accepted_at.is_some() {
+            return Ok(AcceptOrgInvitationResult::AlreadyAccepted);
+        }
+        if inv.expires_at <= now {
+            return Ok(AcceptOrgInvitationResult::Expired);
+        }
+
+        let mut members = self.organization_members.write();
+        let member_key = (org_id, accepted_by);
+        if !members.contains_key(&member_key)
+            && members
+                .values()
+                .filter(|member| member.org_id == org_id)
+                .count() as i64
+                >= max_members
+        {
+            return Ok(AcceptOrgInvitationResult::MemberLimitReached);
+        }
+        inv.accepted_at = Some(now);
+        inv.accepted_by = Some(accepted_by);
+        inv.updated_at = now;
+        members
+            .entry(member_key)
+            .and_modify(|member| member.role = inv.role.clone())
+            .or_insert_with(|| OrganizationMemberRow {
+                org_id,
+                user_id: accepted_by,
+                role: inv.role.clone(),
+                created_at: now,
+            });
+        Ok(AcceptOrgInvitationResult::Accepted(Box::new(inv.clone())))
     }
 }

@@ -235,6 +235,17 @@ pub struct CreateOrgInvitation {
     pub expires_at: DateTime<Utc>,
 }
 
+/// Result of claiming an invitation and adding its recipient as an organization member.
+#[derive(Debug, Clone)]
+pub enum AcceptOrgInvitationResult {
+    Accepted(Box<OrgInvitationRow>),
+    NotFound,
+    Revoked,
+    AlreadyAccepted,
+    Expired,
+    MemberLimitReached,
+}
+
 // ============================================
 // Auth models
 // ============================================

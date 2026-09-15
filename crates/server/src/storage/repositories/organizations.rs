@@ -848,18 +848,20 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_org_invitation_by_public_id_global(
+    pub async fn get_org_invitation_by_public_id_and_email(
         &self,
         public_id: &str,
+        email: &str,
     ) -> Result<Option<OrgInvitationRow>> {
         let row = sqlx::query_as::<_, OrgInvitationRow>(
             r#"
             SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
             FROM org_invitations
-            WHERE public_id = $1
+            WHERE public_id = $1 AND email = $2
             "#,
         )
         .bind(public_id)
+        .bind(email)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)
@@ -905,25 +907,108 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    /// Atomically mark an invitation accepted. The `WHERE` guard ensures only a
-    /// still-pending invite transitions, so concurrent accepts cannot both win.
-    pub async fn accept_org_invitation(
+    /// Claim an invitation, enforce capacity, and add membership in one transaction.
+    pub async fn accept_org_invitation_with_membership(
         &self,
         invitation_id: i64,
+        org_id: i64,
+        recipient_email: &str,
         accepted_by: Uuid,
-    ) -> Result<Option<OrgInvitationRow>> {
-        let row = sqlx::query_as::<_, OrgInvitationRow>(
+        max_members: i64,
+    ) -> Result<AcceptOrgInvitationResult> {
+        let mut tx = self.pool.begin().await?;
+        let org_exists = sqlx::query_scalar::<_, i64>(
+            "SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE",
+        )
+        .bind(org_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if org_exists.is_none() {
+            tx.rollback().await?;
+            return Ok(AcceptOrgInvitationResult::NotFound);
+        }
+
+        let accepted = sqlx::query_as::<_, OrgInvitationRow>(
             r#"
             UPDATE org_invitations
-            SET accepted_at = NOW(), accepted_by = $2
-            WHERE id = $1 AND accepted_at IS NULL AND revoked_at IS NULL
+            SET accepted_at = NOW(), accepted_by = $4, updated_at = NOW()
+            WHERE id = $1
+              AND org_id = $2
+              AND email = $3
+              AND accepted_at IS NULL
+              AND revoked_at IS NULL
+              AND expires_at > NOW()
             RETURNING id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
             "#,
         )
         .bind(invitation_id)
+        .bind(org_id)
+        .bind(recipient_email)
         .bind(accepted_by)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await?;
-        Ok(row)
+
+        let Some(accepted) = accepted else {
+            let current = sqlx::query_scalar::<_, String>(
+                r#"
+                SELECT CASE
+                    WHEN revoked_at IS NOT NULL THEN 'revoked'
+                    WHEN accepted_at IS NOT NULL THEN 'accepted'
+                    WHEN expires_at <= NOW() THEN 'expired'
+                    ELSE 'unavailable'
+                END
+                FROM org_invitations
+                WHERE id = $1 AND org_id = $2 AND email = $3
+                "#,
+            )
+            .bind(invitation_id)
+            .bind(org_id)
+            .bind(recipient_email)
+            .fetch_optional(&mut *tx)
+            .await?;
+            tx.rollback().await?;
+            return Ok(match current.as_deref() {
+                None => AcceptOrgInvitationResult::NotFound,
+                Some("revoked") => AcceptOrgInvitationResult::Revoked,
+                Some("accepted") => AcceptOrgInvitationResult::AlreadyAccepted,
+                Some("expired") => AcceptOrgInvitationResult::Expired,
+                Some(_) => AcceptOrgInvitationResult::NotFound,
+            });
+        };
+
+        let already_member = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM organization_members WHERE org_id = $1 AND user_id = $2)",
+        )
+        .bind(org_id)
+        .bind(accepted_by)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !already_member {
+            let member_count = sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM organization_members WHERE org_id = $1",
+            )
+            .bind(org_id)
+            .fetch_one(&mut *tx)
+            .await?;
+            if member_count >= max_members {
+                tx.rollback().await?;
+                return Ok(AcceptOrgInvitationResult::MemberLimitReached);
+            }
+        }
+
+        sqlx::query(
+            r#"
+            INSERT INTO organization_members (org_id, user_id, role)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role
+            "#,
+        )
+        .bind(org_id)
+        .bind(accepted_by)
+        .bind(&accepted.role)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(AcceptOrgInvitationResult::Accepted(Box::new(accepted)))
     }
 }

@@ -6,9 +6,10 @@
 //! `api::org_invitations`; these tests cover routing, extractors, auth wiring,
 //! and serialization.
 //!
-//! Uses in-memory backend (no PostgreSQL required). In the no-auth test harness
-//! the caller is the anonymous owner of the default org, and no email provider
-//! is configured, so creation reports `not_configured`.
+//! Route cases use the in-memory backend. The final-slot concurrency case uses
+//! PostgreSQL to verify the transaction and organization lock. In the no-auth
+//! harness the caller is the anonymous owner of the default org, and no email
+//! provider is configured, so creation reports `not_configured`.
 //!
 //! Run with: cargo test -p everruns-server --test org_invitations_test
 
@@ -17,11 +18,94 @@ mod test_harness;
 use axum::http::StatusCode;
 use chrono::{Duration, Utc};
 use everruns_platform::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID};
-use everruns_server::storage::{CreateOrgInvitation, CreateOrganizationRow};
+use everruns_server::{
+    api::org_invitations::accept_pending_invitation,
+    storage::{
+        CreateOrgInvitation, CreateOrganizationRow, CreateUserRow, OrgInvitationRow,
+        OrganizationRow, UpdateUser,
+    },
+};
 use serde_json::{Value, json};
 use test_harness::TestServer;
+use uuid::Uuid;
 
 const DEFAULT_ORG: &str = "org_00000000000000000000000000000001";
+
+async fn create_org(server: &TestServer, name: &str) -> OrganizationRow {
+    server
+        .db
+        .create_organization(CreateOrganizationRow {
+            public_id: format!("org_{}", Uuid::new_v4().simple()),
+            name: name.to_string(),
+            created_by: None,
+        })
+        .await
+        .expect("create organization")
+}
+
+async fn create_invitation(
+    server: &TestServer,
+    org_id: i64,
+    email: &str,
+    expires_at: chrono::DateTime<Utc>,
+) -> OrgInvitationRow {
+    server
+        .db
+        .create_org_invitation(CreateOrgInvitation {
+            public_id: format!("orginv_{}", Uuid::new_v4().simple()),
+            org_id,
+            email: email.to_string(),
+            role: "member".to_string(),
+            invited_by: ANONYMOUS_USER_ID,
+            token_hash: Uuid::new_v4().simple().to_string(),
+            expires_at,
+        })
+        .await
+        .expect("create invitation")
+}
+
+async fn create_verified_user(server: &TestServer, email: &str) -> Uuid {
+    server
+        .db
+        .create_user(CreateUserRow {
+            email: email.to_string(),
+            name: "Invitee".to_string(),
+            avatar_url: None,
+            roles: vec![],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: Some("local".to_string()),
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .expect("create user")
+        .id
+}
+
+async fn fill_organization(server: &TestServer, org_id: i64, count: usize) {
+    for index in 0..count {
+        let user = create_verified_user(
+            server,
+            &format!("member-{index}-{}@example.com", Uuid::new_v4()),
+        )
+        .await;
+        server
+            .db
+            .add_organization_member(org_id, user, "member")
+            .await
+            .expect("add member");
+    }
+}
+
+fn pending_accept_path(invitation: &OrgInvitationRow) -> String {
+    format!("/v1/invites/pending/{}/accept", invitation.public_id)
+}
+
+fn assert_invite_error(response: test_harness::TestResponse, status: StatusCode, code: &str) {
+    let body: Value = response.assert_status(status).json();
+    assert_eq!(body["code"], code);
+}
 
 #[tokio::test]
 async fn current_user_can_discover_and_accept_pending_invitation() {
@@ -109,46 +193,291 @@ async fn current_user_can_discover_and_accept_pending_invitation() {
 }
 
 #[tokio::test]
-async fn pending_invitation_acceptance_rejects_a_different_email() {
+async fn pending_invitation_id_does_not_disclose_another_recipient_lifecycle() {
     let server = TestServer::in_memory().await;
-    let org = server
+    let org = create_org(&server, "Private Organization").await;
+    let other_email = format!("other-{}@example.com", Uuid::new_v4());
+    let other_user = create_verified_user(&server, &other_email).await;
+    let active = create_invitation(
+        &server,
+        org.org_id,
+        &other_email,
+        Utc::now() + Duration::days(1),
+    )
+    .await;
+    let expired = create_invitation(
+        &server,
+        org.org_id,
+        &other_email,
+        Utc::now() - Duration::seconds(1),
+    )
+    .await;
+    let revoked = create_invitation(
+        &server,
+        org.org_id,
+        &other_email,
+        Utc::now() + Duration::days(1),
+    )
+    .await;
+    server
         .db
-        .create_organization(CreateOrganizationRow {
-            public_id: "org_00000000000000000000000000000984".to_string(),
-            name: "Private Organization".to_string(),
-            created_by: None,
-        })
+        .revoke_org_invitation(org.org_id, &revoked.public_id)
         .await
-        .expect("create organization");
-    let invitation = server
-        .db
-        .create_org_invitation(CreateOrgInvitation {
-            public_id: "orginv_00000000000000000000000000000984".to_string(),
-            org_id: org.org_id,
-            email: "someone-else@example.com".to_string(),
-            role: "member".to_string(),
-            invited_by: ANONYMOUS_USER_ID,
-            token_hash: "different-email-token-hash".to_string(),
-            expires_at: Utc::now() + Duration::days(1),
-        })
+        .expect("revoke invitation");
+    let accepted = create_invitation(
+        &server,
+        org.org_id,
+        &other_email,
+        Utc::now() + Duration::days(1),
+    )
+    .await;
+    accept_pending_invitation(&server.db, &accepted.public_id, other_user, 50)
         .await
-        .expect("create invitation");
+        .expect("accept invitation as recipient");
 
-    let response = server
-        .post(
-            &format!("/v1/invites/pending/{}/accept", invitation.public_id),
-            json!({}),
+    for invitation in [active, expired, revoked, accepted] {
+        assert_invite_error(
+            server
+                .post(&pending_accept_path(&invitation), json!({}))
+                .await,
+            StatusCode::NOT_FOUND,
+            "invite_invalid",
+        );
+    }
+}
+
+#[tokio::test]
+async fn pending_invitation_id_requires_a_verified_recipient() {
+    let server = TestServer::in_memory().await;
+    let org = create_org(&server, "Verified Recipient Organization").await;
+    let invitation = create_invitation(
+        &server,
+        org.org_id,
+        ANONYMOUS_USER_EMAIL,
+        Utc::now() + Duration::days(1),
+    )
+    .await;
+    server
+        .db
+        .update_user(
+            ANONYMOUS_USER_ID,
+            UpdateUser {
+                email_verified: Some(false),
+                ..Default::default()
+            },
         )
         .await
-        .assert_status(StatusCode::FORBIDDEN);
-    let body: Value = response.json();
-    assert_eq!(body["code"], "invite_email_mismatch");
+        .expect("mark user unverified");
+
+    assert_invite_error(
+        server
+            .post(&pending_accept_path(&invitation), json!({}))
+            .await,
+        StatusCode::FORBIDDEN,
+        "invite_email_unverified",
+    );
     assert!(
         !server
             .db
             .is_organization_member(org.org_id, ANONYMOUS_USER_ID)
             .await
             .expect("membership lookup")
+    );
+}
+
+#[tokio::test]
+async fn pending_invitation_id_reports_recipient_owned_lifecycle_states() {
+    let server = TestServer::in_memory().await;
+    let org = create_org(&server, "Lifecycle Organization").await;
+    let expired = create_invitation(&server, org.org_id, ANONYMOUS_USER_EMAIL, Utc::now()).await;
+    let revoked = create_invitation(
+        &server,
+        org.org_id,
+        ANONYMOUS_USER_EMAIL,
+        Utc::now() + Duration::days(1),
+    )
+    .await;
+    server
+        .db
+        .revoke_org_invitation(org.org_id, &revoked.public_id)
+        .await
+        .expect("revoke invitation");
+    let accepted = create_invitation(
+        &server,
+        org.org_id,
+        ANONYMOUS_USER_EMAIL,
+        Utc::now() + Duration::days(1),
+    )
+    .await;
+    server
+        .post(&pending_accept_path(&accepted), json!({}))
+        .await
+        .assert_status(StatusCode::OK);
+
+    assert_invite_error(
+        server.post(&pending_accept_path(&expired), json!({})).await,
+        StatusCode::GONE,
+        "invite_expired",
+    );
+    assert_invite_error(
+        server.post(&pending_accept_path(&revoked), json!({})).await,
+        StatusCode::CONFLICT,
+        "invite_revoked",
+    );
+    assert_invite_error(
+        server
+            .post(&pending_accept_path(&accepted), json!({}))
+            .await,
+        StatusCode::CONFLICT,
+        "invite_already_accepted",
+    );
+}
+
+#[tokio::test]
+async fn pending_invitation_id_accepts_the_final_member_slot() {
+    let server = TestServer::in_memory().await;
+    let org = create_org(&server, "Boundary Organization").await;
+    fill_organization(&server, org.org_id, 49).await;
+    let invitation = create_invitation(
+        &server,
+        org.org_id,
+        ANONYMOUS_USER_EMAIL,
+        Utc::now() + Duration::days(1),
+    )
+    .await;
+
+    server
+        .post(&pending_accept_path(&invitation), json!({}))
+        .await
+        .assert_status(StatusCode::OK);
+    assert_eq!(
+        server
+            .db
+            .count_organization_members(org.org_id)
+            .await
+            .expect("count members"),
+        50
+    );
+}
+
+#[tokio::test]
+async fn pending_invitation_id_preserves_the_invite_when_capacity_is_full() {
+    let server = TestServer::in_memory().await;
+    let org = create_org(&server, "Full Organization").await;
+    fill_organization(&server, org.org_id, 50).await;
+    let invitation = create_invitation(
+        &server,
+        org.org_id,
+        ANONYMOUS_USER_EMAIL,
+        Utc::now() + Duration::days(1),
+    )
+    .await;
+
+    assert_invite_error(
+        server
+            .post(&pending_accept_path(&invitation), json!({}))
+            .await,
+        StatusCode::CONFLICT,
+        "member_limit_reached",
+    );
+    let current = server
+        .db
+        .get_org_invitation_by_public_id_and_email(&invitation.public_id, ANONYMOUS_USER_EMAIL)
+        .await
+        .expect("get invitation")
+        .expect("invitation exists");
+    assert!(current.accepted_at.is_none());
+    assert!(
+        !server
+            .db
+            .is_organization_member(org.org_id, ANONYMOUS_USER_ID)
+            .await
+            .expect("membership lookup")
+    );
+}
+
+#[tokio::test]
+async fn concurrent_pending_invitations_cannot_exceed_the_member_limit() {
+    let server = TestServer::new().await;
+    let org = create_org(&server, "Concurrent Capacity Organization").await;
+    fill_organization(&server, org.org_id, 49).await;
+    let first_email = format!("first-{}@example.com", Uuid::new_v4());
+    let second_email = format!("second-{}@example.com", Uuid::new_v4());
+    let first_user = create_verified_user(&server, &first_email).await;
+    let second_user = create_verified_user(&server, &second_email).await;
+    let first_invitation = create_invitation(
+        &server,
+        org.org_id,
+        &first_email,
+        Utc::now() + Duration::days(1),
+    )
+    .await;
+    let second_invitation = create_invitation(
+        &server,
+        org.org_id,
+        &second_email,
+        Utc::now() + Duration::days(1),
+    )
+    .await;
+    let first_db = server.db.clone();
+    let second_db = server.db.clone();
+    let first_id = first_invitation.public_id.clone();
+    let second_id = second_invitation.public_id.clone();
+    let (first_result, second_result) = tokio::join!(
+        async move { accept_pending_invitation(&first_db, &first_id, first_user, 50).await },
+        async move { accept_pending_invitation(&second_db, &second_id, second_user, 50).await },
+    );
+
+    assert_eq!(
+        usize::from(first_result.is_ok()) + usize::from(second_result.is_ok()),
+        1
+    );
+    let failure = first_result
+        .err()
+        .or_else(|| second_result.err())
+        .expect("one failure");
+    assert_eq!(failure.code, "member_limit_reached");
+    assert_eq!(
+        server
+            .db
+            .count_organization_members(org.org_id)
+            .await
+            .expect("count members"),
+        50
+    );
+
+    let first_current = server
+        .db
+        .get_org_invitation_by_public_id_and_email(&first_invitation.public_id, &first_email)
+        .await
+        .expect("get first invitation")
+        .expect("first invitation exists");
+    let second_current = server
+        .db
+        .get_org_invitation_by_public_id_and_email(&second_invitation.public_id, &second_email)
+        .await
+        .expect("get second invitation")
+        .expect("second invitation exists");
+    assert_eq!(
+        usize::from(first_current.accepted_at.is_some())
+            + usize::from(second_current.accepted_at.is_some()),
+        1
+    );
+    assert_eq!(
+        usize::from(
+            server
+                .db
+                .is_organization_member(org.org_id, first_user)
+                .await
+                .expect("first membership lookup")
+        ) + usize::from(
+            server
+                .db
+                .is_organization_member(org.org_id, second_user)
+                .await
+                .expect("second membership lookup")
+        ),
+        1
     );
 }
 
