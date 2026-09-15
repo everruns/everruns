@@ -3,6 +3,8 @@
 Choose where an agent's commands run, and say so before it runs any. This is a
 real `gpt-5.6-terra` agent, not a scripted turn.
 
+![Environment Agent terminal demo](src/demo.gif)
+
 ## What you learn
 
 Selecting a session's execution environment, reading the capability set that
@@ -160,7 +162,26 @@ session itself is in-memory.
 `src/environment.rs`: the target table and derivation rules; `src/agent.rs`:
 capability sets per target; `src/sample_project.rs`: fixture materialization;
 `src/resources/project/`: input project; `src/instructions.md`: agent
-instructions. `examples/demo-support::shell` handles terminal presentation.
+instructions. `examples/demo-support::shell` handles terminal presentation;
+`src/record.sh` and `src/render_demo.py` handle recording.
+
+## Demo and recording
+
+`src/demo.txt` is output from a successful live run. `src/render_demo.py`
+automatically creates readable pages and durations; VHS replays them without
+another API call.
+
+```bash
+cd examples/environment-agent
+bash src/record.sh
+```
+
+Recording needs Python 3, VHS, ffmpeg, a VHS-compatible browser, and funded
+OpenAI credentials. The script preserves the previous successful transcript if
+the provider run fails. VHS captures frames reliably but its own GIF output
+silently produces nothing in some environments, so `record.sh` encodes the
+frames with ffmpeg rather than leaving it implied. Inspect recordings before
+sharing when adapting this example to private repositories.
 
 ## See also
 
