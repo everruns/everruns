@@ -135,12 +135,8 @@ export function IntegrationGuide({ kind, id, name }: IntegrationGuideProps) {
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             {kind === "agent" ? (
               <p>
-                For external-facing or unattended use, deploy this agent as an{" "}
-                <Link href="/apps/new" className="text-primary hover:underline">
-                  App
-                </Link>{" "}
-                with a webhook, A2A, or AG-UI channel. Each channel gets its own scoped token and
-                ready-made integration snippets.
+                Existing App channels keep working. New external integrations will use agent-owned
+                endpoints as they become available.
               </p>
             ) : (
               <p>
@@ -148,11 +144,8 @@ export function IntegrationGuide({ kind, id, name }: IntegrationGuideProps) {
                 <Link href="/agents" className="text-primary hover:underline">
                   agent
                 </Link>{" "}
-                that runs on this harness, or deploy one as an{" "}
-                <Link href="/apps/new" className="text-primary hover:underline">
-                  App
-                </Link>
-                . Calling a harness directly (no agent) uses the org defaults for prompt and model.
+                that runs on this harness. New external integrations will use agent-owned endpoints.
+                Calling a harness directly (no agent) uses the org defaults for prompt and model.
               </p>
             )}
             <p className="break-all text-xs">
