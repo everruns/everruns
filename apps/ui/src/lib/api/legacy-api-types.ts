@@ -528,10 +528,7 @@ export type SessionBinding =
  * The bindings a messaging transport can offer — it keys off an inbound message.
  * Mirrors `ChannelType::allowed_bindings()` for Slack.
  */
-export type SessionStrategy = Extract<
-  SessionBinding,
-  "per_thread" | "per_channel" | "per_user"
->;
+export type SessionStrategy = Extract<SessionBinding, "per_thread" | "per_channel" | "per_user">;
 
 export type SlackReplyMode = "all_messages" | "report_progress_only";
 

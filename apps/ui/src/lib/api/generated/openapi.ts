@@ -4112,8 +4112,8 @@ export interface components {
        * @example Process incoming A2A request and return a structured response.
        */
       message: string;
-      /** @description How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `InvocationSessionMode`. */
-      session_mode?: components["schemas"]["InvocationSessionMode"];
+      /** @description How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `SessionBinding`. */
+      session_mode?: components["schemas"]["SessionBinding"];
     };
     /**
      * @description Output of [`AddA2aChannelCmd`] — includes the plaintext API key (returned
@@ -4137,7 +4137,7 @@ export interface components {
        * @description How invocations route into sessions (`shared_session` to reuse one
        *     durable session, or `session_per_invocation` for a fresh session).
        */
-      session_mode?: components["schemas"]["InvocationSessionMode"];
+      session_mode?: components["schemas"]["SessionBinding"];
     };
     /**
      * @description Output of [`AddApiEndpointChannelCmd`] — includes the plaintext API key
@@ -6223,7 +6223,7 @@ export interface components {
        */
       message: string;
       /** @description Whether invocations reuse a stable session or create a new one. */
-      session_mode?: components["schemas"]["InvocationSessionMode"];
+      session_mode?: components["schemas"]["SessionBinding"];
       /**
        * @description IANA timezone identifier for cron evaluation (default `UTC`).
        * @example UTC
@@ -8998,12 +8998,6 @@ export interface components {
        */
       plugin_name: string;
     };
-    /**
-     * @description How app-triggered invocations route into sessions.
-     * @example shared_session
-     * @enum {string}
-     */
-    InvocationSessionMode: "shared_session" | "session_per_invocation";
     /** @description Key-value entry info (key and timestamps, no value) */
     KeyValueInfo: {
       /** @description When the key was created */
@@ -15058,7 +15052,7 @@ export interface components {
       /** @description Message content or template sent when the schedule fires. */
       message: string;
       /** @description Whether invocations reuse a stable session or create a new one. */
-      session_mode?: components["schemas"]["InvocationSessionMode"];
+      session_mode?: components["schemas"]["SessionBinding"];
       /** @description IANA timezone identifier for cron evaluation. */
       timezone?: string;
     };
@@ -15391,6 +15385,35 @@ export interface components {
      * @enum {string}
      */
     SessionActivity: "running" | "paused" | "failed" | "completed" | "idle";
+    /**
+     * @description What identity keys a session, for every exposure and every transport.
+     *
+     *     One enum replaces the former `SessionStrategy` (messaging channels) and
+     *     `InvocationSessionMode` (triggers and request/reply endpoints), which asked
+     *     the same question with disjoint vocabularies and forced every new surface to
+     *     pick a side (EVE-1005).
+     *
+     *     **The serialized values are deliberately the legacy ones.** Every variant
+     *     renames in Rust but serializes exactly as it did before, with the new name
+     *     accepted as a read alias. Persisted `channel_config` JSONB therefore needs no
+     *     migration, and the API and UI keep exchanging the values they already do.
+     *     Moving the wire vocabulary is a separate, migration-bearing change.
+     *
+     *     `Requester` keys on the **transport's own external actor id** — the Slack
+     *     user id, the Public Chat visitor id — never on an Everruns principal. Those
+     *     actors are unrelated to Everruns accounts (a Public Chat visitor is anonymous
+     *     or Google-signed-in), so there is one consistent answer rather than a split
+     *     variant: whatever the transport calls the requester, scoped by the
+     *     `{platform}:` tag prefix that already namespaces it.
+     * @example per_thread
+     * @enum {string}
+     */
+    SessionBinding:
+      | "per_thread"
+      | "per_channel"
+      | "per_user"
+      | "shared_session"
+      | "session_per_invocation";
     /**
      * @description Token-budget report for a session — a model-aware breakdown of the
      *     context window into named sections plus per-source contributions, so
@@ -16971,7 +16994,7 @@ export interface components {
       enabled?: boolean | null;
       /** @description Replacement message sent when the trigger fires. */
       message?: string | null;
-      session_mode?: null | components["schemas"]["InvocationSessionMode"];
+      session_mode?: null | components["schemas"]["SessionBinding"];
       /** @description Replacement IANA timezone identifier. */
       timezone?: string | null;
     };
