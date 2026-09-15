@@ -45,6 +45,8 @@ use super::common::{ApiResultExt, ErrorResponse, ListResponse, impl_auth_state};
 const INVITE_TTL_DAYS: i64 = 7;
 /// Token prefix; distinguishes invite tokens from PATs/JWTs.
 const INVITE_TOKEN_PREFIX: &str = "evrinv_";
+/// Stable public identifier prefix used by authenticated onboarding acceptance.
+const INVITE_PUBLIC_ID_PREFIX: &str = "orginv_";
 /// Random bytes in the token body (64 hex chars).
 const INVITE_TOKEN_BYTES: usize = 32;
 
@@ -88,6 +90,11 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/v1/orgs/{org}/invites/{invite_id}",
             axum::routing::delete(revoke_invite),
+        )
+        .route("/v1/invites/pending", get(list_pending_invites_for_user))
+        .route(
+            "/v1/invites/pending/{invite_id}/accept",
+            post(accept_pending_invite),
         )
         .route("/v1/invites/{token}/accept", post(accept_invite))
         .with_state(state)
@@ -232,6 +239,16 @@ pub struct CreateInviteResponse {
 pub struct AcceptInviteResponse {
     pub org_id: String,
     pub role: String,
+}
+
+/// Active invitation metadata safe to show to its verified-email recipient.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PendingInvitationResponse {
+    pub id: String,
+    pub org_id: String,
+    pub org_name: String,
+    pub role: String,
+    pub expires_at: String,
 }
 
 fn to_invitation_response(row: &crate::storage::models::OrgInvitationRow) -> InvitationResponse {
@@ -467,6 +484,39 @@ pub struct AcceptedInvitation {
     pub role: String,
 }
 
+/// Return active invitations addressed to the authenticated user's verified email.
+pub async fn list_pending_invitations_for_user(
+    db: &StorageBackend,
+    user_id: Uuid,
+) -> Result<Vec<PendingInvitationResponse>, InviteError> {
+    let user = verified_user(db, user_id).await?;
+    let rows = db
+        .list_active_org_invitations_by_email(&normalize_email(&user.email))
+        .await
+        .map_err(|e| internal("list invitations for user", e))?;
+    let mut invitations = Vec::with_capacity(rows.len());
+    for row in rows {
+        let org = db
+            .get_organization(row.org_id)
+            .await
+            .map_err(|e| internal("get invited organization", e))?
+            .ok_or_else(|| {
+                internal(
+                    "get invited organization",
+                    anyhow::anyhow!("organization missing"),
+                )
+            })?;
+        invitations.push(PendingInvitationResponse {
+            id: row.public_id,
+            org_id: org.public_id,
+            org_name: org.name,
+            role: row.role,
+            expires_at: row.expires_at.to_rfc3339(),
+        });
+    }
+    Ok(invitations)
+}
+
 /// Validate a token and accept the invite for the authenticated principal,
 /// creating local membership. Distinct error codes are returned per failure mode
 /// without revealing token internals.
@@ -494,7 +544,65 @@ pub async fn accept_invitation(
         .await
         .map_err(|e| internal("lookup invite by token", e))?
         .ok_or_else(invalid)?;
+    accept_invitation_row(db, row, user_id, max_members).await
+}
 
+/// Accept the invitation selected during onboarding by its stable public ID.
+pub async fn accept_pending_invitation(
+    db: &StorageBackend,
+    invitation_id: &str,
+    user_id: Uuid,
+    max_members: i64,
+) -> Result<AcceptedInvitation, InviteError> {
+    let invalid = || {
+        InviteError::new(
+            StatusCode::NOT_FOUND,
+            "invite_invalid",
+            "Invitation not found",
+        )
+    };
+    if !invitation_id.starts_with(INVITE_PUBLIC_ID_PREFIX) {
+        return Err(invalid());
+    }
+    let row = db
+        .get_org_invitation_by_public_id_global(invitation_id)
+        .await
+        .map_err(|e| internal("lookup invite by public id", e))?
+        .ok_or_else(invalid)?;
+    accept_invitation_row(db, row, user_id, max_members).await
+}
+
+async fn verified_user(
+    db: &StorageBackend,
+    user_id: Uuid,
+) -> Result<crate::storage::models::UserRow, InviteError> {
+    let user = db
+        .get_user(user_id)
+        .await
+        .map_err(|e| internal("lookup accepting user", e))?
+        .ok_or_else(|| {
+            InviteError::new(
+                StatusCode::UNAUTHORIZED,
+                "user_not_found",
+                "Authenticated user not found",
+            )
+        })?;
+    if !user.email_verified {
+        return Err(InviteError::new(
+            StatusCode::FORBIDDEN,
+            "invite_email_unverified",
+            "Verify your email address before accepting this invitation",
+        ));
+    }
+    Ok(user)
+}
+
+async fn accept_invitation_row(
+    db: &StorageBackend,
+    row: crate::storage::models::OrgInvitationRow,
+    user_id: Uuid,
+    max_members: i64,
+) -> Result<AcceptedInvitation, InviteError> {
     // Resolved-state checks return distinct codes for UI handling.
     if row.revoked_at.is_some() {
         return Err(InviteError::new(
@@ -518,29 +626,11 @@ pub async fn accept_invitation(
         ));
     }
 
-    let user = db
-        .get_user(user_id)
-        .await
-        .map_err(|e| internal("lookup accepting user", e))?
-        .ok_or_else(|| {
-            InviteError::new(
-                StatusCode::UNAUTHORIZED,
-                "user_not_found",
-                "Authenticated user not found",
-            )
-        })?;
-
     // Re-load the user row instead of trusting the authenticated session/JWT
     // email claim. Invite acceptance grants tenant membership, so the matching
     // address must be verified mailbox ownership, not a self-asserted local
     // signup address (TM-AUTH-023, TM-TENANT-011).
-    if !user.email_verified {
-        return Err(InviteError::new(
-            StatusCode::FORBIDDEN,
-            "invite_email_unverified",
-            "Verify your email address before accepting this invitation",
-        ));
-    }
+    let user = verified_user(db, user_id).await?;
 
     // Authenticated, verified email must match the invited email under the same
     // normalization used at creation.
@@ -664,6 +754,15 @@ pub async fn list_invites(
     Ok(Json(ListResponse::new(items)))
 }
 
+/// GET /v1/invites/pending — list active invites for the current verified user.
+pub async fn list_pending_invites_for_user(
+    State(state): State<AppState>,
+    user: AuthUser,
+) -> Result<Json<ListResponse<PendingInvitationResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    let invitations = list_pending_invitations_for_user(&state.db, user.id).await?;
+    Ok(Json(ListResponse::new(invitations)))
+}
+
 /// DELETE /v1/orgs/{org}/invites/{invite_id} — revoke a pending invite (Admin+).
 pub async fn revoke_invite(
     State(state): State<AppState>,
@@ -720,6 +819,40 @@ pub async fn accept_invite(
         AuditEvent::management(ManagementAction::InvitationAccepted, org_id, Some(user.id))
             .target("member", user.id.to_string())
             .detail("role", accepted.role.clone());
+    if let Some(ip) = audit::client_ip_from_connect_info(connect_info, &headers) {
+        builder = builder.ip(ip);
+    }
+    audit::emit_event(state.db.clone(), builder.build());
+
+    Ok(Json(AcceptInviteResponse {
+        org_id: accepted.org_public_id,
+        role: accepted.role,
+    }))
+}
+
+/// POST /v1/invites/pending/{invite_id}/accept — accept an onboarding invite.
+pub async fn accept_pending_invite(
+    State(state): State<AppState>,
+    user: AuthUser,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
+    headers: HeaderMap,
+    Path(invite_id): Path<String>,
+) -> Result<Json<AcceptInviteResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let accepted = accept_pending_invitation(
+        &state.db,
+        &invite_id,
+        user.id,
+        state.resource_limits.max_members_per_org,
+    )
+    .await?;
+
+    let mut builder = AuditEvent::management(
+        ManagementAction::InvitationAccepted,
+        accepted.org_id,
+        Some(user.id),
+    )
+    .target("member", user.id.to_string())
+    .detail("role", accepted.role.clone());
     if let Some(ip) = audit::client_ip_from_connect_info(connect_info, &headers) {
         builder = builder.ip(ip);
     }

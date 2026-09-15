@@ -634,6 +634,27 @@ impl InMemoryDatabase {
         Ok(rows)
     }
 
+    pub async fn list_active_org_invitations_by_email(
+        &self,
+        email: &str,
+    ) -> Result<Vec<OrgInvitationRow>> {
+        let now = Self::now();
+        let mut rows: Vec<_> = self
+            .org_invitations
+            .read()
+            .iter()
+            .filter(|i| {
+                i.email == email
+                    && i.accepted_at.is_none()
+                    && i.revoked_at.is_none()
+                    && i.expires_at > now
+            })
+            .cloned()
+            .collect();
+        rows.sort_by_key(|i| std::cmp::Reverse(i.created_at));
+        Ok(rows)
+    }
+
     pub async fn get_org_invitation_by_token_hash(
         &self,
         token_hash: &str,
@@ -656,6 +677,18 @@ impl InMemoryDatabase {
             .read()
             .iter()
             .find(|i| i.org_id == org_id && i.public_id == public_id)
+            .cloned())
+    }
+
+    pub async fn get_org_invitation_by_public_id_global(
+        &self,
+        public_id: &str,
+    ) -> Result<Option<OrgInvitationRow>> {
+        Ok(self
+            .org_invitations
+            .read()
+            .iter()
+            .find(|i| i.public_id == public_id)
             .cloned())
     }
 

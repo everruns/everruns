@@ -33,8 +33,20 @@ export interface AcceptedInvitation {
   role: OrgRole;
 }
 
+export interface PendingInvitation {
+  id: string;
+  org_id: string;
+  org_name: string;
+  role: OrgRole;
+  expires_at: string;
+}
+
 interface InvitationsListResponse {
   data: Invitation[];
+}
+
+interface PendingInvitationsListResponse {
+  data: PendingInvitation[];
 }
 
 export async function listInvites(org: string): Promise<Invitation[]> {
@@ -61,6 +73,18 @@ export async function revokeInvite(org: string, inviteId: string): Promise<void>
 export async function acceptInvite(token: string): Promise<AcceptedInvitation> {
   const response = await api.post<AcceptedInvitation>(
     `/v1/invites/${encodeURIComponent(token)}/accept`,
+  );
+  return response.data;
+}
+
+export async function listPendingInvitations(): Promise<PendingInvitation[]> {
+  const response = await api.get<PendingInvitationsListResponse>("/v1/invites/pending");
+  return response.data.data;
+}
+
+export async function acceptPendingInvitation(inviteId: string): Promise<AcceptedInvitation> {
+  const response = await api.post<AcceptedInvitation>(
+    `/v1/invites/pending/${encodeURIComponent(inviteId)}/accept`,
   );
   return response.data;
 }

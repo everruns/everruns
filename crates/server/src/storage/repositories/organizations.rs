@@ -808,6 +808,27 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn list_active_org_invitations_by_email(
+        &self,
+        email: &str,
+    ) -> Result<Vec<OrgInvitationRow>> {
+        let rows = sqlx::query_as::<_, OrgInvitationRow>(
+            r#"
+            SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
+            FROM org_invitations
+            WHERE email = $1
+              AND accepted_at IS NULL
+              AND revoked_at IS NULL
+              AND expires_at > NOW()
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(email)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     pub async fn get_org_invitation_by_public_id(
         &self,
         org_id: i64,
@@ -821,6 +842,23 @@ impl Database {
             "#,
         )
         .bind(org_id)
+        .bind(public_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn get_org_invitation_by_public_id_global(
+        &self,
+        public_id: &str,
+    ) -> Result<Option<OrgInvitationRow>> {
+        let row = sqlx::query_as::<_, OrgInvitationRow>(
+            r#"
+            SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
+            FROM org_invitations
+            WHERE public_id = $1
+            "#,
+        )
         .bind(public_id)
         .fetch_optional(&self.pool)
         .await?;

@@ -3344,6 +3344,13 @@ impl StorageBackend {
         dispatch!(self, list_pending_org_invitations, org_id)
     }
 
+    pub async fn list_active_org_invitations_by_email(
+        &self,
+        email: &str,
+    ) -> Result<Vec<OrgInvitationRow>> {
+        dispatch!(self, list_active_org_invitations_by_email, email)
+    }
+
     pub async fn get_org_invitation_by_token_hash(
         &self,
         token_hash: &str,
@@ -3357,6 +3364,13 @@ impl StorageBackend {
         public_id: &str,
     ) -> Result<Option<OrgInvitationRow>> {
         dispatch!(self, get_org_invitation_by_public_id, org_id, public_id)
+    }
+
+    pub async fn get_org_invitation_by_public_id_global(
+        &self,
+        public_id: &str,
+    ) -> Result<Option<OrgInvitationRow>> {
+        dispatch!(self, get_org_invitation_by_public_id_global, public_id)
     }
 
     pub async fn get_outstanding_org_invitation_by_email(
