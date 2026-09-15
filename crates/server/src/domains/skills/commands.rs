@@ -46,9 +46,15 @@ impl Command for CreateSkill {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(CliRoute::new(&["skills"], "create").with_examples(&[
-            "everruns skills create --name code-review --content \"$(cat SKILL.md)\"",
-        ]))
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute =
+            CliRoute::new(&["skills"], "create").with_examples(&[CliExample::new(
+                "Add a skill from a local file",
+                "everruns skills create --skill-md \"$(cat SKILL.md)\"",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -146,7 +152,15 @@ impl Command for ListSkills {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(CliRoute::new(&["skills"], "list").with_examples(&["everruns skills list --limit 20"]))
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute =
+            CliRoute::new(&["skills"], "list").with_examples(&[CliExample::new(
+                "Find skills by name when you do not know the id",
+                "everruns skills list --search code-review",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -190,7 +204,16 @@ impl Command for GetSkill {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(CliRoute::new(&["skills"], "get").with_examples(&["everruns skills get skl_01h9..."]))
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["skills"], "get")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Show one skill's metadata without its body",
+                "everruns skills get skl_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -246,10 +269,16 @@ impl Command for GetSkillContent {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["skills"], "content")
-                .with_examples(&["everruns skills content skl_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["skills"], "content")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Read a skill's body to see what it instructs",
+                "everruns skills content skl_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -353,10 +382,16 @@ impl Command for UpdateSkillCmd {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["skills"], "update")
-                .with_examples(&["everruns skills update skl_01h9... --name code-review-v2"]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["skills"], "update")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Replace a skill's content from a local file",
+                "everruns skills update skl_01h9 --skill-md \"$(cat SKILL.md)\"",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -514,10 +549,16 @@ impl Command for DeleteSkill {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["skills"], "delete")
-                .with_examples(&["everruns skills delete skl_01h9...   # archive, restorable"]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["skills"], "delete")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Archive a skill, keeping it restorable",
+                "everruns skills delete skl_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -578,10 +619,16 @@ impl Command for DestroySkill {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["skills"], "destroy")
-                .with_examples(&["everruns skills destroy skl_01h9...  # permanent"]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["skills"], "destroy")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Permanently remove an already-archived skill",
+                "everruns skills destroy skl_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -652,7 +699,15 @@ impl Command for ListSkillsUsage {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(CliRoute::new(&["skills"], "usage").with_examples(&["everruns skills usage"]))
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute =
+            CliRoute::new(&["skills"], "usage").with_examples(&[CliExample::new(
+                "See which agents use which skills",
+                "everruns skills usage",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {

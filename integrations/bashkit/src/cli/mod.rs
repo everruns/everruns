@@ -27,8 +27,6 @@
 // makes `--help` affordable where a flat namespace of hundreds of commands has
 // to forbid it.
 
-pub mod args;
-
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
@@ -43,51 +41,6 @@ pub const HELP_BUILTIN: &str = "everruns_help";
 /// Root token that introduces a tree invocation.
 pub const ROOT: &str = "everruns";
 
-/// Where a command sits in the command tree.
-///
-/// Opt-in by construction: a command joins the tree only by declaring one, so
-/// internal plumbing cannot leak into an agent-facing surface by being
-/// written.
-///
-/// `path` is a slice rather than a single noun because flat command names hide
-/// a hierarchy: `list_session_participants` is `sessions participants list`.
-/// Deriving that by string surgery is wrong for exactly the irregular names
-/// that matter, so the shape is declared, not inferred.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CliRoute {
-    /// Noun path from the tree root, e.g. `["agents"]` or `["agents", "versions"]`.
-    pub path: &'static [&'static str],
-    /// Leaf verb, e.g. `"list"`.
-    pub verb: &'static str,
-    /// Complete, runnable invocations rendered under the leaf's help.
-    ///
-    /// Callers re-probe `--help` when argument forms appear only on leaves, so
-    /// an example carries real flags rather than restating the syntax.
-    pub examples: &'static [&'static str],
-}
-
-impl CliRoute {
-    pub const fn new(path: &'static [&'static str], verb: &'static str) -> Self {
-        Self {
-            path,
-            verb,
-            examples: &[],
-        }
-    }
-
-    pub const fn with_examples(mut self, examples: &'static [&'static str]) -> Self {
-        self.examples = examples;
-        self
-    }
-
-    /// Space-joined spelling, e.g. `"agents versions list"`.
-    pub fn spelling(&self) -> String {
-        let mut parts = self.path.to_vec();
-        parts.push(self.verb);
-        parts.join(" ")
-    }
-}
-
 /// One command offered to the tree by a [`CliCommandSource`].
 #[derive(Debug, Clone)]
 pub struct CliCommandSpec {
@@ -95,18 +48,24 @@ pub struct CliCommandSpec {
     pub wire_name: String,
     /// One-line summary, rendered in help.
     pub description: String,
-    pub route: CliRoute,
-    /// JSON Schema for the command's parameters.
+    /// Noun path from the tree root, e.g. `["agents", "versions"]`.
     ///
-    /// This is the leaf's grammar: it compiles into the `clap::Command` that
-    /// parses the flags and renders `--help`, so a command describes its
-    /// arguments once and the parser and the help cannot drift apart. A
-    /// source with nothing to declare passes an empty object, and the leaf
-    /// then takes no flags.
-    pub params: Value,
-    /// Field a single leading bare word binds to, if the command nominates
-    /// one: `get_agent agt_1` rather than `get_agent --id agt_1`.
-    pub positional: Option<String>,
+    /// A slice of nouns rather than one, because flat command names hide a
+    /// hierarchy: `list_session_participants` is `sessions participants list`.
+    /// Deriving that by string surgery is wrong for exactly the irregular
+    /// names that matter, so a source declares the shape.
+    pub path: Vec<String>,
+    /// Leaf verb, e.g. `"list"`.
+    pub verb: String,
+    /// The command's grammar: flags, positionals, help, examples.
+    ///
+    /// A `clap::Command` rather than a description of one. The tree resolves
+    /// which command a caller meant and hands the rest of argv to this; what
+    /// the arguments are, and how they are spelled, is the source's business
+    /// and never this crate's. A host with its own operations passes a clap
+    /// derive; a host with a catalog builds one from what the catalog
+    /// publishes.
+    pub command: clap::Command,
 }
 
 /// Where a host's commands come from, and how one runs.
@@ -139,14 +98,15 @@ pub trait CliCommandSource: Send + Sync {
         Vec::new()
     }
 
-    /// Usage block for one command, given the spelling the caller typed.
-    fn usage(&self, wire_name: &str, display_name: &str) -> String {
-        let _ = wire_name;
-        format!("Usage: {display_name} [--flags]\n")
-    }
-
-    /// Run a command. `params` is the parsed argument object.
-    async fn dispatch(&self, wire_name: &str, params: Value) -> Result<String, String>;
+    /// Run a command, given the arguments clap parsed for it.
+    ///
+    /// `ArgMatches` rather than a JSON object, because reading a match back out
+    /// needs the types the parser was built with, and those belong to whoever
+    /// declared the command. A host using clap derive calls
+    /// `FromArgMatches::from_arg_matches`; a host with a catalog reads the
+    /// fields its contract declares. Either way this crate never has to guess
+    /// what a value was meant to be.
+    async fn dispatch(&self, wire_name: &str, matches: clap::ArgMatches) -> Result<String, String>;
 }
 
 /// One resolved leaf: the tree spelling and the command it runs.
@@ -154,9 +114,10 @@ pub trait CliCommandSource: Send + Sync {
 pub struct Leaf {
     pub command: String,
     pub description: String,
-    pub route: CliRoute,
-    pub params: Value,
-    pub positional: Option<String>,
+    pub path: Vec<String>,
+    pub verb: String,
+    /// The source's parser for this leaf.
+    pub parser: clap::Command,
 }
 
 /// The assembled tree. Nodes are keyed by their full path so lookup is a
@@ -247,9 +208,9 @@ impl CliTree {
             tree.insert(Leaf {
                 command: spec.wire_name,
                 description: spec.description,
-                route: spec.route,
-                params: spec.params,
-                positional: spec.positional,
+                path: spec.path,
+                verb: spec.verb,
+                parser: spec.command,
             });
         }
         tree
@@ -260,12 +221,13 @@ impl CliTree {
     }
 
     fn insert(&mut self, leaf: Leaf) {
-        let spelling = leaf.route.spelling();
+        let mut parts = leaf.path.clone();
+        parts.push(leaf.verb.clone());
+        let spelling = parts.join(" ");
         // Register every ancestor path as a node so `everruns agents --help`
         // and `everruns agents versions --help` both resolve.
-        let segments: Vec<&str> = leaf.route.path.to_vec();
-        for depth in 1..=segments.len() {
-            let node = segments[..depth].join(" ");
+        for depth in 1..=leaf.path.len() {
+            let node = leaf.path[..depth].join(" ");
             self.nodes.entry(node).or_default();
         }
         self.leaves.insert(spelling, leaf);
@@ -537,15 +499,7 @@ fn is_name_cont(b: u8) -> bool {
 ///
 /// Every response is bounded by the tree's shape rather than by a cap: the
 /// root lists nouns, a node lists its children, a leaf lists its own flags.
-pub fn render_help(
-    tree: &CliTree,
-    path: &str,
-    unknown: Option<&str>,
-    // (wire command name, display name) -> usage block. The display name is
-    // what the caller typed, so the usage line reads back the tree spelling
-    // rather than the flat alias they did not use.
-    usage_for: impl Fn(&str, &str) -> String,
-) -> Result<String, String> {
+pub fn render_help(tree: &CliTree, path: &str, unknown: Option<&str>) -> Result<String, String> {
     let path = path.trim();
     let root = tree.root();
 
@@ -561,16 +515,16 @@ pub fn render_help(
     }
 
     if let Some(leaf) = tree.leaf(path) {
-        let mut text = format!("{root} {path}\n  {}\n\n", leaf.description);
-        text.push_str(&usage_for(&leaf.command, &format!("{root} {path}")));
-        if !leaf.route.examples.is_empty() {
-            text.push_str("\nExamples:\n");
-            for example in leaf.route.examples {
-                text.push_str(&format!("  {example}\n"));
-            }
-        }
-        text.push_str(&format!("\nWire name: {}\n", leaf.command));
-        return Ok(text);
+        // The leaf's own parser renders its help, whichever adapter asked.
+        // Help needs no raw argv, so a host that cannot reach clap to *parse*
+        // can still reach it to explain, and both adapters describe a command
+        // in exactly the same words.
+        return Ok(leaf
+            .parser
+            .clone()
+            .name(format!("{root} {path}"))
+            .render_long_help()
+            .to_string());
     }
 
     if path.is_empty() || tree.is_node(path) {
@@ -716,11 +670,7 @@ impl CliBuiltin {
     /// Render help, or run the command and return its output.
     pub async fn run(&self, args: &[String]) -> Result<String, String> {
         match self.plan(args) {
-            CliPlan::Help { path, unknown } => {
-                render_help(&self.tree, &path, unknown.as_deref(), |wire, display| {
-                    self.source.usage(wire, display)
-                })
-            }
+            CliPlan::Help { path, unknown } => render_help(&self.tree, &path, unknown.as_deref()),
             CliPlan::Run {
                 spelling,
                 wire_name,
@@ -730,29 +680,34 @@ impl CliBuiltin {
                     .tree
                     .leaf(&spelling)
                     .ok_or_else(|| format!("unknown command `{spelling}`"))?;
-                let command = args::LeafCommand::new(
-                    &format!("{} {spelling}", self.tree.root()),
-                    &leaf.description,
-                    &leaf.params,
-                    leaf.positional.as_deref(),
-                    &leaf
-                        .route
-                        .examples
-                        .iter()
-                        .map(|example| (*example).to_string())
-                        .collect::<Vec<_>>(),
-                    &wire_name,
-                );
-                match command.parse(&args) {
-                    Ok(Some(params)) => self.source.dispatch(&wire_name, params).await,
-                    // clap rendered help. Nothing ran, and nothing failed.
-                    Ok(None) => Ok(String::new()),
-                    Err(failure) if failure.is_help => Ok(failure.message),
-                    Err(failure) => Err(failure.message),
+                let parser = leaf
+                    .parser
+                    .clone()
+                    .name(format!("{} {spelling}", self.tree.root()));
+                let argv =
+                    std::iter::once(parser.get_name().to_string()).chain(args.iter().cloned());
+
+                match parser.clone().try_get_matches_from(argv) {
+                    Ok(matches) => self.source.dispatch(&wire_name, matches).await,
+                    // `--help` is a clap response, not a failure: it printed
+                    // what the caller asked for and ran nothing.
+                    Err(error) if is_display(&error) => Ok(error.render().to_string()),
+                    Err(error) => Err(error.render().to_string()),
                 }
             }
         }
     }
+}
+
+/// Whether a clap error is a rendered response rather than a rejection.
+fn is_display(error: &clap::Error) -> bool {
+    use clap::error::ErrorKind;
+    matches!(
+        error.kind(),
+        ErrorKind::DisplayHelp
+            | ErrorKind::DisplayVersion
+            | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+    )
 }
 
 enum CliPlan {
@@ -908,11 +863,94 @@ mod tests {
 
     /// A source standing in for whatever a host owns: two nouns, one nested,
     /// enough to exercise the tree without a server.
+    ///
+    /// It builds its own `clap::Command`s, which is the point of the seam:
+    /// this crate never learns what a widget is, and a host is free to spell
+    /// its commands however it likes.
     struct TestSource;
 
-    const LIST: CliRoute = CliRoute::new(&["widgets"], "list");
-    const CREATE: CliRoute = CliRoute::new(&["widgets"], "create");
-    const PARTS: CliRoute = CliRoute::new(&["widgets", "parts"], "list");
+    fn widgets_list() -> clap::Command {
+        clap::Command::new("list")
+            .about("List widgets.")
+            .color(clap::ColorChoice::Never)
+            .arg(
+                clap::Arg::new("limit")
+                    .long("limit")
+                    .value_parser(clap::value_parser!(i64))
+                    .help("Maximum rows."),
+            )
+            .arg(
+                clap::Arg::new("include_archived")
+                    .long("include_archived")
+                    .num_args(0..=1)
+                    .default_missing_value("true")
+                    .value_parser(clap::builder::BoolishValueParser::new()),
+            )
+            .arg(clap::Arg::new("status").long("status").value_parser(
+                clap::builder::PossibleValuesParser::new(["active", "retired"]),
+            ))
+            .arg(
+                clap::Arg::new("tag")
+                    .long("tag")
+                    .action(clap::ArgAction::Append)
+                    .value_delimiter(','),
+            )
+            .arg(
+                clap::Arg::new("agent_id")
+                    .long("agent-id")
+                    .alias("agent_id"),
+            )
+    }
+
+    fn widgets_create() -> clap::Command {
+        clap::Command::new("create")
+            .about("Create a widget.")
+            .color(clap::ColorChoice::Never)
+            .arg(clap::Arg::new("name").long("name").required(true))
+    }
+
+    fn widget_parts_list() -> clap::Command {
+        clap::Command::new("list")
+            .about("List the parts of a widget.")
+            .color(clap::ColorChoice::Never)
+            .arg(clap::Arg::new("id").long("id"))
+            // The bare-word spelling, as a real positional.
+            .arg(
+                clap::Arg::new("id_positional")
+                    .index(1)
+                    .conflicts_with("id"),
+            )
+    }
+
+    /// Render what clap parsed, for assertions. A real source reads the fields
+    /// it declared; this one only needs to show what arrived.
+    fn seen(matches: &clap::ArgMatches) -> Value {
+        let mut object = serde_json::Map::new();
+        for id in matches.ids() {
+            let key = id.as_str();
+            let field = key.strip_suffix("_positional").unwrap_or(key);
+            if let Ok(Some(value)) = matches.try_get_one::<bool>(key) {
+                object.insert(field.into(), Value::Bool(*value));
+                continue;
+            }
+            if let Ok(Some(value)) = matches.try_get_one::<i64>(key) {
+                object.insert(field.into(), Value::Number((*value).into()));
+                continue;
+            }
+            if let Ok(Some(values)) = matches.try_get_many::<String>(key) {
+                let values: Vec<&String> = values.collect();
+                if values.len() > 1 {
+                    object.insert(
+                        field.into(),
+                        Value::Array(values.into_iter().cloned().map(Value::String).collect()),
+                    );
+                } else if let Some(value) = values.first() {
+                    object.insert(field.into(), Value::String((*value).clone()));
+                }
+            }
+        }
+        Value::Object(object)
+    }
 
     #[async_trait]
     impl CliCommandSource for TestSource {
@@ -921,43 +959,26 @@ mod tests {
                 CliCommandSpec {
                     wire_name: "list_widgets".into(),
                     description: "List widgets.".into(),
-                    route: LIST.with_examples(&["everruns widgets list --limit 5"]),
-                    params: serde_json::json!({
-                        "type": "object",
-                        "properties": {
-                            "limit": { "type": "integer", "description": "Maximum rows." },
-                            "include_archived": { "type": "boolean" },
-                            "status": { "type": "string", "enum": ["active", "retired"] },
-                            "tag": { "type": "array", "items": { "type": "string" } },
-                            "filter": { "type": "object" },
-                            "agent_id": { "type": ["string", "null"] },
-                            "version": { "type": "string" }
-                        }
-                    }),
-                    positional: None,
+                    path: vec!["widgets".into()],
+                    verb: "list".into(),
+                    command: widgets_list().after_help(
+                        "Examples:\n  List the five most recent widgets:\n    \
+                         everruns widgets list --limit 5\n\nWire name: list_widgets",
+                    ),
                 },
                 CliCommandSpec {
                     wire_name: "create_widget".into(),
                     description: "Create a widget.".into(),
-                    route: CREATE,
-                    params: serde_json::json!({
-                        "type": "object",
-                        "properties": { "name": { "type": "string" } },
-                        "required": ["name"]
-                    }),
-                    positional: None,
+                    path: vec!["widgets".into()],
+                    verb: "create".into(),
+                    command: widgets_create(),
                 },
                 CliCommandSpec {
                     wire_name: "list_widget_parts".into(),
                     description: "List the parts of a widget.".into(),
-                    route: PARTS,
-                    params: serde_json::json!({
-                        "type": "object",
-                        "properties": { "id": { "type": "string" } },
-                        "required": ["id"]
-                    }),
-                    // Exercises the bare-word spelling: `widgets parts list w_1`.
-                    positional: Some("id".into()),
+                    path: vec!["widgets".into(), "parts".into()],
+                    verb: "list".into(),
+                    command: widget_parts_list(),
                 },
             ]
         }
@@ -966,7 +987,12 @@ mod tests {
             vec![("widgets".to_string(), "The widgets.".to_string())]
         }
 
-        async fn dispatch(&self, wire_name: &str, params: Value) -> Result<String, String> {
+        async fn dispatch(
+            &self,
+            wire_name: &str,
+            matches: clap::ArgMatches,
+        ) -> Result<String, String> {
+            let params = seen(&matches);
             // A name clap cannot know is taken: the errors a source still owns
             // are the ones about its own state, not about argument shape.
             if wire_name == "create_widget" && params.get("name") == Some(&Value::from("taken")) {
@@ -1027,31 +1053,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn json_text_reaches_the_source_structured() {
-        // Matches how the scripted host delivers aggregates, so a source sees
-        // one shape regardless of which adapter it was called through.
-        let args = vec![
-            "widgets".to_string(),
-            "list".to_string(),
-            "--filter".to_string(),
-            "{\"colour\":\"blue\"}".to_string(),
-        ];
-        let out = builtin().run(&args).await.expect("runs");
-        assert!(out.contains("\"filter\":{\"colour\":\"blue\"}"), "{out}");
-    }
-
-    #[tokio::test]
-    async fn a_version_like_value_stays_a_string() {
-        // The schema decides, so nothing has to guess: `version` is declared a
-        // string, and a parser sniffing at `1.20` would have made it 1.2.
-        let out = builtin()
-            .run(&argv("widgets list --version 1.20"))
-            .await
-            .expect("runs");
-        assert!(out.contains("\"version\":\"1.20\""), "{out}");
-    }
-
-    #[tokio::test]
     async fn help_beats_execution() {
         let out = builtin()
             .run(&argv("widgets create --help"))
@@ -1077,17 +1078,21 @@ mod tests {
             vec![CliCommandSpec {
                 wire_name: "send_invoice".into(),
                 description: "Send an invoice.".into(),
-                route: CliRoute::new(&["invoices"], "send"),
-                params: serde_json::json!({
-                    "type": "object",
-                    "properties": { "to": { "type": "string" } }
-                }),
-                positional: None,
+                path: vec!["invoices".into()],
+                verb: "send".into(),
+                command: clap::Command::new("send")
+                    .about("Send an invoice.")
+                    .color(clap::ColorChoice::Never)
+                    .arg(clap::Arg::new("to").long("to")),
             }]
         }
 
-        async fn dispatch(&self, wire_name: &str, params: Value) -> Result<String, String> {
-            Ok(serde_json::json!({ "ran": wire_name, "params": params }).to_string())
+        async fn dispatch(
+            &self,
+            wire_name: &str,
+            matches: clap::ArgMatches,
+        ) -> Result<String, String> {
+            Ok(serde_json::json!({ "ran": wire_name, "params": seen(&matches) }).to_string())
         }
     }
 
@@ -1378,12 +1383,16 @@ mod rewrite_safety_tests {
             vec![CliCommandSpec {
                 wire_name: "list_widgets".into(),
                 description: "List widgets.".into(),
-                route: CliRoute::new(&["widgets"], "list"),
-                params: serde_json::json!({ "type": "object", "properties": {} }),
-                positional: None,
+                path: vec!["widgets".into()],
+                verb: "list".into(),
+                command: clap::Command::new("list").color(clap::ColorChoice::Never),
             }]
         }
-        async fn dispatch(&self, _wire: &str, _params: Value) -> Result<String, String> {
+        async fn dispatch(
+            &self,
+            _wire: &str,
+            _matches: clap::ArgMatches,
+        ) -> Result<String, String> {
             Ok("{}".into())
         }
     }

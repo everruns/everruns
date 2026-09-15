@@ -2,6 +2,19 @@
 
 ## 2026-09-15
 
+* **The command line is one contract, shared by the CLI and the agent-facing
+  tree.** Deriving the agent-facing parser from each command's JSON Schema
+  produced a parallel contract, not the same one: `--system_prompt` where the
+  CLI ships `--system-prompt`, no short options where it ships `-f -H -t -a -s
+  -o`, a different positional shape. `everruns-cli-contract` now holds the
+  grammar as data and owns the one `clap::Command` builder both surfaces call; a
+  command declares the part a schema cannot know (short options, bare words,
+  worked examples) beside itself, and the rest comes from the schema. The
+  shipped CLI's spellings are pinned by a golden snapshot, so where the two
+  disagree the surface with users does not move. Turning on the guard that
+  parses every documented example found that most of them did not run. See
+  [Command tree](execution/command-tree.md).
+
 * **A leaf's flags are parsed by clap, compiled from the schema the command
   already publishes.** The tree hand-parsed `--flag value` pairs, which kept an
   unknown flag as a string property and passed it on, so `--limti 10` became a

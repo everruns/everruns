@@ -72,10 +72,20 @@ impl Command for CreateSession {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions"], "create")
-                .with_examples(&["everruns sessions create --agent_id agt_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "create")
+            .with_args(&[
+                CliArg::new("agent_id").short('a').long("agent"),
+                CliArg::new("harness_name").short('H').long("harness"),
+                CliArg::new("tag").short('t'),
+            ])
+            .with_examples(&[CliExample::new(
+                "Start a session for an agent",
+                "everruns sessions create --agent agt_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -304,10 +314,16 @@ impl Command for ListSessionParticipants {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions", "participants"], "list")
-                .with_examples(&["everruns sessions participants list --session_id ses_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["sessions", "participants"], "list")
+            .with_args(&[CliArg::new("session_id").long("session")])
+            .with_examples(&[CliExample::new(
+                "See who is attached to a session",
+                "everruns sessions participants list --session ses_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -357,11 +373,16 @@ impl Command for AddSessionParticipant {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions", "participants"], "add").with_examples(&[
-                "everruns sessions participants add --session_id ses_01h9... --user_id usr_01h9...",
-            ]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["sessions", "participants"], "add")
+            .with_args(&[CliArg::new("session_id").long("session")])
+            .with_examples(&[CliExample::new(
+                "Bring a user into a running session",
+                "everruns sessions participants add --session ses_01h9 --kind user",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -501,10 +522,16 @@ impl Command for LeaveSessionParticipant {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions", "participants"], "leave")
-                .with_examples(&["everruns sessions participants leave --session_id ses_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["sessions", "participants"], "leave")
+            .with_args(&[CliArg::new("session_id").long("session")])
+            .with_examples(&[CliExample::new(
+                "Remove one participant from a session",
+                "everruns sessions participants leave --session ses_01h9 --participant-id par_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -582,10 +609,16 @@ impl Command for ForkSession {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions"], "fork")
-                .with_examples(&["everruns sessions fork ses_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "fork")
+            .with_args(&[CliArg::new("session_id").at(1).long("session")])
+            .with_examples(&[CliExample::new(
+                "Branch from a session to try a different direction",
+                "everruns sessions fork ses_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -794,10 +827,15 @@ impl Command for ListSessions {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions"], "list")
-                .with_examples(&["everruns sessions list --limit 20"]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute =
+            CliRoute::new(&["sessions"], "list").with_examples(&[CliExample::new(
+                "Find recent sessions when you do not know the id",
+                "everruns sessions list --limit 20",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -857,10 +895,15 @@ impl Command for GetSessionFacets {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions"], "facets")
-                .with_examples(&["everruns sessions facets ses_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute =
+            CliRoute::new(&["sessions"], "facets").with_examples(&[CliExample::new(
+                "Break the session list down by status, agent and source",
+                "everruns sessions facets --search triage",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -909,10 +952,16 @@ impl Command for GetSession {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions"], "get")
-                .with_examples(&["everruns sessions get ses_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "get")
+            .with_args(&[CliArg::new("session_id").at(1).long("session")])
+            .with_examples(&[CliExample::new(
+                "Show one session's state and configuration",
+                "everruns sessions get ses_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn positional_arg() -> Option<&'static str> {
@@ -951,10 +1000,16 @@ impl Command for GetSessionContextReport {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions"], "context")
-                .with_examples(&["everruns sessions context ses_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "context")
+            .with_args(&[CliArg::new("session_id").at(1).long("session")])
+            .with_examples(&[CliExample::new(
+                "See what is filling a session's context window",
+                "everruns sessions context ses_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn positional_arg() -> Option<&'static str> {
@@ -1657,10 +1712,16 @@ impl Command for UpdateSessionCmd {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions"], "update")
-                .with_examples(&["everruns sessions update ses_01h9... --title 'Release triage'"]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "update")
+            .with_args(&[CliArg::new("session_id").at(1).long("session")])
+            .with_examples(&[CliExample::new(
+                "Retitle a session so it is findable later",
+                "everruns sessions update ses_01h9 --title 'Release triage'",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -1725,10 +1786,16 @@ impl Command for DeleteSession {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions"], "delete")
-                .with_examples(&["everruns sessions delete ses_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "delete")
+            .with_args(&[CliArg::new("session_id").at(1).long("session")])
+            .with_examples(&[CliExample::new(
+                "Archive a session, keeping it restorable",
+                "everruns sessions delete ses_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -1763,10 +1830,15 @@ impl Command for GetSessionStats {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions"], "stats")
-                .with_examples(&["everruns sessions stats ses_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute =
+            CliRoute::new(&["sessions"], "stats").with_examples(&[CliExample::new(
+                "Check token and cost totals across sessions",
+                "everruns sessions stats",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -1810,10 +1882,16 @@ impl Command for PinSession {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions"], "pin")
-                .with_examples(&["everruns sessions pin ses_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "pin")
+            .with_args(&[CliArg::new("session_id").at(1).long("session")])
+            .with_examples(&[CliExample::new(
+                "Keep a session at the top of the list",
+                "everruns sessions pin ses_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -1855,10 +1933,16 @@ impl Command for UnpinSession {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions"], "unpin")
-                .with_examples(&["everruns sessions unpin ses_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "unpin")
+            .with_args(&[CliArg::new("session_id").at(1).long("session")])
+            .with_examples(&[CliExample::new(
+                "Stop keeping a session at the top of the list",
+                "everruns sessions unpin ses_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -1899,10 +1983,16 @@ impl Command for ArchiveSession {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions"], "archive")
-                .with_examples(&["everruns sessions archive ses_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "archive")
+            .with_args(&[CliArg::new("session_id").at(1).long("session")])
+            .with_examples(&[CliExample::new(
+                "Move a finished session out of the active list",
+                "everruns sessions archive ses_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -1944,10 +2034,16 @@ impl Command for UnarchiveSession {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions"], "unarchive")
-                .with_examples(&["everruns sessions unarchive ses_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "unarchive")
+            .with_args(&[CliArg::new("session_id").at(1).long("session")])
+            .with_examples(&[CliExample::new(
+                "Bring an archived session back to the active list",
+                "everruns sessions unarchive ses_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -1986,10 +2082,16 @@ impl Command for CancelSession {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["sessions"], "cancel")
-                .with_examples(&["everruns sessions cancel ses_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["sessions"], "cancel")
+            .with_args(&[CliArg::new("session_id").at(1).long("session")])
+            .with_examples(&[CliExample::new(
+                "Stop a session that is running away",
+                "everruns sessions cancel ses_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {

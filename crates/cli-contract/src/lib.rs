@@ -255,4 +255,211 @@ fn apply_kind(built: Arg, arg: &ContractArg) -> Arg {
     }
 }
 
+pub mod declare;
 pub mod render;
+pub mod schema;
+
+pub use declare::{CliArg, CliExample, CliRoute};
+
+/// Read what clap parsed back out as the parameter object a command expects.
+///
+/// The contract knows what each argument was declared as, so this does not
+/// have to guess: an integer flag comes back a JSON number, a list comes back
+/// an array, and a document comes back parsed. Arguments the caller did not
+/// give are left out entirely, because defaults belong to the command and
+/// sending a parser's view of them would overwrite a real default with a guess.
+pub fn params_from(command: &ContractCommand, matches: &clap::ArgMatches) -> serde_json::Value {
+    let mut object = serde_json::Map::new();
+
+    for arg in &command.args {
+        // A bare-word spelling carries the same parameter under a distinct
+        // argument id; whichever the caller used, one value lands under the
+        // field's real name.
+        let ids = [
+            arg.field.clone(),
+            format!("{}{POSITIONAL_SUFFIX}", arg.field),
+        ];
+        for id in ids {
+            if let Some(value) = read(matches, &id, arg.kind) {
+                object.insert(arg.field.clone(), value);
+                break;
+            }
+        }
+    }
+
+    serde_json::Value::Object(object)
+}
+
+fn read(matches: &clap::ArgMatches, id: &str, kind: ArgKind) -> Option<serde_json::Value> {
+    use serde_json::Value;
+
+    // `try_get_one` rather than `get_one`: an id the command does not declare
+    // makes clap panic, and a positional id only exists when one was declared.
+    if !matches!(
+        matches.try_get_one::<String>(id).err(),
+        None | Some(clap::parser::MatchesError::Downcast { .. })
+    ) {
+        return None;
+    }
+    if !matches!(
+        matches.value_source(id),
+        Some(clap::parser::ValueSource::CommandLine)
+    ) {
+        return None;
+    }
+
+    match kind {
+        ArgKind::Boolean => matches.get_one::<bool>(id).copied().map(Value::Bool),
+        ArgKind::Integer => matches
+            .get_one::<i64>(id)
+            .copied()
+            .map(|value| Value::Number(value.into())),
+        ArgKind::Number => matches
+            .get_one::<f64>(id)
+            .copied()
+            .and_then(|value| serde_json::Number::from_f64(value).map(Value::Number)),
+        ArgKind::String => matches.get_one::<String>(id).cloned().map(Value::String),
+        ArgKind::Json => matches.get_one::<String>(id).map(|text| json_or_text(text)),
+        ArgKind::StringList => Some(Value::Array(
+            matches
+                .get_many::<String>(id)?
+                .cloned()
+                .map(Value::String)
+                .collect(),
+        )),
+        ArgKind::IntegerList => Some(Value::Array(
+            matches
+                .get_many::<String>(id)?
+                .map(|text| json_or_text(text))
+                .collect(),
+        )),
+    }
+}
+
+/// Parse a value that should be JSON, keeping the raw text when it is not.
+///
+/// Passing the text on is deliberate: the command validates against its own
+/// schema and will say what was wrong with it, which is a better error than one
+/// invented here with no knowledge of the target type.
+fn json_or_text(text: &str) -> serde_json::Value {
+    serde_json::from_str(text).unwrap_or_else(|_| serde_json::Value::String(text.to_string()))
+}
+
+#[cfg(test)]
+mod round_trip {
+    use super::*;
+    use declare::{CliArg, CliExample, CliRoute};
+    use serde_json::json;
+
+    const ROUTE: CliRoute = CliRoute::new(&["widgets"], "update")
+        .with_args(&[
+            CliArg::new("id").at(1),
+            CliArg::new("harness_name").short('H').long("harness"),
+            CliArg::new("tag").short('t'),
+        ])
+        .with_examples(&[CliExample::new(
+            "Rename a widget",
+            "everruns widgets update w_1 --name blue",
+        )]);
+
+    fn contract() -> ContractCommand {
+        schema::contract_for(
+            "update_widget",
+            "Update a widget.",
+            "PATCH",
+            "/v1/widgets/{id}",
+            &ROUTE,
+            &json!({
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string" },
+                    "name": { "type": "string" },
+                    "harness_name": { "type": "string" },
+                    "tag": { "type": "array", "items": { "type": "string" } },
+                    "limit": { "type": "integer" },
+                    "archived": { "type": "boolean" },
+                    "metadata": { "type": "object" }
+                },
+                "required": ["id"]
+            }),
+        )
+    }
+
+    fn parse(line: &str) -> serde_json::Value {
+        let contract = contract();
+        let parser = contract.clap_command("everruns widgets update");
+        let argv = std::iter::once("everruns widgets update".to_string())
+            .chain(line.split_whitespace().map(ToOwned::to_owned));
+        let matches = parser
+            .try_get_matches_from(argv)
+            .unwrap_or_else(|error| panic!("{line}: {error}"));
+        params_from(&contract, &matches)
+    }
+
+    /// The two halves of the contract agree: what the parser accepts comes
+    /// back as the type the schema declared.
+    #[test]
+    fn values_come_back_as_the_types_the_schema_declared() {
+        let params = parse("w_1 --limit 5 --archived --tag a,b --metadata {\"k\":1}");
+        assert_eq!(params["id"], "w_1");
+        assert_eq!(params["limit"], 5);
+        assert_eq!(params["archived"], true);
+        assert_eq!(params["tag"], json!(["a", "b"]));
+        assert_eq!(params["metadata"], json!({ "k": 1 }));
+    }
+
+    /// A short option and a renamed long reach the parameter's real name, so
+    /// presentation never leaks into what the command receives.
+    #[test]
+    fn presentation_does_not_reach_the_command() {
+        for line in ["w_1 -H generic", "w_1 --harness generic"] {
+            assert_eq!(parse(line)["harness_name"], "generic", "{line}");
+        }
+    }
+
+    /// The parameter's own snake_case name keeps working, so a script written
+    /// against the flat command surface does not break.
+    #[test]
+    fn the_schemas_own_spelling_is_still_accepted() {
+        assert_eq!(
+            parse("w_1 --harness_name generic")["harness_name"],
+            "generic"
+        );
+    }
+
+    #[test]
+    fn a_bare_word_and_its_flag_reach_the_same_parameter() {
+        assert_eq!(parse("w_1")["id"], "w_1");
+        assert_eq!(parse("--id w_1")["id"], "w_1");
+    }
+
+    /// The schema decides, so nothing guesses: a parser sniffing at `1.20`
+    /// would make it 1.2 before the command ever saw it.
+    #[test]
+    fn a_version_like_value_stays_a_string() {
+        assert_eq!(parse("w_1 --name 1.20")["name"], "1.20");
+    }
+
+    #[test]
+    fn an_untouched_flag_is_not_sent() {
+        let params = parse("w_1");
+        assert_eq!(params, json!({ "id": "w_1" }));
+    }
+
+    /// Worked examples reach the help block in yolop's shape: the intent, then
+    /// the command line under it.
+    #[test]
+    fn help_carries_the_worked_examples_and_the_wire_name() {
+        let help = contract()
+            .clap_command("everruns widgets update")
+            .render_long_help()
+            .to_string();
+        assert!(help.contains("Rename a widget:"), "{help}");
+        assert!(
+            help.contains("everruns widgets update w_1 --name blue"),
+            "{help}"
+        );
+        assert!(help.contains("Wire name: update_widget"), "{help}");
+        assert!(!help.contains('\u{1b}'), "escape bytes in help: {help:?}");
+    }
+}

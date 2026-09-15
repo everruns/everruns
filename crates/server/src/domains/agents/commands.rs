@@ -285,10 +285,19 @@ impl Command for CreateAgent {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents"], "create")
-                .with_examples(&["everruns agents create --name triage --harness_name generic"]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["agents"], "create")
+            .with_args(&[
+                CliArg::new("harness_name").short('H').long("harness"),
+                CliArg::new("tag").short('t'),
+            ])
+            .with_examples(&[CliExample::new(
+                "Create an agent on the organization's default harness",
+                "everruns agents create --name triage --system-prompt 'Triage incoming issues' --harness generic",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -462,10 +471,15 @@ impl Command for ListAgents {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents"], "list")
-                .with_examples(&["everruns agents list --search triage --limit 20"]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute =
+            CliRoute::new(&["agents"], "list").with_examples(&[CliExample::new(
+                "Find agents by name when you do not know the id",
+                "everruns agents list --search triage --limit 20",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -531,7 +545,16 @@ impl Command for GetAgent {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(CliRoute::new(&["agents"], "get").with_examples(&["everruns agents get agt_01h9..."]))
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["agents"], "get")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Show one agent's full configuration",
+                "everruns agents get agt_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -579,10 +602,20 @@ impl Command for UpdateAgentCmd {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents"], "update")
-                .with_examples(&["everruns agents update agt_01h9... --name triage-v2"]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["agents"], "update")
+            .with_args(&[
+                CliArg::new("id").at(1),
+                CliArg::new("harness_name").short('H').long("harness"),
+                CliArg::new("tag").short('t'),
+            ])
+            .with_examples(&[CliExample::new(
+                "Rename an agent, leaving the rest of it alone",
+                "everruns agents update agt_01h9 --name triage-v2",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -781,10 +814,16 @@ impl Command for DeleteAgent {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents"], "delete")
-                .with_examples(&["everruns agents delete agt_01h9...   # archive, restorable"]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["agents"], "delete")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Archive an agent, keeping it restorable",
+                "everruns agents delete agt_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -863,10 +902,20 @@ impl Command for UpsertAgent {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents"], "upsert")
-                .with_examples(&["everruns agents upsert --name triage --harness_name generic"]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["agents"], "upsert")
+            .with_args(&[
+                CliArg::new("id").at(1),
+                CliArg::new("harness_name").short('H').long("harness"),
+                CliArg::new("tag").short('t'),
+            ])
+            .with_examples(&[CliExample::new(
+                "Create or replace an agent at a known id, for a scripted deploy",
+                "everruns agents upsert agt_01h9 --name triage --system-prompt 'Triage incoming issues'",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -1021,10 +1070,16 @@ impl Command for CopyAgent {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents"], "copy")
-                .with_examples(&["everruns agents copy agt_01h9... --name triage-copy"]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["agents"], "copy")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Duplicate an agent to try a change without touching the original",
+                "everruns agents copy agt_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -1099,10 +1154,16 @@ impl Command for ExportAgent {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents"], "export")
-                .with_examples(&["everruns agents export agt_01h9... > agent.json"]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["agents"], "export")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Save an agent's definition to a file",
+                "everruns agents export agt_01h9 > agent.json",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -1151,10 +1212,15 @@ impl Command for ImportAgent {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents"], "import")
-                .with_examples(&["everruns agents import --definition \"$(cat agent.json)\""]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute =
+            CliRoute::new(&["agents"], "import").with_examples(&[CliExample::new(
+                "Recreate an agent from a definition you already have",
+                "everruns agents import --name triage --system-prompt 'Triage incoming issues'",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -1397,10 +1463,16 @@ impl Command for ListAgentVersions {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents", "versions"], "list")
-                .with_examples(&["everruns agents versions list --agent_id agt_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["agents", "versions"], "list")
+            .with_args(&[CliArg::new("agent_id").long("agent")])
+            .with_examples(&[CliExample::new(
+                "Find the version to roll back to",
+                "everruns agents versions list --agent agt_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -1441,11 +1513,18 @@ impl Command for CreateAgentVersionCmd {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents", "versions"], "create").with_examples(&[
-                "everruns agents versions create --agent_id agt_01h9... --label v2",
-            ]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["agents", "versions"], "create")
+            .with_args(&[
+                CliArg::new("agent_id").long("agent"),
+            ])
+            .with_examples(&[CliExample::new(
+                "Snapshot an agent before a risky change",
+                "everruns agents versions create --agent agt_01h9 --req '{\"summary\":\"before the rewrite\"}'",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -1490,11 +1569,18 @@ impl Command for SetDefaultAgentVersion {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents", "versions"], "set-default").with_examples(&[
-                "everruns agents versions set-default --agent_id agt_01h9... --version 3",
-            ]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["agents", "versions"], "set-default")
+            .with_args(&[
+                CliArg::new("agent_id").long("agent"),
+            ])
+            .with_examples(&[CliExample::new(
+                "Point new sessions at a different version",
+                "everruns agents versions set-default --agent agt_01h9 --req '{\"version_id\":\"ver_01h9\"}'",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -1561,11 +1647,18 @@ impl Command for RollbackAgentVersion {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents", "versions"], "rollback").with_examples(&[
-                "everruns agents versions rollback --agent_id agt_01h9... --version 2",
-            ]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["agents", "versions"], "rollback")
+            .with_args(&[
+                CliArg::new("agent_id").long("agent"),
+            ])
+            .with_examples(&[CliExample::new(
+                "Undo a bad change by restoring a snapshot",
+                "everruns agents versions rollback --agent agt_01h9 --version-id ver_01h9 --req '{\"save_version\":true}'",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -1662,11 +1755,18 @@ impl Command for DiffAgentVersions {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents", "versions"], "diff").with_examples(&[
-                "everruns agents versions diff --agent_id agt_01h9... --from 2 --to 3",
-            ]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["agents", "versions"], "diff")
+            .with_args(&[
+                CliArg::new("agent_id").long("agent"),
+            ])
+            .with_examples(&[CliExample::new(
+                "See what changed between two snapshots",
+                "everruns agents versions diff --agent agt_01h9 --from-version-id ver_01h9 --to-version-id ver_01ha",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -1735,11 +1835,18 @@ impl Command for ForkAgentVersion {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents", "versions"], "fork").with_examples(&[
-                "everruns agents versions fork --agent_id agt_01h9... --version 2",
-            ]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["agents", "versions"], "fork")
+            .with_args(&[
+                CliArg::new("agent_id").long("agent"),
+            ])
+            .with_examples(&[CliExample::new(
+                "Start a new agent from an old snapshot",
+                "everruns agents versions fork --agent agt_01h9 --version-id ver_01h9 --req '{\"name\":\"triage-fork\"}'",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -1859,10 +1966,15 @@ impl Command for PreviewAgent {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents"], "preview")
-                .with_examples(&["everruns agents preview agt_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute =
+            CliRoute::new(&["agents"], "preview").with_examples(&[CliExample::new(
+                "See the prompt a draft configuration would produce, without creating it",
+                "everruns agents preview --system-prompt 'Triage incoming issues'",
+            )]);
+        Some(ROUTE)
     }
 
     fn read_only() -> bool {
@@ -1954,10 +2066,15 @@ impl Command for AnalyzeAgent {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents"], "analyze")
-                .with_examples(&["everruns agents analyze agt_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["agents"], "analyze")
+            .with_examples(&[CliExample::new(
+                "Check a draft configuration for problems before creating the agent",
+                "everruns agents analyze --system-prompt 'Triage incoming issues' --tools '[\"bash\"]'",
+            )]);
+        Some(ROUTE)
     }
 
     // Makes paid utility-LLM calls; not a free read.
@@ -2074,10 +2191,15 @@ impl Command for CheckAgentName {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents"], "check-name")
-                .with_examples(&["everruns agents check-name --name triage"]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute =
+            CliRoute::new(&["agents"], "check-name").with_examples(&[CliExample::new(
+                "See whether a name is free before creating an agent",
+                "everruns agents check-name --name triage",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -3214,10 +3336,16 @@ impl Command for DestroyAgent {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents"], "destroy")
-                .with_examples(&["everruns agents destroy agt_01h9...  # permanent"]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["agents"], "destroy")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Permanently remove an already-archived agent",
+                "everruns agents destroy agt_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
