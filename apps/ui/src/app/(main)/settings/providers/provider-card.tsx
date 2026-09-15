@@ -17,6 +17,7 @@ import { IconTile } from "@/components/layout/page-layout";
 import { Key, Trash2, RefreshCw, Boxes, Ellipsis, ExternalLink, Link2 } from "lucide-react";
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
 import { getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
+import { managedProviderCopy } from "@/lib/managed-provider-copy";
 import type { Provider } from "@/lib/api/types";
 
 type ProviderModelCounts = {
@@ -100,8 +101,8 @@ export function ProviderCard({
       headerActions={
         <>
           {provider.managed && (
-            <Badge variant="outline" title="Managed by the host">
-              Managed
+            <Badge variant="outline" title={managedProviderCopy.badgeTitle}>
+              {managedProviderCopy.badge}
             </Badge>
           )}
           <Badge variant={getEntityStatusBadgeVariant(provider.status)}>{provider.status}</Badge>
