@@ -2,24 +2,24 @@
 
 ## Abstract
 
-Slack integration allows deploying agents as Slack bots. Each Everruns App gets its own Slack App (own identity, name, avatar). An App binds a harness and optional agent to a Slack workspace with signing secret verification and configurable session strategies. Setup is streamlined via per-app manifest generation.
+Slack integration allows deploying agents as Slack bots. Each enabled Slack channel connects one Slack App with its own identity, name, and avatar. The owning Everruns App binds the harness and optional agent. The channel binds a Slack workspace with signing secret verification and configurable session strategies. Setup is streamlined via per-channel manifest generation.
 
 Slack is the reference implementation for the [messaging integrations](../../../knowledge/integrations/messaging-integrations.md) channel abstraction layer. It uses `InboundChannelEvent` for platform-agnostic message parsing, `build_session_routing_tag()` for session routing, `ThreadContext` for participant tracking, and `SlackDeliveryAdapter` implementing the `ChannelDeliveryAdapter` trait.
 
 ## Architecture
 
 ```
-Per-app manifest (recommended):
+Per-channel manifest (recommended):
   Publish the App        -->  webhook endpoint goes live (required first)
                               |
-  UI "Create Slack App"  -->  GET /v1/apps/{app_id}/slack/manifest  (returns YAML + create URL)
+  UI "Create Slack App"  -->  GET /v1/e/{channel_id}/slack/manifest  (returns YAML + create URL)
                               |
   Opens Slack "Create from manifest" with pre-filled scopes + bot user
   + event_subscriptions (Slack verifies request_url on save)
                               |
   User copies signing_secret + bot_token back to Everruns
 
-Slack Events API         -->  POST /v1/apps/{app_id}/slack/events   (per-app, uses per-app secret)
+Slack Events API         -->  POST /v1/e/{channel_id}/slack/events  (uses channel secret)
                               |
                               +-- Verify HMAC-SHA256 signing secret
                               +-- Find/create session (by tags, per session_strategy)
@@ -35,11 +35,11 @@ The events endpoint verifies HMAC-SHA256 signing secret, finds/creates session b
 
 ## Design Decisions
 
-- **One Slack App per Everruns App**: Each app has its own identity (name, avatar, scopes). This is unlike GitHub (global app) because Slack bots are user-facing with distinct identities per use case.
-- **Per-app manifest generation**: The manifest endpoint generates a YAML with correct scopes, bot user, and `event_subscriptions`. The webhook URL is fully determined by the app's public ID before the Slack app exists, so it can be declared up front; the real constraint is ordering, since Slack verifies `request_url` when the manifest is saved. That is why the endpoint serves published apps only — publish, then create the Slack app. (An earlier revision of this spec claimed `event_subscriptions` "requires a live webhook URL, must be configured after publishing" and therefore omitted it. The live-URL part is right, the conclusion was not: the fix is ordering, not manual setup.)
+- **One Slack App per enabled Slack channel**: Each channel has its own credentials and endpoint identity. Multiple Slack channels can share the owning Everruns App's harness and agent.
+- **Per-channel manifest generation**: The manifest endpoint generates a YAML with correct scopes, bot user, and `event_subscriptions`. The webhook URL is fully determined by the channel's public ID before the Slack app exists, so it can be declared up front; the real constraint is ordering, since Slack verifies `request_url` when the manifest is saved. That is why the endpoint serves published apps only — publish, then create the Slack app. (An earlier revision of this spec claimed `event_subscriptions` "requires a live webhook URL, must be configured after publishing" and therefore omitted it. The live-URL part is right, the conclusion was not: the fix is ordering, not manual setup.)
 - **Agent surface is one boolean, resolved per event**: `SlackChannelConfig.agent_surface_enabled` adds Slack's agent pane *alongside* the channel bot rather than replacing it, so it is not a third `reply_mode` or a separate channel type. One app serves both surfaces and the event says which: a DM (`channel_type: "im"`) is the pane, an `app_mention` is a channel thread. Recovery has no event and falls back to the channel id, since Slack DM ids start with `D` — both paths go through `classify_surface` so they cannot disagree. Pane sessions force `per_thread` (a pane conversation is a thread); rejecting `per_channel`/`per_user` at config time would be wrong because the same app still serves channels. Enabling it needs a manifest update *and* a workspace reinstall, because `assistant:write` is a new scope. New apps use `features.agent_view`; `assistant_view` is the legacy spelling Slack is deprecating.
 - **Streaming is a pane behaviour, probed not required**: `ChannelDeliveryAdapter::streaming()` returns `Some` only where the platform supports progressive delivery, and the dispatcher streams only for `SlackSurface::Pane` — token-by-token into a shared channel is not wanted. A stream is per output message (`chat.startStream`/`appendStream`/`stopStream`), so a turn with three messages is three streams. Every terminal state, cancellation included, closes any stream still open. `sent` is claimed under the delivery lock before the network call so two concurrent flushes cannot transmit the same text twice — found against a real workspace, where the 500ms flush tick overlapped an event-driven flush. `chat.startStream` needs only `chat:write`, but requires `recipient_user_id`/`recipient_team_id` when streaming into a channel.
-- **App-scoped endpoint**: Slack is bound to an App, so the webhook is `POST /v1/apps/{app_id}/slack/events`. The App defines the harness, optional agent, signing secret, and session strategy.
+- **Endpoint-scoped route**: Slack is keyed by channel ID at `POST /v1/e/{channel_id}/slack/events`. The App defines the harness and optional agent. The channel defines the signing secret and session strategy. App-scoped paths remain permanent aliases when exactly one enabled Slack channel matches; ambiguous aliases return `409 Conflict`.
 - **Unauthenticated**: Webhook and manifest requests come from Slack or the browser. Security is via Slack signing secret verification (HMAC-SHA256), not API key auth.
 - **Unscoped app lookup**: `get_app_by_public_id_unscoped()` looks up apps across all orgs since webhooks have no auth context.
 - **Session routing via tags**: Sessions are found/created using tags like `slack:thread:{ts}`, `slack:channel:{id}`, or `slack:user:{id}` depending on the session strategy.
@@ -85,8 +85,10 @@ Key fields:
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/v1/apps/{app_id}/slack/events` | Slack signing secret | Per-app Slack Events API webhook |
-| GET | `/v1/apps/{app_id}/slack/manifest` | None | Returns Slack App manifest YAML + create URL |
+| POST | `/v1/e/{channel_id}/slack/events` | Slack signing secret | Slack Events API webhook |
+| GET | `/v1/e/{channel_id}/slack/manifest` | None | Returns Slack App manifest YAML + create URL |
+| POST | `/v1/apps/{app_id}/slack/events` | Slack signing secret | Permanent app-scoped alias |
+| GET | `/v1/apps/{app_id}/slack/manifest` | None | Permanent app-scoped alias |
 
 All other App CRUD endpoints remain under standard API key auth at `/v1/apps`.
 

@@ -1,6 +1,6 @@
 //! AG-UI app channel integration tests.
 //!
-//! These tests cover the app-scoped AG-UI endpoint at the route boundary:
+//! These tests cover AG-UI endpoints at the route boundary:
 //! - published app gating
 //! - request validation for the AG-UI contract
 
@@ -21,6 +21,96 @@ fn unique_id(prefix: &str) -> String {
         .as_millis();
     let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("{prefix}_{now}_{seq}")
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_ag_ui_endpoint_routes_distinguish_channels_and_legacy_alias_rejects_ambiguity() {
+    let server = TestServer::in_memory().await;
+    let agent_id = create_llmsim_agent(&server).await;
+    let app: App = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": unique_id("Multi AG-UI App"),
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent_id,
+                "channel_type": "ag_ui",
+                "channel_config": {
+                    "anonymous": true,
+                    "token": "first-channel-token"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let first_channel_id = app.channels[0].public_id.to_string();
+    let second_channel: Value = server
+        .post(
+            &format!("/v1/apps/{}/channels", app.public_id),
+            json!({
+                "channel_type": "ag_ui",
+                "channel_config": {
+                    "anonymous": true,
+                    "token": "second-channel-token"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let second_channel_id = second_channel["id"].as_str().unwrap();
+    server
+        .post(&format!("/v1/apps/{}/publish", app.public_id), json!({}))
+        .await
+        .assert_success();
+
+    let payload = json!({
+        "threadId": raw_uuid(),
+        "runId": raw_uuid(),
+        "state": {},
+        "messages": [],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {}
+    });
+
+    send_ag_ui_run_to_path(
+        &server,
+        &format!("/v1/e/{first_channel_id}/ag-ui"),
+        &payload,
+        vec![("authorization", "Bearer first-channel-token")],
+    )
+    .await
+    .assert_status(StatusCode::BAD_REQUEST);
+    send_ag_ui_run_to_path(
+        &server,
+        &format!("/v1/e/{first_channel_id}/ag-ui"),
+        &payload,
+        vec![("authorization", "Bearer second-channel-token")],
+    )
+    .await
+    .assert_status(StatusCode::UNAUTHORIZED);
+    send_ag_ui_run_to_path(
+        &server,
+        &format!("/v1/e/{second_channel_id}/ag-ui"),
+        &payload,
+        vec![("authorization", "Bearer second-channel-token")],
+    )
+    .await
+    .assert_status(StatusCode::BAD_REQUEST);
+    let legacy = send_ag_ui_run_to_path(
+        &server,
+        &format!("/v1/apps/{}/ag-ui", app.public_id),
+        &payload,
+        vec![("authorization", "Bearer first-channel-token")],
+    )
+    .await
+    .assert_status(StatusCode::CONFLICT);
+    assert_eq!(
+        legacy.json::<Value>()["detail"],
+        "Multiple enabled AG-UI channels; use an endpoint-scoped /v1/e/{channel_id}/ag-ui URL"
+    );
 }
 
 fn unique_slug(prefix: &str) -> String {
@@ -127,6 +217,21 @@ async fn send_ag_ui_run_with_headers(
     payload: &Value,
     headers: Vec<(&str, &str)>,
 ) -> test_harness::TestResponse {
+    send_ag_ui_run_to_path(
+        server,
+        &format!("/v1/apps/{}/ag-ui", app_id),
+        payload,
+        headers,
+    )
+    .await
+}
+
+async fn send_ag_ui_run_to_path(
+    server: &TestServer,
+    path: &str,
+    payload: &Value,
+    headers: Vec<(&str, &str)>,
+) -> test_harness::TestResponse {
     let mut request_headers = vec![
         ("content-type", "application/json"),
         ("accept", "text/event-stream"),
@@ -136,7 +241,7 @@ async fn send_ag_ui_run_with_headers(
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{}/ag-ui", app_id),
+            path,
             request_headers,
             serde_json::to_vec(payload).unwrap(),
         )
@@ -183,6 +288,19 @@ async fn upload_ag_ui_image(
     app_id: impl std::fmt::Display,
     headers: Vec<(&str, &str)>,
 ) -> test_harness::TestResponse {
+    upload_ag_ui_image_to_path(
+        server,
+        &format!("/v1/apps/{}/ag-ui/images", app_id),
+        headers,
+    )
+    .await
+}
+
+async fn upload_ag_ui_image_to_path(
+    server: &TestServer,
+    path: &str,
+    headers: Vec<(&str, &str)>,
+) -> test_harness::TestResponse {
     let boundary = "agui-test-boundary";
     let mut body = Vec::new();
     body.extend_from_slice(
@@ -210,12 +328,7 @@ async fn upload_ag_ui_image(
     request_headers.extend(headers);
 
     server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{}/ag-ui/images", app_id),
-            request_headers,
-            body,
-        )
+        .request_raw(Method::POST, path, request_headers, body)
         .await
 }
 
@@ -373,11 +486,18 @@ async fn test_ag_ui_public_image_upload_requires_published_app() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    // EVE-632 / TM-TENANT-002: an unpublished app must return a generic 404,
-    // not a 403 that confirms the app exists.
-    upload_ag_ui_image(&server, &app.public_id, vec![])
+    let legacy_status = upload_ag_ui_image(&server, &app.public_id, vec![])
         .await
-        .assert_status(StatusCode::NOT_FOUND);
+        .status();
+    let endpoint_status = upload_ag_ui_image_to_path(
+        &server,
+        &format!("/v1/e/{}/ag-ui/images", app.channels[0].public_id),
+        vec![],
+    )
+    .await
+    .status();
+    assert_eq!(legacy_status, StatusCode::NOT_FOUND);
+    assert_eq!(endpoint_status, legacy_status);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -385,10 +505,14 @@ async fn test_ag_ui_public_image_upload_returns_image_id() {
     let server = TestServer::in_memory().await;
     let app = create_published_ag_ui_app(&server).await;
 
-    let body: Value = upload_ag_ui_image(&server, &app.public_id, vec![])
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
+    let body: Value = upload_ag_ui_image_to_path(
+        &server,
+        &format!("/v1/e/{}/ag-ui/images", app.channels[0].public_id),
+        vec![],
+    )
+    .await
+    .assert_status(StatusCode::CREATED)
+    .json();
 
     assert!(body["id"].as_str().unwrap().starts_with("img_"));
     assert_eq!(body["filename"], "photo.png");

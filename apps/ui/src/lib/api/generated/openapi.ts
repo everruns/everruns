@@ -578,7 +578,7 @@ export interface paths {
     get?: never;
     put?: never;
     /** POST /v1/apps/{app_id}/a2a/{channel_id} */
-    post: operations["invoke_a2a"];
+    post: operations["invoke_a2a_legacy"];
     delete?: never;
     options?: never;
     head?: never;
@@ -593,7 +593,7 @@ export interface paths {
       cookie?: never;
     };
     /** GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json */
-    get: operations["agent_card"];
+    get: operations["agent_card_legacy"];
     put?: never;
     post?: never;
     delete?: never;
@@ -719,7 +719,7 @@ export interface paths {
     get: operations["handshake"];
     put?: never;
     /** `POST /v1/apps/{app_id}/fcp` — text-in, text-out. */
-    post: operations["message"];
+    post: operations["message_legacy"];
     delete?: never;
     options?: never;
     head?: never;
@@ -787,7 +787,7 @@ export interface paths {
     get?: never;
     put?: never;
     /** @description Invoke a webhook channel for a published App. The body is forwarded to the agent as a message. */
-    post: operations["invoke_webhook"];
+    post: operations["invoke_webhook_legacy"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1449,6 +1449,142 @@ export interface paths {
     get: operations["stream_workflow_sse"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/a2a": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration. */
+    post: operations["invoke_a2a_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/a2a/.well-known/agent-card.json": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Get the public Agent Card for a published A2A endpoint. */
+    get: operations["agent_card_endpoint"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/fcp": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Send a message to a published FCP endpoint. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the endpoint requires a token. */
+    post: operations["message_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Create a session through an api_endpoint channel. Authenticate with the channel bearer key or configured endpoint auth. */
+    post: operations["create_session_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Get derived status and completed agent messages for a session owned by an api_endpoint channel. */
+    get: operations["get_session_endpoint"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Cancel the active turn for a session owned by an api_endpoint channel. */
+    post: operations["cancel_session_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/messages": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Post a follow-up message to a session owned by an api_endpoint channel. */
+    post: operations["post_message_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/webhook": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Invoke a published webhook endpoint. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token. */
+    post: operations["invoke_webhook_endpoint"];
     delete?: never;
     options?: never;
     head?: never;
@@ -21465,7 +21601,7 @@ export interface operations {
       };
     };
   };
-  invoke_a2a: {
+  invoke_a2a_legacy: {
     parameters: {
       query?: never;
       header?: never;
@@ -21519,7 +21655,7 @@ export interface operations {
       };
     };
   };
-  agent_card: {
+  agent_card_legacy: {
     parameters: {
       query?: never;
       header?: never;
@@ -21963,7 +22099,7 @@ export interface operations {
           "text/markdown": unknown;
         };
       };
-      /** @description Per-app FCP rate limit exceeded. `Retry-After: 60` header is set. */
+      /** @description Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set. */
       429: {
         headers: {
           [name: string]: unknown;
@@ -21974,7 +22110,7 @@ export interface operations {
       };
     };
   };
-  message: {
+  message_legacy: {
     parameters: {
       query?: never;
       header?: never;
@@ -22045,7 +22181,7 @@ export interface operations {
           "text/markdown": unknown;
         };
       };
-      /** @description Per-app FCP rate limit exceeded. `Retry-After: 60` header is set. */
+      /** @description Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set. */
       429: {
         headers: {
           [name: string]: unknown;
@@ -22226,7 +22362,7 @@ export interface operations {
       };
     };
   };
-  invoke_webhook: {
+  invoke_webhook_legacy: {
     parameters: {
       query?: never;
       header?: never;
@@ -23956,6 +24092,499 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  invoke_a2a_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A2A endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": unknown;
+      };
+    };
+    responses: {
+      /** @description JSON-RPC response or event stream */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid JSON-RPC request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid endpoint credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Endpoint not found, app not published, or channel disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel or SSE connection limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_card_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A2A endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent Card JSON */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Endpoint not found, app not published, or channel disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  message_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description FCP endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description Plain UTF-8 text or JSON with a message field. Maximum 256 KiB. */
+    requestBody: {
+      content: {
+        "text/plain": string;
+      };
+    };
+    responses: {
+      /** @description Agent reply as Markdown */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Malformed or empty message */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Missing or invalid FCP token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Endpoint not found, app not published, or channel disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description FCP session expired */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Body exceeds 256 KiB */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Per-channel FCP rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Agent response timeout */
+      504: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+    };
+  };
+  create_session_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api_endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["MessageBody"];
+      };
+    };
+    responses: {
+      /** @description Session created and message dispatched */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionRef"];
+        };
+      };
+      /** @description Missing or invalid endpoint credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description App not published or channel disabled */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Endpoint not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_session_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api_endpoint channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Derived session status and completed agent messages */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionStatus"];
+        };
+      };
+      /** @description Missing or invalid endpoint credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description App not published or channel disabled */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Endpoint or session not found, or session not owned by this channel */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  cancel_session_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api_endpoint channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description In-flight turn canceled */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionRef"];
+        };
+      };
+      /** @description Missing or invalid endpoint credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description App not published or channel disabled */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Endpoint or session not found, or session not owned by this channel */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  post_message_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api_endpoint channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["MessageBody"];
+      };
+    };
+    responses: {
+      /** @description Follow-up message dispatched */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionRef"];
+        };
+      };
+      /** @description Missing or invalid endpoint credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description App not published or channel disabled */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Endpoint or session not found, or session not owned by this channel */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  invoke_webhook_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Webhook endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/octet-stream": string;
+      };
+    };
+    responses: {
+      /** @description Webhook accepted */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WebhookInvocationResponse"];
+        };
+      };
+      /** @description Invalid or missing webhook token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Endpoint not found, app not published, or channel disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
       };
     };
   };

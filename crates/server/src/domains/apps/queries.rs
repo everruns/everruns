@@ -372,6 +372,24 @@ pub async fn get_by_public_id_unscoped(
     }
 }
 
+/// Resolve an app from a globally unique channel public ID.
+pub async fn get_by_channel_public_id_unscoped(
+    db: &StorageBackend,
+    encryption: Option<&Arc<EncryptionService>>,
+    channel_public_id: &str,
+) -> anyhow::Result<Option<App>> {
+    let row = db
+        .get_app_by_channel_public_id_unscoped(channel_public_id)
+        .await?;
+    match row {
+        Some(row) if row.status != "deleted" => {
+            let org_id = row.org_id;
+            Ok(Some(row_to_app(db, encryption, row, org_id).await))
+        }
+        _ => Ok(None),
+    }
+}
+
 /// Update channel config with proper encryption handling.
 /// Used by webhook handlers (unauthenticated, no caller context).
 pub async fn update_channel_config_unscoped(
