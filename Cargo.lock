@@ -2313,6 +2313,7 @@ dependencies = [
  "chrono",
  "clap",
  "dialoguer",
+ "everruns-cli-contract",
  "everruns-provider",
  "everruns-sdk",
  "futures",
@@ -2328,6 +2329,15 @@ dependencies = [
  "tokio",
  "toml",
  "urlencoding",
+]
+
+[[package]]
+name = "everruns-cli-contract"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

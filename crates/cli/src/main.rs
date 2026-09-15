@@ -1159,3 +1159,42 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+mod contract {
+    use super::*;
+    use clap::CommandFactory;
+
+    /// The command line this CLI ships, as a diffable rendering.
+    ///
+    /// Humans and their scripts already type these words, so the contract they
+    /// depend on is pinned here rather than described somewhere. The agent-facing
+    /// command tree is being brought onto the same contract, and pinning this
+    /// first is what makes that a merge rather than a renegotiation: the surface
+    /// with users is the one that does not move.
+    const GOLDEN: &str = include_str!("../contract.golden");
+
+    #[test]
+    fn the_shipped_command_line_has_not_changed() {
+        let rendered = everruns_cli_contract::render::tree(&Cli::command());
+
+        if std::env::var("UPDATE_CLI_CONTRACT").is_ok() {
+            std::fs::write(
+                concat!(env!("CARGO_MANIFEST_DIR"), "/contract.golden"),
+                format!("{rendered}\n"),
+            )
+            .expect("write contract golden");
+            return;
+        }
+
+        if let Some(report) = everruns_cli_contract::render::diff(GOLDEN, &rendered) {
+            panic!(
+                "the CLI's command line changed:\n\n{report}\nEvery line here is \
+                 something a person or a script already types. If the change is \
+                 deliberate, run `UPDATE_CLI_CONTRACT=1 cargo test -p everruns-cli \
+                 the_shipped_command_line` and say in the commit message what moved \
+                 and why it is safe."
+            );
+        }
+    }
+}

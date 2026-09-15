@@ -31,6 +31,7 @@ members = [
     "crates/turbopuffer",
     "crates/internal-protocol",
     "crates/cli",
+    "crates/cli-contract",
     "crates/durable",
     "crates/ard",
     "integrations/docker",
@@ -220,6 +221,7 @@ everruns-openai = { path = "crates/drivers/openai", version = "0.18.5" }
 everruns = { path = "crates/everruns", version = "0.18.0" }
 everruns-macros = { path = "crates/macros", version = "0.18.2" }
 everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.18.5" }
+everruns-cli-contract = { path = "crates/cli-contract", version = "0.1.0" }
 everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.18.4" }
 everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.18.4" }
 everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.18.4" }

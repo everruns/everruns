@@ -61,3 +61,4 @@ hostname = "0.4"
 
 [dev-dependencies]
 tempfile.workspace = true
+everruns-cli-contract.workspace = true

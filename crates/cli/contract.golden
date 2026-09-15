@@ -1,0 +1,44 @@
+agents create	--description --file/-f --harness/-H --initial-files-dir --model --name --system-prompt --tag/-t... --writable
+agents delete	<agent_id>!
+agents get	<agent_id>!
+agents list	
+agents update	--description --file/-f --harness/-H --initial-files-dir --model --name --system-prompt --tag/-t... --writable <agent_id>
+capabilities list	--status
+chat	--no-stream --session/-s! --timeout <message>!
+connections list	
+connections remove	<provider>!
+connections set	--api-key-stdin <provider>!
+files ls	--long/-l --recursive/-r --session/-s! <path>
+files pull	--delete --dry-run --session/-s! <local_dir>
+files push	--delete --dry-run --session/-s! <local_dir>
+files sync	--conflict --delete --dry-run --exclude... --interval --no-gitignore --session/-s! --verbose/-v <local_dir>
+knowledge-bases create	--description --embedding-model-id <name>!
+knowledge-bases delete	<id>!
+knowledge-bases get	<id>!
+knowledge-bases list	
+login	--token
+logout	
+orgs select	
+participants add	--agent!
+participants list	
+participants remove	<participant>!
+plugins get	<id>!
+plugins install	<marketplace_id>! <plugin_name>!
+plugins list	
+plugins uninstall	<id>!
+sessions create	--agent-identity --agent/-a --budget-limit... --budget-soft-limit... --capability... --harness/-H --hint... --hints-json --locale --max-iterations --model --network-allow... --network-block... --secret... --system-prompt --tag/-t... --title
+sessions export	--format --output/-o <session>!
+sessions get	<session>!
+sessions list	
+sessions watch	<session>!
+skills create	<path>!
+skills delete	<id>!
+skills get	<id>!
+skills list	
+status	
+triggers create	--cron! --disabled --message! --session-mode --timezone
+triggers disable	<trigger>!
+triggers enable	<trigger>!
+triggers list	
+triggers run-now	<trigger>!
+triggers update	--cron --message --session-mode --timezone <trigger>!
