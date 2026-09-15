@@ -22,6 +22,11 @@
  * because the hook can be mounted more than once at a time (the desktop and
  * mobile sidebars both render the thread list) and the created thread is only
  * visible to the others once the sessions list has refetched.
+ *
+ * Creating is gated on a *successful* read of the thread list. A read that
+ * failed says nothing about whether the thread exists, and treating it as "no
+ * thread yet" is how duplicate pinned threads accumulate — once per page load
+ * that happened to hit a transient error.
  */
 
 import { useEffect } from "react";
@@ -61,7 +66,11 @@ export function usePlatformChatThread(
   const orgId = currentOrg?.public_id;
   // Archived threads count as existing: a user who put the thread away must not
   // get a fresh one on the next page load.
-  const { threads, isLoading: threadsLoading } = useChatThreads({
+  const {
+    threads,
+    isLoading: threadsLoading,
+    error: threadsError,
+  } = useChatThreads({
     includeArchived: true,
     // Scanning the org's sessions would let a busy org hide this user's thread
     // past the scan window and have the app create a fresh one on every entry.
@@ -80,7 +89,7 @@ export function usePlatformChatThread(
   const isLoading = threadsLoading || harnessesLoading;
 
   useEffect(() => {
-    if (!ensure || isLoading || !orgId || !platformChat || thread) return;
+    if (!ensure || isLoading || threadsError || !orgId || !platformChat || thread) return;
     if (ensuredOrgIds.has(orgId)) return;
     ensuredOrgIds.add(orgId);
 
@@ -104,7 +113,7 @@ export function usePlatformChatThread(
     // Deliberately not keyed on the mutation objects: they are recreated on
     // every render, and the attempt guard above is what keeps this one-shot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ensure, isLoading, orgId, platformChat, thread]);
+  }, [ensure, isLoading, threadsError, orgId, platformChat, thread]);
 
   return { thread, isLoading };
 }

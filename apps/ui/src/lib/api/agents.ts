@@ -3,6 +3,7 @@
 
 import { api, throwApiError } from "./client";
 import { createCrudApi } from "./crud";
+import { withOrgHeader } from "./active-org";
 import type {
   Agent,
   AgentVersion,
@@ -48,6 +49,7 @@ export async function exportAgent(agentId: string): Promise<string> {
   // Raw fetch needed: returns text/markdown, not JSON
   const response = await fetch(`/api/v1/agents/${agentId}/export`, {
     credentials: "include",
+    headers: withOrgHeader(),
   });
   if (!response.ok) {
     await throwApiError(response);
@@ -60,9 +62,9 @@ export async function importAgent(markdown: string): Promise<Agent> {
   const response = await fetch("/api/v1/agents/import", {
     method: "POST",
     credentials: "include",
-    headers: {
+    headers: withOrgHeader({
       "Content-Type": "text/markdown",
-    },
+    }),
     body: markdown,
   });
   if (!response.ok) {

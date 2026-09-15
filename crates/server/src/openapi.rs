@@ -315,6 +315,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::users::update_profile,
         api::users::delete_account,
         api::users::export_user_data,
+        api::org_invitations::list_my_invitations,
+        api::org_invitations::accept_my_invitation,
         // Resolver
         api::resolver::resolve_org,
         // Organizations
@@ -567,6 +569,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::users::User,
             api::users::ListUsersQuery,
             ListResponse<api::users::User>,
+            api::org_invitations::MyInvitationResponse,
+            api::org_invitations::AcceptInviteResponse,
+            ListResponse<api::org_invitations::MyInvitationResponse>,
             SessionFile, FileInfo, FileStat, GrepMatch, GrepResult,
             LeasedResource,
             // Session filesystem DTOs intentionally omitted — see paths(...) above.

@@ -51,14 +51,14 @@ assistant pane. It survives as the channel-thread answer, because token-by-token
 streaming into a shared channel is not wanted. Streaming is the pane answer. Neither
 obsoletes the other, and no existing app needed migrating.
 
-**Tool narration reuses `AgUiToolVisibility`.** Mapping tool names directly to Slack
+**Tool narration reuses `PublicToolVisibility`.** Mapping tool names directly to Slack
 status text would leak internals into a user-facing surface. AG-UI already solved this
 with a `None` / `Generic` / `Narrated` policy; Slack consumes the same policy rather
 than growing a second one. What a public surface may reveal stays decided in one place.
 Exercised by EVE-975: the policy moved out of `api/ag_ui.rs` into
-`everruns_platform::app::public_tool_activity_text`, which both surfaces now call. Slack
-channels grew the same `tool_visibility` / `generic_tool_text` knobs so the pane is
-configured like any other public surface rather than hard-coded.
+`everruns_platform::exposure::public_tool_activity_text`, which both surfaces now
+call. Slack channels grew the same `tool_visibility` / `generic_tool_text` knobs so the
+pane is configured like any other public surface rather than hard-coded.
 
 **Streaming makes the delivery dispatcher stateful and clocked.** The dispatcher was
 notification-driven and stateless between events. Streaming requires accumulating deltas
@@ -97,7 +97,16 @@ from a classic Events API bot to a Slack agent app.
 
 | Issue | Item |
 |---|---|
-| EVE-978 | Decide where suggested prompts come from, or decide not to have them |
+| — | Nothing outstanding. |
+
+EVE-978 settled the last gap: suggested prompts come from the agent's conversation
+starters, falling back to the harness's, resolved by
+`everruns_platform::exposure::resolve_starters` and emitted into the manifest's
+`features.agent_view.suggested_prompts`. The field was already there for Platform Chat,
+so the prompts are authored by whoever configures the agent rather than generated, and an
+agent with no starters emits no prompts at all — an empty pane beats prompts nobody wrote.
+See "Suggested prompts come from conversation starters" in
+[`crates/server/specs/slack-integration.md`](../../crates/server/specs/slack-integration.md).
 
 EVE-975 and EVE-988 have since shipped. Two decisions from EVE-975 are worth keeping:
 

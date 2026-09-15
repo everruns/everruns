@@ -7,6 +7,132 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-09-15
+
+### Highlights
+
+- **Slack agent surface** - Agents now run natively in Slack. The agent surface is enabled end to end: replies stream token-by-token into the pane, a stop button cancels the running turn, agent status and the thread title show while a turn runs, thread context is persisted and fed to the agent, and replies post as markdown blocks with correlation metadata ([#3560](https://github.com/everruns/everruns/pull/3560), [#3564](https://github.com/everruns/everruns/pull/3564), [#3568](https://github.com/everruns/everruns/pull/3568), [#3581](https://github.com/everruns/everruns/pull/3581), [#3567](https://github.com/everruns/everruns/pull/3567), [#3563](https://github.com/everruns/everruns/pull/3563)).
+- **Session environments** - A session now declares where its commands run and what they may touch, giving agents an explicit execution environment ([#3599](https://github.com/everruns/everruns/pull/3599)).
+- **Endpoint-ID ingress routing** - Ingress routes mount on endpoint IDs, with reserved routing tag prefixes to keep session routing unambiguous ([#3593](https://github.com/everruns/everruns/pull/3593), [#3589](https://github.com/everruns/everruns/pull/3589)).
+- **Agent-owned exposure replaces Apps** - The App abstraction is retired from the product surface in favor of agent-owned exposure ([#3590](https://github.com/everruns/everruns/pull/3590), [#3585](https://github.com/everruns/everruns/pull/3585)).
+
+### What's Changed
+
+- fix(ci): point the sample-repo exclude at its current path ([#3604](https://github.com/everruns/everruns/pull/3604)) by [@chaliy](https://github.com/chaliy)
+- fix(server): let a Slack channel exist before its credentials do ([#3602](https://github.com/everruns/everruns/pull/3602)) by [@chaliy](https://github.com/chaliy)
+- refactor(platform): move shared exposure policy (EVE-1001) by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(provider): type OpenRouter billing pressure ([#3549](https://github.com/everruns/everruns/pull/3549)) by [@warp-factories](https://github.com/apps/warp-factories)
+- feat(ui): hide Apps from the product surface ([#3590](https://github.com/everruns/everruns/pull/3590)) by [@warp-factories](https://github.com/apps/warp-factories)
+- refactor(examples): standardize Bashkit repo agent ([#3601](https://github.com/everruns/everruns/pull/3601)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): reserve endpoint routing tag prefixes (EVE-1002) ([#3589](https://github.com/everruns/everruns/pull/3589)) by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(ui): unify quality list mastheads ([#3577](https://github.com/everruns/everruns/pull/3577)) by [@warp-factories](https://github.com/apps/warp-factories)
+- feat(environments): where a session's commands run, and what they may touch ([#3599](https://github.com/everruns/everruns/pull/3599)) by [@chaliy](https://github.com/chaliy)
+- fix(scripts): allow Factory author metadata tuple ([#3600](https://github.com/everruns/everruns/pull/3600)) by [@warp-factories](https://github.com/apps/warp-factories)
+- feat(server): mount ingress routes on endpoint IDs ([#3593](https://github.com/everruns/everruns/pull/3593)) by [@warp-factories](https://github.com/apps/warp-factories)
+- refactor(examples): standardize Everruns support agent ([#3597](https://github.com/everruns/everruns/pull/3597)) by [@chaliy](https://github.com/chaliy)
+- test(knowledge): add manual Slack test cases for the agent surface ([#3596](https://github.com/everruns/everruns/pull/3596)) by [@chaliy](https://github.com/chaliy)
+- refactor(platform): unify session strategy and invocation mode into SessionBinding ([#3595](https://github.com/everruns/everruns/pull/3595)) by [@chaliy](https://github.com/chaliy)
+- fix(email): render brand mark and CTA button in mail clients ([#3594](https://github.com/everruns/everruns/pull/3594)) by [@chaliy](https://github.com/chaliy)
+- feat(chat): collapse Platform Chat empty state into one centered welcome ([#3587](https://github.com/everruns/everruns/pull/3587)) by [@chaliy](https://github.com/chaliy)
+- fix(okf): guard test case identifiers and titles ([#3575](https://github.com/everruns/everruns/pull/3575)) by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(ci): correct the stale sample-repo workspace exclude path ([#3591](https://github.com/everruns/everruns/pull/3591)) by [@chaliy](https://github.com/chaliy)
+- fix(deps): clear RUSTSEC-2026-0285 by moving to rustls 0.23.45 ([#3592](https://github.com/everruns/everruns/pull/3592)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): honor X-Org-Id for session requests ([#3583](https://github.com/everruns/everruns/pull/3583)) by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(ui): clarify empty session transcript ([#3571](https://github.com/everruns/everruns/pull/3571)) by [@warp-factories](https://github.com/apps/warp-factories)
+- chore(knowledge): cover missing manual UI surfaces ([#3574](https://github.com/everruns/everruns/pull/3574)) by [@warp-factories](https://github.com/apps/warp-factories)
+- refactor(examples): establish support agent reference layout ([#3586](https://github.com/everruns/everruns/pull/3586)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): decide to retire the App abstraction for agent-owned exposure ([#3585](https://github.com/everruns/everruns/pull/3585)) by [@chaliy](https://github.com/chaliy)
+- refactor(ui): rename Platform Chat section to Branding on agent and harness forms ([#3584](https://github.com/everruns/everruns/pull/3584)) by [@chaliy](https://github.com/chaliy)
+- feat(slack): show agent status and thread title in the pane ([#3581](https://github.com/everruns/everruns/pull/3581)) by [@chaliy](https://github.com/chaliy)
+- fix(skills): cap Chrome's TLS version so agent-browser works behind the egress proxy ([#3582](https://github.com/everruns/everruns/pull/3582)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): treat a cancelled turn as finished on recovery ([#3580](https://github.com/everruns/everruns/pull/3580)) by [@chaliy](https://github.com/chaliy)
+- fix(server): stop worker gRPC statuses carrying storage errors ([#3579](https://github.com/everruns/everruns/pull/3579)) by [@chaliy](https://github.com/chaliy)
+- fix(server): sanitize unique conflict details ([#3578](https://github.com/everruns/everruns/pull/3578)) by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(ui): remove nested link buttons ([#3576](https://github.com/everruns/everruns/pull/3576)) by [@warp-factories](https://github.com/apps/warp-factories)
+- chore(knowledge): record why the Slack channel moved to the agent surface ([#3573](https://github.com/everruns/everruns/pull/3573)) by [@chaliy](https://github.com/chaliy)
+- test(server): lock in that members cannot create LLM providers ([#3572](https://github.com/everruns/everruns/pull/3572)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): filter unsupported message subtypes ([#3559](https://github.com/everruns/everruns/pull/3559)) by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(tests): sample the context-change baseline after the message's event lands ([#3570](https://github.com/everruns/everruns/pull/3570)) by [@chaliy](https://github.com/chaliy)
+- feat(slack): stream pane replies token-by-token ([#3564](https://github.com/everruns/everruns/pull/3564)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): render org settings read-only for members ([#3569](https://github.com/everruns/everruns/pull/3569)) by [@chaliy](https://github.com/chaliy)
+- feat(slack): cancel the running turn on the pane stop button ([#3568](https://github.com/everruns/everruns/pull/3568)) by [@chaliy](https://github.com/chaliy)
+- feat(channel): persist ThreadContext and feed it Slack context changes ([#3567](https://github.com/everruns/everruns/pull/3567)) by [@chaliy](https://github.com/chaliy)
+- fix(tests): skip the wait=true live test on a provider account block ([#3566](https://github.com/everruns/everruns/pull/3566)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): scope server name uniqueness to the org and to live rows ([#3565](https://github.com/everruns/everruns/pull/3565)) by [@chaliy](https://github.com/chaliy)
+- feat(slack): post replies as markdown blocks with correlation metadata ([#3563](https://github.com/everruns/everruns/pull/3563)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): page thread backfill instead of silently cutting it at 100 ([#3562](https://github.com/everruns/everruns/pull/3562)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): honour Slack's Retry-After on a rate limit ([#3561](https://github.com/everruns/everruns/pull/3561)) by [@chaliy](https://github.com/chaliy)
+- feat(slack): enable the agent surface ([#3560](https://github.com/everruns/everruns/pull/3560)) by [@chaliy](https://github.com/chaliy)
+- refactor(slack): route delivery through ChannelDeliveryAdapter ([#3558](https://github.com/everruns/everruns/pull/3558)) by [@chaliy](https://github.com/chaliy)
+- feat(slack): generate event_subscriptions in the app manifest ([#3557](https://github.com/everruns/everruns/pull/3557)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): notify Slack when a turn ends without a reply ([#3556](https://github.com/everruns/everruns/pull/3556)) by [@chaliy](https://github.com/chaliy)
+- fix(models): harden mutation provider preconditions ([#3548](https://github.com/everruns/everruns/pull/3548)) by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(tooling): sync version-carrying dev-dependency pins ([#3555](https://github.com/everruns/everruns/pull/3555)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+Independently versioned crates published this cycle, classified with `cargo-semver-checks` (computed
+deterministically by `scripts/plan-crate-release.py`). Four crates took breaking public-contract
+changes and take the breaking **minor** bump (the breaking slot for `0.x`): `everruns-core`,
+`everruns-host`, and `everruns-platform` carry the SessionBinding unification
+([#3595](https://github.com/everruns/everruns/pull/3595)), session environments
+([#3599](https://github.com/everruns/everruns/pull/3599)), endpoint-ID ingress routing
+([#3593](https://github.com/everruns/everruns/pull/3593)), and the shared exposure-policy move
+(EVE-1001); `everruns-provider` adds the `BillingPressure` variant to the exhaustive `LlmErrorKind`
+enum ([#3549](https://github.com/everruns/everruns/pull/3549)). Because these sit near the base of
+the graph, their breaking bumps close the whole publish cone: every published dependant that pinned
+the old requirement takes a compatibility **patch** re-pin so it republishes against the new
+versions. The `everruns` facade, `everruns-engine`, `everruns-builtins`, and
+`everruns-integrations-filesystem` also carry additive source changes; the remaining patch bumps are
+pure cone re-pins.
+
+Breaking (minor), old → new:
+- `everruns-core` 0.21.0 → 0.22.0
+- `everruns-host` 0.21.0 → 0.22.0
+- `everruns-platform` 0.21.0 → 0.22.0
+- `everruns-provider` 0.22.0 → 0.23.0
+
+Additive / behavior / cone re-pin (patch), old → new:
+- `everruns` 0.21.0 → 0.21.1
+- `everruns-engine` 0.19.0 → 0.19.1
+- `everruns-model-profiles` 0.2.0 → 0.2.1
+- `everruns-builtins` 0.18.8 → 0.18.9
+- `everruns-capability` 0.18.2 → 0.18.3
+- `everruns-macros` 0.18.2 → 0.18.3
+- `everruns-mcp` 0.19.5 → 0.19.6
+- `everruns-ard` 0.18.4 → 0.18.5
+- `everruns-cli` 0.18.5 → 0.18.6
+- `everruns-test-support` 0.18.7 → 0.18.8
+- `everruns-llmsim` 0.18.7 → 0.18.8
+- `everruns-meta` 0.18.5 → 0.18.6
+- `everruns-anthropic` 0.18.5 → 0.18.6
+- `everruns-bedrock` 0.18.5 → 0.18.6
+- `everruns-fireworks` 0.18.5 → 0.18.6
+- `everruns-gemini` 0.18.5 → 0.18.6
+- `everruns-mai` 0.18.5 → 0.18.6
+- `everruns-openai` 0.18.5 → 0.18.6
+- `everruns-openrouter` 0.18.5 → 0.18.6
+- `everruns-turbopuffer` 0.18.5 → 0.18.6
+- `everruns-integrations-bashkit` 0.18.4 → 0.18.5
+- `everruns-integrations-brave-search` 0.18.4 → 0.18.5
+- `everruns-integrations-browserless` 0.18.4 → 0.18.5
+- `everruns-integrations-cursor` 0.18.4 → 0.18.5
+- `everruns-integrations-daytona` 0.18.4 → 0.18.5
+- `everruns-integrations-deno` 0.19.1 → 0.19.2
+- `everruns-integrations-docker` 0.18.4 → 0.18.5
+- `everruns-integrations-duckduckgo` 0.18.4 → 0.18.5
+- `everruns-integrations-e2b` 0.18.4 → 0.18.5
+- `everruns-integrations-filesystem` 0.18.5 → 0.18.6
+- `everruns-integrations-github` 0.18.4 → 0.18.5
+- `everruns-integrations-lua` 0.18.4 → 0.18.5
+- `everruns-integrations-openai-image` 0.18.4 → 0.18.5
+- `everruns-integrations-openrouter-workspace` 0.18.4 → 0.18.5
+- `everruns-integrations-parallel` 0.18.4 → 0.18.5
+- `everruns-integrations-sprites` 0.18.4 → 0.18.5
+- `everruns-integrations-web-fetch` 0.18.4 → 0.18.5
+
+No published crate was deleted or absorbed this cycle.
+
 ## [0.26.0] - 2026-09-13
 
 ### Highlights

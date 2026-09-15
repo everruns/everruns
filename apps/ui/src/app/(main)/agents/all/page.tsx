@@ -17,8 +17,8 @@ export const metadata: Metadata = {
 };
 
 export default async function AllAgentsPage() {
-  const queryClient = createServerQueryClient();
   const requestContext = await getServerRequestContext();
+  const queryClient = createServerQueryClient(requestContext);
   const { currentOrgId } = await prefetchAuthBootstrap(queryClient, requestContext);
 
   if (currentOrgId) {

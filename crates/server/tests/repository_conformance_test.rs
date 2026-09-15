@@ -15,9 +15,11 @@ use everruns_provider::typed_id::TriggerId;
 use everruns_provider::typed_id::{AgentId, HarnessId, PrincipalId};
 use everruns_server::org_init;
 use everruns_server::storage::{
-    CreateAgentRow, CreateAgentTriggerRow, CreateBudgetRow, CreateEventRow, CreatePrincipalRow,
-    CreateProviderRow, CreateSessionRow, CreateUsageJournalRow, CreateUsageLedgerRow, Database,
-    MESSAGE_SAFETY_LIMIT, Repository, StorageBackend, UpdateAgentTrigger,
+    AcceptOrgInvitationOutcome, AddOrganizationMemberOutcome, CreateAgentRow,
+    CreateAgentTriggerRow, CreateBudgetRow, CreateEventRow, CreateOrgInvitation,
+    CreateOrganizationRow, CreatePrincipalRow, CreateProviderRow, CreateSessionRow,
+    CreateUsageJournalRow, CreateUsageLedgerRow, CreateUserRow, Database, MESSAGE_SAFETY_LIMIT,
+    Repository, StorageBackend, UpdateAgentTrigger,
 };
 use test_harness::get_database_url;
 
@@ -420,12 +422,414 @@ async fn run_agent_trigger_conformance(
     );
 }
 
+async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
+    let user = backend
+        .create_user(CreateUserRow {
+            email: format!("inviter-{label}-{}@example.com", Uuid::now_v7()),
+            name: "Invitation Conformance".to_string(),
+            avatar_url: None,
+            roles: vec![],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .expect("create invitation user");
+    let active_org = backend
+        .create_organization(CreateOrganizationRow {
+            public_id: everruns_platform::generate_org_public_id(),
+            name: format!("Active Invitation Org {label}"),
+            created_by: Some(user.id),
+        })
+        .await
+        .expect("create active invitation org");
+    let resolved_org = backend
+        .create_organization(CreateOrganizationRow {
+            public_id: everruns_platform::generate_org_public_id(),
+            name: format!("Resolved Invitation Org {label}"),
+            created_by: Some(user.id),
+        })
+        .await
+        .expect("create resolved invitation org");
+    let target_email = format!("target-{label}-{}@example.com", Uuid::now_v7());
+
+    let create_invitation = |org_id, email: String, expires_at| CreateOrgInvitation {
+        public_id: format!("orginv_{}", Uuid::now_v7().simple()),
+        org_id,
+        email,
+        role: "admin".to_string(),
+        invited_by: user.id,
+        token_hash: format!("hash-{}", Uuid::now_v7()),
+        expires_at,
+    };
+    let active = backend
+        .create_org_invitation(create_invitation(
+            active_org.org_id,
+            target_email.clone(),
+            Utc::now() + chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create active invitation");
+    backend
+        .create_org_invitation(create_invitation(
+            resolved_org.org_id,
+            format!("other-{label}@example.com"),
+            Utc::now() + chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create other-addressee invitation");
+    let revoked = backend
+        .create_org_invitation(create_invitation(
+            resolved_org.org_id,
+            target_email.clone(),
+            Utc::now() + chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create revoked invitation");
+    assert!(
+        backend
+            .revoke_org_invitation(resolved_org.org_id, &revoked.public_id)
+            .await
+            .expect("revoke invitation")
+    );
+    let accepted = backend
+        .create_org_invitation(create_invitation(
+            resolved_org.org_id,
+            target_email.clone(),
+            Utc::now() + chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create accepted invitation");
+    assert!(
+        backend
+            .accept_org_invitation(accepted.id, user.id)
+            .await
+            .expect("accept invitation")
+            .is_some()
+    );
+    let expired = backend
+        .create_org_invitation(create_invitation(
+            resolved_org.org_id,
+            target_email.clone(),
+            Utc::now() - chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create expired invitation");
+
+    let rows = backend
+        .list_outstanding_org_invitations_by_email(&target_email)
+        .await
+        .expect("list actionable invitations");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].public_id, active.public_id);
+    assert_eq!(rows[0].org_id, active_org.org_id);
+    assert_eq!(rows[0].org_name, active_org.name);
+    assert_eq!(rows[0].email, target_email);
+    assert_eq!(rows[0].role, "admin");
+    assert!(rows[0].expires_at > Utc::now());
+    assert!(
+        backend
+            .get_org_invitation_by_public_id_and_email(
+                &active.public_id,
+                &format!("wrong-{target_email}")
+            )
+            .await
+            .expect("lookup invitation for wrong addressee")
+            .is_none()
+    );
+    assert!(
+        backend
+            .accept_org_invitation(expired.id, user.id)
+            .await
+            .expect("reject expired invitation")
+            .is_none()
+    );
+
+    let existing_member = backend
+        .create_user(CreateUserRow {
+            email: format!("existing-{label}-{}@example.com", Uuid::now_v7()),
+            name: "Existing Invitation Member".to_string(),
+            avatar_url: None,
+            roles: vec![],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .expect("create existing member");
+    let existing_member_org = backend
+        .create_organization(CreateOrganizationRow {
+            public_id: everruns_platform::generate_org_public_id(),
+            name: format!("Existing Member Invitation Org {label}"),
+            created_by: Some(user.id),
+        })
+        .await
+        .expect("create existing member invitation org");
+    backend
+        .add_organization_member(existing_member_org.org_id, existing_member.id, "owner")
+        .await
+        .expect("add existing owner");
+    match backend
+        .add_organization_member_with_capacity(
+            existing_member_org.org_id,
+            existing_member.id,
+            "member",
+            1,
+        )
+        .await
+        .expect("capacity-check existing owner")
+    {
+        AddOrganizationMemberOutcome::AlreadyMember(member) => {
+            assert_eq!(member.role, "owner");
+        }
+        _ => panic!("existing owner must remain a member without changing role"),
+    }
+    let existing_member_invitation = backend
+        .create_org_invitation(create_invitation(
+            existing_member_org.org_id,
+            existing_member.email.clone(),
+            Utc::now() + chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create existing member invitation");
+    assert_eq!(
+        backend
+            .accept_org_invitation_with_membership(
+                existing_member_invitation.id,
+                existing_member.id,
+                1,
+            )
+            .await
+            .expect("accept invitation for existing member"),
+        AcceptOrgInvitationOutcome::Accepted {
+            org_id: existing_member_org.org_id,
+            role: "owner".to_string(),
+        }
+    );
+    let existing_members = backend
+        .list_organization_members(existing_member_org.org_id)
+        .await
+        .expect("list existing member org");
+    assert_eq!(existing_members.len(), 1);
+    assert_eq!(existing_members[0].role, "owner");
+
+    let capacity_org = backend
+        .create_organization(CreateOrganizationRow {
+            public_id: everruns_platform::generate_org_public_id(),
+            name: format!("Capacity Invitation Org {label}"),
+            created_by: Some(user.id),
+        })
+        .await
+        .expect("create capacity invitation org");
+    let first_user = backend
+        .create_user(CreateUserRow {
+            email: format!("capacity-first-{label}-{}@example.com", Uuid::now_v7()),
+            name: "First Capacity Member".to_string(),
+            avatar_url: None,
+            roles: vec![],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .expect("create first capacity user");
+    let second_user = backend
+        .create_user(CreateUserRow {
+            email: format!("capacity-second-{label}-{}@example.com", Uuid::now_v7()),
+            name: "Second Capacity Member".to_string(),
+            avatar_url: None,
+            roles: vec![],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .expect("create second capacity user");
+    let first_invitation = backend
+        .create_org_invitation(create_invitation(
+            capacity_org.org_id,
+            first_user.email.clone(),
+            Utc::now() + chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create first capacity invitation");
+    let second_invitation = backend
+        .create_org_invitation(create_invitation(
+            capacity_org.org_id,
+            second_user.email.clone(),
+            Utc::now() + chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create second capacity invitation");
+
+    let first_backend = backend.clone();
+    let second_backend = backend.clone();
+    let (first_result, second_result) = tokio::join!(
+        first_backend.accept_org_invitation_with_membership(first_invitation.id, first_user.id, 1),
+        second_backend.accept_org_invitation_with_membership(
+            second_invitation.id,
+            second_user.id,
+            1
+        ),
+    );
+    let first_result = first_result.expect("accept first capacity invitation");
+    let second_result = second_result.expect("accept second capacity invitation");
+    let accepted_count = [&first_result, &second_result]
+        .into_iter()
+        .filter(|outcome| matches!(outcome, AcceptOrgInvitationOutcome::Accepted { .. }))
+        .count();
+    let rejected_count = [&first_result, &second_result]
+        .into_iter()
+        .filter(|outcome| matches!(outcome, AcceptOrgInvitationOutcome::MemberLimitReached))
+        .count();
+    assert_eq!(accepted_count, 1);
+    assert_eq!(rejected_count, 1);
+    assert_eq!(
+        backend
+            .count_organization_members(capacity_org.org_id)
+            .await
+            .expect("count capacity org members"),
+        1
+    );
+
+    let (losing_invitation, losing_email) =
+        if first_result == AcceptOrgInvitationOutcome::MemberLimitReached {
+            (&first_invitation, &first_user.email)
+        } else {
+            (&second_invitation, &second_user.email)
+        };
+    let losing_row = backend
+        .get_org_invitation_by_public_id_and_email(&losing_invitation.public_id, losing_email)
+        .await
+        .expect("lookup losing capacity invitation")
+        .expect("losing capacity invitation remains");
+    assert!(losing_row.accepted_at.is_none());
+    assert!(losing_row.revoked_at.is_none());
+    assert!(losing_row.expires_at > Utc::now());
+
+    let mixed_org = backend
+        .create_organization(CreateOrganizationRow {
+            public_id: everruns_platform::generate_org_public_id(),
+            name: format!("Mixed Capacity Invitation Org {label}"),
+            created_by: Some(user.id),
+        })
+        .await
+        .expect("create mixed capacity invitation org");
+    let mixed_invitation = backend
+        .create_org_invitation(create_invitation(
+            mixed_org.org_id,
+            second_user.email.clone(),
+            Utc::now() + chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create mixed capacity invitation");
+    let direct_backend = backend.clone();
+    let invitation_backend = backend.clone();
+    let (direct_result, invitation_result) = tokio::join!(
+        direct_backend.add_organization_member_with_capacity(
+            mixed_org.org_id,
+            first_user.id,
+            "member",
+            1,
+        ),
+        invitation_backend.accept_org_invitation_with_membership(
+            mixed_invitation.id,
+            second_user.id,
+            1,
+        ),
+    );
+    let direct_result = direct_result.expect("direct capacity-checked member add");
+    let invitation_result = invitation_result.expect("mixed invitation acceptance");
+    let invitation_lost = match (&direct_result, &invitation_result) {
+        (
+            AddOrganizationMemberOutcome::Added(_),
+            AcceptOrgInvitationOutcome::MemberLimitReached,
+        ) => true,
+        (
+            AddOrganizationMemberOutcome::MemberLimitReached,
+            AcceptOrgInvitationOutcome::Accepted { .. },
+        ) => false,
+        _ => panic!("exactly one mixed capacity operation must succeed"),
+    };
+    assert_eq!(
+        backend
+            .count_organization_members(mixed_org.org_id)
+            .await
+            .expect("count mixed capacity org members"),
+        1
+    );
+    if invitation_lost {
+        let mixed_losing_row = backend
+            .get_org_invitation_by_public_id_and_email(
+                &mixed_invitation.public_id,
+                &second_user.email,
+            )
+            .await
+            .expect("lookup mixed losing invitation")
+            .expect("mixed losing invitation remains");
+        assert!(mixed_losing_row.accepted_at.is_none());
+        assert!(mixed_losing_row.revoked_at.is_none());
+        assert!(mixed_losing_row.expires_at > Utc::now());
+    }
+
+    let full_org = backend
+        .create_organization(CreateOrganizationRow {
+            public_id: everruns_platform::generate_org_public_id(),
+            name: format!("Full Capacity Invitation Org {label}"),
+            created_by: Some(user.id),
+        })
+        .await
+        .expect("create full capacity invitation org");
+    assert!(matches!(
+        backend
+            .add_organization_member_with_capacity(full_org.org_id, first_user.id, "member", 1,)
+            .await
+            .expect("fill member capacity"),
+        AddOrganizationMemberOutcome::Added(_)
+    ));
+    let full_org_invitation = backend
+        .create_org_invitation(create_invitation(
+            full_org.org_id,
+            second_user.email.clone(),
+            Utc::now() + chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create full capacity invitation");
+    assert_eq!(
+        backend
+            .accept_org_invitation_with_membership(full_org_invitation.id, second_user.id, 1,)
+            .await
+            .expect("reject full capacity invitation"),
+        AcceptOrgInvitationOutcome::MemberLimitReached
+    );
+    let full_org_losing_row = backend
+        .get_org_invitation_by_public_id_and_email(
+            &full_org_invitation.public_id,
+            &second_user.email,
+        )
+        .await
+        .expect("lookup full capacity invitation")
+        .expect("full capacity invitation remains");
+    assert!(full_org_losing_row.accepted_at.is_none());
+    assert!(full_org_losing_row.revoked_at.is_none());
+    assert!(full_org_losing_row.expires_at > Utc::now());
+}
+
 #[tokio::test]
 async fn in_memory_repository_conformance() {
     let backend = StorageBackend::in_memory();
     let harness_id = HarnessId::from_uuid(Uuid::nil());
     run_repository_conformance(&backend, "memory", harness_id).await;
     run_agent_trigger_conformance(&backend, "memory", harness_id).await;
+    run_org_invitation_conformance(&backend, "memory").await;
 }
 
 #[tokio::test]
@@ -439,6 +843,7 @@ async fn postgres_repository_conformance() {
         .expect("generic harness id");
     run_repository_conformance(&backend, "postgres", harness_id).await;
     run_agent_trigger_conformance(&backend, "postgres", harness_id).await;
+    run_org_invitation_conformance(&backend, "postgres").await;
 }
 
 /// EVE-870: the reconciliation half of the checkpoint crash window.

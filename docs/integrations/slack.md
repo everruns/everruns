@@ -150,8 +150,8 @@ The webhook URL must be publicly accessible. If running locally, use a tool like
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `signing_secret` | Yes | Slack app signing secret for HMAC-SHA256 verification |
-| `bot_token` | Yes | Bot User OAuth Token (`xoxb-...`) for sending responses |
+| `signing_secret` | Before use | Slack app signing secret for HMAC-SHA256 verification. May be left unset while creating the channel — you only get it once the Slack app exists — but until it is set the webhook rejects every request, including URL verification |
+| `bot_token` | Before use | Bot User OAuth Token (`xoxb-...`) for sending responses. May be left unset while creating the channel. Set it after the Slack app exists and before sending responses |
 | `channel_id` | No | Restrict to a specific channel (e.g., `C0123456789`) |
 | `team_id` | No | Slack workspace ID |
 | `session_strategy` | No | `per_thread` (default), `per_channel`, or `per_user` |

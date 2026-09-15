@@ -30,6 +30,7 @@ pub mod audit;
 pub mod budget;
 #[cfg(feature = "openapi")]
 pub mod capability_schema;
+pub mod exposure;
 pub mod organization;
 pub mod payment;
 pub mod principal;
@@ -195,6 +196,7 @@ pub use eval::{
     EvalInputMessage, EvalRun, EvalRunDataset, EvalRunSource, EvalRunStatus, EvalRunSummaryView,
     EvalStatus, EvalTarget, RunSummary, Score, Scorer,
 };
+pub use exposure::PublicToolVisibility;
 pub use feature_flags::{
     API_FEATURE_FLAG_DEFINITIONS, FeatureFlagDefinition, FeatureFlagMap, FeatureFlags,
     is_platform_managed,
@@ -214,11 +216,11 @@ pub use agent_trigger::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig};
 pub use everruns_core::channel::SessionBinding;
 
 pub use app::{
-    A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentVersionPolicy,
-    ApiEndpointChannelConfig, App, AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode,
-    AppEndpointAuthProviderConfig, AppEndpointAuthRequirements, AppStatus, CaptchaProvider,
-    ChannelType, FcpChannelConfig, PublicChatBranding, PublicChatCaptchaConfig,
-    PublicChatChannelConfig, SlackChannelConfig, SlackReplyMode,
+    A2aChannelConfig, AgUiChannelConfig, AgentVersionPolicy, ApiEndpointChannelConfig, App,
+    AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
+    AppEndpointAuthRequirements, AppStatus, CaptchaProvider, ChannelType, FcpChannelConfig,
+    PublicChatBranding, PublicChatCaptchaConfig, PublicChatChannelConfig, SlackChannelConfig,
+    SlackReplyMode,
 };
 
 // Payment accounting records (EVE-838). The execution-contract types

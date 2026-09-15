@@ -198,9 +198,10 @@ describe("downloadSessionExport", () => {
 
     await downloadSessionExport(SESSION_ID, "jsonl", "en", notify);
 
-    expect(fetchMock).toHaveBeenCalledWith(`/api/v1/sessions/${SESSION_ID}/export`, {
-      credentials: "include",
-    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/v1/sessions/${SESSION_ID}/export`,
+      expect.objectContaining({ credentials: "include" }),
+    );
     expect(downloads).toEqual([`${SESSION_ID}.jsonl`]);
     expect(notify).not.toHaveBeenCalled();
   });
@@ -211,9 +212,10 @@ describe("downloadSessionExport", () => {
 
     await downloadSessionExport(SESSION_ID, "atif", "en", notify);
 
-    expect(fetchMock).toHaveBeenCalledWith(`/api/v1/sessions/${SESSION_ID}/export?format=atif`, {
-      credentials: "include",
-    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/v1/sessions/${SESSION_ID}/export?format=atif`,
+      expect.objectContaining({ credentials: "include" }),
+    );
     expect(downloads).toEqual([`${SESSION_ID}.atif.json`]);
     expect(notify).not.toHaveBeenCalled();
   });
@@ -317,17 +319,17 @@ describe("downloadSessionExport", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       `/api/v1/sessions/${SESSION_ID}/export?format=atif&segmented=true`,
-      { credentials: "include" },
+      expect.objectContaining({ credentials: "include" }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       `/api/v1/sessions/${SESSION_ID}/export?format=atif&segmented=true&cursor=c1`,
-      { credentials: "include" },
+      expect.objectContaining({ credentials: "include" }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
       `/api/v1/sessions/${SESSION_ID}/export?format=atif&segmented=true&cursor=c2`,
-      { credentials: "include" },
+      expect.objectContaining({ credentials: "include" }),
     );
     expect(downloads).toEqual([
       `${SESSION_ID}.atif.part1.json`,

@@ -33,10 +33,8 @@ const mockAcceptMutateAsync = jest.fn();
 const pendingInvitationsState = {
   data: [] as Array<{
     id: string;
-    org_id: string;
     org_name: string;
     role: "owner" | "admin" | "member";
-    expires_at: string;
   }>,
   isLoading: false,
   isError: false,
@@ -74,17 +72,13 @@ describe("ZeroOrgOnboarding", () => {
     pendingInvitationsState.data = [
       {
         id: "orginv_one",
-        org_id: "org_acme",
         org_name: "Acme",
         role: "member",
-        expires_at: "2026-09-22T00:00:00Z",
       },
       {
         id: "orginv_two",
-        org_id: "org_beta",
         org_name: "Beta Labs",
         role: "admin",
-        expires_at: "2026-09-22T00:00:00Z",
       },
     ];
 
@@ -102,10 +96,8 @@ describe("ZeroOrgOnboarding", () => {
     pendingInvitationsState.data = [
       {
         id: "orginv_one",
-        org_id: "org_acme",
         org_name: "Acme",
         role: "member",
-        expires_at: "2026-09-22T00:00:00Z",
       },
     ];
     mockAcceptMutateAsync.mockResolvedValue({ org_id: "org_acme", role: "member" });
@@ -133,10 +125,8 @@ describe("ZeroOrgOnboarding", () => {
     pendingInvitationsState.data = [
       {
         id: "orginv_one",
-        org_id: "org_acme",
         org_name: "Acme",
         role: "member",
-        expires_at: "2026-09-22T00:00:00Z",
       },
     ];
     acceptInvitationState.isError = true;

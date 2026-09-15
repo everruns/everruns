@@ -1,7 +1,8 @@
 // Session API functions
-// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
+// Org travels in the X-Org-Id header (see ./active-org), with the everruns_org cookie as fallback
 
 import { api, throwApiError } from "./client";
+import { withOrgHeader } from "./active-org";
 import type {
   Session,
   SessionStats,
@@ -230,6 +231,7 @@ export async function exportSession(
   const query = format === "atif" ? "?format=atif" : "";
   const response = await fetch(`/api/v1/sessions/${sessionId}/export${query}`, {
     credentials: "include",
+    headers: withOrgHeader(),
   });
   if (!response.ok) {
     await throwApiError(response);
@@ -341,7 +343,10 @@ export async function exportSessionSegmented(sessionId: string): Promise<Segment
   for (;;) {
     let response: Response;
     try {
-      response = await fetch(nextSegmentUrl(sessionId, cursor), { credentials: "include" });
+      response = await fetch(nextSegmentUrl(sessionId, cursor), {
+        credentials: "include",
+        headers: withOrgHeader(),
+      });
     } catch (err) {
       throw new SegmentedExportError(
         `Segmented ATIF export failed after ${partsSaved} part(s)`,

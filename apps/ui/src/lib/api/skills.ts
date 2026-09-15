@@ -3,6 +3,7 @@
 
 import { api, throwApiError } from "./client";
 import { createCrudApi } from "./crud";
+import { withOrgHeader } from "./active-org";
 import type {
   CreateSkillRequest,
   Skill,
@@ -47,6 +48,7 @@ export async function uploadSkillArchive(file: File): Promise<Skill> {
   const response = await fetch("/api/v1/skills/upload", {
     method: "POST",
     credentials: "include",
+    headers: withOrgHeader(),
     body: formData,
   });
 

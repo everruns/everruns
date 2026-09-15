@@ -2,13 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { useApps, usePublishApp, useUnpublishApp } from "@/hooks/use-apps";
-import { usePageTitle } from "@/hooks";
+import { useAgents, usePageTitle } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/search-input";
 import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
-import { Plus, Rocket, Globe, GlobeLock, Copy, Clock3 } from "lucide-react";
+import { Rocket, Globe, GlobeLock, Copy, Clock3 } from "lucide-react";
 import {
   PageContainer,
   PageBreadcrumb,
@@ -26,12 +26,14 @@ import {
 import Link from "next/link";
 import type { App, AppChannel, ChannelType, ScheduleChannelConfig } from "@/lib/api/types";
 import {
+  getDisplayName,
   getEntityNameClassName,
   getEntityStatusBadgeVariant,
   isArchivedStatus,
 } from "@/lib/entity-lifecycle";
 import { getChannelTypeDisplayName } from "@/lib/app-channels";
 import { pluralize } from "@/lib/formatting";
+import { AppRetirementNotice } from "@/components/apps/app-retirement-notice";
 
 type StatusTab = "all" | "active" | "archived";
 
@@ -41,6 +43,7 @@ export default function AppsPage() {
   const [search, setSearch] = useState("");
   // Fetch the full set (including archived) so the facet rail can show accurate counts.
   const { data: apps, isLoading, error } = useApps({ includeArchived: true });
+  const { data: agents } = useAgents({ includeArchived: true });
 
   const counts = useMemo(() => {
     const list = apps ?? [];
@@ -71,6 +74,14 @@ export default function AppsPage() {
     });
   }, [apps, search, statusTab]);
 
+  const boundAgents = useMemo(() => {
+    const agentById = new Map((agents ?? []).map((agent) => [agent.id, getDisplayName(agent)]));
+    const agentIds = [
+      ...new Set((apps ?? []).flatMap((app) => (app.agent_id ? [app.agent_id] : []))),
+    ];
+    return agentIds.map((id) => ({ id, name: agentById.get(id) ?? id }));
+  }, [agents, apps]);
+
   const statusItems = [
     { value: "all" as const, label: "All" },
     { value: "active" as const, label: "Active" },
@@ -96,14 +107,9 @@ export default function AppsPage() {
             <span>{counts.archived} archived</span>
           </>
         }
-        actions={
-          <Button variant="accent" render={<Link href="/apps/new" />}>
-            <Plus className="size-4" />
-            New app
-          </Button>
-        }
       />
 
+      <AppRetirementNotice agents={boundAgents} />
       <PageControlStrip className="flex flex-wrap items-center gap-3">
         <SearchInput
           placeholder="Search apps…"
@@ -135,17 +141,8 @@ export default function AppsPage() {
                 }
                 description={
                   !search && statusTab === "active"
-                    ? "Apps deploy your agents to channels like Slack and AG-UI. Create an app to connect an agent to the interface you need, or invoke it through authenticated webhooks. Configure schedules from the agent's Triggers tab."
+                    ? "No existing Apps are available. New integrations use agent-owned endpoints."
                     : undefined
-                }
-                action={
-                  !search &&
-                  statusTab === "active" && (
-                    <Button variant="accent" render={<Link href="/apps/new" />}>
-                      <Plus className="size-4" />
-                      Create your first app
-                    </Button>
-                  )
                 }
               />
             }

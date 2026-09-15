@@ -1,114 +1,113 @@
-//! A release-prep agent that edits a real repository through the sandboxed
-//! Bashkit shell.
-//!
-//! The example materializes the bundled `sample-repo/` fixture into a throwaway
-//! working copy, mounts that directory as the agent's `/workspace`, and gives
-//! the agent exactly one capability: [`BashkitShell`]. Every step the agent
-//! takes — reading the tree, bumping crate versions, folding changelog
-//! fragments — is a bash script interpreted in-process by Bashkit against the
-//! session filesystem. When the turn ends, the host re-reads the directory and
-//! checks the release actually landed.
-//!
-//! ```text
-//! OPENAI_API_KEY=... cargo run -p everruns-bashkit-repo-agent
-//! OPENAI_API_KEY=... cargo run -p everruns-bashkit-repo-agent -- /tmp/release-run
-//! ```
-
-// Terminal presentation is shared by every example; this file is the agent.
-use everruns_example_demo::shell as demo;
-
-mod sample_repo;
-
+//! Run from the repository checkout; see README.md for credentials and scenarios.
+use std::ffi::OsString;
 use std::fs;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use everruns::{Agent, BashkitShell, Engine, OpenAI, WorkspacePolicy};
+use everruns::Engine;
+use everruns_example_demo::shell as demo;
 
-const MODEL: &str = "gpt-5.6-terra";
-const TARGET_VERSION: &str = "0.2.0";
+mod agent;
+mod fixture;
 
-fn release_request(release_date: &str) -> String {
+const DEFAULT_TASK: &str =
+    "Cut release 0.2.0 for today's date. Follow the repository release process.";
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let options = Options::parse(std::env::args_os().skip(1))?;
+    let temporary = options
+        .workspace
+        .is_none()
+        .then(tempfile::tempdir)
+        .transpose()?;
+    let workspace = options.workspace.unwrap_or_else(|| {
+        temporary
+            .as_ref()
+            .expect("temporary workspace exists")
+            .path()
+            .join("fetchkit")
+    });
+    fs::create_dir_all(&workspace)?;
+    fixture::materialize(&workspace)?;
+
+    let task = if options.interactive {
+        read_task()?
+    } else {
+        DEFAULT_TASK.to_owned()
+    };
+    let release_date = today_utc();
+    let request = release_request(&task, &release_date);
+    let api_key = std::env::var("OPENAI_API_KEY")?;
+    let agent = agent::build(api_key, &workspace)?;
+    let engine = Engine::new();
+    let session = engine.create(agent);
+
+    demo::banner("everruns · bashkit repo agent");
+    demo::field("model", agent::MODEL);
+    demo::field("capability", "bashkit_shell — sandboxed Bash");
+    demo::field("workspace", "/workspace — disposable read/write mount");
+    demo::run(&session, &request).await?;
+
+    verify_release(&workspace, &release_date)?;
+    println!("\nCompleted: release verified on disk");
+    Ok(())
+}
+
+fn release_request(task: &str, release_date: &str) -> String {
     format!(
-        "Cut release {TARGET_VERSION} of the repository in /workspace, dated {release_date}.\n\
-         1. Read README.md and CHANGELOG.md to learn the release process.\n\
-         2. Set the package version to {TARGET_VERSION} in every crate manifest under crates/, \
-            including path dependencies that pin a version.\n\
-         3. Fold every fragment in changelog.d/ into a new '## {TARGET_VERSION} - {release_date}' \
-            section directly under the '# Changelog' title, one bullet per fragment, keeping the \
-            existing 0.1.0 section below it.\n\
-         4. Delete the fragment files, leaving changelog.d/ in place.\n\
-         5. Print the final CHANGELOG.md and the version line of each manifest, then report what \
-            you changed."
+        "{task}\n\nAcceptance criteria:\n\
+         - Use release version {} and date {release_date}.\n\
+         - Read README.md and CHANGELOG.md before editing.\n\
+         - Update every crate package version and pinned path-dependency version.\n\
+         - Fold every changelog.d fragment into a new dated section under '# Changelog'.\n\
+         - Preserve the 0.1.0 history and leave changelog.d empty.\n\
+         - Verify the result with shell commands before reporting it.",
+        fixture::TARGET_VERSION
     )
 }
 
-fn build_agent(provider: OpenAI, workspace: &Path) -> Result<Agent, everruns::BuildError> {
-    Agent::builder()
-        .name("bashkit-repo-agent")
-        .instructions(include_str!("instructions.md"))
-        .provider(provider)
-        .model(MODEL)
-        // One real host directory becomes the session's /workspace. The
-        // read/write policy is an explicit opt-in; the default is read-only.
-        .workspace(workspace)
-        .workspace_policy(WorkspacePolicy::read_write())
-        .capability(BashkitShell::new())
-        .build()
+fn read_task() -> io::Result<String> {
+    print!("Task: ");
+    io::stdout().flush()?;
+
+    let mut task = String::new();
+    io::stdin().read_line(&mut task)?;
+    validate_task(&task)
 }
 
-/// One post-run assertion about the working copy on disk.
-struct Check {
-    passed: bool,
-    label: String,
-}
-
-fn check(passed: bool, label: impl Into<String>) -> Check {
-    Check {
-        passed,
-        label: label.into(),
-    }
-}
-
-/// Re-read the working copy and confirm the release the agent reported.
-fn verify(root: &Path, release_date: &str) -> Vec<Check> {
-    let mut checks = Vec::new();
-    for manifest in ["crates/core/Cargo.toml", "crates/cli/Cargo.toml"] {
-        let text = fs::read_to_string(root.join(manifest)).unwrap_or_default();
-        checks.push(check(
-            text.contains(&format!("version = \"{TARGET_VERSION}\"")) && !text.contains("0.1.0"),
-            format!("{manifest} pins {TARGET_VERSION} only"),
+fn validate_task(task: &str) -> io::Result<String> {
+    let task = task.trim();
+    if task.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "task cannot be empty",
         ));
     }
-
-    let changelog = fs::read_to_string(root.join("CHANGELOG.md")).unwrap_or_default();
-    checks.push(check(
-        changelog.contains(&format!("## {TARGET_VERSION} - {release_date}")),
-        format!("CHANGELOG.md opens a '{TARGET_VERSION} - {release_date}' section"),
-    ));
-    checks.push(check(
-        changelog.contains("## 0.1.0"),
-        "CHANGELOG.md keeps the 0.1.0 history",
-    ));
-    for (fragment, marker) in [
-        ("0001-retry-backoff.md", "backoff"),
-        ("0002-redirect-timeout.md", "redirect"),
-        ("0003-cli-json.md", "--json"),
-    ] {
-        checks.push(check(
-            changelog.contains(marker),
-            format!("CHANGELOG.md carries {fragment} (mentions '{marker}')"),
-        ));
-    }
-
-    let leftovers = fs::read_dir(root.join("changelog.d"))
-        .map(|entries| entries.filter_map(Result::ok).count())
-        .unwrap_or(usize::MAX);
-    checks.push(check(leftovers == 0, "changelog.d/ is empty"));
-    checks
+    Ok(task.to_owned())
 }
 
-/// Today's UTC date as `YYYY-MM-DD`, so the example never bakes in a stale one.
+fn verify_release(workspace: &Path, release_date: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let checks = fixture::verify(workspace, release_date);
+    demo::section("RELEASE CHECKS ON DISK");
+    for check in &checks {
+        demo::check(check.passed, &check.label);
+    }
+    demo::section("CHANGELOG.md AFTER THE RUN");
+    demo::body(
+        &fs::read_to_string(workspace.join("CHANGELOG.md"))?,
+        demo::DIM,
+    );
+
+    let failures = checks.iter().filter(|check| !check.passed).count();
+    if failures > 0 {
+        return Err(format!("{failures} release check(s) failed").into());
+    }
+    Ok(())
+}
+
+/// Today's UTC date as `YYYY-MM-DD`, so the fixture never bakes in a stale date.
 fn today_utc() -> String {
     let days = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -132,85 +131,74 @@ fn today_utc() -> String {
     format!("{year:04}-{month:02}-{day:02}")
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let requested = std::env::args_os().nth(1).map(PathBuf::from);
-    let temporary = match requested {
-        Some(_) => None,
-        None => Some(tempfile::tempdir()?),
-    };
-    let root = match (&requested, &temporary) {
-        (Some(path), _) => path.clone(),
-        (None, Some(directory)) => directory.path().join("fetchkit"),
-        _ => unreachable!("one of the two is always set"),
-    };
-    fs::create_dir_all(&root)?;
-    sample_repo::materialize(&root)?;
+struct Options {
+    interactive: bool,
+    workspace: Option<PathBuf>,
+}
 
-    let release_date = today_utc();
-    demo::banner("everruns · bashkit repo agent");
-    demo::field("model", MODEL);
-    demo::field(
-        "capability",
-        "bashkit_shell — sandboxed Bash over /workspace",
-    );
-    demo::field("workspace", &root.display().to_string());
-    demo::field("release", &format!("{TARGET_VERSION} ({release_date})"));
-
-    // `OpenAI::from_env` reads OPENAI_API_KEY; the turn below is a real
-    // provider call, not a simulation.
-    let agent = build_agent(OpenAI::from_env()?, &root)?;
-    let session = Engine::new().create(agent);
-    demo::run(&session, &release_request(&release_date)).await?;
-
-    let checks = verify(&root, &release_date);
-    demo::section("RELEASE CHECKS ON DISK");
-    for item in &checks {
-        demo::check(item.passed, &item.label);
+impl Options {
+    fn parse(arguments: impl IntoIterator<Item = OsString>) -> io::Result<Self> {
+        let mut interactive = false;
+        let mut workspace = None;
+        for argument in arguments {
+            if argument == "--interactive" {
+                interactive = true;
+            } else if workspace.is_none() {
+                workspace = Some(PathBuf::from(argument));
+            } else {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "usage: bashkit-repo-agent [--interactive] [workspace]",
+                ));
+            }
+        }
+        Ok(Self {
+            interactive,
+            workspace,
+        })
     }
-    demo::section("CHANGELOG.md AFTER THE RUN");
-    demo::body(&fs::read_to_string(root.join("CHANGELOG.md"))?, demo::DIM);
-
-    let failed = checks.iter().filter(|item| !item.passed).count();
-    if failed > 0 {
-        return Err(format!("{failed} release check(s) failed").into());
-    }
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use everruns::OpenAI;
-
-    use super::{build_agent, sample_repo, today_utc, verify};
+    use super::*;
 
     #[test]
-    fn builds_without_contacting_the_provider() {
-        let workspace = tempfile::tempdir().expect("temp dir");
-        assert!(build_agent(OpenAI::new("test-key"), workspace.path()).is_ok());
-    }
-
-    #[test]
-    fn fixture_starts_before_the_release() {
-        let workspace = tempfile::tempdir().expect("temp dir");
-        sample_repo::materialize(workspace.path()).expect("materialize");
-        let checks = verify(workspace.path(), &today_utc());
-        // The fixture already carries the 0.1.0 history; every other check
-        // describes work only the agent's run can do.
-        for check in &checks {
-            let expected = check.label.contains("0.1.0 history");
-            assert_eq!(
-                check.passed, expected,
-                "unexpected pre-run state for check: {}",
-                check.label
-            );
+    fn parses_interactive_workspace_in_either_order() {
+        for arguments in [
+            vec!["--interactive", "/tmp/release"],
+            vec!["/tmp/release", "--interactive"],
+        ] {
+            let options = Options::parse(arguments.into_iter().map(OsString::from)).unwrap();
+            assert!(options.interactive);
+            assert_eq!(options.workspace, Some(PathBuf::from("/tmp/release")));
         }
     }
 
     #[test]
-    fn today_is_an_iso_date() {
-        let today = today_utc();
-        assert_eq!(today.len(), 10, "unexpected date: {today}");
-        assert!(today.starts_with("20"), "unexpected date: {today}");
+    fn interactive_task_is_trimmed_and_required() {
+        assert_eq!(
+            validate_task("  Cut the release.\n").unwrap(),
+            "Cut the release."
+        );
+        assert_eq!(
+            validate_task(" \n").unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+    }
+
+    #[test]
+    fn fixture_starts_before_the_release() {
+        let workspace = tempfile::tempdir().unwrap();
+        fixture::materialize(workspace.path()).unwrap();
+        let checks = fixture::verify(workspace.path(), &today_utc());
+        for check in &checks {
+            assert_eq!(
+                check.passed,
+                check.label.contains("0.1.0 history"),
+                "unexpected pre-run state for check: {}",
+                check.label
+            );
+        }
     }
 }

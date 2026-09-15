@@ -7,47 +7,32 @@ use everruns_provider::typed_id::ModelId;
 use std::collections::HashMap;
 use uuid::Uuid;
 
-#[derive(Clone, Copy)]
-enum ExistingMemberAction {
-    Reject,
-    UpdateRole,
-}
-
-fn add_organization_member_with_limit_to_map(
+fn add_organization_member_with_capacity_locked(
     members: &mut HashMap<(i64, Uuid), OrganizationMemberRow>,
     org_id: i64,
     user_id: Uuid,
     role: &str,
     max_members: i64,
-    existing_member_action: ExistingMemberAction,
-) -> AddOrganizationMemberResult {
-    let member_key = (org_id, user_id);
-    if let Some(existing) = members.get_mut(&member_key) {
-        return match existing_member_action {
-            ExistingMemberAction::Reject => AddOrganizationMemberResult::AlreadyMember,
-            ExistingMemberAction::UpdateRole => {
-                existing.role = role.to_string();
-                AddOrganizationMemberResult::Added(existing.clone())
-            }
-        };
+    now: chrono::DateTime<chrono::Utc>,
+) -> AddOrganizationMemberOutcome {
+    if let Some(existing) = members.get(&(org_id, user_id)) {
+        return AddOrganizationMemberOutcome::AlreadyMember(existing.clone());
     }
-    if members
+    let member_count = members
         .values()
         .filter(|member| member.org_id == org_id)
-        .count() as i64
-        >= max_members
-    {
-        return AddOrganizationMemberResult::MemberLimitReached;
+        .count() as i64;
+    if member_count >= max_members {
+        return AddOrganizationMemberOutcome::MemberLimitReached;
     }
-
-    let row = OrganizationMemberRow {
+    let member = OrganizationMemberRow {
         org_id,
         user_id,
         role: role.to_string(),
-        created_at: InMemoryDatabase::now(),
+        created_at: now,
     };
-    members.insert(member_key, row.clone());
-    AddOrganizationMemberResult::Added(row)
+    members.insert((org_id, user_id), member.clone());
+    AddOrganizationMemberOutcome::Added(member)
 }
 
 impl InMemoryDatabase {
@@ -256,25 +241,21 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
-    pub async fn add_organization_member_with_limit(
+    pub async fn add_organization_member_with_capacity(
         &self,
         org_id: i64,
         user_id: Uuid,
         role: &str,
         max_members: i64,
-    ) -> Result<AddOrganizationMemberResult> {
-        let organizations = self.organizations.read();
-        if !organizations.contains_key(&org_id) {
-            return Ok(AddOrganizationMemberResult::OrganizationNotFound);
-        }
+    ) -> Result<AddOrganizationMemberOutcome> {
         let mut members = self.organization_members.write();
-        Ok(add_organization_member_with_limit_to_map(
+        Ok(add_organization_member_with_capacity_locked(
             &mut members,
             org_id,
             user_id,
             role,
             max_members,
-            ExistingMemberAction::Reject,
+            Self::now(),
         ))
     }
 
@@ -700,27 +681,6 @@ impl InMemoryDatabase {
         Ok(rows)
     }
 
-    pub async fn list_active_org_invitations_by_email(
-        &self,
-        email: &str,
-    ) -> Result<Vec<OrgInvitationRow>> {
-        let now = Self::now();
-        let mut rows: Vec<_> = self
-            .org_invitations
-            .read()
-            .iter()
-            .filter(|i| {
-                i.email == email
-                    && i.accepted_at.is_none()
-                    && i.revoked_at.is_none()
-                    && i.expires_at > now
-            })
-            .cloned()
-            .collect();
-        rows.sort_by_key(|i| std::cmp::Reverse(i.created_at));
-        Ok(rows)
-    }
-
     pub async fn get_org_invitation_by_token_hash(
         &self,
         token_hash: &str,
@@ -730,19 +690,6 @@ impl InMemoryDatabase {
             .read()
             .iter()
             .find(|i| i.token_hash == token_hash)
-            .cloned())
-    }
-
-    pub async fn get_org_invitation_by_public_id(
-        &self,
-        org_id: i64,
-        public_id: &str,
-    ) -> Result<Option<OrgInvitationRow>> {
-        Ok(self
-            .org_invitations
-            .read()
-            .iter()
-            .find(|i| i.org_id == org_id && i.public_id == public_id)
             .cloned())
     }
 
@@ -757,6 +704,39 @@ impl InMemoryDatabase {
             .iter()
             .find(|i| i.public_id == public_id && i.email == email)
             .cloned())
+    }
+
+    pub async fn list_outstanding_org_invitations_by_email(
+        &self,
+        email: &str,
+    ) -> Result<Vec<OutstandingOrgInvitationRow>> {
+        let now = Self::now();
+        let organizations = self.organizations.read();
+        let mut rows: Vec<_> = self
+            .org_invitations
+            .read()
+            .iter()
+            .filter(|i| {
+                i.email == email
+                    && i.accepted_at.is_none()
+                    && i.revoked_at.is_none()
+                    && i.expires_at > now
+            })
+            .filter_map(|i| {
+                let org = organizations.get(&i.org_id)?;
+                Some(OutstandingOrgInvitationRow {
+                    public_id: i.public_id.clone(),
+                    org_id: i.org_id,
+                    org_name: org.name.clone(),
+                    email: i.email.clone(),
+                    role: i.role.clone(),
+                    expires_at: i.expires_at,
+                    created_at: i.created_at,
+                })
+            })
+            .collect();
+        rows.sort_by_key(|i| std::cmp::Reverse(i.created_at));
+        Ok(rows)
     }
 
     /// The outstanding (not accepted, not revoked) invitation for an email in an
@@ -798,59 +778,68 @@ impl InMemoryDatabase {
         Ok(false)
     }
 
+    /// Atomically mark an actionable invitation accepted.
+    pub async fn accept_org_invitation(
+        &self,
+        invitation_id: i64,
+        accepted_by: Uuid,
+    ) -> Result<Option<OrgInvitationRow>> {
+        let now = Self::now();
+        let mut invitations = self.org_invitations.write();
+        if let Some(inv) = invitations.iter_mut().find(|i| {
+            i.id == invitation_id
+                && i.accepted_at.is_none()
+                && i.revoked_at.is_none()
+                && i.expires_at > now
+        }) {
+            inv.accepted_at = Some(now);
+            inv.accepted_by = Some(accepted_by);
+            inv.updated_at = now;
+            return Ok(Some(inv.clone()));
+        }
+        Ok(None)
+    }
+
     pub async fn accept_org_invitation_with_membership(
         &self,
         invitation_id: i64,
-        org_id: i64,
-        recipient_email: &str,
         accepted_by: Uuid,
         max_members: i64,
-    ) -> Result<AcceptOrgInvitationResult> {
+    ) -> Result<AcceptOrgInvitationOutcome> {
         let now = Self::now();
-        let organizations = self.organizations.read();
-        if !organizations.contains_key(&org_id) {
-            return Ok(AcceptOrgInvitationResult::NotFound);
-        }
         let mut invitations = self.org_invitations.write();
-        let Some(inv) = invitations
-            .iter_mut()
-            .find(|i| i.id == invitation_id && i.org_id == org_id && i.email == recipient_email)
-        else {
-            return Ok(AcceptOrgInvitationResult::NotFound);
+        let Some(invitation) = invitations.iter_mut().find(|i| i.id == invitation_id) else {
+            return Ok(AcceptOrgInvitationOutcome::NotActionable);
         };
-        if inv.revoked_at.is_some() {
-            return Ok(AcceptOrgInvitationResult::Revoked);
-        }
-        if inv.accepted_at.is_some() {
-            return Ok(AcceptOrgInvitationResult::AlreadyAccepted);
-        }
-        if inv.expires_at <= now {
-            return Ok(AcceptOrgInvitationResult::Expired);
+        if invitation.accepted_at.is_some()
+            || invitation.revoked_at.is_some()
+            || invitation.expires_at <= now
+        {
+            return Ok(AcceptOrgInvitationOutcome::NotActionable);
         }
 
         let mut members = self.organization_members.write();
-        match add_organization_member_with_limit_to_map(
+        let role = match add_organization_member_with_capacity_locked(
             &mut members,
-            org_id,
+            invitation.org_id,
             accepted_by,
-            &inv.role,
+            &invitation.role,
             max_members,
-            ExistingMemberAction::UpdateRole,
+            now,
         ) {
-            AddOrganizationMemberResult::Added(_) => {}
-            AddOrganizationMemberResult::MemberLimitReached => {
-                return Ok(AcceptOrgInvitationResult::MemberLimitReached);
+            AddOrganizationMemberOutcome::Added(member)
+            | AddOrganizationMemberOutcome::AlreadyMember(member) => member.role,
+            AddOrganizationMemberOutcome::MemberLimitReached => {
+                return Ok(AcceptOrgInvitationOutcome::MemberLimitReached);
             }
-            AddOrganizationMemberResult::OrganizationNotFound => {
-                unreachable!("organization existence is checked before invitation acceptance")
-            }
-            AddOrganizationMemberResult::AlreadyMember => {
-                unreachable!("existing members are updated when accepting an invitation")
-            }
-        }
-        inv.accepted_at = Some(now);
-        inv.accepted_by = Some(accepted_by);
-        inv.updated_at = now;
-        Ok(AcceptOrgInvitationResult::Accepted(Box::new(inv.clone())))
+        };
+
+        invitation.accepted_at = Some(now);
+        invitation.accepted_by = Some(accepted_by);
+        invitation.updated_at = now;
+        Ok(AcceptOrgInvitationOutcome::Accepted {
+            org_id: invitation.org_id,
+            role,
+        })
     }
 }

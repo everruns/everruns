@@ -18,8 +18,17 @@ export interface ServerRequestContext {
   orgCookieId: string | null;
 }
 
-export function createServerQueryClient() {
-  return createAppQueryClient();
+/**
+ * A query client for a server render, hashing its entries under the org the
+ * request arrived for (the `everruns_org` cookie).
+ *
+ * It must be the same org the browser publishes on its first render — which is
+ * this same cookie value, handed to `OrgProvider` as `initialOrgId` — or the
+ * dehydrated entries hash differently on hydration and every seeded page
+ * refetches what the server already fetched.
+ */
+export function createServerQueryClient(context: ServerRequestContext) {
+  return createAppQueryClient(() => context.orgCookieId);
 }
 
 export function getRequestOrigin(headersList: Headers): string {

@@ -29,8 +29,8 @@ export default async function SessionsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const queryClient = createServerQueryClient();
   const requestContext = await getServerRequestContext();
+  const queryClient = createServerQueryClient(requestContext);
   const { currentOrgId } = await prefetchAuthBootstrap(queryClient, requestContext);
   const isDefaultView = Object.keys(await searchParams).length === 0;
 

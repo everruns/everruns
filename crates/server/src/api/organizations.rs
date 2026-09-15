@@ -7,7 +7,8 @@ use crate::auth::audit;
 use crate::auth::middleware::{AuthState, AuthUser, OrgAdmin, OrgContext};
 use crate::auth::rate_limit::OrgRateLimiter;
 use crate::storage::{
-    AddOrganizationMemberResult, StorageBackend, models::UpdateOrganizationSettings,
+    StorageBackend,
+    models::{AddOrganizationMemberOutcome, UpdateOrganizationSettings},
 };
 use axum::{
     Json, Router,
@@ -955,7 +956,7 @@ pub async fn add_member(
 
     let member_row = match state
         .db
-        .add_organization_member_with_limit(
+        .add_organization_member_with_capacity(
             org.org_id,
             target_user_id,
             role.as_str(),
@@ -964,16 +965,13 @@ pub async fn add_member(
         .await
         .log_internal_error_json("add organization member")?
     {
-        AddOrganizationMemberResult::Added(row) => row,
-        AddOrganizationMemberResult::OrganizationNotFound => {
-            return Err(ErrorResponse::not_found("Organization"));
-        }
-        AddOrganizationMemberResult::AlreadyMember => {
+        AddOrganizationMemberOutcome::Added(member) => member,
+        AddOrganizationMemberOutcome::AlreadyMember(_) => {
             return Err(
                 ErrorResponse::new("User is already a member").into_response(StatusCode::CONFLICT)
             );
         }
-        AddOrganizationMemberResult::MemberLimitReached => {
+        AddOrganizationMemberOutcome::MemberLimitReached => {
             return Err(ErrorResponse::new(format!(
                 "Member limit reached (max {})",
                 state.resource_limits.max_members_per_org

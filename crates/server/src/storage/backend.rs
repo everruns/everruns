@@ -3183,17 +3183,16 @@ impl StorageBackend {
     ) -> Result<OrganizationMemberRow> {
         dispatch!(self, add_organization_member, org_id, user_id, role)
     }
-
-    pub async fn add_organization_member_with_limit(
+    pub async fn add_organization_member_with_capacity(
         &self,
         org_id: i64,
         user_id: Uuid,
         role: &str,
         max_members: i64,
-    ) -> Result<AddOrganizationMemberResult> {
+    ) -> Result<AddOrganizationMemberOutcome> {
         dispatch!(
             self,
-            add_organization_member_with_limit,
+            add_organization_member_with_capacity,
             org_id,
             user_id,
             role,
@@ -3361,26 +3360,11 @@ impl StorageBackend {
         dispatch!(self, list_pending_org_invitations, org_id)
     }
 
-    pub async fn list_active_org_invitations_by_email(
-        &self,
-        email: &str,
-    ) -> Result<Vec<OrgInvitationRow>> {
-        dispatch!(self, list_active_org_invitations_by_email, email)
-    }
-
     pub async fn get_org_invitation_by_token_hash(
         &self,
         token_hash: &str,
     ) -> Result<Option<OrgInvitationRow>> {
         dispatch!(self, get_org_invitation_by_token_hash, token_hash)
-    }
-
-    pub async fn get_org_invitation_by_public_id(
-        &self,
-        org_id: i64,
-        public_id: &str,
-    ) -> Result<Option<OrgInvitationRow>> {
-        dispatch!(self, get_org_invitation_by_public_id, org_id, public_id)
     }
 
     pub async fn get_org_invitation_by_public_id_and_email(
@@ -3396,6 +3380,13 @@ impl StorageBackend {
         )
     }
 
+    pub async fn list_outstanding_org_invitations_by_email(
+        &self,
+        email: &str,
+    ) -> Result<Vec<OutstandingOrgInvitationRow>> {
+        dispatch!(self, list_outstanding_org_invitations_by_email, email)
+    }
+
     pub async fn get_outstanding_org_invitation_by_email(
         &self,
         org_id: i64,
@@ -3408,20 +3399,24 @@ impl StorageBackend {
         dispatch!(self, revoke_org_invitation, org_id, public_id)
     }
 
+    pub async fn accept_org_invitation(
+        &self,
+        invitation_id: i64,
+        accepted_by: Uuid,
+    ) -> Result<Option<OrgInvitationRow>> {
+        dispatch!(self, accept_org_invitation, invitation_id, accepted_by)
+    }
+
     pub async fn accept_org_invitation_with_membership(
         &self,
         invitation_id: i64,
-        org_id: i64,
-        recipient_email: &str,
         accepted_by: Uuid,
         max_members: i64,
-    ) -> Result<AcceptOrgInvitationResult> {
+    ) -> Result<AcceptOrgInvitationOutcome> {
         dispatch!(
             self,
             accept_org_invitation_with_membership,
             invitation_id,
-            org_id,
-            recipient_email,
             accepted_by,
             max_members
         )

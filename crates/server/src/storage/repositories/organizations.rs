@@ -6,61 +6,32 @@ use anyhow::Result;
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
-#[derive(Clone, Copy)]
-enum ExistingMemberAction {
-    Reject,
-    UpdateRole,
+fn organization_member_cap_lock_key(org_id: i64) -> i64 {
+    // Namespace member-capacity locks away from unrelated per-org advisory locks.
+    org_id ^ 0x4556_4552_4D45_4D42_i64
 }
 
-async fn add_organization_member_with_limit_in_transaction(
+async fn add_organization_member_with_capacity_in_transaction(
     tx: &mut Transaction<'_, Postgres>,
     org_id: i64,
     user_id: Uuid,
     role: &str,
     max_members: i64,
-    existing_member_action: ExistingMemberAction,
-) -> Result<AddOrganizationMemberResult> {
-    let org_exists = sqlx::query_scalar::<_, i64>(
-        "SELECT org_id FROM organizations WHERE org_id = $1 FOR UPDATE",
-    )
-    .bind(org_id)
-    .fetch_optional(&mut **tx)
-    .await?;
-    if org_exists.is_none() {
-        return Ok(AddOrganizationMemberResult::OrganizationNotFound);
-    }
+) -> Result<AddOrganizationMemberOutcome> {
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(organization_member_cap_lock_key(org_id))
+        .execute(&mut **tx)
+        .await?;
 
     let existing = sqlx::query_as::<_, OrganizationMemberRow>(
-        r#"
-        SELECT org_id, user_id, role, created_at
-        FROM organization_members
-        WHERE org_id = $1 AND user_id = $2
-        "#,
+        "SELECT org_id, user_id, role, created_at FROM organization_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE",
     )
     .bind(org_id)
     .bind(user_id)
     .fetch_optional(&mut **tx)
     .await?;
-    if existing.is_some() {
-        return match existing_member_action {
-            ExistingMemberAction::Reject => Ok(AddOrganizationMemberResult::AlreadyMember),
-            ExistingMemberAction::UpdateRole => {
-                let updated = sqlx::query_as::<_, OrganizationMemberRow>(
-                    r#"
-                    UPDATE organization_members
-                    SET role = $3
-                    WHERE org_id = $1 AND user_id = $2
-                    RETURNING org_id, user_id, role, created_at
-                    "#,
-                )
-                .bind(org_id)
-                .bind(user_id)
-                .bind(role)
-                .fetch_one(&mut **tx)
-                .await?;
-                Ok(AddOrganizationMemberResult::Added(updated))
-            }
-        };
+    if let Some(existing) = existing {
+        return Ok(AddOrganizationMemberOutcome::AlreadyMember(existing));
     }
 
     let member_count =
@@ -69,46 +40,22 @@ async fn add_organization_member_with_limit_in_transaction(
             .fetch_one(&mut **tx)
             .await?;
     if member_count >= max_members {
-        return Ok(AddOrganizationMemberResult::MemberLimitReached);
+        return Ok(AddOrganizationMemberOutcome::MemberLimitReached);
     }
 
-    let added = match existing_member_action {
-        ExistingMemberAction::Reject => {
-            let added = sqlx::query_as::<_, OrganizationMemberRow>(
-                r#"
-                INSERT INTO organization_members (org_id, user_id, role)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (org_id, user_id) DO NOTHING
-                RETURNING org_id, user_id, role, created_at
-                "#,
-            )
-            .bind(org_id)
-            .bind(user_id)
-            .bind(role)
-            .fetch_optional(&mut **tx)
-            .await?;
-            let Some(added) = added else {
-                return Ok(AddOrganizationMemberResult::AlreadyMember);
-            };
-            added
-        }
-        ExistingMemberAction::UpdateRole => {
-            sqlx::query_as::<_, OrganizationMemberRow>(
-                r#"
-                INSERT INTO organization_members (org_id, user_id, role)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role
-                RETURNING org_id, user_id, role, created_at
-                "#,
-            )
-            .bind(org_id)
-            .bind(user_id)
-            .bind(role)
-            .fetch_one(&mut **tx)
-            .await?
-        }
-    };
-    Ok(AddOrganizationMemberResult::Added(added))
+    let member = sqlx::query_as::<_, OrganizationMemberRow>(
+        r#"
+        INSERT INTO organization_members (org_id, user_id, role)
+        VALUES ($1, $2, $3)
+        RETURNING org_id, user_id, role, created_at
+        "#,
+    )
+    .bind(org_id)
+    .bind(user_id)
+    .bind(role)
+    .fetch_one(&mut **tx)
+    .await?;
+    Ok(AddOrganizationMemberOutcome::Added(member))
 }
 
 impl Database {
@@ -410,28 +357,24 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn add_organization_member_with_limit(
+    pub async fn add_organization_member_with_capacity(
         &self,
         org_id: i64,
         user_id: Uuid,
         role: &str,
         max_members: i64,
-    ) -> Result<AddOrganizationMemberResult> {
+    ) -> Result<AddOrganizationMemberOutcome> {
         let mut tx = self.pool.begin().await?;
-        let result = add_organization_member_with_limit_in_transaction(
+        let outcome = add_organization_member_with_capacity_in_transaction(
             &mut tx,
             org_id,
             user_id,
             role,
             max_members,
-            ExistingMemberAction::Reject,
         )
         .await?;
-        match result {
-            AddOrganizationMemberResult::Added(_) => tx.commit().await?,
-            _ => tx.rollback().await?,
-        }
-        Ok(result)
+        tx.commit().await?;
+        Ok(outcome)
     }
 
     pub async fn remove_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
@@ -938,46 +881,6 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_active_org_invitations_by_email(
-        &self,
-        email: &str,
-    ) -> Result<Vec<OrgInvitationRow>> {
-        let rows = sqlx::query_as::<_, OrgInvitationRow>(
-            r#"
-            SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
-            FROM org_invitations
-            WHERE email = $1
-              AND accepted_at IS NULL
-              AND revoked_at IS NULL
-              AND expires_at > NOW()
-            ORDER BY created_at DESC
-            "#,
-        )
-        .bind(email)
-        .fetch_all(&self.pool)
-        .await?;
-        Ok(rows)
-    }
-
-    pub async fn get_org_invitation_by_public_id(
-        &self,
-        org_id: i64,
-        public_id: &str,
-    ) -> Result<Option<OrgInvitationRow>> {
-        let row = sqlx::query_as::<_, OrgInvitationRow>(
-            r#"
-            SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
-            FROM org_invitations
-            WHERE org_id = $1 AND public_id = $2
-            "#,
-        )
-        .bind(org_id)
-        .bind(public_id)
-        .fetch_optional(&self.pool)
-        .await?;
-        Ok(row)
-    }
-
     pub async fn get_org_invitation_by_public_id_and_email(
         &self,
         public_id: &str,
@@ -995,6 +898,29 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)
+    }
+
+    pub async fn list_outstanding_org_invitations_by_email(
+        &self,
+        email: &str,
+    ) -> Result<Vec<OutstandingOrgInvitationRow>> {
+        let rows = sqlx::query_as::<_, OutstandingOrgInvitationRow>(
+            r#"
+            SELECT i.public_id, i.org_id, o.name AS org_name, i.email, i.role,
+                   i.expires_at, i.created_at
+            FROM org_invitations i
+            JOIN organizations o ON o.org_id = i.org_id
+            WHERE i.email = $1
+              AND i.accepted_at IS NULL
+              AND i.revoked_at IS NULL
+              AND i.expires_at > NOW()
+            ORDER BY i.created_at DESC
+            "#,
+        )
+        .bind(email)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
     }
 
     /// The outstanding (not accepted, not revoked) invitation for an email, if
@@ -1037,24 +963,17 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
-    /// Claim an invitation, enforce capacity, and add membership in one transaction.
-    pub async fn accept_org_invitation_with_membership(
+    /// Atomically mark an actionable invitation accepted.
+    pub async fn accept_org_invitation(
         &self,
         invitation_id: i64,
-        org_id: i64,
-        recipient_email: &str,
         accepted_by: Uuid,
-        max_members: i64,
-    ) -> Result<AcceptOrgInvitationResult> {
-        let mut tx = self.pool.begin().await?;
-
-        let accepted = sqlx::query_as::<_, OrgInvitationRow>(
+    ) -> Result<Option<OrgInvitationRow>> {
+        let row = sqlx::query_as::<_, OrgInvitationRow>(
             r#"
             UPDATE org_invitations
-            SET accepted_at = NOW(), accepted_by = $4, updated_at = NOW()
+            SET accepted_at = NOW(), accepted_by = $2
             WHERE id = $1
-              AND org_id = $2
-              AND email = $3
               AND accepted_at IS NULL
               AND revoked_at IS NULL
               AND expires_at > NOW()
@@ -1062,63 +981,85 @@ impl Database {
             "#,
         )
         .bind(invitation_id)
-        .bind(org_id)
-        .bind(recipient_email)
         .bind(accepted_by)
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&self.pool)
         .await?;
+        Ok(row)
+    }
 
-        let Some(accepted) = accepted else {
-            let current = sqlx::query_scalar::<_, String>(
-                r#"
-                SELECT CASE
-                    WHEN revoked_at IS NOT NULL THEN 'revoked'
-                    WHEN accepted_at IS NOT NULL THEN 'accepted'
-                    WHEN expires_at <= NOW() THEN 'expired'
-                    ELSE 'unavailable'
-                END
-                FROM org_invitations
-                WHERE id = $1 AND org_id = $2 AND email = $3
-                "#,
-            )
-            .bind(invitation_id)
-            .bind(org_id)
-            .bind(recipient_email)
-            .fetch_optional(&mut *tx)
-            .await?;
+    pub async fn accept_org_invitation_with_membership(
+        &self,
+        invitation_id: i64,
+        accepted_by: Uuid,
+        max_members: i64,
+    ) -> Result<AcceptOrgInvitationOutcome> {
+        let mut tx = self.pool.begin().await?;
+        let Some(invitation) = sqlx::query_as::<_, OrgInvitationRow>(
+            r#"
+            SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at,
+                   accepted_at, accepted_by, revoked_at, created_at, updated_at
+            FROM org_invitations
+            WHERE id = $1
+            FOR UPDATE
+            "#,
+        )
+        .bind(invitation_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        else {
             tx.rollback().await?;
-            return Ok(match current.as_deref() {
-                None => AcceptOrgInvitationResult::NotFound,
-                Some("revoked") => AcceptOrgInvitationResult::Revoked,
-                Some("accepted") => AcceptOrgInvitationResult::AlreadyAccepted,
-                Some("expired") => AcceptOrgInvitationResult::Expired,
-                Some(_) => AcceptOrgInvitationResult::NotFound,
-            });
+            return Ok(AcceptOrgInvitationOutcome::NotActionable);
         };
-        match add_organization_member_with_limit_in_transaction(
+
+        if invitation.accepted_at.is_some()
+            || invitation.revoked_at.is_some()
+            || invitation.expires_at <= chrono::Utc::now()
+        {
+            tx.rollback().await?;
+            return Ok(AcceptOrgInvitationOutcome::NotActionable);
+        }
+
+        let role = match add_organization_member_with_capacity_in_transaction(
             &mut tx,
-            org_id,
+            invitation.org_id,
             accepted_by,
-            &accepted.role,
+            &invitation.role,
             max_members,
-            ExistingMemberAction::UpdateRole,
         )
         .await?
         {
-            AddOrganizationMemberResult::Added(_) => {}
-            AddOrganizationMemberResult::OrganizationNotFound => {
+            AddOrganizationMemberOutcome::Added(member)
+            | AddOrganizationMemberOutcome::AlreadyMember(member) => member.role,
+            AddOrganizationMemberOutcome::MemberLimitReached => {
                 tx.rollback().await?;
-                return Ok(AcceptOrgInvitationResult::NotFound);
+                return Ok(AcceptOrgInvitationOutcome::MemberLimitReached);
             }
-            AddOrganizationMemberResult::MemberLimitReached => {
-                tx.rollback().await?;
-                return Ok(AcceptOrgInvitationResult::MemberLimitReached);
-            }
-            AddOrganizationMemberResult::AlreadyMember => {
-                unreachable!("existing members are updated when accepting an invitation")
-            }
+        };
+
+        let claimed: Option<(i64,)> = sqlx::query_as(
+            r#"
+            UPDATE org_invitations
+            SET accepted_at = NOW(), accepted_by = $2
+            WHERE id = $1
+              AND accepted_at IS NULL
+              AND revoked_at IS NULL
+              AND expires_at > NOW()
+            RETURNING id
+            "#,
+        )
+        .bind(invitation.id)
+        .bind(accepted_by)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if claimed.is_none() {
+            tx.rollback().await?;
+            return Ok(AcceptOrgInvitationOutcome::NotActionable);
         }
+
         tx.commit().await?;
-        Ok(AcceptOrgInvitationResult::Accepted(Box::new(accepted)))
+        Ok(AcceptOrgInvitationOutcome::Accepted {
+            org_id: invitation.org_id,
+            role,
+        })
     }
 }

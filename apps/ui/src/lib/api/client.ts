@@ -3,9 +3,11 @@
 // The backend serves REST routes under /api directly.
 const API_BASE = "/api";
 
-// Org selection is handled via server-side cookie (everruns_org), set by
-// POST /v1/users/me/switch-org. This works automatically with all requests
-// including SSE (EventSource) because cookies are sent automatically.
+// Org selection travels in the `X-Org-Id` header (see `./active-org`), with the
+// server-side cookie (everruns_org) as the fallback for transports that cannot
+// set headers, such as SSE (EventSource).
+
+import { withOrgHeader } from "./active-org";
 
 export class ApiError extends Error {
   constructor(
@@ -40,10 +42,10 @@ async function tryRefreshToken(): Promise<boolean> {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<{ data: T }> {
-  const headers: Record<string, string> = {
+  const headers: Record<string, string> = withOrgHeader({
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
-  };
+  });
 
   const doFetch = () =>
     fetch(`${API_BASE}${endpoint}`, {

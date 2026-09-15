@@ -35,6 +35,9 @@ None.
 4. Reload the application twice and re-check `/chats`
 5. Send one message in the thread and confirm it answers
 6. Archive the thread from `/chats`, then reload the application and re-check `/chats`
+7. With a second organisation the user belongs to, switch to it from the sidebar
+   switcher, let `/chats` settle, switch back, and reload the application a few
+   times, re-checking `/chats` in **both** organisations
 
 ## Expected Result
 
@@ -48,3 +51,5 @@ None.
 | No duplicates | After reloads, exactly one Platform Chat thread exists |
 | Usable | The thread answers a message like any other chat thread |
 | Archive respected | After archiving and reloading, no new Platform Chat thread is created |
+| Org switch | Each organisation keeps exactly one Platform Chat thread across switches and reloads; switching never adds a second one in either org |
+| Org named per request | In DevTools → Network, every `/api/v1/*` request carries an `X-Org-Id` header matching the organisation shown in the switcher |
