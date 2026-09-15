@@ -6555,7 +6555,7 @@ export interface components {
       /** @description Whether the trigger is active on creation (default `true`). */
       enabled?: boolean;
       /**
-       * @description Message content or `{{template}}` sent when the schedule fires.
+       * @description Message content or `{{template}}` sent when the trigger fires.
        * @example Run the daily digest
        */
       message: string;
@@ -17442,8 +17442,8 @@ export interface components {
       tools?: components["schemas"]["ToolDefinition"][] | null;
     };
     /**
-     * @description Request to update a schedule trigger. Only provided fields change; the rest
-     *     are preserved from the stored config.
+     * @description Request to update a trigger. Only provided fields change; the rest are
+     *     preserved from the stored config.
      */
     UpdateAgentTriggerRequest: {
       /** @description Shared endpoint auth is not supported by webhook triggers. */
