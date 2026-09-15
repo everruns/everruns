@@ -1183,20 +1183,7 @@ mod tests {
                 text: self.response.clone(),
                 reasoning: Vec::new(),
                 tool_calls: None,
-                metadata: LlmCompletionMetadata {
-                    total_tokens: None,
-                    prompt_tokens: None,
-                    completion_tokens: None,
-                    cache_read_tokens: None,
-                    cache_creation_tokens: None,
-                    provider_cost_usd: None,
-                    model: None,
-                    finish_reason: None,
-                    retry_metadata: None,
-                    response_id: None,
-                    phase: None,
-                    cache_diagnostics: None,
-                },
+                metadata: LlmCompletionMetadata::default(),
             })
         }
 

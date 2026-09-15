@@ -1549,6 +1549,16 @@ mod tests {
     // Profile merge tests
     // ========================================================================
 
+    fn test_cost(
+        input: f64,
+        output: f64,
+        cache_read: Option<f64>,
+    ) -> everruns_provider::model::ModelCost {
+        let mut cost = everruns_provider::model::ModelCost::new(input, output);
+        cost.cache_read = cache_read;
+        cost
+    }
+
     fn base_profile() -> ModelProfile {
         ModelProfile {
             name: "Test".into(),
@@ -1580,26 +1590,14 @@ mod tests {
         let hardcoded = ModelProfile {
             name: "Hardcoded Name".into(),
             family: "hardcoded-family".into(),
-            cost: Some(everruns_provider::model::ModelCost {
-                input: 5.0,
-                output: 25.0,
-                cache_read: None,
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
+            cost: Some(test_cost(5.0, 25.0, None)),
             ..base_profile()
         };
         let discovered = ModelProfile {
             name: "Discovered Name".into(),
             family: "discovered-family".into(),
             knowledge: Some("2025-01-01".into()),
-            cost: Some(everruns_provider::model::ModelCost {
-                input: 0.5,
-                output: 1.0,
-                cache_read: Some(0.1),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
+            cost: Some(test_cost(0.5, 1.0, Some(0.1))),
             ..base_profile()
         };
 
@@ -1626,13 +1624,7 @@ mod tests {
                 max_media: None,
             }),
             knowledge: Some("2025-02-01".into()),
-            cost: Some(everruns_provider::model::ModelCost {
-                input: 0.5,
-                output: 1.0,
-                cache_read: Some(0.1),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
+            cost: Some(test_cost(0.5, 1.0, Some(0.1))),
             supported_parameters: vec!["tools".into(), "temperature".into()],
             ..base_profile()
         };

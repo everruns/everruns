@@ -41,29 +41,15 @@ fn tool(name: &str, description: &str) -> ToolDefinition {
 }
 
 fn config_with(parallel: Option<bool>) -> LlmCallConfig {
-    LlmCallConfig {
-        speed: None,
-        verbosity: None,
-        model: LIVE_MODEL.to_string(),
-        temperature: Some(0.0),
-        max_tokens: Some(1024),
-        tools: vec![
-            tool("get_weather", "Get the current weather for a city."),
-            tool("get_local_time", "Get the current local time for a city."),
-        ],
-        reasoning_effort: None,
-        metadata: std::collections::HashMap::new(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: parallel,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        reasoning_state: None,
-    }
+    let mut config = LlmCallConfig::new(LIVE_MODEL);
+    config.temperature = Some(0.0);
+    config.max_tokens = Some(1024);
+    config.tools = vec![
+        tool("get_weather", "Get the current weather for a city."),
+        tool("get_local_time", "Get the current local time for a city."),
+    ];
+    config.parallel_tool_calls = parallel;
+    config
 }
 
 async fn tool_call_count(parallel: Option<bool>) -> usize {

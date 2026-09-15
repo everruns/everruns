@@ -2098,6 +2098,12 @@ impl ReasonAtom {
                             .await;
                         return Err(AgentLoopError::llm_kind(err.kind(), err.to_string()));
                     }
+                    // `LlmStreamEvent` is `#[non_exhaustive]`, so a driver may
+                    // emit a kind this build does not know. Ignoring it keeps
+                    // the turn streaming rather than aborting; unreachable
+                    // in-workspace, where every crate shares one provider
+                    // version.
+                    _ => {}
                 }
                 // Per-event heartbeat after processing the event, so accumulated_len
                 // reflects the just-received tokens. Throttled to every 5s.

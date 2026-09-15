@@ -588,6 +588,7 @@ impl ToolResultContentPart {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ContentPart {
     /// Text content
     Text(TextContentPart),

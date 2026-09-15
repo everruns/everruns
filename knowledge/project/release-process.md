@@ -104,6 +104,51 @@ published — crates.io versions are immutable, and yanking the new version brea
 released against it — which is why the classification happens before merge. Run against that
 release, `check-semver-bumps.py` demands the breaking slot for host 0.20.4.
 
+**Keep additive changes additive: `#[non_exhaustive]` on churn-prone public types.** At `0.x` the
+minor is the breaking slot, so `cargo-semver-checks` classifies *adding* an enum variant or a public
+struct field as breaking. That is what turns a routine additive release into a whole-cone cascade:
+`everruns-provider` is a transitive dependency of 37 of the other 40 published crates and
+`everruns-model-profiles` of 38, so one breaking bump near the base republishes almost the entire
+workspace. Measured across `0.19.0`-`0.27.0`, the last three cycles each bumped essentially every
+published crate, and in `0.27.0` only 8 of 41 carried a real contract change; the other 33 were pure
+cone re-pins.
+
+`#[non_exhaustive]` removes that class of cascade at the source. It also fixes the downstream cost
+the bump count hides: `LlmErrorKind` gained a variant in `0.25.0` and another in `0.27.0`, and each
+one hard-broke every external consumer's `match`. On a `#[non_exhaustive]` enum the compiler has
+already forced that consumer to write a `_` arm, so the addition cannot break them, and the crate
+takes a patch bump that every dependant's caret still admits.
+
+The types carrying it are the ones with a demonstrated break, not every public type: see
+[`LlmErrorKind`](../../crates/provider/src/error.rs), the two
+[`ContentPart`](../../crates/core/src/message.rs) enums,
+[`CapabilityStatus`](../../crates/core/src/capability_types.rs),
+[`ModelCost`/`CostTier`](../../crates/model-profiles/src/types.rs), and
+[`LlmCallConfig`/`ProviderConfig`/`LlmCompletionMetadata`/`LlmStreamEvent`/`LlmContentPart`](../../crates/provider/src/driver_registry.rs).
+Two consequences are deliberate:
+
+- A `#[non_exhaustive]` **struct** cannot be built with a struct expression (or
+  `..Default::default()`) from outside its crate, so each one owns a constructor - `new`,
+  `for_provider`, or `Default` - and callers assign the public fields they need.
+- Exhaustiveness checking is lost for *sibling workspace crates*, not just external consumers, so a
+  new variant now falls into a `_` arm instead of failing the build. Every such arm says so and
+  states what it does with an unrecognized value; they are unreachable in-workspace, where all
+  crates compile against one version of the base crate.
+
+Adding a **required trait method** is breaking for the same reason and is not covered by
+`#[non_exhaustive]` (this is what `everruns-platform` `0.19.0` hit with
+`SandboxCheckpointStore::rollback_current_checkpoint`). Ship a new trait method with a default body
+unless breaking implementors is the point.
+
+This narrows the cascade; it does not end it. Replaying `0.19.0`-`0.27.0`, only `0.21.0` would have
+avoided its cascade outright and `0.25.0` would have shrunk from ~38 crates to ~13. The rest broke
+through genuine API *removals* - the SessionBinding unification, the exposure-policy move, the
+OpenRouter routing refactor, retiring `platform_management` - which no versioning scheme makes
+compatible. The remaining lever is the publish graph itself: 26 of the 41 published crates are
+wire-protocol drivers and integrations that have never had an independent contract change and
+already move in lockstep, so they pay cone cost without using the independent versioning they were
+split for.
+
 **Never `#[doc(hidden)]` an item another published crate calls.** `cargo-semver-checks` excludes
 hidden items by design — the attribute declares "not public API, free to change without a bump" —
 so no API-diffing gate can cover them, this one included. That exemption holds only while the item

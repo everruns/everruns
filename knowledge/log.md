@@ -2,6 +2,18 @@
 
 ## 2026-09-15
 
+* **Per-crate versioning was bumping more crates per release, not fewer, and the
+  cause was additive change being classified as breaking.** At `0.x` the minor is
+  the breaking slot, so adding an enum variant or a struct field to a base crate
+  forces a minor bump, which no dependant's caret admits, which republishes the
+  whole publish cone - 41 of 41 published crates in `0.27.0`, only 8 of them
+  carrying a real contract change. The churn-prone public types now carry
+  `#[non_exhaustive]`, which makes those additions patch-sized and, separately,
+  stops them hard-breaking external consumers' `match`es. The measured limit is
+  recorded too: replayed over `0.19.0`-`0.27.0` this avoids one cascade outright
+  and shrinks one, because the rest came from genuine API removals. See
+  [Release Process](project/release-process.md).
+
 * **Slack had no manual test cases, and it is the reference messaging
   integration.** [Messaging Integrations](integrations/messaging-integrations.md)
   lists a UI test case as a parity requirement every platform must ship; FCP has

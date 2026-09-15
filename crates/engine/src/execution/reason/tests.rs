@@ -633,30 +633,13 @@ async fn test_repair_dangling_tool_calls_store_error_unknown() {
 
 #[test]
 fn test_build_request_options_for_openai_prompt_cache() {
-    let mut config = LlmCallConfig {
-        speed: None,
-        verbosity: None,
-        model: "gpt-5.4".to_string(),
-        temperature: None,
-        max_tokens: None,
-        tools: vec![],
-        reasoning_effort: None,
-        metadata: HashMap::new(),
-        previous_response_id: Some("resp_123".to_string()),
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: Some(PromptCacheConfig {
-            enabled: true,
-            strategy: PromptCacheStrategy::Auto,
-            gemini_cached_content: None,
-        }),
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        reasoning_state: None,
-    };
+    let mut config = LlmCallConfig::new("gpt-5.4");
+    config.previous_response_id = Some("resp_123".to_string());
+    config.prompt_cache = Some(PromptCacheConfig {
+        enabled: true,
+        strategy: PromptCacheStrategy::Auto,
+        gemini_cached_content: None,
+    });
 
     let request_options = build_request_options(&config, "openai").unwrap();
     assert_eq!(
@@ -686,30 +669,12 @@ fn test_build_request_options_for_openai_prompt_cache() {
 
 #[test]
 fn test_build_request_options_for_gemini_explicit_cache() {
-    let config = LlmCallConfig {
-        speed: None,
-        verbosity: None,
-        model: "gemini-2.5-pro".to_string(),
-        temperature: None,
-        max_tokens: None,
-        tools: vec![],
-        reasoning_effort: None,
-        metadata: HashMap::new(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: Some(PromptCacheConfig {
-            enabled: true,
-            strategy: PromptCacheStrategy::Auto,
-            gemini_cached_content: Some("cachedContents/demo-cache".to_string()),
-        }),
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        reasoning_state: None,
-    };
+    let mut config = LlmCallConfig::new("gemini-2.5-pro");
+    config.prompt_cache = Some(PromptCacheConfig {
+        enabled: true,
+        strategy: PromptCacheStrategy::Auto,
+        gemini_cached_content: Some("cachedContents/demo-cache".to_string()),
+    });
 
     let request_options = build_request_options(&config, "gemini").unwrap();
     assert_eq!(
@@ -726,30 +691,12 @@ fn test_build_request_options_for_gemini_explicit_cache() {
 
 #[test]
 fn test_build_request_options_omits_gemini_cache_flag_when_disabled() {
-    let config = LlmCallConfig {
-        speed: None,
-        verbosity: None,
-        model: "gemini-2.5-pro".to_string(),
-        temperature: None,
-        max_tokens: None,
-        tools: vec![],
-        reasoning_effort: None,
-        metadata: HashMap::new(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: Some(PromptCacheConfig {
-            enabled: false,
-            strategy: PromptCacheStrategy::Auto,
-            gemini_cached_content: Some("cachedContents/demo-cache".to_string()),
-        }),
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        reasoning_state: None,
-    };
+    let mut config = LlmCallConfig::new("gemini-2.5-pro");
+    config.prompt_cache = Some(PromptCacheConfig {
+        enabled: false,
+        strategy: PromptCacheStrategy::Auto,
+        gemini_cached_content: Some("cachedContents/demo-cache".to_string()),
+    });
 
     // Streaming intent is always recorded, so the options exist; the cache
     // flag and its provider option must not.
@@ -1137,26 +1084,7 @@ fn lifecycle_test_context<'a>(
 }
 
 fn lifecycle_test_config() -> crate::driver_registry::LlmCallConfig {
-    crate::driver_registry::LlmCallConfig {
-        speed: None,
-        verbosity: None,
-        model: "stub-model".to_string(),
-        temperature: None,
-        max_tokens: None,
-        tools: vec![],
-        reasoning_effort: None,
-        metadata: std::collections::HashMap::new(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        reasoning_state: None,
-    }
+    LlmCallConfig::new("stub-model")
 }
 
 #[tokio::test]

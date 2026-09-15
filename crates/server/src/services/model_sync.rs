@@ -94,18 +94,14 @@ impl ModelSyncService {
             return Ok(SyncResult::NotSupported);
         }
 
-        let config = ProviderConfig {
-            provider: everruns_provider::runtime_provider::ProviderKey::new(
-                provider_id.to_string(),
-            ),
-            provider_type: driver_type,
-            api_key: Some(api_key),
-            base_url: provider_row.base_url.clone(),
-            metadata: Default::default(),
-            request_options: crate::services::provider_resolver::provider_request_options(
-                &provider_row.settings,
-            ),
-        };
+        let mut config = ProviderConfig::for_provider(
+            everruns_provider::runtime_provider::ProviderKey::new(provider_id.to_string()),
+            driver_type,
+        );
+        config.api_key = Some(api_key);
+        config.base_url = provider_row.base_url.clone();
+        config.request_options =
+            crate::services::provider_resolver::provider_request_options(&provider_row.settings);
 
         let driver = self
             .driver_registry

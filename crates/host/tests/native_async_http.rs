@@ -37,41 +37,25 @@ impl NativeAsyncExecutor for Lookups {
     }
 }
 fn config() -> LlmCallConfig {
-    LlmCallConfig {
-        model: "gpt-6-astra".into(),
-        temperature: None,
-        max_tokens: None,
-        tools: ["lookup", "raw_lookup"]
-            .into_iter()
-            .map(|name| {
-                ToolDefinition::Builtin(BuiltinTool {
-                    name: name.into(),
-                    display_name: None,
-                    description: "Read-only lookup".into(),
-                    parameters: json!({"type":"object","properties":{}}),
-                    policy: ToolPolicy::Auto,
-                    category: None,
-                    deferrable: DeferrablePolicy::Never,
-                    hints: ToolHints::default().with_readonly(true),
-                    full_parameters: None,
-                })
+    let mut config = LlmCallConfig::new("gpt-6-astra");
+    config.tools = ["lookup", "raw_lookup"]
+        .into_iter()
+        .map(|name| {
+            ToolDefinition::Builtin(BuiltinTool {
+                name: name.into(),
+                display_name: None,
+                description: "Read-only lookup".into(),
+                parameters: json!({"type":"object","properties":{}}),
+                policy: ToolPolicy::Auto,
+                category: None,
+                deferrable: DeferrablePolicy::Never,
+                hints: ToolHints::default().with_readonly(true),
+                full_parameters: None,
             })
-            .collect(),
-        reasoning_effort: None,
-        reasoning_state: None,
-        speed: None,
-        verbosity: None,
-        metadata: Default::default(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: Some(true),
-        volatile_suffix_len: 0,
-        extra_headers: vec![],
-        cache_diagnostics: None,
-    }
+        })
+        .collect();
+    config.parallel_tool_calls = Some(true);
+    config
 }
 fn sse(items: Vec<serde_json::Value>, id: &str) -> String {
     let mut result = items
