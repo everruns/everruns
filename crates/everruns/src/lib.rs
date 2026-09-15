@@ -73,6 +73,12 @@ pub use everruns_builtins::{
     AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
     ToolSearch,
 };
+pub use everruns_host::{
+    Compute, ComputeCapabilities, ComputeError, ComputeKind, ComputeSession, Containment,
+    ContainmentLevel, Durability, EnvironmentError, ExecRequest, ExecResult, NetworkPolicy,
+};
+#[cfg(feature = "host-compute")]
+pub use everruns_host::{HostCompute, HostComputeSession};
 #[cfg(feature = "bashkit")]
 pub use everruns_integrations_bashkit::BashkitShell;
 #[cfg(feature = "duckduckgo")]
