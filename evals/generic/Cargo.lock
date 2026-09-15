@@ -656,7 +656,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.21.0"
+version = "0.21.1"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -679,7 +679,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-anthropic"
-version = "0.18.5"
+version = "0.18.6"
 dependencies = [
  "async-trait",
  "chrono",
@@ -695,7 +695,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.18.8"
+version = "0.18.9"
 dependencies = [
  "async-trait",
  "chrono",
@@ -713,7 +713,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-capability"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "async-trait",
  "schemars",
@@ -723,7 +723,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.21.0"
+version = "0.22.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.19.0"
+version = "0.19.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -789,7 +789,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.21.0"
+version = "0.22.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -817,7 +817,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-bashkit"
-version = "0.18.4"
+version = "0.18.5"
 dependencies = [
  "async-trait",
  "bashkit",
@@ -833,7 +833,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-filesystem"
-version = "0.18.5"
+version = "0.18.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -849,7 +849,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.18.7"
+version = "0.18.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -862,7 +862,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -871,14 +871,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-model-profiles"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "everruns-openai"
-version = "0.18.5"
+version = "0.18.6"
 dependencies = [
  "async-trait",
  "chrono",
@@ -892,7 +892,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openrouter"
-version = "0.18.5"
+version = "0.18.6"
 dependencies = [
  "async-trait",
  "chrono",
@@ -904,7 +904,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-provider"
-version = "0.22.0"
+version = "0.23.0"
 dependencies = [
  "anyhow",
  "async-trait",
