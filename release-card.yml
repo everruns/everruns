@@ -1,19 +1,19 @@
-version: 0.26.0
-date: 2026-09-13
+version: 0.27.0
+date: 2026-09-15
 headline:
-  - Files in,
-  - models up.
+  - Agents,
+  - now in Slack.
 summary:
-  - PDF attachments reach agents,
-  - a new Muse image model with fallback,
-  - and one-click provider connect.
+  - The Slack agent surface goes live end to end,
+  - sessions gain explicit environments,
+  - and ingress routes mount on endpoint IDs.
 highlights:
-  - title: PDF input with attachments
-    description: Agents accept PDF documents as file attachments alongside text.
-    source: "#3535"
-  - title: Muse image model
-    description: A new Muse image-generation model with a configurable fallback.
-    source: "#3523"
-  - title: Quick-connect provider grid
-    description: Connecting an LLM provider is now a one-click grid in the UI.
-    source: "#3526"
+  - title: Slack agent surface
+    description: Agents run natively in Slack — streaming replies, a stop button, and live status.
+    source: "#3560"
+  - title: Session environments
+    description: A session declares where its commands run and what they may touch.
+    source: "#3599"
+  - title: Endpoint-ID ingress routing
+    description: Ingress routes mount on endpoint IDs with reserved routing tag prefixes.
+    source: "#3593"
