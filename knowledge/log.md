@@ -1,5 +1,29 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-15
+
+* **Proposed Platform Chat v2: one Bashkit shell instead of three bespoke tools.**
+  v1 runs bash without a filesystem, so its `discover`/`query`/`execute` split is a
+  toolset boundary rather than a permission one, and its rules live in ~4 KB of prompt
+  prose. v2 composes what already exists — `bashkit_shell` over the session filesystem,
+  the `everruns` command tree, the virtual `/docs` mount, and a Memory mounted
+  read-write at `/memory`. Two real gaps block it: no host inserts the
+  `CliCommandSourceHandle` that installs the CLI builtin, and Memory mounts are
+  snapshots copied into `session_files` at session creation rather than the
+  write-through the spec promises, so concurrent chat threads cannot share memory at
+  all. Proposed, not implemented. See [Platform Chat v2](harnesses/platform-chat-v2.md).
+
+* **Platform Chat memory is both shared and private, as sibling mounts.**
+  The two are not alternatives: the runtime already mounts `/memory/agent` beside
+  `/memory/user`, and the private path's boundary is already enforced end to end.
+  v2 reuses `/memory/user` verbatim and adds `/memory/shared`, one memory per
+  (org, surface), resolved by reserved name so no new scope or migration is
+  needed. They are siblings rather than overlays because the spec rejects
+  overlapping mounts; precedence is resolved in the disclosed index instead.
+  Writes default to private, and promotion to shared is an explicit user act,
+  because a shared note has been read by other people's threads and cannot be
+  taken back. See [Platform Chat v2](harnesses/platform-chat-v2.md).
+
 ## 2026-09-14
 
 * **Decided to retire the App abstraction in favor of agent-owned exposure.**
