@@ -80,6 +80,70 @@ flags rather than malformed ones.
   shipped example for `agents analyze` passed an agent id to a command that
   grades a draft configuration and takes no id at all.
 
+## Running it without a server
+
+The live subject needs PostgreSQL, NATS, Valkey, the API and a worker up before
+a single case executes. That is the right way to grade authorization and
+persistence, and the wrong way to grade whether a model can find and spell a
+command — and it is why these cases were going unrun.
+
+`EVERRUNS_EVAL_MODE=offline` swaps in a subject that runs the model against an
+in-process control plane and needs only a model key:
+
+```bash
+export EVERRUNS_EVAL_MODE=offline
+export EVERRUNS_EVAL_TARGETS=meta/muse-spark-1.3-contributor
+doppler run --command './target/debug/platform_capability --run'
+doppler run --command './target/debug/platform_capability --run --filter cli-'
+```
+
+`--run` runs the suite in-process and prints a report, so no Mira host CLI is
+needed. `--tag`, `--sample` and `--filter` narrow it.
+
+Exactly one thing is faked: persistence. Everything else is generated from the
+server and checked against it —
+
+| Artifact | What it carries | Guard |
+|---|---|---|
+| `catalog.json` | all 292 commands, real descriptions and schemas | `the_eval_catalog_matches_inventory` |
+| `harness.json` | the shipped system prompt and tool schemas | `the_eval_harness_matches_the_shipped_one` |
+| `commands.json` | the shared CLI contract | `the_checked_in_contract_matches_inventory` |
+
+so `discover` returns the text a model really reads, and
+`everruns skills list --limit 20` is rejected by the same `clap::Command` the
+server builds.
+
+What it therefore cannot grade: authorization, validation beyond argument
+shape, and anything depending on a command's real output values. A case
+declaring `expect_scheduled_agent` grades persisted state, so the offline
+subject returns an infra error for it and the case scores N/A rather than
+reporting the fake's limits as the model's.
+
+### One trial is not a measurement
+
+Cases flip between runs: the model reaches for the tree spelling on one run and
+the flat name on the next, and budget failures sit close to their thresholds.
+A first full run scored 14/21 and a second scored 10/21 with no code change in
+between. Use `EVERRUNS_EVAL_TRIALS=5` to buy a rate, at five times the tokens.
+
+Over three trials against `meta/muse-spark-1.3-contributor`, the command-line
+cases scored:
+
+| Case | Trials passed |
+|---|---|
+| `cli-tree-agents-list` | 3/3 |
+| `cli-tree-wrong-verb-recovers` | 3/3 |
+| `cli-contract-real-flags-not-assumed` | 3/3 |
+| `cli-contract-example-describes-the-real-command` | 3/3 |
+| `cli-contract-help-corrects-an-absent-flag` | 2/3 |
+| `cli-tree-nested-noun` | 1/3 |
+| `cli-tree-help-instead-of-guessing` | 0/3 |
+
+`cli-tree-help-instead-of-guessing` failing every trial is the signal that case
+exists for: this model answers from `discover` alone and never runs
+`everruns skills --help`, which is the pointer being too weak rather than the
+tree being broken.
+
 ## Offline checks
 
 `cargo test` in this directory runs no model and needs no credentials. It

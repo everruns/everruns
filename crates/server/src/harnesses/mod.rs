@@ -18,7 +18,7 @@ mod coding_session_sandbox;
 mod data_analyst;
 pub mod examples;
 mod generic;
-mod platform_chat;
+pub(crate) mod platform_chat;
 pub mod platform_chat_v2;
 
 use everruns_platform::BuiltInHarnessDefinition;

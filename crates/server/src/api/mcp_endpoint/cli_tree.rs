@@ -143,6 +143,103 @@ mod tests {
         rewrite(input, tree())
     }
 
+    /// The command catalog the offline eval subject grades against.
+    ///
+    /// `evals/platform-capability` runs its cases without a server, against an
+    /// in-process fake. A fake built from a hand-curated command list would
+    /// measure the model against a surface that does not exist; built from
+    /// this, it measures it against the one that does. Descriptions and schemas
+    /// are what `discover` returns, so the text the model reads while choosing
+    /// a command is the real text.
+    #[test]
+    fn the_eval_catalog_matches_inventory() {
+        // Built from inventory directly rather than through the feature-flag
+        // filter: the artifact is the whole surface, not one deployment's
+        // slice, so a case cannot pass or fail depending on which flags were
+        // on when it was generated.
+        let entries: Vec<serde_json::Value> = {
+            let mut entries: Vec<serde_json::Value> = inventory::iter::<CommandDescriptor>
+                .into_iter()
+                .map(|desc| {
+                    let meta = (desc.meta)();
+                    serde_json::json!({
+                        "name": meta.name,
+                        "category": meta.category,
+                        "description": meta.description,
+                        "method": meta.method,
+                        "path": meta.path,
+                        "read_only": (desc.read_only)(),
+                        "positional_arg": (desc.positional_arg)(),
+                        "cli": (desc.cli)().map(|route| route.spelling()),
+                        "input_schema": (desc.param_schema)(),
+                        "output_shape": (desc.output_shape)(),
+                    })
+                })
+                .collect();
+            entries.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+            entries
+        };
+        let generated = serde_json::to_string_pretty(&entries).expect("catalog serializes") + "\n";
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../evals/platform-capability/catalog.json"
+        );
+
+        if std::env::var("UPDATE_EVAL_CATALOG").is_ok() {
+            std::fs::write(path, &generated).expect("write catalog.json");
+            return;
+        }
+
+        let checked_in = std::fs::read_to_string(path).expect("read catalog.json");
+        assert_eq!(
+            checked_in.trim(),
+            generated.trim(),
+            "evals/platform-capability/catalog.json is stale. Run \
+             `UPDATE_EVAL_CATALOG=1 cargo test -p everruns-server \
+             the_eval_catalog_matches_inventory`."
+        );
+    }
+
+    /// The harness the offline eval subject reproduces: the real system prompt
+    /// and the real tool schemas.
+    ///
+    /// Discoverability is most of what these cases measure, and discoverability
+    /// lives in the prompt. A fake with a paraphrased prompt would grade a
+    /// surface nobody ships.
+    #[test]
+    fn the_eval_harness_matches_the_shipped_one() {
+        use everruns_platform::capabilities::platform::{
+            discover_input_schema, execute_input_schema, query_input_schema,
+        };
+
+        let harness = serde_json::json!({
+            "system_prompt": crate::harnesses::platform_chat::SYSTEM_PROMPT,
+            "tools": [
+                { "name": "discover", "schema": discover_input_schema() },
+                { "name": "query", "schema": query_input_schema() },
+                { "name": "execute", "schema": execute_input_schema() },
+            ]
+        });
+        let generated = serde_json::to_string_pretty(&harness).expect("harness serializes") + "\n";
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../evals/platform-capability/harness.json"
+        );
+
+        if std::env::var("UPDATE_EVAL_CATALOG").is_ok() {
+            std::fs::write(path, &generated).expect("write harness.json");
+            return;
+        }
+
+        let checked_in = std::fs::read_to_string(path).expect("read harness.json");
+        assert_eq!(
+            checked_in.trim(),
+            generated.trim(),
+            "evals/platform-capability/harness.json is stale. Run \
+             `UPDATE_EVAL_CATALOG=1 cargo test -p everruns-server the_eval_`."
+        );
+    }
+
     /// The checked-in contract artifact still matches inventory.
     ///
     /// `everruns-cli` reads the artifact, this crate owns the commands, and

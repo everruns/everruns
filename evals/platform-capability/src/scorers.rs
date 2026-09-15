@@ -465,9 +465,20 @@ fn platform_calls(events: &[Value]) -> Vec<(String, String)> {
         .filter(|event| event.get("type").and_then(Value::as_str) == Some("tool.started"))
         .filter_map(|event| {
             let call = event.pointer("/data/tool_call")?;
+            let arguments = call.get("arguments").unwrap_or(&Value::Null);
+            // The serialized arguments *and* the script inside them. A pattern
+            // like `\blist_harnesses\b` fails against the serialization alone
+            // when the command follows a newline, because `\n` serializes to
+            // the two characters `\` and `n` and `n` is a word character, so
+            // the word boundary never matches. Appending the raw script makes
+            // every command in a multi-line script anchorable.
+            let script = arguments
+                .get("commands")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             Some((
                 call.get("name")?.as_str()?.to_string(),
-                serde_json::to_string(call.get("arguments").unwrap_or(&Value::Null)).ok()?,
+                format!("{}\n{script}", serde_json::to_string(arguments).ok()?),
             ))
         })
         .collect()

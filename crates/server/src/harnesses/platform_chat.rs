@@ -83,7 +83,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
     // VFS decision, not separately.
 }
 
-const SYSTEM_PROMPT: &str = "\
+pub(crate) const SYSTEM_PROMPT: &str = "\
 You are a helpful assistant on the Everruns platform.
 
 ## Rendering entity references
