@@ -17587,6 +17587,13 @@
             "description": "External identifier (trg_<32-hex>). Shown as `id` in API.",
             "example": "trg_01933b5a000070008000000000000001"
           },
+          "ingress_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stable HTTP ingress identifier for trigger types that accept requests."
+          },
           "trigger_type": {
             "$ref": "#/components/schemas/AgentTriggerType",
             "description": "The kind of event that fires this trigger."
@@ -17639,9 +17646,10 @@
       },
       "AgentTriggerType": {
         "type": "string",
-        "description": "The kind of event that fires an agent trigger. Only scheduled triggers exist\ntoday; the enum leaves room for webhook/event triggers later.",
+        "description": "The kind of event that fires an agent trigger.",
         "enum": [
-          "schedule"
+          "schedule",
+          "webhook"
         ]
       },
       "AgentVersion": {
@@ -20710,14 +20718,19 @@
       },
       "CreateAgentTriggerRequest": {
         "type": "object",
-        "description": "Request to create a schedule trigger on an agent.",
+        "description": "Request to create a trigger on an agent.",
         "required": [
-          "cron_expression",
           "message"
         ],
         "properties": {
+          "auth": {
+            "description": "Shared endpoint auth is not supported by webhook triggers."
+          },
           "cron_expression": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Cron expression that drives the durable schedule. Accepts 5-field\n(min hour day month weekday) or 7-field (sec … year) form.",
             "example": "0 9 * * *"
           },
@@ -20727,8 +20740,17 @@
           },
           "message": {
             "type": "string",
-            "description": "Message content or `{{template}}` sent when the schedule fires.",
+            "description": "Message content or `{{template}}` sent when the trigger fires.",
             "example": "Run the daily digest"
+          },
+          "rate_limit_per_minute": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Optional per-ingress, per-IP webhook request limit.",
+            "minimum": 0
           },
           "session_mode": {
             "$ref": "#/components/schemas/SessionBinding",
@@ -20738,6 +20760,17 @@
             "type": "string",
             "description": "IANA timezone identifier for cron evaluation (default `UTC`).",
             "example": "UTC"
+          },
+          "token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Shared secret for webhook triggers."
+          },
+          "trigger_type": {
+            "$ref": "#/components/schemas/AgentTriggerType",
+            "description": "Trigger kind. Omitted values retain the schedule API default."
           }
         }
       },
@@ -20806,7 +20839,7 @@
               "object",
               "null"
             ],
-            "description": "Initial channel configuration. Shape depends on `channel_type`, for\nexample `{\"token\": \"whk_redacted\", \"message\": \"Run support triage\"}`\nfor `webhook`. New schedule channels are rejected; use agent triggers."
+            "description": "Initial channel configuration. Shape depends on `channel_type`, for\nexample `{\"token\": \"whk_redacted\", \"message\": \"Run support triage\"}`\nfor `webhook`. New schedule and webhook channels are rejected; use agent\ntriggers."
           },
           "channel_type": {
             "oneOf": [
@@ -39715,8 +39748,11 @@
       },
       "UpdateAgentTriggerRequest": {
         "type": "object",
-        "description": "Request to update a schedule trigger. Only provided fields change; the rest\nare preserved from the stored config.",
+        "description": "Request to update a trigger. Only provided fields change; the rest are\npreserved from the stored config.",
         "properties": {
+          "auth": {
+            "description": "Shared endpoint auth is not supported by webhook triggers."
+          },
           "cron_expression": {
             "type": [
               "string",
@@ -39738,6 +39774,15 @@
             ],
             "description": "Replacement message sent when the trigger fires."
           },
+          "rate_limit_per_minute": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Replacement per-ingress, per-IP webhook request limit.",
+            "minimum": 0
+          },
           "session_mode": {
             "oneOf": [
               {
@@ -39755,6 +39800,13 @@
               "null"
             ],
             "description": "Replacement IANA timezone identifier."
+          },
+          "token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replacement webhook token."
           }
         }
       },

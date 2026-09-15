@@ -51,7 +51,8 @@ pub struct CreateAppRequest {
     pub channel_type: Option<ChannelType>,
     /// Initial channel configuration. Shape depends on `channel_type`, for
     /// example `{"token": "whk_redacted", "message": "Run support triage"}`
-    /// for `webhook`. New schedule channels are rejected; use agent triggers.
+    /// for `webhook`. New schedule and webhook channels are rejected; use agent
+    /// triggers.
     #[serde(default, deserialize_with = "deserialize_opt_json_value_lenient")]
     #[schema(value_type = Option<Object>)]
     pub channel_config: Option<serde_json::Value>,

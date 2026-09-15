@@ -1938,7 +1938,7 @@ async fn test_mcp_execute_list_capabilities() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_app_commands_reject_schedule_and_support_webhook_channels() {
+async fn test_mcp_execute_rejects_app_trigger_channels_and_supports_webhook_triggers() {
     let server = TestServer::in_memory().await;
     let app_name = format!("repo-checker-{}", unique_suffix());
 
@@ -1996,6 +1996,13 @@ async fn test_mcp_execute_app_commands_reject_schedule_and_support_webhook_chann
         "add_schedule_app_channel unexpectedly succeeded: {}",
         tool_text(&add_schedule_resp)
     );
+    assert!(
+        tool_text(&add_schedule_resp).contains(
+            "bad_request: App schedule channels are deprecated. Create a schedule trigger on the app's agent instead."
+        ),
+        "unexpected schedule channel rejection: {}",
+        tool_text(&add_schedule_resp)
+    );
     let add_webhook_resp = mcp_tool_call(
         &server,
         "execute",
@@ -2007,73 +2014,73 @@ async fn test_mcp_execute_app_commands_reject_schedule_and_support_webhook_chann
     )
     .await;
     assert!(
-        !tool_is_error(&add_webhook_resp),
-        "add_app_channel webhook failed: {}",
+        tool_is_error(&add_webhook_resp),
+        "add_webhook_app_channel unexpectedly succeeded: {}",
         tool_text(&add_webhook_resp)
     );
-    assert_eq!(tool_json(&add_webhook_resp)["channel_type"], "webhook");
+    assert!(
+        tool_text(&add_webhook_resp).contains(
+            "bad_request: App webhook channels are deprecated. Create a webhook trigger on the app's agent instead."
+        ),
+        "unexpected webhook channel rejection: {}",
+        tool_text(&add_webhook_resp)
+    );
 
-    let list_channels_resp = mcp_tool_call(
+    let create_trigger_resp = mcp_tool_call(
         &server,
         "execute",
-        json!({ "commands": format!("list_app_channels {app_id}") }),
+        json!({
+            "commands": format!(
+                "create_agent_trigger --agent_id {agent_id} --trigger_type webhook --token 'secret-1' --session_mode session_per_invocation --message 'process payload'"
+            )
+        }),
     )
     .await;
     assert!(
-        !tool_is_error(&list_channels_resp),
-        "list_app_channels failed: {}",
-        tool_text(&list_channels_resp)
+        !tool_is_error(&create_trigger_resp),
+        "create_agent_trigger webhook failed: {}",
+        tool_text(&create_trigger_resp)
     );
-    let channels = tool_json(&list_channels_resp);
-    let serialized_channels = serde_json::to_string(&channels).unwrap();
+    let trigger = tool_json(&create_trigger_resp);
+    assert_eq!(trigger["trigger_type"], "webhook");
+    assert_eq!(trigger["agent_id"], agent_id);
     assert!(
-        !serialized_channels.contains("secret-1"),
-        "channel listing leaked webhook token: {serialized_channels}"
+        trigger["ingress_id"]
+            .as_str()
+            .is_some_and(|ingress_id| ingress_id.starts_with("appchan_"))
     );
+    assert_eq!(trigger["config"]["token_configured"], true);
+    let serialized_trigger = serde_json::to_string(&trigger).unwrap();
     assert!(
-        channels
+        !serialized_trigger.contains("secret-1"),
+        "trigger creation leaked webhook token: {serialized_trigger}"
+    );
+
+    let list_triggers_resp = mcp_tool_call(
+        &server,
+        "execute",
+        json!({ "commands": format!("list_agent_triggers {agent_id}") }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&list_triggers_resp),
+        "list_agent_triggers failed: {}",
+        tool_text(&list_triggers_resp)
+    );
+    let triggers = tool_json(&list_triggers_resp);
+    assert!(
+        triggers
             .as_array()
-            .unwrap()
+            .expect("triggers array")
             .iter()
-            .any(|channel| channel["channel_config"]["token_configured"] == true)
+            .any(|listed| listed["id"] == trigger["id"]
+                && listed["trigger_type"] == "webhook"
+                && listed["config"]["token_configured"] == true)
     );
-
-    let get_resp = mcp_tool_call(
-        &server,
-        "execute",
-        json!({ "commands": format!("get_app {app_id}") }),
-    )
-    .await;
+    let serialized_triggers = serde_json::to_string(&triggers).unwrap();
     assert!(
-        !tool_is_error(&get_resp),
-        "get_app failed: {}",
-        tool_text(&get_resp)
-    );
-    let fetched_app = tool_json(&get_resp);
-    let channel_types = fetched_app["channels"]
-        .as_array()
-        .expect("channels array")
-        .iter()
-        .filter_map(|channel| channel["channel_type"].as_str())
-        .collect::<Vec<_>>();
-    assert!(!channel_types.contains(&"schedule"));
-    assert!(channel_types.contains(&"webhook"));
-    let serialized_app = serde_json::to_string(&fetched_app).unwrap();
-    assert!(
-        !serialized_app.contains("secret-1"),
-        "get_app leaked webhook token: {serialized_app}"
-    );
-
-    let publish_resp = mcp_tool_call(
-        &server,
-        "execute",
-        json!({ "commands": format!("publish_app {app_id}") }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&publish_resp),
-        "publish_app failed: {}",
-        tool_text(&publish_resp)
+        !serialized_triggers.contains("secret-1"),
+        "trigger listing leaked webhook token: {serialized_triggers}"
     );
 }
 

@@ -19,6 +19,9 @@ use utoipa::ToSchema;
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
+use crate::domains::agent_triggers::{
+    WebhookTriggerInvocationRequest, invoke_webhook_agent_trigger,
+};
 use crate::domains::apps::{WebhookInvocationRequest, invoke_webhook_app_channel};
 use crate::domains::common::{CommandError, CommandErrorKind};
 use crate::domains::messages::MessageService;
@@ -118,7 +121,7 @@ pub async fn invoke_webhook_legacy(
 ) -> Result<(StatusCode, Json<WebhookInvocationResponse>), (StatusCode, Json<ErrorResponse>)> {
     invoke_webhook(
         state,
-        app_id,
+        Some(app_id),
         channel_id,
         req_id,
         connect_info,
@@ -151,6 +154,15 @@ pub async fn invoke_webhook_endpoint(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<(StatusCode, Json<WebhookInvocationResponse>), (StatusCode, Json<ErrorResponse>)> {
+    if state
+        .db
+        .get_agent_trigger_by_ingress_id_unscoped(&channel_id)
+        .await
+        .map_err(internal_error)?
+        .is_some()
+    {
+        return invoke_webhook(state, None, channel_id, req_id, connect_info, headers, body).await;
+    }
     let app_id = crate::api::app_ingress::resolve_endpoint(
         &state.db,
         state.encryption.as_ref(),
@@ -162,7 +174,7 @@ pub async fn invoke_webhook_endpoint(
     .ok_or_else(not_found)?;
     invoke_webhook(
         state,
-        app_id,
+        Some(app_id),
         channel_id,
         req_id,
         connect_info,
@@ -174,13 +186,32 @@ pub async fn invoke_webhook_endpoint(
 
 async fn invoke_webhook(
     state: AppWebhookState,
-    app_id: String,
+    app_id: Option<String>,
     channel_id: String,
     req_id: Option<axum::Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<(StatusCode, Json<WebhookInvocationResponse>), (StatusCode, Json<ErrorResponse>)> {
+    if let Some(trigger) = state
+        .db
+        .get_agent_trigger_by_ingress_id_unscoped(&channel_id)
+        .await
+        .map_err(internal_error)?
+    {
+        return invoke_trigger_webhook(
+            state,
+            app_id.as_deref(),
+            channel_id,
+            trigger,
+            req_id,
+            connect_info,
+            headers,
+            body,
+        )
+        .await;
+    }
+    let app_id = app_id.ok_or_else(not_found)?;
     let app = crate::domains::apps::queries::get_by_public_id_unscoped(
         &state.db,
         state.encryption.as_ref(),
@@ -273,6 +304,97 @@ async fn invoke_webhook(
     .await
     .map_err(command_error_response)?;
 
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(WebhookInvocationResponse {
+            accepted: true,
+            session_id: result.session_id,
+            created_session: result.created_session,
+        }),
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn invoke_trigger_webhook(
+    state: AppWebhookState,
+    legacy_app_id: Option<&str>,
+    ingress_id: String,
+    trigger: crate::storage::models::AgentTriggerRow,
+    req_id: Option<axum::Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<(StatusCode, Json<WebhookInvocationResponse>), (StatusCode, Json<ErrorResponse>)> {
+    if trigger.trigger_type != everruns_platform::AgentTriggerType::Webhook.to_string()
+        || !trigger.enabled
+    {
+        return Err(not_found());
+    }
+    if let Some(app_id) = trigger.execution_app_id {
+        let app = state
+            .db
+            .get_app_by_id(trigger.org_id, app_id)
+            .await
+            .map_err(internal_error)?
+            .filter(|app| app.status == "published")
+            .ok_or_else(not_found)?;
+        if legacy_app_id.is_some_and(|expected| expected != app.public_id) {
+            return Err(not_found());
+        }
+    } else if legacy_app_id.is_some() {
+        return Err(not_found());
+    }
+
+    let config_value = crate::domains::apps::queries::decrypt_channel_config(
+        state.encryption.as_ref(),
+        trigger.config_encrypted.as_deref(),
+        &trigger.config,
+    );
+    let config: everruns_platform::WebhookTriggerConfig = serde_json::from_value(config_value)
+        .map_err(|error| {
+            tracing::error!(%error, %ingress_id, "Webhook trigger config did not deserialize");
+            not_found()
+        })?;
+    let provided_token = extract_webhook_token(&headers).ok_or_else(unauthorized)?;
+    if !constant_time_eq(provided_token.as_bytes(), config.token.as_bytes()) {
+        return Err(unauthorized());
+    }
+    if let Some(limit) = config.rate_limit_per_minute
+        && limit > 0
+    {
+        let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
+        let client_ip = extract_client_ip_from_parts(peer_addr, &headers);
+        if state
+            .rate_limiter
+            .check(&ingress_id, client_ip, limit)
+            .await
+            .is_err()
+        {
+            return Err(too_many_requests(
+                "Webhook rate limit exceeded for this app channel",
+            ));
+        }
+    }
+
+    let json_payload = serde_json::from_slice(&body).ok();
+    let body = String::from_utf8_lossy(&body).into_owned();
+    let request_headers = flatten_headers(&headers);
+    let request_id = req_id.map(|axum::Extension(id)| id.0);
+    let result = invoke_webhook_agent_trigger(
+        &state.db,
+        state.encryption.as_ref(),
+        &state.session_service,
+        &state.message_service,
+        WebhookTriggerInvocationRequest {
+            ingress_id,
+            body,
+            json_payload,
+            headers: request_headers,
+        },
+        request_id,
+    )
+    .await
+    .map_err(command_error_response)?;
     Ok((
         StatusCode::ACCEPTED,
         Json(WebhookInvocationResponse {
