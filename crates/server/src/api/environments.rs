@@ -128,6 +128,10 @@ impl AppState {
             self.auth.permission_resolver.clone(),
         )
         .with_session_service(self.session_service.clone())
+        // Carry the org-effective flags: the commands are gated on
+        // `environments`, and a Ctx without flags reads as every feature
+        // disabled, which would refuse the routes wherever they are mounted.
+        .with_feature_flags(org.feature_flags.clone())
     }
 }
 
