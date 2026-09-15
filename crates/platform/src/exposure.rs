@@ -43,9 +43,61 @@ pub fn public_tool_activity_text(
     }
 }
 
+/// Conversation starters a surface should offer for a fresh thread.
+///
+/// The agent's starters win whenever it has any; otherwise the (already
+/// inheritance-folded) harness starters apply. This is the same precedence
+/// Platform Chat renders with — see `Agent::starters` and
+/// `check_platform_chat_content` — lifted here so every exposure resolves it
+/// identically instead of each transport re-deciding.
+///
+/// Empty on both sides means the surface has nothing authored for it. Callers
+/// must render nothing rather than substituting generic prompts: a prompt
+/// nobody wrote is worse than an empty pane.
+pub fn resolve_starters<'a>(
+    agent_starters: &'a [crate::ConversationStarter],
+    harness_starters: &'a [crate::ConversationStarter],
+) -> &'a [crate::ConversationStarter] {
+    if agent_starters.is_empty() {
+        harness_starters
+    } else {
+        agent_starters
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn starter(text: &str) -> crate::ConversationStarter {
+        crate::ConversationStarter {
+            icon: None,
+            text: text.to_string(),
+        }
+    }
+
+    #[test]
+    fn resolve_starters_prefers_the_agent_then_falls_back_to_the_harness() {
+        let agent = vec![starter("Triage the newest P1")];
+        let harness = vec![starter("Summarize this channel")];
+
+        assert_eq!(
+            resolve_starters(&agent, &harness),
+            agent.as_slice(),
+            "an agent with starters must win over the harness"
+        );
+        assert_eq!(
+            resolve_starters(&[], &harness),
+            harness.as_slice(),
+            "an agent with no starters must inherit the harness ones"
+        );
+        // Both empty means nothing was authored. Callers render nothing; a
+        // generic prompt nobody wrote is worse than an empty pane.
+        assert!(
+            resolve_starters(&[], &[]).is_empty(),
+            "nothing authored must stay nothing"
+        );
+    }
 
     #[test]
     fn public_tool_activity_text_is_the_one_policy() {

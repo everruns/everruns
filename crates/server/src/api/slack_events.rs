@@ -31,7 +31,8 @@ use everruns_core::channel::{
 };
 use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
 use everruns_platform::{
-    App, AppChannel, AppStatus, ChannelType, SlackChannelConfig, SlackReplyMode,
+    App, AppChannel, AppStatus, ChannelType, ConversationStarter, SlackChannelConfig,
+    SlackReplyMode,
 };
 use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 use everruns_provider::url_validation::validate_safe_url;
@@ -2373,6 +2374,14 @@ async fn handle_slack_manifest(
 
     let display_name = truncate_display_name(&app.name);
 
+    // Suggested prompts come from the exposure's conversation starters (EVE-978).
+    // Only the agent surface renders them, so nothing is loaded when it is off.
+    let starters = if agent_surface_enabled {
+        resolve_manifest_starters(&state, &app).await
+    } else {
+        Vec::new()
+    };
+
     let request_url = slack_webhook_url(&state.api_base_url, &slack_channel.public_id.to_string());
     let manifest_yaml = build_manifest_yaml(
         &app.name,
@@ -2380,6 +2389,7 @@ async fn handle_slack_manifest(
         app.description.as_deref(),
         &request_url,
         agent_surface_enabled,
+        &starters,
     );
 
     // URL-encode the manifest for the Slack "create from manifest" URL
@@ -2407,6 +2417,56 @@ fn slack_webhook_url(api_base_url: &str, channel_public_id: &str) -> String {
     )
 }
 
+/// Conversation starters for this App's Slack agent surface.
+///
+/// Agent starters win over the harness ones, resolved by
+/// `everruns_platform::exposure::resolve_starters` so Slack and Platform Chat
+/// cannot drift apart. The harness is resolved through `resolve_effective` to
+/// pick up inherited starters, and a grandfathered agent-less App falls back to
+/// the harness alone.
+///
+/// A lookup failure yields no prompts rather than a 500: the manifest is how an
+/// operator gets their Slack app created at all, and suggested prompts are
+/// cosmetic next to that.
+async fn resolve_manifest_starters(state: &SlackState, app: &App) -> Vec<ConversationStarter> {
+    let agent_starters = match app.agent_id.as_ref() {
+        Some(agent_id) => {
+            match crate::domains::agents::queries::get_by_public_id(
+                &state.db,
+                app.org_id,
+                &agent_id.to_string(),
+            )
+            .await
+            {
+                Ok(Some(agent)) => agent.starters,
+                Ok(None) => Vec::new(),
+                Err(error) => {
+                    tracing::warn!(%agent_id, %error, "Failed to load agent for Slack manifest starters");
+                    Vec::new()
+                }
+            }
+        }
+        None => Vec::new(),
+    };
+
+    let harness_starters = match crate::domains::harnesses::queries::resolve_effective(
+        &state.db,
+        app.org_id,
+        app.harness_id,
+    )
+    .await
+    {
+        Ok(Some(harness)) => harness.starters,
+        Ok(None) => Vec::new(),
+        Err(error) => {
+            tracing::warn!(harness_id = %app.harness_id, %error, "Failed to resolve harness for Slack manifest starters");
+            Vec::new()
+        }
+    };
+
+    everruns_platform::exposure::resolve_starters(&agent_starters, &harness_starters).to_vec()
+}
+
 /// Build the YAML manifest for a Slack app.
 ///
 /// Slack requires `long_description` to be 174–4000 chars. We build it from the
@@ -2414,13 +2474,29 @@ fn slack_webhook_url(api_base_url: &str, channel_public_id: &str) -> String {
 /// Slack caps `agent_view.agent_description` at 300 characters.
 const SLACK_AGENT_DESC_MAX: usize = 300;
 
+/// Slack renders at most four suggested prompts in an agent thread, so the
+/// manifest never carries more than that even though an agent may author up to
+/// `MAX_STARTERS` for Platform Chat.
+const SLACK_SUGGESTED_PROMPT_MAX: usize = 4;
+
+/// Slack does not document a cap on a prompt `title`, but the title renders as a
+/// tappable chip and a starter may be a full 280-byte sentence. Keep the chip
+/// legible and let the untruncated text ride in `message`, which is what Slack
+/// actually inserts into the composer.
+const SLACK_SUGGESTED_PROMPT_TITLE_MAX: usize = 60;
+
 /// The `features.agent_view` block, or empty when the agent surface is off.
 ///
 /// New apps must use `agent_view`; `assistant_view` is the legacy spelling Slack
 /// is deprecating, and Everruns only ever generates manifests for new apps.
-/// `agent_description` is the only required sub-field — `suggested_prompts` and
-/// `actions` are optional and deliberately left out here (see EVE-978).
-fn build_agent_view(app_name: &str, app_description: Option<&str>) -> String {
+/// `agent_description` is the only required sub-field. `suggested_prompts` is
+/// filled from the exposure's resolved conversation starters (EVE-978); `actions`
+/// stays out because nothing authors it.
+fn build_agent_view(
+    app_name: &str,
+    app_description: Option<&str>,
+    starters: &[ConversationStarter],
+) -> String {
     let desc = match app_description.filter(|d| !d.trim().is_empty()) {
         Some(d) => format!("{app_name} — {d}"),
         None => format!("{app_name}, an AI agent powered by Everruns"),
@@ -2429,9 +2505,41 @@ fn build_agent_view(app_name: &str, app_description: Option<&str>) -> String {
 
     format!(
         "\x20 agent_view:\n\
-         \x20   agent_description: \"{}\"\n",
-        yaml_escape(&desc)
+         \x20   agent_description: \"{}\"\n\
+         {}",
+        yaml_escape(&desc),
+        build_suggested_prompts(starters)
     )
+}
+
+/// The `suggested_prompts` list, or empty when nothing was authored.
+///
+/// Nothing authored must stay nothing: Slack shows an empty pane, which is a
+/// better first impression than three generic prompts nobody wrote. Blank
+/// starters are dropped for the same reason rather than emitting an empty chip.
+fn build_suggested_prompts(starters: &[ConversationStarter]) -> String {
+    let prompts: Vec<&str> = starters
+        .iter()
+        .map(|starter| starter.text.trim())
+        .filter(|text| !text.is_empty())
+        .take(SLACK_SUGGESTED_PROMPT_MAX)
+        .collect();
+
+    if prompts.is_empty() {
+        return String::new();
+    }
+
+    let mut out = String::from("\x20   suggested_prompts:\n");
+    for text in prompts {
+        let title = truncate_chars(text, SLACK_SUGGESTED_PROMPT_TITLE_MAX);
+        out.push_str(&format!(
+            "\x20     - title: \"{}\"\n\
+             \x20       message: \"{}\"\n",
+            yaml_escape(&title),
+            yaml_escape(text)
+        ));
+    }
+    out
 }
 
 /// Truncate to at most `max` characters, on a char boundary.
@@ -2448,6 +2556,7 @@ fn build_manifest_yaml(
     app_description: Option<&str>,
     request_url: &str,
     agent_surface_enabled: bool,
+    starters: &[ConversationStarter],
 ) -> String {
     let escaped_name = yaml_escape(app_name);
     let name = &escaped_name;
@@ -2459,7 +2568,7 @@ fn build_manifest_yaml(
     // The agent surface is additive: it adds a scope, a feature block and four
     // events on top of the channel bot, which keeps working exactly as before.
     let agent_view = if agent_surface_enabled {
-        build_agent_view(app_name, app_description)
+        build_agent_view(app_name, app_description, starters)
     } else {
         String::new()
     };
@@ -3772,7 +3881,7 @@ mod tests {
 
     #[test]
     fn test_manifest_yaml_contains_event_subscriptions() {
-        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL, false);
+        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL, false, &[]);
 
         assert!(
             yaml.contains(&format!("    request_url: \"{TEST_REQUEST_URL}\"")),
@@ -3804,7 +3913,7 @@ mod tests {
 
     #[test]
     fn test_manifest_yaml_parses_as_yaml_with_expected_shape() {
-        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL, false);
+        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL, false, &[]);
         let parsed: serde_yaml::Value =
             serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
 
@@ -3828,9 +3937,132 @@ mod tests {
         );
     }
 
+    fn test_starter(text: &str) -> ConversationStarter {
+        ConversationStarter {
+            icon: None,
+            text: text.to_string(),
+        }
+    }
+
+    /// Authored starters reach the manifest as `{title, message}` pairs.
+    #[test]
+    fn test_manifest_yaml_agent_view_carries_suggested_prompts() {
+        let starters = vec![
+            test_starter("Triage the newest P1"),
+            test_starter("Summarize this channel"),
+        ];
+        let yaml = build_manifest_yaml("Bot", "Bot", None, TEST_REQUEST_URL, true, &starters);
+        let parsed: serde_yaml::Value =
+            serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
+
+        let prompts = parsed["features"]["agent_view"]["suggested_prompts"]
+            .as_sequence()
+            .expect("suggested_prompts must be a list");
+        assert_eq!(prompts.len(), 2, "{yaml}");
+        assert_eq!(prompts[0]["title"].as_str(), Some("Triage the newest P1"));
+        assert_eq!(prompts[0]["message"].as_str(), Some("Triage the newest P1"));
+        assert_eq!(prompts[1]["title"].as_str(), Some("Summarize this channel"));
+    }
+
+    /// Nothing authored must stay nothing — an empty pane beats generic prompts
+    /// nobody wrote, and an empty `suggested_prompts` key is not valid either.
+    #[test]
+    fn test_manifest_yaml_omits_suggested_prompts_when_unauthored() {
+        for starters in [vec![], vec![test_starter("   ")]] {
+            let yaml = build_manifest_yaml("Bot", "Bot", None, TEST_REQUEST_URL, true, &starters);
+            assert!(
+                yaml.contains("agent_view"),
+                "the agent surface itself must stay on: {yaml}"
+            );
+            assert!(
+                !yaml.contains("suggested_prompts"),
+                "unauthored starters must emit no key: {yaml}"
+            );
+            serde_yaml::from_str::<serde_yaml::Value>(&yaml).expect("manifest is valid YAML");
+        }
+    }
+
+    /// Slack renders at most four prompts; Platform Chat allows up to eight.
+    #[test]
+    fn test_manifest_yaml_caps_suggested_prompts_at_slack_limit() {
+        let starters: Vec<ConversationStarter> = (0..8)
+            .map(|i| test_starter(&format!("Prompt {i}")))
+            .collect();
+        let yaml = build_manifest_yaml("Bot", "Bot", None, TEST_REQUEST_URL, true, &starters);
+        let parsed: serde_yaml::Value =
+            serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
+
+        let prompts = parsed["features"]["agent_view"]["suggested_prompts"]
+            .as_sequence()
+            .expect("suggested_prompts must be a list");
+        assert_eq!(prompts.len(), SLACK_SUGGESTED_PROMPT_MAX, "{yaml}");
+        assert_eq!(prompts[0]["title"].as_str(), Some("Prompt 0"));
+        assert_eq!(prompts[3]["title"].as_str(), Some("Prompt 3"));
+    }
+
+    /// A long starter keeps a legible chip while the full text still rides in
+    /// `message`, which is what Slack inserts into the composer.
+    #[test]
+    fn test_manifest_yaml_truncates_prompt_title_but_not_message() {
+        let long = "a".repeat(200);
+        let yaml = build_manifest_yaml(
+            "Bot",
+            "Bot",
+            None,
+            TEST_REQUEST_URL,
+            true,
+            &[test_starter(&long)],
+        );
+        let parsed: serde_yaml::Value =
+            serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
+        let prompt = &parsed["features"]["agent_view"]["suggested_prompts"][0];
+
+        assert_eq!(
+            prompt["title"].as_str().unwrap().chars().count(),
+            SLACK_SUGGESTED_PROMPT_TITLE_MAX
+        );
+        assert_eq!(prompt["message"].as_str(), Some(long.as_str()));
+    }
+
+    /// Starter text is operator-authored, so it must not break out of the YAML
+    /// string it is embedded in.
+    #[test]
+    fn test_manifest_yaml_escapes_prompt_text() {
+        let yaml = build_manifest_yaml(
+            "Bot",
+            "Bot",
+            None,
+            TEST_REQUEST_URL,
+            true,
+            &[test_starter(r#"Say "hi" \ now"#)],
+        );
+        let parsed: serde_yaml::Value =
+            serde_yaml::from_str(&yaml).expect("manifest with quoted starter is valid YAML");
+        assert_eq!(
+            parsed["features"]["agent_view"]["suggested_prompts"][0]["message"].as_str(),
+            Some(r#"Say "hi" \ now"#)
+        );
+    }
+
+    /// The agent surface is the only thing that renders prompts, so they must
+    /// not leak into a channel-bot manifest.
+    #[test]
+    fn test_manifest_yaml_agent_surface_off_carries_no_prompts() {
+        let yaml = build_manifest_yaml(
+            "Bot",
+            "Bot",
+            None,
+            TEST_REQUEST_URL,
+            false,
+            &[test_starter("Triage the newest P1")],
+        );
+        assert!(!yaml.contains("suggested_prompts"), "{yaml}");
+        assert!(!yaml.contains("Triage the newest P1"), "{yaml}");
+    }
+
     #[test]
     fn test_manifest_yaml_agent_surface_off_is_unchanged() {
-        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL, false);
+        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL, false, &[]);
 
         // Existing apps must be untouched by the feature existing.
         assert!(!yaml.contains("agent_view"), "{yaml}");
@@ -3856,6 +4088,7 @@ mod tests {
             Some("Answers questions"),
             TEST_REQUEST_URL,
             true,
+            &[],
         );
         let parsed: serde_yaml::Value =
             serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
@@ -3909,7 +4142,7 @@ mod tests {
     fn test_agent_description_respects_slack_limit() {
         // Slack rejects an agent_description over 300 characters.
         let long = "d".repeat(500);
-        let yaml = build_manifest_yaml("Bot", "Bot", Some(&long), TEST_REQUEST_URL, true);
+        let yaml = build_manifest_yaml("Bot", "Bot", Some(&long), TEST_REQUEST_URL, true, &[]);
         let parsed: serde_yaml::Value =
             serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
 
@@ -3923,7 +4156,7 @@ mod tests {
     fn test_agent_description_is_char_safe() {
         // Truncation must not split a multi-byte character.
         let long = "é".repeat(500);
-        let yaml = build_manifest_yaml("Bot", "Bot", Some(&long), TEST_REQUEST_URL, true);
+        let yaml = build_manifest_yaml("Bot", "Bot", Some(&long), TEST_REQUEST_URL, true, &[]);
         let parsed: serde_yaml::Value =
             serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
         assert_eq!(
@@ -3940,7 +4173,7 @@ mod tests {
     fn test_manifest_yaml_escapes_request_url() {
         // The URL is server-configured, but a quote in it must not break out of
         // the YAML string and corrupt the rest of the manifest.
-        let yaml = build_manifest_yaml("My Bot", "My Bot", None, r#"https://x/"evil"#, false);
+        let yaml = build_manifest_yaml("My Bot", "My Bot", None, r#"https://x/"evil"#, false, &[]);
         let parsed: serde_yaml::Value =
             serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
         assert_eq!(
@@ -3964,7 +4197,7 @@ mod tests {
 
     #[test]
     fn test_manifest_yaml_contains_description_and_long_description() {
-        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL, false);
+        let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL, false, &[]);
         assert!(yaml.contains(r#"description: "My Bot (Powered by Everruns)""#));
         assert!(yaml.contains("AI agent powered by Everruns"));
         assert!(yaml.contains("https://everruns.com"));
@@ -3978,6 +4211,7 @@ mod tests {
             Some("A helpful assistant"),
             TEST_REQUEST_URL,
             false,
+            &[],
         );
         assert!(yaml.contains("A helpful assistant"));
         assert!(yaml.contains("AI agent powered by Everruns"));
@@ -3988,7 +4222,7 @@ mod tests {
         // Slack description limit is 140 chars. Worst case: 35-char app name
         // (Slack's name limit) + " (Powered by Everruns)" = 57 chars.
         let long_name = "a".repeat(35);
-        let yaml = build_manifest_yaml(&long_name, &long_name, None, TEST_REQUEST_URL, false);
+        let yaml = build_manifest_yaml(&long_name, &long_name, None, TEST_REQUEST_URL, false, &[]);
         // Extract the description value
         let desc_prefix = "description: \"";
         let desc_start = yaml.find(desc_prefix).unwrap() + desc_prefix.len();
@@ -4010,6 +4244,7 @@ mod tests {
             None,
             TEST_REQUEST_URL,
             false,
+            &[],
         );
         assert!(yaml.contains(r#"name: "Bot \"Special\"""#));
         assert!(yaml.contains(r#"description: "Bot \"Special\" (Powered by Everruns)""#));
@@ -4585,6 +4820,7 @@ mod tests {
             None,
             "https://example.com/api/v1/apps/app_x/slack/events",
             false,
+            &[],
         );
         assert!(
             yaml.contains("channels:history"),

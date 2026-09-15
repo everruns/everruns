@@ -97,7 +97,16 @@ from a classic Events API bot to a Slack agent app.
 
 | Issue | Item |
 |---|---|
-| EVE-978 | Decide where suggested prompts come from, or decide not to have them |
+| — | Nothing outstanding. |
+
+EVE-978 settled the last gap: suggested prompts come from the agent's conversation
+starters, falling back to the harness's, resolved by
+`everruns_platform::exposure::resolve_starters` and emitted into the manifest's
+`features.agent_view.suggested_prompts`. The field was already there for Platform Chat,
+so the prompts are authored by whoever configures the agent rather than generated, and an
+agent with no starters emits no prompts at all — an empty pane beats prompts nobody wrote.
+See "Suggested prompts come from conversation starters" in
+[`crates/server/specs/slack-integration.md`](../../crates/server/specs/slack-integration.md).
 
 EVE-975 and EVE-988 have since shipped. Two decisions from EVE-975 are worth keeping:
 
