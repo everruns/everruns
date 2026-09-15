@@ -2,6 +2,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { OrgProvider, useOrg } from "@/providers/org-provider";
+import { getActiveOrgId, setActiveOrgId } from "@/lib/api/active-org";
 import type { OrganizationMembership } from "@/lib/api/types";
 
 // Mock next/navigation
@@ -75,6 +76,20 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 describe("OrgProvider", () => {
+  it("publishes the org to the API layer as soon as it is chosen", async () => {
+    // The cookie sync is a separate request that lands later; requests issued
+    // before it must still name the right org, or their results land in the
+    // wrong org's cache.
+    setActiveOrgId(null);
+    mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
+    mockAuthLoading = false;
+    storageMap.set("everruns_current_org", SECOND_ORG.public_id);
+
+    renderHook(() => useOrg(), { wrapper });
+
+    await waitFor(() => expect(getActiveOrgId()).toBe(SECOND_ORG.public_id));
+  });
+
   it("initializes to default org", () => {
     mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
     mockAuthLoading = false;

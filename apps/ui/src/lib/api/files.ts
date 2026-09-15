@@ -1,4 +1,5 @@
 import { getApiBaseUrl, throwApiError } from "./client";
+import { withOrgHeader } from "./active-org";
 import {
   ALLOWED_FILE_EXTENSIONS,
   ALLOWED_FILE_TYPES,
@@ -36,6 +37,7 @@ export async function uploadFile(file: File, sessionId?: string): Promise<FileUp
     method: "POST",
     body: formData,
     credentials: "include",
+    headers: withOrgHeader(),
   });
 
   if (!response.ok) {

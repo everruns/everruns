@@ -7,6 +7,7 @@
 import { api, getApiBaseUrl, throwApiError } from "./client";
 import type { ImageUploadResponse, ImageInfo } from "./types";
 import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE } from "./types";
+import { withOrgHeader } from "./active-org";
 
 /**
  * Validate that a file is an allowed image type and size
@@ -58,6 +59,7 @@ export async function uploadImage(file: File, sessionId?: string): Promise<Image
     method: "POST",
     body: formData,
     credentials: "include",
+    headers: withOrgHeader(),
   });
 
   if (!response.ok) {
