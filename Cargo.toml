@@ -260,7 +260,7 @@ moka = { version = "0.12", features = ["future", "sync"] }
 
 # Fault injection testing
 fail = "0.5"
-rstest = "0.26"
+rstest = "0.27"
 tempfile = "3"
 
 # File watching and gitignore
