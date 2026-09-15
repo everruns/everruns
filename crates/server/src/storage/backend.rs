@@ -319,6 +319,13 @@ impl StorageBackend {
         )
     }
 
+    pub async fn get_agent_trigger_by_ingress_id_unscoped(
+        &self,
+        ingress_id: &str,
+    ) -> Result<Option<AgentTriggerRow>> {
+        dispatch!(self, get_agent_trigger_by_ingress_id_unscoped, ingress_id)
+    }
+
     pub async fn list_principals_by_resolved_user(
         &self,
         org_id: i64,

@@ -1,10 +1,9 @@
 // Agent-triggers commands — user-facing operations.
 //
-// An agent trigger is an agent-owned, cron-driven durable schedule that wakes
-// the agent on its own harness. This mirrors the App **schedule channel** path
-// (`crate::domains::apps::commands`) almost exactly, re-homed on the agent:
-// there is no App row, no publish gate, and no config encryption — just the
-// trigger's `enabled` flag and its `schedule` config.
+// An agent trigger is an agent-owned schedule or webhook that wakes the agent
+// on its own harness. Schedule behavior mirrors the former App schedule channel
+// path. Webhook trigger secrets use the same encrypted configuration mechanism
+// as App channel secrets.
 
 use super::queries as q;
 use super::types::{AgentTriggerRun, CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
@@ -33,10 +32,13 @@ use everruns_durable::{
     ScheduleTargetType, StoreError, UpdateField, UpdateSchedule, WorkflowEventStore,
 };
 use everruns_platform::{AgentAction, AuditEvent};
-use everruns_platform::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig, SessionBinding};
-use everruns_provider::typed_id::{AgentId, SessionId, TriggerId};
+use everruns_platform::{
+    AgentTrigger, AgentTriggerType, ScheduleTriggerConfig, SessionBinding, WebhookTriggerConfig,
+};
+use everruns_provider::typed_id::{AgentId, AppChannelId, SessionId, TriggerId};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -124,6 +126,49 @@ fn build_schedule_config_value(config: &ScheduleTriggerConfig) -> Result<Value, 
     serde_json::to_value(config).map_err(|e| CommandError::internal(e.into()))
 }
 
+fn validate_webhook_config(
+    token: &str,
+    message: &str,
+    auth: Option<&Value>,
+) -> Result<(), CommandError> {
+    if auth.is_some() {
+        return Err(CommandError::bad_request(
+            "Webhook triggers do not support auth config. Use the token field.",
+        ));
+    }
+    if token.trim().is_empty() {
+        return Err(CommandError::bad_request(
+            "Webhook trigger requires a non-empty token",
+        ));
+    }
+    if message.trim().is_empty() {
+        return Err(CommandError::bad_request(
+            "Webhook trigger requires a non-empty message",
+        ));
+    }
+    Ok(())
+}
+
+fn prepare_trigger_config(
+    ctx: &Ctx,
+    config: &impl serde::Serialize,
+) -> Result<(Value, Option<Vec<u8>>), CommandError> {
+    let config = serde_json::to_value(config).map_err(|e| CommandError::internal(e.into()))?;
+    crate::domains::apps::queries::prepare_channel_config(ctx.encryption.as_ref(), &config)
+        .map_err(classify_anyhow)
+}
+
+fn redact_trigger_for_response(mut trigger: AgentTrigger) -> AgentTrigger {
+    if trigger.trigger_type == AgentTriggerType::Webhook
+        && let Some(config) = trigger.config.as_object_mut()
+    {
+        if config.remove("token").is_some() {
+            config.insert("token_configured".to_string(), Value::Bool(true));
+        }
+    }
+    trigger
+}
+
 /// Count currently-enabled triggers in an org (for the per-org cap). Uses the
 /// list path rather than a bespoke aggregate — the cap is small.
 async fn count_enabled_triggers(ctx: &Ctx) -> Result<i64, CommandError> {
@@ -195,7 +240,11 @@ pub(crate) async fn sync_agent_trigger_binding(
         .map_err(classify_anyhow)?
         .ok_or_else(|| CommandError::not_found("Agent"))?;
     let agent_public_id = parse_agent_id(&agent.public_id)?;
-    let trigger = q::row_to_trigger(trigger_row.clone(), agent_public_id);
+    let trigger = q::row_to_trigger(
+        trigger_row.clone(),
+        agent_public_id,
+        ctx.encryption.as_ref(),
+    );
     if trigger.trigger_type != AgentTriggerType::Schedule {
         return Ok(());
     }
@@ -367,7 +416,7 @@ async fn resolve_trigger_for_agent(
 // CreateAgentTrigger
 // ============================================================================
 
-/// Create a schedule trigger on an agent.
+/// Create a trigger on an agent.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateAgentTrigger {
     /// Owning agent's prefixed public identifier.
@@ -383,7 +432,7 @@ impl Command for CreateAgentTrigger {
         CommandMeta {
             name: "create_agent_trigger",
             category: "agent_triggers",
-            description: "Create a schedule trigger that wakes an agent on a cron.",
+            description: "Create a schedule or webhook trigger for an agent.",
             method: "POST",
             path: "/v1/agents/{agent_id}/triggers",
         }
@@ -398,34 +447,61 @@ impl Command for CreateAgentTrigger {
         let agent = q::require_active_agent(&ctx.db, ctx.org_id(), &agent_public).await?;
 
         let req = self.req;
-        let normalized_cron = validate_schedule_config(&req.cron_expression, &req.message)?;
-
-        if req.enabled {
-            let count = count_enabled_triggers(ctx).await?;
-            let max = agent_trigger_max_per_org();
-            if count >= max {
-                return Err(CommandError::bad_request(format!(
-                    "Organization may have at most {max} enabled agent trigger(s); currently has {count}"
-                )));
-            }
-        }
 
         validate_trigger_binding(req.session_mode)?;
-
-        let config = ScheduleTriggerConfig {
-            cron_expression: normalized_cron,
-            timezone: req.timezone,
-            session_mode: req.session_mode,
-            message: req.message,
+        let trigger_id = TriggerId::new();
+        let (ingress_id, config, config_encrypted) = match req.trigger_type {
+            AgentTriggerType::Schedule => {
+                let cron_expression = req.cron_expression.as_deref().ok_or_else(|| {
+                    CommandError::bad_request("Schedule trigger requires cron_expression")
+                })?;
+                let normalized_cron = validate_schedule_config(cron_expression, &req.message)?;
+                if req.enabled {
+                    let count = count_enabled_triggers(ctx).await?;
+                    let max = agent_trigger_max_per_org();
+                    if count >= max {
+                        return Err(CommandError::bad_request(format!(
+                            "Organization may have at most {max} enabled agent trigger(s); currently has {count}"
+                        )));
+                    }
+                }
+                let config = ScheduleTriggerConfig {
+                    cron_expression: normalized_cron,
+                    timezone: req.timezone,
+                    session_mode: req.session_mode,
+                    message: req.message,
+                };
+                (None, build_schedule_config_value(&config)?, None)
+            }
+            AgentTriggerType::Webhook => {
+                let token = req.token.ok_or_else(|| {
+                    CommandError::bad_request("Webhook trigger requires a non-empty token")
+                })?;
+                validate_webhook_config(&token, &req.message, req.auth.as_ref())?;
+                let config = WebhookTriggerConfig {
+                    token,
+                    session_mode: req.session_mode,
+                    message: req.message,
+                    rate_limit_per_minute: req.rate_limit_per_minute,
+                };
+                let (config, encrypted) = prepare_trigger_config(ctx, &config)?;
+                (
+                    Some(AppChannelId::from_uuid(trigger_id.uuid()).to_string()),
+                    config,
+                    encrypted,
+                )
+            }
         };
         let row = ctx
             .db
             .create_agent_trigger(CreateAgentTriggerRow {
                 org_id: ctx.org_id(),
-                id: TriggerId::new(),
+                id: trigger_id,
                 agent_id: agent.id,
-                trigger_type: AgentTriggerType::Schedule.to_string(),
-                config: build_schedule_config_value(&config)?,
+                trigger_type: req.trigger_type.to_string(),
+                ingress_id,
+                config,
+                config_encrypted,
                 enabled: req.enabled,
                 durable_schedule_id: None,
                 execution_harness_id: None,
@@ -442,7 +518,11 @@ impl Command for CreateAgentTrigger {
         let row = q::get_by_id(&ctx.db, ctx.org_id(), row.id)
             .await?
             .unwrap_or(row);
-        Ok(q::row_to_trigger(row, agent_public))
+        Ok(redact_trigger_for_response(q::row_to_trigger(
+            row,
+            agent_public,
+            ctx.encryption.as_ref(),
+        )))
     }
 }
 
@@ -491,7 +571,13 @@ impl Command for ListAgentTriggers {
             .map_err(classify_anyhow)?;
         Ok(rows
             .into_iter()
-            .map(|row| q::row_to_trigger(row, agent_public))
+            .map(|row| {
+                redact_trigger_for_response(q::row_to_trigger(
+                    row,
+                    agent_public,
+                    ctx.encryption.as_ref(),
+                ))
+            })
             .collect())
     }
 }
@@ -530,7 +616,11 @@ impl Command for GetAgentTrigger {
         let (agent, trigger) =
             resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id).await?;
         let agent_public = parse_agent_id(&agent.public_id)?;
-        Ok(q::row_to_trigger(trigger, agent_public))
+        Ok(redact_trigger_for_response(q::row_to_trigger(
+            trigger,
+            agent_public,
+            ctx.encryption.as_ref(),
+        )))
     }
 }
 
@@ -631,29 +721,17 @@ impl Command for UpdateAgentTriggerCmd {
             resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id).await?;
         let req = self.req;
 
-        // Merge onto the stored schedule config.
-        let mut config = q::row_to_trigger(existing.clone(), parse_agent_id(&self.agent_id)?)
-            .schedule_config()
-            .map_err(|_| CommandError::bad_request("Invalid stored schedule configuration"))?;
-        if let Some(cron) = req.cron_expression {
-            config.cron_expression = cron;
-        }
-        if let Some(tz) = req.timezone {
-            config.timezone = tz;
-        }
+        let trigger = q::row_to_trigger(
+            existing.clone(),
+            parse_agent_id(&self.agent_id)?,
+            ctx.encryption.as_ref(),
+        );
         if let Some(mode) = req.session_mode {
             validate_trigger_binding(mode)?;
-            config.session_mode = mode;
         }
-        if let Some(message) = req.message {
-            config.message = message;
-        }
-        let normalized_cron = validate_schedule_config(&config.cron_expression, &config.message)?;
-        config.cron_expression = normalized_cron;
 
         let new_enabled = req.enabled.unwrap_or(existing.enabled);
-        // Enforce the per-org enabled cap when flipping a trigger on.
-        if new_enabled && !existing.enabled {
+        if trigger.trigger_type == AgentTriggerType::Schedule && new_enabled && !existing.enabled {
             let count = count_enabled_triggers(ctx).await?;
             let max = agent_trigger_max_per_org();
             if count >= max {
@@ -662,6 +740,47 @@ impl Command for UpdateAgentTriggerCmd {
                 )));
             }
         }
+        let (config, config_encrypted) = match trigger.trigger_type {
+            AgentTriggerType::Schedule => {
+                let mut config = trigger.schedule_config().map_err(|_| {
+                    CommandError::bad_request("Invalid stored schedule configuration")
+                })?;
+                if let Some(cron) = req.cron_expression {
+                    config.cron_expression = cron;
+                }
+                if let Some(tz) = req.timezone {
+                    config.timezone = tz;
+                }
+                if let Some(mode) = req.session_mode {
+                    config.session_mode = mode;
+                }
+                if let Some(message) = req.message {
+                    config.message = message;
+                }
+                config.cron_expression =
+                    validate_schedule_config(&config.cron_expression, &config.message)?;
+                (build_schedule_config_value(&config)?, None)
+            }
+            AgentTriggerType::Webhook => {
+                let mut config = trigger.webhook_config().map_err(|_| {
+                    CommandError::bad_request("Invalid stored webhook configuration")
+                })?;
+                if let Some(token) = req.token {
+                    config.token = token;
+                }
+                if let Some(mode) = req.session_mode {
+                    config.session_mode = mode;
+                }
+                if let Some(message) = req.message {
+                    config.message = message;
+                }
+                if let Some(limit) = req.rate_limit_per_minute {
+                    config.rate_limit_per_minute = Some(limit);
+                }
+                validate_webhook_config(&config.token, &config.message, req.auth.as_ref())?;
+                prepare_trigger_config(ctx, &config)?
+            }
+        };
 
         let row = ctx
             .db
@@ -669,7 +788,8 @@ impl Command for UpdateAgentTriggerCmd {
                 ctx.org_id(),
                 existing.id,
                 UpdateAgentTrigger {
-                    config: Some(build_schedule_config_value(&config)?),
+                    config: Some(config),
+                    config_encrypted,
                     enabled: Some(new_enabled),
                     ..Default::default()
                 },
@@ -678,15 +798,21 @@ impl Command for UpdateAgentTriggerCmd {
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Agent trigger"))?;
 
-        if new_enabled {
-            sync_agent_trigger_binding(ctx, &row).await?;
-        } else {
-            remove_agent_trigger_binding(ctx, &row).await?;
+        if trigger.trigger_type == AgentTriggerType::Schedule {
+            if new_enabled {
+                sync_agent_trigger_binding(ctx, &row).await?;
+            } else {
+                remove_agent_trigger_binding(ctx, &row).await?;
+            }
         }
         let row = q::get_by_id(&ctx.db, ctx.org_id(), row.id)
             .await?
             .unwrap_or(row);
-        Ok(q::row_to_trigger(row, parse_agent_id(&self.agent_id)?))
+        Ok(redact_trigger_for_response(q::row_to_trigger(
+            row,
+            parse_agent_id(&self.agent_id)?,
+            ctx.encryption.as_ref(),
+        )))
     }
 }
 
@@ -842,6 +968,14 @@ pub struct AgentTriggerInvocationResult {
     pub created_session: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct WebhookTriggerInvocationRequest {
+    pub ingress_id: String,
+    pub body: String,
+    pub json_payload: Option<Value>,
+    pub headers: HashMap<String, String>,
+}
+
 /// Resolve a trigger + its agent, render the schedule message, create-or-reuse
 /// the agent's session, and dispatch. The trigger is the source of truth; the
 /// `agent_id` argument scopes/validates the relationship.
@@ -882,7 +1016,7 @@ pub async fn invoke_agent_trigger(
         return Err(CommandError::not_found("Agent trigger"));
     }
 
-    let trigger = q::row_to_trigger(trigger_row.clone(), parse_agent_id(&agent.public_id)?);
+    let trigger = q::row_to_trigger(trigger_row.clone(), parse_agent_id(&agent.public_id)?, None);
     let config = trigger
         .schedule_config()
         .map_err(|_| CommandError::bad_request("Invalid schedule trigger configuration"))?;
@@ -922,6 +1056,8 @@ pub async fn invoke_agent_trigger(
         &execution_context,
         trigger_id,
         config.session_mode,
+        everruns_platform::SessionSource::Schedule,
+        None,
     )
     .await?;
 
@@ -934,6 +1070,7 @@ pub async fn invoke_agent_trigger(
         execution_context.harness_id,
         execution_context.owner_principal_id,
         rendered_message,
+        None,
     )
     .await?;
 
@@ -947,6 +1084,143 @@ pub async fn invoke_agent_trigger(
         created_session,
     );
 
+    Ok(AgentTriggerInvocationResult {
+        session_id,
+        created_session,
+    })
+}
+
+pub async fn invoke_webhook_agent_trigger(
+    db: &Arc<StorageBackend>,
+    encryption: Option<&Arc<crate::storage::EncryptionService>>,
+    session_service: &SessionService,
+    message_service: &MessageService,
+    req: WebhookTriggerInvocationRequest,
+    request_id: Option<String>,
+) -> Result<AgentTriggerInvocationResult, CommandError> {
+    let trigger_row = db
+        .get_agent_trigger_by_ingress_id_unscoped(&req.ingress_id)
+        .await
+        .map_err(classify_anyhow)?
+        .filter(|row| row.trigger_type == AgentTriggerType::Webhook.to_string())
+        .ok_or_else(|| CommandError::not_found("Agent trigger"))?;
+    if !trigger_row.enabled {
+        return Err(CommandError::forbidden(
+            "Agent trigger is disabled".to_string(),
+        ));
+    }
+    let agent = db
+        .get_agent(trigger_row.org_id, trigger_row.agent_id)
+        .await
+        .map_err(classify_anyhow)?
+        .filter(|agent| agent.status == "active")
+        .ok_or_else(|| CommandError::not_found("Agent"))?;
+    let trigger = q::row_to_trigger(
+        trigger_row.clone(),
+        parse_agent_id(&agent.public_id)?,
+        encryption,
+    );
+    let config = trigger
+        .webhook_config()
+        .map_err(|_| CommandError::bad_request("Invalid webhook trigger configuration"))?;
+
+    let webhook_context = if let Some(app_id) = trigger_row.execution_app_id {
+        let app = db
+            .get_app_by_id(trigger_row.org_id, app_id)
+            .await
+            .map_err(classify_anyhow)?
+            .filter(|app| app.status == "published")
+            .ok_or_else(|| CommandError::not_found("App channel"))?;
+        Some(WebhookCompatibilityContext {
+            app_public_id: app.public_id,
+            app_name: app.name,
+            ingress_id: req.ingress_id.clone(),
+        })
+    } else {
+        None
+    };
+    let legacy_app = webhook_context
+        .as_ref()
+        .map(|context| {
+            json!({
+                "id": context.app_public_id,
+                "name": context.app_name,
+            })
+        })
+        .unwrap_or_else(|| json!({"id": "", "name": ""}));
+    let template_context = json!({
+        "agent": {
+            "id": agent.public_id,
+            "name": agent.name,
+        },
+        "trigger": {
+            "id": trigger.id.to_string(),
+            "type": "webhook",
+        },
+        "endpoint": {
+            "id": req.ingress_id,
+            "type": "webhook",
+        },
+        "app": legacy_app,
+        "channel": {
+            "id": req.ingress_id,
+            "type": "webhook",
+        },
+        "invocation": {
+            "source": "webhook",
+            "triggered_at": Utc::now().to_rfc3339(),
+        },
+        "payload": req
+            .json_payload
+            .clone()
+            .unwrap_or_else(|| Value::String(req.body.clone())),
+        "webhook": {
+            "body": req.body,
+            "json": req.json_payload,
+            "headers": req.headers,
+        },
+    });
+    let rendered_message = render_message_template(&config.message, &template_context);
+    if rendered_message.trim().is_empty() {
+        return Err(CommandError::bad_request(
+            "Rendered invocation message is empty",
+        ));
+    }
+    let execution_context =
+        resolve_trigger_execution_context(db, trigger_row.org_id, &agent, &trigger_row).await?;
+    let (session_id, created_session) = find_or_create_trigger_session(
+        db,
+        session_service,
+        trigger_row.org_id,
+        &agent,
+        &execution_context,
+        trigger.id,
+        config.session_mode,
+        everruns_platform::SessionSource::Webhook,
+        webhook_context.as_ref(),
+    )
+    .await?;
+    dispatch_trigger_message(
+        message_service,
+        trigger_row.org_id,
+        &agent,
+        trigger.id,
+        session_id,
+        execution_context.harness_id,
+        execution_context.owner_principal_id,
+        rendered_message,
+        request_id,
+    )
+    .await?;
+    emit_agent_trigger_audit_event(
+        Arc::clone(db),
+        trigger_row.org_id,
+        &agent,
+        trigger.id,
+        session_id,
+        execution_context.owner_principal_id,
+        created_session,
+    );
     Ok(AgentTriggerInvocationResult {
         session_id,
         created_session,
@@ -1041,6 +1315,13 @@ struct TriggerExecutionContext {
     app_id: Option<Uuid>,
 }
 
+#[derive(Debug, Clone)]
+struct WebhookCompatibilityContext {
+    app_public_id: String,
+    app_name: String,
+    ingress_id: String,
+}
+
 /// Resolve the execution context (harness, owner principal, identity, app) that
 /// a trigger fire runs under.
 ///
@@ -1092,7 +1373,18 @@ async fn resolve_trigger_execution_context(
     })
 }
 
-fn trigger_session_tags(trigger_id: TriggerId) -> Vec<String> {
+fn trigger_session_tags(
+    trigger_id: TriggerId,
+    webhook: Option<&WebhookCompatibilityContext>,
+) -> Vec<String> {
+    if let Some(webhook) = webhook {
+        return vec![
+            format!("app:{}", webhook.app_public_id),
+            format!("app_channel:{}", webhook.ingress_id),
+            "app_channel_type:webhook".to_string(),
+            "__internal:app_invocation".to_string(),
+        ];
+    }
     vec![
         format!("agent_trigger:{trigger_id}"),
         "__internal:agent_trigger".to_string(),
@@ -1108,30 +1400,54 @@ async fn find_or_create_trigger_session(
     execution_context: &TriggerExecutionContext,
     trigger_id: TriggerId,
     session_mode: SessionBinding,
+    source: everruns_platform::SessionSource,
+    webhook: Option<&WebhookCompatibilityContext>,
 ) -> Result<(SessionId, bool), CommandError> {
-    let shared_tags = trigger_session_tags(trigger_id);
-    if session_mode == SessionBinding::Endpoint
-        && let Some(existing) = db
-            .find_session_by_tags_and_owner(
+    let shared_tags = trigger_session_tags(trigger_id, webhook);
+    if session_mode == SessionBinding::Endpoint {
+        let existing = if let Some(app_id) = execution_context.app_id {
+            db.find_app_session_by_tags_and_owner(
+                org_id,
+                app_id,
+                execution_context.owner_principal_id,
+                &shared_tags,
+            )
+            .await
+            .map_err(classify_anyhow)?
+        } else {
+            db.find_session_by_tags_and_owner(
                 org_id,
                 execution_context.owner_principal_id,
                 &shared_tags,
             )
             .await
             .map_err(classify_anyhow)?
-    {
-        return Ok((existing.id, false));
+        };
+        if let Some(existing) = existing {
+            return Ok((existing.id, false));
+        }
     }
 
     let mut tags = shared_tags;
     if session_mode == SessionBinding::Ephemeral {
-        tags.push(format!("agent_invocation:{}", Uuid::now_v7()));
+        let prefix = if webhook.is_some() {
+            "app_invocation"
+        } else {
+            "agent_invocation"
+        };
+        tags.push(format!("{prefix}:{}", Uuid::now_v7()));
     }
 
-    let title = if session_mode == SessionBinding::Endpoint {
-        format!("{} agent_trigger", agent.name)
+    let title_subject = webhook.map_or(agent.name.as_str(), |value| value.app_name.as_str());
+    let title_source = if webhook.is_some() {
+        "webhook"
     } else {
-        format!("{} agent_trigger {}", agent.name, Utc::now().to_rfc3339())
+        "agent_trigger"
+    };
+    let title = if session_mode == SessionBinding::Endpoint {
+        format!("{title_subject} {title_source}")
+    } else {
+        format!("{title_subject} {title_source} {}", Utc::now().to_rfc3339())
     };
 
     let req = CreateSessionRequest {
@@ -1172,7 +1488,7 @@ async fn find_or_create_trigger_session(
                 app_id,
                 execution_context.owner_principal_id,
                 execution_context.resolved_owner_user_id,
-                everruns_platform::SessionSource::Schedule,
+                source,
                 req,
             )
             .await
@@ -1207,6 +1523,7 @@ async fn dispatch_trigger_message(
     harness_id: everruns_provider::typed_id::HarnessId,
     owner_principal_id: everruns_provider::typed_id::PrincipalId,
     rendered_message: String,
+    request_id: Option<String>,
 ) -> Result<(), CommandError> {
     let metadata = Some(
         [
@@ -1239,7 +1556,7 @@ async fn dispatch_trigger_message(
                     trigger_id,
                     owner_principal_id,
                 )),
-                request_id: None,
+                request_id,
             },
             CreateMessageRequest {
                 message: InputMessage {

@@ -4329,12 +4329,14 @@ fn schedule_trigger_input(agent_id: AgentId) -> CreateAgentTriggerRow {
         id: everruns_provider::typed_id::TriggerId::new(),
         agent_id,
         trigger_type: "schedule".to_string(),
+        ingress_id: None,
         config: serde_json::json!({
             "cron_expression": "0 0 * * * *",
             "timezone": "UTC",
             "session_mode": "shared_session",
             "message": "hello",
         }),
+        config_encrypted: None,
         enabled: true,
         durable_schedule_id: None,
         execution_harness_id: None,
@@ -4365,6 +4367,12 @@ async fn test_agent_trigger_create_get_list_update_delete_round_trip() {
         id: created.id,
         agent_id: created.agent_id,
         trigger_type: created.trigger_type.as_str().into(),
+        ingress_id: created
+            .ingress_id
+            .as_deref()
+            .map(str::parse)
+            .transpose()
+            .expect("valid ingress ID"),
         config: created.config.clone(),
         enabled: created.enabled,
         created_at: created.created_at,
