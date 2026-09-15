@@ -103,6 +103,26 @@ impl Database {
         Ok(row)
     }
 
+    /// Lookup an app through a globally unique channel public ID.
+    pub async fn get_app_by_channel_public_id_unscoped(
+        &self,
+        channel_public_id: &str,
+    ) -> Result<Option<AppRow>> {
+        let row = sqlx::query_as::<_, AppRow>(
+            r#"
+            SELECT a.id, a.org_id, a.public_id, a.name, a.description, a.harness_id, a.agent_id, a.agent_version_policy, a.agent_version_id, a.agent_identity_id, a.owner_principal_id, a.resolved_owner_user_id, a.channel_type, a.channel_config, a.channel_config_encrypted, a.status, a.published_at, a.created_at, a.updated_at, a.archived_at, a.deleted_at
+            FROM apps a
+            JOIN app_channels ac ON ac.app_id = a.id
+            WHERE ac.public_id = $1
+            "#,
+        )
+        .bind(channel_public_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     pub async fn list_apps(
         &self,
         org_id: i64,

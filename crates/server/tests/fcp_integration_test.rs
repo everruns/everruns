@@ -138,13 +138,17 @@ async fn send_fcp_post(
     body: impl Into<Vec<u8>>,
     headers: Vec<(&str, &str)>,
 ) -> test_harness::TestResponse {
+    send_fcp_post_to_path(server, &format!("/v1/apps/{}/fcp", app_id), body, headers).await
+}
+
+async fn send_fcp_post_to_path(
+    server: &TestServer,
+    path: &str,
+    body: impl Into<Vec<u8>>,
+    headers: Vec<(&str, &str)>,
+) -> test_harness::TestResponse {
     server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{}/fcp", app_id),
-            headers,
-            body.into(),
-        )
+        .request_raw(Method::POST, path, headers, body.into())
         .await
 }
 
@@ -470,6 +474,7 @@ async fn fcp_post_requires_token_when_configured() {
         json!({"anonymous": true, "token": "fcp-secret", "response_timeout_seconds": 2}),
     )
     .await;
+    let channel_id = app.channels[0].public_id;
 
     // No header — 401 with actionable Markdown body.
     let response = send_fcp_post(
@@ -502,6 +507,18 @@ async fn fcp_post_requires_token_when_configured() {
     .await;
     wrong.assert_status(StatusCode::UNAUTHORIZED);
 
+    send_fcp_post_to_path(
+        &server,
+        &format!("/v1/e/{channel_id}/fcp"),
+        "hi",
+        vec![
+            ("content-type", "text/plain"),
+            ("authorization", "Bearer not-the-token"),
+        ],
+    )
+    .await
+    .assert_status(StatusCode::UNAUTHORIZED);
+
     // Right token via Authorization header.
     let ok = send_fcp_post(
         &server,
@@ -514,6 +531,18 @@ async fn fcp_post_requires_token_when_configured() {
     )
     .await;
     assert_accepted_or_timeout(ok.status());
+
+    let endpoint_ok = send_fcp_post_to_path(
+        &server,
+        &format!("/v1/e/{channel_id}/fcp"),
+        "hi",
+        vec![
+            ("content-type", "text/plain"),
+            ("authorization", "Bearer fcp-secret"),
+        ],
+    )
+    .await;
+    assert_accepted_or_timeout(endpoint_ok.status());
 
     // Right token via dedicated header.
     let ok2 = send_fcp_post(

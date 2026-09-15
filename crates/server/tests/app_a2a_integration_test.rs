@@ -562,7 +562,7 @@ async fn a2a_rejects_missing_or_invalid_api_key() {
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/e/{channel_id}/a2a"),
             vec![("content-type", "application/json")],
             body.clone(),
         )
@@ -573,7 +573,7 @@ async fn a2a_rejects_missing_or_invalid_api_key() {
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/e/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", "Bearer evra2a_wrong"),
@@ -2092,7 +2092,7 @@ async fn a2a_signed_channel_accepts_valid_signature() {
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/e/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -2447,7 +2447,7 @@ async fn a2a_agent_card_advertises_signing_scheme_when_enabled() {
 
     let card: Value = server
         .get(&format!(
-            "/v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json"
+            "/v1/e/{channel_id}/a2a/.well-known/agent-card.json"
         ))
         .await
         .assert_status(StatusCode::OK)
@@ -2465,6 +2465,12 @@ async fn a2a_agent_card_advertises_signing_scheme_when_enabled() {
     assert_eq!(
         schemes["everrunsHmacSignature"]["apiKeySecurityScheme"]["description"],
         "HMAC-SHA256 over v0:{timestamp}:{channel_scope}:{body}; pair with X-Everruns-A2A-Timestamp"
+    );
+    assert!(
+        card["supportedInterfaces"][0]["url"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/v1/e/{channel_id}/a2a"))
     );
 
     // Card never echoes the secret.

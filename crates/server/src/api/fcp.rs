@@ -40,7 +40,7 @@ use everruns_core::events::{
     TurnCancelledData, TurnFailedData,
 };
 use everruns_core::{Caller, ContentPart, ExternalActor};
-use everruns_platform::{App, AppStatus, FcpChannelConfig};
+use everruns_platform::{App, AppStatus, ChannelType, FcpChannelConfig};
 use everruns_provider::execution_phase::ExecutionPhase;
 use serde::Deserialize;
 use serde_json::Value;
@@ -105,8 +105,16 @@ impl FcpState {
 
 pub fn routes(state: FcpState) -> Router {
     Router::new()
-        .route("/v1/apps/{app_id}/fcp", get(handshake).post(message))
+        .route("/v1/apps/{app_id}/fcp", get(handshake).post(message_legacy))
+        .route(
+            "/v1/e/{channel_id}/fcp",
+            axum::routing::post(message_endpoint),
+        )
         .with_state(state)
+}
+enum FcpTarget {
+    LegacyApp(String),
+    Endpoint(String),
 }
 
 /// Resolved channel context, used by both `GET` and `POST`. The lookup is
@@ -116,33 +124,58 @@ struct FcpContext {
     config: FcpChannelConfig,
 }
 
-async fn resolve_context(state: &FcpState, app_id: &str) -> Result<FcpContext, Response> {
+async fn resolve_context(state: &FcpState, target: FcpTarget) -> Result<FcpContext, Response> {
     // Sanitization rule: any failure path here returns the same generic
     // not-found body. We must not reveal:
     //   - whether the app id was malformed vs. unknown
     //   - whether an app exists but is not published
     //   - whether an app is published but has no FCP channel
     //   - whether a channel exists but is disabled
-    let app = match crate::domains::apps::queries::get_by_public_id_unscoped(
-        &state.db,
-        state.encryption.as_ref(),
-        app_id,
-    )
-    .await
-    {
-        Ok(Some(app)) => app,
-        Ok(None) => return Err(not_found_response()),
-        Err(err) => {
-            tracing::error!(error = %err, "FCP app lookup failed");
-            return Err(internal_error_response());
+    let (app, endpoint_channel) = match target {
+        FcpTarget::LegacyApp(app_id) => {
+            let app = match crate::domains::apps::queries::get_by_public_id_unscoped(
+                &state.db,
+                state.encryption.as_ref(),
+                &app_id,
+            )
+            .await
+            {
+                Ok(Some(app)) => app,
+                Ok(None) => return Err(not_found_response()),
+                Err(err) => {
+                    tracing::error!(error = %err, "FCP app lookup failed");
+                    return Err(internal_error_response());
+                }
+            };
+            (app, None)
+        }
+        FcpTarget::Endpoint(channel_id) => {
+            match crate::api::app_ingress::resolve_endpoint(
+                &state.db,
+                state.encryption.as_ref(),
+                &channel_id,
+            )
+            .await
+            {
+                Ok(Some((app, channel))) => (app, Some(channel)),
+                Ok(None) => return Err(not_found_response()),
+                Err(err) => {
+                    tracing::error!(error = %err, "FCP endpoint lookup failed");
+                    return Err(internal_error_response());
+                }
+            }
         }
     };
     if app.status != AppStatus::Published {
         return Err(not_found_response());
     }
-    let channel = match app.fcp_channel() {
-        Some(channel) => channel,
-        None => return Err(not_found_response()),
+    let channel = match endpoint_channel {
+        Some(channel) if channel.channel_type == ChannelType::Fcp && channel.enabled => channel,
+        Some(_) => return Err(not_found_response()),
+        None => match app.fcp_channel() {
+            Some(channel) => channel.clone(),
+            None => return Err(not_found_response()),
+        },
     };
     let config = match channel.fcp_config() {
         Some(config) => config,
@@ -248,7 +281,7 @@ pub async fn handshake(
     // Per the FCP SPEC, the handshake is meant to be open. We still apply
     // the per-app rate limit (when configured) so a single client can't
     // hammer the handshake either.
-    let context = match resolve_context(&state, &app_id).await {
+    let context = match resolve_context(&state, FcpTarget::LegacyApp(app_id)).await {
         Ok(ctx) => ctx,
         Err(resp) => return resp,
     };
@@ -325,9 +358,47 @@ pub async fn handshake(
     ),
     tag = "apps"
 )]
-pub async fn message(
+pub async fn message_legacy(
     State(state): State<FcpState>,
     Path(app_id): Path<String>,
+    req_id: Option<Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    message(
+        state,
+        FcpTarget::LegacyApp(app_id),
+        req_id,
+        connect_info,
+        headers,
+        body,
+    )
+    .await
+}
+
+pub async fn message_endpoint(
+    State(state): State<FcpState>,
+    Path(channel_id): Path<String>,
+    req_id: Option<Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    message(
+        state,
+        FcpTarget::Endpoint(channel_id),
+        req_id,
+        connect_info,
+        headers,
+        body,
+    )
+    .await
+}
+
+async fn message(
+    state: FcpState,
+    target: FcpTarget,
     req_id: Option<Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
@@ -340,7 +411,7 @@ pub async fn message(
         return payload_too_large_response();
     }
 
-    let context = match resolve_context(&state, &app_id).await {
+    let context = match resolve_context(&state, target).await {
         Ok(ctx) => ctx,
         Err(resp) => return resp,
     };

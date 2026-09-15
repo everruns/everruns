@@ -581,7 +581,7 @@ async fn webhook_channel_per_invocation_rejects_bad_token_and_creates_new_sessio
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/webhooks/{channel_id}"),
+            &format!("/v1/e/{channel_id}/webhook"),
             vec![
                 ("content-type", "application/json"),
                 ("x-everruns-webhook-token", "wrong"),
@@ -608,7 +608,7 @@ async fn webhook_channel_per_invocation_rejects_bad_token_and_creates_new_sessio
     let second: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/webhooks/{channel_id}"),
+            &format!("/v1/e/{channel_id}/webhook"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", "Bearer secret-2"),
@@ -747,7 +747,7 @@ async fn webhook_channel_enforces_publish_and_enable_and_supports_raw_body_templ
     let app_id = app["id"].as_str().unwrap();
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
 
-    server
+    let legacy_status = server
         .request_raw(
             Method::POST,
             &format!("/v1/apps/{app_id}/webhooks/{channel_id}"),
@@ -758,8 +758,21 @@ async fn webhook_channel_enforces_publish_and_enable_and_supports_raw_body_templ
             b"before publish".to_vec(),
         )
         .await
-        // EVE-632 / TM-TENANT-002: unpublished app -> generic 404.
-        .assert_status(StatusCode::NOT_FOUND);
+        .status();
+    let endpoint_status = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/e/{channel_id}/webhook"),
+            vec![
+                ("content-type", "text/plain"),
+                ("x-everruns-webhook-token", "secret-raw"),
+            ],
+            b"before publish".to_vec(),
+        )
+        .await
+        .status();
+    assert_eq!(legacy_status, StatusCode::NOT_FOUND);
+    assert_eq!(endpoint_status, legacy_status);
 
     publish_app(&server, app_id).await;
 
@@ -796,7 +809,7 @@ async fn webhook_channel_enforces_publish_and_enable_and_supports_raw_body_templ
     let response: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/webhooks/{channel_id}"),
+            &format!("/v1/e/{channel_id}/webhook"),
             vec![
                 ("content-type", "text/plain"),
                 ("x-everruns-webhook-token", "secret-raw"),

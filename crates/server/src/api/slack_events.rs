@@ -1,12 +1,11 @@
-// Slack ingestion API — app-scoped webhook endpoint
+// Slack ingestion API — endpoint-scoped webhook
 //
-// Design Decision: Slack webhooks are app-scoped (POST /v1/apps/{app_id}/slack/events)
-// because Slack is bound to an App which defines the agent, harness, signing secret,
-// and session strategy. This endpoint is unauthenticated (no API key) — security
-// comes from Slack signing secret verification (HMAC-SHA256).
+// Design Decision: Slack webhooks are keyed by channel ID at
+// `POST /v1/e/{channel_id}/slack/events`. The app-scoped route remains a
+// permanent alias when the App has exactly one enabled Slack channel.
 //
-// Design Decision: No auth middleware on this route. The app_id in the URL identifies
-// the app; the signing secret in channel_config verifies the request origin.
+// Design Decision: No auth middleware runs on this route. The channel ID
+// identifies the endpoint; its signing secret verifies the request origin.
 //
 // Design Decision: Session routing uses tags for lookup. Tags like
 // "slack:thread:{thread_ts}" or "slack:channel:{channel}" let us find or create
@@ -31,7 +30,9 @@ use everruns_core::channel::{
     build_session_routing_tag,
 };
 use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
-use everruns_platform::{App, AppStatus, SessionStrategy, SlackChannelConfig, SlackReplyMode};
+use everruns_platform::{
+    App, AppChannel, AppStatus, ChannelType, SessionStrategy, SlackChannelConfig, SlackReplyMode,
+};
 use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 use everruns_provider::url_validation::validate_safe_url;
 use everruns_worker::AgentRunner;
@@ -374,12 +375,97 @@ fn parse_slack_inbound_event(
 /// Create Slack webhook routes (no auth middleware).
 pub fn routes(state: SlackState) -> Router {
     Router::new()
-        .route("/v1/apps/{app_id}/slack/events", post(handle_slack_event))
+        .route(
+            "/v1/apps/{app_id}/slack/events",
+            post(handle_slack_event_legacy),
+        )
         .route(
             "/v1/apps/{app_id}/slack/manifest",
-            get(handle_slack_manifest),
+            get(handle_slack_manifest_legacy),
+        )
+        .route(
+            "/v1/e/{channel_id}/slack/events",
+            post(handle_slack_event_endpoint),
+        )
+        .route(
+            "/v1/e/{channel_id}/slack/manifest",
+            get(handle_slack_manifest_endpoint),
         )
         .with_state(state)
+}
+
+enum SlackTarget {
+    LegacyApp(String),
+    Endpoint(String),
+}
+
+async fn resolve_slack_channel(
+    state: &SlackState,
+    target: SlackTarget,
+) -> Result<(App, AppChannel), (StatusCode, Json<ErrorResponse>)> {
+    let (app, endpoint_channel) = match target {
+        SlackTarget::LegacyApp(app_id) => {
+            let app = crate::domains::apps::queries::get_by_public_id_unscoped(
+                &state.db,
+                state.encryption.as_ref(),
+                &app_id,
+            )
+            .await
+            .map_err(|error| {
+                tracing::error!(app_id, %error, "Failed to lookup app for Slack ingress");
+                ErrorResponse::new("Internal server error")
+                    .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+            })?
+            .ok_or_else(|| {
+                ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND)
+            })?;
+            (app, None)
+        }
+        SlackTarget::Endpoint(channel_id) => {
+            let (app, channel) = crate::api::app_ingress::resolve_endpoint(
+                &state.db,
+                state.encryption.as_ref(),
+                &channel_id,
+            )
+            .await
+            .map_err(|error| {
+                tracing::error!(channel_id, %error, "Failed to lookup Slack endpoint");
+                ErrorResponse::new("Internal server error")
+                    .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+            })?
+            .ok_or_else(|| {
+                ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND)
+            })?;
+            (app, Some(channel))
+        }
+    };
+
+    if app.status != AppStatus::Published {
+        tracing::debug!(app_id = %app.public_id, status = ?app.status, "Slack ingress rejected: app not published");
+        return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
+    }
+
+    let channel = match endpoint_channel {
+        Some(channel) if channel.channel_type == ChannelType::Slack && channel.enabled => channel,
+        Some(_) => {
+            return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
+        }
+        None => match crate::api::app_ingress::resolve_legacy_channel(&app, ChannelType::Slack) {
+            crate::api::app_ingress::LegacyChannelMatch::One(channel) => channel,
+            crate::api::app_ingress::LegacyChannelMatch::NotFound => {
+                return Err(
+                    ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND)
+                );
+            }
+            crate::api::app_ingress::LegacyChannelMatch::Ambiguous => {
+                return Err(ErrorResponse::new(
+                    "Multiple enabled Slack channels; use an endpoint-scoped /v1/e/{channel_id}/slack/... URL",
+                )
+                .into_response(StatusCode::CONFLICT));
+            }
+        },
+    };
+    Ok((app, channel))
 }
 
 /// POST /v1/apps/{app_id}/slack/events — Slack Events API webhook
@@ -389,42 +475,43 @@ pub fn routes(state: SlackState) -> Router {
 /// 2. Event callbacks (messages, mentions, etc.)
 ///
 /// Security: Verified via Slack signing secret (HMAC-SHA256), not API key auth.
-async fn handle_slack_event(
+async fn handle_slack_event_legacy(
     State(state): State<SlackState>,
     Path(app_id): Path<String>,
     req_id: Option<Extension<RequestId>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
-    let request_id = req_id.map(|Extension(r)| r.0);
-    // 1. Look up app (unscoped — no org context for webhooks)
-    let app = crate::domains::apps::queries::get_by_public_id_unscoped(
-        &state.db,
-        state.encryption.as_ref(),
-        &app_id,
+    handle_slack_event(state, SlackTarget::LegacyApp(app_id), req_id, headers, body).await
+}
+
+async fn handle_slack_event_endpoint(
+    State(state): State<SlackState>,
+    Path(channel_id): Path<String>,
+    req_id: Option<Extension<RequestId>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
+    handle_slack_event(
+        state,
+        SlackTarget::Endpoint(channel_id),
+        req_id,
+        headers,
+        body,
     )
     .await
-    .map_err(|e| {
-        tracing::error!(app_id = %app_id, error = %e, "Failed to lookup app for Slack webhook");
-        ErrorResponse::new("Internal server error").into_response(StatusCode::INTERNAL_SERVER_ERROR)
-    })?
-    .ok_or_else(|| ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))?;
+}
 
-    // 2. Verify app is published and has a Slack channel.
-    //
-    // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
-    // "app does not exist" apart from "app exists but is not published / has no
-    // Slack channel". Every such case collapses to the same generic 404
-    // (matching the FCP channel in `api/fcp.rs`); the real reason is logged
-    // server-side only.
-    if app.status != AppStatus::Published {
-        tracing::debug!(app_id = %app_id, status = ?app.status, "Slack webhook rejected: app not published");
-        return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
-    }
-    let slack_channel = app.slack_channel().ok_or_else(|| {
-        tracing::debug!(app_id = %app_id, "Slack webhook rejected: no enabled Slack channel");
-        ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND)
-    })?;
+async fn handle_slack_event(
+    state: SlackState,
+    target: SlackTarget,
+    req_id: Option<Extension<RequestId>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
+    let request_id = req_id.map(|Extension(r)| r.0);
+    let (app, slack_channel) = resolve_slack_channel(&state, target).await?;
+    let app_id = app.public_id.to_string();
 
     // 3. Parse Slack channel config
     let slack_config: SlackChannelConfig =
@@ -2166,7 +2253,7 @@ fn verify_slack_signature(
 }
 
 // =========================================================================
-// Slack App Manifest generation — per-app "Create in Slack" helper
+// Slack App Manifest generation — per-channel "Create in Slack" helper
 // =========================================================================
 
 /// Response for the manifest endpoint.
@@ -2187,31 +2274,25 @@ struct ManifestResponse {
 /// Slack verifies `request_url` when the manifest is saved, which is why this
 /// endpoint serves only published apps: the webhook has to be answering before
 /// the Slack app is created from the manifest.
-async fn handle_slack_manifest(
+async fn handle_slack_manifest_legacy(
     State(state): State<SlackState>,
     Path(app_id): Path<String>,
 ) -> Result<Json<ManifestResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Look up app (unscoped — no auth for this endpoint)
-    let app = crate::domains::apps::queries::get_by_public_id_unscoped(
-        &state.db,
-        state.encryption.as_ref(),
-        &app_id,
-    )
-    .await
-    .map_err(|e| {
-        tracing::error!(app_id = %app_id, error = %e, "Failed to lookup app for manifest");
-        ErrorResponse::internal_error()
-    })?
-    .ok_or_else(|| ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))?;
+    handle_slack_manifest(state, SlackTarget::LegacyApp(app_id)).await
+}
 
-    // Mirror webhook exposure policy: only published apps with an enabled Slack channel
-    // can retrieve Slack manifest data from this unauthenticated endpoint.
-    let Some(slack_channel) = app.slack_channel() else {
-        return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
-    };
-    if app.status != AppStatus::Published {
-        return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
-    }
+async fn handle_slack_manifest_endpoint(
+    State(state): State<SlackState>,
+    Path(channel_id): Path<String>,
+) -> Result<Json<ManifestResponse>, (StatusCode, Json<ErrorResponse>)> {
+    handle_slack_manifest(state, SlackTarget::Endpoint(channel_id)).await
+}
+
+async fn handle_slack_manifest(
+    state: SlackState,
+    target: SlackTarget,
+) -> Result<Json<ManifestResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let (app, slack_channel) = resolve_slack_channel(&state, target).await?;
 
     // A config we cannot parse still produces the channel-bot manifest rather than
     // a 500: the agent surface is additive, so defaulting it off is the safe read.
@@ -2222,7 +2303,7 @@ async fn handle_slack_manifest(
 
     let display_name = truncate_display_name(&app.name);
 
-    let request_url = slack_webhook_url(&state.api_base_url, &app.public_id.to_string());
+    let request_url = slack_webhook_url(&state.api_base_url, &slack_channel.public_id.to_string());
     let manifest_yaml = build_manifest_yaml(
         &app.name,
         &display_name,
@@ -2244,15 +2325,15 @@ async fn handle_slack_manifest(
     }))
 }
 
-/// This server's Slack webhook endpoint for one app.
+/// This server's Slack webhook endpoint for one channel.
 ///
-/// Fully determined by the app's public ID before the Slack app exists, which is
-/// what makes `event_subscriptions` generatable at all.
-fn slack_webhook_url(api_base_url: &str, app_public_id: &str) -> String {
+/// Fully determined by the channel's public ID before the Slack app exists,
+/// which makes `event_subscriptions` generatable.
+fn slack_webhook_url(api_base_url: &str, channel_public_id: &str) -> String {
     format!(
-        "{}/v1/apps/{}/slack/events",
+        "{}/v1/e/{}/slack/events",
         api_base_url.trim_end_matches('/'),
-        app_public_id
+        channel_public_id
     )
 }
 

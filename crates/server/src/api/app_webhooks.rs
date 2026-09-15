@@ -1,8 +1,8 @@
-// App webhook ingress — app-scoped token-authenticated invocation endpoint.
+// App webhook ingress — endpoint-scoped token-authenticated invocation.
 //
-// Design Decision: Webhooks stay app-scoped and channel-scoped
-// (`POST /v1/apps/{app_id}/webhooks/{channel_id}`) so one app can expose
-// multiple webhook entry points with different tokens and invocation behavior.
+// Design Decision: Webhooks use `POST /v1/e/{channel_id}/webhook` so one app
+// can expose multiple entry points with different tokens and invocation
+// behavior. App-and-channel routes remain permanent aliases.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -85,8 +85,9 @@ pub fn routes(state: AppWebhookState) -> Router {
     Router::new()
         .route(
             "/v1/apps/{app_id}/webhooks/{channel_id}",
-            post(invoke_webhook),
+            post(invoke_webhook_legacy),
         )
+        .route("/v1/e/{channel_id}/webhook", post(invoke_webhook_endpoint))
         .with_state(state)
 }
 
@@ -107,9 +108,59 @@ pub fn routes(state: AppWebhookState) -> Router {
     ),
     tag = "apps"
 )]
-pub async fn invoke_webhook(
+pub async fn invoke_webhook_legacy(
     State(state): State<AppWebhookState>,
     Path((app_id, channel_id)): Path<(String, String)>,
+    req_id: Option<axum::Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<(StatusCode, Json<WebhookInvocationResponse>), (StatusCode, Json<ErrorResponse>)> {
+    invoke_webhook(
+        state,
+        app_id,
+        channel_id,
+        req_id,
+        connect_info,
+        headers,
+        body,
+    )
+    .await
+}
+
+pub async fn invoke_webhook_endpoint(
+    State(state): State<AppWebhookState>,
+    Path(channel_id): Path<String>,
+    req_id: Option<axum::Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<(StatusCode, Json<WebhookInvocationResponse>), (StatusCode, Json<ErrorResponse>)> {
+    let app_id = crate::api::app_ingress::resolve_endpoint(
+        &state.db,
+        state.encryption.as_ref(),
+        &channel_id,
+    )
+    .await
+    .map_err(internal_error)?
+    .map(|(app, _)| app.public_id.to_string())
+    .ok_or_else(not_found)?;
+    invoke_webhook(
+        state,
+        app_id,
+        channel_id,
+        req_id,
+        connect_info,
+        headers,
+        body,
+    )
+    .await
+}
+
+async fn invoke_webhook(
+    state: AppWebhookState,
+    app_id: String,
+    channel_id: String,
     req_id: Option<axum::Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
