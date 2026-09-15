@@ -341,7 +341,7 @@ struct AuthorizedA2a {
     org_id: i64,
     app_public_id: String,
     channel_public_id: everruns_provider::typed_id::AppChannelId,
-    session_mode: everruns_platform::app::InvocationSessionMode,
+    session_mode: everruns_platform::SessionBinding,
 }
 
 async fn authenticate_request(
@@ -952,7 +952,7 @@ async fn handle_message_stream(
     channel_id: String,
     req_id: Option<axum::Extension<RequestId>>,
 ) -> Response {
-    if auth.session_mode != everruns_platform::app::InvocationSessionMode::SessionPerInvocation {
+    if auth.session_mode != everruns_platform::app::SessionBinding::Ephemeral {
         return (
             StatusCode::OK,
             rpc_error(
@@ -1329,7 +1329,7 @@ pub async fn agent_card(
             // Streaming is only supported on session_per_invocation channels.
             // Shared-session channels reject message/stream because events
             // cannot be safely correlated across concurrent callers.
-            "streaming": config.session_mode == everruns_platform::app::InvocationSessionMode::SessionPerInvocation,
+            "streaming": config.session_mode == everruns_platform::app::SessionBinding::Ephemeral,
             "pushNotifications": false,
             "stateTransitionHistory": false,
         },
@@ -1520,7 +1520,7 @@ mod tests {
         let config = everruns_platform::A2aChannelConfig {
             api_key_hash: "hash".to_string(),
             api_key_prefix: "evra2a_abcd...".to_string(),
-            session_mode: everruns_platform::app::InvocationSessionMode::SharedSession,
+            session_mode: everruns_platform::app::SessionBinding::Endpoint,
             message: "{{a2a.text}}".to_string(),
             agent_card_name: None,
             agent_card_description: None,

@@ -6,7 +6,7 @@
 // config.
 
 use chrono::{DateTime, Utc};
-use everruns_platform::InvocationSessionMode;
+use everruns_platform::SessionBinding;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -42,7 +42,7 @@ pub struct CreateAgentTriggerRequest {
     pub timezone: String,
     /// Whether invocations reuse a stable session or create a new one.
     #[serde(default)]
-    pub session_mode: InvocationSessionMode,
+    pub session_mode: SessionBinding,
     /// Message content or `{{template}}` sent when the schedule fires.
     #[schema(example = "Run the daily digest")]
     pub message: String,
@@ -63,7 +63,7 @@ pub struct UpdateAgentTriggerRequest {
     pub timezone: Option<String>,
     /// Replacement session reuse strategy.
     #[serde(default)]
-    pub session_mode: Option<InvocationSessionMode>,
+    pub session_mode: Option<SessionBinding>,
     /// Replacement message sent when the trigger fires.
     #[serde(default)]
     pub message: Option<String>,

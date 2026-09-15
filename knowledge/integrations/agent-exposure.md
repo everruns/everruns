@@ -130,14 +130,15 @@ achieved with two subject types just as well.
 
 ## Session binding
 
-Two enums do overlapping work today: `SessionStrategy` (`per_thread`, `per_channel`,
+Two enums used to do overlapping work: `SessionStrategy` (`per_thread`, `per_channel`,
 `per_user`) for messaging channels, and `InvocationSessionMode` (`shared_session`,
-`session_per_invocation`) for webhook and schedule. They answer the same question — *what
+`session_per_invocation`) for webhook and schedule. They answered the same question — *what
 identity keys the session* — and having two of them is why "some channels are
-session-per-event and some are one single session" reads as an inconsistency rather than a
+session-per-event and some are one single session" read as an inconsistency rather than a
 setting.
 
-Unify to one `SessionBinding`, where every existing value maps 1:1 and nothing is lost:
+Unified into one `SessionBinding` in `crates/core/src/channel.rs` (EVE-1005), where every
+existing value maps 1:1 and nothing is lost:
 
 | `SessionBinding` | Key | Replaces |
 |---|---|---|
@@ -146,6 +147,16 @@ Unify to one `SessionBinding`, where every existing value maps 1:1 and nothing i
 | `Requester` | external actor id | `per_user` |
 | `Endpoint` | the endpoint row | `shared_session` |
 | `Ephemeral` | none, fresh session | `session_per_invocation` |
+
+**The wire vocabulary deliberately did not move.** Each variant renamed in Rust but still
+serializes to its legacy string, with the new name accepted as a read alias. That is what
+made the unification migration-free: no `channel_config` JSONB was rewritten, and the API
+and UI kept exchanging the values they already did. Renaming the wire values is a separate
+change that has to carry a migration and a UI update; the type-level split was the part
+that cost something, and it is gone. The routing **tag** segments (`thread`, `channel`,
+`user`) are load-bearing in the same way and are pinned by test — a renamed segment
+silently orphans every live session keyed under it.
+
 
 Two properties follow, and both are already decided behavior rather than new invention:
 
@@ -332,9 +343,12 @@ rest proceeds.
 
 ## Open questions
 
-1. Does `Requester` binding mean the platform user, the external actor, or both keyed
-   together? Slack `per_user` and a Public Chat visitor are different principals today.
-   Settled by EVE-1005.
+1. ~~Does `Requester` binding mean the platform user, the external actor, or both keyed
+   together?~~ **Settled by EVE-1005: the transport's own external actor id, always.** A
+   Public Chat visitor is anonymous or Google-signed-in and unrelated to any Everruns
+   account, so keying on a platform principal would be undefined for exactly the surface
+   that most needs it. The `{platform}:` prefix already namespaces the id, so one rule
+   covers every transport without splitting the variant.
 2. Should an endpoint be allowed to point at an agent in a *different* org-visible scope
    (shared agents), or does the endpoint always live with its agent?
 3. Is `Exposures` an ops page or a nav-level concept? It is the only cross-agent surface

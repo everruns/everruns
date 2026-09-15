@@ -36,7 +36,7 @@ References:
 1. Let an Everruns App act as a discoverable A2A agent for other agents
 2. Reuse the existing App lifecycle, ownership, harness, agent, and identity
 3. Authenticate inbound calls with a hashed API key (no plaintext at rest)
-4. Reuse `InvocationSessionMode` for session routing (shared / per-invocation)
+4. Reuse `SessionBinding` for session routing (shared / per-invocation)
 5. Publish a minimal **Agent Card** for protocol discovery
 
 ## Non-Goals
@@ -69,7 +69,7 @@ pub struct A2aChannelConfig {
     /// Public, non-secret display prefix (e.g. `evra2a_abc1...`) for the UI.
     pub api_key_prefix: String,
     /// Whether invocations reuse a stable session or create a new one.
-    pub session_mode: InvocationSessionMode,
+    pub session_mode: SessionBinding,
     /// Message template rendered into the session on each invocation.
     pub message: String,
     /// Optional human-readable agent name surfaced in the Agent Card.
@@ -321,7 +321,7 @@ header values, or the channel internal id.
 
 ## Session Routing
 
-`InvocationSessionMode` determines session reuse. Routing tags reuse the
+`SessionBinding` determines session reuse. Routing tags reuse the
 shared app-channel set:
 
 - `app:{app_id}`
