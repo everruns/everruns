@@ -74,10 +74,40 @@ pub fn section(label: &str) {
     println!("\n{}", paint(&format!("{BOLD}{MAGENTA}"), label));
 }
 
-/// Indented body text in one style.
+/// Wrap one prose line to the recorded terminal width, on word boundaries.
+///
+/// Prose is wrapped rather than clipped: a request or a final answer is the
+/// point of the demo, and a model that replies in one long paragraph would
+/// otherwise have its answer cut off mid-sentence.
+fn wrap(line: &str) -> Vec<String> {
+    if line.chars().count() <= WIDTH {
+        return vec![line.to_string()];
+    }
+    let mut wrapped = Vec::new();
+    let mut current = String::new();
+    for word in line.split_whitespace() {
+        let width = current.chars().count();
+        if width > 0 && width + 1 + word.chars().count() > WIDTH {
+            wrapped.push(std::mem::take(&mut current));
+        }
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        // A single word longer than the terminal has no break to take.
+        current.push_str(word);
+    }
+    if !current.is_empty() {
+        wrapped.push(current);
+    }
+    wrapped
+}
+
+/// Indented body text in one style, wrapped to the recorded terminal width.
 pub fn body(text: &str, code: &str) {
     for line in text.lines() {
-        println!("  {}", paint(code, &clip(line)));
+        for wrapped in wrap(line) {
+            println!("  {}", paint(code, &wrapped));
+        }
     }
 }
 
@@ -226,7 +256,7 @@ pub async fn run(session: &Session, request: &str) -> Result<Turn, Box<dyn std::
 
 #[cfg(test)]
 mod tests {
-    use super::{PLAIN, WIDTH, clip, paint};
+    use super::{PLAIN, WIDTH, clip, paint, wrap};
 
     #[test]
     fn clip_keeps_short_lines_and_truncates_long_ones_on_char_boundaries() {
@@ -236,6 +266,31 @@ mod tests {
         let clipped = clip(&wide);
         assert_eq!(clipped.chars().count(), WIDTH);
         assert!(clipped.ends_with('…'));
+    }
+
+    #[test]
+    fn wrap_keeps_every_word_of_a_long_answer() {
+        // The failure this guards: a model that replies in one long paragraph
+        // used to have its answer cut off at the terminal width.
+        let answer = "word ".repeat(80);
+        let wrapped = wrap(answer.trim());
+        assert!(wrapped.len() > 1, "a long answer should wrap, not clip");
+        for line in &wrapped {
+            assert!(line.chars().count() <= WIDTH, "{line}");
+            assert!(!line.ends_with('…'), "wrapping never truncates: {line}");
+        }
+        assert_eq!(wrapped.join(" ").split_whitespace().count(), 80);
+    }
+
+    #[test]
+    fn wrap_leaves_a_line_that_already_fits_alone() {
+        assert_eq!(wrap("short"), vec!["short".to_string()]);
+    }
+
+    #[test]
+    fn wrap_emits_a_word_with_no_break_to_take() {
+        let unbroken = "x".repeat(WIDTH + 20);
+        assert_eq!(wrap(&unbroken), vec![unbroken.clone()]);
     }
 
     #[test]
