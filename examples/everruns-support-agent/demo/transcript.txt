@@ -1,7 +1,7 @@
 MODEL: claude-opus-5
 
 QUESTION
-How do I resume a durable Framework session after restarting my process? Find and read relevant documentation before answering.
+How do I resume a durable Framework session after restarting my process?
 
 > search_docs
   query: resume durable session after restart
@@ -16,7 +16,7 @@ Source: https://docs.everruns.com/framework/persistence/
 Match: description: Choose volatile memory, crash-durable local state, or the distributed durable Platform.
 
 > search_docs
-  query: session persistence checkpoint state
+  query: session persistence checkpoint process restart
 
 < search_docs: OK
 Page: session-history
@@ -75,25 +75,25 @@ running session cannot disagree about the conversation.
 
 ANSWER
 
-**Documented behavior** (docs.everruns.com):
+**Documented behavior:** the default `Engine::new()` is volatile — process exit loses history, so resume only works within one engine's lifetime. To survive a restart you need the feature-gated local profile (`cargo add everruns --features local`).
 
-The default `Engine::new()` keeps sessions in volatile memory — process exit loses them. To survive a restart you need the `local` feature:
-
-1. `cargo add everruns --features local`
-2. Build the Agent with `.local(LocalConfig::new(".everruns-data"))`, using the **same trusted data directory** each run.
-3. Persist the typed `SessionId` yourself.
-4. After restart: rebuild the Agent from trusted config, then
+Three steps in the new process:
 
 ```rust
+let agent = build_agent()?; // same LocalConfig data dir, trusted config
 let engine = Engine::new();
-engine.attach(session_id, build_agent()?).await?;
+engine.attach(session_id, agent).await?;
 let resumed = engine.resume(session_id).await?;
 ```
 
-`attach` is required because a new engine cannot infer the Agent snapshot; it rejects IDs absent from that Agent's local catalog, and `resume` returns a typed not-found error for unknown IDs. Note: a session only becomes durable after its first async operation (`run`, `inspect`, or a history page read).
+Key points from the docs:
 
-Sources: https://docs.everruns.com/framework/session-history/ , https://docs.everruns.com/framework/persistence/
+- Persist the typed `SessionId` yourself; `resume` checks it against the catalog and returns a typed not-found error for unknown IDs.
+- `attach` is required because a new engine can't infer the Agent; rebuild it from trusted config with the *same* data directory, or attach is rejected.
+- A session becomes durable only after its first async operation (`run`, `inspect`, or a history page read).
 
-**Caveat, not guesswork-free:** the local profile supports one process at a time; for multi-worker restarts the docs point to the Platform instead.
+Sources: https://docs.everruns.com/framework/session-history/ and https://docs.everruns.com/framework/persistence/
+
+One caveat the docs state but your question doesn't cover: the local profile assumes one embedded process at a time — for multi-process or distributed restarts it points to the Platform instead.
 
 Completed: 3 iterations, 4 tool calls
