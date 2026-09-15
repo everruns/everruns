@@ -1,7 +1,7 @@
 //! Built-in harness definitions.
 //!
 //! Decision: Only platform-essential harnesses are auto-provisioned per org —
-//! `base`, `generic`, and `platform-chat`. Specialized harnesses
+//! `base`, `generic`, `platform-chat`, and `platform-chat-v2`. Specialized harnesses
 //! (`coding-container`, `coding-daytona`, `data-analyst`) live in the
 //! `examples` module and are adopted on demand via `/v1/harness-examples`
 //! and `POST /v1/harnesses/import?from-example=…`.
@@ -19,6 +19,7 @@ mod data_analyst;
 pub mod examples;
 mod generic;
 mod platform_chat;
+pub mod platform_chat_v2;
 
 use everruns_platform::BuiltInHarnessDefinition;
 
@@ -36,6 +37,8 @@ pub fn built_in_harnesses() -> Vec<BuiltInHarnessDefinition> {
         base::definition(),
         generic::definition(),
         platform_chat::definition(),
+        // Runs beside v1, claims no role, and changes nothing until selected.
+        platform_chat_v2::definition(),
     ];
     if internal_flags.session_sandbox {
         harnesses.push(coding_session_sandbox::definition());
@@ -112,7 +115,10 @@ mod tests {
 
         // The default built-in list now contains only platform-essential
         // harnesses. Specialized coding/data harnesses moved to examples.
-        assert_eq!(names, vec!["base", "generic", "platform-chat",]);
+        assert_eq!(
+            names,
+            vec!["base", "generic", "platform-chat", "platform-chat-v2"]
+        );
         for legacy in LEGACY_BUILT_IN_NAMES {
             assert!(
                 !names.iter().any(|n| n == legacy),
