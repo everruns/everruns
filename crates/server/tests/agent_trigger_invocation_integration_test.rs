@@ -96,11 +96,6 @@ async fn webhook_trigger_can_be_created() {
         .assert_status(StatusCode::ACCEPTED)
         .json();
     assert!(invoked["created_session"].as_bool().unwrap());
-        trigger["ingress_id"]
-            .as_str()
-            .unwrap()
-            .starts_with("appchan_")
-    );
 }
 
 async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<String> {
