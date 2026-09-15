@@ -4,6 +4,7 @@
 
 import { getApiBaseUrl, throwApiError } from "./client";
 import type { Event, ListResponse } from "./types";
+import { withOrgHeader } from "./active-org";
 
 // Default event types to exclude in UI contexts (streaming delta events are noise)
 export const DEFAULT_EXCLUDED_EVENTS = ["output.message.delta", "reason.thinking.delta"];
@@ -64,7 +65,7 @@ export async function listEventsPaginated(
   const response = await fetch(url, {
     method: "GET",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withOrgHeader({ "Content-Type": "application/json" }),
   });
 
   if (!response.ok) {

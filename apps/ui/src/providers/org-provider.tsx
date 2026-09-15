@@ -6,6 +6,10 @@
 // Decision: Org selection via server-side cookie (everruns_org) for SSE compatibility
 // Decision: /v1/auth/me sets org cookie if missing, so we always have org context
 // Decision: On org switch, redirect entity detail pages to their list page to avoid 404s
+// Decision: Every org commit publishes the org to the API layer (X-Org-Id) synchronously,
+//   because the cookie sync is a separate request that lands later — requests issued in
+//   between were answered in the previous org and cached under the new one, which is how
+//   a second Platform Chat thread got created on a page that already had one.
 
 import {
   createContext,
@@ -21,6 +25,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "./auth-provider";
 import { switchOrg as switchOrgApi } from "@/lib/api/users";
+import { getActiveOrgId, setActiveOrgId } from "@/lib/api/active-org";
 import type { OrganizationMembership, OrgRole } from "@/lib/api/types";
 
 // Default organization public ID (matches backend DEFAULT_ORG_PUBLIC_ID)
@@ -94,7 +99,21 @@ interface OrgProviderProps {
 
 export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps) {
   const { user, isLoading: authLoading } = useAuth();
-  const [currentOrg, setCurrentOrgState] = useState<OrganizationMembership | null>(null);
+  // Published during render, not from an effect: children hydrate their
+  // server-seeded query entries while rendering, and those entries were hashed
+  // on the server under this same cookie org (see lib/server-query.ts). An
+  // effect runs after that, too late to match. Idempotent, so a double render
+  // costs nothing.
+  if (initialOrgId && getActiveOrgId() === null) {
+    setActiveOrgId(initialOrgId);
+  }
+  const [currentOrg, setCurrentOrgStateRaw] = useState<OrganizationMembership | null>(null);
+  // Publish to the API layer before the state commit, so the very first request
+  // a consumer makes in the new org already carries `X-Org-Id`.
+  const setCurrentOrgState = useCallback((org: OrganizationMembership | null) => {
+    setActiveOrgId(org?.public_id ?? null);
+    setCurrentOrgStateRaw(org);
+  }, []);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
   // Track explicit org selection to prevent useEffect from resetting it

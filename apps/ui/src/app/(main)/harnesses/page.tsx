@@ -17,8 +17,8 @@ import type { Capability, Harness } from "@/lib/api/types";
 import HarnessesPageClient from "./harnesses-page-client";
 
 export default async function HarnessesPage() {
-  const queryClient = createServerQueryClient();
   const requestContext = await getServerRequestContext();
+  const queryClient = createServerQueryClient(requestContext);
   const { currentOrgId } = await prefetchAuthBootstrap(queryClient, requestContext);
 
   if (currentOrgId) {

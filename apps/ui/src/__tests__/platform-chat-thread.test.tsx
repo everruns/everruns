@@ -140,6 +140,20 @@ test("reads without creating when ensure is off", async () => {
   await waitFor(() => expect(mockCreate).not.toHaveBeenCalled());
 });
 
+test("does not create when the thread list could not be read", async () => {
+  // A failed read says nothing about whether the thread exists. Treating it as
+  // "none yet" mints a second pinned thread on every page load that hits one.
+  mockUseChatThreads.mockReturnValue({
+    threads: [],
+    isLoading: false,
+    error: new Error("Network error"),
+  });
+
+  render(<Probe ensure />);
+
+  await waitFor(() => expect(mockCreate).not.toHaveBeenCalled());
+});
+
 test("waits for the thread list before deciding to create", async () => {
   mockUseChatThreads.mockReturnValue({ threads: [], isLoading: true, error: null });
 

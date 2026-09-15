@@ -117,6 +117,21 @@ See `crates/server/src/auth/cli_auth.rs` for implementation.
 - `access_token` cookie with JWT
 - `refresh_token` cookie (HTTP-only, secure)
 - Suitable for web UI authentication
+- The browser UI names its organization on every request with `X-Org-Id`, and
+  keeps the `everruns_org` cookie in sync only as the fallback for transports
+  that cannot set headers (SSE, browser-navigated downloads). The cookie alone
+  is not sufficient: it is set by a separate `POST /v1/users/me/switch-org` that
+  lands after the client has already committed the new organization, so requests
+  issued in that window were answered in the previous organization and cached
+  under the new one — which is how a user ended up with several precreated
+  Platform Chat threads. Header selection removes the window; see
+  `apps/ui/src/lib/api/active-org.ts`.
+- The browser cache is scoped by the same value: React Query hashes every key
+  under the active organization (`apps/ui/src/lib/query-client.ts`), so cache
+  identity matches the organization a request was actually sent with, and a
+  call site that omits the org from its key still cannot read another
+  organization's data. Server-rendered prefetches hash under the request's
+  `everruns_org` cookie so their entries survive hydration.
 
 ### Login Page Contract
 
