@@ -47,7 +47,7 @@ pub struct CreateAgentTriggerRequest {
     /// Whether invocations reuse a stable session or create a new one.
     #[serde(default)]
     pub session_mode: SessionBinding,
-    /// Message content or `{{template}}` sent when the schedule fires.
+    /// Message content or `{{template}}` sent when the trigger fires.
     #[schema(example = "Run the daily digest")]
     pub message: String,
     /// Shared secret for webhook triggers.
@@ -64,8 +64,8 @@ pub struct CreateAgentTriggerRequest {
     pub enabled: bool,
 }
 
-/// Request to update a schedule trigger. Only provided fields change; the rest
-/// are preserved from the stored config.
+/// Request to update a trigger. Only provided fields change; the rest are
+/// preserved from the stored config.
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
 pub struct UpdateAgentTriggerRequest {
     /// Replacement cron expression.

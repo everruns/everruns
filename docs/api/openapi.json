@@ -20740,7 +20740,7 @@
           },
           "message": {
             "type": "string",
-            "description": "Message content or `{{template}}` sent when the schedule fires.",
+            "description": "Message content or `{{template}}` sent when the trigger fires.",
             "example": "Run the daily digest"
           },
           "rate_limit_per_minute": {
@@ -39748,7 +39748,7 @@
       },
       "UpdateAgentTriggerRequest": {
         "type": "object",
-        "description": "Request to update a schedule trigger. Only provided fields change; the rest\nare preserved from the stored config.",
+        "description": "Request to update a trigger. Only provided fields change; the rest are\npreserved from the stored config.",
         "properties": {
           "auth": {
             "description": "Shared endpoint auth is not supported by webhook triggers."
