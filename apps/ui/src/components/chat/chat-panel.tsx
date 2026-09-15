@@ -156,8 +156,9 @@ export function ChatPanel({
   // model cue.
   const intelligence = useIntelligenceStatus();
   const showNoIntelligence = !intelligence.isLoading && !intelligence.available;
-  const transcriptEmpty = chatEvents.length === 0;
-  const showPlatformIntro = transcriptEmpty && (platformIntro || platformStarters.length > 0);
+  const transcriptEmpty = !eventsLoading && chatEvents.length === 0;
+  const showPlatformIntro =
+    transcriptEmpty && Boolean(platformIntro || platformStarters.length > 0);
   const { data: participants, refetch: refetchParticipants } = useSessionParticipants(sessionId);
   const { data: agents } = useAgents();
   const [inputValue, setInputValue] = useState("");
