@@ -57,6 +57,42 @@ Read a failure accordingly:
 - `cli-tree-wrong-verb-recovers` failing means a wrong first guess is costing
   more than the one retry the error text is designed to cost.
 
+## Contract cases
+
+Three `cli-contract` cases measure what the shared command contract is for:
+that the flags a model reads out of `--help` are the flags the command has.
+They are all read-only.
+
+Before the contract, a flag the schema did not declare was kept as a string
+property and passed on, so `skills list --limit 20` parsed, dropped the limit,
+and returned everything while the model believed it had narrowed the result.
+There was no error to recover from, which is why these cases are about *absent*
+flags rather than malformed ones.
+
+- `cli-contract-real-flags-not-assumed` failing means the model is assuming a
+  conventional flag rather than reading the one the command declares.
+- `cli-contract-help-corrects-an-absent-flag` failing means a request for a
+  bound the command cannot express is being answered as though it could be.
+  Watch for a confident "here are the five most recent" in the response: that
+  is the silent-drop failure returning.
+- `cli-contract-example-describes-the-real-command` failing means help is
+  describing a command that does not exist. It is a regression case: the
+  shipped example for `agents analyze` passed an agent id to a command that
+  grades a draft configuration and takes no id at all.
+
+## Offline checks
+
+`cargo test` in this directory runs no model and needs no credentials. It
+asserts the dataset is well formed and that every `everruns <noun> <verb>` and
+every flag an `expect_commands` pattern requires exists in
+`crates/cli-contract/commands.json`, which is generated from the command types.
+A case that grades a model on a flag the server would reject is the same defect
+as an example documenting one, and it is caught here rather than in a run.
+
+These checks run in CI via `.github/workflows/platform-capability-evals.yml`.
+That workflow is new, and its absence had consequences: the test above asserted
+9 samples against a 13-sample dataset, and nothing ran it to notice.
+
 ## Signals
 
 Each JSONL sample declares deterministic expectations in `metadata`:

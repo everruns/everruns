@@ -398,20 +398,27 @@ pub fn scheduled_agent_state() -> Box<dyn Scorer> {
                             );
                         }
                     }
-                    _ => failures.push("Visti MCP server was not registered without inline authentication".to_string()),
+                    _ => failures.push(
+                        "Visti MCP server was not registered without inline authentication"
+                            .to_string(),
+                    ),
                 }
                 let binding_exists = state
                     .pointer("/credentials/data")
                     .and_then(Value::as_array)
-                    .is_some_and(|items| items.iter().any(|binding| {
-                        binding.get("tool_name").and_then(Value::as_str) == Some("visti_send")
-                            && binding.get("parameter_name").and_then(Value::as_str) == Some("channel_key")
-                            && binding.get("configured").and_then(Value::as_bool) == Some(false)
-                            && binding.get("setup_url").and_then(Value::as_str).is_some()
-                            && binding.get("value").is_none()
-                    }));
+                    .is_some_and(|items| {
+                        items.iter().any(|binding| {
+                            binding.get("tool_name").and_then(Value::as_str) == Some("visti_send")
+                                && binding.get("parameter_name").and_then(Value::as_str)
+                                    == Some("channel_key")
+                                && binding.get("configured").and_then(Value::as_bool) == Some(false)
+                                && binding.get("setup_url").and_then(Value::as_str).is_some()
+                                && binding.get("value").is_none()
+                        })
+                    });
                 if !binding_exists {
-                    failures.push("pending Visti Agent credential setup was not created".to_string());
+                    failures
+                        .push("pending Visti Agent credential setup was not created".to_string());
                 }
             }
             if state
@@ -578,7 +585,12 @@ mod tests {
             ],
             ..Default::default()
         };
-        assert!(confirmation_boundary().score(&sample, &transcript).await.pass);
+        assert!(
+            confirmation_boundary()
+                .score(&sample, &transcript)
+                .await
+                .pass
+        );
     }
 
     #[test]
