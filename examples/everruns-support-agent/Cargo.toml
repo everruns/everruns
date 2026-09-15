@@ -9,5 +9,4 @@ publish = false
 everruns = { path = "../../crates/everruns" }
 everruns-example-demo = { path = "../demo-support" }
 everruns-anthropic = { path = "../../crates/drivers/anthropic" }
-libc = "0.2"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -2488,7 +2488,6 @@ dependencies = [
  "everruns",
  "everruns-anthropic",
  "everruns-example-demo",
- "libc",
  "tokio",
 ]
 
