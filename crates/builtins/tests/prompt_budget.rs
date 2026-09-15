@@ -14,6 +14,11 @@ async fn assert_contribution_under(cap: &dyn Capability, max_bytes: usize) {
         .await
         .unwrap_or_else(|| panic!("{} did not contribute a prompt", cap.id()));
     assert!(
+        !prompt.trim().is_empty(),
+        "{} contributed an empty prompt",
+        cap.id()
+    );
+    assert!(
         prompt.len() <= max_bytes,
         "{}: contribution is {} bytes (~{} tokens), cap is {} bytes",
         cap.id(),

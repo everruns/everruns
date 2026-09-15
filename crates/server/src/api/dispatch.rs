@@ -149,3 +149,55 @@ macro_rules! impl_dispatchable {
 }
 
 pub(crate) use impl_dispatchable;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domains::common::transport_error_test_support::{
+        RAW_DATABASE_DETAIL, SAFE_DOMAIN_DETAIL, TransportConflictCommand,
+    };
+    use crate::storage::StorageBackend;
+    use std::sync::Arc;
+
+    fn dispatcher() -> Dispatcher {
+        Dispatcher {
+            ctx: Ctx::minimal_for_test(
+                everruns_core::Caller::internal(everruns_core::DEFAULT_ORG_ID),
+                Arc::new(StorageBackend::in_memory()),
+                None,
+            ),
+            url_builder: UrlBuilder::new("https://api.example/api", "https://app.example"),
+        }
+    }
+
+    #[tokio::test]
+    async fn command_dispatcher_sanitizes_database_conflicts_only() {
+        let (status, body) = dispatcher()
+            .run(TransportConflictCommand {
+                kind: "database".to_string(),
+            })
+            .await
+            .expect_err("database conflict");
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.0.detail.as_deref(), Some("Resource already exists"));
+        assert_eq!(body.0.code.as_deref(), Some("already_exists"));
+        assert!(
+            !body
+                .0
+                .detail
+                .as_deref()
+                .unwrap()
+                .contains(RAW_DATABASE_DETAIL)
+        );
+
+        let (status, body) = dispatcher()
+            .run(TransportConflictCommand {
+                kind: "domain".to_string(),
+            })
+            .await
+            .expect_err("domain conflict");
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.0.detail.as_deref(), Some(SAFE_DOMAIN_DETAIL));
+        assert_eq!(body.0.code.as_deref(), Some("already_exists"));
+    }
+}

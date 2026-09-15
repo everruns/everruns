@@ -97,12 +97,10 @@ export default function AppsPage() {
           </>
         }
         actions={
-          <Link href="/apps/new">
-            <Button variant="accent">
-              <Plus className="size-4" />
-              New app
-            </Button>
-          </Link>
+          <Button variant="accent" render={<Link href="/apps/new" />}>
+            <Plus className="size-4" />
+            New app
+          </Button>
         }
       />
 
@@ -143,12 +141,10 @@ export default function AppsPage() {
                 action={
                   !search &&
                   statusTab === "active" && (
-                    <Link href="/apps/new">
-                      <Button variant="accent">
-                        <Plus className="size-4" />
-                        Create your first app
-                      </Button>
-                    </Link>
+                    <Button variant="accent" render={<Link href="/apps/new" />}>
+                      <Plus className="size-4" />
+                      Create your first app
+                    </Button>
                   )
                 }
               />

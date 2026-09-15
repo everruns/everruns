@@ -1,0 +1,36 @@
+MODEL: gpt-5.6-terra
+
+QUESTION
+Customer cust_mfa reset their password but cannot sign in. What is the next safe step?
+
+> lookup_customer
+  customer_id: cust_mfa
+
+< lookup_customer: OK
+authenticator_available: false
+lockout_minutes: 0
+mfa_enabled: true
+password_reset: "completed"
+recovery_codes_available: false
+verified: true
+
+> read_support_policy
+
+< read_support_policy: OK
+# Account recovery policy (fictional service)
+- Never request passwords, one-time codes, or recovery-code contents.
+- A password reset does not disable MFA.
+- When MFA is enabled and neither authenticator nor recovery codes are available,
+  direct the customer to verified identity recovery at https://support.example.com/recovery.
+  Support must not disable MFA based solely on a chat request.
+- An active lockout must expire before retrying. Repeated reset requests do not clear it.
+- With no MFA blocker or lockout, retry in a private browser window to exclude stale
+  cookies/autofill; escalate to support if that fails.
+
+ANSWER
+
+Your password reset completed, but MFA remains enabled. Since no authenticator or recovery codes are available, use verified identity recovery: https://support.example.com/recovery.
+
+This is the safe path to restore access; support cannot disable MFA from a chat request. If recovery cannot be completed, contact support through that recovery page for further assistance.
+
+Completed: 2 iterations, 2 tool calls

@@ -189,6 +189,7 @@ async fn assert_system_prompt_for_store(store: Arc<dyn SessionFileSystem>) {
         locale: None,
         file_store: Some(store),
         model: None,
+        session_storage: None,
     };
     let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
     assert_system_prompt(&prompt, &expectations);
@@ -290,6 +291,7 @@ async fn assert_file_tool_schemas(store: Arc<dyn SessionFileSystem>) {
         locale: None,
         file_store: Some(store),
         model: None,
+        session_storage: None,
     };
     let registry = runtime_capability_registry();
     let collected = collect_capabilities(
@@ -317,6 +319,7 @@ async fn filesystem_root_rewrite_precedes_deferred_schema_capture() {
         locale: None,
         file_store: Some(store),
         model: None,
+        session_storage: None,
     };
 
     let filesystem_hooks =
@@ -494,6 +497,7 @@ async fn collected_capability_prompt_uses_store_root() {
         locale: None,
         file_store: Some(store),
         model: None,
+        session_storage: None,
     };
     let registry = runtime_capability_registry();
     let collected = collect_capabilities(

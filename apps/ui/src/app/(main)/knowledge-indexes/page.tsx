@@ -444,12 +444,14 @@ function KnowledgeIndexRow({
               {knowledgeIndexSyncActionLabel(diagnostic)}
             </Button>
           )}
-          <Link href={`/knowledge-indexes/${index.id}`}>
-            <Button variant="outline" size="sm">
-              <FolderOpen className="size-4" />
-              Open
-            </Button>
-          </Link>
+          <Button
+            variant="outline"
+            size="sm"
+            render={<Link href={`/knowledge-indexes/${index.id}`} />}
+          >
+            <FolderOpen className="size-4" />
+            Open
+          </Button>
           <Button variant="outline" size="sm" onClick={() => onEdit(index)} disabled={isReadOnly}>
             <Pencil className="size-4" />
             Edit

@@ -54,6 +54,19 @@ Hints that cost time to rediscover:
 - Screenshot each significant step, not just the verdict.
 - Element missing from a snapshot? `agent-browser scroll down` first.
 - Login redirect loop usually means `AUTH_MODE` does not match the test category.
+- Testing an **HTTPS** target (a deployed environment rather than the local stack) from a cloud
+  agent: every page fails with `ERR_CONNECTION_RESET` until Chrome's TLS version is capped. Export
+  the flags once, before the first `open`, so a daemon relaunch cannot drop them (EVE-807):
+  ```bash
+  export AGENT_BROWSER_ARGS=$'--ssl-version-max=tls1.2\n--disable-features=PostQuantumKyber'
+  pgrep -a chrome | tr ' ' '\n' | grep ssl-version   # confirm they reached Chrome
+  ```
+  Chrome's TLS 1.3 ClientHello carries a post-quantum key share too large for the egress relay,
+  which cuts the tunnel mid-handshake. `curl` is unaffected, so the proxy looks healthy by hand.
+  A local `http://localhost:<prefix>00` stack never hits this — no TLS, no proxy.
+  Pass these through `AGENT_BROWSER_ARGS`, not `--args`: `--args` splits on commas, so
+  `--disable-features=A,B` becomes two argv entries and Chrome exits with
+  `Multiple targets are not supported in headless mode`.
 
 ## Recording
 

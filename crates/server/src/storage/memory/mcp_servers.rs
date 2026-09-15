@@ -10,6 +10,13 @@ use anyhow::anyhow;
 use everruns_provider::typed_id::McpServerId;
 use uuid::Uuid;
 
+/// Statuses that hold a name. Mirrors the partial unique index in
+/// `132_mcp_server_name_scope.sql`: archived and deleted servers release their
+/// name, a disabled one keeps it because it can be re-enabled (EVE-964).
+fn holds_name(status: &str) -> bool {
+    matches!(status, "active" | "disabled")
+}
+
 impl InMemoryDatabase {
     // ============================================
     // MCP Servers
@@ -20,12 +27,12 @@ impl InMemoryDatabase {
         org_id: i64,
         input: CreateMcpServerRow,
     ) -> Result<McpServerRow> {
-        // Check for duplicate name within org
+        // Check for duplicate name within org, among rows that still hold one.
         if self
             .mcp_servers
             .read()
             .values()
-            .any(|s| s.name == input.name && s.org_id == org_id)
+            .any(|s| s.name == input.name && s.org_id == org_id && holds_name(&s.status))
         {
             return Err(anyhow!(
                 "MCP server with name '{}' already exists",
@@ -165,7 +172,9 @@ impl InMemoryDatabase {
             .mcp_servers
             .read()
             .values()
-            .find(|s| s.name == name && s.org_id == org_id)
+            // Live rows only, matching the Postgres backend: an archived row
+            // no longer owns the name and must not shadow the live server.
+            .find(|s| s.name == name && s.org_id == org_id && holds_name(&s.status))
             .cloned())
     }
 

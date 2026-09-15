@@ -66,6 +66,23 @@ impl From<&str> for HarnessStatus {
     }
 }
 
+/// A conversation starter shown on a fresh Platform Chat thread.
+/// Selecting one inserts its text into the composer. `icon` reuses the
+/// harness icon name set (`HarnessIcon`); unknown names fall back to the
+/// default glyph.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub struct ConversationStarter {
+    /// Optional icon name from the harness icon set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "zap"))]
+    pub icon: Option<String>,
+    /// Prompt text inserted into the composer when selected.
+    #[cfg_attr(feature = "openapi", schema(example = "Triage the newest P1"))]
+    pub text: String,
+}
+
 /// Harness configuration for sessions.
 /// A harness defines the base behavior and capabilities that apply to all sessions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,6 +114,27 @@ pub struct Harness {
         )
     )]
     pub description: Option<String>,
+    /// Optional Markdown intro rendered as an intro box at the top of a fresh
+    /// Platform Chat thread. Images are allowed. The agent intro wins over
+    /// the harness intro. Hidden once the user inputs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "I can triage incidents, dig through logs, and draft the update.")
+    )]
+    pub intro_markdown: Option<String>,
+    /// Optional one-line description in simplified Markdown, shown below the
+    /// chat title once the intro is hidden. The agent value wins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "Knows your agents, harnesses, models, and runs.")
+    )]
+    pub short_description: Option<String>,
+    /// Conversation starters for a fresh Platform Chat thread. The agent's
+    /// starters win when non-empty, otherwise the harness's apply.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub starters: Vec<ConversationStarter>,
     /// System prompt that defines the harness's base behavior.
     ///
     /// Forms the foundation of the prompt stack. Optional: when absent the
@@ -286,6 +324,11 @@ pub fn merge_harness(parent: &Harness, child: &Harness) -> Harness {
         display_name: child.display_name.clone(),
         icon: child.icon.clone(),
         description: child.description.clone(),
+        // Platform Chat intro content: child-owned; the agent layer wins over
+        // the (effective) harness at render time.
+        intro_markdown: child.intro_markdown.clone(),
+        short_description: child.short_description.clone(),
+        starters: child.starters.clone(),
         parent_harness_id: child.parent_harness_id,
         tags: child.tags.clone(),
         is_built_in: child.is_built_in,
@@ -381,6 +424,12 @@ pub struct BuiltInHarnessDefinition {
     pub capabilities: Vec<BuiltInCapabilityDefinition>,
     /// Special roles for platform behavior.
     pub roles: Vec<BuiltInHarnessRole>,
+    /// Optional Markdown intro for fresh Platform Chat threads.
+    pub intro_markdown: Option<String>,
+    /// Optional one-line description in simplified Markdown.
+    pub short_description: Option<String>,
+    /// Conversation starters for fresh Platform Chat threads.
+    pub starters: Vec<ConversationStarter>,
 }
 
 impl BuiltInHarnessDefinition {
@@ -401,6 +450,9 @@ impl BuiltInHarnessDefinition {
             tags: Vec::new(),
             capabilities: Vec::new(),
             roles: Vec::new(),
+            intro_markdown: None,
+            short_description: None,
+            starters: Vec::new(),
         }
     }
 
@@ -444,6 +496,27 @@ impl BuiltInHarnessDefinition {
         self
     }
 
+    /// Set the Markdown intro shown on a fresh Platform Chat thread.
+    pub fn with_intro(mut self, intro_markdown: impl Into<String>) -> Self {
+        self.intro_markdown = Some(intro_markdown.into());
+        self
+    }
+
+    /// Set the one-line description in simplified Markdown.
+    pub fn with_short_description(mut self, short_description: impl Into<String>) -> Self {
+        self.short_description = Some(short_description.into());
+        self
+    }
+
+    /// Replace the conversation starters.
+    pub fn with_starters<I>(mut self, starters: I) -> Self
+    where
+        I: IntoIterator<Item = ConversationStarter>,
+    {
+        self.starters = starters.into_iter().collect();
+        self
+    }
+
     /// Check whether this harness has a specific role.
     pub fn has_role(&self, role: BuiltInHarnessRole) -> bool {
         self.roles.contains(&role)
@@ -469,6 +542,9 @@ mod tests {
             display_name: Some(format!("Harness {id_seed}")),
             icon: None,
             description: None,
+            intro_markdown: None,
+            short_description: None,
+            starters: Vec::new(),
             system_prompt: Some(system_prompt.to_string()),
             parent_harness_id: None,
             default_model_id: None,

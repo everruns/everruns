@@ -116,7 +116,15 @@ mod tests {
             full_parameters: None,
         });
 
+        let original = serde_json::to_value(&tool).unwrap();
         let transformed = hook.transform(vec![tool]);
+        assert_eq!(transformed.len(), 1);
+        let mut restored = serde_json::to_value(&transformed[0]).unwrap();
+        restored["parameters"]["properties"]
+            .as_object_mut()
+            .unwrap()
+            .remove("human_intent");
+        assert_eq!(restored, original);
         let params = transformed[0].parameters();
 
         assert_eq!(params["properties"]["human_intent"]["type"], "string");
@@ -132,39 +140,63 @@ mod tests {
     }
 
     #[test]
-    fn human_intent_tool_call_hook_reads_and_strips_argument() {
-        let capability = HumanIntentCapability;
-        let hook = capability.tool_call_hooks().pop().unwrap();
-        let tool_call = ToolCall {
-            id: "call_1".to_string(),
-            name: "manage_harnesses".to_string(),
-            arguments: json!({
-                "operation": "list",
-                "human_intent": "Listing all harnesses"
-            }),
+    fn narration_trims_unicode_boundaries_and_execution_preserves_original_call() {
+        let hook = HumanIntentCapability.tool_call_hooks().pop().unwrap();
+        for (intent, expected) in [
+            (json!(null), None),
+            (json!(17), None),
+            (json!("  "), None),
+            (
+                json!("  Listing harnesses  "),
+                Some("Listing harnesses".to_owned()),
+            ),
+            (json!("界".repeat(119)), Some("界".repeat(119))),
+            (json!("界".repeat(120)), Some("界".repeat(120))),
+            (
+                json!(format!("  {}  ", "界".repeat(121))),
+                Some(format!("{}...", "界".repeat(117))),
+            ),
+        ] {
+            let call = ToolCall {
+                id: "call-original".into(),
+                name: "manage_harnesses".into(),
+                arguments: json!({"operation":"list","nested":{"keep":true},"human_intent":intent}),
+            };
+            for phase in [
+                ToolNarrationPhase::Started,
+                ToolNarrationPhase::Waiting,
+                ToolNarrationPhase::Completed,
+                ToolNarrationPhase::Failed,
+            ] {
+                assert_eq!(
+                    hook.narration(None, &call, phase, Some("uk-UA"), Default::default()),
+                    expected
+                );
+            }
+            let execution = hook.transform_for_execution(call);
+            assert_eq!(
+                serde_json::to_value(execution).unwrap(),
+                json!({"id":"call-original","name":"manage_harnesses","arguments":{"operation":"list","nested":{"keep":true}}})
+            );
+        }
+        let call = ToolCall {
+            id: "no-intent".into(),
+            name: "plain".into(),
+            arguments: json!({"operation":"list"}),
         };
-
         assert_eq!(
             hook.narration(
                 None,
-                &tool_call,
+                &call,
                 ToolNarrationPhase::Started,
                 None,
                 Default::default()
             ),
-            Some("Listing all harnesses".to_string())
+            None
         );
-
-        let execution_call = hook.transform_for_execution(tool_call);
-        assert_eq!(execution_call.arguments, json!({ "operation": "list" }));
-    }
-
-    #[test]
-    fn truncate_intent_stays_within_cap() {
-        let long_intent = "x".repeat(130);
-        let truncated = truncate_intent(&long_intent);
-
-        assert_eq!(truncated.chars().count(), 120);
-        assert!(truncated.ends_with("..."));
+        assert_eq!(
+            serde_json::to_value(hook.transform_for_execution(call.clone())).unwrap(),
+            serde_json::to_value(call).unwrap()
+        );
     }
 }

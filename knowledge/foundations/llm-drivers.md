@@ -162,11 +162,22 @@ Prompt caching is modeled as request intent on `LlmCallConfig.prompt_cache`. Dri
 
 Current provider mappings:
 
-- **OpenAI Responses API**: derives a deterministic `prompt_cache_key` within OpenAI's 64-character request limit from stable cache-family inputs, not the changing per-turn transcript
+- **OpenAI Responses API**: derives a deterministic cache routing key from stable cache-family inputs. On GPT-5.6 and Astra, auto mode uses implicit caching; opt-in explicit strategy caches the developer-instruction prefix and leaves the conversation suffix unwritten. Explicit mode uses full transcript replay to avoid duplicating developer instructions through stateful continuation. Without developer instructions, explicit mode creates no breakpoint. Older models and non-native gateways retain their existing behavior. The [wire implementation](../../crates/provider/src/openresponses_protocol.rs) owns exact options and breakpoint placement; [OpenAI's cache contract](https://developers.openai.com/api/docs/guides/prompt-caching) owns API semantics.
 - **Anthropic**: adds bounded `cache_control: { type: "ephemeral" }` breakpoints to stable/high-value request sections instead of every text block: the tool array, the system prompt, and the **two** most recent stable messages. The pair on the transcript is what makes caching incremental, the newest marks where this turn's history is written, the one behind it sits where the previous turn already wrote, so each turn reads its predecessor's cache instead of re-paying for the transcript. Four total, Anthropic's per-request maximum. Volatile trailing content (a live `<facts>` block) is skipped so the cached prefix does not diverge every turn
 - **Gemini**: uses `cachedContent` when the config includes an existing cached-content resource name; otherwise the request remains in implicit/default Gemini behavior
 
 `llm.generation.metadata.request_options.prompt_cache` records which provider-specific mode the driver actually attempted.
+
+### Cache Accounting and OpenAI Compatibility
+
+Cache accounting and persistence follow the [disjoint usage contract](../security/usage-tracking.md#disjoint-bucket-convention).
+
+[Compatibility validation](../../crates/provider/src/openai_compat.rs) rejects
+unsupported reasoning effort before omission/serialization can hide an invalid
+selection. Astra sampling and Chat Completions tool use are rejected before
+network I/O. EU Fast/Priority restrictions follow the actual OpenAI regional
+endpoint host; residency behind custom proxies is not inferred. These checks
+follow the [Astra migration contract](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra).
 
 ### Per-Request Headers
 

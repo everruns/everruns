@@ -29,7 +29,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::OrgRole;
-use everruns_platform::email::{EmailError, EmailMessage, EmailSender};
+use everruns_platform::email::{EmailError, EmailMessage, EmailSender, branded_button};
 use everruns_platform::{AuditEvent, ManagementAction};
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
@@ -314,9 +314,10 @@ async fn deliver_invite_email(
     // interpolation to prevent HTML/attribute injection in email clients.
     let org_name_html = html_escape(org_name);
     let url_html = html_escape(url);
+    let button = branded_button(&url_html, "Accept your invitation");
     let html = format!(
         "<p>You've been invited to join <strong>{org_name_html}</strong> on Everruns.</p>\
-         <p><a href=\"{url_html}\">Accept your invitation</a></p>\
+         {button}\
          <p>This link expires in {INVITE_TTL_DAYS} days.</p>"
     );
     // Branded template: this is an external-facing invitation, so it carries

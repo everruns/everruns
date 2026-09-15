@@ -9,7 +9,7 @@ use crate::kernel_imports::{
     is_declarative_capability,
 };
 use crate::storage::StorageBackend;
-use everruns_platform::{Harness, HarnessStatus, merge_harness};
+use everruns_platform::{ConversationStarter, Harness, HarnessStatus, merge_harness};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
@@ -26,6 +26,10 @@ pub fn row_to_harness(row: HarnessRow, capabilities: Vec<AgentCapabilityConfig>)
         display_name: row.display_name,
         icon: row.icon,
         description: row.description,
+        intro_markdown: row.intro_markdown,
+        short_description: row.short_description,
+        starters: serde_json::from_value::<Vec<ConversationStarter>>(row.starters)
+            .unwrap_or_default(),
         system_prompt: row.system_prompt,
         parent_harness_id: row.parent_harness_id,
         default_model_id: row.default_model_id,
@@ -312,6 +316,9 @@ pub fn merge_preview_layer(
         display_name: Some("Preview".to_string()),
         icon: None,
         description: None,
+        intro_markdown: None,
+        short_description: None,
+        starters: Vec::new(),
         system_prompt: (!system_prompt.trim().is_empty()).then(|| system_prompt.to_string()),
         parent_harness_id: None,
         default_model_id: None,
@@ -462,6 +469,9 @@ mod tests {
             display_name: Some(name.to_string()),
             icon: None,
             description: None,
+            intro_markdown: None,
+            short_description: None,
+            starters: serde_json::json!([]),
             system_prompt: None,
             parent_harness_id,
             default_model_id: None,

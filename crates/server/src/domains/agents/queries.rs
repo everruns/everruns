@@ -57,6 +57,12 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_capability::Capabi
         name: row.name,
         display_name: row.display_name,
         description: row.description,
+        intro_markdown: row.intro_markdown,
+        short_description: row.short_description,
+        starters: serde_json::from_value::<Vec<everruns_platform::ConversationStarter>>(
+            row.starters,
+        )
+        .unwrap_or_default(),
         system_prompt: row.system_prompt,
         default_model_id: row.default_model_id,
         harness_id: row.harness_id,

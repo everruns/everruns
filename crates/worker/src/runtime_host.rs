@@ -135,13 +135,22 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
 #[derive(Clone)]
 pub struct WorkerRuntimeHost<A: WorkerAdapters> {
     adapters: A,
+    cancellation: Option<tokio::sync::watch::Receiver<bool>>,
     event_metadata: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
+    pub fn with_turn_cancellation(
+        mut self,
+        cancellation: tokio::sync::watch::Receiver<bool>,
+    ) -> Self {
+        self.cancellation = Some(cancellation);
+        self
+    }
     pub fn new(adapters: A) -> Self {
         Self {
             adapters,
+            cancellation: None,
             event_metadata: None,
         }
     }
@@ -152,6 +161,7 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
     ) -> Self {
         Self {
             adapters,
+            cancellation: None,
             event_metadata: metadata,
         }
     }
@@ -159,6 +169,9 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
 
 #[async_trait]
 impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
+    fn turn_cancellation(&self) -> Option<tokio::sync::watch::Receiver<bool>> {
+        self.cancellation.clone()
+    }
     async fn set_session_status(
         &self,
         org_id: i64,
@@ -248,6 +261,12 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
 
     fn message_store(&self) -> Arc<dyn everruns_core::MessageRetriever> {
         Arc::new(SessionAdapter::new(self.adapters.clone()))
+    }
+
+    fn native_async_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>> {
+        self.adapters.native_async_store()
     }
 
     fn compaction_checkpoint_store(

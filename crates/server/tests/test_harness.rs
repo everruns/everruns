@@ -284,6 +284,7 @@ impl TestServer {
         feature_flags.knowledge = true;
         feature_flags.plugins = true;
         feature_flags.agent_delegation = true;
+        feature_flags.environments = true;
 
         // Org-effective flags are `system && org-opt-in`, so opt the default
         // test org into the experimental flags whose runtime gates now consult
@@ -302,6 +303,9 @@ impl TestServer {
             "agent_delegation",
             "agent_versions",
             "app_budgets",
+            // Platform-managed: the platform enrols an org rather than the org
+            // opting itself in, and seeding the row here is that enrolment.
+            "environments",
         ]
         .into_iter()
         .map(|name| (name.to_string(), true))
@@ -521,6 +525,13 @@ impl TestServer {
             auth_state.clone(),
             feature_flags.clone(),
         );
+        // Environments are gated on the deployment flag, which this harness
+        // turns on above, so integration tests can exercise the routes.
+        let environments_state = api::environments::AppState::new(
+            db.clone(),
+            sessions_state.session_service.clone(),
+            auth_state.clone(),
+        );
         let user_connections_state = api::user_connections::AppState::new(
             db.clone(),
             encryption.clone(),
@@ -568,6 +579,7 @@ impl TestServer {
             None, // No delivery dispatcher in tests
             feature_flags.notifications,
             event_delivery.clone(),
+            "https://example.com/api".to_string(),
         );
         let app_webhooks_state = api::app_webhooks::AppWebhookState::new(
             db.clone(),
@@ -681,6 +693,7 @@ impl TestServer {
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::org_feature_flags::routes(org_feature_flags_state))
+            .merge(api::environments::routes(environments_state))
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::reporting::routes(reporting_state))
             .merge(api::ag_ui::routes(ag_ui_state))

@@ -23,6 +23,9 @@ impl InMemoryDatabase {
             name: input.name,
             display_name: input.display_name,
             description: input.description,
+            intro_markdown: input.intro_markdown,
+            short_description: input.short_description,
+            starters: input.starters,
             system_prompt: input.system_prompt,
             parent_harness_id: input.parent_harness_id,
             default_model_id: input.default_model_id,
@@ -59,6 +62,9 @@ impl InMemoryDatabase {
                 && existing.display_name == input.display_name
                 && existing.icon == input.icon
                 && existing.description == input.description
+                && existing.intro_markdown == input.intro_markdown
+                && existing.short_description == input.short_description
+                && existing.starters == input.starters
                 && existing.system_prompt == input.system_prompt
                 && existing.parent_harness_id == input.parent_harness_id
                 && existing.tags == input.tags
@@ -92,6 +98,9 @@ impl InMemoryDatabase {
             name: input.name,
             display_name: input.display_name,
             description: input.description,
+            intro_markdown: input.intro_markdown,
+            short_description: input.short_description,
+            starters: input.starters,
             system_prompt: input.system_prompt,
             parent_harness_id: input.parent_harness_id,
             default_model_id: input.default_model_id,
@@ -223,6 +232,16 @@ impl InMemoryDatabase {
             }
             if let Some(description) = input.description {
                 harness.description = Some(description);
+            }
+            // None = unchanged; Some(None) = clear; Some(Some(v)) = set.
+            if let Some(intro_markdown) = input.intro_markdown {
+                harness.intro_markdown = intro_markdown;
+            }
+            if let Some(short_description) = input.short_description {
+                harness.short_description = short_description;
+            }
+            if let Some(starters) = input.starters {
+                harness.starters = starters;
             }
             // None = unchanged; Some(None) = clear; Some(Some(v)) = set.
             if let Some(system_prompt) = input.system_prompt {

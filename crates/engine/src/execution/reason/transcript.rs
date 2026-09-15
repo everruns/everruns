@@ -4,6 +4,44 @@ use crate::events::{EventContext, EventRequest, TranscriptRepairAction, Transcri
 use crate::message::{Message, MessageRole};
 use crate::typed_id::SessionId;
 
+/// Native tool results can commit while the assistant is still streaming.
+/// Replay places those results after their owning call without changing events.
+pub(super) fn order_native_results(messages: Vec<Message>) -> Vec<Message> {
+    let owners: std::collections::HashMap<_, _> = messages
+        .iter()
+        .enumerate()
+        .flat_map(|(index, message)| {
+            message
+                .tool_calls()
+                .into_iter()
+                .filter(|call| call.native.is_some())
+                .map(move |call| (call.id.clone(), index))
+        })
+        .collect();
+    let mut early: std::collections::BTreeMap<usize, Vec<Message>> =
+        std::collections::BTreeMap::new();
+    let mut kept = Vec::new();
+    for (index, message) in messages.into_iter().enumerate() {
+        if let Some(owner) = message
+            .tool_call_id()
+            .and_then(|id| owners.get(id))
+            .filter(|owner| **owner > index)
+        {
+            early.entry(*owner).or_default().push(message);
+        } else {
+            kept.push((index, message));
+        }
+    }
+    let mut ordered = Vec::new();
+    for (index, message) in kept {
+        ordered.push(message);
+        if let Some(results) = early.remove(&index) {
+            ordered.extend(results);
+        }
+    }
+    ordered
+}
+
 /// Repair assistant tool calls without matching results before the next model
 /// request. Durable status determines whether replay is safe or the result is
 /// uncertain.
@@ -147,4 +185,34 @@ pub(super) async fn repair_dangling_tool_calls(
     }
 
     result
+}
+
+#[cfg(test)]
+mod native_tests {
+    use super::*;
+    #[test]
+    fn early_native_result_replays_after_its_call_without_synthetic_failure() {
+        let native = everruns_provider::native_async::NativeToolCall::Function {
+            call_id: "original".into(),
+            name: "lookup".into(),
+            arguments: "{}".into(),
+            asynchronous: true,
+        };
+        let mut call = Message::assistant("Independent reasoning");
+        call.content.push(crate::message::ContentPart::ToolCall(
+            crate::message::ToolCallContentPart::from_native(native).unwrap(),
+        ));
+        let output = Message::tool_result("original", Some(serde_json::json!({"answer":42})), None);
+        let ordered = order_native_results(vec![
+            Message::user("lookup"),
+            output.clone(),
+            call.clone(),
+            Message::assistant("Done"),
+        ]);
+        assert_eq!(ordered[1].id, call.id);
+        assert_eq!(ordered[1].content, call.content);
+        assert_eq!(ordered[2].id, output.id);
+        assert_eq!(ordered[2].content, output.content);
+        assert_eq!(ordered.len(), 4);
+    }
 }

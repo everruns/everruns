@@ -27,8 +27,8 @@ use everruns_server::storage::{
     CreateProviderRow, CreateSessionFileRow, CreateSessionRow, CreateSessionScheduleRow,
     CreateUserConnectionRow, CreateUserRow, Database, SessionListFilters, StorageBackend,
     UpdateAgent, UpdateAgentHealthCheckRunRow, UpdateDeclarativeCapability, UpdateEvalRow,
-    UpdateModel, UpdateOrganization, UpdateOrganizationSettings, UpdateProvider, UpdateSession,
-    UpdateSessionFile, UpdateSessionScheduleRow,
+    UpdateMcpServer, UpdateModel, UpdateOrganization, UpdateOrganizationSettings, UpdateProvider,
+    UpdateSession, UpdateSessionFile, UpdateSessionScheduleRow,
 };
 use test_harness::get_database_url;
 
@@ -258,6 +258,9 @@ async fn test_agent_crud() {
                 name: format!("repo-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Repo Test Agent".to_string()),
                 description: Some("Test description".to_string()),
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "Test prompt".to_string(),
                 default_model_id: None,
 
@@ -340,6 +343,9 @@ async fn test_agent_upsert_initial_files() {
                 name: format!("upsert-files-{}", &public_id[..12]),
                 display_name: Some("Upsert Files Agent".to_string()),
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "prompt".to_string(),
                 default_model_id: None,
 
@@ -371,6 +377,9 @@ async fn test_agent_upsert_initial_files() {
                 name: format!("upsert-files-{}", &public_id[..12]),
                 display_name: Some("Upsert Files Agent".to_string()),
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "prompt".to_string(),
                 default_model_id: None,
 
@@ -524,6 +533,9 @@ async fn test_agent_get_by_name() {
                 name: unique_name.clone(),
                 display_name: Some(unique_name.clone()),
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
 
@@ -808,6 +820,9 @@ async fn test_session_crud() {
                 name: format!("session-test-agent-{}", Uuid::now_v7()),
                 display_name: Some("Session Test Agent".to_string()),
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
 
@@ -835,6 +850,9 @@ async fn test_session_crud() {
                 display_name: Some("Repo Test App Harness".to_string()),
                 icon: None,
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: Some("Test".to_string()),
                 parent_harness_id: None,
                 default_model_id: None,
@@ -940,6 +958,9 @@ async fn test_session_crud() {
                 display_name: Some("Repo Test Harness".to_string()),
                 icon: None,
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: Some("Test".to_string()),
                 parent_harness_id: None,
                 default_model_id: None,
@@ -1101,6 +1122,9 @@ async fn test_event_crud() {
                 name: format!("event-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Test Agent".to_string()),
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
 
@@ -1203,6 +1227,9 @@ async fn test_event_exclude_types() {
                 name: format!("event-excl-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Exclude Test Agent".to_string()),
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
 
@@ -1313,6 +1340,9 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
                 name: format!("event-window-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Window Test Agent".to_string()),
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
 
@@ -1417,6 +1447,9 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
                 name: format!("event-anchor-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Anchor Test Agent".to_string()),
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
 
@@ -1537,6 +1570,9 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
                 name: format!("long-history-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Long History Test Agent".to_string()),
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
 
@@ -1766,6 +1802,9 @@ async fn test_event_filter_types() {
                 name: format!("event-filter-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Filter Types Agent".to_string()),
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
 
@@ -2079,6 +2118,9 @@ async fn test_session_file_crud() {
                 name: format!("file-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("File Test Agent".to_string()),
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
 
@@ -2265,6 +2307,168 @@ async fn test_mcp_server_crud() {
     assert!(deleted);
 }
 
+/// EVE-964: deleting an MCP server must release its name.
+///
+/// `delete_mcp_server` archives the row rather than removing it, and the
+/// uniqueness index counted archived rows — so a name was taken forever after
+/// one delete. Visible to real users of archived servers, not only to a test
+/// suite run twice against one database.
+#[tokio::test]
+async fn test_mcp_server_name_is_released_after_delete() {
+    let backend = create_test_backend().await;
+    let name = format!("Recycled MCP Server {}", Uuid::now_v7());
+
+    let first = backend
+        .create_mcp_server(
+            TEST_ORG_ID,
+            CreateMcpServerRow {
+                name: name.clone(),
+                description: None,
+                url: "http://localhost:3000".to_string(),
+                transport_type: "http".to_string(),
+                api_key_encrypted: None,
+                headers: None,
+                settings: None,
+            },
+        )
+        .await
+        .expect("Failed to create MCP server");
+
+    assert!(
+        backend
+            .delete_mcp_server(TEST_ORG_ID, first.id.uuid())
+            .await
+            .expect("delete should not error"),
+        "delete should report a row changed"
+    );
+
+    // The name is free again: creating it a second time must succeed.
+    let second = backend
+        .create_mcp_server(
+            TEST_ORG_ID,
+            CreateMcpServerRow {
+                name: name.clone(),
+                description: None,
+                url: "http://localhost:3000".to_string(),
+                transport_type: "http".to_string(),
+                api_key_encrypted: None,
+                headers: None,
+                settings: None,
+            },
+        )
+        .await
+        .expect("an archived server must not hold its name");
+
+    assert_ne!(second.id, first.id);
+    assert_eq!(second.name, name);
+
+    // Lookup resolves to the live row, not the archived one.
+    let by_name = backend
+        .get_mcp_server_by_name(TEST_ORG_ID, &name)
+        .await
+        .expect("lookup failed")
+        .expect("live server should be found");
+    assert_eq!(
+        by_name.id, second.id,
+        "by-name lookup must resolve the live server, not the archived row"
+    );
+}
+
+/// EVE-964: the uniqueness index was global rather than per-organization, so
+/// one org creating a server named `github` stopped every other org from ever
+/// using that name — and the resulting 409 disclosed that some other tenant
+/// held it.
+#[tokio::test]
+async fn test_mcp_server_names_are_scoped_per_org() {
+    let backend = create_test_backend().await;
+    let name = format!("Shared MCP Name {}", Uuid::now_v7());
+
+    let row = |name: String| CreateMcpServerRow {
+        name,
+        description: None,
+        url: "http://localhost:3000".to_string(),
+        transport_type: "http".to_string(),
+        api_key_encrypted: None,
+        headers: None,
+        settings: None,
+    };
+
+    let first = backend
+        .create_mcp_server(TEST_ORG_ID, row(name.clone()))
+        .await
+        .expect("Failed to create MCP server for the first org");
+
+    let other_org = TEST_ORG_ID + 1;
+    let second = backend
+        .create_mcp_server(other_org, row(name.clone()))
+        .await
+        .expect("a second org must be able to use the same server name");
+
+    assert_ne!(second.id, first.id);
+
+    // Each org sees only its own.
+    assert_eq!(
+        backend
+            .get_mcp_server_by_name(TEST_ORG_ID, &name)
+            .await
+            .expect("lookup failed")
+            .expect("first org's server should be found")
+            .id,
+        first.id
+    );
+    assert_eq!(
+        backend
+            .get_mcp_server_by_name(other_org, &name)
+            .await
+            .expect("lookup failed")
+            .expect("second org's server should be found")
+            .id,
+        second.id
+    );
+}
+
+/// The name stays reserved while the server is merely disabled: a disabled
+/// server is live configuration a user can re-enable, so reusing its name
+/// would create an ambiguous pair.
+#[tokio::test]
+async fn test_mcp_server_name_stays_taken_while_disabled() {
+    let backend = create_test_backend().await;
+    let name = format!("Disabled MCP Server {}", Uuid::now_v7());
+
+    let row = |name: String| CreateMcpServerRow {
+        name,
+        description: None,
+        url: "http://localhost:3000".to_string(),
+        transport_type: "http".to_string(),
+        api_key_encrypted: None,
+        headers: None,
+        settings: None,
+    };
+
+    let first = backend
+        .create_mcp_server(TEST_ORG_ID, row(name.clone()))
+        .await
+        .expect("Failed to create MCP server");
+
+    backend
+        .update_mcp_server(
+            TEST_ORG_ID,
+            first.id.uuid(),
+            UpdateMcpServer {
+                status: Some("disabled".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("Failed to disable MCP server");
+
+    let conflict = backend.create_mcp_server(TEST_ORG_ID, row(name)).await;
+    assert!(
+        conflict.is_err(),
+        "a disabled server must keep its name reserved"
+    );
+}
+
 // ============================================
 // Agent Capability Repository Tests
 // ============================================
@@ -2282,6 +2486,9 @@ async fn test_agent_capabilities() {
                 name: format!("cap-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Capability Test Agent".to_string()),
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
 
@@ -2563,6 +2770,9 @@ async fn test_session_usage_tracking() {
                 name: format!("usage-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Usage Test Agent".to_string()),
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
 
@@ -2674,6 +2884,9 @@ async fn test_session_previews() {
                 name: format!("preview-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Preview Test Agent".to_string()),
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
 
@@ -2992,6 +3205,13 @@ async fn test_model_org_isolation_postgres() {
     );
     assert!(
         backend
+            .get_model_for_mutation(TEST_ORG_ID, model.id.uuid())
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        backend
             .get_model_with_provider(TEST_ORG_ID, model.id.uuid())
             .await
             .unwrap()
@@ -3002,6 +3222,13 @@ async fn test_model_org_isolation_postgres() {
     assert!(
         backend
             .get_model(org2, model.id.uuid())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        backend
+            .get_model_for_mutation(org2, model.id.uuid())
             .await
             .unwrap()
             .is_none()
@@ -3077,6 +3304,13 @@ async fn test_model_provider_reads_fail_closed_on_cross_org_provider_postgres() 
     assert!(
         backend
             .get_model(TEST_ORG_ID, corrupt_model.id.uuid())
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        backend
+            .get_model_for_mutation(TEST_ORG_ID, corrupt_model.id.uuid())
             .await
             .unwrap()
             .is_some()

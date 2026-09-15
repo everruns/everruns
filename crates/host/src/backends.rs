@@ -74,6 +74,8 @@ pub trait RuntimeProviderStore: ProviderStore + Send + Sync {
 /// selection is always resolved from `HostComposition`.
 #[derive(Clone)]
 pub struct HostBackends {
+    /// Optional shared fenced journal for native asynchronous tool execution.
+    pub native_async_store: Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>>,
     /// Harness definitions available to the runtime.
     pub harness_store: Arc<dyn RuntimeHarnessStore>,
     /// Agent definitions available to the runtime.
@@ -125,6 +127,7 @@ impl HostBackends {
             agent_store: Arc::new(InMemoryAgentStore::new()),
             session_store: Arc::new(InMemorySessionStore::new()),
             event_log: Arc::new(InMemoryEventLog::new()),
+            native_async_store: None,
             compaction_checkpoint_store: Arc::new(InMemoryCompactionCheckpointStore::default()),
             provider_store: Arc::new(InMemoryProviderStore::new()),
             event_sink: Arc::new(NoopEventSink),
@@ -156,6 +159,14 @@ impl HostBackends {
     /// Replace the coherent canonical event log.
     pub fn with_event_log(mut self, log: Arc<dyn EventLog>) -> Self {
         self.event_log = log;
+        self
+    }
+
+    pub fn with_native_async_store(
+        mut self,
+        store: Arc<dyn everruns_core::native_async_store::NativeAsyncStore>,
+    ) -> Self {
+        self.native_async_store = Some(store);
         self
     }
 

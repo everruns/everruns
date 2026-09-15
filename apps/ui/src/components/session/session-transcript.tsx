@@ -119,7 +119,7 @@ export function SessionTranscript({
         onScroll={handleScrollUp}
         className={cn(
           "relative flex-1 overflow-y-auto bg-background bg-brand-dots px-3 py-4 sm:px-4",
-          !eventsLoading && chatEvents.length === 0 && "flex flex-col justify-end",
+          !eventsLoading && chatEvents.length === 0 && "flex flex-col justify-center",
         )}
       >
         <ChatMessageList

@@ -4,7 +4,7 @@
 //! platform tool execution path, not in harness amputation.
 
 use everruns_platform::{
-    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole,
+    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, ConversationStarter,
 };
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
@@ -17,6 +17,28 @@ pub fn definition() -> BuiltInHarnessDefinition {
     .with_parent_name("base")
     .with_tags(["chat", "built-in"])
     .with_roles([BuiltInHarnessRole::Chat])
+    .with_intro(
+        "I know your agents, harnesses, models and runs. Ask me anything, or start with one of these:",
+    )
+    .with_short_description("Knows your agents, harnesses, models, and runs.")
+    .with_starters([
+        ConversationStarter {
+            icon: Some("users".to_string()),
+            text: "Show me my agents".to_string(),
+        },
+        ConversationStarter {
+            icon: Some("clock".to_string()),
+            text: "What ran recently?".to_string(),
+        },
+        ConversationStarter {
+            icon: Some("circle-off".to_string()),
+            text: "Why did the last session fail?".to_string(),
+        },
+        ConversationStarter {
+            icon: Some("message-circle".to_string()),
+            text: "What can you do?".to_string(),
+        },
+    ])
     .with_capabilities([
         BuiltInCapabilityDefinition::new("platform"),
         BuiltInCapabilityDefinition::new("btw"),
@@ -201,5 +223,28 @@ mod tests {
         assert!(SYSTEM_PROMPT.contains("returned `setup_url`"));
         assert!(SYSTEM_PROMPT.contains("session-per-invocation"));
         assert!(SYSTEM_PROMPT.contains("bind the `channel_key` parameter of `visti_send`"));
+    }
+
+    #[test]
+    fn platform_chat_seeds_first_run_intro_and_starters() {
+        let seed = definition();
+        assert_eq!(
+            seed.intro_markdown.as_deref(),
+            Some(
+                "I know your agents, harnesses, models and runs. Ask me anything, or start with one of these:"
+            )
+        );
+        assert_eq!(
+            seed.starters
+                .iter()
+                .map(|starter| (starter.icon.as_deref(), starter.text.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                (Some("users"), "Show me my agents"),
+                (Some("clock"), "What ran recently?"),
+                (Some("circle-off"), "Why did the last session fail?"),
+                (Some("message-circle"), "What can you do?"),
+            ]
+        );
     }
 }

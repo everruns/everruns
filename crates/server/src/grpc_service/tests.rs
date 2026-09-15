@@ -419,6 +419,108 @@ async fn test_execute_command_unknown_command_returns_bad_request_kind() {
     assert!(error.message.contains("Unknown command"));
 }
 
+#[tokio::test]
+async fn test_execute_command_sanitizes_database_conflicts_only() {
+    use crate::domains::common::transport_error_test_support::{
+        COMMAND_NAME, RAW_DATABASE_DETAIL, SAFE_DOMAIN_DETAIL,
+    };
+
+    let service = test_worker_service().await;
+    for (kind, expected_message) in [
+        ("database", crate::errors::ALREADY_EXISTS_DETAIL),
+        ("domain", SAFE_DOMAIN_DETAIL),
+    ] {
+        let response = service
+            .execute_command(Request::new(ExecuteCommandRequest {
+                name: COMMAND_NAME.to_string(),
+                api_version: "v1".to_string(),
+                params_json: serde_json::to_vec(&serde_json::json!({ "kind": kind }))
+                    .expect("serialize params"),
+                org_id: everruns_core::DEFAULT_ORG_ID,
+                user_id: None,
+                idempotency_key: None,
+                metadata: Default::default(),
+            }))
+            .await
+            .expect("execute_command should return a structured conflict")
+            .into_inner();
+
+        let proto::execute_command_response::Result::Error(error) =
+            response.result.expect("command result should be present")
+        else {
+            panic!("expected Error response");
+        };
+        assert_eq!(error.kind, 4);
+        assert_eq!(error.message, expected_message);
+        assert!(!error.message.contains(RAW_DATABASE_DETAIL));
+    }
+}
+
+/// THREAT[TM-API-005]: workers copy `status.message()` verbatim into runtime errors
+/// (`grpc_status_to_error`), so a storage error embedded in a Status reaches worker
+/// logs and durable failure records. Force a real storage failure on the direct RPCs
+/// and assert the client only ever sees the stable generic message.
+#[tokio::test]
+async fn direct_worker_rpcs_do_not_leak_storage_errors() {
+    use crate::storage::backend::FORCED_STORAGE_FAILURE;
+
+    let service = test_worker_service().await;
+    let uuid = uuid::Uuid::now_v7();
+    let id = proto::Uuid {
+        value: uuid.to_string(),
+    };
+
+    service.db.force_storage_failure("get_agent_by_public_id");
+    let agent = service
+        .get_agent(Request::new(GetAgentRequest {
+            agent_id: Some(id.clone()),
+            org_id: everruns_core::DEFAULT_ORG_ID,
+        }))
+        .await
+        .expect_err("forced storage failure must surface as an error");
+
+    service.db.force_storage_failure("get_harness");
+    let harness = service
+        .get_harness(Request::new(GetHarnessRequest {
+            harness_id: Some(id),
+            org_id: everruns_core::DEFAULT_ORG_ID,
+        }))
+        .await
+        .expect_err("forced storage failure must surface as an error");
+
+    service.db.force_storage_failure("get_session");
+    let authorize = service
+        .authorize_session_creation(Request::new(AuthorizeSessionCreationRequest {
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            session_id: everruns_provider::typed_id::SessionId::from_uuid(uuid).to_string(),
+        }))
+        .await
+        .expect_err("forced storage failure must surface as an error");
+
+    for (rpc, status, expected) in [
+        ("get_agent", agent, "Failed to get agent"),
+        ("get_harness", harness, "Failed to get harness"),
+        (
+            "authorize_session_creation",
+            authorize,
+            "Failed to load session",
+        ),
+    ] {
+        assert_eq!(status.code(), tonic::Code::Internal, "{rpc} code");
+        assert_eq!(status.message(), expected, "{rpc} message");
+        assert!(
+            !status.message().contains(FORCED_STORAGE_FAILURE),
+            "{rpc} leaked the source error"
+        );
+        for fragment in ["sqlx", "relation", "connection/mod.rs"] {
+            assert!(
+                !status.message().contains(fragment),
+                "{rpc} leaked {fragment:?}"
+            );
+        }
+    }
+}
+
 async fn create_grpc_test_session(service: &WorkerServiceImpl) -> proto::Session {
     let harness = service
         .platform_list_harnesses(Request::new(PlatformListHarnessesRequest {
@@ -762,6 +864,9 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
                 name: "grpc-handoff-target".to_string(),
                 display_name: Some("gRPC Handoff Target".to_string()),
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "You complete test handoffs.".to_string(),
                 default_model_id: None,
                 harness_id: parent_harness_id,

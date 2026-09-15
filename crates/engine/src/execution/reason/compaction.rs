@@ -918,6 +918,7 @@ pub(super) async fn apply_reactive_compaction(
         if !to_summarize.is_empty() {
             let summary_messages = vec![
                 LlmMessage {
+                    native_tool_calls: Vec::new(),
                     role: LlmMessageRole::System,
                     content: LlmMessageContent::Text(context.policy.summarization_prompt()),
                     tool_calls: None,
@@ -927,6 +928,7 @@ pub(super) async fn apply_reactive_compaction(
                     configuration_update: None,
                 },
                 LlmMessage {
+                    native_tool_calls: Vec::new(),
                     role: LlmMessageRole::User,
                     content: LlmMessageContent::Text(
                         context

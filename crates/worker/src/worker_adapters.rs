@@ -265,6 +265,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         &self,
     ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>;
 
+    fn native_async_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>> {
+        None
+    }
+
     fn compaction_checkpoint_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {

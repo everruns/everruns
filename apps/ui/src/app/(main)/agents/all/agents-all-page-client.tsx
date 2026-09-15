@@ -35,12 +35,10 @@ export default function AgentsAllPageClient() {
         actions={
           <>
             <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
-            <Link href="/agents/new">
-              <Button variant="accent">
-                <Plus className="size-4" />
-                New agent
-              </Button>
-            </Link>
+            <Button variant="accent" render={<Link href="/agents/new" />}>
+              <Plus className="size-4" />
+              New agent
+            </Button>
           </>
         }
       />
@@ -57,12 +55,10 @@ export default function AgentsAllPageClient() {
                 icon={<Boxes />}
                 title="No agents yet"
                 action={
-                  <Link href="/agents/new">
-                    <Button variant="accent">
-                      <Plus className="size-4" />
-                      Create your first agent
-                    </Button>
-                  </Link>
+                  <Button variant="accent" render={<Link href="/agents/new" />}>
+                    <Plus className="size-4" />
+                    Create your first agent
+                  </Button>
                 }
               />
             }

@@ -1585,6 +1585,7 @@ fn apply_observation_masking_with_protected(
                 MaskingSummaryFormat::HeadTail => format_head_tail_summary(&msg.content),
             };
             result.push(LlmMessage {
+                native_tool_calls: Vec::new(),
                 role: LlmMessageRole::Tool,
                 content: LlmMessageContent::Text(summary),
                 tool_calls: msg.tool_calls.clone(),
@@ -1773,6 +1774,7 @@ fn truncate_at_char_boundary(content: &str, max_bytes: usize) -> &str {
 /// Build a summary system message that replaces compacted messages in context.
 pub fn build_summary_message(summary_text: &str) -> LlmMessage {
     LlmMessage {
+        native_tool_calls: Vec::new(),
         role: LlmMessageRole::System,
         content: LlmMessageContent::Text(format!(
             "[CONVERSATION_SUMMARY]\n{summary_text}\n[/CONVERSATION_SUMMARY]"
@@ -1844,6 +1846,7 @@ mod tests {
 
     fn make_user_msg(text: &str) -> LlmMessage {
         LlmMessage {
+            native_tool_calls: Vec::new(),
             role: LlmMessageRole::User,
             content: LlmMessageContent::Text(text.to_string()),
             tool_calls: None,
@@ -1856,6 +1859,7 @@ mod tests {
 
     fn make_assistant_msg(text: &str) -> LlmMessage {
         LlmMessage {
+            native_tool_calls: Vec::new(),
             role: LlmMessageRole::Assistant,
             content: LlmMessageContent::Text(text.to_string()),
             tool_calls: None,
@@ -1868,6 +1872,7 @@ mod tests {
 
     fn make_assistant_with_tool_call(call_id: &str, tool_name: &str) -> LlmMessage {
         LlmMessage {
+            native_tool_calls: Vec::new(),
             role: LlmMessageRole::Assistant,
             content: LlmMessageContent::Text(String::new()),
             tool_calls: Some(vec![ToolCall {
@@ -1884,6 +1889,7 @@ mod tests {
 
     fn make_assistant_with_tool_calls(calls: &[(&str, &str)]) -> LlmMessage {
         LlmMessage {
+            native_tool_calls: Vec::new(),
             role: LlmMessageRole::Assistant,
             content: LlmMessageContent::Text(String::new()),
             tool_calls: Some(
@@ -1905,6 +1911,7 @@ mod tests {
 
     fn make_tool_result(call_id: &str, output: &str) -> LlmMessage {
         LlmMessage {
+            native_tool_calls: Vec::new(),
             role: LlmMessageRole::Tool,
             content: LlmMessageContent::Text(output.to_string()),
             tool_calls: None,

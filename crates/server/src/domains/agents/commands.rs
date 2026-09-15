@@ -28,6 +28,7 @@ use utoipa::ToSchema;
 use crate::api::validation::{
     MAX_AGENT_CAPABILITIES, MAX_AGENT_DESCRIPTION_BYTES, MAX_AGENT_NAME_BYTES,
     MAX_AGENT_SYSTEM_PROMPT_BYTES, MAX_INITIAL_FILES, MAX_INITIAL_FILES_TOTAL_BYTES,
+    check_platform_chat_content,
 };
 
 const MAX_AUTO_SNAPSHOTS_PER_AGENT: i64 = 50;
@@ -49,6 +50,12 @@ fn validate_create_limits(req: &CreateAgentRequest) -> Result<(), CommandError> 
     {
         return Err(CommandError::bad_request("Input exceeds allowed limits"));
     }
+    check_platform_chat_content(
+        req.intro_markdown.as_deref(),
+        req.short_description.as_deref(),
+        &req.starters,
+    )
+    .map_err(CommandError::bad_request)?;
     Ok(())
 }
 
@@ -80,6 +87,12 @@ fn validate_update_limits(req: &UpdateAgentRequest) -> Result<(), CommandError> 
     {
         return Err(CommandError::bad_request("Input exceeds allowed limits"));
     }
+    check_platform_chat_content(
+        req.intro_markdown.as_ref().and_then(|v| v.as_deref()),
+        req.short_description.as_ref().and_then(|v| v.as_deref()),
+        req.starters.as_deref().unwrap_or_default(),
+    )
+    .map_err(CommandError::bad_request)?;
     Ok(())
 }
 
@@ -341,6 +354,9 @@ impl Command for CreateAgent {
                 name: req.name,
                 display_name: req.display_name,
                 description: req.description,
+                intro_markdown: req.intro_markdown,
+                short_description: req.short_description,
+                starters: serde_json::to_value(&req.starters).unwrap_or(serde_json::json!([])),
                 system_prompt: req.system_prompt,
                 default_model_id,
                 harness_id,
@@ -374,6 +390,9 @@ impl Command for CreateAgent {
                 name: req.name,
                 display_name: req.display_name,
                 description: req.description,
+                intro_markdown: req.intro_markdown,
+                short_description: req.short_description,
+                starters: serde_json::to_value(&req.starters).unwrap_or(serde_json::json!([])),
                 system_prompt: req.system_prompt,
                 default_model_id,
                 harness_id,
@@ -675,6 +694,11 @@ impl Command for UpdateAgentCmd {
             name: req.name,
             display_name: req.display_name,
             description: req.description,
+            intro_markdown: req.intro_markdown,
+            short_description: req.short_description,
+            starters: req
+                .starters
+                .map(|starters| serde_json::to_value(&starters).unwrap_or(serde_json::json!([]))),
             system_prompt: req.system_prompt,
             default_model_id,
             harness_id,
@@ -918,6 +942,9 @@ impl Command for UpsertAgent {
             name: req.name,
             display_name: req.display_name,
             description: req.description,
+            intro_markdown: req.intro_markdown,
+            short_description: req.short_description,
+            starters: serde_json::to_value(&req.starters).unwrap_or(serde_json::json!([])),
             system_prompt: req.system_prompt,
             default_model_id,
             harness_id,
@@ -1024,6 +1051,9 @@ impl Command for CopyAgent {
             name: copy_name,
             display_name: source.display_name.map(|d| format!("{d} (copy)")),
             description: source.description,
+            intro_markdown: None,
+            short_description: None,
+            starters: Vec::new(),
             system_prompt: source.system_prompt,
             default_model_id: source.default_model_id,
             harness_id: Some(source.harness_id),
@@ -1735,6 +1765,9 @@ impl Command for ForkAgentVersion {
             name: fork.name.clone(),
             display_name: fork.display_name.clone(),
             description: fork.description.clone(),
+            intro_markdown: None,
+            short_description: None,
+            starters: Vec::new(),
             system_prompt: fork.system_prompt.clone(),
             default_model_id: fork.default_model_id,
             harness_id: Some(fork.harness_id),
@@ -2201,6 +2234,9 @@ mod tests {
             name,
             display_name: None,
             description: None,
+            intro_markdown: None,
+            short_description: None,
+            starters: Vec::new(),
             system_prompt: "test".to_string(),
             default_model_id: None,
             harness_id: None,
@@ -2222,6 +2258,9 @@ mod tests {
             name: name.to_string(),
             display_name: None,
             description: None,
+            intro_markdown: None,
+            short_description: None,
+            starters: Vec::new(),
             system_prompt: "initial prompt".to_string(),
             default_model_id: None,
             harness_id: None,
@@ -2242,6 +2281,9 @@ mod tests {
             name: None,
             display_name: None,
             description: None,
+            intro_markdown: None,
+            short_description: None,
+            starters: None,
             system_prompt: Some(system_prompt.to_string()),
             default_model_id: None,
             harness_id: None,
@@ -2266,6 +2308,9 @@ mod tests {
                 display_name: Some(name.to_string()),
                 icon: None,
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: Some("test harness".to_string()),
                 parent_harness_id: None,
                 default_model_id: None,
@@ -2316,6 +2361,9 @@ mod tests {
                 name: None,
                 display_name: Some("renamed".to_string()),
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: None,
                 system_prompt: None,
                 default_model_id: None,
                 harness_id: None,
@@ -2527,6 +2575,9 @@ mod tests {
                 name: None,
                 display_name: None,
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: None,
                 system_prompt: None,
                 default_model_id: None,
                 harness_id: None,

@@ -1,10 +1,10 @@
-// App api_endpoint ingress — native session routes authenticated by an
-// app-scoped, execution-only API key (`evr_app_...`).
+// App api_endpoint ingress — native session routes authenticated by a
+// channel-scoped, execution-only API key (`evr_app_...`).
 //
-// Design Decision: api_endpoint channels are app-scoped and channel-scoped
-// (`/v1/apps/{app_id}/api/{channel_id}/...`) so a single app can expose
-// multiple execution keys with independent session routing and rate limits.
-// The key is structurally execution-only: it reaches only these app-mounted
+// Design Decision: api_endpoint channels use `/v1/e/{channel_id}/sessions/...`
+// so a single app can expose multiple execution keys with independent session
+// routing and rate limits. App-and-channel routes remain permanent aliases.
+// The key is structurally execution-only: it reaches only these execution
 // routes and has no path to any management API. Every session it touches is
 // confined to the channel by routing tags (TM-APIKEY-002).
 //
@@ -98,7 +98,182 @@ pub fn routes(state: AppApiState) -> Router {
             "/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/cancel",
             post(cancel_session),
         )
+        .route("/v1/e/{channel_id}/sessions", post(create_session_endpoint))
+        .route(
+            "/v1/e/{channel_id}/sessions/{session_id}",
+            get(get_session_endpoint),
+        )
+        .route(
+            "/v1/e/{channel_id}/sessions/{session_id}/messages",
+            post(post_message_endpoint),
+        )
+        .route(
+            "/v1/e/{channel_id}/sessions/{session_id}/cancel",
+            post(cancel_session_endpoint),
+        )
         .with_state(state)
+}
+
+async fn endpoint_app_id(
+    state: &AppApiState,
+    channel_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    crate::api::app_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
+        .await
+        .map_err(internal_error)?
+        .map(|(app, _)| app.public_id.to_string())
+        .ok_or_else(not_found)
+}
+
+#[utoipa::path(
+    description = "Create a session through an api_endpoint channel. Authenticate with the channel bearer key or configured endpoint auth.",
+    post,
+    path = "/v1/e/{channel_id}/sessions",
+    params(("channel_id" = String, Path, description = "api_endpoint channel ID")),
+    request_body = MessageBody,
+    responses(
+        (status = 201, description = "Session created and message dispatched", body = SessionRef),
+        (status = 401, description = "Missing or invalid endpoint credentials", body = ErrorResponse),
+        (status = 403, description = "App not published or channel disabled", body = ErrorResponse),
+        (status = 404, description = "Endpoint not found", body = ErrorResponse),
+        (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse)
+    ),
+    tag = "apps"
+)]
+pub async fn create_session_endpoint(
+    State(state): State<AppApiState>,
+    Path(channel_id): Path<String>,
+    req_id: Option<Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    body: Json<MessageBody>,
+) -> Response {
+    let app_id = match endpoint_app_id(&state, &channel_id).await {
+        Ok(app_id) => app_id,
+        Err(err) => return err.into_response(),
+    };
+    create_session(
+        State(state),
+        Path((app_id, channel_id)),
+        req_id,
+        connect_info,
+        headers,
+        body,
+    )
+    .await
+}
+
+#[utoipa::path(
+    description = "Post a follow-up message to a session owned by an api_endpoint channel.",
+    post,
+    path = "/v1/e/{channel_id}/sessions/{session_id}/messages",
+    params(
+        ("channel_id" = String, Path, description = "api_endpoint channel ID"),
+        ("session_id" = String, Path, description = "Session ID")
+    ),
+    request_body = MessageBody,
+    responses(
+        (status = 202, description = "Follow-up message dispatched", body = SessionRef),
+        (status = 401, description = "Missing or invalid endpoint credentials", body = ErrorResponse),
+        (status = 403, description = "App not published or channel disabled", body = ErrorResponse),
+        (status = 404, description = "Endpoint or session not found, or session not owned by this channel", body = ErrorResponse),
+        (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse)
+    ),
+    tag = "apps"
+)]
+pub async fn post_message_endpoint(
+    State(state): State<AppApiState>,
+    Path((channel_id, session_id)): Path<(String, String)>,
+    req_id: Option<Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    body: Json<MessageBody>,
+) -> Response {
+    let app_id = match endpoint_app_id(&state, &channel_id).await {
+        Ok(app_id) => app_id,
+        Err(err) => return err.into_response(),
+    };
+    post_message(
+        State(state),
+        Path((app_id, channel_id, session_id)),
+        req_id,
+        connect_info,
+        headers,
+        body,
+    )
+    .await
+}
+
+#[utoipa::path(
+    description = "Get derived status and completed agent messages for a session owned by an api_endpoint channel.",
+    get,
+    path = "/v1/e/{channel_id}/sessions/{session_id}",
+    params(
+        ("channel_id" = String, Path, description = "api_endpoint channel ID"),
+        ("session_id" = String, Path, description = "Session ID")
+    ),
+    responses(
+        (status = 200, description = "Derived session status and completed agent messages", body = SessionStatus),
+        (status = 401, description = "Missing or invalid endpoint credentials", body = ErrorResponse),
+        (status = 403, description = "App not published or channel disabled", body = ErrorResponse),
+        (status = 404, description = "Endpoint or session not found, or session not owned by this channel", body = ErrorResponse),
+        (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse)
+    ),
+    tag = "apps"
+)]
+pub async fn get_session_endpoint(
+    State(state): State<AppApiState>,
+    Path((channel_id, session_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+) -> Response {
+    let app_id = match endpoint_app_id(&state, &channel_id).await {
+        Ok(app_id) => app_id,
+        Err(err) => return err.into_response(),
+    };
+    get_session(
+        State(state),
+        Path((app_id, channel_id, session_id)),
+        headers,
+        connect_info,
+    )
+    .await
+}
+
+#[utoipa::path(
+    description = "Cancel the active turn for a session owned by an api_endpoint channel.",
+    post,
+    path = "/v1/e/{channel_id}/sessions/{session_id}/cancel",
+    params(
+        ("channel_id" = String, Path, description = "api_endpoint channel ID"),
+        ("session_id" = String, Path, description = "Session ID")
+    ),
+    responses(
+        (status = 200, description = "In-flight turn canceled", body = SessionRef),
+        (status = 401, description = "Missing or invalid endpoint credentials", body = ErrorResponse),
+        (status = 403, description = "App not published or channel disabled", body = ErrorResponse),
+        (status = 404, description = "Endpoint or session not found, or session not owned by this channel", body = ErrorResponse),
+        (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse)
+    ),
+    tag = "apps"
+)]
+pub async fn cancel_session_endpoint(
+    State(state): State<AppApiState>,
+    Path((channel_id, session_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+) -> Response {
+    let app_id = match endpoint_app_id(&state, &channel_id).await {
+        Ok(app_id) => app_id,
+        Err(err) => return err.into_response(),
+    };
+    cancel_session(
+        State(state),
+        Path((app_id, channel_id, session_id)),
+        headers,
+        connect_info,
+    )
+    .await
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
@@ -543,40 +718,63 @@ fn content_parts_to_text(parts: &[ContentPart]) -> String {
 /// Cancel the in-flight workflow turn for a session and emit a synthetic
 /// `turn.cancelled` event so subsequent reads observe the canceled state.
 /// Mirrors the A2A `tasks/cancel` behavior.
-async fn cancel_session_turn(
-    state: &AppApiState,
+/// Cancel a session's in-flight turn and record it as cancelled.
+///
+/// Shared by every internal caller that cancels on a user's behalf — the app
+/// API endpoint and the Slack stop button (EVE-976) — so the terminal-state
+/// race guard below cannot drift between them.
+///
+/// `reason` names the caller and reaches only the stored event, never the user;
+/// the Slack notice EVE-966 posts is a fixed string.
+pub(crate) async fn cancel_session_turn_for(
+    db: &Arc<StorageBackend>,
+    message_service: &Arc<MessageService>,
     session_id: everruns_provider::typed_id::SessionId,
+    reason: &str,
 ) -> anyhow::Result<()> {
     use everruns_core::events::{EventContext, EventRequest, TurnCancelledData};
     use everruns_provider::typed_id::{MessageId, TurnId};
 
-    if let Err(err) = state.message_service.runner().cancel_run(session_id).await {
-        tracing::warn!(session_id = %session_id, error = %err, "api_endpoint cancel: cancel_run failed");
+    if let Err(err) = message_service.runner().cancel_run(session_id).await {
+        tracing::warn!(session_id = %session_id, error = %err, "{reason}: cancel_run failed");
     }
 
     // Skip emission if the turn already reached a terminal state, so a real
     // completed/failed turn is not race-flipped to canceled.
-    let (status, _) = read_session_output(&state.db, session_id).await?;
+    let (status, _) = read_session_output(db, session_id).await?;
     if matches!(status, "completed" | "failed" | "canceled") {
         return Ok(());
     }
 
     let turn_id = TurnId::from_uuid(session_id.uuid());
     let input_message_id = MessageId::new();
-    let event_service = state.message_service.event_service();
+    let event_service = message_service.event_service();
     let cancelled_event = EventRequest::new(
         session_id,
         EventContext::turn(turn_id, input_message_id),
         TurnCancelledData {
             turn_id,
-            reason: Some("api_endpoint cancel".to_string()),
+            reason: Some(reason.to_string()),
             usage: None,
         },
     );
     if let Err(err) = event_service.emit(cancelled_event).await {
-        tracing::warn!(session_id = %session_id, error = %err, "api_endpoint cancel: emit turn.cancelled failed");
+        tracing::warn!(session_id = %session_id, error = %err, "{reason}: emit turn.cancelled failed");
     }
     Ok(())
+}
+
+async fn cancel_session_turn(
+    state: &AppApiState,
+    session_id: everruns_provider::typed_id::SessionId,
+) -> anyhow::Result<()> {
+    cancel_session_turn_for(
+        &state.db,
+        &state.message_service,
+        session_id,
+        "api_endpoint cancel",
+    )
+    .await
 }
 
 fn command_error_response(

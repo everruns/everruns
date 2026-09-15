@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC001 App detail channels-first view"
+title: "TC001: App detail channels-first view"
 description: "Verifies the App detail page renders a channels-first operations view after App schedules have moved to agent triggers."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - apps
 ---
-# TC001 App detail channels-first view
+# TC001: App detail channels-first view
 
 ## Description
 

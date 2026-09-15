@@ -10,7 +10,7 @@ tags:
 
 ## Abstract
 
-Messaging integrations connect agents to external messaging platforms (Slack, Discord, Teams, Telegram). A shared abstraction layer decouples platform-specific protocols from the core runtime: channel adapters translate inbound platform events into `InboundChannelEvent`, route them to sessions via `SessionRoutingStrategy`, and deliver agent output back via `ChannelDeliveryAdapter`. Multi-user threads are tracked via `ThreadContext` with per-message `ExternalActor` attribution.
+Messaging integrations connect agents to external messaging platforms (Slack, Discord, Teams, Telegram). A shared abstraction layer decouples platform-specific protocols from the core runtime: channel adapters translate inbound platform events into `InboundChannelEvent`, route them to sessions via `SessionBinding`, and deliver agent output back via `ChannelDeliveryAdapter`. Multi-user threads are tracked via `ThreadContext` with per-message `ExternalActor` attribution.
 
 ## Design Decisions
 
@@ -54,9 +54,9 @@ See `crates/core/src/channel.rs` for full definitions.
 
 | Type | Purpose |
 |------|---------|
-| `SessionRoutingStrategy` | PerThread (default), PerChannel, PerUser |
+| `SessionBinding` | Thread (default), Conversation, Requester, Endpoint, Ephemeral |
 | `ChannelReplyMode` | AllMessages (default), ReportProgressOnly |
-| `build_session_routing_tag()` | Generates `{platform}:{strategy}:{ref}` session tag |
+| `build_session_routing_tag()` | Generates `{platform}:{thread\|channel\|user}:{ref}` session tag. The segment keeps the pre-EVE-1005 word, not the binding name: renaming it orphans live sessions. |
 
 ## Adapter Lifecycle
 
@@ -69,8 +69,29 @@ See `crates/core/src/channel.rs` for full definitions.
 6. Optional: send_ack() for async mode ("On it.")
 7. Agent runs asynchronously...
 8. Event notification → deliver(OutboundChannelMessage) → platform API
-9. Turn ends → unregister delivery
+9. Turn ends (completed/failed/cancelled) → post a terminal notice if nothing
+   was delivered, then unregister
 ```
+
+A turn that ends without a delivered reply must still say so in the thread. A
+failed turn, a cancellation, a turn that produced no text, and a reply the
+platform refused are all indistinguishable from a hung agent otherwise — the
+user sees only the message they sent. The notice is one status line with a link
+back to the session; the failure text stays server-side because these threads
+are frequently public. See `terminal_notice` in
+[`crates/server/src/slack_delivery.rs`](../../crates/server/src/slack_delivery.rs).
+
+Where a platform streams, the stream is per *output message*, not per turn: a turn
+that produces three messages with tool calls between them is three streams, so the
+reader sees three replies rather than one concatenated blob. Every terminal state
+closes any stream still open — an unstopped stream is a message left spinning in
+the client forever, which is worse than the silence above. Flush cadence belongs
+next to its constant with the measurement that chose it, because the documented
+rate-limit tier is a floor rather than the real ceiling.
+
+Cancellation is session-scoped, not turn-scoped: both cancel paths mint a fresh
+`input_message_id` for the synthetic `turn.cancelled` event, so a delivery that
+matches it per-turn never unregisters.
 
 ## Messaging Integration Parity Requirements
 
@@ -80,7 +101,7 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 |---|---|
 | **SPEC.md** | Co-located spec (`crates/server/specs/{platform}-integration.md`): architecture, webhook flow, security review. |
 | **Inbound adapter** | Parse platform webhook into `InboundChannelEvent`. Use `build_session_routing_tag()` for session lookup. Track participants via `ThreadContext`. |
-| **Delivery adapter** | Implement `ChannelDeliveryAdapter` trait for outbound message delivery. Handle retry with exponential backoff. |
+| **Delivery adapter** | Implement `ChannelDeliveryAdapter` trait for outbound message delivery. Handle retry with exponential backoff. Every outbound message goes through the trait, and transient-vs-permanent classification lives in the adapter alone — a dispatcher that also classifies lets the two lists drift apart. |
 | **Signing/auth verification** | Platform-specific request authentication (e.g. HMAC signing secret for Slack, Ed25519 for Discord). |
 | **Unit tests** | Webhook parsing, signature verification, session tag construction, delivery text extraction, bot message filtering. |
 | **Integration tests** | `crates/server/tests/{platform}_integration_test.rs`, webhook→session→message flows against in-memory storage. |
@@ -91,6 +112,13 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 | **User docs** | `docs/integrations/{platform}.md`, setup guide, scopes, session strategies, reply modes. |
 | **UI test case** | `knowledge/test-cases/ui/{platform}_app/TC001_*.md`, manual test for app creation, webhook verification, message flow. |
 | **Threat model** | Section in `knowledge/security/threat-model.md` covering platform-specific threats (signing bypass, bot loops, replay). |
+| **Thread backfill** | When a new session joins an existing thread, backfill its history by following the platform's pagination cursor to the end — a single page is a silent truncation. Cap what is injected, and say so in the injected context when the cap bites, so the agent can tell a short thread from the tail of a long one. Backfill only where "new session" and "thread the agent has not seen" mean the same thing (for Slack, `per_thread` alone). |
+| **Rich message rendering** | Agent output is Markdown. Post it through whatever rich-text primitive the platform offers (Slack: a `markdown` block) rather than the plain-text field, whose dialect is invariably smaller — tables, headings and fenced code are exactly what degrades. Keep the plain field populated as the notification fallback. Split past the platform's size limit rather than truncating, on a boundary that does not break a code fence. |
+| **Message correlation** | Stamp the session and input message id onto every posted message using the platform's metadata facility, so a platform message maps back to the run that produced it without tag-string heuristics. |
+| **Thread context** | Persist a `ThreadContext` per session (participants, and where the user is looking when the platform reports it) and surface it as *conversation context*, never as system prompt — participant names and platform view reports are external user-controlled strings. Accumulate across messages and survive a restart. A platform signal that changes often (Slack: `app_context_changed`) updates the record rather than minting an event per change. Store it under the reserved session KV key `channel:thread_context`, which `session_storage` withholds from the agent-facing `kv_store` tool so a session actor cannot forge its own context. |
+| **Inbound control signals** | A platform stop/cancel control is not a message: keep its blast radius fixed at cancel-only, resolve the session through the same app-scoped lookup inbound messages use (so another app's thread resolves nothing), and route it through the shared cancel path that checks terminal state first — a stop for a finished turn is a no-op, not an error. Let the terminal-state notice be the user's confirmation rather than posting a second one. |
+| **Terminal-state notice** | A turn ending without a delivered reply posts exactly one status line with a session link (see Adapter Lifecycle). |
+| **Streaming (optional)** | Implement `ChannelStreamDelivery` and return it from `ChannelDeliveryAdapter::streaming()`. A platform without progressive delivery returns `None` and keeps discrete posting — the capability is probed, not required. One stream per output message, closed on every terminal state. |
 | **Startup recovery** | Re-register active deliveries after server restart (query sessions with `{platform}:*` tags). |
 | **DEV_MODE fallback** | Polling-based delivery when EventNotificationBroadcaster is unavailable (in-memory mode). |
 
@@ -124,8 +152,10 @@ Reference implementation. See [`crates/server/specs/slack-integration.md`](../..
 - Signing: HMAC-SHA256 via `signing_secret`
 - Session strategies: `per_thread`, `per_channel`, `per_user`
 - Reply modes: `all_messages`, `report_progress_only`
-- Thread context injection via `conversations.replies` API
+- Thread context injection via paginated `conversations.replies` (`per_thread` only, capped with a truncation notice)
 - Event-driven delivery via `SlackDeliveryAdapter` (implements `ChannelDeliveryAdapter`)
+- Replies rendered as `markdown` blocks, split (not truncated) past Slack's block limit, stamped with session/message `metadata`
+- Thread context (participants + current view) persisted per session, rendered by the `channel_context` capability
 - Startup recovery: re-registers active sessions with `slack:*` tags
 - DEV_MODE: falls back to 120s polling
 
@@ -152,7 +182,7 @@ The plumbing exists (`Capability::tools()` returns `Vec<Box<dyn Tool>>`), but no
 ## Files
 
 - `crates/core/src/channel.rs`, All types and traits defined here
-- `crates/platform/src/app.rs`, `SlackChannelConfig`, `SessionStrategy` (→ `SessionRoutingStrategy`), `SlackReplyMode` (→ `ChannelReplyMode`)
+- `crates/platform/src/app.rs`, `SlackChannelConfig`, `session_strategy: SessionBinding`, `SlackReplyMode` (→ `ChannelReplyMode`)
 - `crates/core/src/progress_reporting.rs`, Generalized tag handling, backward compat
 - `crates/core/src/lib.rs`, Module registration and re-exports
 - `crates/server/src/messaging/`, Platform-specific webhook handlers and delivery adapters

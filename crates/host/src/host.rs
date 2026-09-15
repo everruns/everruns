@@ -141,6 +141,10 @@ pub struct ResolvedTurnInputs {
 /// engine itself remains outside this crate.
 #[async_trait]
 pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
+    /// Durable task cancellation/ownership loss, scoped to this execution.
+    fn turn_cancellation(&self) -> Option<tokio::sync::watch::Receiver<bool>> {
+        None
+    }
     /// Session status mutation is a host effect, separate from execution
     /// inputs: it exposes no stored Session record to the engine.
     async fn set_session_status(
@@ -178,6 +182,12 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     fn provider_store(&self, org_id: i64) -> Arc<dyn ProviderStore>;
 
     fn message_store(&self) -> Arc<dyn MessageRetriever>;
+
+    fn native_async_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>> {
+        None
+    }
 
     fn compaction_checkpoint_store(
         &self,
@@ -570,6 +580,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             session.workspace_id,
         )),
         model: None,
+        session_storage: None,
     };
     let collected = collect_capabilities_with_configs(
         &resolved.resolved_capability_configs,
@@ -1282,6 +1293,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
             )
             .await?;
         return Ok(ReasonResult {
+            native_counts: None,
             success: false,
             text: blocker.message().to_string(),
             tool_calls: vec![],
@@ -1329,6 +1341,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
                     )
                     .await?;
                 return Ok(ReasonResult {
+                    native_counts: None,
                     success: false,
                     text: user_message.unwrap_or_else(|| reason.clone()),
                     tool_calls: vec![],
@@ -1441,6 +1454,10 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         adapter.driver_registry(),
     )
     .with_file_store(adapter.file_store());
+    let context_resolver = match adapter.storage_store() {
+        Some(store) => context_resolver.with_session_storage(store),
+        None => context_resolver,
+    };
     let mut atom = ReasonAtom::new(
         context_resolver,
         adapter.message_store(),
@@ -1491,6 +1508,10 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         &adapter.driver_registry(),
         &turn_inputs.mcp_tool_definitions,
         Some(adapter.file_store()),
+        // Lets `channel_context` read the session's persisted ThreadContext at
+        // prompt-assembly time (EVE-977). `None` when the adapter has no store;
+        // the capability then contributes nothing.
+        adapter.storage_store(),
     )
     .await?;
     let input = ReasonInput {
@@ -1528,7 +1549,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         emit_model_change_if_switched(adapter, org_id, &input, &assembled).await;
     }
 
-    atom.execute_with_assembled_context(input, assembled).await
+    crate::native_async::execute_reason(adapter, org_id, input, assembled, atom).await
 }
 
 /// Emit `session.model.changed` when this turn's input selects a model

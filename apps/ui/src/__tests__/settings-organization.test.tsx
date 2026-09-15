@@ -20,14 +20,18 @@ jest.mock("next/navigation", () => ({
   }),
 }));
 
+const ROLE_LEVELS: Record<string, number> = { owner: 3, admin: 2, member: 1 };
+let viewerRole: "owner" | "admin" | "member" = "owner";
+
 jest.mock("@/providers/org-provider", () => ({
   useOrg: () => ({
-    currentOrg: { public_id: "org-1", name: "Current Org", role: "owner" },
+    currentOrg: { public_id: "org-1", name: "Current Org", role: viewerRole },
     organizations: [
-      { public_id: "org-1", name: "Current Org", role: "owner" },
+      { public_id: "org-1", name: "Current Org", role: viewerRole },
       { public_id: "org-2", name: "Second Org", role: "member" },
     ],
     setCurrentOrg: mockSetCurrentOrg,
+    hasRole: (required: string) => (ROLE_LEVELS[viewerRole] ?? 0) >= (ROLE_LEVELS[required] ?? 0),
   }),
 }));
 
@@ -63,8 +67,21 @@ jest.mock("@/hooks", () => ({
 }));
 
 jest.mock("@/components/models/model-picker", () => ({
-  ModelPicker: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
-    <select aria-label="Default Model" value={value} onChange={(e) => onChange(e.target.value)}>
+  ModelPicker: ({
+    value,
+    onChange,
+    disabled,
+  }: {
+    value: string;
+    onChange: (value: string) => void;
+    disabled?: boolean;
+  }) => (
+    <select
+      aria-label="Default Model"
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+    >
       <option value="">No default model</option>
       <option value="model-1">Default Model</option>
       <option value="model-2">Alternate Model</option>
@@ -77,12 +94,19 @@ jest.mock("@/components/harness/harness-select", () => ({
     value,
     onValueChange,
     placeholder,
+    disabled,
   }: {
     value: string;
     onValueChange: (value: string) => void;
     placeholder: string;
+    disabled?: boolean;
   }) => (
-    <select aria-label={placeholder} value={value} onChange={(e) => onValueChange(e.target.value)}>
+    <select
+      aria-label={placeholder}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onValueChange(e.target.value)}
+    >
       <option value="harness-generic">Generic</option>
       <option value="harness-base">Base</option>
     </select>
@@ -91,6 +115,7 @@ jest.mock("@/components/harness/harness-select", () => ({
 
 describe("OrganizationPage", () => {
   beforeEach(() => {
+    viewerRole = "owner";
     mockPush.mockClear();
     mockSetCurrentOrg.mockClear();
     mockMutateAsync.mockClear();
@@ -127,6 +152,53 @@ describe("OrganizationPage", () => {
     expect(screen.getAllByRole("button", { name: "Copy ID: org-1" })).not.toHaveLength(0);
     expect(screen.getByRole("button", { name: "Copy ID: org-2" })).toBeInTheDocument();
     expect(screen.getByText("Current")).toBeInTheDocument();
+  });
+
+  describe("member (read-only)", () => {
+    beforeEach(() => {
+      viewerRole = "member";
+    });
+
+    it("renders every org setting read-only with an explanatory notice", () => {
+      render(<OrganizationPage />);
+
+      expect(
+        screen.getByText(/Only organization owners and admins can change these settings/),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Organization Name")).toHaveAttribute("readonly");
+      expect(screen.getByLabelText("Default Model")).toBeDisabled();
+      expect(screen.getByLabelText("Select default harness")).toBeDisabled();
+      expect(screen.getByLabelText("Select base harness")).toBeDisabled();
+      // The idle "Saved" badge is misleading when the viewer cannot save at all.
+      expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+    });
+
+    it("never issues an update that the backend would reject with 403", async () => {
+      jest.useFakeTimers();
+
+      render(<OrganizationPage />);
+
+      fireEvent.change(screen.getByLabelText("Organization Name"), {
+        target: { value: "Renamed Org" },
+      });
+
+      await act(async () => {
+        jest.advanceTimersByTime(700);
+        await Promise.resolve();
+      });
+
+      expect(mockUpdateOrganization).not.toHaveBeenCalled();
+      expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+
+      jest.useRealTimers();
+    });
+
+    it("still lists organizations and allows creating one", () => {
+      render(<OrganizationPage />);
+
+      expect(screen.getByRole("table", { name: "Organizations" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Create Organization" })).toBeEnabled();
+    });
   });
 
   it("switches to another organization", () => {

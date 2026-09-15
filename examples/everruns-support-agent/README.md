@@ -1,44 +1,113 @@
 # Everruns Support Agent
 
-A self-contained Framework agent for developer support. It uses Anthropic's
-`claude-opus-5`, consults authoritative Everruns documentation links, and
-answers a real troubleshooting question.
+Answer Framework questions by searching and reading a small, inspectable corpus of official documentation. The agent retrieves evidence before answering instead of routing keywords to prewritten responses.
 
-## Run
+![Everruns Support Agent terminal demo](demo/demo.gif)
 
-![Everruns Support Agent terminal demo](demo.gif)
+## What you learn
+
+A two-step search/read tool interface, citable evidence, and an explicit boundary around the available knowledge.
+
+## Scenario and expected outcome
+
+The default question asks how to resume a durable session after restarting a process. The agent should search for persistence and session history, read the relevant pages, then explain the local catalog, persisted `SessionId`, and agent reattachment requirements with source URLs.
+
+It must not imply that `Engine::new()` survives a restart. When the corpus lacks an answer, it should say so instead of inventing one.
+
+## Run it
+
+Install Rust/Cargo, clone the repository, and run from its root. This folder is self-contained **within the workspace**: its Cargo manifest references local Framework crates, so copying the folder alone is not sufficient.
 
 ```bash
-ANTHROPIC_API_KEY=... cargo run -p everruns-framework-support-agent
+git clone https://github.com/everruns/everruns.git
+cd everruns
+export ANTHROPIC_API_KEY="your-key"
+cargo run -p everruns-framework-support-agent
+```
+
+The configured model is `claude-opus-5`. Provider access and funded credits are required. Keep keys in your environment, not in source control. Missing credentials, provider errors, and unsuccessful turns exit nonzero.
+
+Try another question:
+
+```bash
+cargo run -p everruns-framework-support-agent -- "How do I register a custom provider?"
+cargo run -p everruns-framework-support-agent -- "How can a tool return a structured error?"
+```
+
+Or type a question interactively:
+
+```bash
+cargo run -p everruns-framework-support-agent -- --interactive
+```
+
+## Build the agent
+
+The definition lives in `src/agent.rs`; `main.rs` only handles input and runs the session. The prompt and documentation corpus live under `src/resources/`. Tools retrieve evidence; Opus decides what to search, read, and explain.
+
+```rust
+pub fn build(api_key: String) -> Result<Agent, BuildError> {
+    Agent::builder()
+        .name("everruns-support-agent")
+        .instructions(include_str!("resources/instructions.md"))
+        .provider(everruns_anthropic::provider("anthropic", api_key))
+        .model(MODEL)
+        .max_iterations(12)
+        .tool(tools::search_docs())
+        .tool(tools::read_doc())
+        .build()
+}
+```
+
+## Send, observe, and wait
+
+The Framework interaction stays small in `main.rs`. The shared demo helper subscribes before sending, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. Use `session.send_and_wait(&question).await?` when a live tool timeline is unnecessary.
+
+```rust
+let agent = agent::build(api_key)?;
+let engine = Engine::new();
+let session = engine.create(agent);
+
+println!("MODEL: {}", agent::MODEL);
+demo::run(&session, &question).await?;
+```
+
+This engine is in-memory. The agent can explain durable sessions from its corpus, but the example itself does not persist its session.
+
+## How the tools work
+
+`search_docs` ranks matches against five bundled pages and returns page IDs, public URLs, and matching excerpts. `read_doc` accepts only those page IDs and returns the complete snapshot. It never accepts an arbitrary filesystem path.
+
+## Validate the behavior
+
+```bash
 cargo test -p everruns-framework-support-agent
+bash examples/everruns-support-agent/demo/record.sh --check
 ```
 
-Pass a different support question after `--`. The test only validates agent
-construction; `cargo run` makes the real provider call.
+Tests cover content-based search, empty and unmatched queries, complete citable reads, arbitrary-path rejection, and interactive input validation. They do not grade the model's answer; compare a live response with the expected outcome above.
 
-## How the demo works
+CI runs the offline checks without provider credentials. Live model behavior is evaluated separately.
 
-This example is only its agent: [src/main.rs](src/main.rs) holds the tools,
-instructions, provider, and model. The terminal observer is shared by every
-example and lives in [examples/demo-support](../demo-support); it subscribes to
-session events before sending the question, prints real tool arguments and
-bounded result previews, and displays the final answer. Nothing there changes
-what the agent does — `session.send_and_wait(question)` is the same run without
-the live view. These tools expose public or demo data; review what may be
-printed before pointing that observer at private data.
+## Demo and recording
 
-The screencast is a **paged replay of a recorded live run**, with provider wait
-time removed. Read the [complete displayed transcript](demo.txt) at your own pace;
-tool results marked `[preview]` are shortened only for display.
+The screencast types a question into the same interactive binary shown above, then displays the actual Opus tool calls and answer. VHS hides most provider wait time but does not replace the model or tools with scripted output. Read `demo/transcript.txt` at your own pace.
 
-To capture a new live run, export the keys above and run:
+With credentials exported and VHS, ffmpeg, and a VHS-compatible browser installed:
 
 ```bash
-bash record.sh
+bash examples/everruns-support-agent/demo/record.sh
 ```
 
-Recording needs VHS and `less`. Adjust the page count in `demo.tape` if a new
-answer is longer; `vhs demo.tape` replays the saved transcript without API calls.
+The script uses an exported `ANTHROPIC_API_KEY` when present, otherwise Doppler project `everruns-dev`, config `dev`. It updates `demo/demo.gif` and `demo/transcript.txt` only after a successful turn.
 
-`search_docs` fetches Markdown content from the official Everruns repository,
-using a fixed set of documentation pages and returning their public citation URLs.
+## Adapt it
+
+Replace the bundled pages with a versioned documentation index while retaining separate search and read operations. Attach source/version metadata, restrict reads to authorized documents, and treat retrieved text as untrusted evidence rather than instructions.
+
+## Boundaries
+
+The corpus is a five-page snapshot from 2026-09-08, not a live search of docs.everruns.com. Provenance is recorded in `src/resources/docs/README.md`, and the snapshot can lag current APIs.
+
+## Source map
+
+`src/main.rs`: input and session execution; `src/agent.rs`: agent definition; `src/tools.rs`: bounded documentation retrieval; `src/resources/`: prompt and documentation corpus; `demo/`: live VHS recording, transcript, and recording script. `examples/demo-support` handles shared terminal presentation.

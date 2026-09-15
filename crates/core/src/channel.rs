@@ -26,7 +26,10 @@ use crate::message::ExternalActor;
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+
 use std::collections::HashMap;
+#[cfg(feature = "openapi")]
+use utoipa::ToSchema;
 
 // ============================================
 // Thread & Participant tracking
@@ -67,6 +70,45 @@ pub struct ThreadContext {
     /// Known participants in this thread, keyed by actor_id for O(1) lookup.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub participants: HashMap<String, Participant>,
+    /// What the user is currently looking at on the platform, when it reports
+    /// that (Slack: `app_context_changed`). Last write wins — it is a current
+    /// position, not a history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_view: Option<ChannelViewContext>,
+}
+
+/// Session KV key holding the persisted [`ThreadContext`].
+///
+/// One key per session, not a prefix: a session belongs to exactly one channel
+/// thread. `session_storage` reserves it from the user-facing `kv_store` tool
+/// (see `is_internal_session_kv_key`) so a session or tool actor cannot forge
+/// its own participant list or the "user is viewing" hint — both of which reach
+/// the model as context (TM-TOOL/TM-AGENT).
+pub const THREAD_CONTEXT_KV_KEY: &str = "channel:thread_context";
+
+/// Where the user's attention is on the platform, as the platform reports it.
+///
+/// Deliberately opaque ids and nothing resolved. The agent has not been granted
+/// access to whatever the user happens to be looking at, so this is a hint that
+/// it should ask about, not a fact it can act on — see [`ThreadContext::view_summary`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChannelViewContext {
+    /// Platform channel/conversation id the user is viewing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_id: Option<String>,
+    /// Platform team/workspace id, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_id: Option<String>,
+    /// When the platform reported this position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl ChannelViewContext {
+    /// True when there is nothing worth telling the model.
+    pub fn is_empty(&self) -> bool {
+        self.channel_id.is_none() && self.team_id.is_none()
+    }
 }
 
 impl ThreadContext {
@@ -77,6 +119,7 @@ impl ThreadContext {
             platform: platform.into(),
             platform_metadata: HashMap::new(),
             participants: HashMap::new(),
+            current_view: None,
         }
     }
 
@@ -122,6 +165,95 @@ impl ThreadContext {
         names.sort();
         format!("Thread participants: {}", names.join(", "))
     }
+
+    /// Record where the user is now looking. Last write wins.
+    ///
+    /// Returns true when this actually changed the stored position, so callers
+    /// can skip a write when the platform re-reports the same place.
+    pub fn set_current_view(&mut self, view: ChannelViewContext) -> bool {
+        let view = (!view.is_empty()).then_some(view);
+        if self.current_view == view {
+            return false;
+        }
+        self.current_view = view;
+        true
+    }
+
+    /// One line describing where the user is looking, for model context.
+    ///
+    /// Phrased as a hint the agent must ask about rather than a fact it can act
+    /// on. The platform reports what the *user* is viewing, which the agent may
+    /// have no access to and no tool for; stating it as available context would
+    /// invite the model to claim knowledge of a channel it cannot read. The id
+    /// stays opaque for the same reason — resolving it to a name would mean
+    /// fetching a channel the agent was never granted.
+    pub fn view_summary(&self) -> String {
+        let Some(view) = self.current_view.as_ref() else {
+            return String::new();
+        };
+        let Some(channel_id) = view.channel_id.as_deref() else {
+            return String::new();
+        };
+        format!(
+            "The user is currently viewing {} channel {}. You have not been given \
+             access to it — ask before assuming you can read it.",
+            self.platform, channel_id
+        )
+    }
+}
+
+/// Decode a persisted thread context record.
+///
+/// A malformed record decodes to `None` rather than erroring: losing
+/// accumulated participants degrades the prompt, but failing a turn over it
+/// would take the whole conversation down for a context line.
+///
+/// The codec is shared by both writers (the channel webhook, through whatever
+/// storage handle it has) and the reader (prompt assembly, through
+/// `SessionStorageStore`), so the two cannot drift on shape.
+pub fn decode_thread_context(raw: &str) -> Option<ThreadContext> {
+    match serde_json::from_str(raw) {
+        Ok(ctx) => Some(ctx),
+        Err(error) => {
+            tracing::warn!(%error, "Discarding malformed thread context record");
+            None
+        }
+    }
+}
+
+/// Encode a thread context for persistence. See [`decode_thread_context`].
+pub fn encode_thread_context(context: &ThreadContext) -> crate::error::Result<String> {
+    serde_json::to_string(context).map_err(|e| crate::error::AgentLoopError::store(e.to_string()))
+}
+
+/// Load the persisted thread context for a session, if any.
+///
+/// An unreadable record is treated as absent, for the reason in
+/// [`decode_thread_context`].
+pub async fn load_thread_context(
+    store: &dyn crate::session_services::SessionStorageStore,
+    session_id: SessionId,
+) -> Option<ThreadContext> {
+    match store.get_value(session_id, THREAD_CONTEXT_KV_KEY).await {
+        Ok(Some(raw)) => decode_thread_context(&raw),
+        Ok(None) => None,
+        Err(error) => {
+            tracing::warn!(%session_id, %error, "Failed to read persisted thread context");
+            None
+        }
+    }
+}
+
+/// Persist the thread context for a session, replacing any previous record.
+pub async fn save_thread_context(
+    store: &dyn crate::session_services::SessionStorageStore,
+    session_id: SessionId,
+    context: &ThreadContext,
+) -> crate::error::Result<()> {
+    let encoded = encode_thread_context(context)?;
+    store
+        .set_value(session_id, THREAD_CONTEXT_KV_KEY, &encoded)
+        .await
 }
 
 // ============================================
@@ -184,6 +316,10 @@ pub struct OutboundChannelMessage {
     pub thread_ref: String,
     /// Whether this is a progress report (vs. a final answer).
     pub is_progress_report: bool,
+    /// Id of the input message this reply answers, when the platform can stamp
+    /// it onto the posted message for later correlation. `None` leaves the
+    /// message unstamped rather than inventing a key.
+    pub correlation_id: Option<String>,
 }
 
 // ============================================
@@ -250,6 +386,61 @@ pub trait ChannelDeliveryAdapter: Send + Sync {
         &self,
         report: &crate::progress_reporting::ProgressReportPayload,
     ) -> String;
+
+    /// Progressive delivery, when the platform supports it.
+    ///
+    /// A capability probe rather than three more required methods: `None` — the
+    /// default — means the dispatcher uses discrete delivery, so a platform
+    /// without streaming stays honest instead of stubbing an API it does not
+    /// have (EVE-974).
+    fn streaming(&self) -> Option<&dyn ChannelStreamDelivery> {
+        None
+    }
+
+    /// Live status and thread title, when the platform has an agent surface.
+    ///
+    /// Same capability-probe shape as `streaming`, for the same reason: `None`
+    /// — the default — means the dispatcher skips status and title entirely,
+    /// rather than every adapter stubbing methods for affordances its platform
+    /// does not have (EVE-975).
+    fn agent_surface(&self) -> Option<&dyn ChannelAgentSurface> {
+        None
+    }
+}
+
+/// The agent-pane affordances a platform may offer alongside the reply itself:
+/// a live status line while a turn runs, and a thread title.
+///
+/// Both are advisory. A failure here must never fail the turn — the reply is the
+/// product and the status is decoration — so the dispatcher logs and continues.
+#[async_trait]
+pub trait ChannelAgentSurface: Send + Sync {
+    /// Set the live status line for a thread. An empty `status` clears it.
+    async fn set_status(&self, status: &str, context: &DeliveryContext) -> DeliveryResult;
+
+    /// Set the thread's title.
+    async fn set_title(&self, title: &str, context: &DeliveryContext) -> DeliveryResult;
+}
+
+/// Progressive delivery of one message as it is produced.
+///
+/// A stream is per *output message*, not per turn: a turn that produces three
+/// messages with tool calls between them is three streams, so the reader sees
+/// three replies rather than one concatenated blob.
+#[async_trait]
+pub trait ChannelStreamDelivery: Send + Sync {
+    /// Open a stream. The returned handle identifies it until `stop`.
+    async fn start(&self, context: &DeliveryContext) -> Result<String, String>;
+
+    /// Append newly produced text to an open stream.
+    async fn append(&self, handle: &str, text: &str, context: &DeliveryContext) -> DeliveryResult;
+
+    /// Close the stream.
+    ///
+    /// Must run for every `start`, including on failure and cancellation: an
+    /// unstopped stream is a message left spinning in the client forever, which
+    /// is worse than never having streamed at all.
+    async fn stop(&self, handle: &str, context: &DeliveryContext) -> DeliveryResult;
 }
 
 /// Context needed by a delivery adapter to post messages.
@@ -301,35 +492,112 @@ pub enum DeliveryResult {
 ///
 /// Given platform metadata from an InboundChannelEvent, produces the
 /// session tags used to find or create the correct session.
+///
+/// The tag segment is deliberately NOT the binding's name: these tags key live
+/// sessions, so `Thread` must keep emitting `thread`, `Conversation` `channel`,
+/// and `Requester` `user`. Renaming a segment silently orphans every session
+/// routed under the old one (EVE-1005).
+///
+/// `Endpoint` and `Ephemeral` return `None`: they are not keyed off inbound
+/// message metadata at all. Their tags come from the exposure that owns the
+/// invocation — see `trigger_session_tags` in the agent-triggers domain.
 pub fn build_session_routing_tag(
     platform: &str,
-    strategy: &SessionRoutingStrategy,
+    binding: &SessionBinding,
     metadata: &HashMap<String, String>,
 ) -> Option<String> {
-    match strategy {
-        SessionRoutingStrategy::PerThread => metadata
+    match binding {
+        SessionBinding::Thread => metadata
             .get("thread_ref")
             .map(|t| format!("{}:thread:{}", platform, t)),
-        SessionRoutingStrategy::PerChannel => metadata
+        SessionBinding::Conversation => metadata
             .get("channel_id")
             .map(|c| format!("{}:channel:{}", platform, c)),
-        SessionRoutingStrategy::PerUser => metadata
+        SessionBinding::Requester => metadata
             .get("user_id")
             .map(|u| format!("{}:user:{}", platform, u)),
+        SessionBinding::Endpoint | SessionBinding::Ephemeral => None,
     }
 }
 
-/// How incoming messages map to sessions — generalized from Slack's SessionStrategy.
+/// Resolve the binding actually used for one inbound event.
+///
+/// The declared binding is a default the transport may override per event,
+/// because the surface is a property of the event rather than of configuration.
+/// Slack's assistant pane is the existing case: a pane is inherently one thread,
+/// so `Conversation` and `Requester` have no meaning there — but rejecting them
+/// at write time would be wrong, since the same exposure also serves channels
+/// where they are legitimate (`knowledge/integrations/slack-modernization.md`).
+///
+/// Expressing that as one function keeps the pane from being a special case in
+/// the Slack adapter, and gives the next transport somewhere to put the same
+/// rule instead of re-deriving it (EVE-1005).
+pub fn resolve_session_binding(
+    declared: SessionBinding,
+    event_override: Option<SessionBinding>,
+) -> SessionBinding {
+    event_override.unwrap_or(declared)
+}
+
+/// What identity keys a session, for every exposure and every transport.
+///
+/// One enum replaces the former `SessionStrategy` (messaging channels) and
+/// `InvocationSessionMode` (triggers and request/reply endpoints), which asked
+/// the same question with disjoint vocabularies and forced every new surface to
+/// pick a side (EVE-1005).
+///
+/// **The serialized values are deliberately the legacy ones.** Every variant
+/// renames in Rust but serializes exactly as it did before, with the new name
+/// accepted as a read alias. Persisted `channel_config` JSONB therefore needs no
+/// migration, and the API and UI keep exchanging the values they already do.
+/// Moving the wire vocabulary is a separate, migration-bearing change.
+///
+/// `Requester` keys on the **transport's own external actor id** — the Slack
+/// user id, the Public Chat visitor id — never on an Everruns principal. Those
+/// actors are unrelated to Everruns accounts (a Public Chat visitor is anonymous
+/// or Google-signed-in), so there is one consistent answer rather than a split
+/// variant: whatever the transport calls the requester, scoped by the
+/// `{platform}:` tag prefix that already namespaces it.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum SessionRoutingStrategy {
-    /// Each thread gets its own session (default).
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "per_thread"))]
+pub enum SessionBinding {
+    /// One session per thread. Was `per_thread`.
     #[default]
-    PerThread,
-    /// One session per channel/conversation.
-    PerChannel,
-    /// One session per user across all threads.
-    PerUser,
+    #[serde(rename = "per_thread", alias = "thread")]
+    Thread,
+    /// One session per channel/conversation/room. Was `per_channel`.
+    #[serde(rename = "per_channel", alias = "conversation")]
+    Conversation,
+    /// One session per external actor. Was `per_user`.
+    #[serde(rename = "per_user", alias = "requester")]
+    Requester,
+    /// One durable session shared by every invocation of the exposure.
+    /// Was `shared_session`.
+    #[serde(rename = "shared_session", alias = "endpoint")]
+    Endpoint,
+    /// A fresh session per invocation. Was `session_per_invocation`.
+    #[serde(rename = "session_per_invocation", alias = "ephemeral")]
+    Ephemeral,
+}
+
+impl SessionBinding {
+    /// Bindings keyed off an inbound message's metadata.
+    pub const MESSAGE_KEYED: [SessionBinding; 3] = [
+        SessionBinding::Thread,
+        SessionBinding::Conversation,
+        SessionBinding::Requester,
+    ];
+
+    /// Bindings available where nothing is listening on a thread — triggers and
+    /// request/reply endpoints.
+    pub const INVOCATION_KEYED: [SessionBinding; 2] =
+        [SessionBinding::Endpoint, SessionBinding::Ephemeral];
+
+    /// Whether this binding is keyed off inbound message metadata.
+    pub fn is_message_keyed(self) -> bool {
+        Self::MESSAGE_KEYED.contains(&self)
+    }
 }
 
 // TODO(platform-tools): Channel adapters should optionally contribute
@@ -408,41 +676,87 @@ mod tests {
             ("channel_id".into(), "C0123".into()),
             ("user_id".into(), "U999".into()),
         ]);
-        for (strategy, platform, key, expected) in [
+        for (binding, platform, key, expected) in [
             (
-                SessionRoutingStrategy::PerThread,
+                SessionBinding::Thread,
                 "slack",
                 "thread_ref",
                 "slack:thread:1234.5678",
             ),
             (
-                SessionRoutingStrategy::PerChannel,
+                SessionBinding::Conversation,
                 "discord",
                 "channel_id",
                 "discord:channel:C0123",
             ),
             (
-                SessionRoutingStrategy::PerUser,
+                SessionBinding::Requester,
                 "teams",
                 "user_id",
                 "teams:user:U999",
             ),
         ] {
             assert_eq!(
-                build_session_routing_tag(platform, &strategy, &metadata).as_deref(),
+                build_session_routing_tag(platform, &binding, &metadata).as_deref(),
                 Some(expected)
             );
             let mut missing = metadata.clone();
             missing.remove(key);
             assert_eq!(
-                build_session_routing_tag(platform, &strategy, &missing),
+                build_session_routing_tag(platform, &binding, &missing),
                 None
             );
             assert_eq!(
-                build_session_routing_tag(platform, &strategy, &HashMap::new()),
+                build_session_routing_tag(platform, &binding, &HashMap::new()),
                 None
             );
         }
+    }
+
+    /// EVE-1005: the tag segment is the old strategy word, not the new binding
+    /// name. A rename here silently orphans every live session keyed under it,
+    /// so the exact strings are pinned rather than derived.
+    #[test]
+    fn session_binding_tags_keep_their_legacy_segments() {
+        let metadata = HashMap::from([
+            ("thread_ref".into(), "T1".into()),
+            ("channel_id".into(), "C1".into()),
+            ("user_id".into(), "U1".into()),
+        ]);
+        for (binding, expected) in [
+            (SessionBinding::Thread, Some("slack:thread:T1")),
+            (SessionBinding::Conversation, Some("slack:channel:C1")),
+            (SessionBinding::Requester, Some("slack:user:U1")),
+            // Not keyed off inbound metadata: the exposure that owns the
+            // invocation supplies these tags.
+            (SessionBinding::Endpoint, None),
+            (SessionBinding::Ephemeral, None),
+        ] {
+            assert_eq!(
+                build_session_routing_tag("slack", &binding, &metadata).as_deref(),
+                expected,
+                "{binding:?}"
+            );
+        }
+    }
+
+    /// EVE-1005: the declared binding is a default the event may override.
+    #[test]
+    fn resolve_session_binding_lets_the_event_override_the_declaration() {
+        // No override: configuration wins, whatever it says.
+        for declared in SessionBinding::MESSAGE_KEYED {
+            assert_eq!(resolve_session_binding(declared, None), declared);
+        }
+        // The Slack pane case: a one-thread surface forces Thread even though
+        // the exposure legitimately declares Conversation for its channels.
+        assert_eq!(
+            resolve_session_binding(SessionBinding::Conversation, Some(SessionBinding::Thread)),
+            SessionBinding::Thread
+        );
+        assert_eq!(
+            resolve_session_binding(SessionBinding::Requester, Some(SessionBinding::Thread)),
+            SessionBinding::Thread
+        );
     }
 
     #[test]
@@ -463,22 +777,176 @@ mod tests {
         }
     }
 
+    /// EVE-1005: every value persisted in `channel_config` JSONB before the
+    /// enums were unified must still deserialize, and must still serialize back
+    /// to the same string. This is what makes the change migration-free; if it
+    /// fails, stored channel configs are unreadable.
     #[test]
-    fn test_session_routing_strategy_wire_contract() {
-        assert_eq!(
-            SessionRoutingStrategy::default(),
-            SessionRoutingStrategy::PerThread
-        );
-        for (strategy, wire) in [
-            (SessionRoutingStrategy::PerThread, "\"per_thread\""),
-            (SessionRoutingStrategy::PerChannel, "\"per_channel\""),
-            (SessionRoutingStrategy::PerUser, "\"per_user\""),
+    fn test_session_binding_wire_contract() {
+        assert_eq!(SessionBinding::default(), SessionBinding::Thread);
+        for (binding, wire) in [
+            // Legacy `SessionBinding` values.
+            (SessionBinding::Thread, "\"per_thread\""),
+            (SessionBinding::Conversation, "\"per_channel\""),
+            (SessionBinding::Requester, "\"per_user\""),
+            // Legacy `SessionBinding` values.
+            (SessionBinding::Endpoint, "\"shared_session\""),
+            (SessionBinding::Ephemeral, "\"session_per_invocation\""),
         ] {
-            assert_eq!(serde_json::to_string(&strategy).unwrap(), wire);
             assert_eq!(
-                serde_json::from_str::<SessionRoutingStrategy>(wire).unwrap(),
-                strategy
+                serde_json::to_string(&binding).unwrap(),
+                wire,
+                "{binding:?} must still serialize to its legacy value"
+            );
+            assert_eq!(
+                serde_json::from_str::<SessionBinding>(wire).unwrap(),
+                binding,
+                "{wire} must still deserialize"
             );
         }
+    }
+
+    /// The new vocabulary is accepted on read, so a config written with the
+    /// binding names is understood even though nothing emits them yet.
+    #[test]
+    fn test_session_binding_accepts_new_names_as_aliases() {
+        for (alias, binding) in [
+            ("\"thread\"", SessionBinding::Thread),
+            ("\"conversation\"", SessionBinding::Conversation),
+            ("\"requester\"", SessionBinding::Requester),
+            ("\"endpoint\"", SessionBinding::Endpoint),
+            ("\"ephemeral\"", SessionBinding::Ephemeral),
+        ] {
+            assert_eq!(
+                serde_json::from_str::<SessionBinding>(alias).unwrap(),
+                binding
+            );
+        }
+    }
+    // ============================================
+    // Persisted thread context (EVE-977)
+    // ============================================
+
+    fn actor(id: &str, name: &str) -> ExternalActor {
+        ExternalActor {
+            actor_id: id.to_string(),
+            actor_name: Some(name.to_string()),
+            source: "slack".to_string(),
+            metadata: None,
+        }
+    }
+
+    /// The bug: a ThreadContext built per message only ever saw one speaker, so
+    /// the summary never named the thread. Accumulation is the whole point.
+    #[test]
+    fn participants_accumulate_across_a_round_trip() {
+        let mut ctx = ThreadContext::new("1700.1", "slack");
+        assert!(ctx.track_participant(&actor("U1", "Alice")));
+
+        // Survive a restart: encode, drop, decode.
+        let encoded = encode_thread_context(&ctx).expect("encode");
+        let mut restored = decode_thread_context(&encoded).expect("decode");
+
+        assert!(restored.track_participant(&actor("U2", "Bob")));
+        assert!(
+            !restored.track_participant(&actor("U1", "Alice")),
+            "re-seen actor is not new"
+        );
+
+        assert_eq!(restored.participant_count(), 2);
+        assert_eq!(
+            restored.participants_summary(),
+            "Thread participants: Alice, Bob"
+        );
+    }
+
+    /// A malformed record degrades to "no context", never an error: losing the
+    /// participant line must not take the conversation down with it.
+    #[test]
+    fn malformed_record_decodes_to_none() {
+        assert!(decode_thread_context("not json").is_none());
+        assert!(decode_thread_context("").is_none());
+    }
+
+    /// Re-reporting the same position is not a change, so it does not cause a write.
+    #[test]
+    fn setting_the_same_view_twice_reports_no_change() {
+        let mut ctx = ThreadContext::new("1700.1", "slack");
+        let view = ChannelViewContext {
+            channel_id: Some("C123".to_string()),
+            team_id: Some("T1".to_string()),
+            observed_at: None,
+        };
+
+        assert!(
+            ctx.set_current_view(view.clone()),
+            "first report is a change"
+        );
+        assert!(!ctx.set_current_view(view), "identical report is not");
+
+        let moved = ChannelViewContext {
+            channel_id: Some("C999".to_string()),
+            team_id: Some("T1".to_string()),
+            observed_at: None,
+        };
+        assert!(ctx.set_current_view(moved), "a real move is a change");
+    }
+
+    /// An empty report clears rather than storing a hollow record.
+    #[test]
+    fn empty_view_clears_the_current_position() {
+        let mut ctx = ThreadContext::new("1700.1", "slack");
+        ctx.set_current_view(ChannelViewContext {
+            channel_id: Some("C123".to_string()),
+            ..Default::default()
+        });
+        assert!(ctx.current_view.is_some());
+
+        assert!(ctx.set_current_view(ChannelViewContext::default()));
+        assert!(ctx.current_view.is_none());
+        assert_eq!(ctx.view_summary(), "");
+    }
+
+    /// The view line must read as a hint to ask about, not as granted access —
+    /// the agent has no tool for a channel the user merely happens to be in.
+    #[test]
+    fn view_summary_does_not_imply_access() {
+        let mut ctx = ThreadContext::new("1700.1", "slack");
+        ctx.set_current_view(ChannelViewContext {
+            channel_id: Some("C123".to_string()),
+            team_id: None,
+            observed_at: None,
+        });
+
+        let summary = ctx.view_summary();
+        assert!(summary.contains("C123"), "{summary}");
+        assert!(summary.contains("slack"), "{summary}");
+        assert!(
+            summary.contains("have not been given access"),
+            "must not present the channel as readable: {summary}"
+        );
+        assert!(summary.contains("ask before"), "{summary}");
+    }
+
+    /// No position reported means no line at all — not an empty or hedging one.
+    #[test]
+    fn no_view_yields_no_line() {
+        let ctx = ThreadContext::new("1700.1", "slack");
+        assert_eq!(ctx.view_summary(), "");
+        assert_eq!(ctx.participants_summary(), "");
+    }
+
+    /// Round-tripping keeps the reported position, not just the participants.
+    #[test]
+    fn current_view_survives_encoding() {
+        let mut ctx = ThreadContext::new("1700.1", "slack");
+        ctx.set_current_view(ChannelViewContext {
+            channel_id: Some("C123".to_string()),
+            team_id: Some("T1".to_string()),
+            observed_at: None,
+        });
+
+        let restored = decode_thread_context(&encode_thread_context(&ctx).unwrap()).unwrap();
+        assert_eq!(restored.current_view, ctx.current_view);
     }
 }

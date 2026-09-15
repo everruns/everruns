@@ -22,6 +22,7 @@ pub mod memory;
 mod message_history_timing;
 pub mod message_store;
 pub mod models;
+pub mod native_async_store;
 pub mod partial_stream;
 pub mod password;
 pub mod provider_store;
@@ -56,6 +57,7 @@ pub use leased_resource_store::{
 pub use memory::InMemoryDatabase;
 pub use message_store::{DbMessageRetriever, create_db_message_retriever};
 pub use models::*;
+pub use native_async_store::PgNativeAsyncStore;
 pub use partial_stream::PgPartialStreamStore;
 pub use provider_store::{DbProviderStore, create_db_provider_store};
 pub use repositories::*;

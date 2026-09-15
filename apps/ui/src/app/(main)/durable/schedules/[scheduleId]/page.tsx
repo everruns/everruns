@@ -354,12 +354,10 @@ export default function ScheduleDetailPage() {
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Retry
               </Button>
-              <Link href="/durable/schedules">
-                <Button variant="outline">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to Schedules
-                </Button>
-              </Link>
+              <Button variant="outline" render={<Link href="/durable/schedules" />}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Schedules
+              </Button>
             </div>
           </CardContent>
         </Card>

@@ -190,6 +190,8 @@ pub mod config;
 pub mod config_layer;
 pub mod context_report;
 pub mod dependency_blocker;
+/// Shared lease and persistence contracts for native asynchronous tools.
+pub mod native_async_store;
 use everruns_provider::driver_registry;
 use everruns_provider::error;
 pub mod guardrail_checks;
@@ -302,9 +304,10 @@ pub use workspace_roots::{
 
 // Channel abstraction re-exports
 pub use channel::{
-    ChannelDeliveryAdapter, ChannelReplyMode, DeliveryContext as ChannelDeliveryContext,
+    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelReplyMode, ChannelStreamDelivery,
+    ChannelViewContext, DeliveryContext as ChannelDeliveryContext,
     DeliveryResult as ChannelDeliveryResult, InboundAttachment, InboundChannelEvent,
-    OutboundChannelMessage, Participant, SessionRoutingStrategy, ThreadContext,
+    OutboundChannelMessage, Participant, SessionBinding, ThreadContext,
 };
 
 // Narrow subagent-session delegation contract (EVE-839). The full hosted

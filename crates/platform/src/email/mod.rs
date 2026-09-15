@@ -437,6 +437,19 @@ const EVERRUNS_SITE_URL: &str = "https://everruns.com";
 // surface it in previews). `header` and `footer` are optional pre-rendered table
 // rows so branded templates can add a logo header and a footer link while the
 // minimal template stays bare.
+/// Branded call-to-action button with fully inline styles.
+///
+/// A bare `<a>` falls back to each mail client's default link color
+/// (blue/red/purple depending on visited state), which reads as unbranded.
+/// This table-based button renders consistently in Gmail, Outlook, and Apple
+/// Mail. `url_html` must already be HTML-escaped by the caller; `label` is
+/// static brand copy.
+pub fn branded_button(url_html: &str, label: &str) -> String {
+    format!(
+        r#"<table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:8px 0 8px 0;"><tr><td align="center" bgcolor="{BRAND_NAVY}" style="background-color:{BRAND_NAVY};border-radius:0;"><a href="{url_html}" style="display:inline-block;padding:12px 24px;font-size:15px;font-weight:700;color:#FFFFFF;text-decoration:none;">{label}</a></td></tr></table>"#
+    )
+}
+
 fn wrap_email_html(
     title: &str,
     header: Option<&str>,
@@ -490,39 +503,21 @@ fn branded_header() -> String {
             </td>
           </tr>
 "#,
-        logo = branded_logo_svg()
+        logo = branded_logo_mark()
     )
 }
 
-// Inline SVG keeps the Basic template branded without fetching a remote image.
-// Geometry mirrors knowledge/ui/brand.md: the rings' centroid is centered in the
-// viewBox so the mark stays balanced at small email-header sizes.
-fn branded_logo_svg() -> String {
+// Inline HTML/CSS brand mark (no SVG, no remote image).
+//
+// Email clients (Gmail, Outlook, Apple Mail) strip inline `<svg>`, so an SVG
+// logo silently disappears and the header degrades to bare text. A remote
+// `<img>` would render but leaks an open-tracking signal to its host and is
+// blocked by default in many clients. This pure HTML/CSS mark renders
+// everywhere with no fetch. Colors nod to knowledge/ui/brand.md (navy field,
+// gold accent) without copying the vector rings.
+fn branded_logo_mark() -> String {
     format!(
-        r##"                      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 512 512" role="img" aria-label="Everruns logo" style="display:block;">
-                        <defs>
-                          <linearGradient id="emailLogoTop" gradientUnits="userSpaceOnUse" x1="256" y1="63.64" x2="256" y2="256.00">
-                            <stop offset="0.00" stop-color="{BRAND_NAVY}"/>
-                            <stop offset="0.70" stop-color="{BRAND_NAVY}"/>
-                            <stop offset="1.00" stop-color="{BRAND_GOLD}"/>
-                          </linearGradient>
-                          <linearGradient id="emailLogoLeft" gradientUnits="userSpaceOnUse" x1="89.41" y1="352.18" x2="256" y2="256.00">
-                            <stop offset="0.00" stop-color="#081C3F"/>
-                            <stop offset="0.70" stop-color="#081C3F"/>
-                            <stop offset="1.00" stop-color="{BRAND_GOLD}"/>
-                          </linearGradient>
-                          <linearGradient id="emailLogoRight" gradientUnits="userSpaceOnUse" x1="422.59" y1="352.18" x2="256" y2="256.00">
-                            <stop offset="0.00" stop-color="#0B1233"/>
-                            <stop offset="0.70" stop-color="#0B1233"/>
-                            <stop offset="1.00" stop-color="{BRAND_GOLD}"/>
-                          </linearGradient>
-                        </defs>
-                        <g fill="none" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
-                          <circle cx="256" cy="183.64" r="120" stroke="url(#emailLogoTop)"/>
-                          <circle cx="193.33" cy="292.18" r="120" stroke="url(#emailLogoLeft)"/>
-                          <circle cx="318.67" cy="292.18" r="120" stroke="url(#emailLogoRight)"/>
-                        </g>
-                      </svg>"##
+        r#"<span style="display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;background-color:{BRAND_NAVY};color:{BRAND_GOLD};font-weight:800;font-size:18px;font-family:{EMAIL_FONT_STACK};">E</span>"#
     )
 }
 
@@ -606,15 +601,26 @@ mod tests {
         assert!(rendered.html.contains("<p>Hello</p>"));
         assert!(rendered.html.contains("border-radius:0"));
         assert!(rendered.html.contains("Everruns"));
-        assert!(rendered.html.contains("<svg"));
-        assert!(rendered.html.contains(r#"aria-label="Everruns logo""#));
-        assert!(rendered.html.contains("emailLogoTop"));
+        // Brand mark renders without SVG (stripped by Gmail/Outlook) and
+        // without remote images (open-tracking + blocked by default).
+        assert!(rendered.html.contains(">E</span>"));
+        assert!(rendered.html.contains(BRAND_NAVY));
+        assert!(!rendered.html.contains("<svg"));
         assert!(!rendered.html.contains("<img"));
         assert!(
             rendered
                 .html
                 .contains(&format!(r#"href="{EVERRUNS_SITE_URL}""#))
         );
+    }
+
+    #[test]
+    fn branded_button_uses_brand_colors_with_inline_styles() {
+        let button = branded_button("https://example.com/accept", "Accept your invitation");
+        assert!(button.contains("https://example.com/accept"));
+        assert!(button.contains("Accept your invitation"));
+        assert!(button.contains(BRAND_NAVY));
+        assert!(button.contains("color:#FFFFFF"));
     }
 
     #[tokio::test]

@@ -308,6 +308,19 @@ describe("SchedulesPage", () => {
       expect(buttons.length).toBeGreaterThan(2);
     });
 
+    it("names schedule navigation links by destination", () => {
+      render(<SchedulesPage />, { wrapper });
+
+      expect(screen.getByRole("link", { name: "View schedule Daily Backup" })).toHaveAttribute(
+        "href",
+        "/durable/schedules/sched_123",
+      );
+      expect(screen.getByRole("link", { name: "View schedule Hourly Cleanup" })).toHaveAttribute(
+        "href",
+        "/durable/schedules/sched_456",
+      );
+    });
+
     it("calls pauseMutation when Pause button is clicked", async () => {
       const mockPauseMutate = jest.fn();
       mockUsePauseSchedule.mockReturnValue({

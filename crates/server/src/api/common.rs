@@ -404,11 +404,25 @@ pub fn sanitized_bad_gateway(context: &str, error: &dyn std::fmt::Display) -> (S
     (StatusCode::BAD_GATEWAY, "Bad gateway".to_string())
 }
 
-fn classify_anyhow_error(message: &str) -> Option<(StatusCode, Json<ErrorResponse>)> {
+fn classify_anyhow_error(error: &anyhow::Error) -> Option<(StatusCode, Json<ErrorResponse>)> {
+    let message = error.to_string();
     let lowered = message.to_ascii_lowercase();
 
-    if lowered.contains("duplicate key") || lowered.contains("already exists") {
-        return Some(ErrorResponse::conflict(message));
+    if crate::errors::is_database_unique_violation(error) {
+        // THREAT[TM-API-005]: Keep storage diagnostics in server logs only.
+        tracing::warn!(error = ?error, "database uniqueness conflict");
+        return Some(
+            ErrorResponse::new(crate::errors::ALREADY_EXISTS_DETAIL)
+                .with_code(crate::errors::ALREADY_EXISTS_CODE)
+                .into_response(StatusCode::CONFLICT),
+        );
+    }
+    if crate::errors::is_domain_already_exists_message(&message) {
+        return Some(
+            ErrorResponse::new(message)
+                .with_code(crate::errors::ALREADY_EXISTS_CODE)
+                .into_response(StatusCode::CONFLICT),
+        );
     }
 
     let is_bad_request = [
@@ -467,7 +481,7 @@ impl<T> ApiPolicyResultExt<T> for Result<T, anyhow::Error> {
                 ErrorResponse::conflict(limit.message())
             } else if let Some(policy_err) = e.downcast_ref::<everruns_core::PolicyError>() {
                 ErrorResponse::new(&policy_err.message).into_response(StatusCode::FORBIDDEN)
-            } else if let Some(response) = classify_anyhow_error(&e.to_string()) {
+            } else if let Some(response) = classify_anyhow_error(&e) {
                 response
             } else {
                 tracing::error!("Failed to {}: {}", operation, e);
@@ -1850,6 +1864,38 @@ mod tests {
             !String::from_utf8(bytes.to_vec())
                 .unwrap()
                 .contains("secret-database-marker")
+        );
+    }
+
+    #[test]
+    fn classify_unique_conflict_redacts_database_details() {
+        let raw = "error returned from database: duplicate key value violates unique constraint \
+                   \"idx_memories_org_name_active\" at sqlx-postgres/src/connection.rs:666";
+        let error = anyhow::anyhow!(raw).context("create memory");
+        let (status, body) = classify_anyhow_error(&error).expect("classified conflict");
+
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(
+            body.0.detail.as_deref(),
+            Some(crate::errors::ALREADY_EXISTS_DETAIL)
+        );
+        assert_eq!(
+            body.0.code.as_deref(),
+            Some(crate::errors::ALREADY_EXISTS_CODE)
+        );
+        assert!(!serde_json::to_string(&body.0).unwrap().contains(raw));
+    }
+
+    #[test]
+    fn classify_domain_conflict_preserves_safe_detail() {
+        let error = anyhow::anyhow!("Memory already exists");
+        let (status, body) = classify_anyhow_error(&error).expect("classified conflict");
+
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.0.detail.as_deref(), Some("Memory already exists"));
+        assert_eq!(
+            body.0.code.as_deref(),
+            Some(crate::errors::ALREADY_EXISTS_CODE)
         );
     }
 

@@ -136,7 +136,7 @@ test.describe("Page masthead responsive layout", () => {
     await expect(actions).toHaveCount(1);
     await expect(moreActions).toBeVisible();
     await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeHidden();
-    await expect(page.getByRole("button", { name: "Observe this agent" })).toBeHidden();
+    await expect(page.getByRole("link", { name: "Observe this agent" })).toBeHidden();
 
     await page.getByRole("button", { name: "Open navigation" }).click();
     await expect(page.locator('[data-slot="drawer-content"]')).toBeVisible();
@@ -205,7 +205,7 @@ test.describe("Page masthead responsive layout", () => {
       await expect(page.getByRole("button", { name: "Export", exact: true })).toBeVisible();
       await expect(page.getByRole("link", { name: "Edit" })).toBeVisible();
       await expect(page.getByRole("link", { name: "Create app" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Observe this agent" })).toBeHidden();
+      await expect(page.getByRole("link", { name: "Observe this agent" })).toBeHidden();
 
       await page.getByRole("button", { name: "More actions" }).click();
       await expect(page.getByRole("menuitem", { name: "Observe this agent" })).toBeVisible();
@@ -243,7 +243,8 @@ test.describe("Page masthead responsive layout", () => {
     expect(actionsBox!.y).toBeLessThan(titleBox!.y + titleBox!.height);
     await expect(page.getByRole("button", { name: "Open navigation" })).toBeHidden();
     await expect(page.getByRole("button", { name: "More actions" })).toBeHidden();
-    await expect(page.getByRole("button", { name: "Observe this agent" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Observe this agent" })).toBeVisible();
+    await expect(page.locator('[data-slot="page-masthead"] a > button')).toHaveCount(0);
   });
 
   test("keeps a representative standard-action consumer contained on mobile", async ({ page }) => {
@@ -260,6 +261,7 @@ test.describe("Page masthead responsive layout", () => {
     await expect(edit).toBeVisible();
     await expect(page.getByRole("button", { name: "Archive" })).toBeVisible();
     await edit.click({ trial: true });
+    await expect(masthead.locator("a > button")).toHaveCount(0);
 
     const mastheadBox = await masthead.boundingBox();
     expect(mastheadBox).not.toBeNull();

@@ -25,6 +25,9 @@ impl InMemoryDatabase {
             name: input.name,
             display_name: input.display_name,
             description: input.description,
+            intro_markdown: input.intro_markdown,
+            short_description: input.short_description,
+            starters: input.starters,
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
             harness_id: input.harness_id,
@@ -90,6 +93,9 @@ impl InMemoryDatabase {
                 name: input.name,
                 display_name: input.display_name,
                 description: input.description,
+                intro_markdown: input.intro_markdown,
+                short_description: input.short_description,
+                starters: input.starters,
                 system_prompt: input.system_prompt,
                 harness_id: input.harness_id,
                 tags: input.tags,
@@ -110,6 +116,9 @@ impl InMemoryDatabase {
             name: input.name,
             display_name: input.display_name,
             description: input.description,
+            intro_markdown: input.intro_markdown,
+            short_description: input.short_description,
+            starters: input.starters,
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
             harness_id: input.harness_id,
@@ -278,6 +287,16 @@ impl InMemoryDatabase {
             if let Some(description) = input.description {
                 agent.description = Some(description);
             }
+            // None = unchanged; Some(None) = clear; Some(Some(v)) = set.
+            if let Some(intro_markdown) = input.intro_markdown {
+                agent.intro_markdown = intro_markdown;
+            }
+            if let Some(short_description) = input.short_description {
+                agent.short_description = short_description;
+            }
+            if let Some(starters) = input.starters {
+                agent.starters = starters;
+            }
             if let Some(system_prompt) = input.system_prompt {
                 agent.system_prompt = system_prompt;
             }
@@ -410,6 +429,9 @@ impl InMemoryDatabase {
             agent.name = input.name;
             agent.display_name = input.display_name;
             agent.description = input.description;
+            agent.intro_markdown = input.intro_markdown;
+            agent.short_description = input.short_description;
+            agent.starters = input.starters;
             agent.system_prompt = input.system_prompt;
             agent.default_model_id = input.default_model_id;
             agent.harness_id = input.harness_id;
@@ -432,6 +454,9 @@ impl InMemoryDatabase {
                 name: input.name,
                 display_name: input.display_name,
                 description: input.description,
+                intro_markdown: input.intro_markdown,
+                short_description: input.short_description,
+                starters: input.starters,
                 system_prompt: input.system_prompt,
                 default_model_id: input.default_model_id,
                 harness_id: input.harness_id,
@@ -483,6 +508,9 @@ impl InMemoryDatabase {
             let agent = agents.get_mut(&key).unwrap();
             agent.display_name = input.display_name;
             agent.description = input.description;
+            agent.intro_markdown = input.intro_markdown;
+            agent.short_description = input.short_description;
+            agent.starters = input.starters;
             agent.system_prompt = input.system_prompt;
             agent.default_model_id = input.default_model_id;
             agent.harness_id = input.harness_id;
@@ -506,6 +534,9 @@ impl InMemoryDatabase {
                 name: input.name,
                 display_name: input.display_name,
                 description: input.description,
+                intro_markdown: input.intro_markdown,
+                short_description: input.short_description,
+                starters: input.starters,
                 system_prompt: input.system_prompt,
                 default_model_id: input.default_model_id,
                 harness_id: input.harness_id,

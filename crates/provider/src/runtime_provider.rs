@@ -439,6 +439,22 @@ impl crate::driver_registry::EmbeddingsDriver for ProviderBoundEmbeddingsDriver 
 
 #[async_trait]
 impl ChatDriver for ProviderBoundDriver {
+    fn native_async_driver(
+        &self,
+        model: &str,
+        tools: std::collections::BTreeMap<String, Option<serde_json::Value>>,
+        continuation: Option<crate::native_async::Delivery>,
+    ) -> Option<Arc<dyn ChatDriver>> {
+        let driver = self
+            .0
+            .driver
+            .native_async_driver(model, tools, continuation)?;
+        Some(Arc::new(ProviderBoundDriver(RuntimeProvider {
+            id: self.0.id.clone(),
+            endpoint: self.0.endpoint.clone(),
+            driver,
+        })))
+    }
     async fn chat_completion_stream(
         &self,
         _endpoint: &ProviderEndpoint,

@@ -288,6 +288,7 @@ mod tests {
     #[test]
     fn test_reason_result_serialization() {
         let result = ReasonResult {
+            native_counts: None,
             success: true,
             text: "Hello!".to_string(),
             tool_calls: vec![],

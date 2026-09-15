@@ -1,96 +1,69 @@
-//! A real Everruns Framework support agent backed by Anthropic.
-//!
-//! ```text
-//! ANTHROPIC_API_KEY=... cargo run -p everruns-framework-support-agent
-//! ```
-
-// Terminal presentation is shared by every example; this file is the agent.
+//! Run from the repository checkout; see README.md for credentials and scenarios.
 use everruns_example_demo as demo;
+mod agent;
+mod tools;
 
-use everruns::{Agent, Engine, Turn};
+use everruns::Engine;
+use std::io::{self, Write};
 
-const MODEL: &str = "claude-opus-5";
-const DEFAULT_QUESTION: &str =
-    "My Framework session fails after I add an Anthropic provider. What should I check first?";
-
-#[everruns::tool]
-/// Read authoritative Framework documentation for a support topic.
-async fn search_docs(topic: String) -> Result<String, String> {
-    let topic = topic.to_lowercase();
-    let page = if topic.contains("custom") {
-        "custom-providers"
-    } else if topic.contains("provider") || topic.contains("model") {
-        "models-and-providers"
-    } else {
-        "examples"
-    };
-    let url = format!(
-        "https://raw.githubusercontent.com/everruns/everruns/main/docs/framework/{page}.md"
-    );
-    let body = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .map_err(|e| e.to_string())?
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .error_for_status()
-        .map_err(|e| e.to_string())?
-        .text()
-        .await
-        .map_err(|e| e.to_string())?;
-    let content = body
-        .strip_prefix("---\n")
-        .and_then(|text| text.split_once("\n---\n"))
-        .map_or(body.as_str(), |(_, content)| content.trim());
-    Ok(format!(
-        "Source: https://docs.everruns.com/framework/{page}/\n{}",
-        content.chars().take(16000).collect::<String>()
-    ))
-}
-
-fn build_agent(api_key: &str) -> Result<Agent, everruns::BuildError> {
-    Agent::builder()
-        .name("everruns-support-agent")
-        .instructions("Keep the final answer within 150 words. You support Everruns Framework users. Use search_docs before answering. Separate evidence from hypotheses and give the smallest safe next step with relevant documentation links.")
-        .provider(everruns_anthropic::provider("anthropic", api_key))
-        .model(MODEL)
-        .tool(search_docs())
-        .build()
-}
-
-async fn run(question: &str) -> Result<Turn, Box<dyn std::error::Error>> {
-    let api_key = std::env::var("ANTHROPIC_API_KEY")?;
-    let agent = build_agent(&api_key)?;
-    let engine = Engine::new();
-    let session = engine.create(agent);
-    demo::run(&session, question).await
-}
-
-fn question_from_args() -> String {
-    let question = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
-    if question.is_empty() {
-        DEFAULT_QUESTION.into()
-    } else {
-        question
-    }
-}
+const QUESTION: &str = "How do I resume a durable Framework session after restarting my process? Find and read relevant documentation before answering.";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let question = question_from_args();
-    println!("Model: {MODEL}");
-    run(&question).await?;
+    let api_key = std::env::var("ANTHROPIC_API_KEY")?;
+    let input = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
+    let question = match input.as_str() {
+        "" => QUESTION.to_owned(),
+        "--interactive" => read_question()?,
+        _ => input,
+    };
+
+    let agent = agent::build(api_key)?;
+    let engine = Engine::new();
+    let session = engine.create(agent);
+
+    println!("MODEL: {}", agent::MODEL);
+    demo::run(&session, &question).await?;
     Ok(())
+}
+
+fn read_question() -> io::Result<String> {
+    print!("Question: ");
+    io::stdout().flush()?;
+
+    let mut question = String::new();
+    io::stdin().read_line(&mut question)?;
+    validate_question(&question)
+}
+
+fn validate_question(question: &str) -> io::Result<String> {
+    let question = question.trim();
+    if question.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "question cannot be empty",
+        ));
+    }
+    Ok(question.to_owned())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::build_agent;
+    use super::*;
 
     #[test]
-    fn builds_without_contacting_anthropic() {
-        assert!(build_agent("test-key").is_ok());
+    fn interactive_question_is_trimmed() {
+        assert_eq!(
+            validate_question("  How do I resume a session?\n").unwrap(),
+            "How do I resume a session?"
+        );
+    }
+
+    #[test]
+    fn interactive_question_cannot_be_empty() {
+        assert_eq!(
+            validate_question(" \n").unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
     }
 }

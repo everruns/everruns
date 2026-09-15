@@ -73,4 +73,4 @@ doppler run -- env | rg 'LINEAR_API_KEY|GITHUB_TOKEN'
 doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh auth status'
 ```
 
-The Linear MCP server must be configured in `.mcp.json`.
+The Linear MCP server must be configured in the agent environment (global config).

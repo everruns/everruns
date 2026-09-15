@@ -80,12 +80,15 @@ function DeclarativeCapabilityRow({ capability }: { capability: DeclarativeCapab
         </p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <Link href={`/capabilities/declarative/${capability.id}`}>
-          <Button type="button" variant="outline" size="sm">
-            <Pencil className="mr-1.5 h-3.5 w-3.5" />
-            Edit
-          </Button>
-        </Link>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          render={<Link href={`/capabilities/declarative/${capability.id}`} />}
+        >
+          <Pencil className="mr-1.5 h-3.5 w-3.5" />
+          Edit
+        </Button>
         <Button
           type="button"
           variant="outline"
@@ -281,12 +284,10 @@ export default function CapabilitiesPage() {
           </>
         }
         actions={
-          <Link href="/capabilities/declarative/new">
-            <Button variant="accent">
-              <Plus className="size-4" />
-              New Declarative
-            </Button>
-          </Link>
+          <Button variant="accent" render={<Link href="/capabilities/declarative/new" />}>
+            <Plus className="size-4" />
+            New Declarative
+          </Button>
         }
       />
 

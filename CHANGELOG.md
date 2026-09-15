@@ -7,6 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-09-13
+
+### Highlights
+
+- **PDF input with file attachments** - Agents can now accept PDF documents as file attachments alongside text input ([#3535](https://github.com/everruns/everruns/pull/3535)).
+- **Muse image model** - A new Muse image-generation model with a configurable fallback ([#3523](https://github.com/everruns/everruns/pull/3523)).
+- **Quick-connect provider grid** - Connecting an LLM provider is now a one-click grid in the UI ([#3526](https://github.com/everruns/everruns/pull/3526)).
+- **Native async tool execution on durable workers** - Long-running tool calls execute natively on durable workers instead of blocking a turn ([#3466](https://github.com/everruns/everruns/pull/3466)).
+- **Synchronous wait-for-completion** - A non-streaming wait-for-completion path spanning drivers, the sessions API, and the framework ([#3541](https://github.com/everruns/everruns/pull/3541)).
+- **Agent discovery documents** - The server serves agent discovery documents, and create_agent/session/message descriptions surface their argument constraints ([#3533](https://github.com/everruns/everruns/pull/3533), [#3530](https://github.com/everruns/everruns/pull/3530)).
+
+### What's Changed
+
+- feat(image-gen): add Muse image model with configurable fallback ([#3523](https://github.com/everruns/everruns/pull/3523)) by [@chaliy](https://github.com/chaliy)
+- test(builtins): exercise runtime capability configuration ([#3484](https://github.com/everruns/everruns/pull/3484)) by [@chaliy](https://github.com/chaliy)
+- test(test-support): complete fixture and loop unit review ([#3480](https://github.com/everruns/everruns/pull/3480)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): quick-connect grid for LLM providers ([#3526](https://github.com/everruns/everruns/pull/3526)) by [@chaliy](https://github.com/chaliy)
+- fix(server): claim session schedules atomically so replicas cannot double-fire ([#3527](https://github.com/everruns/everruns/pull/3527)) by [@chaliy](https://github.com/chaliy)
+- fix(models): default OpenAI orgs to GPT-5.6 Terra, never an embedding model ([#3528](https://github.com/everruns/everruns/pull/3528)) by [@chaliy](https://github.com/chaliy)
+- fix(discovery): surface argument constraints in create_agent/session/message descriptions ([#3530](https://github.com/everruns/everruns/pull/3530)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): render tool timeline rows as one-liners ([#3531](https://github.com/everruns/everruns/pull/3531)) by [@chaliy](https://github.com/chaliy)
+- refactor(plugins): remove everruns-dev plugin and unify on everruns ([#3529](https://github.com/everruns/everruns/pull/3529)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp-oauth): allow switching accounts on the authorize page ([#3532](https://github.com/everruns/everruns/pull/3532)) by [@chaliy](https://github.com/chaliy)
+- feat(server): serve agent discovery documents ([#3533](https://github.com/everruns/everruns/pull/3533)) by [@chaliy](https://github.com/chaliy)
+- fix(plugins): list only everruns in agent marketplaces ([#3534](https://github.com/everruns/everruns/pull/3534)) by [@chaliy](https://github.com/chaliy)
+- docs(sre): document agent discovery endpoints and the proxy rule they need ([#3537](https://github.com/everruns/everruns/pull/3537)) by [@chaliy](https://github.com/chaliy)
+- fix(openrouter): advertise xhigh reasoning effort in discovery ([#3536](https://github.com/everruns/everruns/pull/3536)) by [@chaliy](https://github.com/chaliy)
+- refactor(openrouter): carry routing as opaque driver option ([#3538](https://github.com/everruns/everruns/pull/3538)) by [@chaliy](https://github.com/chaliy)
+- feat(files): add PDF input support with file attachments ([#3535](https://github.com/everruns/everruns/pull/3535)) by [@chaliy](https://github.com/chaliy)
+- feat(nonstreaming): wait-for-completion across drivers, sessions API, and framework ([#3541](https://github.com/everruns/everruns/pull/3541)) by [@chaliy](https://github.com/chaliy)
+- refactor(platform): trim the dead legacy CRUD from PlatformStore ([#3542](https://github.com/everruns/everruns/pull/3542)) by [@chaliy](https://github.com/chaliy)
+- fix(tests): make live workflow teardown assert, and stop it leaking ([#3543](https://github.com/everruns/everruns/pull/3543)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): report a failed logout instead of rejecting unhandled ([#3544](https://github.com/everruns/everruns/pull/3544)) by [@chaliy](https://github.com/chaliy)
+- fix(tests): delete sessions in the live-provider workflow teardowns ([#3545](https://github.com/everruns/everruns/pull/3545)) by [@chaliy](https://github.com/chaliy)
+- docs(evals): record Astra behavior comparison ([#3546](https://github.com/everruns/everruns/pull/3546)) by [@chaliy](https://github.com/chaliy)
+- feat(compaction): emit structured lifecycle events attempt/skip/install/fail ([#3539](https://github.com/everruns/everruns/pull/3539)) by [@chaliy](https://github.com/chaliy)
+- feat(examples): prototype OpenAI websocket steering ([#3524](https://github.com/everruns/everruns/pull/3524)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): complete Responses unit test review ([#3483](https://github.com/everruns/everruns/pull/3483)) by [@chaliy](https://github.com/chaliy)
+- feat(tools): integrate native async execution with durable workers ([#3466](https://github.com/everruns/everruns/pull/3466)) by [@chaliy](https://github.com/chaliy)
+- fix(builtins): honor timezones and strengthen tool contracts ([#3485](https://github.com/everruns/everruns/pull/3485)) by [@chaliy](https://github.com/chaliy)
+- chore(ui): refresh non-major dependencies ([#3540](https://github.com/everruns/everruns/pull/3540)) by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(provider): omit reasoning include on continuations ([#3550](https://github.com/everruns/everruns/pull/3550)) by [@chaliy](https://github.com/chaliy)
+- docs(framework): turn agent examples into teaching workflows ([#3547](https://github.com/everruns/everruns/pull/3547)) by [@chaliy](https://github.com/chaliy)
+- feat(openai): account for cache writes and enforce Astra limits ([#3525](https://github.com/everruns/everruns/pull/3525)) by [@chaliy](https://github.com/chaliy)
+- chore(tooling): remove repo-local Linear MCP config ([#3553](https://github.com/everruns/everruns/pull/3553)) by [@chaliy](https://github.com/chaliy)
+- refactor(examples): keep agent assets under src ([#3552](https://github.com/everruns/everruns/pull/3552)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+Independently versioned crates published this cycle, classified with `cargo-semver-checks` (computed
+deterministically by `scripts/plan-crate-release.py`). Seven crates took breaking public-contract
+changes and take the breaking **minor** bump (the breaking slot for `0.x`); `everruns-provider`
+carries the routing refactor ([#3538](https://github.com/everruns/everruns/pull/3538)) that removed
+the `OpenRouter*` routing structs/consts and the `openrouter_routing` builder in favor of an opaque
+driver option, plus new variants on exhaustive content/stream enums from PDF input
+([#3535](https://github.com/everruns/everruns/pull/3535)) and native async tool calls
+([#3466](https://github.com/everruns/everruns/pull/3466)); that change ripples up through
+`everruns-core`, `everruns-engine`, `everruns-host`, `everruns-platform`, and the `everruns` facade.
+`everruns-model-profiles` is breaking on its own — cache-write cost accounting
+([#3525](https://github.com/everruns/everruns/pull/3525)) added a `cache_write` field to the
+exhaustively-constructible `ModelCost`/`CostTier` structs. Everything else is additive or a
+compatibility re-pin (patch), including the cone cascade across the wire-protocol drivers and
+integrations.
+
+Breaking (minor), old → new:
+- `everruns-provider` 0.21.0 → 0.22.0
+- `everruns-core` 0.20.0 → 0.21.0
+- `everruns-engine` 0.18.4 → 0.19.0
+- `everruns-host` 0.20.6 → 0.21.0
+- `everruns-platform` 0.20.0 → 0.21.0
+- `everruns` 0.20.1 → 0.21.0
+- `everruns-model-profiles` 0.1.0 → 0.2.0
+
+Additive / behavior (patch), old → new:
+- `everruns-builtins` 0.18.7 → 0.18.8
+- `everruns-capability` 0.18.1 → 0.18.2
+- `everruns-macros` 0.18.1 → 0.18.2
+- `everruns-mcp` 0.19.4 → 0.19.5
+- `everruns-ard` 0.18.3 → 0.18.4
+- `everruns-cli` 0.18.4 → 0.18.5
+- `everruns-test-support` 0.18.6 → 0.18.7
+- `everruns-llmsim` 0.18.6 → 0.18.7
+- Wire-protocol drivers `everruns-anthropic`, `everruns-bedrock`, `everruns-fireworks`, `everruns-gemini`, `everruns-mai`, `everruns-meta`, `everruns-openai`, `everruns-openrouter`, `everruns-turbopuffer` each patch-bumped to `0.18.5`.
+- All `everruns-integrations-*` crates patch-bumped to `0.18.4` (except `-filesystem` `0.18.5`, `-deno` `0.19.1`).
+
+No published crate was deleted or absorbed this cycle.
+
 ## [0.25.0] - 2026-09-11
 
 ### Highlights

@@ -2,21 +2,24 @@
 
 ## Abstract
 
-Slack integration allows deploying agents as Slack bots. Each Everruns App gets its own Slack App (own identity, name, avatar). An App binds a harness and optional agent to a Slack workspace with signing secret verification and configurable session strategies. Setup is streamlined via per-app manifest generation.
+Slack integration allows deploying agents as Slack bots. Each enabled Slack channel connects one Slack App with its own identity, name, and avatar. The owning Everruns App binds the harness and optional agent. The channel binds a Slack workspace with signing secret verification and configurable session strategies. Setup is streamlined via per-channel manifest generation.
 
 Slack is the reference implementation for the [messaging integrations](../../../knowledge/integrations/messaging-integrations.md) channel abstraction layer. It uses `InboundChannelEvent` for platform-agnostic message parsing, `build_session_routing_tag()` for session routing, `ThreadContext` for participant tracking, and `SlackDeliveryAdapter` implementing the `ChannelDeliveryAdapter` trait.
 
 ## Architecture
 
 ```
-Per-app manifest (recommended):
-  UI "Create Slack App"  -->  GET /v1/apps/{app_id}/slack/manifest  (returns YAML + create URL)
+Per-channel manifest (recommended):
+  Publish the App        -->  webhook endpoint goes live (required first)
+                              |
+  UI "Create Slack App"  -->  GET /v1/e/{channel_id}/slack/manifest  (returns YAML + create URL)
                               |
   Opens Slack "Create from manifest" with pre-filled scopes + bot user
+  + event_subscriptions (Slack verifies request_url on save)
                               |
   User copies signing_secret + bot_token back to Everruns
 
-Slack Events API         -->  POST /v1/apps/{app_id}/slack/events   (per-app, uses per-app secret)
+Slack Events API         -->  POST /v1/e/{channel_id}/slack/events  (uses channel secret)
                               |
                               +-- Verify HMAC-SHA256 signing secret
                               +-- Find/create session (by tags, per session_strategy)
@@ -32,16 +35,23 @@ The events endpoint verifies HMAC-SHA256 signing secret, finds/creates session b
 
 ## Design Decisions
 
-- **One Slack App per Everruns App**: Each app has its own identity (name, avatar, scopes). This is unlike GitHub (global app) because Slack bots are user-facing with distinct identities per use case.
-- **Per-app manifest generation**: The manifest endpoint generates a YAML with correct scopes and bot user. `event_subscriptions` is omitted (requires live webhook URL, must be configured after publishing).
-- **App-scoped endpoint**: Slack is bound to an App, so the webhook is `POST /v1/apps/{app_id}/slack/events`. The App defines the harness, optional agent, signing secret, and session strategy.
+- **One Slack App per enabled Slack channel**: Each channel has its own credentials and endpoint identity. Multiple Slack channels can share the owning Everruns App's harness and agent.
+- **Per-channel manifest generation**: The manifest endpoint generates a YAML with correct scopes, bot user, and `event_subscriptions`. The webhook URL is fully determined by the channel's public ID before the Slack app exists, so it can be declared up front; the real constraint is ordering, since Slack verifies `request_url` when the manifest is saved. That is why the endpoint serves published apps only — publish, then create the Slack app. (An earlier revision of this spec claimed `event_subscriptions` "requires a live webhook URL, must be configured after publishing" and therefore omitted it. The live-URL part is right, the conclusion was not: the fix is ordering, not manual setup.)
+- **Agent surface is one boolean, resolved per event**: `SlackChannelConfig.agent_surface_enabled` adds Slack's agent pane *alongside* the channel bot rather than replacing it, so it is not a third `reply_mode` or a separate channel type. One app serves both surfaces and the event says which: a DM (`channel_type: "im"`) is the pane, an `app_mention` is a channel thread. Recovery has no event and falls back to the channel id, since Slack DM ids start with `D` — both paths go through `classify_surface` so they cannot disagree. Pane sessions force `per_thread` (a pane conversation is a thread); rejecting `per_channel`/`per_user` at config time would be wrong because the same app still serves channels. Enabling it needs a manifest update *and* a workspace reinstall, because `assistant:write` is a new scope. New apps use `features.agent_view`; `assistant_view` is the legacy spelling Slack is deprecating.
+- **Streaming is a pane behaviour, probed not required**: `ChannelDeliveryAdapter::streaming()` returns `Some` only where the platform supports progressive delivery, and the dispatcher streams only for `SlackSurface::Pane` — token-by-token into a shared channel is not wanted. A stream is per output message (`chat.startStream`/`appendStream`/`stopStream`), so a turn with three messages is three streams. Every terminal state, cancellation included, closes any stream still open. `sent` is claimed under the delivery lock before the network call so two concurrent flushes cannot transmit the same text twice — found against a real workspace, where the 500ms flush tick overlapped an event-driven flush. `chat.startStream` needs only `chat:write`, but requires `recipient_user_id`/`recipient_team_id` when streaming into a channel.
+- **Endpoint-scoped route**: Slack is keyed by channel ID at `POST /v1/e/{channel_id}/slack/events`. The App defines the harness and optional agent. The channel defines the signing secret and session strategy. App-scoped paths remain permanent aliases when exactly one enabled Slack channel matches; ambiguous aliases return `409 Conflict`.
 - **Unauthenticated**: Webhook and manifest requests come from Slack or the browser. Security is via Slack signing secret verification (HMAC-SHA256), not API key auth.
 - **Unscoped app lookup**: `get_app_by_public_id_unscoped()` looks up apps across all orgs since webhooks have no auth context.
 - **Session routing via tags**: Sessions are found/created using tags like `slack:thread:{ts}`, `slack:channel:{id}`, or `slack:user:{id}` depending on the session strategy.
 - **Event-driven response delivery**: The webhook acks Slack immediately (<3s), then registers with `SlackDeliveryDispatcher`. The dispatcher subscribes to `EventNotificationBroadcaster` (PostgreSQL NOTIFY) and delivers `output.message.completed` text to Slack as events arrive, with no fixed deadline. Handles arbitrarily long agent turns. Posts are retried with exponential backoff (3 attempts) on transient failures. Non-retryable errors (invalid token, channel not found) fail immediately. The dispatcher unregisters on `turn.completed` or `turn.failed`. Events are filtered by `input_message_id` to avoid cross-turn interference. Falls back to legacy 120s polling in DEV_MODE (no PostgreSQL).
+- **Agent-surface status and title** (EVE-975): in the pane, `turn.started` sets a generic thinking status, `tool.started` replaces it with whatever `everruns_platform::app::public_tool_activity_text` allows for the channel's `tool_visibility` (`None` narrates nothing, `Generic`/`Narrated` show the configured safe text — never a tool name), and any terminal turn event clears it. Running tools are counted, so one of two finishing does not clear the line early. `session.title.updated` pushes the agent's title to the thread; an inbound `agent_session_title_changed` writes the user's rename back to the session, scoped like the stop button and suppressed when it matches the stored title so the two directions cannot echo. Both calls go through the `ChannelAgentSurface` capability probe and are advisory — a failure is logged, never fatal to the turn.
 - **Startup recovery**: On server restart, `SlackDeliveryDispatcher::recover()` queries sessions with `status = 'active'` and `slack:*` tags, looks up the corresponding app for the bot_token, finds the last unfinished turn, and re-registers deliveries.
 - **Slack event dedup**: Slack sends both `app_mention` and `message` events for @mentions. DB-level dedup via `has_event_with_slack_ts()` prevents duplicate processing (uses JSONB `@>` containment on input.message events).
-- **Thread context injection**: When the bot is first mentioned mid-thread (`PerThread` strategy, new session, `thread_ts` present), prior messages are fetched via Slack's `conversations.replies` API and injected as `input.message` events (without triggering agent workflows). This gives the agent full conversational context. Bot messages become assistant-role; human messages get user-role with `ExternalActor` attribution. Failures are non-fatal, the agent proceeds without history. Required scopes (`channels:history`, `groups:history`, `im:history`, `mpim:history`) are already in the manifest.
+- **Thread context injection**: When the bot is first mentioned mid-thread (`PerThread` strategy, new session, `thread_ts` present), prior messages are fetched via Slack's `conversations.replies` API and injected as `input.message` events (without triggering agent workflows). This gives the agent full conversational context. Bot messages become assistant-role; human messages get user-role with `ExternalActor` attribution. Failures are non-fatal, the agent proceeds without history. Required scopes (`channels:history`, `groups:history`, `im:history`, `mpim:history`) are already in the manifest. Fetching follows `response_metadata.next_cursor` to the end of the thread rather than reading one 100-message page, and injects at most `THREAD_BACKFILL_MAX_MESSAGES` (500), keeping the newest. When the cap or a mid-thread API failure truncates the history, a `System` message stating so is injected ahead of it, so the agent never reads a window as the whole thread. `PerChannel` and `PerUser` sessions are deliberately not backfilled: they outlive any single thread and accumulate their own history, so backfill would re-inject a thread they already hold context for.
+- **Stop button**: `agent_session_stopped` cancels the turn running in the pane thread. This is the first inbound *control* signal from Slack rather than a message, so its blast radius is deliberately fixed: it can cancel the resolved session's turn and nothing else — no resume, retry, or mutation. Authorization is the lookup: the routing tag embeds the receiving app's public id and `find_app_session_by_tags` is additionally scoped to that app's org and internal id, so a thread owned by another app resolves nothing and the stop is logged and dropped. Cancellation goes through the same `cancel_session_turn_for` the app API endpoint uses, which reads the session's terminal state first — so a stop for an already-finished turn is a no-op rather than an error, and a completed turn is never race-flipped to cancelled. The in-thread confirmation is the `turn.cancelled` terminal notice (see Terminal-state notice), not a separate post.
+- **Thread context**: Each session carries a persisted `ThreadContext` (session KV key `channel:thread_context`) holding the thread's participants and, when the pane reports it, the channel the user is currently viewing. Participants accumulate across messages and survive a restart; the `channel_context` capability renders both as the leading *conversation context* of each turn, not as system prompt, because participant names and the platform's view report are external user-controlled strings. `app_context_changed` updates the record rather than emitting an event per change — the pane reports a new context on every navigation. The view line names the channel id and states plainly that the agent has not been granted access to it, because the platform reports where the *user* is, which the agent may have no tool to read; the id is deliberately left unresolved for the same reason. The key is reserved from the agent-facing `kv_store` tool, so a session actor cannot forge its own participants or view.
+- **Message rendering**: Replies post as Slack `markdown` blocks, not as raw `text`. Agent output is Markdown; Slack's `text` field is `mrkdwn`, a different and much smaller language in which tables, headings, nested lists and fenced code with language hints all degrade. `text` stays populated as the notification fallback (capped at `SLACK_TEXT_FALLBACK_LIMIT`, since it is never rendered when `blocks` are present). A reply past Slack's 12,000-character block limit is split across blocks on line boundaries — never truncated — and a split landing inside a fenced code block closes the fence and reopens it with its info string, so both halves still render as code. Past 50 blocks the reply spills into further messages. Markdown that Slack's renderer still will not honour (deeply nested structures, inline images) is passed through unmodified rather than rewritten: any normalization we apply is a lossy guess against a renderer that keeps improving, and the raw Markdown is what a user pasting it elsewhere expects.
+- **Message correlation**: Every posted reply carries `chat.postMessage` `metadata` with `event_type: everruns_agent_reply` and an `event_payload` naming the session and input message. This is a durable key from a Slack message back to the run that produced it, replacing tag-string heuristics, and makes `message_metadata_posted` available later.
 - **Reply modes**: Slack apps can either forward completed assistant messages (`all_messages`) or run in `report_progress_only` handoff mode. In handoff mode the webhook posts an immediate deterministic acknowledgement (`On it.`), the session is tagged with the reply mode, ReasonAtom exposes a `report_progress` tool + prompt instructions, and Slack delivery ignores normal assistant messages in favor of explicit `tool.completed` events from that tool.
 
 ## Channel Config
@@ -75,8 +85,10 @@ Key fields:
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/v1/apps/{app_id}/slack/events` | Slack signing secret | Per-app Slack Events API webhook |
-| GET | `/v1/apps/{app_id}/slack/manifest` | None | Returns Slack App manifest YAML + create URL |
+| POST | `/v1/e/{channel_id}/slack/events` | Slack signing secret | Slack Events API webhook |
+| GET | `/v1/e/{channel_id}/slack/manifest` | None | Returns Slack App manifest YAML + create URL |
+| POST | `/v1/apps/{app_id}/slack/events` | Slack signing secret | Permanent app-scoped alias |
+| GET | `/v1/apps/{app_id}/slack/manifest` | None | Permanent app-scoped alias |
 
 All other App CRUD endpoints remain under standard API key auth at `/v1/apps`.
 
@@ -86,9 +98,9 @@ Apps page at `/apps` with:
 - List of apps with status badges
 - Create page at `/apps/new` with name, harness, and optional agent/channel selection
 - Detail page at `/apps/{id}` with:
-  - "Create Slack App" button (opens Slack with pre-filled manifest)
+  - "Create Slack App" button (opens Slack with pre-filled manifest), offered only once published
   - Manual configuration fields (signing secret, bot token)
-  - Webhook URL display for Event Subscriptions
+  - Webhook URL display, informational — the manifest already declares it
 - Publish/Unpublish actions
 - Delete confirmation
 
@@ -128,7 +140,7 @@ This is channel-agnostic, any future channel adapter (Discord, Teams) populates 
 Integration tests in `crates/server/tests/slack_integration_test.rs`:
 
 - **Webhook tests** (always run): URL verification, signature rejection, session creation/reuse, bot message filtering, session strategies, manifest endpoint, replay attack prevention
-- **Real Slack API tests** (require credentials): `chat.postMessage`, `users.info`, full webhook→session flow with real signing secret
+- **Real Slack API tests** (require credentials): `chat.postMessage` (plain and `markdown`-block payloads, the latter read back via `conversations.history` to confirm Slack stored the block and the metadata), `users.info`, full webhook→session flow with real signing secret
 
 CI runs all tests via `doppler run` in the `integration-test` job (PostgreSQL required). `real_slack_credentials()` always panics if any `TEST_SLACK_*` env var is missing, real-API tests never silently skip.
 

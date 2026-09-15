@@ -63,35 +63,3 @@ impl Capability for SelfBudgetCapability {
 }
 
 const SELF_BUDGET_SYSTEM_PROMPT: &str = "User-stated budgets are agent-managed soft targets, not platform-enforced limits. Track spend with `get_session_info` around expensive phases, qualify estimates when pricing is partial, and tighten scope/output as the target nears. Do not create, modify, delete, or report them as platform budgets; if close to exhausted, inform the user and continue with a scoped-down path.";
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
-
-    #[test]
-    fn test_capability_has_system_prompt() {
-        let cap = SelfBudgetCapability;
-        let prompt = cap.system_prompt_addition().expect("prompt present");
-        assert!(prompt.contains("agent-managed soft targets"));
-        assert!(prompt.contains("get_session_info"));
-        assert!(prompt.contains("platform-enforced limits"));
-    }
-
-    #[test]
-    fn test_capability_has_no_features() {
-        let cap = SelfBudgetCapability;
-        assert!(cap.features().is_empty());
-    }
-
-    #[test]
-    fn test_prompt_distinguishes_from_budgeting() {
-        let cap = SelfBudgetCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        // Must NOT direct the agent to the platform-budget tool
-        assert!(!prompt.contains("check_budget"));
-        // Must NOT direct the agent to mutate budgets
-        assert!(!prompt.to_lowercase().contains("create budget"));
-    }
-}

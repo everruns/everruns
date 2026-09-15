@@ -152,6 +152,7 @@ mod tests {
 
     fn assistant_batch() -> LlmMessage {
         LlmMessage {
+            native_tool_calls: Vec::new(),
             role: LlmMessageRole::Assistant,
             content: LlmMessageContent::Text(String::new()),
             tool_calls: Some(vec![
@@ -175,6 +176,7 @@ mod tests {
 
     fn tool_result(id: &str) -> LlmMessage {
         LlmMessage {
+            native_tool_calls: Vec::new(),
             role: LlmMessageRole::Tool,
             content: LlmMessageContent::Text("result".to_string()),
             tool_calls: None,

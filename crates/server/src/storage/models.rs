@@ -460,6 +460,17 @@ pub struct AgentRow {
     #[sqlx(default)]
     pub display_name: Option<String>,
     pub description: Option<String>,
+    /// Markdown intro for fresh Platform Chat threads. Wins over the harness
+    /// intro. Hidden once the user inputs.
+    #[sqlx(default)]
+    pub intro_markdown: Option<String>,
+    /// One-line description in simplified Markdown. Wins over the harness value.
+    #[sqlx(default)]
+    pub short_description: Option<String>,
+    /// Conversation starters (JSONB in DB). Win over harness starters when
+    /// non-empty.
+    #[sqlx(default)]
+    pub starters: serde_json::Value,
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
     pub harness_id: HarnessId,
@@ -614,6 +625,12 @@ pub struct CreateAgentRow {
     pub name: String,
     pub display_name: Option<String>,
     pub description: Option<String>,
+    /// Markdown intro for fresh Platform Chat threads (agent wins).
+    pub intro_markdown: Option<String>,
+    /// One-line description in simplified Markdown (agent wins).
+    pub short_description: Option<String>,
+    /// Conversation starters (JSONB in DB, agent wins when non-empty).
+    pub starters: serde_json::Value,
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
     pub harness_id: HarnessId,
@@ -640,6 +657,12 @@ pub struct UpdateAgent {
     pub name: Option<String>,
     pub display_name: Option<String>,
     pub description: Option<String>,
+    /// Markdown intro for fresh Platform Chat threads (agent wins).
+    pub intro_markdown: Option<Option<String>>,
+    /// One-line description in simplified Markdown (agent wins).
+    pub short_description: Option<Option<String>>,
+    /// Conversation starters (JSONB); None = leave unchanged.
+    pub starters: Option<serde_json::Value>,
     pub system_prompt: Option<String>,
     pub default_model_id: Option<ModelId>,
     pub harness_id: Option<HarnessId>,
@@ -676,6 +699,15 @@ pub struct HarnessRow {
     #[sqlx(default)]
     pub icon: Option<String>,
     pub description: Option<String>,
+    /// Markdown intro for fresh Platform Chat threads (agent wins).
+    #[sqlx(default)]
+    pub intro_markdown: Option<String>,
+    /// One-line description in simplified Markdown (agent wins).
+    #[sqlx(default)]
+    pub short_description: Option<String>,
+    /// Conversation starters (JSONB in DB, agent wins when non-empty).
+    #[sqlx(default)]
+    pub starters: serde_json::Value,
     /// Base system prompt. Nullable: a harness may contribute no base prompt
     /// and rely entirely on inheritance, agent, session, and capability layers.
     pub system_prompt: Option<String>,
@@ -709,6 +741,12 @@ pub struct CreateHarnessRow {
     /// Display glyph name rendered by the UI.
     pub icon: Option<String>,
     pub description: Option<String>,
+    /// Markdown intro for fresh Platform Chat threads (agent wins).
+    pub intro_markdown: Option<String>,
+    /// One-line description in simplified Markdown (agent wins).
+    pub short_description: Option<String>,
+    /// Conversation starters (JSONB in DB, agent wins when non-empty).
+    pub starters: serde_json::Value,
     /// Base system prompt; `None` means the harness contributes no base prompt.
     pub system_prompt: Option<String>,
     pub parent_harness_id: Option<HarnessId>,
@@ -730,6 +768,12 @@ pub struct UpdateHarness {
     pub name: Option<String>,
     pub display_name: Option<String>,
     pub description: Option<String>,
+    /// None = leave unchanged; Some(None) = clear; Some(Some(v)) = set.
+    pub intro_markdown: Option<Option<String>>,
+    /// None = leave unchanged; Some(None) = clear; Some(Some(v)) = set.
+    pub short_description: Option<Option<String>>,
+    /// Conversation starters (JSONB); None = leave unchanged.
+    pub starters: Option<serde_json::Value>,
     /// None = leave unchanged; Some(None) = clear to no base prompt;
     /// Some(Some(v)) = set to v.
     pub system_prompt: Option<Option<String>>,

@@ -985,6 +985,11 @@ impl ServerAppBuilder {
         // (forward-progress guard, EVE-534). `sessions_state` is moved into the
         // router later, so grab a clone of the service now.
         let reclaim_session_service = sessions_state.session_service.clone();
+        let environments_state = api::environments::AppState::new(
+            db.clone(),
+            sessions_state.session_service.clone(),
+            auth_state.clone(),
+        );
         let session_sandbox_state = session_sandbox_service.as_ref().map(|sandbox_service| {
             api::session_sandbox::AppState::new(
                 db.clone(),
@@ -1010,7 +1015,11 @@ impl ServerAppBuilder {
         // Must be created before events_state takes ownership of event_broadcaster.
         let slack_dispatcher = if let Some(ref broadcaster) = event_broadcaster {
             let rx = broadcaster.subscribe();
-            let dispatcher = crate::slack_delivery::SlackDeliveryDispatcher::start(db.clone(), rx);
+            let dispatcher = crate::slack_delivery::SlackDeliveryDispatcher::start(
+                db.clone(),
+                rx,
+                auth_config.frontend_url.clone(),
+            );
             tracing::info!("Slack delivery dispatcher started (event-driven)");
             Some(dispatcher)
         } else {
@@ -1256,6 +1265,7 @@ impl ServerAppBuilder {
             slack_dispatcher.clone(),
             notifications_enabled,
             event_delivery.clone(),
+            auth_config.base_url.clone(),
         );
         let webhook_rate_limiter = match valkey_for_channel_rate_limits.clone() {
             Some(client) => {
@@ -1682,6 +1692,13 @@ impl ServerAppBuilder {
             tracing::info!("Observers disabled via feature flag");
         }
 
+        // Environments describe every session, including the ones with no
+        // sandbox at all, so they are not gated on the sandbox feature flag.
+        // They are gated on their own deployment flag while the view is still
+        // derived from capabilities rather than stored profiles.
+        if feature_flags.environments {
+            api_routes = api_routes.merge(api::environments::routes(environments_state));
+        }
         if let Some(session_sandbox_state) = session_sandbox_state {
             api_routes = api_routes.merge(api::session_sandbox::routes(session_sandbox_state));
         }

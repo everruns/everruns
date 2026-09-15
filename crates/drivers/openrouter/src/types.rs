@@ -216,6 +216,7 @@ impl OpenRouterPricing {
             input,
             output,
             cache_read,
+            cache_write: None,
             cost_tiers: Vec::new(),
         })
     }

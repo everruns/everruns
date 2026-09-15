@@ -493,18 +493,41 @@ impl FileContentPart {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ToolCallContentPart {
+    /// Original native call, including raw custom input and async metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native: Option<everruns_provider::native_async::NativeToolCall>,
     pub id: String,
     pub name: String,
     pub arguments: serde_json::Value,
 }
 
 impl ToolCallContentPart {
+    /// Validate and retain a native call alongside its portable tool arguments.
+    pub fn from_native(
+        call: everruns_provider::native_async::NativeToolCall,
+    ) -> crate::error::Result<Self> {
+        use everruns_provider::native_async::NativeToolCall;
+        call.validate()?;
+        let arguments = match &call {
+            NativeToolCall::Function { arguments, .. } => serde_json::from_str(arguments)
+                .map_err(|error| crate::error::AgentLoopError::llm(error.to_string()))?,
+            NativeToolCall::Custom { input, .. } => serde_json::Value::String(input.clone()),
+        };
+        Ok(Self {
+            id: call.id().into(),
+            name: call.name().into(),
+            arguments,
+            native: Some(call),
+        })
+    }
+
     pub fn new(
         id: impl Into<String>,
         name: impl Into<String>,
         arguments: serde_json::Value,
     ) -> Self {
         Self {
+            native: None,
             id: id.into(),
             name: name.into(),
             arguments,
@@ -872,6 +895,7 @@ impl Message {
         }
         for tc in tool_calls {
             parts.push(ContentPart::ToolCall(ToolCallContentPart {
+                native: None,
                 id: tc.id,
                 name: tc.name,
                 arguments: tc.arguments,
@@ -1250,6 +1274,26 @@ mod tests {
             serde_json::to_value(actual).unwrap(),
             serde_json::to_value(expected).unwrap()
         );
+    }
+
+    #[test]
+    fn native_custom_call_survives_transcript_serialization_and_conversion() {
+        let native = everruns_provider::native_async::NativeToolCall::Custom {
+            call_id: "original-call".into(),
+            name: "lookup".into(),
+            input: "raw\nquery: \"value\"".into(),
+            asynchronous: true,
+        };
+        let mut message = Message::assistant("");
+        message.content.push(ContentPart::ToolCall(
+            ToolCallContentPart::from_native(native.clone()).unwrap(),
+        ));
+        let restored: Message =
+            serde_json::from_slice(&serde_json::to_vec(&message).unwrap()).unwrap();
+        assert_eq!(restored.tool_calls()[0].native.as_ref(), Some(&native));
+        let llm = crate::llm_conversions::llm_message_from_message(&restored);
+        assert_eq!(llm.native_tool_calls, vec![native]);
+        assert_eq!(llm.tool_calls.unwrap()[0].id, "original-call");
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! Integration tests for the App api_endpoint channel — app-scoped,
+//! Integration tests for the App api_endpoint channel — endpoint-scoped,
 //! execution-only API keys driving native session routes.
 
 mod test_harness;
@@ -62,6 +62,31 @@ async fn create_app_with_api_endpoint(server: &TestServer, name: &str) -> (Value
     (app_after, api_key)
 }
 
+#[tokio::test]
+async fn api_endpoint_legacy_app_channel_mismatch_is_not_found() {
+    let server = TestServer::in_memory().await;
+    let (app_a, _) = create_app_with_api_endpoint(&server, "api-endpoint-mismatch-a").await;
+    let (app_b, key_b) = create_app_with_api_endpoint(&server, "api-endpoint-mismatch-b").await;
+    let app_a_id = app_a["id"].as_str().unwrap();
+    let app_b_id = app_b["id"].as_str().unwrap();
+    let channel_b_id = app_b["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_a_id).await;
+    publish_app(&server, app_b_id).await;
+
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_a_id}/api/{channel_b_id}/sessions"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {key_b}")),
+            ],
+            serde_json::to_vec(&json!({ "message": "hi" })).unwrap(),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
 async fn publish_app(server: &TestServer, app_id: &str) {
     server
         .post(&format!("/v1/apps/{app_id}/publish"), json!({}))
@@ -104,7 +129,7 @@ async fn api_endpoint_create_session_dispatches_message_and_confines() {
     let created: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/api/{channel_id}/sessions"),
+            &format!("/v1/e/{channel_id}/sessions"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -126,7 +151,7 @@ async fn api_endpoint_create_session_dispatches_message_and_confines() {
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/messages"),
+            &format!("/v1/e/{channel_id}/sessions/{session_id}/messages"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -142,7 +167,7 @@ async fn api_endpoint_create_session_dispatches_message_and_confines() {
     let status: Value = server
         .request_raw(
             Method::GET,
-            &format!("/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}"),
+            &format!("/v1/e/{channel_id}/sessions/{session_id}"),
             vec![("authorization", &format!("Bearer {api_key}"))],
             Vec::new(),
         )
@@ -152,6 +177,16 @@ async fn api_endpoint_create_session_dispatches_message_and_confines() {
     assert_eq!(status["session_id"].as_str().unwrap(), session_id);
     assert!(status["status"].is_string());
     assert!(status["messages"].is_array());
+
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/e/{channel_id}/sessions/{session_id}/cancel"),
+            vec![("authorization", &format!("Bearer {api_key}"))],
+            Vec::new(),
+        )
+        .await
+        .assert_status(StatusCode::OK);
 }
 
 #[tokio::test]
@@ -199,7 +234,7 @@ async fn api_endpoint_unpublished_app_is_forbidden() {
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
     // Intentionally not published.
 
-    server
+    let legacy_status = server
         .request_raw(
             Method::POST,
             &format!("/v1/apps/{app_id}/api/{channel_id}/sessions"),
@@ -210,7 +245,22 @@ async fn api_endpoint_unpublished_app_is_forbidden() {
             serde_json::to_vec(&json!({ "message": "hi" })).unwrap(),
         )
         .await
-        .assert_status(StatusCode::FORBIDDEN);
+        .status();
+    let endpoint_status = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/e/{channel_id}/sessions"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            serde_json::to_vec(&json!({ "message": "hi" })).unwrap(),
+        )
+        .await
+        .status();
+
+    assert_eq!(legacy_status, StatusCode::FORBIDDEN);
+    assert_eq!(endpoint_status, legacy_status);
 }
 
 #[tokio::test]

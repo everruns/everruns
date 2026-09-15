@@ -12,7 +12,7 @@ use crate::storage::models::{CreateAgentRow, CreateHarnessRow, CreateSessionRow}
 use async_trait::async_trait;
 use everruns_core::{Caller, DEFAULT_ORG_ID};
 use everruns_durable::InMemoryWorkflowEventStore;
-use everruns_platform::InvocationSessionMode;
+use everruns_platform::SessionBinding;
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_worker::AgentRunner;
 use std::sync::{Arc, Mutex};
@@ -66,6 +66,9 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_provider::typ
                 display_name: Some("Trigger Harness".to_string()),
                 icon: None,
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: Some(String::new()),
                 parent_harness_id: None,
                 default_model_id: None,
@@ -87,6 +90,9 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_provider::typ
             name: "trigger-agent".to_string(),
             display_name: Some("Trigger Agent".to_string()),
             description: None,
+            intro_markdown: None,
+            short_description: None,
+            starters: serde_json::json!([]),
             system_prompt: String::new(),
             default_model_id: None,
             harness_id: harness.id,
@@ -114,7 +120,7 @@ fn create_req(cron: &str, message: &str, enabled: bool) -> CreateAgentTriggerReq
     CreateAgentTriggerRequest {
         cron_expression: cron.to_string(),
         timezone: "UTC".to_string(),
-        session_mode: InvocationSessionMode::SharedSession,
+        session_mode: SessionBinding::Endpoint,
         message: message.to_string(),
         enabled,
     }
@@ -139,6 +145,9 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         name: "trigger-agent".to_string(),
         display_name: None,
         description: None,
+        intro_markdown: None,
+        short_description: None,
+        starters: serde_json::json!([]),
         system_prompt: String::new(),
         default_model_id: None,
         harness_id: agent_harness_id,
@@ -217,6 +226,9 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
                 display_name: None,
                 icon: None,
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: Some(String::new()),
                 parent_harness_id: None,
                 default_model_id: None,
@@ -755,5 +767,78 @@ async fn ensure_identity_for_agent_rejects_archived_linked_identity() {
     assert!(
         err.to_string().contains("is not active"),
         "unexpected error: {err:#}"
+    );
+}
+
+/// EVE-1005: one `SessionBinding` now spans messaging and invocations, so the
+/// constraint that used to be carried by the type system — triggers simply had
+/// no `per_thread` to express — has to be enforced at write time instead.
+#[tokio::test]
+async fn create_trigger_rejects_message_keyed_bindings() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    let ctx = test_ctx(db.clone(), store);
+    let (agent_id, _) = seed_agent(&db).await;
+
+    for binding in SessionBinding::MESSAGE_KEYED {
+        let mut req = create_req("0 9 * * *", "nope", true);
+        req.session_mode = binding;
+        let err = CreateAgentTrigger {
+            agent_id: agent_id.clone(),
+            req,
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("a trigger has no thread, conversation or requester to key on");
+        assert!(
+            err.message().contains("not valid for an agent trigger"),
+            "{binding:?} got: {err}"
+        );
+    }
+
+    // The invocation-keyed bindings remain accepted.
+    for binding in SessionBinding::INVOCATION_KEYED {
+        let mut req = create_req("0 9 * * *", "fine", false);
+        req.session_mode = binding;
+        CreateAgentTrigger {
+            agent_id: agent_id.clone(),
+            req,
+        }
+        .execute(&ctx)
+        .await
+        .unwrap_or_else(|e| panic!("{binding:?} must be accepted, got: {e}"));
+    }
+}
+
+/// The same guard on the update path, which merges onto a stored config.
+#[tokio::test]
+async fn update_trigger_rejects_message_keyed_bindings() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    let ctx = test_ctx(db.clone(), store);
+    let (agent_id, _) = seed_agent(&db).await;
+
+    let created = CreateAgentTrigger {
+        agent_id: agent_id.clone(),
+        req: create_req("0 9 * * *", "hello", false),
+    }
+    .execute(&ctx)
+    .await
+    .expect("create");
+
+    let err = UpdateAgentTriggerCmd {
+        agent_id: agent_id.clone(),
+        trigger_id: created.id.to_string(),
+        req: UpdateAgentTriggerRequest {
+            session_mode: Some(SessionBinding::Thread),
+            ..Default::default()
+        },
+    }
+    .execute(&ctx)
+    .await
+    .expect_err("update must refuse a message-keyed binding too");
+    assert!(
+        err.message().contains("not valid for an agent trigger"),
+        "got: {err}"
     );
 }

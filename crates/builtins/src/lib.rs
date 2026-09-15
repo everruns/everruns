@@ -34,6 +34,7 @@ pub mod attach_skill;
 pub mod auto_tool_search;
 pub mod btw;
 pub mod budgeting;
+pub mod channel_context;
 pub mod claude_tool_search;
 pub mod compaction;
 pub mod current_time;
@@ -44,10 +45,12 @@ pub mod human_intent;
 pub mod infinity_context;
 pub mod loop_detection;
 pub mod message_metadata;
+pub mod native_async_tools;
 pub mod openai_tool_search;
 #[cfg(feature = "ui-capabilities")]
 pub mod openui;
 pub mod parallel_tool_calls;
+pub use native_async_tools::NativeAsyncToolsCapability;
 pub mod progress_guard;
 pub mod prompt_caching;
 pub mod prompt_canary_guardrail;
@@ -113,6 +116,7 @@ pub use attach_skill::AttachSkillCapability;
 pub use auto_tool_search::{AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapability};
 pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
 pub use budgeting::{BUDGETING_CAPABILITY_ID, BudgetingCapability};
+pub use channel_context::{CHANNEL_CONTEXT_CAPABILITY_ID, ChannelContextCapability};
 pub use claude_tool_search::{CLAUDE_TOOL_SEARCH_CAPABILITY_ID, ClaudeToolSearchCapability};
 pub use compaction::{
     COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionStep,
@@ -279,6 +283,7 @@ fn runtime_capabilities() -> Vec<Arc<dyn Capability>> {
         Arc::new(InfinityContextCapability),
         Arc::new(SkillsCapability),
         Arc::new(AgentInstructionsCapability),
+        Arc::new(ChannelContextCapability),
         Arc::new(CurrentTimeCapability),
         Arc::new(MessageMetadataCapability),
         Arc::new(StatelessTodoListCapability),
@@ -293,6 +298,7 @@ fn runtime_capabilities() -> Vec<Arc<dyn Capability>> {
         Arc::new(AutoToolSearchCapability::new()),
         Arc::new(PromptCachingCapability::new()),
         Arc::new(ParallelToolCallsCapability),
+        Arc::new(NativeAsyncToolsCapability),
         Arc::new(SystemCommandsCapability),
         Arc::new(ToolOutputPersistenceCapability),
         Arc::new(ToolOutputDistillationCapability),
@@ -308,11 +314,12 @@ fn runtime_capabilities() -> Vec<Arc<dyn Capability>> {
 mod bundle_tests {
     use super::*;
 
-    const RUNTIME_IDS: [&str; 26] = [
+    const RUNTIME_IDS: [&str; 28] = [
         "human_intent",
         "infinity_context",
         "skills",
         "agent_instructions",
+        "channel_context",
         "current_time",
         "message_metadata",
         "stateless_todo_list",
@@ -327,6 +334,7 @@ mod bundle_tests {
         "auto_tool_search",
         "prompt_caching",
         "parallel_tool_calls",
+        "native_async_tools",
         "system_commands",
         "tool_output_persistence",
         "tool_output_distillation",

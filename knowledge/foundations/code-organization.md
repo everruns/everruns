@@ -183,6 +183,13 @@ Two pin conventions follow from package publishability:
   `[workspace.dependencies]`. `scripts/sync-publish-pin-versions.py` discovers
   both packages and edges from Cargo metadata, so there is no release allowlist
   to update when a crate moves or versions diverge.
+- **Dev-dependencies** stay version-less by default: `cargo publish` strips a
+  version-less path dev-dependency, which keeps siblings that dev-depend on each
+  other free of a publish-order deadlock. A dev-dependency that needs features the
+  workspace entry does not carry (`everruns-ard` dev-depends on `everruns-host`
+  with `direct-egress`) spells out its own version and is then synced like any
+  other pin, because a breaking bump would otherwise leave the published crate
+  requesting a version that no longer exists.
 
 ## Formatting
 

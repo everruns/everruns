@@ -9,6 +9,21 @@ const MAX_EXECUTE_COMMAND_PARAMS_BYTES: usize = 1024 * 1024;
 const DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT: i32 = 200;
 const MAX_TURN_CONTEXT_MESSAGE_LIMIT: i32 = crate::storage::repository::MESSAGE_SAFETY_LIMIT as i32;
 
+/// Log an internal failure server-side and return a client-safe `Status`.
+///
+/// THREAT[TM-API-005]: worker gRPC `Status` messages cross the server/worker trust
+/// boundary, and `grpc_status_to_error` in `crates/worker` copies `status.message()`
+/// verbatim into runtime errors — from there they reach worker logs, durable workflow
+/// failure records, and session error surfaces. Only the fixed `context` string may
+/// travel; sqlx text, Postgres index names, and source paths stay in the server log.
+///
+/// `internal_statuses_never_carry_source_errors` below pins that every internal
+/// failure in this file goes through here or an equally generic literal.
+fn internal_status(context: &'static str, error: impl std::fmt::Display) -> Status {
+    tracing::error!(%error, "{}", context);
+    Status::internal(context)
+}
+
 fn flatten_secret_bindings(
     bindings: std::collections::HashMap<String, Vec<everruns_mcp::McpSecretBinding>>,
 ) -> Vec<proto::McpSecretBinding> {
@@ -96,7 +111,11 @@ fn command_error_kind(error: &crate::domains::common::CommandError) -> i32 {
 
 fn command_error_to_proto(error: crate::domains::common::CommandError) -> ProtoCommandError {
     let message = match &error.kind {
-        CommandErrorKind::Internal(inner) => inner.to_string(),
+        CommandErrorKind::Internal(inner) => {
+            // THREAT[TM-API-005]: ExecuteCommand callers receive no internal diagnostics.
+            tracing::error!(error = %inner, "gRPC command failed");
+            "Internal server error".to_string()
+        }
         _ => error.to_string(),
     };
 
@@ -114,7 +133,8 @@ fn command_error_to_status(error: crate::domains::common::CommandError) -> Statu
         CommandErrorKind::NotFound(message) => Status::not_found(message),
         CommandErrorKind::Conflict(message) => Status::failed_precondition(message),
         CommandErrorKind::RateLimited(message) => Status::resource_exhausted(message),
-        CommandErrorKind::Internal(inner) => Status::internal(inner.to_string()),
+        // THREAT[TM-API-005]: mirror command_error_to_proto — the caller gets no diagnostics.
+        CommandErrorKind::Internal(inner) => internal_status("Internal server error", inner),
     }
 }
 
@@ -471,7 +491,7 @@ impl WorkerService for WorkerServiceImpl {
         let agent =
             crate::domains::agents::queries::get_by_public_id(&self.db, req.org_id, &public_id)
                 .await
-                .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?;
+                .map_err(|e| internal_status("Failed to get agent", e))?;
 
         let proto_agent = agent.map(|a| schema_agent_to_proto(&a));
 
@@ -491,7 +511,7 @@ impl WorkerService for WorkerServiceImpl {
             everruns_provider::typed_id::HarnessId::from_uuid(harness_id),
         )
         .await
-        .map_err(|e| Status::internal(format!("Failed to get harness: {}", e)))?;
+        .map_err(|e| internal_status("Failed to get harness", e))?;
 
         let proto_harness = harness.map(|h| schema_harness_to_proto(&h));
 
@@ -613,7 +633,7 @@ impl WorkerService for WorkerServiceImpl {
             .event_service
             .list_message_events(session_id)
             .await
-            .map_err(|e| Status::internal(format!("Failed to list messages: {}", e)))?;
+            .map_err(|e| internal_status("Failed to list messages", e))?;
 
         for event in events {
             let message = match event_to_message(&event) {
@@ -656,7 +676,7 @@ impl WorkerService for WorkerServiceImpl {
             .db
             .list_message_events_filtered(&query)
             .await
-            .map_err(|e| Status::internal(format!("Failed to list messages: {}", e)))?;
+            .map_err(|e| internal_status("Failed to list messages", e))?;
         let source_sequence = events
             .iter()
             .map(|event| i64::from(event.sequence))
@@ -668,7 +688,7 @@ impl WorkerService for WorkerServiceImpl {
                 session_id,
             ))
             .await
-            .map_err(|e| Status::internal(format!("Failed to count messages: {}", e)))?
+            .map_err(|e| internal_status("Failed to count messages", e))?
             .min(i32::MAX as i64) as i32;
 
         let mut proto_messages: Vec<proto::Message> = Vec::with_capacity(events.len());
@@ -698,6 +718,71 @@ impl WorkerService for WorkerServiceImpl {
         }))
     }
 
+    async fn native_async_journal(
+        &self,
+        request: Request<proto::NativeAsyncJournalRequest>,
+    ) -> Result<Response<proto::NativeAsyncJournalResponse>, Status> {
+        use everruns_core::native_async_store::{
+            MAX_NATIVE_ASYNC_CHECKPOINT_BYTES, NativeAsyncLease, NativeAsyncStore,
+        };
+        use proto::native_async_journal_request::Operation;
+        let req = request.into_inner();
+        let operation = Operation::try_from(req.operation)
+            .map_err(|_| Status::invalid_argument("invalid journal operation"))?;
+        if req.checkpoint_json.len() > MAX_NATIVE_ASYNC_CHECKPOINT_BYTES {
+            return Err(Status::resource_exhausted(
+                "native async checkpoint exceeds 8 MiB",
+            ));
+        }
+        let lease = NativeAsyncLease {
+            org_id: req.org_id,
+            session_id: parse_uuid(req.session_id.as_ref())?.into(),
+            turn_id: parse_uuid(req.turn_id.as_ref())?.into(),
+            owner: parse_uuid(req.owner.as_ref())?,
+        };
+        let pool = self.db.pool().ok_or_else(|| {
+            Status::failed_precondition("native async requires shared durable storage")
+        })?;
+        let encryption = self.encryption.clone().ok_or_else(|| {
+            Status::failed_precondition("checkpoint encryption is not configured")
+        })?;
+        let store = crate::storage::PgNativeAsyncStore::new(pool.clone(), encryption);
+        let checkpoint = match operation {
+            Operation::Acquire => Some(store.acquire(lease).await),
+            Operation::Load => Some(store.load(lease).await),
+            Operation::Renew => {
+                store.renew(lease).await.map_err(|_| {
+                    Status::failed_precondition("native async ownership fence lost")
+                })?;
+                None
+            }
+            Operation::Save => {
+                let checkpoint = serde_json::from_slice(&req.checkpoint_json)
+                    .map_err(|_| Status::invalid_argument("invalid native async checkpoint"))?;
+                store.save(lease, &checkpoint).await.map_err(|_| {
+                    Status::failed_precondition("native async checkpoint write failed")
+                })?;
+                None
+            }
+            Operation::Release => {
+                store.release(lease).await.map_err(|_| {
+                    Status::failed_precondition("native async ownership fence lost")
+                })?;
+                None
+            }
+        }
+        .transpose()
+        .map_err(|_| Status::failed_precondition("native async journal unavailable or fenced"))?;
+        let checkpoint_json = checkpoint
+            .map(|checkpoint| serde_json::to_vec(&checkpoint))
+            .transpose()
+            .map_err(|_| Status::internal("cannot encode native async checkpoint"))?
+            .unwrap_or_default();
+        Ok(Response::new(proto::NativeAsyncJournalResponse {
+            checkpoint_json,
+        }))
+    }
+
     async fn get_compaction_checkpoint(
         &self,
         request: Request<proto::GetCompactionCheckpointRequest>,
@@ -713,10 +798,11 @@ impl WorkerService for WorkerServiceImpl {
         let checkpoint = store
             .get_latest(session_id, &req.provider_type, &req.model)
             .await
-            .map_err(|error| Status::internal(error.to_string()))?
+            .map_err(|error| internal_status("Failed to load compaction checkpoint", error))?
             .map(|checkpoint| {
-                let payload_json = serde_json::to_vec(&checkpoint.payload)
-                    .map_err(|error| Status::internal(error.to_string()))?;
+                let payload_json = serde_json::to_vec(&checkpoint.payload).map_err(|error| {
+                    internal_status("Failed to encode compaction checkpoint", error)
+                })?;
                 Ok::<_, Status>(proto::CompactionCheckpoint {
                     id: Some(proto::Uuid {
                         value: checkpoint.id.to_string(),
@@ -764,7 +850,7 @@ impl WorkerService for WorkerServiceImpl {
                 payload,
             })
             .await
-            .map_err(|error| Status::internal(error.to_string()))?;
+            .map_err(|error| internal_status("Failed to install compaction checkpoint", error))?;
         Ok(Response::new(proto::InstallCompactionCheckpointResponse {
             installed,
         }))
@@ -3454,7 +3540,7 @@ impl WorkerService for WorkerServiceImpl {
                 }
                 everruns_core::session_schedule::ScheduleLimitError::Store(err) => {
                     tracing::error!("Failed to create schedule: {}", err);
-                    Status::internal(format!("Failed to create schedule: {}", err))
+                    internal_status("Failed to create schedule", err)
                 }
             })?;
 
@@ -3480,7 +3566,7 @@ impl WorkerService for WorkerServiceImpl {
             .await
             .map_err(|e| {
                 tracing::error!("Failed to cancel schedule: {}", e);
-                Status::internal(format!("Failed to cancel schedule: {}", e))
+                internal_status("Failed to cancel schedule", e)
             })?;
 
         Ok(Response::new(CancelSessionScheduleResponse {
@@ -3498,7 +3584,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let schedules = store.list_schedules(session_id.into()).await.map_err(|e| {
             tracing::error!("Failed to list schedules: {}", e);
-            Status::internal(format!("Failed to list schedules: {}", e))
+            internal_status("Failed to list schedules", e)
         })?;
 
         let proto_schedules = schedules.iter().map(session_schedule_to_proto).collect();
@@ -3521,7 +3607,7 @@ impl WorkerService for WorkerServiceImpl {
             .await
             .map_err(|e| {
                 tracing::error!("Failed to count active schedules: {}", e);
-                Status::internal(format!("Failed to count active schedules: {}", e))
+                internal_status("Failed to count active schedules", e)
             })?;
 
         Ok(Response::new(CountActiveSessionSchedulesResponse { count }))
@@ -3536,7 +3622,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let count = store.count_active_org_schedules().await.map_err(|e| {
             tracing::error!("Failed to count active org schedules: {}", e);
-            Status::internal(format!("Failed to count active org schedules: {}", e))
+            internal_status("Failed to count active org schedules", e)
         })?;
 
         Ok(Response::new(CountActiveOrgSchedulesResponse { count }))
@@ -3915,10 +4001,10 @@ impl WorkerService for WorkerServiceImpl {
             .db
             .list_harnesses(req.org_id, None, false)
             .await
-            .map_err(|e| Status::internal(format!("Failed to list harnesses: {}", e)))?;
+            .map_err(|e| internal_status("Failed to list harnesses", e))?;
         let harnesses = crate::domains::harnesses::queries::load_harnesses_list(&self.db, rows)
             .await
-            .map_err(|e| Status::internal(format!("Failed to list harnesses: {}", e)))?;
+            .map_err(|e| internal_status("Failed to list harnesses", e))?;
 
         let proto_harnesses = harnesses.iter().map(schema_harness_to_proto).collect();
         Ok(Response::new(PlatformListHarnessesResponse {
@@ -3941,6 +4027,9 @@ impl WorkerService for WorkerServiceImpl {
             name: req.name,
             display_name: req.display_name,
             description: req.description,
+            intro_markdown: None,
+            short_description: None,
+            starters: Vec::new(),
             // Worker proto carries a plain string; empty/whitespace means no base prompt.
             system_prompt: (!req.system_prompt.trim().is_empty()).then_some(req.system_prompt),
             parent_harness_id: req
@@ -3963,7 +4052,7 @@ impl WorkerService for WorkerServiceImpl {
         let harness = crate::domains::harnesses::CreateHarness(create_req)
             .run(&ctx)
             .await
-            .map_err(|e| Status::internal(format!("Failed to create harness: {}", e)))?;
+            .map_err(|e| internal_status("Failed to create harness", e))?;
 
         Ok(Response::new(PlatformCreateHarnessResponse {
             harness: Some(schema_harness_to_proto(&harness)),
@@ -3981,6 +4070,9 @@ impl WorkerService for WorkerServiceImpl {
             name: req.name,
             display_name: req.display_name,
             description: req.description,
+            intro_markdown: None,
+            short_description: None,
+            starters: None,
             system_prompt: req.system_prompt,
             parent_harness_id: if req.clear_parent_harness_id.unwrap_or(false) {
                 Some(None)
@@ -4012,7 +4104,7 @@ impl WorkerService for WorkerServiceImpl {
         }
         .run(&ctx)
         .await
-        .map_err(|e| Status::internal(format!("Failed to update harness: {}", e)))?;
+        .map_err(|e| internal_status("Failed to update harness", e))?;
 
         Ok(Response::new(PlatformUpdateHarnessResponse {
             harness: Some(schema_harness_to_proto(&harness)),
@@ -4035,7 +4127,7 @@ impl WorkerService for WorkerServiceImpl {
         }
         .run(&ctx)
         .await
-        .map_err(|e| Status::internal(format!("Failed to delete harness: {}", e)))?;
+        .map_err(|e| internal_status("Failed to delete harness", e))?;
 
         Ok(Response::new(PlatformDeleteHarnessResponse {}))
     }
@@ -4056,7 +4148,7 @@ impl WorkerService for WorkerServiceImpl {
         }
         .run(&ctx)
         .await
-        .map_err(|e| Status::internal(format!("Failed to copy harness: {}", e)))?;
+        .map_err(|e| internal_status("Failed to copy harness", e))?;
 
         // If a new_name was provided, update the copy with the new name
         let harness = if let Some(new_name) = req.new_name {
@@ -4064,6 +4156,9 @@ impl WorkerService for WorkerServiceImpl {
                 name: Some(new_name),
                 display_name: None,
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: None,
                 system_prompt: None,
                 parent_harness_id: None,
                 default_model_id: None,
@@ -4081,7 +4176,7 @@ impl WorkerService for WorkerServiceImpl {
             }
             .run(&ctx)
             .await
-            .map_err(|e| Status::internal(format!("Failed to rename copied harness: {}", e)))
+            .map_err(|e| internal_status("Failed to rename copied harness", e))
             .unwrap_or(harness)
         } else {
             harness
@@ -4102,10 +4197,10 @@ impl WorkerService for WorkerServiceImpl {
             .db
             .list_agents(req.org_id, None, false, pagination)
             .await
-            .map_err(|e| Status::internal(format!("Failed to list agents: {}", e)))?;
+            .map_err(|e| internal_status("Failed to list agents", e))?;
         let agents = crate::domains::agents::queries::load_agents_list(&self.db, rows)
             .await
-            .map_err(|e| Status::internal(format!("Failed to list agents: {}", e)))?;
+            .map_err(|e| internal_status("Failed to list agents", e))?;
 
         let proto_agents = agents.iter().map(schema_agent_to_proto).collect();
         Ok(Response::new(PlatformListAgentsResponse {
@@ -4129,6 +4224,9 @@ impl WorkerService for WorkerServiceImpl {
             name: req.name.clone(),
             display_name: req.display_name,
             description: req.description,
+            intro_markdown: None,
+            short_description: None,
+            starters: Vec::new(),
             system_prompt: req.system_prompt,
             default_model_id: None,
             harness_id: None,
@@ -4148,7 +4246,7 @@ impl WorkerService for WorkerServiceImpl {
         let agent = crate::domains::agents::CreateAgent(create_req)
             .run(&ctx)
             .await
-            .map_err(|e| Status::internal(format!("Failed to create agent: {}", e)))?;
+            .map_err(|e| internal_status("Failed to create agent", e))?;
 
         Ok(Response::new(PlatformCreateAgentResponse {
             agent: Some(schema_agent_to_proto(&agent)),
@@ -4168,6 +4266,9 @@ impl WorkerService for WorkerServiceImpl {
             name: req.name,
             display_name: req.display_name,
             description: req.description,
+            intro_markdown: None,
+            short_description: None,
+            starters: None,
             system_prompt: req.system_prompt,
             default_model_id: None,
             harness_id: None,
@@ -4191,7 +4292,7 @@ impl WorkerService for WorkerServiceImpl {
         }
         .run(&ctx)
         .await
-        .map_err(|e| Status::internal(format!("Failed to update agent: {}", e)))?;
+        .map_err(|e| internal_status("Failed to update agent", e))?;
 
         Ok(Response::new(PlatformUpdateAgentResponse {
             agent: Some(schema_agent_to_proto(&updated)),
@@ -4211,7 +4312,7 @@ impl WorkerService for WorkerServiceImpl {
         crate::domains::agents::DeleteAgent { id: public_id }
             .run(&ctx)
             .await
-            .map_err(|e| Status::internal(format!("Failed to delete agent: {}", e)))?;
+            .map_err(|e| internal_status("Failed to delete agent", e))?;
 
         Ok(Response::new(PlatformDeleteAgentResponse {}))
     }
@@ -4243,7 +4344,7 @@ impl WorkerService for WorkerServiceImpl {
                 pagination,
             )
             .await
-            .map_err(|e| Status::internal(format!("Failed to list sessions: {}", e)))?;
+            .map_err(|e| internal_status("Failed to list sessions", e))?;
 
         let proto_sessions = sessions.iter().map(schema_session_to_proto).collect();
         Ok(Response::new(PlatformListSessionsResponse {
@@ -4270,7 +4371,7 @@ impl WorkerService for WorkerServiceImpl {
             let agent =
                 crate::domains::agents::queries::get_by_public_id(&self.db, req.org_id, &public_id)
                     .await
-                    .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
+                    .map_err(|e| internal_status("Failed to get agent", e))?
                     .ok_or_else(|| Status::not_found("Agent not found"))?;
             Some(agent.public_id)
         } else {
@@ -4327,7 +4428,7 @@ impl WorkerService for WorkerServiceImpl {
                     create_req,
                 )
                 .await
-                .map_err(|e| Status::internal(format!("Failed to create session: {}", e)))?
+                .map_err(|e| internal_status("Failed to create session", e))?
         } else {
             self.session_service
                 .create(
@@ -4339,7 +4440,7 @@ impl WorkerService for WorkerServiceImpl {
                     create_req,
                 )
                 .await
-                .map_err(|e| Status::internal(format!("Failed to create session: {}", e)))?
+                .map_err(|e| internal_status("Failed to create session", e))?
         };
 
         Ok(Response::new(PlatformCreateSessionResponse {
@@ -4358,7 +4459,7 @@ impl WorkerService for WorkerServiceImpl {
         self.session_service
             .delete(&internal_caller, session_id)
             .await
-            .map_err(|e| Status::internal(format!("Failed to delete session: {}", e)))?;
+            .map_err(|e| internal_status("Failed to delete session", e))?;
 
         Ok(Response::new(PlatformDeleteSessionResponse {}))
     }
@@ -4376,7 +4477,7 @@ impl WorkerService for WorkerServiceImpl {
             .session_service
             .get(&internal_caller, session_id, None)
             .await
-            .map_err(|e| Status::internal(format!("Failed to get session: {}", e)))?
+            .map_err(|e| internal_status("Failed to get session", e))?
             .ok_or_else(|| Status::not_found("Session not found"))?;
 
         // Create message event
@@ -4406,7 +4507,7 @@ impl WorkerService for WorkerServiceImpl {
                 everruns_core::events::InputMessageData::new(core_message),
             ))
             .await
-            .map_err(|e| Status::internal(format!("Failed to emit message event: {}", e)))?;
+            .map_err(|e| internal_status("Failed to emit message event", e))?;
 
         // Start turn workflow if runner is available
         if let Some(ref runner) = self.runner {
@@ -4516,7 +4617,7 @@ impl WorkerService for WorkerServiceImpl {
             .event_service
             .list_message_events_limited(session_id, Some(limit))
             .await
-            .map_err(|e| Status::internal(format!("Failed to list messages: {}", e)))?;
+            .map_err(|e| internal_status("Failed to list messages", e))?;
 
         let proto_messages: Vec<proto::PlatformMessage> = events
             .iter()
@@ -4584,7 +4685,7 @@ impl WorkerService for WorkerServiceImpl {
                 .session_service
                 .get(&internal_caller, session_id, None)
                 .await
-                .map_err(|e| Status::internal(format!("Failed to get session: {}", e)))?
+                .map_err(|e| internal_status("Failed to get session", e))?
                 .ok_or_else(|| Status::not_found("Session not found"))?;
 
             let status_str = session.status.to_string();
@@ -4626,7 +4727,7 @@ impl WorkerService for WorkerServiceImpl {
             .capability_service
             .list_all(req.org_id)
             .await
-            .map_err(|e| Status::internal(format!("Failed to list capabilities: {}", e)))?;
+            .map_err(|e| internal_status("Failed to list capabilities", e))?;
         capabilities
             .retain(|capability| feature_flags.is_capability_enabled(capability.id.as_str()));
 
@@ -4878,7 +4979,7 @@ impl WorkerService for WorkerServiceImpl {
             .db
             .get_session(req.org_id, session_id)
             .await
-            .map_err(|error| Status::internal(format!("Failed to load session: {error}")))?
+            .map_err(|error| internal_status("Failed to load session", error))?
             .ok_or_else(|| Status::not_found("Session not found"))?;
         let user_id = session.resolved_owner_user_id.ok_or_else(|| {
             Status::permission_denied(
@@ -4888,7 +4989,10 @@ impl WorkerService for WorkerServiceImpl {
         let caller = crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
             .await
             .map_err(|error| {
-                Status::permission_denied(format!("Failed to resolve session owner: {error}"))
+                // THREAT[TM-API-005]: the resolver failure is a server-side diagnostic;
+                // the worker only needs to know the decision.
+                tracing::error!(%error, "Failed to resolve session owner");
+                Status::permission_denied("Failed to resolve session owner")
             })?;
         crate::domains::sessions::SESSION_MANAGE
             .evaluate_with(self.permission_resolver.as_ref(), &caller)
@@ -4912,9 +5016,9 @@ fn payment_error_to_status(error: everruns_provider::error::AgentLoopError) -> S
         AgentLoopError::SessionNotFound(session_id) => {
             Status::not_found(format!("Session not found: {session_id}"))
         }
-        AgentLoopError::MessageStore(message) => Status::internal(message),
-        AgentLoopError::Internal(error) => Status::internal(error.to_string()),
-        other => Status::internal(other.to_string()),
+        AgentLoopError::MessageStore(error) => internal_status("Failed to store message", error),
+        AgentLoopError::Internal(error) => internal_status("Internal server error", error),
+        other => internal_status("Internal server error", other),
     }
 }
 
@@ -4952,9 +5056,72 @@ fn proto_to_workflow_status(status: DurableWorkflowStatus) -> WorkflowStatus {
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT, MAX_TURN_CONTEXT_MESSAGE_LIMIT,
-        normalize_turn_context_message_limit,
+        DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT, MAX_TURN_CONTEXT_MESSAGE_LIMIT, command_error_to_proto,
+        internal_status, normalize_turn_context_message_limit,
     };
+
+    const RAW_STORAGE_ERROR: &str = "error returned from database: relation \"agents\" does not \
+                                     exist at sqlx-postgres/src/connection.rs:666";
+
+    #[test]
+    fn internal_status_keeps_the_source_error_server_side() {
+        let status = internal_status("Failed to get agent", RAW_STORAGE_ERROR);
+
+        assert_eq!(status.code(), tonic::Code::Internal);
+        assert_eq!(status.message(), "Failed to get agent");
+        assert!(!status.message().contains("sqlx"));
+        assert!(!status.message().contains("agents"));
+    }
+
+    /// THREAT[TM-API-005]: a new RPC that formats its source error into the Status
+    /// re-opens the leak this file was audited for, so pin the shape rather than the
+    /// handful of call sites. The needles are assembled with `concat!` so this test's
+    /// own source is not an offender.
+    #[test]
+    fn internal_statuses_never_carry_source_errors() {
+        let call = concat!("Status", "::internal(");
+        let literal = format!("{call}\"");
+        let helper = format!("{call}context)");
+
+        let offenders: Vec<String> = include_str!("worker_service_impl.rs")
+            .lines()
+            .enumerate()
+            .filter(|(_, line)| {
+                line.contains(call) && !line.contains(&literal) && !line.contains(&helper)
+            })
+            .map(|(index, line)| format!("line {}: {}", index + 1, line.trim()))
+            .collect();
+
+        assert!(
+            offenders.is_empty(),
+            "internal Status messages must be fixed literals or go through \
+             internal_status(), which logs the source error instead of sending it:\n{}",
+            offenders.join("\n")
+        );
+    }
+
+    #[test]
+    fn command_error_proto_redacts_internal_details() {
+        let raw = "postgres query failed at sqlx-postgres/src/connection.rs:666";
+
+        let proto = command_error_to_proto(crate::domains::common::CommandError::internal(
+            anyhow::anyhow!(raw),
+        ));
+        assert_eq!(proto.message, "Internal server error");
+        assert!(!proto.message.contains(raw));
+    }
+
+    #[test]
+    fn command_error_proto_redacts_unique_conflict_details() {
+        let raw = "error returned from database: duplicate key value violates unique constraint \
+                   \"idx_memories_org_name_active\" at sqlx-postgres/src/connection.rs:666";
+        let error = crate::domains::common::classify_anyhow(anyhow::anyhow!(raw));
+        let proto = command_error_to_proto(error);
+
+        assert_eq!(proto.kind, 4);
+        assert_eq!(proto.message, crate::errors::ALREADY_EXISTS_DETAIL);
+        assert!(!proto.message.contains(raw));
+    }
 
     #[test]
     fn normalize_turn_context_message_limit_uses_clamped_default() {

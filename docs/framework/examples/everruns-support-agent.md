@@ -1,61 +1,118 @@
 ---
 title: Everruns Support Agent
-description: Troubleshoot Everruns Framework questions with Claude Opus and authoritative documentation links.
+description: Search and read citable documentation before answering Framework questions.
 ---
 
-The [Everruns Support Agent source](https://github.com/everruns/everruns/tree/main/examples/everruns-support-agent)
-shows a real Anthropic-backed troubleshooting agent. Its typed tool returns the
-relevant Everruns documentation links before the model explains the smallest
-safe next step.
+[Browse the complete example](https://github.com/everruns/everruns/tree/main/examples/everruns-support-agent).
 
-![Everruns Support Agent terminal demo](https://raw.githubusercontent.com/everruns/everruns/main/examples/everruns-support-agent/demo.gif)
+Answer Framework questions by searching and reading a small, inspectable corpus of official documentation. The agent retrieves evidence before answering instead of routing keywords to prewritten responses.
 
-This screencast replays a real run in readable pages, with waiting time removed.
-[Read the complete displayed transcript](https://github.com/everruns/everruns/blob/main/examples/everruns-support-agent/demo.txt).
-Tool-result previews are shortened; the agent receives the full tool response.
+![Everruns Support Agent terminal demo](https://raw.githubusercontent.com/everruns/everruns/main/examples/everruns-support-agent/demo/demo.gif)
+
+## What you learn
+
+A two-step search/read tool interface, citable evidence, and an explicit boundary around the available knowledge.
+
+## Scenario and expected outcome
+
+The default question asks how to resume a durable session after restarting a process. The agent should search for persistence and session history, read the relevant pages, then explain the local catalog, persisted `SessionId`, and agent reattachment requirements with source URLs.
+
+It must not imply that `Engine::new()` survives a restart. When the corpus lacks an answer, it should say so instead of inventing one.
+
+## Run it
+
+Install Rust/Cargo, clone the repository, and run from its root. This folder is self-contained **within the workspace**: its Cargo manifest references local Framework crates, so copying the folder alone is not sufficient.
 
 ```bash
-ANTHROPIC_API_KEY=... cargo run -p everruns-framework-support-agent
+git clone https://github.com/everruns/everruns.git
+cd everruns
+export ANTHROPIC_API_KEY="your-key"
+cargo run -p everruns-framework-support-agent
 ```
 
-It uses `claude-opus-5`. Pass a different question after `--` to use the same
-agent for another Framework support issue.
+The configured model is `claude-opus-5`. Provider access and funded credits are required. Keep keys in your environment, not in source control. Missing credentials, provider errors, and unsuccessful turns exit nonzero.
 
-The documentation tool reads Markdown content from the official repository and
-returns source links alongside that evidence.
+Try another question:
 
-## The important part
+```bash
+cargo run -p everruns-framework-support-agent -- "How do I register a custom provider?"
+cargo run -p everruns-framework-support-agent -- "How can a tool return a structured error?"
+```
+
+Or type a question interactively:
+
+```bash
+cargo run -p everruns-framework-support-agent -- --interactive
+```
+
+## Build the agent
+
+The definition lives in `src/agent.rs`; `main.rs` only handles input and runs the session. The prompt and documentation corpus live under `src/resources/`. Tools retrieve evidence; Opus decides what to search, read, and explain.
 
 ```rust
-// A tool is ordinary async Rust, so it can reach the network. This one maps a
-// topic to a documentation page and returns the page with its source link, so
-// the model answers from fetched evidence rather than memory.
-#[everruns::tool]
-/// Read authoritative Framework documentation for a support topic.
-async fn search_docs(topic: String) -> Result<String, String> {
-    let topic = topic.to_lowercase();
-    let page = if topic.contains("custom") {
-        "custom-providers"
-    } else if topic.contains("provider") || topic.contains("model") {
-        "models-and-providers"
-    } else {
-        "examples"
-    };
-    // ... fetch https://raw.githubusercontent.com/.../docs/framework/{page}.md,
-    // strip the frontmatter, and cap the body at 16 000 characters so one tool
-    // result cannot swallow the context window.
-    Ok(format!("Source: https://docs.everruns.com/framework/{page}/\n{content}"))
+pub fn build(api_key: String) -> Result<Agent, BuildError> {
+    Agent::builder()
+        .name("everruns-support-agent")
+        .instructions(include_str!("resources/instructions.md"))
+        .provider(everruns_anthropic::provider("anthropic", api_key))
+        .model(MODEL)
+        .max_iterations(12)
+        .tool(tools::search_docs())
+        .tool(tools::read_doc())
+        .build()
 }
-
-let agent = Agent::builder()
-    .name("everruns-support-agent")
-    // Instructions that separate evidence from hypothesis are what make the
-    // fetched documentation useful rather than decorative.
-    .instructions("You support Everruns Framework users. Use search_docs before \
-        answering. Separate evidence from hypotheses and give the smallest safe \
-        next step with relevant documentation links.")
-    .provider(everruns_anthropic::provider("anthropic", api_key))
-    .model("claude-opus-5")
-    .tool(search_docs())
-    .build()?;
 ```
+
+## Send, observe, and wait
+
+The Framework interaction stays small in `main.rs`. The shared demo helper subscribes before sending, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. Use `session.send_and_wait(&question).await?` when a live tool timeline is unnecessary.
+
+```rust
+let agent = agent::build(api_key)?;
+let engine = Engine::new();
+let session = engine.create(agent);
+
+println!("MODEL: {}", agent::MODEL);
+demo::run(&session, &question).await?;
+```
+
+This engine is in-memory. The agent can explain durable sessions from its corpus, but the example itself does not persist its session.
+
+## How the tools work
+
+`search_docs` ranks matches against five bundled pages and returns page IDs, public URLs, and matching excerpts. `read_doc` accepts only those page IDs and returns the complete snapshot. It never accepts an arbitrary filesystem path.
+
+## Validate the behavior
+
+```bash
+cargo test -p everruns-framework-support-agent
+bash examples/everruns-support-agent/demo/record.sh --check
+```
+
+Tests cover content-based search, empty and unmatched queries, complete citable reads, arbitrary-path rejection, and interactive input validation. They do not grade the model's answer; compare a live response with the expected outcome above.
+
+CI runs the offline checks without provider credentials. Live model behavior is evaluated separately.
+
+## Demo and recording
+
+The screencast types a question into the same interactive binary shown above, then displays the actual Opus tool calls and answer. VHS hides most provider wait time but does not replace the model or tools with scripted output. Read the [captured transcript](https://github.com/everruns/everruns/blob/main/examples/everruns-support-agent/demo/transcript.txt) at your own pace.
+
+With credentials exported and VHS, ffmpeg, and a VHS-compatible browser installed:
+
+```bash
+bash examples/everruns-support-agent/demo/record.sh
+```
+
+The script uses an exported `ANTHROPIC_API_KEY` when present, otherwise Doppler project `everruns-dev`, config `dev`. It updates `demo/demo.gif` and `demo/transcript.txt` only after a successful turn.
+
+## Adapt it
+
+Replace the bundled pages with a versioned documentation index while retaining separate search and read operations. Attach source/version metadata, restrict reads to authorized documents, and treat retrieved text as untrusted evidence rather than instructions.
+
+## Boundaries
+
+The corpus is a five-page snapshot from 2026-09-08, not a live search of docs.everruns.com. Provenance is recorded in `src/resources/docs/README.md`, and the snapshot can lag current APIs.
+
+## Source map
+
+`src/main.rs`: input and session execution; `src/agent.rs`: agent definition; `src/tools.rs`: bounded documentation retrieval; `src/resources/`: prompt and documentation corpus; `demo/`: live VHS recording, transcript, and recording script. `examples/demo-support` handles shared terminal presentation.

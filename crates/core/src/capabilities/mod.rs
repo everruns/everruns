@@ -138,6 +138,11 @@ pub struct SystemPromptContext {
     /// e.g. `auto_tool_search`). `None` when the model is not yet resolved; such
     /// capabilities then fall back to their provider-agnostic behavior.
     pub model: Option<String>,
+    /// Optional session key/value store, for capabilities whose contribution is
+    /// persisted session state rather than static text (e.g. `channel_context`
+    /// reading the accumulated `ThreadContext`). `None` for callers that do not
+    /// provide one; such capabilities then contribute nothing.
+    pub session_storage: Option<Arc<dyn crate::session_services::SessionStorageStore>>,
 }
 
 impl SystemPromptContext {
@@ -148,6 +153,7 @@ impl SystemPromptContext {
             locale: None,
             file_store: None,
             model: None,
+            session_storage: None,
         }
     }
 
@@ -280,6 +286,14 @@ pub fn resolve_localized_field<T>(
 
 #[async_trait]
 pub trait Capability: Send + Sync {
+    /// Explicit native asynchronous tool selection. Providers without support
+    /// retain the ordinary synchronous definitions and scheduler.
+    fn native_async_tools(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Option<std::collections::BTreeMap<String, Option<serde_json::Value>>> {
+        None
+    }
     /// Returns the unique capability identifier as a string
     fn id(&self) -> &str;
 

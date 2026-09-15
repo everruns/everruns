@@ -476,7 +476,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   if (chatEvents.length === 0) {
     if (emptyState) {
       return (
-        <div className="flex flex-col items-center justify-end text-center text-muted-foreground">
+        <div className="flex w-full flex-1 flex-col items-center justify-center px-4 py-8 text-center text-muted-foreground">
           {emptyState}
         </div>
       );

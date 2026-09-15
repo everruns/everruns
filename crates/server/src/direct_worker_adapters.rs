@@ -1669,6 +1669,15 @@ impl WorkerAdapters for DirectWorkerAdapters {
         })
     }
 
+    fn native_async_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>> {
+        Some(Arc::new(crate::storage::PgNativeAsyncStore::new(
+            self.db.pool()?.clone(),
+            self.encryption.clone()?,
+        )))
+    }
+
     fn compaction_checkpoint_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {
@@ -2124,6 +2133,9 @@ impl DirectWorkerAdapters {
                 display_name: row.display_name,
                 icon: None,
                 description: row.description,
+                intro_markdown: None,
+                short_description: None,
+                starters: Vec::new(),
                 system_prompt: row.system_prompt,
                 parent_harness_id: row.parent_harness_id,
                 default_model_id: row.default_model_id,
@@ -2177,6 +2189,9 @@ impl DirectWorkerAdapters {
             name: r.name,
             display_name: r.display_name,
             description: r.description,
+            intro_markdown: None,
+            short_description: None,
+            starters: Vec::new(),
             system_prompt: r.system_prompt,
             default_model_id: r.default_model_id,
             harness_id: r.harness_id,
@@ -3489,6 +3504,9 @@ mod tests {
                 display_name: None,
                 icon: None,
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: Some("test prompt".to_string()),
                 parent_harness_id: None,
                 default_model_id: None,
@@ -3753,6 +3771,9 @@ mod tests {
             name: "test-agent".to_string(),
             display_name: Some("Test Agent".to_string()),
             description: None,
+            intro_markdown: None,
+            short_description: None,
+            starters: serde_json::json!([]),
             system_prompt: String::new(),
             default_model_id: None,
             harness_id: everruns_provider::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),

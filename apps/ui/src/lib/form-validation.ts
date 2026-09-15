@@ -20,6 +20,18 @@ function optionalString() {
   return z.preprocess(trimInput, z.string()).transform((value) => value || undefined);
 }
 
+/** One Platform Chat conversation starter. `icon` reuses the harness icon name set. */
+export const conversationStarterSchema = z.object({
+  icon: z.preprocess(trimInput, z.string().max(64, "Icon name is too long").optional()),
+  text: z.preprocess(
+    trimInput,
+    z.string().min(1, "Starter text is required").max(280, "Starter text is too long"),
+  ),
+});
+
+/** Conversation starters for a fresh Platform Chat thread (at most 8). */
+export const startersSchema = z.array(conversationStarterSchema).max(8, "At most 8 starters");
+
 function optionalSelection(validValues: Set<string>, label: string) {
   return z
     .preprocess(trimInput, z.string())
@@ -58,6 +70,24 @@ export const agentFormSchema = z.object({
   harness_id: requiredString("Harness"),
   default_model_id: optionalString(),
   tags: z.preprocess(trimInput, z.string()).optional().default(""),
+  /** Markdown intro shown as an intro box on a fresh Platform Chat thread. */
+  intro_markdown: z.preprocess(
+    trimInput,
+    z
+      .string()
+      .max(24 * 1024, "Intro is too long")
+      .optional(),
+  ),
+  /** One-line description in simplified Markdown, shown below the chat title. */
+  short_description: z.preprocess(
+    trimInput,
+    z
+      .string()
+      .max(2 * 1024, "Description is too long")
+      .optional(),
+  ),
+  /** Conversation starters for a fresh Platform Chat thread. */
+  starters: startersSchema.optional(),
 });
 
 export const harnessFormSchema = z.object({
@@ -73,6 +103,24 @@ export const harnessFormSchema = z.object({
   parent_harness_id: optionalString(),
   default_model_id: optionalString(),
   tags: z.preprocess(trimInput, z.string()).optional().default(""),
+  /** Markdown intro shown as an intro box on a fresh Platform Chat thread. */
+  intro_markdown: z.preprocess(
+    trimInput,
+    z
+      .string()
+      .max(24 * 1024, "Intro is too long")
+      .optional(),
+  ),
+  /** One-line description in simplified Markdown, shown below the chat title. */
+  short_description: z.preprocess(
+    trimInput,
+    z
+      .string()
+      .max(2 * 1024, "Description is too long")
+      .optional(),
+  ),
+  /** Conversation starters for a fresh Platform Chat thread. */
+  starters: startersSchema.optional(),
 });
 
 export const agentIdentityFormSchema = z.object({

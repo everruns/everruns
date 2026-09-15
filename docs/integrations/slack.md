@@ -25,30 +25,35 @@ Everruns generates a pre-filled Slack App manifest for each app, making setup fa
 2. Enter a name, select a Harness and Agent
 3. Click **Create App**: you'll be redirected to the detail page
 
-### 2. Create the Slack App
+### 2. Publish the App
+
+Click **Publish** on the App detail page. This activates the webhook endpoint.
+
+Publishing comes before creating the Slack app because the generated manifest now declares the
+Request URL, and Slack verifies that URL at the moment the manifest is saved. An unpublished app
+returns 404 from the manifest endpoint for the same reason.
+
+### 3. Create the Slack App
 
 1. On the App detail page, click **Create Slack App**
-2. This opens Slack's "Create app from manifest" page with pre-filled scopes and bot settings
+2. This opens Slack's "Create app from manifest" page with pre-filled scopes, bot settings, **and
+   event subscriptions**
 3. Review the manifest and click **Create**
 4. Install the app to your workspace when prompted
 
-### 3. Copy Credentials Back
+The manifest subscribes the bot to `app_mention`, `message.channels`, `message.groups`,
+`message.im` and `message.mpim` at your app's Request URL, so there is nothing to configure by hand.
+
+> **Local development:** Slack cannot reach `localhost`, so the generated Request URL will not
+> verify. Run `ngrok http 9300` and replace the Request URL under **Event Subscriptions** with your
+> ngrok URL plus the same `/v1/apps/{app_id}/slack/events` path.
+
+### 4. Copy Credentials Back
 
 1. In your new Slack app, go to **Basic Information** and copy the **Signing Secret**
 2. Go to **OAuth & Permissions** and copy the **Bot User OAuth Token** (`xoxb-...`)
 3. Back in Everruns, click **Configure** on the Slack Integration card
 4. Paste both values and click **Save**
-
-### 4. Configure Event Subscriptions
-
-1. **Publish** the app in Everruns first (so the webhook URL is live)
-2. Copy the **Request URL** shown on the app detail page
-3. In your Slack app settings, go to **Event Subscriptions** → Enable Events
-4. Paste the Request URL, Slack will verify it automatically
-5. Subscribe to bot events: `message.channels`, `message.groups`, `message.im`, `message.mpim`, `app_mention`
-6. Click **Save Changes**
-
-> **Note:** Event subscriptions require a live webhook URL, so the Everruns app must be published before configuring this step.
 
 ### 5. Start Using
 
@@ -150,6 +155,45 @@ The webhook URL must be publicly accessible. If running locally, use a tool like
 | `channel_id` | No | Restrict to a specific channel (e.g., `C0123456789`) |
 | `team_id` | No | Slack workspace ID |
 | `session_strategy` | No | `per_thread` (default), `per_channel`, or `per_user` |
+| `agent_surface_enabled` | No | `false` (default). Also serve Slack's agent pane — see [Agent Surface](#agent-surface) |
+
+## Agent Surface
+
+Slack apps can additionally appear as an **agent** — a dedicated assistant pane, separate from
+channel conversations. Setting `agent_surface_enabled` turns this on.
+
+It is additive, not a mode. The same app keeps answering `@mentions` in channels exactly as before
+and *also* gets the pane. Which surface a message belongs to is decided per event: a DM to the app
+is the pane, an `app_mention` in a channel is a channel thread.
+
+With the flag on, the generated manifest gains:
+
+- the `features.agent_view` block (with an `agent_description` derived from the app)
+- the `assistant:write` bot scope
+- the `app_home_opened`, `app_context_changed`, `agent_session_stopped` and
+  `agent_session_title_changed` bot events
+
+> **Enabling this on an existing app requires a reinstall.** `assistant:write` is a new OAuth scope,
+> and a config change cannot grant it. Regenerate the manifest, apply it to your Slack app, then
+> reinstall the app to your workspace. Until you do, the pane will not appear — channel replies keep
+> working throughout.
+
+Session strategy in the pane is always `per_thread`: a pane conversation *is* a thread, so
+`per_channel` and `per_user` have no meaning there. Your configured strategy still applies to
+channel threads, so one app can sensibly use `per_channel` in channels and per-thread in the pane.
+
+### Streaming replies
+
+In the agent pane, replies render progressively as the agent produces them rather than appearing all
+at once. Channel threads keep posting a single finished message — token-by-token updates in a shared
+channel are noise rather than a feature.
+
+Streaming needs no extra scope beyond `chat:write`. Each agent message is its own stream, so a turn
+that produces several messages shows several replies rather than one merged block, and a run that
+fails or is cancelled closes its stream instead of leaving the message spinning.
+
+The remaining agent-surface behaviour — status, the stop button, and thread context — is tracked
+separately; those events are acknowledged and logged today, so the toggle is safe to enable early.
 
 ## Session Strategies
 
@@ -160,6 +204,9 @@ The session strategy controls how Slack messages map to Everruns sessions:
 | `per_thread` | Each Slack thread is a separate session | `slack:thread:{thread_ts}` |
 | `per_channel` | One session per Slack channel | `slack:channel:{channel}` |
 | `per_user` | One session per Slack user | `slack:user:{user}` |
+
+Agent-pane messages always use `per_thread` regardless of this setting (see
+[Agent Surface](#agent-surface)).
 
 **`per_thread`** is recommended for most use cases, it gives each conversation its own context, matching how Slack threads naturally work.
 

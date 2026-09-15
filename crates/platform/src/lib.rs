@@ -132,8 +132,9 @@ pub use agent::{
 #[cfg(feature = "openapi")]
 pub use capability_schema::CapabilityRefSchema;
 pub use harness::{
-    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, Harness,
-    HarnessStatus, harness_for_role, merge_harness, merge_harness_chain, resolve_execution_harness,
+    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, ConversationStarter,
+    Harness, HarnessStatus, harness_for_role, merge_harness, merge_harness_chain,
+    resolve_execution_harness,
 };
 pub use host_extension::{PlatformHostBackendsExt, PlatformStoreFactory, PlatformToolAugmentor};
 pub use knowledge_store::{
@@ -196,6 +197,7 @@ pub use eval::{
 };
 pub use feature_flags::{
     API_FEATURE_FLAG_DEFINITIONS, FeatureFlagDefinition, FeatureFlagMap, FeatureFlags,
+    is_platform_managed,
 };
 pub use observer::{
     LlmJudgeConfig, Observer, ObserverMatch, ObserverScope, ObserverScorerConfig, ObserverStatus,
@@ -209,13 +211,14 @@ pub use vector_store::{
 
 // Hosted control-plane orchestration records (EVE-841).
 pub use agent_trigger::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig};
+pub use everruns_core::channel::SessionBinding;
+
 pub use app::{
     A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentVersionPolicy,
     ApiEndpointChannelConfig, App, AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode,
     AppEndpointAuthProviderConfig, AppEndpointAuthRequirements, AppStatus, CaptchaProvider,
-    ChannelType, FcpChannelConfig, InvocationSessionMode, PublicChatBranding,
-    PublicChatCaptchaConfig, PublicChatChannelConfig, SessionStrategy, SlackChannelConfig,
-    SlackReplyMode,
+    ChannelType, FcpChannelConfig, PublicChatBranding, PublicChatCaptchaConfig,
+    PublicChatChannelConfig, SlackChannelConfig, SlackReplyMode,
 };
 
 // Payment accounting records (EVE-838). The execution-contract types

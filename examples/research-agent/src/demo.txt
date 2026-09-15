@@ -1,0 +1,91 @@
+MODEL: z-ai/glm-5.2
+
+QUESTION
+Can durable execution prevent duplicate payments? Search and read two official primary sources. Answer in three short bullets: the guarantee, the failure window, and the mitigation. Cite the pages you read. No introduction; at most 100 words.
+
+> brave_web_search
+  query: durable execution prevent duplicate payments idempotency
+
+> brave_web_search
+  query: durable execution duplicate payment guarantee failure window
+
+< brave_web_search: OK
+  Idempotency - AWS Lambda
+  https://docs.aws.amazon.com/lambda/latest/dg/durable-execution-idempotency.html
+  Best practices for Lambda durable functions using a fraud detection example | Amazon Web Services
+  https://aws.amazon.com/blogs/compute/best-practices-for-lambda-durable-functions-using-a-fraud-detection-example/
+  Temporal Signals: 7 Idempotency Slips | by Hash Block | Medium
+  https://medium.com/@connect.hashblock/temporal-signals-7-idempotency-slips-fb5132ed3f43
+
+< brave_web_search: OK
+  What is Durable Execution? A Definitive Guide | Restate
+  https://restate.dev/what-is-durable-execution
+  Preventing Payment Failures in Finance with Temporal’s Durable Execution Model
+  https://www.finos.org/blog/preventing-payment-failures-temporal
+  Exactly once
+  https://www.happihacking.com/blog/posts/2025/exacly_once/
+
+> web_fetch
+  as_markdown: true
+  content_focus: main
+  url: https://temporal.io/blog/idempotency-and-durable-execution
+
+> web_fetch
+  as_markdown: true
+  content_focus: main
+  url: https://docs.aws.amazon.com/lambda/latest/dg/durable-execution-idempotency.html
+
+< web_fetch: OK
+- [Blog](https://temporal.io/blog)
+- [Temporal Concepts](https://temporal.io/blog/categories/temporal-concepts)
+
+# What is idempotency? And why it matters for durable systems
+
+ AUTHORS
+
+ Keith Tenzer, Joshua Smith
+
+ PUBLISHED
+
+ Feb 27, 2024
+
+ CATEGORY
+
+ [Temporal Concepts](https://temporal.io/blog/categories/temporal-concepts)
+
+ DURATION
+
+ 16 MIN
+
+- Architecture
+
+## Life without idempotency[#](#life-without-idempotency)
+
+Have you ever been working on a feature, or fixing a bug, and when you got to the bottom of it, duplicate records were being created in a database, or duplicate charges or orders were sent out? If so, **idempotency** is an im
+[excerpt; full result supplied to agent]
+
+< web_fetch: OK
+
+
+# Idempotency
+<a name="durable-execution-idempotency"></a>
+
+Durable functions provide built-in idempotency for execution starts through execution names. When you provide an execution name, Lambda uses it to prevent duplicate executions and enable safe retries of invocation requests. Steps have at-least-once execution semantics by default. During replay, the SDK returns checkpointed results without re-executing completed steps, but your business logic must be idempotent to handle potential retries before completion.
+
+**Note**
+Lambda event source mappings (ESM) don't support idempotency at launch. Therefore, each invocation (including retri
+[excerpt; full result supplied to agent]
+
+ANSWER
+
+- **Guarantee:** Durable execution replays only un-completed steps, so already-finished steps are not re-run; combined with an execution name (idempotency key), duplicate starts are rejected. (Temporal, AWS Lambda)
+
+- **Failure window:** If a step is interrupted *before it completes* (crash, timeout), it may execute more than once — at-least-once semantics apply during that window. (Temporal, AWS Lambda)
+
+- **Mitigation:** Make side-effect logic (e.g., payment calls) idempotent using idempotency keys or unique DB constraints; Temporal also offers an "at-most-once" mode (maxAttempts=1). (Temporal, AWS Lambda)
+
+Sources read:
+- https://temporal.io/blog/idempotency-and-durable-execution
+- https://docs.aws.amazon.com/lambda/latest/dg/durable-execution-idempotency.html
+
+Completed: 3 iterations, 4 tool calls

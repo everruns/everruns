@@ -1,0 +1,6 @@
+E-METRICS (fictional incident, 10:00-10:10 UTC)
+09:55 checkout: 0.2% errors, p95 180ms, 600 requests/min.
+10:05 checkout: 18.4% errors, p95 2400ms, 610 requests/min.
+10:05 catalog: 0.1% errors, p95 90ms, 1200 requests/min.
+10:05 database CPU: 34%; active connections: 31/100.
+Impact: checkout requests fail; no evidence of site-wide outage.

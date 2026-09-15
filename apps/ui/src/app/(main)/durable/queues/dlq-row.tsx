@@ -79,11 +79,14 @@ export function DlqRow({
             <Trash2 className="h-3 w-3 text-muted-foreground" />
           </Button>
           {entry.workflow_id ? (
-            <Link href={`/durable/workflows/${entry.workflow_id}`}>
-              <Button variant="ghost" size="sm">
-                <ExternalLink className="h-3 w-3" />
-              </Button>
-            </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`View workflow ${entry.workflow_id}`}
+              render={<Link href={`/durable/workflows/${entry.workflow_id}`} />}
+            >
+              <ExternalLink className="h-3 w-3" />
+            </Button>
           ) : (
             <Badge variant="outline" className="text-xs">
               standalone

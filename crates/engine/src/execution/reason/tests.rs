@@ -633,7 +633,7 @@ async fn test_repair_dangling_tool_calls_store_error_unknown() {
 
 #[test]
 fn test_build_request_options_for_openai_prompt_cache() {
-    let config = LlmCallConfig {
+    let mut config = LlmCallConfig {
         speed: None,
         verbosity: None,
         model: "gpt-5.4".to_string(),
@@ -669,6 +669,19 @@ fn test_build_request_options_for_openai_prompt_cache() {
         request_options.provider_options.get("openai"),
         Some(&json!({ "previous_response_id": true }))
     );
+    config.model = "gpt-6-astra".into();
+    for (strategy, mode, chained) in [
+        (PromptCacheStrategy::Auto, "implicit", true),
+        (PromptCacheStrategy::Explicit, "explicit", false),
+    ] {
+        config.prompt_cache.as_mut().unwrap().strategy = strategy;
+        let options = build_request_options(&config, "openai").unwrap();
+        assert_eq!(
+            options.prompt_cache.unwrap().provider_mode.as_deref(),
+            Some(mode)
+        );
+        assert_eq!(options.provider_options.contains_key("openai"), chained);
+    }
 }
 
 #[test]

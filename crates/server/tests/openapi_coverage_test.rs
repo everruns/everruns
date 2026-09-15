@@ -133,6 +133,41 @@ fn every_utoipa_handler_is_registered_in_apidoc() {
 }
 
 #[test]
+fn endpoint_scoped_ingress_paths_are_documented_with_channel_parameters() {
+    let doc = ApiDoc::openapi();
+    for path in [
+        "/v1/e/{channel_id}/webhook",
+        "/v1/e/{channel_id}/a2a",
+        "/v1/e/{channel_id}/a2a/.well-known/agent-card.json",
+        "/v1/e/{channel_id}/fcp",
+        "/v1/e/{channel_id}/sessions",
+        "/v1/e/{channel_id}/sessions/{session_id}",
+        "/v1/e/{channel_id}/sessions/{session_id}/messages",
+        "/v1/e/{channel_id}/sessions/{session_id}/cancel",
+    ] {
+        let item = doc
+            .paths
+            .paths
+            .get(path)
+            .unwrap_or_else(|| panic!("missing endpoint-scoped OpenAPI path {path}"));
+        let operation = item
+            .get
+            .as_ref()
+            .or(item.post.as_ref())
+            .expect("endpoint path has an operation");
+        let parameter_names: BTreeSet<_> = operation
+            .parameters
+            .as_ref()
+            .into_iter()
+            .flatten()
+            .map(|parameter| parameter.name.as_str())
+            .collect();
+        assert!(parameter_names.contains("channel_id"), "{path}");
+        assert!(!parameter_names.contains("app_id"), "{path}");
+    }
+}
+
+#[test]
 fn every_apidoc_operation_id_is_snake_case() {
     // operationId is the agent tool name. snake_case keeps it stable across
     // OpenAPI generators and matches the MCP `execute` builtin convention.

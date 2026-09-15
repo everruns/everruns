@@ -426,6 +426,12 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Arc::new(GrpcAdapter::new(self.client.clone()))
     }
 
+    fn native_async_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>> {
+        Some(Arc::new(GrpcAdapter::new(self.client.clone())))
+    }
+
     fn compaction_checkpoint_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {

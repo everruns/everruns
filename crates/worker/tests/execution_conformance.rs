@@ -40,6 +40,7 @@ fn initial_state() -> TurnState {
 
 fn reason(text: &str) -> ReasonResult {
     ReasonResult {
+        native_counts: None,
         success: true,
         text: text.to_string(),
         max_iterations: 10,
@@ -50,6 +51,7 @@ fn reason(text: &str) -> ReasonResult {
 
 fn tool_reason(iteration_limit: usize) -> ReasonResult {
     ReasonResult {
+        native_counts: None,
         success: true,
         text: "using a tool".to_string(),
         tool_calls: vec![ToolCall {
@@ -257,6 +259,7 @@ fn steering_failure_limit_block_and_wait_branches_are_equivalent() {
     // Provider failure preserves turn.failed -> hook ordering.
     let (mut immediate, mut durable) = drivers();
     let failed = || ReasonResult {
+        native_counts: None,
         success: false,
         text: "request failed".to_string(),
         error: Some("provider unavailable".to_string()),

@@ -45,6 +45,7 @@ fn turn_state() -> TurnState {
 
 fn reason_result() -> ReasonResult {
     ReasonResult {
+        native_counts: None,
         success: true,
         text: String::new(),
         tool_calls: vec![],
@@ -206,6 +207,7 @@ fn reason_success_completes_turn_with_effects() {
 fn reason_failure_completes_with_failure_effect() {
     let state = turn_state();
     let result = ReasonResult {
+        native_counts: None,
         success: false,
         text: "budget exhausted".into(),
         has_tool_calls: false,

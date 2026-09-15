@@ -24,3 +24,4 @@
 * [Bashkit Requirements for Custom FileSystem Adapters](bashkit-requirements.md) - Bash sandbox capabilities and requirements.
 * [Lua Execution Capability (experimental)](lua-execution.md) - Experimental Lua execution capability (sandboxed VFS scripting; aims to supersede bashkit_shell).
 * [OpenAI Steering Prototype](openai-steering-prototype.md) - Owned WebSocket experiment, durable updates, and recovery tradeoffs.
+* [Native asynchronous tool calls](native-async-tools.md) - Custom-host pending-call coordination and recovery boundaries.

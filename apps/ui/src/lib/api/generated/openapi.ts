@@ -578,7 +578,7 @@ export interface paths {
     get?: never;
     put?: never;
     /** POST /v1/apps/{app_id}/a2a/{channel_id} */
-    post: operations["invoke_a2a"];
+    post: operations["invoke_a2a_legacy"];
     delete?: never;
     options?: never;
     head?: never;
@@ -593,7 +593,7 @@ export interface paths {
       cookie?: never;
     };
     /** GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json */
-    get: operations["agent_card"];
+    get: operations["agent_card_legacy"];
     put?: never;
     post?: never;
     delete?: never;
@@ -719,7 +719,7 @@ export interface paths {
     get: operations["handshake"];
     put?: never;
     /** `POST /v1/apps/{app_id}/fcp` — text-in, text-out. */
-    post: operations["message"];
+    post: operations["message_legacy"];
     delete?: never;
     options?: never;
     head?: never;
@@ -787,7 +787,7 @@ export interface paths {
     get?: never;
     put?: never;
     /** @description Invoke a webhook channel for a published App. The body is forwarded to the agent as a message. */
-    post: operations["invoke_webhook"];
+    post: operations["invoke_webhook_legacy"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1447,6 +1447,159 @@ export interface paths {
      *     Each SSE event includes a `retry:` field (in milliseconds) that hints reconnection timing.
      */
     get: operations["stream_workflow_sse"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/a2a": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration. */
+    post: operations["invoke_a2a_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/a2a/.well-known/agent-card.json": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Get the public Agent Card for a published A2A endpoint. */
+    get: operations["agent_card_endpoint"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/fcp": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Send a message to a published FCP endpoint. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the endpoint requires a token. */
+    post: operations["message_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Create a session through an api_endpoint channel. Authenticate with the channel bearer key or configured endpoint auth. */
+    post: operations["create_session_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Get derived status and completed agent messages for a session owned by an api_endpoint channel. */
+    get: operations["get_session_endpoint"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Cancel the active turn for a session owned by an api_endpoint channel. */
+    post: operations["cancel_session_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/messages": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Post a follow-up message to a session owned by an api_endpoint channel. */
+    post: operations["post_message_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/webhook": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Invoke a published webhook endpoint. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token. */
+    post: operations["invoke_webhook_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/environment-targets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List the environment targets this deployment can offer, with the capabilities each one actually has. */
+    get: operations["list_environment_targets"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2212,6 +2365,36 @@ export interface paths {
     patch: operations["update_org_feature_flags"];
     trace?: never;
   };
+  "/v1/orgs/{org}/feature-flags/platform": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * GET /v1/orgs/{org}/feature-flags/platform — every flag, including the
+     *     platform-managed ones, for the operator console.
+     * @description Platform users only. The tenant-facing settings route deliberately omits
+     *     these rows, so this is where an operator sees what a tenant is enrolled in.
+     */
+    get: operations["get_platform_feature_flag_settings"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * PATCH /v1/orgs/{org}/feature-flags/platform — enrol an organization in a
+     *     platform-managed feature.
+     * @description Platform users only, and limited to platform-managed flags: an operator
+     *     setting a tenant's own preferences would be acting as the tenant, which this
+     *     surface does not do. Omitted flags are unchanged, so enrolling one org in one
+     *     feature cannot disturb another setting.
+     */
+    patch: operations["update_platform_feature_flags"];
+    trace?: never;
+  };
   "/v1/orgs/{org}/feature-flags/settings": {
     parameters: {
       query?: never;
@@ -2956,6 +3139,23 @@ export interface paths {
     };
     /** GET /v1/sessions/{session_id}/databases/{name}/schema */
     get: operations["get_schema"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/environment": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Get the environment a session runs in: target, containment, and what it can actually do. */
+    get: operations["get_session_environment"];
     put?: never;
     post?: never;
     delete?: never;
@@ -4112,8 +4312,8 @@ export interface components {
        * @example Process incoming A2A request and return a structured response.
        */
       message: string;
-      /** @description How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `InvocationSessionMode`. */
-      session_mode?: components["schemas"]["InvocationSessionMode"];
+      /** @description How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `SessionBinding`. */
+      session_mode?: components["schemas"]["SessionBinding"];
     };
     /**
      * @description Output of [`AddA2aChannelCmd`] — includes the plaintext API key (returned
@@ -4137,7 +4337,7 @@ export interface components {
        * @description How invocations route into sessions (`shared_session` to reuse one
        *     durable session, or `session_per_invocation` for a fresh session).
        */
-      session_mode?: components["schemas"]["InvocationSessionMode"];
+      session_mode?: components["schemas"]["SessionBinding"];
     };
     /**
      * @description Output of [`AddApiEndpointChannelCmd`] — includes the plaintext API key
@@ -4234,6 +4434,13 @@ export interface components {
       /** @description Starter files copied into each new session for this agent. */
       initial_files?: components["schemas"]["InitialFile"][];
       /**
+       * @description Optional Markdown intro rendered as an intro box at the top of a fresh
+       *     Platform Chat thread. Images are allowed. Wins over the harness intro.
+       *     Hidden once the user inputs.
+       * @example Hey, I'm Ava. Ask me anything about your account.
+       */
+      intro_markdown?: string | null;
+      /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 50
        */
@@ -4261,6 +4468,17 @@ export interface components {
        * @example agent_01933b5a00007000800000000000001
        */
       root_agent_id?: string | null;
+      /**
+       * @description Optional one-line description in simplified Markdown, shown below the
+       *     chat title once the intro is hidden. Wins over the harness value.
+       * @example Answers account questions in seconds.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters for a fresh Platform Chat thread. Win over the
+       *     harness starters when non-empty.
+       */
+      starters?: components["schemas"]["ConversationStarter"][];
       /** @description Current lifecycle status of the agent. */
       status: components["schemas"]["AgentStatus"];
       /**
@@ -5955,6 +6173,24 @@ export interface components {
        */
       verbosity?: string | null;
     };
+    /**
+     * @description A conversation starter shown on a fresh Platform Chat thread.
+     *     Selecting one inserts its text into the composer. `icon` reuses the
+     *     harness icon name set (`HarnessIcon`); unknown names fall back to the
+     *     default glyph.
+     */
+    ConversationStarter: {
+      /**
+       * @description Optional icon name from the harness icon set.
+       * @example zap
+       */
+      icon?: string | null;
+      /**
+       * @description Prompt text inserted into the composer when selected.
+       * @example Triage the newest P1
+       */
+      text: string;
+    };
     /** @description Request to copy a file */
     CopyFileRequest: {
       /**
@@ -5983,6 +6219,11 @@ export interface components {
        * @description Cached read cost per million tokens (USD) for this tier, if supported
        */
       cache_read?: number | null;
+      /**
+       * Format: double
+       * @description Cache write cost per million tokens (USD); absent falls back to input.
+       */
+      cache_write?: number | null;
       /**
        * Format: double
        * @description Input cost per million tokens (USD) for this tier
@@ -6089,6 +6330,13 @@ export interface components {
        */
       initial_files?: components["schemas"]["InitialFile"][];
       /**
+       * @description Markdown intro shown as an intro box on a fresh Platform Chat thread.
+       *     Images are allowed. Wins over the harness intro. Hidden once the user
+       *     inputs.
+       * @example Hey, I'm Ava. Ask me anything about your account.
+       */
+      intro_markdown?: string | null;
+      /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 20
        */
@@ -6110,6 +6358,17 @@ export interface components {
        * @example true
        */
       parallel_tool_calls?: boolean | null;
+      /**
+       * @description One-line description in simplified Markdown, shown below the chat title
+       *     once the intro is hidden. Wins over the harness value.
+       * @example Answers account questions in seconds.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters for a fresh Platform Chat thread. Win over the
+       *     harness starters when non-empty. `icon` reuses the harness icon set.
+       */
+      starters?: components["schemas"]["ConversationStarter"][];
       /**
        * @description The system prompt that defines the agent's behavior and capabilities.
        *     This is sent as the first message in every conversation.
@@ -6164,7 +6423,7 @@ export interface components {
        */
       message: string;
       /** @description Whether invocations reuse a stable session or create a new one. */
-      session_mode?: components["schemas"]["InvocationSessionMode"];
+      session_mode?: components["schemas"]["SessionBinding"];
       /**
        * @description IANA timezone identifier for cron evaluation (default `UTC`).
        * @example UTC
@@ -6344,6 +6603,12 @@ export interface components {
       };
       /** @description Starter files copied into each new session for this harness. */
       initial_files?: components["schemas"]["InitialFile"][];
+      /**
+       * @description Markdown intro shown as an intro box on a fresh Platform Chat thread.
+       *     Images are allowed. The agent intro wins. Hidden once the user inputs.
+       * @example I triage incidents, dig through logs, and draft the update.
+       */
+      intro_markdown?: string | null;
       /** @description Remote MCP servers scoped to this harness. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -6357,6 +6622,18 @@ export interface components {
        * @example harness_01933b5a000070008000000000000602
        */
       parent_harness_id?: string | null;
+      /**
+       * @description One-line description in simplified Markdown, shown below the chat title
+       *     once the intro is hidden. The agent value wins.
+       * @example Triage incidents, dig through logs, draft the update.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters for a fresh Platform Chat thread. Selecting one
+       *     inserts its text into the composer. The agent starters win when
+       *     non-empty. `icon` reuses the harness icon name set.
+       */
+      starters?: components["schemas"]["ConversationStarter"][];
       /**
        * @description Base system prompt defining the harness's behavior. Optional: omit (or
        *     send an empty string) to contribute no base prompt, in which case the
@@ -7388,6 +7665,52 @@ export interface components {
        * @description Durable task's identifier.
        */
       task_id: string;
+    };
+    /**
+     * @description What the environment can actually do.
+     *
+     *     Read this before assuming a shell behaves like Linux. Bashkit reports
+     *     `native_processes: false`, which is why a build fails there; the answer is
+     *     available before the first turn rather than after a confusing tool error.
+     */
+    EnvironmentCapabilities: {
+      native_processes: boolean;
+      network_enforced: boolean;
+      packages: boolean;
+      portable_checkpoint: boolean;
+      ports: boolean;
+      pty: boolean;
+    };
+    /** @description What commands may touch, and who enforces it. */
+    EnvironmentContainment: {
+      /** @description `none`, `native`, or `isolated`. */
+      level: string;
+      /** @description Outbound network policy: `deny`, `allowlist`, or `allow`. */
+      network: string;
+    };
+    /** @description Where a session's commands run. */
+    EnvironmentTarget: {
+      /** @description Shape of the target: `host`, `machine`, `vfs`, `container`, `managed`. */
+      kind: string;
+      /** @description Concrete provider, when the kind has one (`bashkit`, `daytona`, ...). */
+      provider?: string | null;
+    };
+    /** @description One target this deployment can offer, and what it can do. */
+    EnvironmentTargetDescriptor: {
+      /** @description Whether this deployment can actually run it right now. */
+      available: boolean;
+      capabilities: components["schemas"]["EnvironmentCapabilities"];
+      /** @description Containment levels this target supports, weakest first. */
+      containment_levels: string[];
+      durability: string;
+      kind: string;
+      provider?: string | null;
+      /** @description Why it is unavailable. Present only when `available` is false. */
+      reason?: string | null;
+    };
+    /** @description Response body for the `list_environment_targets` operation. */
+    EnvironmentTargetsResponse: {
+      items: components["schemas"]["EnvironmentTargetDescriptor"][];
     };
     /**
      * @description Standard error response.
@@ -8495,6 +8818,13 @@ export interface components {
       /** @description Starter files copied into each new session for this harness. */
       initial_files?: components["schemas"]["InitialFile"][];
       /**
+       * @description Optional Markdown intro rendered as an intro box at the top of a fresh
+       *     Platform Chat thread. Images are allowed. The agent intro wins over
+       *     the harness intro. Hidden once the user inputs.
+       * @example I can triage incidents, dig through logs, and draft the update.
+       */
+      intro_markdown?: string | null;
+      /**
        * @description Whether this harness is built-in (system-managed, readonly).
        *     Built-in harnesses are provisioned during org initialization and
        *     cannot be modified or deleted via the API. Users can copy them.
@@ -8524,6 +8854,17 @@ export interface components {
        * @example harness_01933b5a000070008000000000000602
        */
       parent_harness_id?: string | null;
+      /**
+       * @description Optional one-line description in simplified Markdown, shown below the
+       *     chat title once the intro is hidden. The agent value wins.
+       * @example Knows your agents, harnesses, models, and runs.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters for a fresh Platform Chat thread. The agent's
+       *     starters win when non-empty, otherwise the harness's apply.
+       */
+      starters?: components["schemas"]["ConversationStarter"][];
       /** @description Current lifecycle status of the harness. */
       status: components["schemas"]["HarnessStatus"];
       /**
@@ -8903,12 +9244,6 @@ export interface components {
        */
       plugin_name: string;
     };
-    /**
-     * @description How app-triggered invocations route into sessions.
-     * @example shared_session
-     * @enum {string}
-     */
-    InvocationSessionMode: "shared_session" | "session_per_invocation";
     /** @description Key-value entry info (key and timestamps, no value) */
     KeyValueInfo: {
       /** @description When the key was created */
@@ -9403,6 +9738,13 @@ export interface components {
         /** @description Starter files copied into each new session for this agent. */
         initial_files?: components["schemas"]["InitialFile"][];
         /**
+         * @description Optional Markdown intro rendered as an intro box at the top of a fresh
+         *     Platform Chat thread. Images are allowed. Wins over the harness intro.
+         *     Hidden once the user inputs.
+         * @example Hey, I'm Ava. Ask me anything about your account.
+         */
+        intro_markdown?: string | null;
+        /**
          * @description Maximum number of LLM iterations per turn for this agent.
          * @example 50
          */
@@ -9430,6 +9772,17 @@ export interface components {
          * @example agent_01933b5a00007000800000000000001
          */
         root_agent_id?: string | null;
+        /**
+         * @description Optional one-line description in simplified Markdown, shown below the
+         *     chat title once the intro is hidden. Wins over the harness value.
+         * @example Answers account questions in seconds.
+         */
+        short_description?: string | null;
+        /**
+         * @description Conversation starters for a fresh Platform Chat thread. Win over the
+         *     harness starters when non-empty.
+         */
+        starters?: components["schemas"]["ConversationStarter"][];
         /** @description Current lifecycle status of the agent. */
         status: components["schemas"]["AgentStatus"];
         /**
@@ -9858,6 +10211,13 @@ export interface components {
         /** @description Starter files copied into each new session for this harness. */
         initial_files?: components["schemas"]["InitialFile"][];
         /**
+         * @description Optional Markdown intro rendered as an intro box at the top of a fresh
+         *     Platform Chat thread. Images are allowed. The agent intro wins over
+         *     the harness intro. Hidden once the user inputs.
+         * @example I can triage incidents, dig through logs, and draft the update.
+         */
+        intro_markdown?: string | null;
+        /**
          * @description Whether this harness is built-in (system-managed, readonly).
          *     Built-in harnesses are provisioned during org initialization and
          *     cannot be modified or deleted via the API. Users can copy them.
@@ -9887,6 +10247,17 @@ export interface components {
          * @example harness_01933b5a000070008000000000000602
          */
         parent_harness_id?: string | null;
+        /**
+         * @description Optional one-line description in simplified Markdown, shown below the
+         *     chat title once the intro is hidden. The agent value wins.
+         * @example Knows your agents, harnesses, models, and runs.
+         */
+        short_description?: string | null;
+        /**
+         * @description Conversation starters for a fresh Platform Chat thread. The agent's
+         *     starters win when non-empty, otherwise the harness's apply.
+         */
+        starters?: components["schemas"]["ConversationStarter"][];
         /** @description Current lifecycle status of the harness. */
         status: components["schemas"]["HarnessStatus"];
         /**
@@ -11098,6 +11469,13 @@ export interface components {
         /** @description Starter files copied into each new session for this harness. */
         initial_files?: components["schemas"]["InitialFile"][];
         /**
+         * @description Optional Markdown intro rendered as an intro box at the top of a fresh
+         *     Platform Chat thread. Images are allowed. The agent intro wins over
+         *     the harness intro. Hidden once the user inputs.
+         * @example I can triage incidents, dig through logs, and draft the update.
+         */
+        intro_markdown?: string | null;
+        /**
          * @description Whether this harness is built-in (system-managed, readonly).
          *     Built-in harnesses are provisioned during org initialization and
          *     cannot be modified or deleted via the API. Users can copy them.
@@ -11127,6 +11505,17 @@ export interface components {
          * @example harness_01933b5a000070008000000000000602
          */
         parent_harness_id?: string | null;
+        /**
+         * @description Optional one-line description in simplified Markdown, shown below the
+         *     chat title once the intro is hidden. The agent value wins.
+         * @example Knows your agents, harnesses, models, and runs.
+         */
+        short_description?: string | null;
+        /**
+         * @description Conversation starters for a fresh Platform Chat thread. The agent's
+         *     starters win when non-empty, otherwise the harness's apply.
+         */
+        starters?: components["schemas"]["ConversationStarter"][];
         /** @description Current lifecycle status of the harness. */
         status: components["schemas"]["HarnessStatus"];
         /**
@@ -12056,6 +12445,11 @@ export interface components {
        */
       cache_read?: number | null;
       /**
+       * Format: double
+       * @description Cache write cost per million tokens (USD); absent falls back to input.
+       */
+      cache_write?: number | null;
+      /**
        * @description Tiered pricing that applies when prompt tokens exceed context thresholds.
        *     When present, the highest matching tier replaces the base rates for the
        *     whole request.
@@ -12281,6 +12675,65 @@ export interface components {
       src_path: string;
     };
     /**
+     * @description A complete provider-native call, retaining its original identity and payload.
+     * @example {
+     *       "arguments": "{\"query\":\"weather in Paris\"}",
+     *       "async": true,
+     *       "call_id": "call_lookup_1",
+     *       "name": "lookup",
+     *       "type": "function_call"
+     *     }
+     */
+    NativeToolCall:
+      | {
+          /**
+           * @description Complete JSON arguments, preserved exactly as received.
+           * @example {"query":"weather in Paris"}
+           */
+          arguments: string;
+          /**
+           * @description Whether execution may start before response generation completes.
+           * @example true
+           */
+          async?: boolean;
+          /**
+           * @description Original provider call identity used when delivering the result.
+           * @example call_lookup_1
+           */
+          call_id: string;
+          /**
+           * @description Registered function or custom tool name.
+           * @example lookup
+           */
+          name: string;
+          /** @enum {string} */
+          type: "function_call";
+        }
+      | {
+          /**
+           * @description Whether execution may start before response generation completes.
+           * @example true
+           */
+          async?: boolean;
+          /**
+           * @description Original provider call identity used when delivering the result.
+           * @example call_lookup_1
+           */
+          call_id: string;
+          /**
+           * @description Raw custom-tool input, without JSON normalization.
+           * @example weather in Paris
+           */
+          input: string;
+          /**
+           * @description Registered function or custom tool name.
+           * @example lookup
+           */
+          name: string;
+          /** @enum {string} */
+          type: "custom_tool_call";
+        };
+    /**
      * @description Network access list controlling which hosts/URLs an agent session can reach.
      *
      *     - `allowed`: if non-empty, only URLs matching these patterns are permitted.
@@ -12339,6 +12792,8 @@ export interface components {
       name: string;
       /** @description Whether the organization has opted in. */
       org_enabled: boolean;
+      /** @description Whether only a platform user may enable this flag for the org. */
+      platform_managed: boolean;
       /** @description Whether the deployment allows this flag (env / grade). */
       system_enabled: boolean;
     };
@@ -13672,7 +14127,7 @@ export interface components {
      * @description Strategy for prompt caching.
      * @enum {string}
      */
-    PromptCacheStrategy: "auto";
+    PromptCacheStrategy: "auto" | "explicit";
     /**
      * @description LLM Provider entity (API keys never exposed)
      *     Note: This is the entity struct, separate from the Provider trait in llm.rs
@@ -14845,7 +15300,7 @@ export interface components {
       /** @description Message content or template sent when the schedule fires. */
       message: string;
       /** @description Whether invocations reuse a stable session or create a new one. */
-      session_mode?: components["schemas"]["InvocationSessionMode"];
+      session_mode?: components["schemas"]["SessionBinding"];
       /** @description IANA timezone identifier for cron evaluation. */
       timezone?: string;
     };
@@ -15179,6 +15634,35 @@ export interface components {
      */
     SessionActivity: "running" | "paused" | "failed" | "completed" | "idle";
     /**
+     * @description What identity keys a session, for every exposure and every transport.
+     *
+     *     One enum replaces the former `SessionStrategy` (messaging channels) and
+     *     `InvocationSessionMode` (triggers and request/reply endpoints), which asked
+     *     the same question with disjoint vocabularies and forced every new surface to
+     *     pick a side (EVE-1005).
+     *
+     *     **The serialized values are deliberately the legacy ones.** Every variant
+     *     renames in Rust but serializes exactly as it did before, with the new name
+     *     accepted as a read alias. Persisted `channel_config` JSONB therefore needs no
+     *     migration, and the API and UI keep exchanging the values they already do.
+     *     Moving the wire vocabulary is a separate, migration-bearing change.
+     *
+     *     `Requester` keys on the **transport's own external actor id** — the Slack
+     *     user id, the Public Chat visitor id — never on an Everruns principal. Those
+     *     actors are unrelated to Everruns accounts (a Public Chat visitor is anonymous
+     *     or Google-signed-in), so there is one consistent answer rather than a split
+     *     variant: whatever the transport calls the requester, scoped by the
+     *     `{platform}:` tag prefix that already namespaces it.
+     * @example per_thread
+     * @enum {string}
+     */
+    SessionBinding:
+      | "per_thread"
+      | "per_channel"
+      | "per_user"
+      | "shared_session"
+      | "session_per_invocation";
+    /**
      * @description Token-budget report for a session — a model-aware breakdown of the
      *     context window into named sections plus per-source contributions, so
      *     callers can answer "what's filling the context?" without reverse-
@@ -15204,6 +15688,25 @@ export interface components {
       sections: components["schemas"]["ContextReportSection"][];
       /** @description Prefixed session identifier this report describes. */
       session_id: string;
+    };
+    /** @description The environment a session is running in. */
+    SessionEnvironmentResponse: {
+      capabilities: components["schemas"]["EnvironmentCapabilities"];
+      containment: components["schemas"]["EnvironmentContainment"];
+      /**
+       * @description `checkpointed`, `provider_snapshot`, or `none`. Declared per target, so a
+       *     session on somebody else's machine is never reported as recoverable.
+       */
+      durability: string;
+      /**
+       * @description How this view was produced. `capabilities` means it was derived from the
+       *     session's effective capability set rather than read from a stored
+       *     environment profile.
+       */
+      resolved_from: string;
+      /** @description Capability that supplied the compute, for operators tracing a surprise. */
+      source_capability?: string | null;
+      target?: null | components["schemas"]["EnvironmentTarget"];
     };
     /** @description One bucket of a sessions facet dimension. */
     SessionFacetCount: {
@@ -16144,6 +16647,7 @@ export interface components {
       arguments: unknown;
       id: string;
       name: string;
+      native?: null | components["schemas"]["NativeToolCall"];
     };
     /**
      * @description Data for the `tool.call_repaired` event (EVE-600).
@@ -16673,6 +17177,12 @@ export interface components {
        */
       initial_files?: components["schemas"]["InitialFile"][] | null;
       /**
+       * @description Markdown intro for fresh Platform Chat threads. Outer `None` leaves
+       *     unchanged; inner `None` clears.
+       * @example Hey, I'm Ava. Ask me anything about your account.
+       */
+      intro_markdown?: string | null;
+      /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 20
        */
@@ -16692,6 +17202,17 @@ export interface components {
        * @example true
        */
       parallel_tool_calls?: boolean | null;
+      /**
+       * @description One-line description in simplified Markdown. Outer `None` leaves
+       *     unchanged; inner `None` clears.
+       * @example Answers account questions in seconds.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters; omit to leave unchanged, send empty to clear.
+       *     `icon` reuses the harness icon name set.
+       */
+      starters?: components["schemas"]["ConversationStarter"][] | null;
       status?: null | components["schemas"]["AgentStatus"];
       /**
        * @description The system prompt that defines the agent's behavior and capabilities.
@@ -16740,7 +17261,7 @@ export interface components {
       enabled?: boolean | null;
       /** @description Replacement message sent when the trigger fires. */
       message?: string | null;
-      session_mode?: null | components["schemas"]["InvocationSessionMode"];
+      session_mode?: null | components["schemas"]["SessionBinding"];
       /** @description Replacement IANA timezone identifier. */
       timezone?: string | null;
     };
@@ -16865,6 +17386,12 @@ export interface components {
        *     ]
        */
       initial_files?: components["schemas"]["InitialFile"][] | null;
+      /**
+       * @description Markdown intro shown as an intro box on a fresh Platform Chat thread.
+       *     Outer `None` leaves unchanged; inner `None` clears.
+       * @example I triage incidents, dig through logs, and draft the update.
+       */
+      intro_markdown?: string | null;
       mcpServers?: null | components["schemas"]["BTreeMap"];
       /**
        * @description Name, unique per org.
@@ -16874,6 +17401,17 @@ export interface components {
       network_access?: null | components["schemas"]["NetworkAccessList"];
       /** @description New parent harness for inheritance. Outer `None` leaves unchanged; inner `None` removes inheritance (becomes a root harness). */
       parent_harness_id?: string | null;
+      /**
+       * @description One-line description in simplified Markdown. Outer `None` leaves
+       *     unchanged; inner `None` clears.
+       * @example Triage incidents, dig through logs, draft the update.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters; omit to leave unchanged, send empty to clear.
+       *     `icon` reuses the harness icon name set.
+       */
+      starters?: components["schemas"]["ConversationStarter"][] | null;
       status?: null | components["schemas"]["HarnessStatus"];
       /**
        * @description New system prompt the harness contributes to sessions; omit to leave unchanged.
@@ -17724,6 +18262,13 @@ export interface components {
       /** @description Starter files copied into each new session for this agent. */
       initial_files?: components["schemas"]["InitialFile"][];
       /**
+       * @description Optional Markdown intro rendered as an intro box at the top of a fresh
+       *     Platform Chat thread. Images are allowed. Wins over the harness intro.
+       *     Hidden once the user inputs.
+       * @example Hey, I'm Ava. Ask me anything about your account.
+       */
+      intro_markdown?: string | null;
+      /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 50
        */
@@ -17751,6 +18296,17 @@ export interface components {
        * @example agent_01933b5a00007000800000000000001
        */
       root_agent_id?: string | null;
+      /**
+       * @description Optional one-line description in simplified Markdown, shown below the
+       *     chat title once the intro is hidden. Wins over the harness value.
+       * @example Answers account questions in seconds.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters for a fresh Platform Chat thread. Win over the
+       *     harness starters when non-empty.
+       */
+      starters?: components["schemas"]["ConversationStarter"][];
       /** @description Current lifecycle status of the agent. */
       status: components["schemas"]["AgentStatus"];
       /**
@@ -18214,6 +18770,13 @@ export interface components {
       /** @description Starter files copied into each new session for this harness. */
       initial_files?: components["schemas"]["InitialFile"][];
       /**
+       * @description Optional Markdown intro rendered as an intro box at the top of a fresh
+       *     Platform Chat thread. Images are allowed. The agent intro wins over
+       *     the harness intro. Hidden once the user inputs.
+       * @example I can triage incidents, dig through logs, and draft the update.
+       */
+      intro_markdown?: string | null;
+      /**
        * @description Whether this harness is built-in (system-managed, readonly).
        *     Built-in harnesses are provisioned during org initialization and
        *     cannot be modified or deleted via the API. Users can copy them.
@@ -18243,6 +18806,17 @@ export interface components {
        * @example harness_01933b5a000070008000000000000602
        */
       parent_harness_id?: string | null;
+      /**
+       * @description Optional one-line description in simplified Markdown, shown below the
+       *     chat title once the intro is hidden. The agent value wins.
+       * @example Knows your agents, harnesses, models, and runs.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters for a fresh Platform Chat thread. The agent's
+       *     starters win when non-empty, otherwise the harness's apply.
+       */
+      starters?: components["schemas"]["ConversationStarter"][];
       /** @description Current lifecycle status of the harness. */
       status: components["schemas"]["HarnessStatus"];
       /**
@@ -18657,6 +19231,13 @@ export interface components {
       /** @description Starter files copied into each new session for this harness. */
       initial_files?: components["schemas"]["InitialFile"][];
       /**
+       * @description Optional Markdown intro rendered as an intro box at the top of a fresh
+       *     Platform Chat thread. Images are allowed. The agent intro wins over
+       *     the harness intro. Hidden once the user inputs.
+       * @example I can triage incidents, dig through logs, and draft the update.
+       */
+      intro_markdown?: string | null;
+      /**
        * @description Whether this harness is built-in (system-managed, readonly).
        *     Built-in harnesses are provisioned during org initialization and
        *     cannot be modified or deleted via the API. Users can copy them.
@@ -18686,6 +19267,17 @@ export interface components {
        * @example harness_01933b5a000070008000000000000602
        */
       parent_harness_id?: string | null;
+      /**
+       * @description Optional one-line description in simplified Markdown, shown below the
+       *     chat title once the intro is hidden. The agent value wins.
+       * @example Knows your agents, harnesses, models, and runs.
+       */
+      short_description?: string | null;
+      /**
+       * @description Conversation starters for a fresh Platform Chat thread. The agent's
+       *     starters win when non-empty, otherwise the harness's apply.
+       */
+      starters?: components["schemas"]["ConversationStarter"][];
       /** @description Current lifecycle status of the harness. */
       status: components["schemas"]["HarnessStatus"];
       /**
@@ -21140,7 +21732,7 @@ export interface operations {
       };
     };
   };
-  invoke_a2a: {
+  invoke_a2a_legacy: {
     parameters: {
       query?: never;
       header?: never;
@@ -21194,7 +21786,7 @@ export interface operations {
       };
     };
   };
-  agent_card: {
+  agent_card_legacy: {
     parameters: {
       query?: never;
       header?: never;
@@ -21638,7 +22230,7 @@ export interface operations {
           "text/markdown": unknown;
         };
       };
-      /** @description Per-app FCP rate limit exceeded. `Retry-After: 60` header is set. */
+      /** @description Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set. */
       429: {
         headers: {
           [name: string]: unknown;
@@ -21649,7 +22241,7 @@ export interface operations {
       };
     };
   };
-  message: {
+  message_legacy: {
     parameters: {
       query?: never;
       header?: never;
@@ -21720,7 +22312,7 @@ export interface operations {
           "text/markdown": unknown;
         };
       };
-      /** @description Per-app FCP rate limit exceeded. `Retry-After: 60` header is set. */
+      /** @description Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set. */
       429: {
         headers: {
           [name: string]: unknown;
@@ -21901,7 +22493,7 @@ export interface operations {
       };
     };
   };
-  invoke_webhook: {
+  invoke_webhook_legacy: {
     parameters: {
       query?: never;
       header?: never;
@@ -23631,6 +24223,519 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  invoke_a2a_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A2A endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": unknown;
+      };
+    };
+    responses: {
+      /** @description JSON-RPC response or event stream */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid JSON-RPC request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid endpoint credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Endpoint not found, app not published, or channel disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel or SSE connection limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_card_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A2A endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent Card JSON */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Endpoint not found, app not published, or channel disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  message_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description FCP endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description Plain UTF-8 text or JSON with a message field. Maximum 256 KiB. */
+    requestBody: {
+      content: {
+        "text/plain": string;
+      };
+    };
+    responses: {
+      /** @description Agent reply as Markdown */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Malformed or empty message */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Missing or invalid FCP token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Endpoint not found, app not published, or channel disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description FCP session expired */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Body exceeds 256 KiB */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Per-channel FCP rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Agent response timeout */
+      504: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+    };
+  };
+  create_session_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api_endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["MessageBody"];
+      };
+    };
+    responses: {
+      /** @description Session created and message dispatched */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionRef"];
+        };
+      };
+      /** @description Missing or invalid endpoint credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description App not published or channel disabled */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Endpoint not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_session_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api_endpoint channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Derived session status and completed agent messages */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionStatus"];
+        };
+      };
+      /** @description Missing or invalid endpoint credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description App not published or channel disabled */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Endpoint or session not found, or session not owned by this channel */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  cancel_session_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api_endpoint channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description In-flight turn canceled */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionRef"];
+        };
+      };
+      /** @description Missing or invalid endpoint credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description App not published or channel disabled */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Endpoint or session not found, or session not owned by this channel */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  post_message_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api_endpoint channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["MessageBody"];
+      };
+    };
+    responses: {
+      /** @description Follow-up message dispatched */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionRef"];
+        };
+      };
+      /** @description Missing or invalid endpoint credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description App not published or channel disabled */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Endpoint or session not found, or session not owned by this channel */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  invoke_webhook_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Webhook endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/octet-stream": string;
+      };
+    };
+    responses: {
+      /** @description Webhook accepted */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WebhookInvocationResponse"];
+        };
+      };
+      /** @description Invalid or missing webhook token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Endpoint not found, app not published, or channel disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_environment_targets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Available environment targets */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EnvironmentTargetsResponse"];
+        };
       };
     };
   };
@@ -26351,6 +27456,101 @@ export interface operations {
       };
     };
   };
+  get_platform_feature_flag_settings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Organization public id */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Feature flag settings, platform view */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrgFeatureFlagsSettingsResponse"];
+        };
+      };
+      /** @description Platform user access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Organization not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  update_platform_feature_flags: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Organization public id */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateOrgFeatureFlagsRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated effective flags */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FeatureFlagMap"];
+        };
+      };
+      /** @description Not a platform-managed flag */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Platform user access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Organization not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   get_org_feature_flag_settings: {
     parameters: {
       query?: never;
@@ -28942,6 +30142,59 @@ export interface operations {
         };
       };
       /** @description Database not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_session_environment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Resolved session environment */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "capabilities": {
+           *         "native_processes": false,
+           *         "network_enforced": true,
+           *         "packages": false,
+           *         "portable_checkpoint": true,
+           *         "ports": false,
+           *         "pty": false
+           *       },
+           *       "containment": {
+           *         "level": "isolated",
+           *         "network": "deny"
+           *       },
+           *       "durability": "checkpointed",
+           *       "resolved_from": "capabilities",
+           *       "source_capability": "bashkit_shell",
+           *       "target": {
+           *         "kind": "vfs",
+           *         "provider": "bashkit"
+           *       }
+           *     }
+           */
+          "application/json": components["schemas"]["SessionEnvironmentResponse"];
+        };
+      };
+      /** @description Session not found */
       404: {
         headers: {
           [name: string]: unknown;

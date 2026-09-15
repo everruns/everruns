@@ -595,8 +595,8 @@ pub fn get_model_profile(provider_type: &str, model_id: &str) -> Option<ModelPro
 /// see the `TokenUsage` event): `input_tokens` is non-cached
 /// input only, with `cache_read_tokens` / `cache_creation_tokens` additive on
 /// top. Cost is therefore uniform across providers — each bucket is billed at
-/// its own rate (cache-creation tokens have no dedicated price and bill at the
-/// input rate) with no provider-specific compensation.
+/// its own rate, falling back to the applicable input rate when no cache-write
+/// price is known.
 pub fn estimate_cost_usd(
     provider_type: &str,
     model_id: &str,
@@ -621,12 +621,16 @@ pub fn estimate_cost_usd(
         .and_then(|tier| tier.cache_read)
         .or(cost.cache_read)
         .unwrap_or(input_rate);
+    let cache_write_rate = match active_tier {
+        Some(tier) => tier.cache_write.unwrap_or(input_rate),
+        None => cost.cache_write.unwrap_or(input_rate),
+    };
     let per_million = |tokens: u32, rate: f64| (tokens as f64 / 1_000_000.0) * rate;
 
     Some(
         per_million(input_tokens, input_rate)
             + per_million(cache_read_tokens, cache_read_rate)
-            + per_million(cache_creation_tokens, input_rate)
+            + per_million(cache_creation_tokens, cache_write_rate)
             + per_million(output_tokens, output_rate),
     )
 }
@@ -689,12 +693,14 @@ fn meta_profile_data(model_id: &str) -> Option<ModelProfile> {
         input: 1.25,
         output: 4.25,
         cache_read: Some(0.15),
+        cache_write: None,
         cost_tiers: vec![],
     };
     const MUSE_CONTRIBUTOR_COST: ModelCost = ModelCost {
         input: 0.10,
         output: 0.20,
         cache_read: Some(0.002),
+        cache_write: None,
         cost_tiers: vec![],
     };
 
@@ -791,6 +797,7 @@ fn openai_embedding_profile(name: &str, family: &str, input_cost: f64) -> ModelP
             input: input_cost,
             output: 0.0,
             cache_read: None,
+            cache_write: None,
             cost_tiers: vec![],
         }),
         limits: Some(ModelLimits {
@@ -868,6 +875,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 2.00,
                 output: 8.00,
                 cache_read: Some(1.00),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -905,6 +913,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 20.00,
                 output: 80.00,
                 cache_read: None,
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -942,6 +951,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 1.10,
                 output: 4.40,
                 cache_read: Some(0.55),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -980,6 +990,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 2.00,
                 output: 8.00,
                 cache_read: Some(1.00),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1017,6 +1028,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 0.40,
                 output: 1.60,
                 cache_read: Some(0.20),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1054,6 +1066,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 0.10,
                 output: 0.40,
                 cache_read: Some(0.05),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1093,6 +1106,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 1.25,
                 output: 10.00,
                 cache_read: Some(0.125),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1130,6 +1144,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 0.25,
                 output: 2.00,
                 cache_read: Some(0.025),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1167,6 +1182,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 0.05,
                 output: 0.40,
                 cache_read: Some(0.005),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1204,6 +1220,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 15.00,
                 output: 60.00,
                 cache_read: None,
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1241,6 +1258,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 1.25,
                 output: 10.00,
                 cache_read: Some(0.125),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1279,6 +1297,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 1.50,
                 output: 12.00,
                 cache_read: Some(0.15),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1316,6 +1335,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 1.50,
                 output: 12.00,
                 cache_read: Some(0.15),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1353,6 +1373,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 0.30,
                 output: 2.40,
                 cache_read: Some(0.03),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1391,6 +1412,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 3.00,
                 output: 24.00,
                 cache_read: Some(0.30),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1429,6 +1451,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 1.75,
                 output: 14.00,
                 cache_read: Some(0.175),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1466,6 +1489,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 21.00,
                 output: 168.00,
                 cache_read: None,
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1503,6 +1527,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 1.75,
                 output: 14.00,
                 cache_read: Some(0.175),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1541,6 +1566,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 1.75,
                 output: 14.00,
                 cache_read: Some(0.175),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1588,11 +1614,13 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 5.00,
                 output: 30.00,
                 cache_read: Some(0.50),
+                cache_write: Some(6.25),
                 cost_tiers: vec![CostTier {
                     above_tokens: 272_000,
                     input: 10.00,
                     output: 45.00,
                     cache_read: Some(1.00),
+                    cache_write: Some(12.5),
                 }],
             }),
             limits: Some(ModelLimits {
@@ -1630,11 +1658,13 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 2.50,
                 output: 15.00,
                 cache_read: Some(0.25),
+                cache_write: Some(3.125),
                 cost_tiers: vec![CostTier {
                     above_tokens: 272_000,
                     input: 5.00,
                     output: 22.50,
                     cache_read: Some(0.50),
+                    cache_write: Some(6.25),
                 }],
             }),
             limits: Some(ModelLimits {
@@ -1672,11 +1702,13 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 1.00,
                 output: 6.00,
                 cache_read: Some(0.10),
+                cache_write: Some(1.25),
                 cost_tiers: vec![CostTier {
                     above_tokens: 272_000,
                     input: 2.00,
                     output: 9.00,
                     cache_read: Some(0.20),
+                    cache_write: Some(2.5),
                 }],
             }),
             limits: Some(ModelLimits {
@@ -1728,11 +1760,13 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 10.00,
                 output: 50.00,
                 cache_read: Some(1.00),
+                cache_write: Some(12.5),
                 cost_tiers: vec![CostTier {
                     above_tokens: 272_000,
                     input: 20.00,
                     output: 75.00,
                     cache_read: Some(2.00),
+                    cache_write: Some(25.0),
                 }],
             }),
             limits: Some(ModelLimits {
@@ -1775,6 +1809,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 5.00,
                 output: 30.00,
                 cache_read: Some(0.50),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1812,6 +1847,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 30.00,
                 output: 180.00,
                 cache_read: None,
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1852,11 +1888,13 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 2.50,
                 output: 15.00,
                 cache_read: Some(0.25),
+                cache_write: None,
                 cost_tiers: vec![CostTier {
                     above_tokens: 200_000,
                     input: 5.00,
                     output: 22.50,
                     cache_read: Some(0.50),
+                    cache_write: None,
                 }],
             }),
             limits: Some(ModelLimits {
@@ -1894,6 +1932,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 0.75,
                 output: 4.50,
                 cache_read: Some(0.075),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1931,6 +1970,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 0.20,
                 output: 1.25,
                 cache_read: Some(0.02),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -1968,11 +2008,13 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 30.00,
                 output: 180.00,
                 cache_read: None,
+                cache_write: None,
                 cost_tiers: vec![CostTier {
                     above_tokens: 200_000,
                     input: 60.00,
                     output: 270.00,
                     cache_read: None,
+                    cache_write: None,
                 }],
             }),
             limits: Some(ModelLimits {
@@ -2011,6 +2053,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 1.25,
                 output: 10.00,
                 cache_read: Some(0.125),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2048,6 +2091,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 1.50,
                 output: 12.00,
                 cache_read: Some(0.15),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2085,6 +2129,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 1.75,
                 output: 14.00,
                 cache_read: Some(0.175),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2123,6 +2168,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 2.00,
                 output: 8.00,
                 cache_read: Some(1.00),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2160,6 +2206,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 1.10,
                 output: 4.40,
                 cache_read: Some(0.55),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2217,6 +2264,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 0.20,
                 output: 0.80,
                 cache_read: None,
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2256,6 +2304,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 2.50,
                 output: 7.50,
                 cache_read: Some(0.50),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2363,6 +2412,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 0.60,
                 output: 2.40,
                 cache_read: Some(0.12),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2402,6 +2452,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 0.60,
                 output: 2.50,
                 cache_read: Some(0.15),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2445,6 +2496,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 3.00,
                 output: 15.00,
                 cache_read: Some(0.30),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2484,11 +2536,13 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 1.25,
                 output: 2.50,
                 cache_read: Some(0.20),
+                cache_write: None,
                 cost_tiers: vec![CostTier {
                     above_tokens: 200_000,
                     input: 2.50,
                     output: 5.00,
                     cache_read: Some(0.40),
+                    cache_write: None,
                 }],
             }),
             limits: Some(ModelLimits {
@@ -2600,6 +2654,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 input: 10.00,
                 output: 50.00,
                 cache_read: Some(0.25),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2647,6 +2702,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 input: 10.00,
                 output: 50.00,
                 cache_read: Some(1.00),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2693,6 +2749,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 input: 5.00,
                 output: 25.00,
                 cache_read: Some(0.50),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2737,6 +2794,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 input: 5.00,
                 output: 25.00,
                 cache_read: Some(0.50),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2779,6 +2837,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 input: 5.00,
                 output: 25.00,
                 cache_read: Some(0.50),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2818,6 +2877,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 input: 5.00,
                 output: 25.00,
                 cache_read: Some(0.50),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2884,6 +2944,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 input: 3.00,
                 output: 15.00,
                 cache_read: Some(0.30),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2922,6 +2983,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 input: 3.00,
                 output: 15.00,
                 cache_read: Some(0.30),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2960,6 +3022,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 input: 5.00,
                 output: 25.00,
                 cache_read: Some(0.50),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -2997,6 +3060,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 input: 3.00,
                 output: 15.00,
                 cache_read: Some(0.30),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -3034,6 +3098,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 input: 1.00,
                 output: 5.00,
                 cache_read: Some(0.10),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -3072,6 +3137,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 input: 15.00,
                 output: 75.00,
                 cache_read: Some(1.50),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -3120,11 +3186,13 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 2.00,
                 output: 12.00,
                 cache_read: Some(0.20),
+                cache_write: None,
                 cost_tiers: vec![CostTier {
                     above_tokens: 200_000,
                     input: 4.00,
                     output: 18.00,
                     cache_read: Some(0.40),
+                    cache_write: None,
                 }],
             }),
             limits: Some(ModelLimits {
@@ -3172,6 +3240,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 1.50,
                 output: 9.00,
                 cache_read: Some(0.15),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -3218,6 +3287,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 0.25,
                 output: 1.50,
                 cache_read: Some(0.025),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -3261,6 +3331,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 1.25,
                 output: 10.00,
                 cache_read: Some(0.31),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -3303,6 +3374,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 0.15,
                 output: 0.60,
                 cache_read: Some(0.0375),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -3345,6 +3417,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 0.10,
                 output: 0.40,
                 cache_read: Some(0.025),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -3395,6 +3468,7 @@ fn llmsim_profile_data(model_id: &str) -> Option<ModelProfile> {
                 input: 0.00, // Free for testing
                 output: 0.00,
                 cache_read: Some(0.00),
+                cache_write: None,
                 cost_tiers: vec![],
             }),
             limits: Some(ModelLimits {
@@ -3514,6 +3588,32 @@ mod tests {
                 "{provider}/{wire_id}"
             );
         }
+    }
+
+    #[test]
+    fn cache_write_pricing_uses_disjoint_buckets_and_context_tier() {
+        for (model, input) in [
+            ("gpt-6-astra", 10.0),
+            ("gpt-5.6-sol", 5.0),
+            ("gpt-5.6-terra", 2.5),
+            ("gpt-5.6-luna", 1.0),
+        ] {
+            let cost = estimate_cost_usd("openai", model, 1000, 0, 2000, 3000).unwrap();
+            assert!((cost - input * (1000.0 + 200.0 + 3750.0) / 1_000_000.0).abs() < 1e-10);
+            // Cache buckets count toward the threshold. At the boundary use base rates.
+            for (written, multiplier) in [(271_000, 1.0), (271_001, 2.0)] {
+                let cost = estimate_cost_usd("openai", model, 0, 0, 1000, written).unwrap();
+                let expected = input * multiplier * (100.0 + written as f64 * 1.25) / 1_000_000.0;
+                assert!(
+                    (cost - expected).abs() < 1e-10,
+                    "{model}: {cost} != {expected}"
+                );
+            }
+        }
+        assert_eq!(
+            estimate_cost_usd("openai", "gpt-5.5", 0, 0, 0, 1_000_000),
+            Some(5.0)
+        );
     }
 
     // Inspect actual registry members so new models cannot silently escape the

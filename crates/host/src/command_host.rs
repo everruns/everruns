@@ -114,6 +114,8 @@ impl StoreCommandHost {
                     self.session_id,
                     &[],
                     self.file_store.clone(),
+                    // Introspection path; see the note in runtime.rs.
+                    None,
                 )
                 .await
             })

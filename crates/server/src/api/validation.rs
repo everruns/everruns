@@ -23,6 +23,75 @@ pub const MAX_AGENT_NAME_BYTES: usize = 2 * 1024; // 2 KB
 /// 10 KB allows for detailed descriptions with formatting.
 pub const MAX_AGENT_DESCRIPTION_BYTES: usize = 10 * 1024; // 10 KB
 
+/// Maximum size for the Platform Chat intro (Markdown, images allowed).
+/// 24 KB accommodates rich formatting plus a few image embeds.
+pub const MAX_INTRO_MARKDOWN_BYTES: usize = 24 * 1024; // 24 KB
+
+/// Maximum size for the one-line Platform Chat description (simplified Markdown).
+pub const MAX_SHORT_DESCRIPTION_BYTES: usize = 2 * 1024; // 2 KB
+
+/// Maximum number of Platform Chat conversation starters.
+pub const MAX_STARTERS: usize = 8;
+
+/// Maximum size for a single starter text (one prompt line).
+pub const MAX_STARTER_TEXT_BYTES: usize = 280;
+
+/// Maximum size for a starter icon name (harness icon set).
+pub const MAX_STARTER_ICON_BYTES: usize = 64;
+
+/// Validate Platform Chat intro content shared by harnesses and agents.
+/// Returns a human-readable error (the caller maps it to its error type).
+/// Agent values win over harness values at render time; both sides validate
+/// the same way.
+pub fn check_platform_chat_content(
+    intro_markdown: Option<&str>,
+    short_description: Option<&str>,
+    starters: &[everruns_platform::ConversationStarter],
+) -> Result<(), String> {
+    if let Some(intro) = intro_markdown
+        && intro.len() > MAX_INTRO_MARKDOWN_BYTES
+    {
+        return Err(format!(
+            "intro_markdown exceeds {MAX_INTRO_MARKDOWN_BYTES} bytes ({} bytes)",
+            intro.len()
+        ));
+    }
+    if let Some(short) = short_description
+        && short.len() > MAX_SHORT_DESCRIPTION_BYTES
+    {
+        return Err(format!(
+            "short_description exceeds {MAX_SHORT_DESCRIPTION_BYTES} bytes ({} bytes)",
+            short.len()
+        ));
+    }
+    if starters.len() > MAX_STARTERS {
+        return Err(format!(
+            "starters exceeds {MAX_STARTERS} entries ({} entries)",
+            starters.len()
+        ));
+    }
+    for (index, starter) in starters.iter().enumerate() {
+        if starter.text.trim().is_empty() {
+            return Err(format!("starters[{index}].text must not be empty"));
+        }
+        if starter.text.len() > MAX_STARTER_TEXT_BYTES {
+            return Err(format!(
+                "starters[{index}].text exceeds {MAX_STARTER_TEXT_BYTES} bytes ({} bytes)",
+                starter.text.len()
+            ));
+        }
+        if let Some(icon) = starter.icon.as_deref()
+            && icon.len() > MAX_STARTER_ICON_BYTES
+        {
+            return Err(format!(
+                "starters[{index}].icon exceeds {MAX_STARTER_ICON_BYTES} bytes ({} bytes)",
+                icon.len()
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Maximum size for agent system prompt.
 /// 1 MB allows for very detailed prompts including embedded context.
 pub const MAX_AGENT_SYSTEM_PROMPT_BYTES: usize = 1024 * 1024; // 1 MB

@@ -34,6 +34,7 @@ pub struct StoreTurnContextResolver {
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
     file_store: Option<Arc<dyn SessionFileSystem>>,
+    session_storage: Option<Arc<dyn everruns_core::session_services::SessionStorageStore>>,
 }
 
 impl StoreTurnContextResolver {
@@ -57,12 +58,24 @@ impl StoreTurnContextResolver {
             capability_registry,
             driver_registry,
             file_store: None,
+            session_storage: None,
         }
     }
 
     /// Supply the session filesystem used by dynamic prompt capabilities.
     pub fn with_file_store(mut self, file_store: Arc<dyn SessionFileSystem>) -> Self {
         self.file_store = Some(file_store);
+        self
+    }
+
+    /// Supply the session key/value store read by prompt capabilities whose
+    /// contribution is persisted session state — `channel_context` and the
+    /// `ThreadContext` it renders (EVE-977).
+    pub fn with_session_storage(
+        mut self,
+        session_storage: Arc<dyn everruns_core::session_services::SessionStorageStore>,
+    ) -> Self {
+        self.session_storage = Some(session_storage);
         self
     }
 }
@@ -86,6 +99,7 @@ impl TurnContextResolver for StoreTurnContextResolver {
             request.agent_id,
             &request.mcp_tool_definitions,
             self.file_store.clone(),
+            self.session_storage.clone(),
         )
         .await
     }
@@ -113,6 +127,7 @@ pub async fn assemble_turn_context(
     agent_id: Option<AgentId>,
     mcp_tool_definitions: &[ToolDefinition],
     file_store: Option<Arc<dyn SessionFileSystem>>,
+    session_storage: Option<Arc<dyn everruns_core::session_services::SessionStorageStore>>,
 ) -> Result<AssembledTurnContext> {
     let snapshot =
         load_execution_snapshot(harness_store, agent_store, session_store, session_id).await?;
@@ -125,6 +140,7 @@ pub async fn assemble_turn_context(
         driver_registry,
         mcp_tool_definitions,
         file_store,
+        session_storage,
         AssemblyMode::RequireMessages,
     )
     .await
@@ -145,6 +161,7 @@ pub async fn inspect_turn_context(
     agent_id: Option<AgentId>,
     mcp_tool_definitions: &[ToolDefinition],
     file_store: Option<Arc<dyn SessionFileSystem>>,
+    session_storage: Option<Arc<dyn everruns_core::session_services::SessionStorageStore>>,
 ) -> Result<AssembledTurnContext> {
     let snapshot =
         load_execution_snapshot(harness_store, agent_store, session_store, session_id).await?;
@@ -157,6 +174,7 @@ pub async fn inspect_turn_context(
         driver_registry,
         mcp_tool_definitions,
         file_store,
+        session_storage,
         AssemblyMode::AllowEmptyMessages,
     )
     .await
@@ -174,6 +192,7 @@ pub(crate) async fn inspect_turn_context_for_session(
     session_id: SessionId,
     mcp_tool_definitions: &[ToolDefinition],
     file_store: Option<Arc<dyn SessionFileSystem>>,
+    session_storage: Option<Arc<dyn everruns_core::session_services::SessionStorageStore>>,
 ) -> Result<AssembledTurnContext> {
     let snapshot =
         load_execution_snapshot(harness_store, agent_store, session_store, session_id).await?;
@@ -185,6 +204,7 @@ pub(crate) async fn inspect_turn_context_for_session(
         driver_registry,
         mcp_tool_definitions,
         file_store,
+        session_storage,
         AssemblyMode::AllowEmptyMessages,
     )
     .await
@@ -200,6 +220,7 @@ pub async fn assemble_turn_context_from_snapshot(
     driver_registry: &DriverRegistry,
     mcp_tool_definitions: &[ToolDefinition],
     file_store: Option<Arc<dyn SessionFileSystem>>,
+    session_storage: Option<Arc<dyn everruns_core::session_services::SessionStorageStore>>,
 ) -> Result<AssembledTurnContext> {
     assemble_from_snapshot(
         snapshot,
@@ -209,6 +230,7 @@ pub async fn assemble_turn_context_from_snapshot(
         driver_registry,
         mcp_tool_definitions,
         file_store,
+        session_storage,
         AssemblyMode::RequireMessages,
     )
     .await
@@ -223,6 +245,7 @@ async fn assemble_from_snapshot(
     driver_registry: &DriverRegistry,
     mcp_tool_definitions: &[ToolDefinition],
     file_store: Option<Arc<dyn SessionFileSystem>>,
+    session_storage: Option<Arc<dyn everruns_core::session_services::SessionStorageStore>>,
     mode: AssemblyMode,
 ) -> Result<AssembledTurnContext> {
     let resolved = resolve_snapshot_capabilities(&snapshot, capability_registry);
@@ -255,6 +278,7 @@ async fn assemble_from_snapshot(
         },
         capability_registry,
         file_store,
+        session_storage,
     )
     .await
 }

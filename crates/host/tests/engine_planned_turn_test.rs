@@ -378,6 +378,7 @@ fn planner_state_survives_a_restart_between_every_step() {
 
     // reason (with tool calls) -> act
     let with_tools = everruns_engine::ReasonResult {
+        native_counts: None,
         success: true,
         has_tool_calls: true,
         max_iterations: 8,
@@ -427,6 +428,7 @@ fn planner_state_survives_a_restart_between_every_step() {
 
     // reason (no tool calls) -> complete
     let final_reason = everruns_engine::ReasonResult {
+        native_counts: None,
         success: true,
         max_iterations: 8,
         text: "done".to_string(),

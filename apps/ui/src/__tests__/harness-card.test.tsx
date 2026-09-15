@@ -36,6 +36,14 @@ describe("HarnessCard inheritance", () => {
     expect(screen.queryByText("Inherits from")).not.toBeInTheDocument();
   });
 
+  it("renders the edit action as one named link", () => {
+    render(<HarnessCard harness={harness()} showEditButton />);
+
+    const edit = screen.getByRole("link", { name: "Edit Child" });
+    expect(edit).toHaveAttribute("href", "/harnesses/harness-child/edit");
+    expect(edit.querySelector("button")).not.toBeInTheDocument();
+  });
+
   it("links the direct parent and keeps built-in status separate", () => {
     const parent = harness({ id: "harness-parent", name: "generic", display_name: "Generic" });
     const child = harness({ parent_harness_id: parent.id, is_built_in: true });

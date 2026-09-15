@@ -548,6 +548,9 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
                 name: "missing-harness-card".to_string(),
                 display_name: None,
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
                 harness_id: missing_harness_id,
@@ -5208,4 +5211,114 @@ Content-Type: image/png\r\n\r\n"
         .get(&format!("/v1/images/{image_id}"))
         .await
         .assert_status(StatusCode::OK);
+}
+
+// ============================================
+// Environment Tests
+// ============================================
+
+#[tokio::test]
+async fn test_session_environment_reports_what_the_session_can_actually_do() {
+    let server = TestServer::in_memory().await;
+
+    let session: Value = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_generic_harness_id,
+                "title": "Environment smoke",
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let session_id = session["id"].as_str().expect("session id");
+
+    let environment: Value = server
+        .get(&format!("/v1/sessions/{session_id}/environment"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    // The generic harness carries `bashkit_shell`, which is a virtual
+    // filesystem rather than a machine.
+    assert_eq!(environment["target"]["kind"], "vfs");
+    assert_eq!(environment["target"]["provider"], "bashkit");
+    assert_eq!(environment["source_capability"], "bashkit_shell");
+
+    // The load-bearing claim: a caller learns a build cannot run here before
+    // running one, rather than from a confusing tool error afterwards.
+    assert_eq!(environment["capabilities"]["native_processes"], false);
+    assert_eq!(environment["capabilities"]["portable_checkpoint"], true);
+    assert_eq!(environment["containment"]["level"], "isolated");
+    assert_eq!(environment["durability"], "checkpointed");
+
+    // Says how it knows, rather than implying a stored profile that does not
+    // exist yet.
+    assert_eq!(environment["resolved_from"], "capabilities");
+}
+
+#[tokio::test]
+async fn test_environment_targets_say_why_an_absent_target_is_absent() {
+    let server = TestServer::in_memory().await;
+
+    let targets: Value = server
+        .get("/v1/environment-targets")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    let items = targets["items"].as_array().expect("items array");
+    let bashkit = items
+        .iter()
+        .find(|target| target["provider"] == "bashkit")
+        .expect("bashkit is always available");
+    assert_eq!(bashkit["available"], true);
+    assert_eq!(bashkit["capabilities"]["native_processes"], false);
+
+    let host = items
+        .iter()
+        .find(|target| target["kind"] == "host")
+        .expect("host is listed even when unavailable");
+    assert_eq!(host["available"], false);
+    assert!(
+        host["reason"].as_str().is_some_and(|r| !r.is_empty()),
+        "an absent target owes a reason"
+    );
+    // Nothing may promise recovery from hardware Everruns does not own.
+    assert_eq!(host["durability"], "none");
+}
+
+#[tokio::test]
+async fn test_org_cannot_set_a_platform_managed_feature_flag() {
+    let server = TestServer::in_memory().await;
+    let org_id = "org_00000000000000000000000000000001";
+
+    // Enabling and disabling are both refused: an org that cannot enrol itself
+    // must not be able to unenrol either.
+    for wanted in [true, false] {
+        let refused: Value = server
+            .patch(
+                &format!("/v1/orgs/{org_id}/feature-flags"),
+                json!({ "flags": { "environments": wanted } }),
+            )
+            .await
+            .assert_status(StatusCode::BAD_REQUEST)
+            .json();
+        assert!(
+            refused["detail"]
+                .as_str()
+                .is_some_and(|d| d.contains("managed by the platform")),
+            "unexpected body: {refused}"
+        );
+    }
+
+    // And it is absent from the tenant settings catalog, so no toggle exists.
+    let settings: Value = server
+        .get(&format!("/v1/orgs/{org_id}/feature-flags/settings"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let flags = settings["flags"].as_array().expect("flags array");
+    assert!(flags.iter().all(|flag| flag["name"] != "environments"));
 }

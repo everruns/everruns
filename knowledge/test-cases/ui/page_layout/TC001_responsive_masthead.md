@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "Responsive page masthead"
+title: "TC001: Responsive page masthead"
 description: "Verify that shared page mastheads preserve readable identity content and contain large action sets when the app content area narrows."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - page-layout
 ---
-# Responsive page masthead
+# TC001: Responsive page masthead
 
 ## Description
 

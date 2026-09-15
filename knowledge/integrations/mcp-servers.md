@@ -26,7 +26,7 @@ See `crates/core/src/mcp_server.rs` for the full `McpServer` struct definition.
 
 | Field | Max Size | Notes |
 |-------|----------|-------|
-| `name` | 255 chars | Must be unique, non-empty, snake_case recommended |
+| `name` | 255 chars | Must be unique per organization among live (`active`/`disabled`) servers, non-empty, snake_case recommended |
 | `description` | 10 KB | Optional description |
 | `url` | 2 KB | Valid HTTP/HTTPS URL |
 | `headers` | 100 entries | Maximum header entries |
@@ -354,7 +354,7 @@ Delete an MCP server.
 
 1. **API Key Encryption**: API keys are encrypted at rest using envelope encryption (see `knowledge/security/encryption.md`)
 2. **API Key Not Exposed**: The `api_key_encrypted` field is never returned in API responses
-3. **Unique Names**: Server names must be unique to prevent configuration conflicts
+3. **Unique Names**: Server names must be unique within an organization to prevent configuration conflicts. Uniqueness is scoped to live servers: archiving or deleting a server releases its name, while a disabled one keeps it because it can be re-enabled (EVE-964).
 4. **SSRF Protection**: MCP server URLs are validated on create/update (static check) and re-validated with DNS resolution before each tool call and `tools/list` fetch (`validate_url_dns_pinned`). Private IPs, loopback, link-local, and cloud metadata endpoints are blocked; the DNS-pinned check also prevents DNS-rebinding attacks by verifying every resolved IP on each outbound request (TM-TOOL-018).
 
 ## MCP as Virtual Capabilities

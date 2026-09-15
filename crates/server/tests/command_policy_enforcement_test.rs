@@ -24,6 +24,7 @@ use everruns_core::{
     PermissionResolver, SessionSeedMode,
 };
 use everruns_platform::FeatureFlags;
+use everruns_provider::provider::DriverId;
 use everruns_provider::typed_id::AgentId;
 use everruns_server::api::evals::CreateEvalRunRequest;
 use everruns_server::api::sessions::CreateSessionRequest;
@@ -35,6 +36,7 @@ use everruns_server::domains::evals::{CreateEvalRun, ListEvals};
 use everruns_server::domains::harnesses::types::CreateHarnessRequest;
 use everruns_server::domains::harnesses::{CreateHarness, ListHarnesses};
 use everruns_server::domains::messages::{ExportSessionMessages, SessionExportFormat};
+use everruns_server::domains::providers::{CreateProvider, ListProviders};
 use everruns_server::domains::session_files::{GetWorkspaceFile, ListWorkspaceFiles};
 use everruns_server::domains::session_tasks::{
     CancelSessionTask, GetSessionTask, ListSessionTasks, PostSessionTaskMessage,
@@ -71,6 +73,9 @@ fn minimal_harness(name: &str) -> CreateHarnessRequest {
         name: name.to_string(),
         display_name: None,
         description: None,
+        intro_markdown: None,
+        short_description: None,
+        starters: Vec::new(),
         system_prompt: Some("test prompt".to_string()),
         parent_harness_id: None,
         default_model_id: None,
@@ -132,6 +137,51 @@ async fn run_blocks_member_from_manage_command() {
         ),
         "expected Forbidden, got {err:?}"
     );
+}
+
+#[tokio::test]
+async fn run_blocks_member_from_creating_a_provider() {
+    // Provider credentials are org-wide secrets that every agent then spends
+    // against, so create/update/delete carry LLM_PROVIDER_MANAGE
+    // (OrgProvidersManage) — a permission Member does not hold. Members keep
+    // OrgProvidersView so they can still see which providers exist.
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Member),
+        Arc::new(DefaultPermissionResolver),
+    );
+    let err = CreateProvider {
+        name: "member-denied".to_string(),
+        provider_type: DriverId::OpenAI,
+        base_url: None,
+        api_key: Some("sk-should-never-be-stored".to_string()),
+        trace: None,
+        request_options: None,
+    }
+    .run(&ctx)
+    .await
+    .expect_err("Member must not be allowed to create an LLM provider");
+    assert!(
+        matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::Forbidden(_),
+                ..
+            }
+        ),
+        "expected Forbidden, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn run_allows_member_to_list_providers() {
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Member),
+        Arc::new(DefaultPermissionResolver),
+    );
+    ListProviders {}
+        .run(&ctx)
+        .await
+        .expect("Member should be allowed to list providers");
 }
 
 #[tokio::test]
@@ -450,6 +500,9 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
                 display_name: None,
                 icon: None,
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: Some("test prompt".to_string()),
                 parent_harness_id: None,
                 default_model_id: None,
@@ -472,6 +525,9 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
                 name: name.to_string(),
                 display_name: None,
                 description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
                 system_prompt: "test agent".to_string(),
                 default_model_id: None,
                 harness_id: harness.id,

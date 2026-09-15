@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "Responsive knowledge-index list"
+title: "TC002: Responsive knowledge-index list"
 description: "Verify that populated knowledge-index records preserve readable identity, source, diagnostic state, timestamps, and actions when the app content column narrows."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - knowledge-indexes
 ---
-# Responsive knowledge-index list
+# TC002: Responsive knowledge-index list
 
 ## Description
 

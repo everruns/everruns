@@ -92,6 +92,26 @@ exact claim values. Empty requirement lists mean no constraint for that field.
 Audience requirements match any token `aud` value; scope requirements require
 all configured scopes.
 
+## Endpoint Addresses
+
+Each App channel has a stable endpoint ID. Canonical ingress routes use
+`/v1/e/{channel_id}`:
+
+- Slack: `POST /slack/events` and `GET /slack/manifest`.
+- AG-UI: `POST /ag-ui` and `POST /ag-ui/images`.
+- A2A: `POST /a2a` and `GET /a2a/.well-known/agent-card.json`.
+- FCP: `POST /fcp`.
+- Webhook: `POST /webhook`.
+- API endpoint: `POST /sessions`, plus its session read, message, and cancel
+  subroutes.
+
+Existing `/v1/apps/{app_id}/...` routes are permanent aliases. Aliases that
+include both an App ID and a channel ID return `404` when the IDs do not belong
+together. The channel-less AG-UI and Slack aliases resolve the only enabled
+channel of the requested type. They return `409 Conflict` when multiple enabled
+channels match, with a detail that directs the caller to the endpoint-scoped
+URL. Public Chat URLs do not change.
+
 ## Enforcement
 
 Supported handlers resolve the published App and enabled channel first, then
@@ -105,8 +125,8 @@ AG-UI behavior:
   `X-Everruns-AG-UI-Token`.
 - With `auth`, the shared verifier is authoritative and the legacy token gate
   is ignored.
-- Both `POST /v1/apps/{app_id}/ag-ui` and
-  `POST /v1/apps/{app_id}/ag-ui/images` use the same auth decision.
+- Stream and image-upload routes use the same auth decision on endpoint-scoped
+  and app-scoped addresses.
 
 A2A behavior:
 
