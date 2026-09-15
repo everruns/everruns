@@ -115,6 +115,11 @@ pub struct FeatureFlagDefinition {
     pub description: &'static str,
     /// When true, shown with experimental badges in the UI.
     pub experimental: bool,
+    /// When true, only a platform user may turn this flag on for an
+    /// organization. The flag is still org-scoped, so it can be enabled for one
+    /// tenant and not another; what changes is who decides. Used for surfaces
+    /// whose cost or risk is the platform's rather than the tenant's.
+    pub platform_managed: bool,
 }
 
 /// Whether this deployment runs sandboxes at all.
@@ -129,8 +134,9 @@ fn sandboxes_enabled() -> bool {
 }
 
 /// API-visible flags that organizations may opt into when the deployment allows them.
-/// Deployment-only UI gates such as `machine_payments` and `environments` intentionally stay
-/// out of this catalog.
+/// Deployment-only UI gates such as `machine_payments` intentionally stay out of this catalog.
+/// Entries marked `platform_managed` are in it, because they are org-scoped; what they withhold
+/// is the tenant's ability to turn them on for themselves.
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
     FeatureFlagDefinition {
         name: "notifications",
@@ -139,6 +145,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
              alerted in real time when something you care about happens, instead of refreshing \
              or checking back manually.",
         experimental: true,
+        platform_managed: false,
     },
     FeatureFlagDefinition {
         name: "evals",
@@ -147,6 +154,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
              confirm an agent responds the way you expect and to catch regressions as you change \
              prompts or models.",
         experimental: true,
+        platform_managed: false,
     },
     FeatureFlagDefinition {
         name: "skills",
@@ -154,6 +162,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         description: "Create and manage reusable instruction packages that teach agents \
              specialized workflows.",
         experimental: true,
+        platform_managed: false,
     },
     FeatureFlagDefinition {
         name: "memory",
@@ -161,12 +170,14 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         description: "Manage knowledge stores agents can read, including manual notes and \
              synchronized files.",
         experimental: true,
+        platform_managed: false,
     },
     FeatureFlagDefinition {
         name: "knowledge",
         label: "Knowledge indexes",
         description: "Connect external document collections and make them searchable by agents.",
         experimental: true,
+        platform_managed: false,
     },
     FeatureFlagDefinition {
         name: "plugins",
@@ -174,6 +185,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         description: "Install and manage extensions that add integrations, skills, and other \
              capabilities.",
         experimental: true,
+        platform_managed: false,
     },
     FeatureFlagDefinition {
         name: "app_budgets",
@@ -182,6 +194,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
              resets on a schedule. It helps you cap and control costs so a single app or channel \
              can't run away with your usage.",
         experimental: true,
+        platform_managed: false,
     },
     FeatureFlagDefinition {
         name: "agent_versions",
@@ -190,6 +203,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
              pin apps to a specific version. This gives you a safety net to experiment freely \
              and return to a known-good agent at any time.",
         experimental: true,
+        platform_managed: false,
     },
     FeatureFlagDefinition {
         name: "voice",
@@ -197,6 +211,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         description: "Enables realtime voice in chat with microphone controls. You can talk to \
              your agents and hear responses instead of typing, for a hands-free conversation.",
         experimental: true,
+        platform_managed: false,
     },
     FeatureFlagDefinition {
         name: "agent_delegation",
@@ -205,6 +220,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
              and A2A delegation. When disabled, these capabilities are hidden and cannot be \
              assigned.",
         experimental: true,
+        platform_managed: false,
     },
     FeatureFlagDefinition {
         name: "observers",
@@ -213,12 +229,25 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
              evaluates live conversations so you can monitor quality on real traffic without \
              manually reviewing each one.",
         experimental: true,
+        platform_managed: false,
+    },
+    FeatureFlagDefinition {
+        name: "environments",
+        label: "Environments",
+        description: "Shows where each session's commands run and what that environment can \
+             actually do, including whether it can run native processes and whether its files \
+             can be recovered.",
+        experimental: true,
+        // Platform-managed: this describes the sandbox surface an operator runs
+        // and pays for, so an org is enrolled in it rather than opting itself in.
+        platform_managed: true,
     },
     FeatureFlagDefinition {
         name: "public_chat",
         label: "Public Chat",
         description: "Isolated, public-facing chat web app and the public_chat channel.",
         experimental: true,
+        platform_managed: false,
     },
     FeatureFlagDefinition {
         name: "webmcp",
@@ -226,8 +255,19 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         description: "Exposes a small browser-native tool surface from the authenticated UI so a \
              browser agent can search, navigate, and perform confirmed actions in Everruns.",
         experimental: true,
+        platform_managed: false,
     },
 ];
+
+/// Whether a flag may only be enabled for an org by a platform user.
+///
+/// Unknown flags are not platform-managed: an unknown name is rejected as
+/// unknown, which is a clearer error than "you are not allowed to".
+pub fn is_platform_managed(flag: &str) -> bool {
+    API_FEATURE_FLAG_DEFINITIONS
+        .iter()
+        .any(|definition| definition.name == flag && definition.platform_managed)
+}
 
 impl FeatureFlags {
     /// Effective flags for an organization: org-configurable deployment/system gates AND
@@ -253,7 +293,7 @@ impl FeatureFlags {
             observers: opt_in("observers", system.observers),
             public_chat: opt_in("public_chat", system.public_chat),
             webmcp: opt_in("webmcp", system.webmcp),
-            environments: system.environments,
+            environments: opt_in("environments", system.environments),
             machine_payments: system.machine_payments,
         }
     }
@@ -471,30 +511,31 @@ mod tests {
     }
 
     #[test]
-    fn environments_is_not_an_org_preference() {
-        // Not in the opt-in catalog: an org admin has no toggle for it.
+    fn environments_is_org_scoped_but_platform_managed() {
+        // In the catalog, so an org opt-in row counts: the platform can enrol
+        // one tenant and not another.
         assert!(
-            !API_FEATURE_FLAG_DEFINITIONS
+            API_FEATURE_FLAG_DEFINITIONS
                 .iter()
-                .any(|definition| definition.name == "environments"),
-            "environments is a platform decision, not an org preference"
+                .any(|definition| definition.name == "environments" && definition.platform_managed),
+            "environments is org-scoped but not the org's own decision"
         );
+        assert!(is_platform_managed("environments"));
+        assert!(!is_platform_managed("skills"));
 
-        // And it reaches an org on the deployment flag alone, with no opt-in row.
         let system = FeatureFlags {
             environments: true,
             ..FeatureFlags::default()
         };
-        let effective = FeatureFlags::for_org(&system, &std::collections::HashMap::new());
-        assert!(effective.environments);
 
-        let system_off = FeatureFlags::default();
-        let mut opted_in = std::collections::HashMap::new();
-        opted_in.insert("environments".to_string(), true);
-        assert!(
-            !FeatureFlags::for_org(&system_off, &opted_in).environments,
-            "an org cannot enable what the deployment withholds"
-        );
+        // Enrolment is a row, and without one the flag stays off.
+        assert!(!FeatureFlags::for_org(&system, &std::collections::HashMap::new()).environments);
+
+        let enrolled = std::collections::HashMap::from([("environments".to_string(), true)]);
+        assert!(FeatureFlags::for_org(&system, &enrolled).environments);
+
+        // The deployment gate still comes first.
+        assert!(!FeatureFlags::for_org(&FeatureFlags::default(), &enrolled).environments);
     }
 
     #[test]

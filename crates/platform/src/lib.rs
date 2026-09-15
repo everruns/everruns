@@ -197,6 +197,7 @@ pub use eval::{
 };
 pub use feature_flags::{
     API_FEATURE_FLAG_DEFINITIONS, FeatureFlagDefinition, FeatureFlagMap, FeatureFlags,
+    is_platform_managed,
 };
 pub use observer::{
     LlmJudgeConfig, Observer, ObserverMatch, ObserverScope, ObserverScorerConfig, ObserverStatus,

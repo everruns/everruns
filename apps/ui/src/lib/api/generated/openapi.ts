@@ -2212,6 +2212,36 @@ export interface paths {
     patch: operations["update_org_feature_flags"];
     trace?: never;
   };
+  "/v1/orgs/{org}/feature-flags/platform": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * GET /v1/orgs/{org}/feature-flags/platform — every flag, including the
+     *     platform-managed ones, for the operator console.
+     * @description Platform users only. The tenant-facing settings route deliberately omits
+     *     these rows, so this is where an operator sees what a tenant is enrolled in.
+     */
+    get: operations["get_platform_feature_flag_settings"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * PATCH /v1/orgs/{org}/feature-flags/platform — enrol an organization in a
+     *     platform-managed feature.
+     * @description Platform users only, and limited to platform-managed flags: an operator
+     *     setting a tenant's own preferences would be acting as the tenant, which this
+     *     surface does not do. Omitted flags are unchanged, so enrolling one org in one
+     *     feature cannot disturb another setting.
+     */
+    patch: operations["update_platform_feature_flags"];
+    trace?: never;
+  };
   "/v1/orgs/{org}/feature-flags/settings": {
     parameters: {
       query?: never;
@@ -12552,6 +12582,8 @@ export interface components {
       name: string;
       /** @description Whether the organization has opted in. */
       org_enabled: boolean;
+      /** @description Whether only a platform user may enable this flag for the org. */
+      platform_managed: boolean;
       /** @description Whether the deployment allows this flag (env / grade). */
       system_enabled: boolean;
     };
@@ -26634,6 +26666,101 @@ export interface operations {
         };
       };
       /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Organization not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_platform_feature_flag_settings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Organization public id */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Feature flag settings, platform view */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrgFeatureFlagsSettingsResponse"];
+        };
+      };
+      /** @description Platform user access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Organization not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  update_platform_feature_flags: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Organization public id */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateOrgFeatureFlagsRequest"];
+      };
+    };
+    responses: {
+      /** @description Updated effective flags */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FeatureFlagMap"];
+        };
+      };
+      /** @description Not a platform-managed flag */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Platform user access required */
       403: {
         headers: {
           [name: string]: unknown;

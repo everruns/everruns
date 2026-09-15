@@ -224,6 +224,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::task_webhooks::delete_webhook,
         api::session_sandbox::get_sandbox,
         api::session_sandbox::manage_sandbox,
+        api::org_feature_flags::get_platform_feature_flag_settings,
+        api::org_feature_flags::update_platform_feature_flags,
         api::environments::get_session_environment,
         api::environments::list_environment_targets,
         api::mcp_servers::create_mcp_server,

@@ -29,13 +29,13 @@ What exists in code today:
 - the Workspace-tab environment panel in the UI.
 
 All of it sits behind the `environments` feature flag, which is
-deployment-controlled rather than org-configurable: describing the sandbox
-surface is a platform decision, so there is no per-org toggle. It defaults to on
-wherever sandboxes are already enabled, because an operator who turned sandboxes
-on should not have to find a second switch to see what those sandboxes can do,
-and to on in dev. The flag is what makes shipping a provisional view safe: the
-derived `resolved_from: "capabilities"` answer reaches users only where a
-platform operator allowed it, and the flag comes down once profiles replace the
+platform-managed: org-scoped, so an operator enrols one tenant at a time, but
+never the tenant's own decision. The deployment gate defaults to on wherever
+sandboxes are already enabled, because an operator who turned sandboxes on
+should not have to find a second switch to see what those sandboxes can do, and
+to on in dev. The flag is what makes shipping a provisional view safe: the
+derived `resolved_from: "capabilities"` answer reaches an org only after a
+platform user enrols it, and the flag comes down once profiles replace the
 derivation. See [Feature Flags](../security/feature-flags.md).
 
 Not yet: environment profiles as agent configuration, the machine target,

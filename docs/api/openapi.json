@@ -8995,6 +8995,146 @@
         ]
       }
     },
+    "/v1/orgs/{org}/feature-flags/platform": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "GET /v1/orgs/{org}/feature-flags/platform — every flag, including the\nplatform-managed ones, for the operator console.",
+        "description": "Platform users only. The tenant-facing settings route deliberately omits\nthese rows, so this is where an operator sees what a tenant is enrolled in.",
+        "operationId": "get_platform_feature_flag_settings",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Feature flag settings, platform view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgFeatureFlagsSettingsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Platform user access required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "PATCH /v1/orgs/{org}/feature-flags/platform — enrol an organization in a\nplatform-managed feature.",
+        "description": "Platform users only, and limited to platform-managed flags: an operator\nsetting a tenant's own preferences would be acting as the tenant, which this\nsurface does not do. Omitted flags are unchanged, so enrolling one org in one\nfeature cannot disturb another setting.",
+        "operationId": "update_platform_feature_flags",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrgFeatureFlagsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated effective flags",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeatureFlagMap"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a platform-managed flag",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Platform user access required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
     "/v1/orgs/{org}/feature-flags/settings": {
       "get": {
         "tags": [
@@ -31170,6 +31310,7 @@
           "label",
           "description",
           "experimental",
+          "platform_managed",
           "system_enabled",
           "org_enabled",
           "effective"
@@ -31194,6 +31335,10 @@
           "org_enabled": {
             "type": "boolean",
             "description": "Whether the organization has opted in."
+          },
+          "platform_managed": {
+            "type": "boolean",
+            "description": "Whether only a platform user may enable this flag for the org."
           },
           "system_enabled": {
             "type": "boolean",
