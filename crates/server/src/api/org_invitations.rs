@@ -796,7 +796,7 @@ pub async fn accept_invite(
     responses(
         (status = 200, description = "Invitation accepted", body = AcceptInviteResponse),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Email is unverified or does not match"),
+        (status = 403, description = "Email is unverified"),
         (status = 404, description = "Invitation not found"),
         (status = 409, description = "Invitation is revoked, accepted, or no longer actionable"),
         (status = 410, description = "Invitation expired")

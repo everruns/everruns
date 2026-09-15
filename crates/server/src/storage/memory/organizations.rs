@@ -4,7 +4,36 @@ use super::super::models::*;
 use super::InMemoryDatabase;
 use anyhow::Result;
 use everruns_provider::typed_id::ModelId;
+use std::collections::HashMap;
 use uuid::Uuid;
+
+fn add_organization_member_with_capacity_locked(
+    members: &mut HashMap<(i64, Uuid), OrganizationMemberRow>,
+    org_id: i64,
+    user_id: Uuid,
+    role: &str,
+    max_members: i64,
+    now: chrono::DateTime<chrono::Utc>,
+) -> AddOrganizationMemberOutcome {
+    if let Some(existing) = members.get(&(org_id, user_id)) {
+        return AddOrganizationMemberOutcome::AlreadyMember(existing.clone());
+    }
+    let member_count = members
+        .values()
+        .filter(|member| member.org_id == org_id)
+        .count() as i64;
+    if member_count >= max_members {
+        return AddOrganizationMemberOutcome::MemberLimitReached;
+    }
+    let member = OrganizationMemberRow {
+        org_id,
+        user_id,
+        role: role.to_string(),
+        created_at: now,
+    };
+    members.insert((org_id, user_id), member.clone());
+    AddOrganizationMemberOutcome::Added(member)
+}
 
 impl InMemoryDatabase {
     // ============================================
@@ -210,6 +239,24 @@ impl InMemoryDatabase {
             .write()
             .insert((org_id, user_id), row.clone());
         Ok(row)
+    }
+
+    pub async fn add_organization_member_with_capacity(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        role: &str,
+        max_members: i64,
+    ) -> Result<AddOrganizationMemberOutcome> {
+        let mut members = self.organization_members.write();
+        Ok(add_organization_member_with_capacity_locked(
+            &mut members,
+            org_id,
+            user_id,
+            role,
+            max_members,
+            Self::now(),
+        ))
     }
 
     pub async fn remove_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
@@ -772,27 +819,19 @@ impl InMemoryDatabase {
         }
 
         let mut members = self.organization_members.write();
-        let key = (invitation.org_id, accepted_by);
-        let role = if let Some(member) = members.get(&key) {
-            member.role.clone()
-        } else {
-            let member_count = members
-                .values()
-                .filter(|member| member.org_id == invitation.org_id)
-                .count() as i64;
-            if member_count >= max_members {
+        let role = match add_organization_member_with_capacity_locked(
+            &mut members,
+            invitation.org_id,
+            accepted_by,
+            &invitation.role,
+            max_members,
+            now,
+        ) {
+            AddOrganizationMemberOutcome::Added(member)
+            | AddOrganizationMemberOutcome::AlreadyMember(member) => member.role,
+            AddOrganizationMemberOutcome::MemberLimitReached => {
                 return Ok(AcceptOrgInvitationOutcome::MemberLimitReached);
             }
-            members.insert(
-                key,
-                OrganizationMemberRow {
-                    org_id: invitation.org_id,
-                    user_id: accepted_by,
-                    role: invitation.role.clone(),
-                    created_at: now,
-                },
-            );
-            invitation.role.clone()
         };
 
         invitation.accepted_at = Some(now);

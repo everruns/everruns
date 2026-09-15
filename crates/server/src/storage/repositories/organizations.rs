@@ -3,7 +3,60 @@
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;
+use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
+
+fn organization_member_cap_lock_key(org_id: i64) -> i64 {
+    // Namespace member-capacity locks away from unrelated per-org advisory locks.
+    org_id ^ 0x4556_4552_4D45_4D42_i64
+}
+
+async fn add_organization_member_with_capacity_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    org_id: i64,
+    user_id: Uuid,
+    role: &str,
+    max_members: i64,
+) -> Result<AddOrganizationMemberOutcome> {
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(organization_member_cap_lock_key(org_id))
+        .execute(&mut **tx)
+        .await?;
+
+    let existing = sqlx::query_as::<_, OrganizationMemberRow>(
+        "SELECT org_id, user_id, role, created_at FROM organization_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE",
+    )
+    .bind(org_id)
+    .bind(user_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    if let Some(existing) = existing {
+        return Ok(AddOrganizationMemberOutcome::AlreadyMember(existing));
+    }
+
+    let member_count =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM organization_members WHERE org_id = $1")
+            .bind(org_id)
+            .fetch_one(&mut **tx)
+            .await?;
+    if member_count >= max_members {
+        return Ok(AddOrganizationMemberOutcome::MemberLimitReached);
+    }
+
+    let member = sqlx::query_as::<_, OrganizationMemberRow>(
+        r#"
+        INSERT INTO organization_members (org_id, user_id, role)
+        VALUES ($1, $2, $3)
+        RETURNING org_id, user_id, role, created_at
+        "#,
+    )
+    .bind(org_id)
+    .bind(user_id)
+    .bind(role)
+    .fetch_one(&mut **tx)
+    .await?;
+    Ok(AddOrganizationMemberOutcome::Added(member))
+}
 
 impl Database {
     // ============================================
@@ -302,6 +355,26 @@ impl Database {
         .await?;
 
         Ok(row)
+    }
+
+    pub async fn add_organization_member_with_capacity(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        role: &str,
+        max_members: i64,
+    ) -> Result<AddOrganizationMemberOutcome> {
+        let mut tx = self.pool.begin().await?;
+        let outcome = add_organization_member_with_capacity_in_transaction(
+            &mut tx,
+            org_id,
+            user_id,
+            role,
+            max_members,
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(outcome)
     }
 
     pub async fn remove_organization_member(&self, org_id: i64, user_id: Uuid) -> Result<bool> {
@@ -946,30 +1019,22 @@ impl Database {
             return Ok(AcceptOrgInvitationOutcome::NotActionable);
         }
 
-        sqlx::query("SELECT pg_advisory_xact_lock($1)")
-            .bind(invitation.org_id)
-            .execute(&mut *tx)
-            .await?;
-
-        let existing_role: Option<(String,)> = sqlx::query_as(
-            "SELECT role FROM organization_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE",
+        let role = match add_organization_member_with_capacity_in_transaction(
+            &mut tx,
+            invitation.org_id,
+            accepted_by,
+            &invitation.role,
+            max_members,
         )
-        .bind(invitation.org_id)
-        .bind(accepted_by)
-        .fetch_optional(&mut *tx)
-        .await?;
-
-        if existing_role.is_none() {
-            let (member_count,): (i64,) =
-                sqlx::query_as("SELECT COUNT(*) FROM organization_members WHERE org_id = $1")
-                    .bind(invitation.org_id)
-                    .fetch_one(&mut *tx)
-                    .await?;
-            if member_count >= max_members {
+        .await?
+        {
+            AddOrganizationMemberOutcome::Added(member)
+            | AddOrganizationMemberOutcome::AlreadyMember(member) => member.role,
+            AddOrganizationMemberOutcome::MemberLimitReached => {
                 tx.rollback().await?;
                 return Ok(AcceptOrgInvitationOutcome::MemberLimitReached);
             }
-        }
+        };
 
         let claimed: Option<(i64,)> = sqlx::query_as(
             r#"
@@ -990,37 +1055,6 @@ impl Database {
             tx.rollback().await?;
             return Ok(AcceptOrgInvitationOutcome::NotActionable);
         }
-
-        let role = if let Some((role,)) = existing_role {
-            role
-        } else {
-            let inserted: Option<(String,)> = sqlx::query_as(
-                r#"
-                INSERT INTO organization_members (org_id, user_id, role)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (org_id, user_id) DO NOTHING
-                RETURNING role
-                "#,
-            )
-            .bind(invitation.org_id)
-            .bind(accepted_by)
-            .bind(&invitation.role)
-            .fetch_optional(&mut *tx)
-            .await?;
-            match inserted {
-                Some((role,)) => role,
-                None => {
-                    let (role,): (String,) = sqlx::query_as(
-                        "SELECT role FROM organization_members WHERE org_id = $1 AND user_id = $2",
-                    )
-                    .bind(invitation.org_id)
-                    .bind(accepted_by)
-                    .fetch_one(&mut *tx)
-                    .await?;
-                    role
-                }
-            }
-        };
 
         tx.commit().await?;
         Ok(AcceptOrgInvitationOutcome::Accepted {

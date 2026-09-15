@@ -15,10 +15,11 @@ use everruns_provider::typed_id::TriggerId;
 use everruns_provider::typed_id::{AgentId, HarnessId, PrincipalId};
 use everruns_server::org_init;
 use everruns_server::storage::{
-    AcceptOrgInvitationOutcome, CreateAgentRow, CreateAgentTriggerRow, CreateBudgetRow,
-    CreateEventRow, CreateOrgInvitation, CreateOrganizationRow, CreatePrincipalRow,
-    CreateProviderRow, CreateSessionRow, CreateUsageJournalRow, CreateUsageLedgerRow,
-    CreateUserRow, Database, MESSAGE_SAFETY_LIMIT, Repository, StorageBackend, UpdateAgentTrigger,
+    AcceptOrgInvitationOutcome, AddOrganizationMemberOutcome, CreateAgentRow,
+    CreateAgentTriggerRow, CreateBudgetRow, CreateEventRow, CreateOrgInvitation,
+    CreateOrganizationRow, CreatePrincipalRow, CreateProviderRow, CreateSessionRow,
+    CreateUsageJournalRow, CreateUsageLedgerRow, CreateUserRow, Database, MESSAGE_SAFETY_LIMIT,
+    Repository, StorageBackend, UpdateAgentTrigger,
 };
 use test_harness::get_database_url;
 
@@ -572,6 +573,21 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
         .add_organization_member(existing_member_org.org_id, existing_member.id, "owner")
         .await
         .expect("add existing owner");
+    match backend
+        .add_organization_member_with_capacity(
+            existing_member_org.org_id,
+            existing_member.id,
+            "member",
+            1,
+        )
+        .await
+        .expect("capacity-check existing owner")
+    {
+        AddOrganizationMemberOutcome::AlreadyMember(member) => {
+            assert_eq!(member.role, "owner");
+        }
+        _ => panic!("existing owner must remain a member without changing role"),
+    }
     let existing_member_invitation = backend
         .create_org_invitation(create_invitation(
             existing_member_org.org_id,
@@ -698,6 +714,61 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
     assert!(losing_row.accepted_at.is_none());
     assert!(losing_row.revoked_at.is_none());
     assert!(losing_row.expires_at > Utc::now());
+
+    let mixed_org = backend
+        .create_organization(CreateOrganizationRow {
+            public_id: everruns_platform::generate_org_public_id(),
+            name: format!("Mixed Capacity Invitation Org {label}"),
+            created_by: Some(user.id),
+        })
+        .await
+        .expect("create mixed capacity invitation org");
+    let mixed_invitation = backend
+        .create_org_invitation(create_invitation(
+            mixed_org.org_id,
+            second_user.email.clone(),
+            Utc::now() + chrono::Duration::days(1),
+        ))
+        .await
+        .expect("create mixed capacity invitation");
+    let direct_backend = backend.clone();
+    let invitation_backend = backend.clone();
+    let (direct_result, invitation_result) = tokio::join!(
+        direct_backend.add_organization_member_with_capacity(
+            mixed_org.org_id,
+            first_user.id,
+            "member",
+            1,
+        ),
+        invitation_backend.accept_org_invitation_with_membership(
+            mixed_invitation.id,
+            second_user.id,
+            1,
+        ),
+    );
+    assert!(matches!(
+        direct_result.expect("direct capacity-checked member add"),
+        AddOrganizationMemberOutcome::Added(_)
+    ));
+    assert_eq!(
+        invitation_result.expect("mixed invitation acceptance"),
+        AcceptOrgInvitationOutcome::MemberLimitReached
+    );
+    assert_eq!(
+        backend
+            .count_organization_members(mixed_org.org_id)
+            .await
+            .expect("count mixed capacity org members"),
+        1
+    );
+    let mixed_losing_row = backend
+        .get_org_invitation_by_public_id_and_email(&mixed_invitation.public_id, &second_user.email)
+        .await
+        .expect("lookup mixed losing invitation")
+        .expect("mixed losing invitation remains");
+    assert!(mixed_losing_row.accepted_at.is_none());
+    assert!(mixed_losing_row.revoked_at.is_none());
+    assert!(mixed_losing_row.expires_at > Utc::now());
 }
 
 #[tokio::test]

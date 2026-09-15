@@ -68,6 +68,13 @@ pub struct OrganizationMemberRow {
     pub role: String,
     pub created_at: DateTime<Utc>,
 }
+/// Result of adding an organization member under the member-capacity guard.
+#[derive(Debug, Clone)]
+pub enum AddOrganizationMemberOutcome {
+    Added(OrganizationMemberRow),
+    AlreadyMember(OrganizationMemberRow),
+    MemberLimitReached,
+}
 
 /// Organization member with user info (for API responses)
 #[derive(Debug, Clone, FromRow)]

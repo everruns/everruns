@@ -26642,7 +26642,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Email is unverified or does not match */
+      /** @description Email is unverified */
       403: {
         headers: {
           [name: string]: unknown;

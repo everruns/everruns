@@ -6,7 +6,10 @@
 use crate::auth::audit;
 use crate::auth::middleware::{AuthState, AuthUser, OrgAdmin, OrgContext};
 use crate::auth::rate_limit::OrgRateLimiter;
-use crate::storage::{StorageBackend, models::UpdateOrganizationSettings};
+use crate::storage::{
+    StorageBackend,
+    models::{AddOrganizationMemberOutcome, UpdateOrganizationSettings},
+};
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Extension, Path, State},
@@ -951,39 +954,31 @@ pub async fn add_member(
         .log_internal_error_json("get user")?
         .ok_or_else(|| ErrorResponse::new("User not found").into_response(StatusCode::NOT_FOUND))?;
 
-    // Check if already a member
-    let existing = state
+    let member_row = match state
         .db
-        .get_organization_member(org.org_id, target_user_id)
+        .add_organization_member_with_capacity(
+            org.org_id,
+            target_user_id,
+            role.as_str(),
+            state.resource_limits.max_members_per_org,
+        )
         .await
-        .log_internal_error_json("check membership")?;
-
-    if existing.is_some() {
-        return Err(
-            ErrorResponse::new("User is already a member").into_response(StatusCode::CONFLICT)
-        );
-    }
-
-    // Enforce member-per-org limit
-    let member_count = state
-        .db
-        .count_organization_members(org.org_id)
-        .await
-        .log_internal_error_json("count organization members")?;
-    if member_count >= state.resource_limits.max_members_per_org {
-        return Err(ErrorResponse::new(format!(
-            "Member limit reached (max {})",
-            state.resource_limits.max_members_per_org
-        ))
-        .into_response(StatusCode::CONFLICT));
-    }
-
-    // Add member
-    let member_row = state
-        .db
-        .add_organization_member(org.org_id, target_user_id, role.as_str())
-        .await
-        .log_internal_error_json("add organization member")?;
+        .log_internal_error_json("add organization member")?
+    {
+        AddOrganizationMemberOutcome::Added(member) => member,
+        AddOrganizationMemberOutcome::AlreadyMember(_) => {
+            return Err(
+                ErrorResponse::new("User is already a member").into_response(StatusCode::CONFLICT)
+            );
+        }
+        AddOrganizationMemberOutcome::MemberLimitReached => {
+            return Err(ErrorResponse::new(format!(
+                "Member limit reached (max {})",
+                state.resource_limits.max_members_per_org
+            ))
+            .into_response(StatusCode::CONFLICT));
+        }
+    };
 
     let mut builder =
         AuditEvent::management(ManagementAction::MemberInvited, org.org_id, Some(user.id))
