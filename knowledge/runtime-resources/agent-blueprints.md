@@ -25,8 +25,11 @@ do not introduce a second execution engine.
 - [`crates/core/src/capabilities/mod.rs`](../../crates/core/src/capabilities/mod.rs)
   owns the blueprint model, capability contribution hook, and registry lookup.
 - [`crates/platform/src/capabilities/subagents.rs`](../../crates/platform/src/capabilities/subagents.rs)
-  owns discovery, invocation schema, config validation, task creation, and
-  governed-depth behavior.
+  owns discovery, invocation schema, task creation, and governed-depth
+  behavior.
+- [`crates/capability/src/definition.rs`](../../crates/capability/src/definition.rs)
+  owns schema derivation from a Rust type (`json_schema_for`), shared with
+  typed capability tool schemas.
 - [`crates/core/src/session.rs`](../../crates/core/src/session.rs) owns persisted
   session blueprint references.
 - [`crates/host/src/`](../../crates/host/src) owns runtime-agent assembly
@@ -83,6 +86,20 @@ that genuinely needs the parent's model characteristics.
 Blueprint configuration is structured and validated against the blueprint's
 schema before a child session is created. Config without a blueprint is
 rejected. A blueprint with no schema accepts no arbitrary config.
+
+A blueprint's config schema is derived from a typed Rust config struct rather
+than hand-written, using the same derivation that backs typed capability tool
+schemas. The struct is the single source of truth: field set, bounds, defaults,
+and descriptions reach the spawning agent without a parallel JSON document that
+can drift from the code enforcing it. Bounds a blueprint also applies at
+runtime should be expressed once, as constants shared by the schema attributes
+and the runtime clamp.
+
+Validation is enforcement, not documentation. The spawn path rejects
+out-of-range values and unknown keys before a child session exists, so a
+declared bound constrains the host rather than merely advising the model.
+Blueprint tools still re-check their own arguments: schema validation governs
+what a host may configure, not what a child agent may ask its tools to do.
 
 Configuration may select only behavior intentionally exposed by the blueprint.
 It cannot replace the system prompt, inject new tools, bypass model policy, or

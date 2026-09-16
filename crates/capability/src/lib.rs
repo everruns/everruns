@@ -69,7 +69,7 @@ pub use registry::{ActivationSet, CapabilityIdIndex};
 pub use spec::{CapabilitySpec, CapabilitySpecParts, IntoCapability};
 
 #[cfg(feature = "definition")]
-pub use definition::Definition;
+pub use definition::{Definition, json_schema_for};
 
 // Dependency re-exports so downstream capability crates can align derive
 // macro paths (`#[serde(crate = "...")]`) without adding their own pins.

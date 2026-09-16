@@ -287,8 +287,8 @@ impl Tool {
             name: handler.name().to_string(),
             display_name: handler.display_name().map(str::to_string),
             description: handler.description().to_string(),
-            input_schema: schema_for::<H::Input>(),
-            output_schema: schema_for::<H::Output>(),
+            input_schema: json_schema_for::<H::Input>(),
+            output_schema: json_schema_for::<H::Output>(),
             hints: handler.hints(),
         };
         Self {
@@ -345,7 +345,13 @@ impl<H: Handler> ErasedHandler for HandlerAdapter<H> {
     }
 }
 
-fn schema_for<T: JsonSchema>() -> Value {
+/// Derive a JSON Schema document from a Rust type.
+///
+/// Tool input/output schemas use this internally. It is public so that other
+/// schema-carrying surfaces — notably agent-blueprint configuration — can keep
+/// one source of truth in the Rust type instead of a hand-written schema that
+/// silently drifts from the struct it describes.
+pub fn json_schema_for<T: JsonSchema>() -> Value {
     serde_json::to_value(schemars::schema_for!(T)).unwrap_or(Value::Null)
 }
 

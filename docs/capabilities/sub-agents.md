@@ -36,7 +36,7 @@ generic session task tools to monitor, message, or cancel the subagent.
 | `target.type` | string | yes | Must be `subagent`. |
 | `mode` | string | no | `background` (default) returns immediately with a `task_id`; `foreground` blocks until the subagent completes and returns its result inline. |
 | `blueprint` | string | no | Optional specialist blueprint ID, such as `github_scout`, that supplies its own prompt, model, and private tools. |
-| `config` | object | no | Blueprint-specific configuration. Only valid when `blueprint` is set. |
+| `config` | object | no | Blueprint-specific configuration, validated against the blueprint's schema before the child session is created. Only valid when `blueprint` is set. |
 
 ## Managing subagents after spawn
 

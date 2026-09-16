@@ -18,6 +18,9 @@ default = []
 
 [dependencies]
 everruns-core.workspace = true
+# `definition` supplies `json_schema_for` + schemars so the blueprint config
+# schema is derived from `ScoutConfig` instead of hand-written JSON.
+everruns-capability = { workspace = true, features = ["definition"] }
 everruns-provider.workspace = true
 everruns-openrouter = { version = "0.18.6", path = "../../crates/drivers/openrouter" }
 async-trait.workspace = true

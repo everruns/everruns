@@ -32,6 +32,9 @@ Enable the `github_scout` capability on an agent or harness. Then spawn the blue
 ```
 
 The optional `repos` config scopes GitHub searches to `owner/repo` repositories.
+Config is validated against the blueprint's schema before the child session is
+created: entries that are not `owner/repo` and unrecognized config keys are
+rejected with a schema error instead of being silently ignored.
 
 ## Private Blueprint Tools
 

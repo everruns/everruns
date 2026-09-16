@@ -1,5 +1,18 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-16
+
+* **Blueprint config schemas were hand-written JSON that nothing validated.**
+  Each blueprint carried a `json!` schema duplicating the shape, bounds, and
+  defaults its Rust code already knew, and the spawn path only checked whether
+  config was present when the schema had required properties - so a declared
+  bound was advice to the model, not a constraint on the host. Schemas are now
+  derived from a typed config struct through the same derivation that backs
+  typed capability tool schemas, and the spawn path validates host config
+  against the derived schema before creating a child session. The bounds reuse
+  the constants the blueprint's tools already clamp against, so schema and
+  runtime cannot drift.
+
 ## 2026-09-15
 
 * **Per-crate versioning was bumping more crates per release, not fewer, and the
