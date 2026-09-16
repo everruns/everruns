@@ -7,7 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- Slack and FCP endpoint budgets now bind to sessions that arrive through those endpoints. Previously configured endpoint budgets that were inert will begin enforcing their limits.
+## [0.28.0] - 2026-09-16
+
+### Highlights
+
+- **Agent exposure management** - An agent's endpoints and triggers now have one home, and a new cross-agent Exposures view lists exposure across all agents. Publish moves to the endpoint, and an agent's exposure can be suspended ([#3624](https://github.com/everruns/everruns/pull/3624), [#3627](https://github.com/everruns/everruns/pull/3627), [#3621](https://github.com/everruns/everruns/pull/3621)).
+- **Endpoint-attributed sessions and budgets** - Sessions and budgets now attribute to the endpoint they arrive through, and Slack and FCP endpoint budgets bind and enforce their limits. Previously configured endpoint budgets that were inert will begin enforcing ([#3623](https://github.com/everruns/everruns/pull/3623), [#3625](https://github.com/everruns/everruns/pull/3625)).
+- **Channels re-parent from App to Agent** - Channels move from the retired App abstraction to the agent, with grandfathered apps synthesized into agents automatically ([#3618](https://github.com/everruns/everruns/pull/3618), [#3598](https://github.com/everruns/everruns/pull/3598)).
+
+### What's Changed
+
+- fix(budgets): bind Slack and FCP endpoint budgets ([#3625](https://github.com/everruns/everruns/pull/3625)) by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(plugins): make marketplace DNS tests deterministic ([#3622](https://github.com/everruns/everruns/pull/3622)) by [@warp-factories](https://github.com/apps/warp-factories)
+- docs(how-to): add a guide for building a foreman agent ([#3630](https://github.com/everruns/everruns/pull/3630)) by [@chaliy](https://github.com/chaliy)
+- test(slack): publish endpoints before routing checks ([#3629](https://github.com/everruns/everruns/pull/3629)) by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(apps): start new endpoints in draft ([#3628](https://github.com/everruns/everruns/pull/3628)) by [@warp-factories](https://github.com/apps/warp-factories)
+- refactor(ui): make managed-provider copy overridable by a distribution ([#3617](https://github.com/everruns/everruns/pull/3617)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): add a cross-agent Exposures view ([#3627](https://github.com/everruns/everruns/pull/3627)) by [@chaliy](https://github.com/chaliy)
+- test(slack): prove per-endpoint Slack identity and manifest isolation ([#3626](https://github.com/everruns/everruns/pull/3626)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): give an agent's endpoints and triggers one home ([#3624](https://github.com/everruns/everruns/pull/3624)) by [@chaliy](https://github.com/chaliy)
+- refactor(provider): make additive public-type changes non-breaking ([#3610](https://github.com/everruns/everruns/pull/3610)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): attribute sessions and budgets to endpoints ([#3623](https://github.com/everruns/everruns/pull/3623)) by [@chaliy](https://github.com/chaliy)
+- feat(apps): move publish to the endpoint, add an agent exposure suspend ([#3621](https://github.com/everruns/everruns/pull/3621)) by [@chaliy](https://github.com/chaliy)
+- fix(server): use portable agent fixture array by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(email): correct default sender typo ([#3619](https://github.com/everruns/everruns/pull/3619)) by [@warp-factories](https://github.com/apps/warp-factories)
+- chore(deps): bump the cargo group with 2 updates ([#3616](https://github.com/everruns/everruns/pull/3616)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump marked from 18.0.11 to 18.0.12 in /apps/docs ([#3615](https://github.com/everruns/everruns/pull/3615)) by [@dependabot](https://github.com/apps/dependabot)
+- feat(migrations): re-parent channels from App to Agent ([#3618](https://github.com/everruns/everruns/pull/3618)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump starlight-openapi from 0.26.0 to 0.26.2 in /apps/docs ([#3614](https://github.com/everruns/everruns/pull/3614)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump astro from 7.2.8 to 7.3.2 in /apps/docs ([#3613](https://github.com/everruns/everruns/pull/3613)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump @astrojs/markdown-satteri from 0.4.0 to 0.4.1 in /apps/docs ([#3612](https://github.com/everruns/everruns/pull/3612)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump starlight-links-validator from 0.25.2 to 0.25.3 in /apps/docs ([#3611](https://github.com/everruns/everruns/pull/3611)) by [@dependabot](https://github.com/apps/dependabot)
+- fix(onboarding): surface pending organization invitations by [@warp-factories](https://github.com/apps/warp-factories)
+- feat(migrations): synthesize agents for grandfathered apps ([#3598](https://github.com/everruns/everruns/pull/3598)) by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(api): expose own pending org invitations ([#3608](https://github.com/everruns/everruns/pull/3608)) by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(ui): name the org per request so Platform Chat stops duplicating ([#3609](https://github.com/everruns/everruns/pull/3609)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+Independently versioned crates published this cycle. `everruns-provider` and `everruns-core` carried additive-only public-type changes (kept non-breaking via `#[non_exhaustive]`, [#3610](https://github.com/everruns/everruns/pull/3610)); every other published crate takes a compatible patch bump to re-pin the cone. All bumps are patch (additive) — no breaking contract changes this cycle:
+
+- `everruns` 0.21.1 → 0.21.2
+- `everruns-anthropic` 0.18.6 → 0.18.7
+- `everruns-ard` 0.18.5 → 0.18.6
+- `everruns-bedrock` 0.18.6 → 0.18.7
+- `everruns-builtins` 0.18.9 → 0.18.10
+- `everruns-capability` 0.18.3 → 0.18.4
+- `everruns-cli` 0.18.6 → 0.18.7
+- `everruns-core` 0.22.0 → 0.22.1
+- `everruns-engine` 0.19.1 → 0.19.2
+- `everruns-fireworks` 0.18.6 → 0.18.7
+- `everruns-gemini` 0.18.6 → 0.18.7
+- `everruns-host` 0.22.0 → 0.22.1
+- `everruns-integrations-bashkit` 0.18.5 → 0.18.6
+- `everruns-integrations-brave-search` 0.18.5 → 0.18.6
+- `everruns-integrations-browserless` 0.18.5 → 0.18.6
+- `everruns-integrations-cursor` 0.18.5 → 0.18.6
+- `everruns-integrations-daytona` 0.18.5 → 0.18.6
+- `everruns-integrations-deno` 0.19.2 → 0.19.3
+- `everruns-integrations-docker` 0.18.5 → 0.18.6
+- `everruns-integrations-duckduckgo` 0.18.5 → 0.18.6
+- `everruns-integrations-e2b` 0.18.5 → 0.18.6
+- `everruns-integrations-filesystem` 0.18.6 → 0.18.7
+- `everruns-integrations-github` 0.18.5 → 0.18.6
+- `everruns-integrations-lua` 0.18.5 → 0.18.6
+- `everruns-integrations-openai-image` 0.18.5 → 0.18.6
+- `everruns-integrations-openrouter-workspace` 0.18.5 → 0.18.6
+- `everruns-integrations-parallel` 0.18.5 → 0.18.6
+- `everruns-integrations-sprites` 0.18.5 → 0.18.6
+- `everruns-integrations-web-fetch` 0.18.5 → 0.18.6
+- `everruns-llmsim` 0.18.8 → 0.18.9
+- `everruns-macros` 0.18.3 → 0.18.4
+- `everruns-mai` 0.18.6 → 0.18.7
+- `everruns-mcp` 0.19.6 → 0.19.7
+- `everruns-meta` 0.18.6 → 0.18.7
+- `everruns-model-profiles` 0.2.1 → 0.2.2
+- `everruns-openai` 0.18.6 → 0.18.7
+- `everruns-openrouter` 0.18.6 → 0.18.7
+- `everruns-platform` 0.22.0 → 0.22.1
+- `everruns-provider` 0.23.0 → 0.23.1
+- `everruns-test-support` 0.18.8 → 0.18.9
+- `everruns-turbopuffer` 0.18.6 → 0.18.7
 
 ## [0.27.0] - 2026-09-15
 
