@@ -311,7 +311,10 @@ async fn per_transport_endpoint_tags_are_recognised() {
 
     run_session_backfill(&pool).await;
 
-    assert_eq!(endpoint_of(&pool, slack_session).await, Some(slack_endpoint));
+    assert_eq!(
+        endpoint_of(&pool, slack_session).await,
+        Some(slack_endpoint)
+    );
     assert_eq!(endpoint_of(&pool, fcp_session).await, Some(fcp_endpoint));
 }
 

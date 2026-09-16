@@ -502,6 +502,7 @@ async fn run_agent(
 /// channels or apps can never merge tenants or sessions (TM-TENANT-009).
 /// Callers with stronger visitor ownership requirements can pass additional
 /// routing tags; they become part of the session lookup identity.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_app_agent_stream(
     state: AgUiState,
     app: App,
