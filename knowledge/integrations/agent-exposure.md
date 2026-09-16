@@ -17,11 +17,16 @@ tags:
 > `agent_endpoints` owned by an Agent, and publish is per-endpoint with an agent-level
 > exposure suspend.
 > [apps.md](apps.md) remains the accurate description of what exists today and stays
-> authoritative until the final phase removes it.
+> authoritative until the final phase retires it.
 >
-> One decision beyond the original proposal: **App is hidden from the product surface
-> before it is deleted.** Hiding is reversible, needs no migration, and stops new Apps
-> accumulating while the model moves underneath. Deleting the table stays last.
+> One decision beyond the original proposal: **App is hidden, not dropped.** Hiding came
+> first because it is reversible, needs no migration, and stops new Apps accumulating
+> while the model moves underneath — and hiding is also where it ends. The final phase
+> retires the App domain's code and surfaces and leaves `apps`, `app_channels` and
+> `sessions.app_id` in place as an inert historical record. Retiring the code gets the
+> whole benefit; destroying the data would add only irreversibility, and those rows are
+> the provenance record for every session an App ever created. Dropping them, if ever
+> wanted, is a separate decision taken long afterwards.
 
 ## Abstract
 
@@ -42,8 +47,9 @@ two collections beneath it:
 - **Triggers** — an alarm clock. Something fires, a message is injected, nobody is
   listening. Schedule (exists today), webhook (moves here from channels).
 
-`apps` is then deleted. No ingress URL changes for anyone already installed, because
-endpoint identity moves *off* the owning entity and onto the endpoint itself.
+The App domain is then retired — its code and surfaces go, its tables stay frozen. No
+ingress URL changes for anyone already installed, because endpoint identity moves *off*
+the owning entity and onto the endpoint itself.
 
 ## Why an Agent can absorb this now
 
@@ -366,11 +372,13 @@ rest proceeds.
 6. **Per-endpoint publish**, `agent.exposures_suspended`, stop reading `App.status`
    (EVE-1007, landed). Every ingress gate resolves liveness through one helper,
    `app_ingress::endpoint_liveness`. The App publish switch remains, and now drives the
-   endpoints it owns, until the App domain is deleted. The Slack manifest and bot identity
+   endpoints it owns, until the App domain is retired. The Slack manifest and bot identity
    move to the endpoint separately (EVE-1008).
 7. **UI**: Integrations tab with endpoint and trigger editors (EVE-1009), cross-agent
    Exposures view (EVE-1010).
-8. **Delete** the `apps` table and the App domain (EVE-1011). Route aliases stay.
+8. **Retire** the App domain (EVE-1011): drop its management surfaces, commands and
+   `/apps` pages, and stop reading `apps` anywhere that serves traffic. The route aliases
+   stay, and so do `apps`, `app_channels` and `sessions.app_id` — frozen, not dropped.
 
 ## What this costs
 

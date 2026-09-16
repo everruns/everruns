@@ -1,5 +1,14 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-16
+
+* **The App abstraction is hidden, not dropped.** The final phase of
+  [Agent Exposure](integrations/agent-exposure.md) originally called for `DROP TABLE apps`,
+  dropping `sessions.app_id`, and removing the App budget subject types. It now retires the
+  App domain's code and surfaces and freezes its tables instead. Retiring the code gets the
+  whole benefit; destroying the data would add only irreversibility, and those rows are the
+  provenance record for every session an App ever created. Tracked as EVE-1011.
+
 ## 2026-09-15
 
 * **Per-crate versioning was bumping more crates per release, not fewer, and the
