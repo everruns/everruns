@@ -1,8 +1,16 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listInvites, createInvite, revokeInvite } from "@/lib/api/invitations";
+import {
+  acceptPendingInvitation,
+  createInvite,
+  listInvites,
+  listPendingInvitations,
+  revokeInvite,
+} from "@/lib/api/invitations";
+import { switchOrg } from "@/lib/api/users";
 import { queryKeys } from "@/lib/query-keys";
+import { authKeys } from "@/hooks/use-auth";
 import { useOrg } from "@/providers/org-provider";
 import type { OrgRole } from "@/lib/api/types";
 
@@ -40,6 +48,36 @@ export function useCreateInvite() {
           queryKey: queryKeys.organizations.invitations(org),
         });
       }
+    },
+  });
+}
+
+export function usePendingInvitations(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.invitations.pending(),
+    queryFn: listPendingInvitations,
+    enabled,
+    retry: false,
+  });
+}
+
+export function useAcceptPendingInvitation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (inviteId: string) => {
+      const result = await acceptPendingInvitation(inviteId);
+      try {
+        await switchOrg(result.org_id);
+      } catch {
+        // Match the invite-link flow: membership is active even when the
+        // preference cookie cannot be updated, so refresh the org list.
+      }
+      await queryClient.refetchQueries({ queryKey: authKeys.user() });
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invitations.pending() });
     },
   });
 }

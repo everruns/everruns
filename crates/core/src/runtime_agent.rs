@@ -1045,6 +1045,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn empty_agent_layer_preserves_resolved_harness_runtime() {
+        let harness = HarnessDefinition {
+            system_prompt: Some("Harness prompt.".into()),
+            capabilities: vec![AgentCapabilityConfig::new("tool_fixture")],
+            network_access: Some(crate::network_access::NetworkAccessList::block([
+                "private.example.com",
+            ])),
+            default_model_id: Some(crate::typed_id::ModelId::new()),
+            parallel_tool_calls: Some(false),
+            ..Default::default()
+        };
+        let empty_agent = AgentDefinition::new(AgentId::new(), "synthesized-app-agent", "");
+        let mut session = crate::session::ExecutionSession::new(
+            crate::typed_id::SessionId::new(),
+            crate::typed_id::WorkspaceId::new(),
+            crate::typed_id::HarnessId::new(),
+        );
+        session.system_prompt = Some("Session prompt.".into());
+        session.max_iterations = Some(17);
+        let without_agent = RuntimeAgentBuilder::from_overlay(
+            AgentConfigOverlay::fold([
+                AgentConfigOverlay::from(&harness),
+                AgentConfigOverlay::from(&session),
+            ]),
+            &fixture_registry(),
+            &test_ctx(),
+        )
+        .await
+        .model("gpt-5.4")
+        .build();
+        let with_empty_agent = RuntimeAgentBuilder::from_overlay(
+            AgentConfigOverlay::fold([
+                AgentConfigOverlay::from(&harness),
+                AgentConfigOverlay::from(&empty_agent),
+                AgentConfigOverlay::from(&session),
+            ]),
+            &fixture_registry(),
+            &test_ctx(),
+        )
+        .await
+        .model("gpt-5.4")
+        .build();
+
+        assert_eq!(
+            serde_json::to_value(with_empty_agent).unwrap(),
+            serde_json::to_value(without_agent).unwrap()
+        );
+    }
+    #[tokio::test]
     async fn empty_overlay_clears_default_prompt_without_enabling_preferences() {
         for prompt in [None, Some(String::new())] {
             let agent = RuntimeAgentBuilder::from_overlay(
