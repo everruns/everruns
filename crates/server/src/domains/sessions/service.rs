@@ -70,13 +70,21 @@ const RESERVED_SESSION_TAG_PREFIXES: &[&str] = &[
     "app:",
     "app_channel:",
     "slack:app:",
+    // Per-transport endpoint namespaces. Added with EVE-1004, which made them
+    // attribution inputs: migration 137 reads all three endpoint tag spellings
+    // to decide which endpoint a session arrived through. Not exploitable
+    // before this — every routing lookup also anchors on `app_id`, which only
+    // internal callers can set — but the list is what keeps that true as
+    // readers are added.
+    "slack:endpoint:",
+    "fcp:endpoint:",
     "ag_ui:app:",
     "agent:",
     "endpoint:",
 ];
 const RESERVED_SESSION_TAG_ERROR: &str = "Tags with '__internal:', 'app:', 'app_channel:', \
-    'slack:app:', 'ag_ui:app:', 'agent:', or 'endpoint:' prefixes are reserved for internal \
-    subsystems";
+    'slack:app:', 'slack:endpoint:', 'fcp:endpoint:', 'ag_ui:app:', 'agent:', or 'endpoint:' \
+    prefixes are reserved for internal subsystems";
 
 /// Policy: View sessions (read-only).
 pub const SESSION_VIEW: Policy = Policy {
@@ -4989,6 +4997,8 @@ mod tests {
             vec!["app:app_other".to_string()],
             vec!["app_channel:appchan_other".to_string()],
             vec!["slack:app:app_legacy_other".to_string()],
+            vec!["slack:endpoint:appchan_other".to_string()],
+            vec!["fcp:endpoint:appchan_other".to_string()],
             vec!["ag_ui:app:app_ag_ui_other".to_string()],
             vec!["agent:agent_other".to_string()],
             vec!["endpoint:endpoint_other".to_string()],
@@ -5053,6 +5063,8 @@ mod tests {
             "app:app_someone_else",
             "app_channel:appchan_someone_else",
             "slack:app:app_legacy_someone_else",
+            "slack:endpoint:appchan_someone_else",
+            "fcp:endpoint:appchan_someone_else",
             "ag_ui:app:app_ag_ui_someone_else",
             "agent:agent_someone_else",
             "endpoint:endpoint_someone_else",
