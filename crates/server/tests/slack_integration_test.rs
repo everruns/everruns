@@ -328,6 +328,16 @@ async fn test_slack_endpoint_channels_isolate_identical_routing_keys() {
         .assert_status(StatusCode::CREATED)
         .json();
     let second_channel_id = second_channel["id"].as_str().unwrap();
+    server
+        .post(
+            &format!(
+                "/v1/apps/{}/channels/{second_channel_id}/publish",
+                app.public_id
+            ),
+            json!({}),
+        )
+        .await
+        .assert_success();
     let thread_ts = unique_ts();
     let payload = json!({
         "type": "event_callback",
@@ -421,6 +431,16 @@ async fn slack_endpoints_verify_their_own_signing_secret() {
         .assert_status(StatusCode::CREATED)
         .json();
     let second_channel_id = second_channel["id"].as_str().unwrap().to_string();
+    server
+        .post(
+            &format!(
+                "/v1/apps/{}/channels/{second_channel_id}/publish",
+                app.public_id
+            ),
+            json!({}),
+        )
+        .await
+        .assert_success();
 
     let challenge = json!({ "type": "url_verification", "challenge": "eve1008" });
 
@@ -1497,6 +1517,16 @@ async fn test_slack_legacy_routes_reject_multiple_enabled_channels() {
         legacy.json::<Value>()["detail"],
         "Multiple enabled Slack channels; use an endpoint-scoped /v1/e/{channel_id}/slack/... URL"
     );
+    server
+        .post(
+            &format!(
+                "/v1/apps/{}/channels/{second_channel_id}/publish",
+                app.public_id
+            ),
+            json!({}),
+        )
+        .await
+        .assert_success();
 
     server
         .get(&format!("/v1/e/{first_channel_id}/slack/manifest"))
