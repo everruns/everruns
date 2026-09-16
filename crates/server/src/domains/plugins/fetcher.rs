@@ -14,7 +14,6 @@ use std::sync::Arc;
 use crate::kernel_imports::{EgressRequest, EgressRequestKind, EgressService};
 use everruns_core::plugins::PluginFileSet;
 use everruns_core::plugins::{MAX_PLUGIN_FILE_BYTES, MAX_PLUGIN_FILES, MAX_PLUGIN_TOTAL_BYTES};
-use everruns_provider::url_validation::validate_url_dns_pinned;
 
 /// Cap on the total unpacked tarball bytes before applying plugin limits.
 /// GitHub only provides whole-repository archives for relative marketplace
@@ -184,22 +183,12 @@ pub(crate) async fn download_bytes(
 ) -> Result<Vec<u8>, String> {
     use futures::StreamExt;
 
-    // DNS-pin the connection to close the TOCTOU window (TM-TOOL-018).
-    let (parsed_url, pinned_addrs) = validate_url_dns_pinned(url)
-        .await
-        .map_err(|e| format!("URL validation failed for '{url}': {e}"))?;
-
-    let host = parsed_url.host_str().unwrap_or("").to_string();
-
     let mut req = EgressRequest::new("GET", url, EgressRequestKind::Other("plugin_fetch".into()))
-        .timeout_ms(timeout_ms);
+        .timeout_ms(timeout_ms)
+        .require_dns_pinning();
 
     for (name, value) in headers {
         req = req.header(*name, value.clone());
-    }
-
-    if !pinned_addrs.is_empty() {
-        req = req.pinned_addrs(host, pinned_addrs);
     }
 
     let resp = egress

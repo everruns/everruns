@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 // ---------------------------------------------------------------------------
-// FakeEgressService: maps URL → (status, body bytes), bypasses DNS/SSRF
+// FakeEgressService: maps URL → (status, body bytes) without performing DNS
 // ---------------------------------------------------------------------------
 
 type ResponseMap = Arc<Mutex<HashMap<String, (u16, Vec<u8>)>>>;
@@ -47,6 +47,10 @@ impl FakeEgressService {
 #[async_trait]
 impl EgressService for FakeEgressService {
     async fn send(&self, request: EgressRequest) -> EgressResult<EgressResponse> {
+        assert!(
+            request.dns_pinning_required,
+            "plugin downloads must require DNS pinning at the egress boundary"
+        );
         let map = self.responses.lock().unwrap();
         if let Some((status, body)) = map.get(&request.url) {
             Ok(EgressResponse {
@@ -337,7 +341,7 @@ async fn test_url_marketplace_sync() {
     })
     .to_string();
 
-    let marketplace_url = "https://example.com/plugins/marketplace.json";
+    let marketplace_url = "https://marketplace.invalid/plugins/marketplace.json";
 
     let fake = FakeEgressService::new();
     fake.add(marketplace_url, 200, catalog);
