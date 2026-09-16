@@ -5,6 +5,7 @@
 * [Agent checks](agent_checks/) - 2 manual UI cases.
 * [Agent credentials](agent_credentials/) - 1 manual UI case.
 * [Agent identities](agent_identities/) - 5 manual UI cases.
+* [Agent integrations](agent_integrations/) - 2 manual UI cases.
 * [Agent triggers](agent_triggers/) - 1 manual UI case.
 * [Agent versions](agent_versions/) - 1 manual UI case.
 * [Apps](apps/) - 5 manual UI cases.

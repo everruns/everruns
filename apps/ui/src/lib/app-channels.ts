@@ -20,6 +20,8 @@ export function getChannelTypeDisplayName(channelType: ChannelType): string {
       return "A2A (Agent2Agent)";
     case "fcp":
       return "FCP (Free Communication Protocol)";
+    case "api_endpoint":
+      return "API endpoint";
     case "public_chat":
       return "Public Chat";
   }

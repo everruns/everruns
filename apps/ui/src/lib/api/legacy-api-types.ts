@@ -2,7 +2,7 @@
 
 // Enums that stay generated (closed sets the server owns) while the entity they
 // annotate is still hand-maintained here.
-import type { LlmRetryInfo, SessionActivity, SessionSource } from "./schema-types";
+import type { EndpointStatus, LlmRetryInfo, SessionActivity, SessionSource } from "./schema-types";
 
 // Agent Identity types
 export type AgentIdentityStatus = "active" | "archived" | "deleted";
@@ -107,6 +107,12 @@ export interface Agent {
   /** Network access list for URL filtering */
   network_access?: NetworkAccessList | null;
   status: AgentStatus;
+  /**
+   * The agent-level incident switch (EVE-1007). When true every endpoint of
+   * this agent refuses traffic, whatever its own publish state, and resuming
+   * restores each one to where it was.
+   */
+  exposures_suspended?: boolean;
   created_at: string;
   updated_at: string;
   archived_at: string | null;
@@ -508,6 +514,7 @@ export type ChannelType =
   | "webhook"
   | "a2a"
   | "fcp"
+  | "api_endpoint"
   | "public_chat";
 
 /**
@@ -780,6 +787,12 @@ export interface AppChannel {
     | PublicChatChannelConfig
     | Record<string, unknown>;
   enabled: boolean;
+  /**
+   * Per-endpoint lifecycle (EVE-1007), authoritative for ingress; `enabled` is
+   * retained for the App API's existing shape. Typed from the generated schema
+   * so the two cannot drift.
+   */
+  status?: EndpointStatus;
   next_run_at?: string | null;
   last_invoked_at?: string | null;
   created_at: string;

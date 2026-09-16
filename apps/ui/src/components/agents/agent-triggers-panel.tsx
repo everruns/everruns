@@ -1,19 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { Clock3, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Clock3, ExternalLink, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import {
   useAgentTriggerRuns,
   useAgentTriggers,
-  useCreateAgentTrigger,
   useDeleteAgentTrigger,
   useRunAgentTrigger,
   useUpdateAgentTrigger,
 } from "@/hooks/use-agent-triggers";
 import type { AgentTrigger, InvocationSessionMode } from "@/lib/api/types";
-import { CronInput, CronLabel, isSupportedCronExpression } from "@/components/apps/cron-label";
+import { CronLabel } from "@/components/apps/cron-label";
+import {
+  EMPTY_TRIGGER_FORM,
+  isTriggerFormValid,
+  TriggerFormFields,
+  type TriggerConfig,
+  type TriggerFormState,
+} from "@/components/agents/trigger-form";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -34,23 +41,6 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDistanceToNow } from "@/lib/formatting";
-
-type TriggerConfig = {
-  cron_expression: string;
-  timezone?: string;
-  session_mode?: InvocationSessionMode;
-  message: string;
-};
-
-type TriggerForm = TriggerConfig & { enabled: boolean };
-
-const EMPTY_FORM: TriggerForm = {
-  cron_expression: "0 0 9 * * * *",
-  timezone: "UTC",
-  session_mode: "shared_session",
-  message: "",
-  enabled: true,
-};
 
 function configOf(trigger: AgentTrigger): TriggerConfig {
   return trigger.config as TriggerConfig;
@@ -74,21 +64,15 @@ function TriggerRuns({ agentId, triggerId }: { agentId: string; triggerId: strin
 
 export function AgentTriggersPanel({ agentId }: { agentId: string }) {
   const { data: triggers = [], isLoading } = useAgentTriggers(agentId);
-  const createTrigger = useCreateAgentTrigger(agentId);
   const updateTrigger = useUpdateAgentTrigger(agentId);
   const deleteTrigger = useDeleteAgentTrigger(agentId);
   const runTrigger = useRunAgentTrigger(agentId);
+  // Quick edit only. Creating a trigger goes to the full-page route
+  // (EVE-1009), so there is one create path rather than two that could drift.
   const [editing, setEditing] = useState<AgentTrigger | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState<TriggerForm>(EMPTY_FORM);
+  const [form, setForm] = useState<TriggerFormState>(EMPTY_TRIGGER_FORM);
   const [error, setError] = useState<string | null>(null);
-
-  const openCreate = () => {
-    setEditing(null);
-    setForm(EMPTY_FORM);
-    setError(null);
-    setDialogOpen(true);
-  };
 
   const openEdit = (trigger: AgentTrigger) => {
     const config = configOf(trigger);
@@ -105,17 +89,14 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
   };
 
   const save = async () => {
-    if (!isSupportedCronExpression(form.cron_expression) || !form.message.trim()) {
+    if (!editing) return;
+    if (!isTriggerFormValid(form)) {
       setError("Enter a valid schedule and a non-empty message.");
       return;
     }
     setError(null);
     try {
-      if (editing) {
-        await updateTrigger.mutateAsync({ triggerId: editing.id, request: form });
-      } else {
-        await createTrigger.mutateAsync(form);
-      }
+      await updateTrigger.mutateAsync({ triggerId: editing.id, request: form });
       setDialogOpen(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to save trigger.");
@@ -131,9 +112,9 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
             Wake this agent on a recurring schedule.
           </p>
         </div>
-        <Button onClick={openCreate}>
+        <Link href={`/agents/${agentId}/triggers/new`} className={buttonVariants({ size: "sm" })}>
           <Plus className="size-4" /> Add trigger
-        </Button>
+        </Link>
       </CardHeader>
       <CardContent className="space-y-3">
         {isLoading ? (
@@ -181,8 +162,15 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
                     </Button>
                     <Button size="icon" variant="ghost" onClick={() => openEdit(trigger)}>
                       <Pencil className="size-4" />
-                      <span className="sr-only">Edit trigger</span>
+                      <span className="sr-only">Quick edit trigger</span>
                     </Button>
+                    <Link
+                      href={`/agents/${agentId}/triggers/${trigger.id}`}
+                      className={buttonVariants({ variant: "ghost", size: "icon" })}
+                      aria-label="Open trigger editor"
+                    >
+                      <ExternalLink className="size-4" />
+                    </Link>
                     <Button
                       size="icon"
                       variant="ghost"
@@ -203,62 +191,19 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit trigger" : "Add trigger"}</DialogTitle>
+            <DialogTitle>Edit trigger</DialogTitle>
             <DialogDescription>
               Configure when the agent wakes and what message starts the run.
             </DialogDescription>
           </DialogHeader>
-          <CronInput
-            value={form.cron_expression}
-            timezone={form.timezone ?? "UTC"}
-            onChange={(cron_expression) => setForm((value) => ({ ...value, cron_expression }))}
-            onTimezoneChange={(timezone) => setForm((value) => ({ ...value, timezone }))}
-          />
-          <div className="space-y-2">
-            <Label htmlFor="trigger-session-mode">Session mode</Label>
-            <Select
-              value={form.session_mode}
-              onValueChange={(session_mode) =>
-                setForm((value) => ({
-                  ...value,
-                  session_mode: session_mode as InvocationSessionMode,
-                }))
-              }
-            >
-              <SelectTrigger id="trigger-session-mode" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="shared_session">Shared session</SelectItem>
-                <SelectItem value="session_per_invocation">New session per run</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="trigger-message">Message</Label>
-            <Textarea
-              id="trigger-message"
-              value={form.message}
-              onChange={(event) => setForm((value) => ({ ...value, message: event.target.value }))}
-              placeholder="Run the daily digest"
-              rows={4}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              id="trigger-enabled"
-              checked={form.enabled}
-              onCheckedChange={(enabled) => setForm((value) => ({ ...value, enabled }))}
-            />
-            <Label htmlFor="trigger-enabled">Enabled</Label>
-          </div>
+          <TriggerFormFields value={form} onChange={setForm} />
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={save} disabled={createTrigger.isPending || updateTrigger.isPending}>
-              {editing ? "Save changes" : "Create trigger"}
+            <Button onClick={save} disabled={updateTrigger.isPending}>
+              Save changes
             </Button>
           </DialogFooter>
         </DialogContent>

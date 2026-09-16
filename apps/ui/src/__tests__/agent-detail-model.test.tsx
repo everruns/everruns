@@ -61,8 +61,8 @@ jest.mock("@/components/agents/agent-credentials-panel", () => ({
   AgentCredentialsPanel: () => <div>agent credentials</div>,
 }));
 
-jest.mock("@/components/agents/agent-triggers-panel", () => ({
-  AgentTriggersPanel: () => <div>agent triggers</div>,
+jest.mock("@/components/agents/agent-integrations-panel", () => ({
+  AgentIntegrationsPanel: () => <div>agent integrations</div>,
 }));
 
 // Mock data
@@ -241,10 +241,9 @@ describe("AgentDetailPage - tab navigation", () => {
       "Overview",
       "Preview",
       "Credentials",
-      "Triggers",
+      "Integrations",
       "Versions",
       "Stats",
-      "Integrate",
     ]);
   });
 
@@ -262,15 +261,15 @@ describe("AgentDetailPage - tab navigation", () => {
 
   it("keeps focus and active state aligned when selecting a tab", async () => {
     await renderWithSuspense({ agentId: "agent-1" });
-    const triggersTab = screen.getByRole("tab", { name: "Triggers" });
+    const integrationsTab = screen.getByRole("tab", { name: "Integrations" });
 
-    triggersTab.focus();
-    expect(triggersTab).toHaveFocus();
-    fireEvent.click(triggersTab);
+    integrationsTab.focus();
+    expect(integrationsTab).toHaveFocus();
+    fireEvent.click(integrationsTab);
 
-    expect(triggersTab).toHaveAttribute("aria-selected", "true");
+    expect(integrationsTab).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "false");
-    expect(screen.getByText("agent triggers")).toBeInTheDocument();
+    expect(screen.getByText("agent integrations")).toBeInTheDocument();
   });
 });
 

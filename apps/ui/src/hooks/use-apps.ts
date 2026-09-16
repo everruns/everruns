@@ -2,7 +2,13 @@
 "use client";
 
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { appsCrudApi, publishApp, unpublishApp } from "@/lib/api/apps";
+import {
+  appsCrudApi,
+  publishApp,
+  publishChannel,
+  unpublishApp,
+  unpublishChannel,
+} from "@/lib/api/apps";
 import type { App, CreateAppRequest, UpdateAppRequest } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
 import { createCrudHooks } from "./create-crud-hooks";
@@ -67,4 +73,30 @@ export function usePublishApp() {
 
 export function useUnpublishApp() {
   return useAppStatusMutation(unpublishApp);
+}
+
+/// Per-endpoint publish (EVE-1007). The response is the endpoint, not the App,
+/// so there is no `syncAppCache` shortcut — invalidate and let the detail query
+/// bring back the whole channel list with its new statuses.
+function useChannelStatusMutation(
+  mutationFn: (appId: string, channelId: string) => Promise<unknown>,
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ appId, channelId }: { appId: string; channelId: string }) =>
+      mutationFn(appId, channelId),
+    onSuccess: (_result, { appId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps.detail(appId) });
+    },
+  });
+}
+
+export function usePublishChannel() {
+  return useChannelStatusMutation(publishChannel);
+}
+
+export function useUnpublishChannel() {
+  return useChannelStatusMutation(unpublishChannel);
 }

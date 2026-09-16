@@ -63,16 +63,15 @@ describe("AgentTriggersPanel", () => {
     expect(remove).toHaveBeenCalledWith("trg_123");
   });
 
-  it("opens the create form", () => {
+  // Creating a trigger is a full-page route since EVE-1009, so the panel links
+  // rather than opening a dialog. The dialog is quick edit only.
+  it("links to the full-page editor to create a trigger", () => {
     render(<AgentTriggersPanel agentId="agent_123" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add trigger" }));
-
-    expect(screen.getByRole("dialog", { name: "Add trigger" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Cron expression")).toBeInTheDocument();
-    expect(screen.getByLabelText("Message")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("dialog", { name: "Add trigger" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Add trigger" })).toHaveAttribute(
+      "href",
+      "/agents/agent_123/triggers/new",
+    );
+    expect(screen.queryByRole("button", { name: "Add trigger" })).not.toBeInTheDocument();
   });
 });
