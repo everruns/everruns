@@ -21,6 +21,7 @@
 * [Durable operations](durable_operations/) - 4 manual UI cases.
 * [Entity identity](entity_identity/) - 1 manual UI case.
 * [Evals](evals/) - 7 manual UI cases.
+* [Exposures](exposures/) - 1 manual UI case.
 * [Features](features/) - 1 manual UI case.
 * [Full auth](full_auth/) - 11 manual UI cases.
 * [Global search](global_search/) - 1 manual UI case.

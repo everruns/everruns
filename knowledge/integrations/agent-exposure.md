@@ -309,7 +309,21 @@ stays the only write path. One writer, one reader.
 The `/apps` list page does not simply disappear. Its real job is answering "what in this
 org is reachable from outside right now", which is a question security asks and no agent
 detail page answers. It becomes a read-mostly cross-agent **Exposures** view that links
-into agents.
+into agents (EVE-1010, landed at `/exposures`).
+
+**The word is "Exposures"**, settling open question 3. The API and CLI already say it
+user-facingly (`/v1/agents/{id}/exposures/suspend`, `everruns agents exposures suspend`),
+so a different UI term would make the product say two things about one concept; and it
+covers triggers, which "Endpoints" does not. It sits under **Operational**, beside
+Sessions and Reports, because reading it is an operational act and the editing it links to
+lives on the agent.
+
+The view **resolves** state rather than reading `endpoint.status`: it folds in the
+agent-level terms the same way `app_ingress::endpoint_liveness` does, so a live endpoint on
+a suspended or archived agent never reads as Live. Anonymous *configuration* and *live*
+reachability are reported separately — an anonymous endpoint says so while it is still
+draft or suspended, because resuming its agent opens it and the row has to warn before
+that, not after.
 
 ## Migration
 
@@ -378,9 +392,10 @@ rest proceeds.
    covers every transport without splitting the variant.
 2. Should an endpoint be allowed to point at an agent in a *different* org-visible scope
    (shared agents), or does the endpoint always live with its agent?
-3. Is `Exposures` an ops page or a nav-level concept? It is the only cross-agent surface
-   the design keeps, so it decides whether "exposure" becomes user vocabulary. Settled by
-   EVE-1010.
+3. ~~Is `Exposures` an ops page or a nav-level concept?~~ **Settled by EVE-1010: nav-level,
+   under Operational, and the word is user-facing.** It is the only cross-agent surface
+   the design keeps, so it was the surface that decided whether "exposure" became user
+   vocabulary.
 4. ~~EVE-978 (suggested prompts) picks a source per surface.~~ Settled: **agent config**,
    falling back to the harness, resolved by `everruns_platform::exposure::resolve_starters`
    over the `starters` field Platform Chat already uses. Endpoint config was not available
