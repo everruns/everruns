@@ -6,7 +6,6 @@ import { Clock3, ExternalLink, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import {
   useAgentTriggerRuns,
   useAgentTriggers,
-  useCreateAgentTrigger,
   useDeleteAgentTrigger,
   useRunAgentTrigger,
   useUpdateAgentTrigger,
@@ -65,21 +64,15 @@ function TriggerRuns({ agentId, triggerId }: { agentId: string; triggerId: strin
 
 export function AgentTriggersPanel({ agentId }: { agentId: string }) {
   const { data: triggers = [], isLoading } = useAgentTriggers(agentId);
-  const createTrigger = useCreateAgentTrigger(agentId);
   const updateTrigger = useUpdateAgentTrigger(agentId);
   const deleteTrigger = useDeleteAgentTrigger(agentId);
   const runTrigger = useRunAgentTrigger(agentId);
+  // Quick edit only. Creating a trigger goes to the full-page route
+  // (EVE-1009), so there is one create path rather than two that could drift.
   const [editing, setEditing] = useState<AgentTrigger | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<TriggerFormState>(EMPTY_TRIGGER_FORM);
   const [error, setError] = useState<string | null>(null);
-
-  const openCreate = () => {
-    setEditing(null);
-    setForm(EMPTY_TRIGGER_FORM);
-    setError(null);
-    setDialogOpen(true);
-  };
 
   const openEdit = (trigger: AgentTrigger) => {
     const config = configOf(trigger);
@@ -96,17 +89,14 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
   };
 
   const save = async () => {
+    if (!editing) return;
     if (!isTriggerFormValid(form)) {
       setError("Enter a valid schedule and a non-empty message.");
       return;
     }
     setError(null);
     try {
-      if (editing) {
-        await updateTrigger.mutateAsync({ triggerId: editing.id, request: form });
-      } else {
-        await createTrigger.mutateAsync(form);
-      }
+      await updateTrigger.mutateAsync({ triggerId: editing.id, request: form });
       setDialogOpen(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to save trigger.");
@@ -201,7 +191,7 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit trigger" : "Add trigger"}</DialogTitle>
+            <DialogTitle>Edit trigger</DialogTitle>
             <DialogDescription>
               Configure when the agent wakes and what message starts the run.
             </DialogDescription>
@@ -212,8 +202,8 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={save} disabled={createTrigger.isPending || updateTrigger.isPending}>
-              {editing ? "Save changes" : "Create trigger"}
+            <Button onClick={save} disabled={updateTrigger.isPending}>
+              Save changes
             </Button>
           </DialogFooter>
         </DialogContent>

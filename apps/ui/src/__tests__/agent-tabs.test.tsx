@@ -4,16 +4,19 @@ function labels(items: ReturnType<typeof getAgentDetailTabItems>): React.ReactNo
   return items.map((item) => item.label);
 }
 
+// "Triggers" and "Integrate" collapsed into one "Integrations" tab in
+// EVE-1009: both described how an agent is reached and when it runs, and the
+// snippet tab could only show generic URLs because a multi-endpoint agent has
+// no single address.
 describe("agent tab definitions", () => {
   it("keeps the detail workflow order when versions are enabled", () => {
     expect(labels(getAgentDetailTabItems(true))).toEqual([
       "Overview",
       "Preview",
       "Credentials",
-      "Triggers",
+      "Integrations",
       "Versions",
       "Stats",
-      "Integrate",
     ]);
   });
 
@@ -22,9 +25,8 @@ describe("agent tab definitions", () => {
       "Overview",
       "Preview",
       "Credentials",
-      "Triggers",
+      "Integrations",
       "Stats",
-      "Integrate",
     ]);
   });
 
