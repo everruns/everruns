@@ -1112,7 +1112,7 @@ pub async fn invoke_webhook_agent_trigger(
         .get_agent(trigger_row.org_id, trigger_row.agent_id)
         .await
         .map_err(classify_anyhow)?
-        .filter(|agent| agent.status == "active")
+        .filter(|agent| agent.status == "active" && !agent.exposures_suspended)
         .ok_or_else(|| CommandError::not_found("Agent"))?;
     let trigger = q::row_to_trigger(
         trigger_row.clone(),
@@ -1128,7 +1128,6 @@ pub async fn invoke_webhook_agent_trigger(
             .get_app_by_id(trigger_row.org_id, app_id)
             .await
             .map_err(classify_anyhow)?
-            .filter(|app| app.status == "published")
             .ok_or_else(|| CommandError::not_found("App channel"))?;
         Some(WebhookCompatibilityContext {
             app_public_id: app.public_id,

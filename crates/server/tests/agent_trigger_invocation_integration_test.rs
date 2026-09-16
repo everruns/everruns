@@ -8,8 +8,6 @@
 mod test_harness;
 
 use axum::http::{Method, StatusCode};
-use chrono::Utc;
-use everruns_durable::UpdateField;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
@@ -21,7 +19,7 @@ use everruns_server::domains::agent_triggers::invoke_agent_trigger;
 use everruns_server::domains::messages::MessageService;
 use everruns_server::domains::sessions::SessionService;
 use everruns_server::event_delivery::EventDelivery;
-use everruns_server::storage::models::{CreateAgentTriggerRow, UpdateApp};
+use everruns_server::storage::models::CreateAgentTriggerRow;
 
 async fn create_agent(server: &TestServer, name: &str) -> Value {
     server
@@ -149,20 +147,6 @@ async fn create_migrated_webhook_trigger(
         .await
         .expect("get migrated app")
         .expect("migrated app exists");
-    server
-        .db
-        .update_app(
-            DEFAULT_ORG_ID,
-            app_row.id,
-            UpdateApp {
-                status: Some("published".to_string()),
-                published_at: UpdateField::Set(Utc::now()),
-                ..Default::default()
-            },
-        )
-        .await
-        .expect("publish migrated app fixture")
-        .expect("migrated app update returns row");
 
     let ingress_id = AppChannelId::new().to_string();
     server
@@ -321,6 +305,28 @@ async fn migrated_webhook_trigger_preserves_routes_auth_templates_and_shared_ses
             && text.contains(r#"body={"action":"opened"}"#)
             && text.contains("json=opened event=push")
     }));
+
+    server
+        .post(
+            &format!("/v1/agents/{agent_id}/exposures/suspend"),
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    for path in [
+        format!("/v1/apps/{app_id}/webhooks/{ingress_id}"),
+        format!("/v1/e/{ingress_id}/webhook"),
+    ] {
+        let response = invoke_webhook(
+            &server,
+            &path,
+            ("x-everruns-webhook-token", "migrated-secret"),
+            "suspended",
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(response.json::<Value>()["detail"], "App channel not found");
+    }
 }
 
 #[tokio::test]

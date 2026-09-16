@@ -334,13 +334,21 @@ async fn invoke_trigger_webhook(
     {
         return Err(not_found());
     }
+    let agent_is_live = state
+        .db
+        .get_agent(trigger.org_id, trigger.agent_id)
+        .await
+        .map_err(internal_error)?
+        .is_some_and(|agent| agent.status == "active" && !agent.exposures_suspended);
+    if !agent_is_live {
+        return Err(not_found());
+    }
     if let Some(app_id) = trigger.execution_app_id {
         let app = state
             .db
             .get_app_by_id(trigger.org_id, app_id)
             .await
             .map_err(internal_error)?
-            .filter(|app| app.status == "published")
             .ok_or_else(not_found)?;
         if legacy_app_id.is_some_and(|expected| expected != app.public_id) {
             return Err(not_found());
