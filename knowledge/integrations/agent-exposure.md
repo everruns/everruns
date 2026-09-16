@@ -260,14 +260,19 @@ The Slack channel is now an agent app, not an Events API bot
 ([slack-modernization.md](slack-modernization.md)). Three consequences for this design,
 two of which are arguments *for* it:
 
-**Per-endpoint bot identity is the shape the parked OAuth work needs.** The deferred
-install flow is blocked on revisiting the per-App bot identity decision. One workspace
-install maps to one endpoint, never to a bundle of channels — the App was never the
-natural owner of a Slack install. This design hands that decision the right grain instead
-of complicating it.
+**Per-endpoint bot identity is the shape the parked OAuth work needs** (EVE-1008,
+landed). The install flow was blocked on revisiting the per-App bot identity decision.
+One workspace install maps to one endpoint, never to a bundle of channels — the App was
+never the natural owner of a Slack install. That decision now has the right grain:
+`signing_secret`, `bot_token` and `team_id` are endpoint config, so two Slack endpoints on
+one agent are two installs with independent credentials rather than a collision. See
+[slack-modernization.md](slack-modernization.md) for what the flow still has to decide.
 
-**The manifest route becomes endpoint-scoped and its publish gate narrows**, per
-[Publish and expose](#publish-and-expose).
+**The manifest route is endpoint-scoped and its publish gate narrows**, per
+[Publish and expose](#publish-and-expose). Each endpoint serves a manifest naming its own
+request URL, gated on its own `status`; moving one endpoint's publish state leaves its
+siblings where they were, which is what stops "publish to get a manifest" from exposing an
+anonymous chat surface next to it.
 
 **Transport-typed config is confirmed, not questioned.** `agent_surface_enabled` governs
 manifest and event subscriptions, the delivery surface is detected per event, and pane
