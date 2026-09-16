@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Slack and FCP endpoint budgets now bind to sessions that arrive through those endpoints. Previously configured endpoint budgets that were inert will begin enforcing their limits.
+
 ## [0.27.0] - 2026-09-15
 
 ### Highlights

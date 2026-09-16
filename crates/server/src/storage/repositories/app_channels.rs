@@ -184,6 +184,27 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn get_agent_endpoint_public_id(
+        &self,
+        org_id: i64,
+        endpoint_id: Uuid,
+    ) -> Result<Option<String>> {
+        let public_id = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT ae.public_id
+            FROM agent_endpoints AS ae
+            JOIN agents AS a ON a.id = ae.agent_id
+            WHERE a.org_id = $1 AND ae.id = $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(endpoint_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(public_id)
+    }
+
     // THREAT[TM-TENANT-012]: bare-`id` mutator — see the note on
     // `get_app_channel_by_public_id`. Callers MUST have already resolved the
     // channel under their org-scoped app.
