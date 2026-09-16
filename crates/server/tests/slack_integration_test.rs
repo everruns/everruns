@@ -370,6 +370,250 @@ async fn test_slack_endpoint_channels_isolate_identical_routing_keys() {
         );
     }
 }
+/// The lifecycle an App currently reports for one of its endpoints.
+async fn endpoint_status(server: &TestServer, app_id: &str, channel_id: &str) -> String {
+    let refreshed: Value = server
+        .get(&format!("/v1/apps/{app_id}"))
+        .await
+        .assert_success()
+        .json();
+    refreshed["channels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|channel| channel["id"].as_str() == Some(channel_id))
+        .and_then(|channel| channel["status"].as_str())
+        .unwrap_or_else(|| panic!("endpoint {channel_id} missing from app {app_id}"))
+        .to_string()
+}
+
+/// EVE-1008: two Slack endpoints on one agent are separate installs.
+///
+/// The routing already separates them (the test above), but an install is only
+/// really separate if its *credentials* are. A signing secret is what proves a
+/// request came from the Slack app that was created from this endpoint's
+/// manifest; if one endpoint's secret validated the other's traffic, two
+/// unrelated Slack workspaces installed against one agent could post into each
+/// other's sessions. THREAT[TM-SLACK-001].
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn slack_endpoints_verify_their_own_signing_secret() {
+    const FIRST_SECRET: &str = "first_endpoint_signing_secret";
+    const SECOND_SECRET: &str = "second_endpoint_signing_secret";
+
+    let server = TestServer::in_memory().await;
+    let app = create_published_slack_app(&server, FIRST_SECRET).await;
+    let first_channel_id = app.channels[0].public_id.to_string();
+
+    let second_channel: Value = server
+        .post(
+            &format!("/v1/apps/{}/channels", app.public_id),
+            json!({
+                "channel_type": "slack",
+                "channel_config": {
+                    "signing_secret": SECOND_SECRET,
+                    "bot_token": "xoxb-second-test-token",
+                    "team_id": "T_SECOND",
+                    "session_strategy": "per_thread"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let second_channel_id = second_channel["id"].as_str().unwrap().to_string();
+
+    let challenge = json!({ "type": "url_verification", "challenge": "eve1008" });
+
+    // Each endpoint accepts traffic signed with its own secret.
+    for (channel_id, secret) in [
+        (&first_channel_id, FIRST_SECRET),
+        (&second_channel_id, SECOND_SECRET),
+    ] {
+        send_slack_event_to_path(
+            &server,
+            &format!("/v1/e/{channel_id}/slack/events"),
+            secret,
+            &challenge,
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    }
+
+    // And rejects traffic signed with its sibling's, in both directions.
+    for (channel_id, wrong_secret) in [
+        (&first_channel_id, SECOND_SECRET),
+        (&second_channel_id, FIRST_SECRET),
+    ] {
+        send_slack_event_to_path(
+            &server,
+            &format!("/v1/e/{channel_id}/slack/events"),
+            wrong_secret,
+            &challenge,
+        )
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+    }
+}
+
+/// EVE-1008: each Slack endpoint serves its own manifest, pointed at its own
+/// request URL.
+///
+/// Slack verifies `request_url` when the manifest is saved, so a manifest that
+/// named a sibling's URL would silently wire the new Slack app to the wrong
+/// endpoint — and to the wrong signing secret, which then fails every request.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn slack_endpoints_serve_their_own_manifest() {
+    let server = TestServer::in_memory().await;
+    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let first_channel_id = app.channels[0].public_id.to_string();
+
+    let second_channel: Value = server
+        .post(
+            &format!("/v1/apps/{}/channels", app.public_id),
+            json!({
+                "channel_type": "slack",
+                "channel_config": {
+                    "signing_secret": "second_manifest_secret",
+                    "bot_token": "xoxb-second-test-token",
+                    "team_id": "T_SECOND",
+                    "session_strategy": "per_thread"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let second_channel_id = second_channel["id"].as_str().unwrap().to_string();
+
+    server
+        .post(
+            &format!(
+                "/v1/apps/{}/channels/{second_channel_id}/publish",
+                app.public_id
+            ),
+            json!({}),
+        )
+        .await
+        .assert_success();
+
+    for channel_id in [&first_channel_id, &second_channel_id] {
+        let manifest: Value = server
+            .get(&format!("/v1/e/{channel_id}/slack/manifest"))
+            .await
+            .assert_success()
+            .json();
+        let yaml = manifest["manifest_yaml"].as_str().unwrap();
+        assert!(
+            yaml.contains(&format!("/v1/e/{channel_id}/slack/events")),
+            "endpoint {channel_id} must advertise its own request URL, got: {yaml}"
+        );
+        let sibling = if channel_id == &first_channel_id {
+            &second_channel_id
+        } else {
+            &first_channel_id
+        };
+        assert!(
+            !yaml.contains(&format!("/v1/e/{sibling}/slack/events")),
+            "endpoint {channel_id} must not advertise its sibling's request URL"
+        );
+        // The manifest is a read response, and a secret has no business in one.
+        assert!(
+            !yaml.contains(TEST_SIGNING_SECRET) && !yaml.contains("second_manifest_secret"),
+            "no signing secret may appear in a manifest"
+        );
+    }
+}
+
+/// EVE-1008: the manifest's publish gate is the endpoint's own.
+///
+/// Before per-endpoint publish, obtaining a manifest meant publishing the whole
+/// App — which simultaneously exposed every sibling endpoint on it. The gate is
+/// now one endpoint's `status`, and moving it must leave siblings alone in both
+/// directions.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn slack_manifest_gate_is_its_own_endpoint_only() {
+    let server = TestServer::in_memory().await;
+    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let slack_channel_id = app.channels[0].public_id.to_string();
+
+    // An AG-UI endpoint stands in for the public chat surface the acceptance
+    // criterion names: same shape — an anonymous HTTP surface on the same agent
+    // — without depending on the org-level `public_chat` feature flag, which is
+    // off in the shared test harness.
+    let sibling: Value = server
+        .post(
+            &format!("/v1/apps/{}/channels", app.public_id),
+            json!({
+                "channel_type": "ag_ui",
+                "channel_config": { "anonymous": true }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let sibling_id = sibling["id"].as_str().unwrap().to_string();
+    let sibling_status_before = sibling["status"].as_str().unwrap().to_string();
+
+    server
+        .get(&format!("/v1/e/{slack_channel_id}/slack/manifest"))
+        .await
+        .assert_success();
+
+    assert_eq!(
+        endpoint_status(&server, &app.public_id.to_string(), &sibling_id).await,
+        sibling_status_before,
+        "serving a Slack manifest must not move a sibling endpoint"
+    );
+
+    // Unpublishing the Slack endpoint withdraws its manifest — the gate is that
+    // endpoint's own status, not the App's.
+    server
+        .post(
+            &format!(
+                "/v1/apps/{}/channels/{slack_channel_id}/unpublish",
+                app.public_id
+            ),
+            json!({}),
+        )
+        .await
+        .assert_success();
+
+    server
+        .get(&format!("/v1/e/{slack_channel_id}/slack/manifest"))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+
+    assert_eq!(
+        endpoint_status(&server, &app.public_id.to_string(), &sibling_id).await,
+        sibling_status_before,
+        "unpublishing the Slack endpoint must not move a sibling endpoint"
+    );
+
+    // And publishing it back restores the manifest, still without touching the
+    // sibling.
+    server
+        .post(
+            &format!(
+                "/v1/apps/{}/channels/{slack_channel_id}/publish",
+                app.public_id
+            ),
+            json!({}),
+        )
+        .await
+        .assert_success();
+
+    server
+        .get(&format!("/v1/e/{slack_channel_id}/slack/manifest"))
+        .await
+        .assert_success();
+
+    assert_eq!(
+        endpoint_status(&server, &app.public_id.to_string(), &sibling_id).await,
+        sibling_status_before,
+        "republishing the Slack endpoint must not move a sibling endpoint"
+    );
+}
+
 // ============================================
 // Webhook Integration Tests (no real Slack needed)
 // ============================================
