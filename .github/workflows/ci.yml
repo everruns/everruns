@@ -1281,6 +1281,15 @@ jobs:
         if: ${{ matrix.shard == 'durable' }}
         run: cargo test -p everruns-durable --test failure_injection_test --features "failpoints,postgres-tests" -- --test-threads=1
 
+      # The rest of the Slack suite needs no credentials, so it runs on PR
+      # events where the Doppler step below cannot. Without this, the whole
+      # file was push-only and a PR could not see it break: #3626 added Slack
+      # tests that #3628's endpoint-draft change invalidated, and main went red
+      # on merge because neither PR ever ran them.
+      - name: Run Slack integration tests (no credentials)
+        if: ${{ matrix.shard == 'durable' && github.event_name != 'push' }}
+        run: cargo test -p everruns-server --test slack_integration_test -- --test-threads=1 --skip test_real_slack
+
       # Slack live tests need DOPPLER_TOKEN. Restrict to push events so the
       # token is never instantiated in a fork-PR context where untrusted
       # code (build.rs, proc-macros, test bodies) would see it via env.
