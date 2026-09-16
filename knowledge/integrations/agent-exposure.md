@@ -12,9 +12,10 @@ tags:
 
 > Status: **Accepted, partially implemented.** The direction is decided; the phases are
 > tracked as separate issues in Linear (OSS project, EVE team), EVE-998 through EVE-1011.
-> Phases 0, 1 and 4 have landed: App is hidden from the product surface, grandfathered
-> agent-less Apps have synthesized Agents, and channels now live in `agent_endpoints`
-> owned by an Agent.
+> Phases 0, 1, 4 and the publish half of 6 have landed: App is hidden from the product
+> surface, grandfathered agent-less Apps have synthesized Agents, channels live in
+> `agent_endpoints` owned by an Agent, and publish is per-endpoint with an agent-level
+> exposure suspend.
 > [apps.md](apps.md) remains the accurate description of what exists today and stays
 > authoritative until the final phase removes it.
 >
@@ -189,7 +190,8 @@ live(endpoint) = endpoint.status == live
 - Per-endpoint `status` is the everyday control: publish the Slack endpoint without
   flipping on the public chat endpoint sitting next to it.
 - `agent.exposures_suspended` is the incident control — one switch, take the agent off the
-  internet — which is what App unpublish is actually reached for.
+  internet — which is what App unpublish is actually reached for. It leaves per-endpoint
+  status untouched, so clearing it restores exactly the previously live set.
 - `agent.status != active` must imply no live endpoint. Enforce at resolution time, not by
   writing rows, the same way the harness chain is folded behind the platform seam.
 - Agent exposure state for lists and badges is **derived** (`any endpoint live`), never
@@ -330,7 +332,10 @@ rest proceeds.
 5. **Unify the binding enums** (EVE-1005); move webhook from endpoint to trigger type
    (EVE-1006).
 6. **Per-endpoint publish**, `agent.exposures_suspended`, stop reading `App.status`
-   (EVE-1007). The Slack manifest and bot identity move to the endpoint with it (EVE-1008).
+   (EVE-1007, landed). Every ingress gate resolves liveness through one helper,
+   `app_ingress::endpoint_liveness`. The App publish switch remains, and now drives the
+   endpoints it owns, until the App domain is deleted. The Slack manifest and bot identity
+   move to the endpoint separately (EVE-1008).
 7. **UI**: Integrations tab with endpoint and trigger editors (EVE-1009), cross-agent
    Exposures view (EVE-1010).
 8. **Delete** the `apps` table and the App domain (EVE-1011). Route aliases stay.

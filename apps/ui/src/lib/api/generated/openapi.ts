@@ -237,6 +237,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/exposures/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** POST /v1/agents/{agent_id}/exposures/resume - Let live endpoints serve again */
+    post: operations["resume_agent_exposures"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/exposures/suspend": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** POST /v1/agents/{agent_id}/exposures/suspend - Take every endpoint offline */
+    post: operations["suspend_agent_exposures"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/health-checks": {
     parameters: {
       query?: never;
@@ -698,6 +732,43 @@ export interface paths {
     put?: never;
     /** POST /v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/messages */
     post: operations["post_message"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/apps/{app_id}/channels/{channel_id}/publish": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * PATCH /v1/apps/{app_id}/channels/{channel_id} - Update a channel
+     *     POST /v1/apps/{app_id}/channels/{channel_id}/publish - Publish one endpoint
+     */
+    post: operations["publish_channel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/apps/{app_id}/channels/{channel_id}/unpublish": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** POST /v1/apps/{app_id}/channels/{channel_id}/unpublish - Unpublish one endpoint */
+    post: operations["unpublish_channel"];
     delete?: never;
     options?: never;
     head?: never;
@@ -4450,6 +4521,18 @@ export interface components {
        */
       display_name?: string | null;
       /**
+       * @description Whether any endpoint on this agent is currently live. Derived from the
+       *     endpoint rows on read and never stored: a stored flag would be a second
+       *     writer for state the endpoints already own.
+       */
+      exposed?: boolean;
+      /**
+       * @description Incident switch: when true, no endpoint on this agent accepts traffic
+       *     (EVE-1007). Distinct from archiving — it leaves per-endpoint status
+       *     untouched so clearing it restores exactly the previously live set.
+       */
+      exposures_suspended?: boolean;
+      /**
        * @description Source agent for a forked agent.
        * @example agent_01933b5a00007000800000000000001
        */
@@ -5023,6 +5106,11 @@ export interface components {
        * @example appchan_01933b5a000070008000000000000001
        */
       id: string;
+      /**
+       * @description Per-endpoint lifecycle. Authoritative for ingress (EVE-1007); `enabled`
+       *     is retained for the App API's existing shape.
+       */
+      status?: components["schemas"]["EndpointStatus"];
       /**
        * Format: date-time
        * @description Timestamp when this channel was last updated.
@@ -7668,6 +7756,21 @@ export interface components {
       /** @description Session status after the decision. */
       status: string;
     };
+    /**
+     * @description Per-endpoint lifecycle (EVE-1007).
+     *
+     *     This is the authority for whether an exposure accepts traffic. It replaced
+     *     the two-dimensional `App.status × AppChannel.enabled` matrix, which could
+     *     express "published App, disabled channel" and forced publishing a whole App —
+     *     and therefore every sibling endpoint on it — to make one endpoint reachable.
+     *
+     *     Liveness is not this value alone; see `endpoint_is_live` in
+     *     `crates/server/src/api/app_ingress.rs` for the agent-level terms, which are
+     *     folded in at resolution time rather than stored here.
+     * @example live
+     * @enum {string}
+     */
+    EndpointStatus: "draft" | "live" | "disabled";
     /** @description Options for enqueuing a standalone task */
     EnqueueTaskOptions: {
       /**
@@ -9753,6 +9856,18 @@ export interface components {
          * @example Customer Support Agent
          */
         display_name?: string | null;
+        /**
+         * @description Whether any endpoint on this agent is currently live. Derived from the
+         *     endpoint rows on read and never stored: a stored flag would be a second
+         *     writer for state the endpoints already own.
+         */
+        exposed?: boolean;
+        /**
+         * @description Incident switch: when true, no endpoint on this agent accepts traffic
+         *     (EVE-1007). Distinct from archiving — it leaves per-endpoint status
+         *     untouched so clearing it restores exactly the previously live set.
+         */
+        exposures_suspended?: boolean;
         /**
          * @description Source agent for a forked agent.
          * @example agent_01933b5a00007000800000000000001
@@ -18295,6 +18410,18 @@ export interface components {
        */
       display_name?: string | null;
       /**
+       * @description Whether any endpoint on this agent is currently live. Derived from the
+       *     endpoint rows on read and never stored: a stored flag would be a second
+       *     writer for state the endpoints already own.
+       */
+      exposed?: boolean;
+      /**
+       * @description Incident switch: when true, no endpoint on this agent accepts traffic
+       *     (EVE-1007). Distinct from archiving — it leaves per-endpoint status
+       *     untouched so clearing it restores exactly the previously live set.
+       */
+      exposures_suspended?: boolean;
+      /**
        * @description Source agent for a forked agent.
        * @example agent_01933b5a00007000800000000000001
        */
@@ -20713,6 +20840,70 @@ export interface operations {
       };
     };
   };
+  resume_agent_exposures: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Exposures resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Agent"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  suspend_agent_exposures: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Exposures suspended */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_Agent"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   list_health_checks: {
     parameters: {
       query?: never;
@@ -22247,6 +22438,92 @@ export interface operations {
       };
       /** @description Per-channel rate limit exceeded */
       429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  publish_channel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App ID (prefixed) */
+        app_id: string;
+        /** @description Channel ID (prefixed) */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint published */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Invalid request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description App or channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  unpublish_channel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App ID (prefixed) */
+        app_id: string;
+        /** @description Channel ID (prefixed) */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint unpublished */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Invalid request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description App or channel not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };
