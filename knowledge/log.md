@@ -1,5 +1,21 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-16
+
+* **Slack approvals, task progress, and the second-token problem are one
+  missing capability, not three features.** All three reduce to an agent being
+  unable to act on its own Slack channel with that channel's identity. The
+  approval half needs no new protocol: `setup_connection` and `url_elicitation`
+  already establish pause-and-consent via [Client
+  Hints](runtime-resources/client-hints.md), and Slack becomes a third client of
+  it — including the degradation path, which is exactly today's behaviour when a
+  surface cannot draw the card. Task state is already on `ToolContext`; the gap
+  is rendering, and it belongs in the delivery adapter rather than in model
+  narration. Recorded as [Slack Agent
+  Actions](integrations/slack-agent-actions.md), which also settles that an
+  approval click binds to both the pending tool call and an identified Slack
+  user, defaulting to the requester.
+
 ## 2026-09-15
 
 * **Per-crate versioning was bumping more crates per release, not fewer, and the
