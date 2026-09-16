@@ -935,22 +935,6 @@ async fn spawn_agent_subagent_impl(
             )));
         };
 
-        // Validate config against the blueprint's schema. Blueprints derive that
-        // schema from a typed config struct, so this is a real contract check,
-        // not just a presence test.
-        if let Err(error) = blueprint.validate_config(config_param.as_ref()) {
-            let mut message = error.to_string();
-            // A schema-shaped failure is usually recoverable by the model, so
-            // hand back the schema it needs to correct the call.
-            if let Some(schema) = blueprint.config_schema.as_ref() {
-                message.push_str(&format!(
-                    " Schema: {}",
-                    serde_json::to_string_pretty(schema).unwrap_or_default()
-                ));
-            }
-            return Ok(ToolExecutionResult::tool_error(message));
-        }
-
         let allowed_capability_ids = if let Some(agent_id) = parent_session.agent_id {
             match store.get_agent_by_id(agent_id).await {
                 Ok(Some(agent)) => agent
@@ -980,6 +964,25 @@ async fn spawn_agent_subagent_impl(
             return Ok(ToolExecutionResult::tool_error(format!(
                 "Blueprint \"{bp_id}\" is not enabled for this session."
             )));
+        }
+
+        // Validate config against the blueprint's schema. Blueprints derive that
+        // schema from a typed config struct, so this is a real contract check,
+        // not just a presence test.
+        //
+        // THREAT[TM-AUTHZ]: this runs after the capability gate above. The error
+        // echoes the blueprint's schema so the model can correct its own call,
+        // which is only safe to disclose once the session is known to have the
+        // contributing capability enabled.
+        if let Err(error) = blueprint.validate_config(config_param.as_ref()) {
+            let mut message = error.to_string();
+            if let Some(schema) = blueprint.config_schema.as_ref() {
+                message.push_str(&format!(
+                    " Schema: {}",
+                    serde_json::to_string_pretty(schema).unwrap_or_default()
+                ));
+            }
+            return Ok(ToolExecutionResult::tool_error(message));
         }
     }
 

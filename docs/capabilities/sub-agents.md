@@ -60,6 +60,7 @@ Use the generic `session_tasks` tools to monitor and steer subagents after spawn
 ## See Also
 
 - [`knowledge/runtime-resources/session-tasks.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/session-tasks.md), generic task monitoring and control (`list_tasks`, `get_task`, `message_task`, `cancel_task`, `wait_task`)
+- [Author an agent blueprint](/advanced/agent-blueprints/), contributing a specialist agent with a typed configuration contract
 - [GitHub Scout](/capabilities/github-scout/), blueprint-only GitHub repository exploration
 - [Session](/capabilities/session/), session metadata and lifecycle
 - [Platform](/capabilities/platform/), agent and platform configuration
