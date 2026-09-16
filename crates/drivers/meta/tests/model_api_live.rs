@@ -39,26 +39,13 @@ fn tool(name: &str, description: &str) -> ToolDefinition {
 }
 
 fn config(tools: Vec<ToolDefinition>, parallel_tool_calls: Option<bool>) -> LlmCallConfig {
-    LlmCallConfig {
-        model: LIVE_MODEL.to_string(),
-        temperature: Some(0.0),
-        max_tokens: Some(512),
-        tools,
-        reasoning_effort: Some(ReasoningEffort::Low),
-        speed: None,
-        verbosity: None,
-        metadata: std::collections::HashMap::new(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        reasoning_state: None,
-    }
+    let mut config = LlmCallConfig::new(LIVE_MODEL);
+    config.temperature = Some(0.0);
+    config.max_tokens = Some(512);
+    config.tools = tools;
+    config.reasoning_effort = Some(ReasoningEffort::Low);
+    config.parallel_tool_calls = parallel_tool_calls;
+    config
 }
 
 #[tokio::test]

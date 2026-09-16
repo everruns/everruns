@@ -65,14 +65,12 @@ pub async fn check_credentials(
         return CredentialCheckResult::Unsupported;
     }
 
-    let config = ProviderConfig {
-        provider: everruns_provider::runtime_provider::ProviderKey::new("credential-check"),
+    let mut config = ProviderConfig::for_provider(
+        everruns_provider::runtime_provider::ProviderKey::new("credential-check"),
         provider_type,
-        api_key: Some(api_key),
-        base_url,
-        metadata: Default::default(),
-        request_options: Default::default(),
-    };
+    );
+    config.api_key = Some(api_key);
+    config.base_url = base_url;
 
     let driver = match registry.create_chat_driver(&config) {
         Ok(driver) => driver,

@@ -1138,6 +1138,11 @@ fn public_content_part_to_string(part: &ContentPart) -> Option<String> {
         // the reason.* handlers. Rendering it as assistant text would move
         // content across channels, which the projection contract forbids.
         ContentPart::Reasoning(_) => None,
+        // `ContentPart` is `#[non_exhaustive]`; this arm is required outside
+        // `everruns-core` and is unreachable in-workspace, where every crate
+        // shares one core version. A part this build cannot project is omitted
+        // rather than rendered as an unknown marker.
+        _ => None,
     }
 }
 

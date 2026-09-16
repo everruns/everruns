@@ -25,9 +25,8 @@ import { ProviderIcon } from "@/components/providers/provider-icon";
 import { SessionCard } from "@/components/session/session-card";
 import { AgentPreview } from "@/components/agents/agent-preview";
 import { AgentVersionHistory } from "@/components/agents/agent-version-history";
-import { IntegrationGuide } from "@/components/integration/integration-guide";
 import { Plus, Pencil, Download, Copy, Zap, Telescope, Boxes, MoreHorizontal } from "lucide-react";
-import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
+import { AgentIntegrationsPanel } from "@/components/agents/agent-integrations-panel";
 import { AgentCredentialsPanel } from "@/components/agents/agent-credentials-panel";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
 import {
@@ -615,13 +614,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         </PageColumns>
       )}
 
-      {activeTab === "triggers" && (
-        <PageColumns>
-          <PageMain>
-            <AgentTriggersPanel agentId={agentId} />
-          </PageMain>
-        </PageColumns>
-      )}
+      {activeTab === "integrations" && <AgentIntegrationsPanel agent={agent} />}
 
       {activeTab === "credentials" && (
         <PageColumns>
@@ -641,10 +634,6 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
           initialFiles={agent.initial_files}
           tools={agent.tools ?? []}
         />
-      )}
-
-      {activeTab === "integrate" && (
-        <IntegrationGuide kind="agent" id={agent.id} name={getDisplayName(agent)} />
       )}
 
       {activeTab === "stats" && (

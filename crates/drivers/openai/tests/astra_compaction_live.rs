@@ -22,31 +22,15 @@ async fn astra_compaction_preserves_facts_constraints_and_continuation() {
             .unwrap()
             .as_nanos()
     );
-    let mut config = LlmCallConfig {
-        model: "gpt-6-astra".into(),
-        temperature: None,
-        max_tokens: Some(2048),
-        tools: vec![],
-        reasoning_effort: Some(ReasoningEffort::Low),
-        speed: None,
-        verbosity: None,
-        metadata: Default::default(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: vec![],
-        cache_diagnostics: None,
-        reasoning_state: Some(ReasoningState {
-            epoch: "live-gate".into(),
-            baseline: Some(ReasoningEffort::Low),
-            effective: Some(ReasoningEffort::Low),
-            pending: None,
-        }),
-    };
+    let mut config = LlmCallConfig::new("gpt-6-astra");
+    config.max_tokens = Some(2048);
+    config.reasoning_effort = Some(ReasoningEffort::Low);
+    config.reasoning_state = Some(ReasoningState {
+        epoch: "live-gate".into(),
+        baseline: Some(ReasoningEffort::Low),
+        effective: Some(ReasoningEffort::Low),
+        pending: None,
+    });
     let mut history = vec![LlmMessage::text(
         LlmMessageRole::User,
         format!(

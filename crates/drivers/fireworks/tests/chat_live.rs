@@ -26,28 +26,11 @@ fn api_key() -> String {
 async fn fireworks_chat_streams_response() {
     let provider = provider("fireworks", api_key());
 
-    let config = LlmCallConfig {
-        speed: None,
-        verbosity: None,
-        model: LIVE_MODEL.to_string(),
-        temperature: Some(0.0),
-        // Generous budget: reasoning models can spend tokens on
-        // hidden reasoning before emitting the visible answer.
-        max_tokens: Some(512),
-        tools: vec![],
-        reasoning_effort: None,
-        metadata: std::collections::HashMap::new(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        reasoning_state: None,
-    };
+    let mut config = LlmCallConfig::new(LIVE_MODEL);
+    config.temperature = Some(0.0);
+    // Generous budget: reasoning models can spend tokens on hidden reasoning
+    // before emitting the visible answer.
+    config.max_tokens = Some(512);
 
     let messages = vec![LlmMessage::text(
         LlmMessageRole::User,

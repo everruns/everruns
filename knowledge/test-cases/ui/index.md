@@ -5,6 +5,7 @@
 * [Agent checks](agent_checks/) - 2 manual UI cases.
 * [Agent credentials](agent_credentials/) - 1 manual UI case.
 * [Agent identities](agent_identities/) - 5 manual UI cases.
+* [Agent integrations](agent_integrations/) - 2 manual UI cases.
 * [Agent triggers](agent_triggers/) - 1 manual UI case.
 * [Agent versions](agent_versions/) - 1 manual UI case.
 * [Apps](apps/) - 5 manual UI cases.
@@ -20,6 +21,7 @@
 * [Durable operations](durable_operations/) - 4 manual UI cases.
 * [Entity identity](entity_identity/) - 1 manual UI case.
 * [Evals](evals/) - 7 manual UI cases.
+* [Exposures](exposures/) - 1 manual UI case.
 * [Features](features/) - 1 manual UI case.
 * [Full auth](full_auth/) - 11 manual UI cases.
 * [Global search](global_search/) - 1 manual UI case.

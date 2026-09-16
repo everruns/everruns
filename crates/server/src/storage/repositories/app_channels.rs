@@ -6,9 +6,9 @@
 // directly, because the view cannot supply the NOT NULL columns the endpoint
 // carries (`agent_id`, `owner_principal_id`).
 //
-// The lifted exposure policy — status, identity, version policy, owner — is
-// derived from the owning App on insert, which is exactly where those values
-// came from before the re-parenting, so behavior is unchanged.
+// The lifted identity, version policy, and owner are derived from the owning
+// App on insert, which is exactly where those values came from before the
+// re-parenting. A new endpoint's status is independent of App publish state.
 
 use super::super::models::*;
 use super::Database;
@@ -30,10 +30,10 @@ fn missing_agent_error(app_id: Uuid) -> anyhow::Error {
     .into()
 }
 
-/// Insert an endpoint, deriving its agent and lifted exposure policy from the
-/// owning App. Selecting from `apps` rather than binding the values keeps the
-/// derivation atomic with the insert. Yields no row when the App is missing or
-/// still agent-less, which callers turn into `missing_agent_error`.
+/// Insert an endpoint, deriving its agent, identity, version policy, and owner
+/// from the owning App. Selecting from `apps` rather than binding the values
+/// keeps the derivation atomic with the insert. Yields no row when the App is
+/// missing or still agent-less, which callers turn into `missing_agent_error`.
 const INSERT_CHANNEL_SQL: &str = r#"
     INSERT INTO agent_endpoints (
         app_id, agent_id, public_id, channel_type, channel_config,
@@ -43,11 +43,7 @@ const INSERT_CHANNEL_SQL: &str = r#"
     )
     SELECT
         app.id, app.agent_id, $2, $3, $4, $5, $6, $7,
-        CASE
-            WHEN NOT $7 THEN 'disabled'
-            WHEN app.status = 'published' THEN 'live'
-            ELSE 'draft'
-        END,
+        CASE WHEN $7 THEN 'draft' ELSE 'disabled' END,
         app.agent_identity_id, app.agent_version_policy, app.agent_version_id,
         app.owner_principal_id, app.resolved_owner_user_id
     FROM apps AS app

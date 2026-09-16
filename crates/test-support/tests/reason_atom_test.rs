@@ -20,7 +20,7 @@ use everruns_host::{
 };
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver, register_driver};
 use everruns_provider::driver_registry::ProviderConfig;
-use everruns_provider::driver_registry::{DriverId, DriverRegistry};
+use everruns_provider::driver_registry::{DriverId, DriverRegistry, LlmCompletionMetadata};
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::tool_types::ToolCall;
 use everruns_provider::typed_id::AgentId;
@@ -583,13 +583,14 @@ impl everruns_provider::driver_registry::ChatDriver for NativeCompactRetryDriver
                 ),
             ),
             Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
-                Box::new(everruns_provider::driver_registry::LlmCompletionMetadata {
-                    total_tokens: Some(8),
-                    prompt_tokens: Some(5),
-                    completion_tokens: Some(3),
-                    model: Some(config.model.clone()),
-                    finish_reason: Some("stop".to_string()),
-                    ..Default::default()
+                Box::new({
+                    let mut metadata = LlmCompletionMetadata::default();
+                    metadata.total_tokens = Some(8);
+                    metadata.prompt_tokens = Some(5);
+                    metadata.completion_tokens = Some(3);
+                    metadata.model = Some(config.model.clone());
+                    metadata.finish_reason = Some("stop".to_string());
+                    metadata
                 }),
             )),
         ])))
@@ -663,13 +664,14 @@ impl everruns_provider::driver_registry::ChatDriver for FlakyStreamDriver {
                 ),
             ),
             Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
-                Box::new(everruns_provider::driver_registry::LlmCompletionMetadata {
-                    total_tokens: Some(8),
-                    prompt_tokens: Some(5),
-                    completion_tokens: Some(3),
-                    model: Some(config.model.clone()),
-                    finish_reason: Some("stop".to_string()),
-                    ..Default::default()
+                Box::new({
+                    let mut metadata = LlmCompletionMetadata::default();
+                    metadata.total_tokens = Some(8);
+                    metadata.prompt_tokens = Some(5);
+                    metadata.completion_tokens = Some(3);
+                    metadata.model = Some(config.model.clone());
+                    metadata.finish_reason = Some("stop".to_string());
+                    metadata
                 }),
             )),
         ])))
@@ -717,13 +719,14 @@ impl everruns_provider::driver_registry::ChatDriver for StallingStreamDriver {
                 ),
             ),
             Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
-                Box::new(everruns_provider::driver_registry::LlmCompletionMetadata {
-                    total_tokens: Some(8),
-                    prompt_tokens: Some(5),
-                    completion_tokens: Some(3),
-                    model: Some(config.model.clone()),
-                    finish_reason: Some("stop".to_string()),
-                    ..Default::default()
+                Box::new({
+                    let mut metadata = LlmCompletionMetadata::default();
+                    metadata.total_tokens = Some(8);
+                    metadata.prompt_tokens = Some(5);
+                    metadata.completion_tokens = Some(3);
+                    metadata.model = Some(config.model.clone());
+                    metadata.finish_reason = Some("stop".to_string());
+                    metadata
                 }),
             )),
         ])))
@@ -754,13 +757,14 @@ impl everruns_provider::driver_registry::ChatDriver for ThinkingLeakDriver {
             ),
             Ok(everruns_provider::driver_registry::LlmStreamEvent::TextDelta(self.answer.clone())),
             Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
-                Box::new(everruns_provider::driver_registry::LlmCompletionMetadata {
-                    total_tokens: Some(8),
-                    prompt_tokens: Some(5),
-                    completion_tokens: Some(3),
-                    model: Some(config.model.clone()),
-                    finish_reason: Some("stop".to_string()),
-                    ..Default::default()
+                Box::new({
+                    let mut metadata = LlmCompletionMetadata::default();
+                    metadata.total_tokens = Some(8);
+                    metadata.prompt_tokens = Some(5);
+                    metadata.completion_tokens = Some(3);
+                    metadata.model = Some(config.model.clone());
+                    metadata.finish_reason = Some("stop".to_string());
+                    metadata
                 }),
             )),
         ])))
@@ -786,13 +790,14 @@ impl everruns_provider::driver_registry::ChatDriver for SpeedCapturingDriver {
         Ok(Box::pin(stream::iter(vec![
             Ok(everruns_provider::driver_registry::LlmStreamEvent::TextDelta("ok".to_string())),
             Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
-                Box::new(everruns_provider::driver_registry::LlmCompletionMetadata {
-                    total_tokens: Some(4),
-                    prompt_tokens: Some(2),
-                    completion_tokens: Some(2),
-                    model: Some(config.model.clone()),
-                    finish_reason: Some("stop".to_string()),
-                    ..Default::default()
+                Box::new({
+                    let mut metadata = LlmCompletionMetadata::default();
+                    metadata.total_tokens = Some(4);
+                    metadata.prompt_tokens = Some(2);
+                    metadata.completion_tokens = Some(2);
+                    metadata.model = Some(config.model.clone());
+                    metadata.finish_reason = Some("stop".to_string());
+                    metadata
                 }),
             )),
         ])))
@@ -2872,26 +2877,7 @@ async fn test_driver_registry_integration() {
     };
 
     let messages = vec![LlmMessage::text(LlmMessageRole::User, "Hello")];
-    let call_config = LlmCallConfig {
-        speed: None,
-        verbosity: None,
-        model: "test".to_string(),
-        temperature: None,
-        max_tokens: None,
-        tools: vec![],
-        reasoning_effort: None,
-        metadata: std::collections::HashMap::new(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        reasoning_state: None,
-    };
+    let call_config = LlmCallConfig::new("test");
 
     let response = driver
         .chat_completion(
@@ -3807,13 +3793,14 @@ impl everruns_provider::driver_registry::ChatDriver for SystemPromptCapturingDri
         Ok(Box::pin(stream::iter(vec![
             Ok(everruns_provider::driver_registry::LlmStreamEvent::TextDelta("ok".to_string())),
             Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
-                Box::new(everruns_provider::driver_registry::LlmCompletionMetadata {
-                    total_tokens: Some(4),
-                    prompt_tokens: Some(2),
-                    completion_tokens: Some(2),
-                    model: Some(config.model.clone()),
-                    finish_reason: Some("stop".to_string()),
-                    ..Default::default()
+                Box::new({
+                    let mut metadata = LlmCompletionMetadata::default();
+                    metadata.total_tokens = Some(4);
+                    metadata.prompt_tokens = Some(2);
+                    metadata.completion_tokens = Some(2);
+                    metadata.model = Some(config.model.clone());
+                    metadata.finish_reason = Some("stop".to_string());
+                    metadata
                 }),
             )),
         ])))
@@ -3839,13 +3826,14 @@ impl everruns_provider::driver_registry::ChatDriver for ConversationCapturingDri
         Ok(Box::pin(stream::iter(vec![
             Ok(everruns_provider::driver_registry::LlmStreamEvent::TextDelta("ok".to_string())),
             Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
-                Box::new(everruns_provider::driver_registry::LlmCompletionMetadata {
-                    total_tokens: Some(4),
-                    prompt_tokens: Some(2),
-                    completion_tokens: Some(2),
-                    model: Some(config.model.clone()),
-                    finish_reason: Some("stop".to_string()),
-                    ..Default::default()
+                Box::new({
+                    let mut metadata = LlmCompletionMetadata::default();
+                    metadata.total_tokens = Some(4);
+                    metadata.prompt_tokens = Some(2);
+                    metadata.completion_tokens = Some(2);
+                    metadata.model = Some(config.model.clone());
+                    metadata.finish_reason = Some("stop".to_string());
+                    metadata
                 }),
             )),
         ])))

@@ -227,3 +227,16 @@ export async function deleteAgentCredentialBinding(
 ): Promise<void> {
   await api.delete(`/v1/agents/${agentId}/credentials/${bindingId}`);
 }
+
+/// The agent-level incident switch (EVE-1007). One call takes every endpoint of
+/// an agent off the internet without touching the per-endpoint publish state it
+/// should be restored to.
+export async function suspendAgentExposures(agentId: string): Promise<Agent> {
+  const response = await api.post<Agent>(`/v1/agents/${agentId}/exposures/suspend`);
+  return response.data;
+}
+
+export async function resumeAgentExposures(agentId: string): Promise<Agent> {
+  const response = await api.post<Agent>(`/v1/agents/${agentId}/exposures/resume`);
+  return response.data;
+}

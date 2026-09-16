@@ -23,6 +23,8 @@ import {
   createAgentCredentialBinding,
   setAgentCredentialValue,
   deleteAgentCredentialBinding,
+  suspendAgentExposures,
+  resumeAgentExposures,
 } from "@/lib/api/agents";
 import type {
   CreateAgentRequest,
@@ -310,4 +312,29 @@ export function useAgentVersionDiff(
     ...query,
     isLoading: orgLoading || query.isLoading,
   };
+}
+
+/// The agent-level incident switch (EVE-1007). Invalidating both the list and
+/// the detail matters here: the switch changes whether every endpoint of this
+/// agent accepts traffic, and the Integrations tab reads endpoints through the
+/// apps cache, so that has to be refetched too.
+function useExposureMutation(mutationFn: (agentId: string) => Promise<unknown>) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn,
+    onSuccess: (_result, agentId) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+    },
+  });
+}
+
+export function useSuspendAgentExposures() {
+  return useExposureMutation(suspendAgentExposures);
+}
+
+export function useResumeAgentExposures() {
+  return useExposureMutation(resumeAgentExposures);
 }

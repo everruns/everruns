@@ -9,6 +9,7 @@ import {
 } from "@/components/apps/channel-form";
 import { ChannelRow } from "@/components/apps/channel-row";
 import type { App, AppChannel } from "@/lib/api/types";
+import { getEndpointLifecyclePresentation } from "@/lib/app-channels";
 
 const app: App = {
   id: "app_123",
@@ -38,9 +39,15 @@ const scheduleChannel: AppChannel = {
     message: "Tell a dad joke for {{app.name}}.",
   },
   enabled: true,
+  // Authoritative for ingress since EVE-1007. The row reads this rather than
+  // the owning App's publish state, because publishing one endpoint no longer
+  // publishes its siblings.
+  status: "live",
   created_at: "2026-05-10T00:00:00Z",
   updated_at: "2026-05-10T00:00:00Z",
 };
+
+const draftChannel: AppChannel = { ...scheduleChannel, id: "appchan_draft", status: "draft" };
 
 describe("app channel redesign", () => {
   it("generates a token by default for new AG-UI channels", () => {
@@ -163,8 +170,62 @@ describe("app channel redesign", () => {
 
     expect(screen.getByText("At 30 minutes past the hour · America/Chicago")).toBeInTheDocument();
     expect(screen.queryByText("0 30 * * * * *")).not.toBeInTheDocument();
-    expect(screen.getByText(/Active$/)).toBeInTheDocument();
+    expect(screen.getByText(/Live$/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Tell a dad joke/ })).toBeInTheDocument();
+  });
+
+  // The whole point of EVE-1007: the row reports the endpoint's own lifecycle.
+  // A draft endpoint accepts no traffic, so it cannot be run either, however
+  // the App around it is published.
+  it("reports a draft endpoint as not accepting traffic and refuses to run it", async () => {
+    const { getByRole } = render(
+      <ChannelRow
+        app={{ ...app, channels: [draftChannel] }}
+        channel={draftChannel}
+        expanded={false}
+        onToggle={() => {}}
+        onRunNow={() => {}}
+        configureHref="/apps/app_123/channels/appchan_draft"
+      />,
+    );
+
+    expect(screen.getByText(/Draft — not accepting traffic$/)).toBeInTheDocument();
+    expect(screen.getByText("draft")).toBeInTheDocument();
+
+    fireEvent.click(getByRole("button", { name: "Channel actions" }));
+    const runNow = await screen.findByText("Run now");
+    expect(
+      runNow.closest("[aria-disabled]") ?? runNow.closest("[disabled]") ?? runNow,
+    ).toHaveAttribute("data-disabled");
+  });
+
+  it("presents enabled draft endpoints as draft instead of active", () => {
+    expect(getEndpointLifecyclePresentation(draftChannel)).toEqual({
+      label: "draft",
+      description: "Draft — not accepting traffic",
+      isLive: false,
+    });
+  });
+
+  // The publish switch is the row's only write path for liveness, and it must
+  // name which endpoint it moves — several rows sit side by side.
+  it("offers a publish switch that names its endpoint", () => {
+    const onPublishChange = jest.fn();
+    render(
+      <ChannelRow
+        app={{ ...app, channels: [draftChannel] }}
+        channel={draftChannel}
+        expanded={false}
+        onToggle={() => {}}
+        onPublishChange={onPublishChange}
+        configureHref="/apps/app_123/channels/appchan_draft"
+      />,
+    );
+
+    const publish = screen.getByRole("switch", { name: /^Publish / });
+    expect(publish).not.toBeChecked();
+    fireEvent.click(publish);
+    expect(onPublishChange).toHaveBeenCalledWith(true);
   });
 
   it("disables Run now when onRunNow is not provided (no manage permission)", async () => {

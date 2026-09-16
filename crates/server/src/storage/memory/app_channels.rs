@@ -6,12 +6,7 @@ use crate::errors::BadRequestError;
 use anyhow::Result;
 use uuid::Uuid;
 
-/// Mirrors the PostgreSQL derivation for a newly created or re-enabled endpoint.
-///
-/// The App's publish state is part of it: a channel added to an App that is
-/// already published must come up live, exactly as the `INSERT ... SELECT FROM
-/// apps` in the PostgreSQL backend does. Deriving from `enabled` alone would
-/// leave it unreachable until something re-published the App.
+/// Mirrors the PostgreSQL derivation when an endpoint is enabled or disabled.
 fn derive_status(enabled: bool, app_status: Option<&str>) -> String {
     if !enabled {
         "disabled"
@@ -21,6 +16,10 @@ fn derive_status(enabled: bool, app_status: Option<&str>) -> String {
         "draft"
     }
     .to_string()
+}
+
+fn initial_status(enabled: bool) -> String {
+    if enabled { "draft" } else { "disabled" }.to_string()
 }
 
 /// Publish state of an App, read before the channel lock is taken so the two
@@ -66,7 +65,6 @@ impl InMemoryDatabase {
         input: CreateAppChannelRow,
     ) -> Result<AppChannelRow> {
         self.require_app_agent(app_id)?;
-        let app_status = self.app_status(app_id);
         let now = Self::now();
         let id = Uuid::now_v7();
         let row = AppChannelRow {
@@ -78,7 +76,7 @@ impl InMemoryDatabase {
             channel_config_encrypted: input.channel_config_encrypted,
             durable_schedule_id: input.durable_schedule_id,
             enabled: input.enabled,
-            status: derive_status(input.enabled, app_status.as_deref()),
+            status: initial_status(input.enabled),
             created_at: now,
             updated_at: now,
         };
@@ -94,7 +92,6 @@ impl InMemoryDatabase {
         max_enabled_schedule_channels: i64,
     ) -> Result<AppChannelRow> {
         self.require_app_agent(app_id)?;
-        let app_status = self.app_status(app_id);
         let apps = self.apps.read();
         let org_app_ids: std::collections::HashSet<Uuid> = apps
             .values()
@@ -128,7 +125,7 @@ impl InMemoryDatabase {
             channel_config_encrypted: input.channel_config_encrypted,
             durable_schedule_id: input.durable_schedule_id,
             enabled: input.enabled,
-            status: derive_status(input.enabled, app_status.as_deref()),
+            status: initial_status(input.enabled),
             created_at: now,
             updated_at: now,
         };

@@ -40,6 +40,9 @@ impl StreamReplayState {
             | LlmStreamEvent::MessagePhase(_)
             | LlmStreamEvent::Done(_)
             | LlmStreamEvent::Error(_) => false,
+            // `LlmStreamEvent` is `#[non_exhaustive]`: an unrecognized event
+            // is not assistant output, so it must not commit the stream.
+            _ => false,
         } {
             *self = Self::Committed;
         }
@@ -112,6 +115,9 @@ pub(super) fn advances_stall_deadline(event: &LlmStreamEvent) -> bool {
         LlmStreamEvent::MessagePhase(_) | LlmStreamEvent::Done(_) | LlmStreamEvent::Error(_) => {
             false
         }
+        // `LlmStreamEvent` is `#[non_exhaustive]`: an unrecognized event is not
+        // assistant progress, so it must not hold off the stall deadline.
+        _ => false,
     }
 }
 

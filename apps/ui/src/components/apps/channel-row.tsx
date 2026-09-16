@@ -13,6 +13,7 @@ import {
 import { SlackIcon as Slack } from "@/components/icons/slack-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,7 +33,7 @@ import type {
   SlackChannelConfig,
   WebhookChannelConfig,
 } from "@/lib/api/types";
-import { getChannelTypeDisplayName } from "@/lib/app-channels";
+import { getChannelTypeDisplayName, getEndpointLifecyclePresentation } from "@/lib/app-channels";
 
 function iconFor(kind: ChannelType) {
   switch (kind) {
@@ -81,18 +82,14 @@ function channelName(channel: AppChannel): string {
   return getChannelTypeDisplayName(channel.channel_type);
 }
 
-function channelSubline(channel: AppChannel, app: App): React.ReactNode {
-  const statusText = !channel.enabled
-    ? "Paused"
-    : app.status === "published"
-      ? "Active"
-      : "Active when published";
+function channelSubline(channel: AppChannel, _app: App): React.ReactNode {
+  const { description } = getEndpointLifecyclePresentation(channel);
 
   if (channel.channel_type === "schedule") {
     const config = channel.channel_config as ScheduleChannelConfig;
     return (
       <>
-        Schedule · <CronLabel expr={config.cron_expression} tz={config.timezone} /> · {statusText}
+        Schedule · <CronLabel expr={config.cron_expression} tz={config.timezone} /> · {description}
       </>
     );
   }
@@ -100,7 +97,7 @@ function channelSubline(channel: AppChannel, app: App): React.ReactNode {
   return (
     <>
       {getChannelTypeDisplayName(channel.channel_type)} · {relativeTime(lastInvokedAt)} ·{" "}
-      {channel.enabled ? "Enabled" : "Disabled"}
+      {description}
     </>
   );
 }
@@ -149,6 +146,9 @@ export function ChannelRow({
   expanded,
   onToggle,
   onRunNow,
+  onPublishChange,
+  publishPending = false,
+  usePanel,
   configureHref,
   timeline = [],
 }: {
@@ -157,24 +157,46 @@ export function ChannelRow({
   expanded: boolean;
   onToggle: () => void;
   onRunNow?: () => void;
+  /// Per-endpoint publish (EVE-1007). Omitted where the caller has no write
+  /// path — the App detail page keeps its App-level switch.
+  onPublishChange?: (publish: boolean) => void;
+  publishPending?: boolean;
+  /// "How do I call this" for this endpoint specifically. Rendered inside the
+  /// expanded row rather than a separate tab, so the snippet can carry this
+  /// endpoint's real URL instead of a placeholder.
+  usePanel?: React.ReactNode;
   configureHref: string;
   timeline?: TimelineBin[];
 }) {
   const Icon = iconFor(channel.channel_type);
-  const canRunNow =
-    !!onRunNow &&
-    channel.channel_type === "schedule" &&
-    channel.enabled &&
-    app.status === "published";
+  const lifecycle = getEndpointLifecyclePresentation(channel);
+  const { isLive } = lifecycle;
+  const canRunNow = !!onRunNow && channel.channel_type === "schedule" && isLive;
+  const panelId = `endpoint-panel-${channel.id}`;
 
   return (
     <div className="border bg-card">
-      <div className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_120px_120px_48px] md:items-center">
+      <div
+        className={
+          // Four fixed columns plus a rail left roughly 130px for the name at
+          // an ordinary 1280px window, which truncated "Webhook endpoint" to
+          // "W." and stacked its badges. The metric columns — both of which
+          // read 0 until run aggregation lands — are held back until there is
+          // width for them; the name, status and actions are what the row is
+          // for. The publish switch shares the actions cell for the same
+          // reason.
+          onPublishChange
+            ? "grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_88px] 2xl:grid-cols-[minmax(0,1fr)_140px_120px_120px_88px] md:items-center"
+            : "grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_48px] 2xl:grid-cols-[minmax(0,1fr)_140px_120px_120px_48px] md:items-center"
+        }
+      >
         <button
           type="button"
           onClick={onToggle}
           className="min-w-0 text-left"
-          aria-label={`Toggle ${channelName(channel)} details`}
+          aria-expanded={expanded}
+          aria-controls={panelId}
+          aria-label={`${expanded ? "Collapse" : "Expand"} ${channelName(channel)} details`}
         >
           <div className="flex min-w-0 items-start gap-3">
             <span className="flex size-9 shrink-0 items-center justify-center border bg-background">
@@ -184,9 +206,7 @@ export function ChannelRow({
               <div className="flex flex-wrap items-center gap-2">
                 <p className="truncate font-medium">{channelName(channel)}</p>
                 <Badge variant="outline">{getChannelTypeDisplayName(channel.channel_type)}</Badge>
-                <Badge variant={channel.enabled ? "default" : "secondary"}>
-                  {channel.enabled ? "active" : "disabled"}
-                </Badge>
+                <Badge variant={isLive ? "default" : "secondary"}>{lifecycle.label}</Badge>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">{channelSubline(channel, app)}</p>
             </div>
@@ -202,31 +222,43 @@ export function ChannelRow({
               : relativeTime(channel.last_invoked_at ?? null)}
           </p>
         </div>
-        <div>
+        <div className="hidden 2xl:block">
           <p className="text-xs font-medium uppercase text-muted-foreground">Runs · 24h</p>
           <p className="mt-1 text-sm">0</p>
         </div>
-        <MiniTimeline runs={timeline} length={12} className="hidden md:flex" />
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            className={buttonVariants({ variant: "ghost", size: "icon" })}
-            aria-label="Channel actions"
-          >
-            <MoreHorizontal className="size-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuPositioner>
-            <DropdownMenuContent>
-              <DropdownMenuItem render={<Link href={configureHref} />}>Configure</DropdownMenuItem>
-              <DropdownMenuItem onClick={onRunNow} disabled={!canRunNow}>
-                <Play className="size-4" />
-                Run now
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenuPositioner>
-        </DropdownMenu>
+        <MiniTimeline runs={timeline} length={12} className="hidden 2xl:flex" />
+        <div className="flex items-center justify-end gap-1">
+          {onPublishChange && (
+            <Switch
+              checked={isLive}
+              onCheckedChange={onPublishChange}
+              disabled={publishPending || !channel.enabled}
+              aria-label={`${isLive ? "Unpublish" : "Publish"} ${channelName(channel)}`}
+            />
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className={buttonVariants({ variant: "ghost", size: "icon" })}
+              aria-label="Channel actions"
+            >
+              <MoreHorizontal className="size-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuPositioner>
+              <DropdownMenuContent>
+                <DropdownMenuItem render={<Link href={configureHref} />}>
+                  Configure
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onRunNow} disabled={!canRunNow}>
+                  <Play className="size-4" />
+                  Run now
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenuPositioner>
+          </DropdownMenu>
+        </div>
       </div>
       {expanded && (
-        <div className="border-t bg-muted/20 px-4 py-3">
+        <div id={panelId} className="border-t bg-muted/20 px-4 py-3">
           <div className="grid gap-3 text-sm md:grid-cols-3">
             <div>
               <p className="text-xs font-medium uppercase text-muted-foreground">Configuration</p>
@@ -246,6 +278,7 @@ export function ChannelRow({
               </Link>
             </div>
           </div>
+          {usePanel && <div className="mt-4 border-t pt-4">{usePanel}</div>}
         </div>
       )}
     </div>

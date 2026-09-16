@@ -491,16 +491,8 @@ async fn non_live_rejections_are_indistinguishable_from_not_found() {
     );
 }
 
-/// A channel added to an App that is *already published* must come up live.
-///
-/// This is a regression guard for a real backend divergence: the in-memory
-/// backend derived a new endpoint's status from `enabled` alone and produced
-/// `draft`, leaving the endpoint unreachable, while PostgreSQL — which selects
-/// the App's status in the same statement as the insert — produced `live`.
-#[tokio::test]
-async fn a_channel_added_to_a_published_app_comes_up_live() {
-    let server = TestServer::new().await;
-    let s = create_siblings(&server, "added-after-publish").await;
+async fn assert_channel_added_to_published_app_starts_draft(server: TestServer, label: &str) {
+    let s = create_siblings(&server, label).await;
 
     server
         .post(&format!("/v1/apps/{}/publish", s.app_id), json!({}))
@@ -521,15 +513,89 @@ async fn a_channel_added_to_a_published_app_comes_up_live() {
         .assert_status(StatusCode::CREATED)
         .json();
     let added_id = channel_id_of(&added);
+    let disabled: Value = server
+        .post(
+            &format!("/v1/apps/{}/a2a-channels", s.app_id),
+            json!({
+                "session_mode": "shared_session",
+                "message": "Handle this A2A request",
+                "agent_card_name": "Added disabled",
+                "agent_card_description": "Disabled endpoint created while the App was published",
+                "enabled": false,
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let disabled_id = channel_id_of(&disabled);
+
+    assert_eq!(
+        channel_status(&server, &s.app_id, &added_id).await,
+        "draft",
+        "a new endpoint must require an explicit publish"
+    );
+    assert_eq!(
+        agent_card_status(&server, &added_id).await,
+        StatusCode::NOT_FOUND,
+        "a new endpoint must not be reachable before it is published"
+    );
+    assert_eq!(
+        channel_status(&server, &s.app_id, &s.a2a_channel_id).await,
+        "live",
+        "creating an endpoint must not change existing endpoint rows"
+    );
+    assert_eq!(
+        channel_status(&server, &s.app_id, &disabled_id).await,
+        "disabled",
+        "a new disabled endpoint must not inherit the App's publish state"
+    );
+    assert_eq!(
+        agent_card_status(&server, &disabled_id).await,
+        StatusCode::NOT_FOUND,
+        "a disabled endpoint must not be reachable"
+    );
+
+    server
+        .post(&format!("/v1/apps/{}/unpublish", s.app_id), json!({}))
+        .await
+        .assert_status(StatusCode::OK);
+    server
+        .post(&format!("/v1/apps/{}/publish", s.app_id), json!({}))
+        .await
+        .assert_status(StatusCode::OK);
 
     assert_eq!(
         channel_status(&server, &s.app_id, &added_id).await,
         "live",
-        "an endpoint created on a published App must be live, not stranded in draft"
+        "publishing the App must still raise its enabled endpoints"
     );
     assert_eq!(
         agent_card_status(&server, &added_id).await,
         StatusCode::OK,
-        "and it must actually be reachable"
+        "the endpoint must become reachable after the App publishes it"
     );
+    assert_eq!(
+        channel_status(&server, &s.app_id, &disabled_id).await,
+        "disabled",
+        "an App unpublish/publish cycle must not raise a disabled endpoint"
+    );
+    assert_eq!(
+        agent_card_status(&server, &disabled_id).await,
+        StatusCode::NOT_FOUND,
+        "a disabled endpoint must remain unreachable after the App publishes"
+    );
+}
+
+#[tokio::test]
+async fn channel_added_to_published_app_starts_draft_postgres() {
+    assert_channel_added_to_published_app_starts_draft(TestServer::new().await, "draft-pg").await;
+}
+
+#[tokio::test]
+async fn channel_added_to_published_app_starts_draft_in_memory() {
+    assert_channel_added_to_published_app_starts_draft(
+        TestServer::in_memory().await,
+        "draft-memory",
+    )
+    .await;
 }

@@ -137,7 +137,12 @@ impl From<&str> for LlmStreamError {
 }
 
 /// Events emitted during LLM streaming
+///
+/// `#[non_exhaustive]`: new event kinds arrive with each provider capability
+/// (PDF input, native async tool calls), and a new variant must not break
+/// every consumer's `match`. Consumers ignore what they do not recognize.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum LlmStreamEvent {
     /// Text delta (incremental content)
     TextDelta(String),
@@ -215,7 +220,10 @@ pub struct DiscoveredModel {
 /// [`disjoint_prompt_tokens`]; Anthropic / Bedrock already report disjoint
 /// buckets and pass values through unchanged.
 ///
+/// `#[non_exhaustive]`: usage and cost dimensions keep being added, so
+/// construct with [`LlmCompletionMetadata::default`] and assign fields.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct LlmCompletionMetadata {
     /// Total tokens used (non-cached prompt + cache read/creation + completion)
     pub total_tokens: Option<u32>,
@@ -720,7 +728,11 @@ impl From<&str> for LlmMessageContent {
 }
 
 /// A single content part within a message
+///
+/// `#[non_exhaustive]` for the same reason as [`LlmStreamEvent`]: new content
+/// kinds are additive and must not break downstream `match`es.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum LlmContentPart {
     /// Text content
     Text { text: String },
@@ -843,7 +855,14 @@ pub struct CacheDiagnosticsConfig {
 }
 
 /// Configuration for an LLM call
-#[derive(Debug, Clone)]
+///
+/// `#[non_exhaustive]`: new per-call knobs arrive most releases, and a field
+/// addition must not break every downstream consumer (and force a breaking
+/// bump that cascades through the whole publish cone). Construct with
+/// [`LlmCallConfig::new`] or [`LlmCallConfig::default`] and assign fields, or
+/// use [`LlmCallConfigBuilder`].
+#[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct LlmCallConfig {
     /// Durable Astra baseline and effective effort; absent for other modes.
     pub reasoning_state: Option<crate::reasoning_updates::ReasoningState>,
@@ -917,6 +936,14 @@ pub struct LlmCallConfig {
 }
 
 impl LlmCallConfig {
+    /// Create a config for `model`, leaving every other knob at its default.
+    pub fn new(model: impl Into<String>) -> Self {
+        Self {
+            model: model.into(),
+            ..Default::default()
+        }
+    }
+
     /// Resolve the effective wire value for `parallel_tool_calls`, gated by
     /// whether the driver/model can express it on the request.
     ///
@@ -1129,7 +1156,12 @@ impl std::fmt::Debug for ProviderMetadata {
 }
 
 /// Configuration for creating an LLM provider
+///
+/// `#[non_exhaustive]`: construct with [`ProviderConfig::new`] or
+/// [`ProviderConfig::for_provider`] and the `with_*` setters, so that adding a
+/// connection-level field stays a non-breaking change.
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct ProviderConfig {
     /// Runtime service identity selected by the model.
     pub provider: crate::runtime_provider::ProviderKey,

@@ -1319,6 +1319,10 @@ fn build_content_value(
             // as message content. Serializing the part here would also put the
             // opaque signature and encrypted payload into the export.
             ContentPart::Reasoning(_) => {}
+            // `ContentPart` is `#[non_exhaustive]`; this arm is required outside
+            // `everruns-core` and is unreachable in-workspace, where every crate
+            // shares one core version.
+            _ => {}
         }
     }
     if has_image {

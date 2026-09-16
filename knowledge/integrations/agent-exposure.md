@@ -189,6 +189,8 @@ live(endpoint) = endpoint.status == live
 
 - Per-endpoint `status` is the everyday control: publish the Slack endpoint without
   flipping on the public chat endpoint sitting next to it.
+- A new endpoint always starts `draft`, even when its App is already published. Creating
+  a new door never opens it without a separate publish action.
 - `agent.exposures_suspended` is the incident control — one switch, take the agent off the
   internet — which is what App unpublish is actually reached for. It leaves per-endpoint
   status untouched, so clearing it restores exactly the previously live set.
@@ -260,14 +262,19 @@ The Slack channel is now an agent app, not an Events API bot
 ([slack-modernization.md](slack-modernization.md)). Three consequences for this design,
 two of which are arguments *for* it:
 
-**Per-endpoint bot identity is the shape the parked OAuth work needs.** The deferred
-install flow is blocked on revisiting the per-App bot identity decision. One workspace
-install maps to one endpoint, never to a bundle of channels — the App was never the
-natural owner of a Slack install. This design hands that decision the right grain instead
-of complicating it.
+**Per-endpoint bot identity is the shape the parked OAuth work needs** (EVE-1008,
+landed). The install flow was blocked on revisiting the per-App bot identity decision.
+One workspace install maps to one endpoint, never to a bundle of channels — the App was
+never the natural owner of a Slack install. That decision now has the right grain:
+`signing_secret`, `bot_token` and `team_id` are endpoint config, so two Slack endpoints on
+one agent are two installs with independent credentials rather than a collision. See
+[slack-modernization.md](slack-modernization.md) for what the flow still has to decide.
 
-**The manifest route becomes endpoint-scoped and its publish gate narrows**, per
-[Publish and expose](#publish-and-expose).
+**The manifest route is endpoint-scoped and its publish gate narrows**, per
+[Publish and expose](#publish-and-expose). Each endpoint serves a manifest naming its own
+request URL, gated on its own `status`; moving one endpoint's publish state leaves its
+siblings where they were, which is what stops "publish to get a manifest" from exposing an
+anonymous chat surface next to it.
 
 **Transport-typed config is confirmed, not questioned.** `agent_surface_enabled` governs
 manifest and event subscriptions, the delivery surface is detected per event, and pane
@@ -304,7 +311,21 @@ stays the only write path. One writer, one reader.
 The `/apps` list page does not simply disappear. Its real job is answering "what in this
 org is reachable from outside right now", which is a question security asks and no agent
 detail page answers. It becomes a read-mostly cross-agent **Exposures** view that links
-into agents.
+into agents (EVE-1010, landed at `/exposures`).
+
+**The word is "Exposures"**, settling open question 3. The API and CLI already say it
+user-facingly (`/v1/agents/{id}/exposures/suspend`, `everruns agents exposures suspend`),
+so a different UI term would make the product say two things about one concept; and it
+covers triggers, which "Endpoints" does not. It sits under **Operational**, beside
+Sessions and Reports, because reading it is an operational act and the editing it links to
+lives on the agent.
+
+The view **resolves** state rather than reading `endpoint.status`: it folds in the
+agent-level terms the same way `app_ingress::endpoint_liveness` does, so a live endpoint on
+a suspended or archived agent never reads as Live. Anonymous *configuration* and *live*
+reachability are reported separately — an anonymous endpoint says so while it is still
+draft or suspended, because resuming its agent opens it and the row has to warn before
+that, not after.
 
 ## Migration
 
@@ -373,9 +394,10 @@ rest proceeds.
    covers every transport without splitting the variant.
 2. Should an endpoint be allowed to point at an agent in a *different* org-visible scope
    (shared agents), or does the endpoint always live with its agent?
-3. Is `Exposures` an ops page or a nav-level concept? It is the only cross-agent surface
-   the design keeps, so it decides whether "exposure" becomes user vocabulary. Settled by
-   EVE-1010.
+3. ~~Is `Exposures` an ops page or a nav-level concept?~~ **Settled by EVE-1010: nav-level,
+   under Operational, and the word is user-facing.** It is the only cross-agent surface
+   the design keeps, so it was the surface that decided whether "exposure" became user
+   vocabulary.
 4. ~~EVE-978 (suggested prompts) picks a source per surface.~~ Settled: **agent config**,
    falling back to the harness, resolved by `everruns_platform::exposure::resolve_starters`
    over the `starters` field Platform Chat already uses. Endpoint config was not available

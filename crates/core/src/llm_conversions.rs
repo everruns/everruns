@@ -226,26 +226,15 @@ pub fn extract_image_file_ids(msg: &Message) -> Vec<Uuid> {
 /// Seed an [`LlmCallConfig`] from a [`RuntimeAgent`]. Fields set later by the
 /// ReasonAtom (reasoning effort, speed, verbosity, metadata) are left unset.
 pub fn llm_call_config_from_agent(runtime_agent: &RuntimeAgent) -> LlmCallConfig {
-    LlmCallConfig {
-        model: runtime_agent.model.clone(),
-        temperature: runtime_agent.temperature,
-        max_tokens: runtime_agent.max_tokens,
-        tools: runtime_agent.tools.clone(),
-        reasoning_effort: None,
-        speed: None,
-        verbosity: None,
-        metadata: HashMap::new(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: runtime_agent.tool_search.clone(),
-        prompt_cache: runtime_agent.prompt_cache.clone(),
-        driver_options: runtime_agent.driver_options.clone(),
-        parallel_tool_calls: runtime_agent.parallel_tool_calls,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        reasoning_state: None,
-    }
+    let mut config = LlmCallConfig::new(runtime_agent.model.clone());
+    config.temperature = runtime_agent.temperature;
+    config.max_tokens = runtime_agent.max_tokens;
+    config.tools = runtime_agent.tools.clone();
+    config.tool_search = runtime_agent.tool_search.clone();
+    config.prompt_cache = runtime_agent.prompt_cache.clone();
+    config.driver_options = runtime_agent.driver_options.clone();
+    config.parallel_tool_calls = runtime_agent.parallel_tool_calls;
+    config
 }
 
 /// Start an [`LlmCallConfigBuilder`] from a [`RuntimeAgent`].

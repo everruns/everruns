@@ -18,6 +18,7 @@ import { useModels, useProvider, useUpdateProvider } from "@/hooks/use-providers
 import { usePageTitle } from "@/hooks";
 import { formatCountLabel } from "@/lib/formatting";
 import { getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
+import { managedProviderCopy } from "@/lib/managed-provider-copy";
 import type { Provider } from "@/lib/api/types";
 import { ApiError } from "@/lib/api/client";
 
@@ -107,8 +108,8 @@ export default function ProviderDetailPage({
             <ProviderIcon providerType={provider.provider_type} size="md" />
             <EntityIdentity value={provider.id}>{provider.name}</EntityIdentity>
             {provider.managed && (
-              <Badge variant="outline" title="Managed by the host">
-                Managed
+              <Badge variant="outline" title={managedProviderCopy.badgeTitle}>
+                {managedProviderCopy.badge}
               </Badge>
             )}
             <Badge variant={getEntityStatusBadgeVariant(provider.status)}>{provider.status}</Badge>
@@ -134,8 +135,7 @@ export default function ProviderDetailPage({
           <CardContent>
             {provider.managed && (
               <p className="mb-4 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
-                This provider is managed by the host and is read-only. Its credentials and
-                configuration cannot be changed here.
+                {managedProviderCopy.notice}
               </p>
             )}
             <form onSubmit={handleSubmit} className="space-y-4 max-w-xl">
