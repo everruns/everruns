@@ -513,6 +513,21 @@ async fn assert_channel_added_to_published_app_starts_draft(server: TestServer, 
         .assert_status(StatusCode::CREATED)
         .json();
     let added_id = channel_id_of(&added);
+    let disabled: Value = server
+        .post(
+            &format!("/v1/apps/{}/a2a-channels", s.app_id),
+            json!({
+                "session_mode": "shared_session",
+                "message": "Handle this A2A request",
+                "agent_card_name": "Added disabled",
+                "agent_card_description": "Disabled endpoint created while the App was published",
+                "enabled": false,
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let disabled_id = channel_id_of(&disabled);
 
     assert_eq!(
         channel_status(&server, &s.app_id, &added_id).await,
@@ -528,6 +543,16 @@ async fn assert_channel_added_to_published_app_starts_draft(server: TestServer, 
         channel_status(&server, &s.app_id, &s.a2a_channel_id).await,
         "live",
         "creating an endpoint must not change existing endpoint rows"
+    );
+    assert_eq!(
+        channel_status(&server, &s.app_id, &disabled_id).await,
+        "disabled",
+        "a new disabled endpoint must not inherit the App's publish state"
+    );
+    assert_eq!(
+        agent_card_status(&server, &disabled_id).await,
+        StatusCode::NOT_FOUND,
+        "a disabled endpoint must not be reachable"
     );
 
     server
@@ -548,6 +573,16 @@ async fn assert_channel_added_to_published_app_starts_draft(server: TestServer, 
         agent_card_status(&server, &added_id).await,
         StatusCode::OK,
         "the endpoint must become reachable after the App publishes it"
+    );
+    assert_eq!(
+        channel_status(&server, &s.app_id, &disabled_id).await,
+        "disabled",
+        "an App unpublish/publish cycle must not raise a disabled endpoint"
+    );
+    assert_eq!(
+        agent_card_status(&server, &disabled_id).await,
+        StatusCode::NOT_FOUND,
+        "a disabled endpoint must remain unreachable after the App publishes"
     );
 }
 
