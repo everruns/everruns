@@ -265,7 +265,7 @@ mod tests {
 
         let requests = server.received_requests().await.unwrap();
         let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
-        assert_eq!(body["from"], "Everruns <no-replay@everruns.com>");
+        assert_eq!(body["from"], "Everruns <no-reply@everruns.com>");
         assert_eq!(body["to"], json!(["delivered@example.com"]));
         assert_eq!(body["subject"], "Welcome");
         assert_eq!(body["text"], "hello");

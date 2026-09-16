@@ -20,9 +20,7 @@ pub mod resend;
 #[cfg(feature = "email-resend")]
 pub use resend::{ResendEmailConfig, ResendEmailSender};
 
-// Intentional current product sender. Keep this as `no-replay`, not `no-reply`,
-// until the verified sender identity changes.
-pub const SYSTEM_EMAIL_FROM: &str = "no-replay@everruns.com";
+pub const SYSTEM_EMAIL_FROM: &str = "no-reply@everruns.com";
 const SYSTEM_EMAIL_FROM_NAME: &str = "Everruns";
 
 pub type EmailResult<T> = std::result::Result<T, EmailError>;

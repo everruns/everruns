@@ -43,7 +43,7 @@ turn, so the execution kernel carries none of it):
 
 Messages support:
 
-- fixed system sender: `no-replay@everruns.com` (current verified sender identity)
+- fixed system sender: `no-reply@everruns.com`
 - `to`
 - subject
 - template-rendered HTML and plain text body
@@ -93,7 +93,7 @@ The first concrete implementation is `ResendEmailSender`.
 Provider behavior:
 
 - Sends mail through Resend `POST /emails`.
-- Always sends from `Everruns <no-replay@everruns.com>`.
+- Always sends from `Everruns <no-reply@everruns.com>`.
 - Uses the `Idempotency-Key` header when `EmailMessage.idempotency_key` is set.
 
 The Resend API key is a deployment secret. It must be injected by the deployment environment, not stored in repo or database records. The Resend account must have `everruns.com` verified for sending.
