@@ -53,6 +53,19 @@ export async function unpublishApp(appId: string): Promise<App> {
   return response.data;
 }
 
+/// Per-endpoint publish (EVE-1007). `app.status` no longer gates ingress on its
+/// own — `channel.status` does — so publishing one endpoint leaves its siblings
+/// where they were.
+export async function publishChannel(appId: string, channelId: string): Promise<AppChannel> {
+  const response = await api.post<AppChannel>(`/v1/apps/${appId}/channels/${channelId}/publish`);
+  return response.data;
+}
+
+export async function unpublishChannel(appId: string, channelId: string): Promise<AppChannel> {
+  const response = await api.post<AppChannel>(`/v1/apps/${appId}/channels/${channelId}/unpublish`);
+  return response.data;
+}
+
 // Channel CRUD
 
 export async function addChannel(appId: string, req: AddChannelRequest): Promise<AppChannel> {

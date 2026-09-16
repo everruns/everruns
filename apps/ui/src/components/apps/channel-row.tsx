@@ -13,6 +13,7 @@ import {
 import { SlackIcon as Slack } from "@/components/icons/slack-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -81,12 +82,24 @@ function channelName(channel: AppChannel): string {
   return getChannelTypeDisplayName(channel.channel_type);
 }
 
-function channelSubline(channel: AppChannel, app: App): React.ReactNode {
-  const statusText = !channel.enabled
-    ? "Paused"
-    : app.status === "published"
-      ? "Active"
-      : "Active when published";
+/// What the endpoint's own lifecycle says, which is what ingress reads
+/// (EVE-1007). `app.status` is deliberately not consulted: publishing one
+/// endpoint no longer publishes its siblings, so reading the App here would
+/// show a row as live that is not.
+function endpointStatusText(channel: AppChannel): string {
+  if (!channel.enabled) return "Paused";
+  switch (channel.status) {
+    case "live":
+      return "Live";
+    case "disabled":
+      return "Paused";
+    default:
+      return "Draft — not accepting traffic";
+  }
+}
+
+function channelSubline(channel: AppChannel, _app: App): React.ReactNode {
+  const statusText = endpointStatusText(channel);
 
   if (channel.channel_type === "schedule") {
     const config = channel.channel_config as ScheduleChannelConfig;
@@ -100,7 +113,7 @@ function channelSubline(channel: AppChannel, app: App): React.ReactNode {
   return (
     <>
       {getChannelTypeDisplayName(channel.channel_type)} · {relativeTime(lastInvokedAt)} ·{" "}
-      {channel.enabled ? "Enabled" : "Disabled"}
+      {statusText}
     </>
   );
 }
@@ -149,6 +162,9 @@ export function ChannelRow({
   expanded,
   onToggle,
   onRunNow,
+  onPublishChange,
+  publishPending = false,
+  usePanel,
   configureHref,
   timeline = [],
 }: {
@@ -157,24 +173,38 @@ export function ChannelRow({
   expanded: boolean;
   onToggle: () => void;
   onRunNow?: () => void;
+  /// Per-endpoint publish (EVE-1007). Omitted where the caller has no write
+  /// path — the App detail page keeps its App-level switch.
+  onPublishChange?: (publish: boolean) => void;
+  publishPending?: boolean;
+  /// "How do I call this" for this endpoint specifically. Rendered inside the
+  /// expanded row rather than a separate tab, so the snippet can carry this
+  /// endpoint's real URL instead of a placeholder.
+  usePanel?: React.ReactNode;
   configureHref: string;
   timeline?: TimelineBin[];
 }) {
   const Icon = iconFor(channel.channel_type);
-  const canRunNow =
-    !!onRunNow &&
-    channel.channel_type === "schedule" &&
-    channel.enabled &&
-    app.status === "published";
+  const isLive = channel.enabled && channel.status === "live";
+  const canRunNow = !!onRunNow && channel.channel_type === "schedule" && isLive;
+  const panelId = `endpoint-panel-${channel.id}`;
 
   return (
     <div className="border bg-card">
-      <div className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_120px_120px_48px] md:items-center">
+      <div
+        className={
+          onPublishChange
+            ? "grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_120px_120px_96px_48px] md:items-center"
+            : "grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_120px_120px_48px] md:items-center"
+        }
+      >
         <button
           type="button"
           onClick={onToggle}
           className="min-w-0 text-left"
-          aria-label={`Toggle ${channelName(channel)} details`}
+          aria-expanded={expanded}
+          aria-controls={panelId}
+          aria-label={`${expanded ? "Collapse" : "Expand"} ${channelName(channel)} details`}
         >
           <div className="flex min-w-0 items-start gap-3">
             <span className="flex size-9 shrink-0 items-center justify-center border bg-background">
@@ -184,8 +214,8 @@ export function ChannelRow({
               <div className="flex flex-wrap items-center gap-2">
                 <p className="truncate font-medium">{channelName(channel)}</p>
                 <Badge variant="outline">{getChannelTypeDisplayName(channel.channel_type)}</Badge>
-                <Badge variant={channel.enabled ? "default" : "secondary"}>
-                  {channel.enabled ? "active" : "disabled"}
+                <Badge variant={isLive ? "default" : "secondary"}>
+                  {isLive ? "live" : !channel.enabled ? "disabled" : "draft"}
                 </Badge>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">{channelSubline(channel, app)}</p>
@@ -207,6 +237,23 @@ export function ChannelRow({
           <p className="mt-1 text-sm">0</p>
         </div>
         <MiniTimeline runs={timeline} length={12} className="hidden md:flex" />
+        {onPublishChange && (
+          <div className="flex items-center gap-2">
+            <Switch
+              id={`endpoint-publish-${channel.id}`}
+              checked={isLive}
+              onCheckedChange={onPublishChange}
+              disabled={publishPending || !channel.enabled}
+              aria-label={`${isLive ? "Unpublish" : "Publish"} ${channelName(channel)}`}
+            />
+            <label
+              htmlFor={`endpoint-publish-${channel.id}`}
+              className="text-xs font-medium uppercase text-muted-foreground"
+            >
+              Live
+            </label>
+          </div>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger
             className={buttonVariants({ variant: "ghost", size: "icon" })}
@@ -226,7 +273,7 @@ export function ChannelRow({
         </DropdownMenu>
       </div>
       {expanded && (
-        <div className="border-t bg-muted/20 px-4 py-3">
+        <div id={panelId} className="border-t bg-muted/20 px-4 py-3">
           <div className="grid gap-3 text-sm md:grid-cols-3">
             <div>
               <p className="text-xs font-medium uppercase text-muted-foreground">Configuration</p>
@@ -246,6 +293,7 @@ export function ChannelRow({
               </Link>
             </div>
           </div>
+          {usePanel && <div className="mt-4 border-t pt-4">{usePanel}</div>}
         </div>
       )}
     </div>
