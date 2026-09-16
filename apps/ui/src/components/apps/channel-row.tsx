@@ -193,9 +193,16 @@ export function ChannelRow({
     <div className="border bg-card">
       <div
         className={
+          // Four fixed columns plus a rail left roughly 130px for the name at
+          // an ordinary 1280px window, which truncated "Webhook endpoint" to
+          // "W." and stacked its badges. The metric columns — both of which
+          // read 0 until run aggregation lands — are held back until there is
+          // width for them; the name, status and actions are what the row is
+          // for. The publish switch shares the actions cell for the same
+          // reason.
           onPublishChange
-            ? "grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_120px_120px_96px_48px] md:items-center"
-            : "grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_120px_120px_48px] md:items-center"
+            ? "grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_88px] 2xl:grid-cols-[minmax(0,1fr)_140px_120px_120px_88px] md:items-center"
+            : "grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_48px] 2xl:grid-cols-[minmax(0,1fr)_140px_120px_120px_48px] md:items-center"
         }
       >
         <button
@@ -232,45 +239,40 @@ export function ChannelRow({
               : relativeTime(channel.last_invoked_at ?? null)}
           </p>
         </div>
-        <div>
+        <div className="hidden 2xl:block">
           <p className="text-xs font-medium uppercase text-muted-foreground">Runs · 24h</p>
           <p className="mt-1 text-sm">0</p>
         </div>
-        <MiniTimeline runs={timeline} length={12} className="hidden md:flex" />
-        {onPublishChange && (
-          <div className="flex items-center gap-2">
+        <MiniTimeline runs={timeline} length={12} className="hidden 2xl:flex" />
+        <div className="flex items-center justify-end gap-1">
+          {onPublishChange && (
             <Switch
-              id={`endpoint-publish-${channel.id}`}
               checked={isLive}
               onCheckedChange={onPublishChange}
               disabled={publishPending || !channel.enabled}
               aria-label={`${isLive ? "Unpublish" : "Publish"} ${channelName(channel)}`}
             />
-            <label
-              htmlFor={`endpoint-publish-${channel.id}`}
-              className="text-xs font-medium uppercase text-muted-foreground"
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className={buttonVariants({ variant: "ghost", size: "icon" })}
+              aria-label="Channel actions"
             >
-              Live
-            </label>
-          </div>
-        )}
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            className={buttonVariants({ variant: "ghost", size: "icon" })}
-            aria-label="Channel actions"
-          >
-            <MoreHorizontal className="size-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuPositioner>
-            <DropdownMenuContent>
-              <DropdownMenuItem render={<Link href={configureHref} />}>Configure</DropdownMenuItem>
-              <DropdownMenuItem onClick={onRunNow} disabled={!canRunNow}>
-                <Play className="size-4" />
-                Run now
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenuPositioner>
-        </DropdownMenu>
+              <MoreHorizontal className="size-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuPositioner>
+              <DropdownMenuContent>
+                <DropdownMenuItem render={<Link href={configureHref} />}>
+                  Configure
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onRunNow} disabled={!canRunNow}>
+                  <Play className="size-4" />
+                  Run now
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenuPositioner>
+          </DropdownMenu>
+        </div>
       </div>
       {expanded && (
         <div id={panelId} className="border-t bg-muted/20 px-4 py-3">

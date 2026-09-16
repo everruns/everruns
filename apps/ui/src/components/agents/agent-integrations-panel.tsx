@@ -7,6 +7,7 @@ import { Plus } from "lucide-react";
 import { usePublishChannel, useUnpublishChannel, useUpdateApp } from "@/hooks/use-apps";
 import { useResumeAgentExposures, useSuspendAgentExposures } from "@/hooks/use-agents";
 import { useAgentEndpoints, isTriggerChannel } from "@/hooks/use-agent-endpoints";
+import { useAgentTriggers } from "@/hooks/use-agent-triggers";
 import { usePolicies } from "@/hooks/use-policies";
 import { triggerChannel } from "@/lib/api/apps";
 import { queryKeys } from "@/lib/query-keys";
@@ -33,12 +34,20 @@ import type { Agent } from "@/lib/api/types";
 import type { AgentEndpoint } from "@/hooks/use-agent-endpoints";
 import { pluralize } from "@/lib/formatting";
 
-function buildStats(endpoints: AgentEndpoint[], suspended: boolean): StatStripStats {
+function buildStats(
+  endpoints: AgentEndpoint[],
+  triggerCount: number,
+  suspended: boolean,
+): StatStripStats {
   const live = endpoints.filter(
     ({ channel }) => channel.enabled && channel.status === "live",
   ).length;
-  const triggers = endpoints.filter(({ channel }) => isTriggerChannel(channel)).length;
-  const doors = endpoints.length - triggers;
+  // Triggers come from two places while the migration is in flight: native
+  // agent triggers, and the schedule channels that predate them. Counting only
+  // the latter reported "0 triggers" for an agent that plainly had one.
+  const scheduleChannels = endpoints.filter(({ channel }) => isTriggerChannel(channel)).length;
+  const triggers = triggerCount + scheduleChannels;
+  const doors = endpoints.length - scheduleChannels;
 
   let health: string;
   let healthSub: string;
@@ -77,6 +86,7 @@ function buildStats(endpoints: AgentEndpoint[], suspended: boolean): StatStripSt
 export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
   const queryClient = useQueryClient();
   const { endpoints, isLoading } = useAgentEndpoints(agent.id);
+  const { data: triggers = [] } = useAgentTriggers(agent.id);
   const { can } = usePolicies("apps");
   const publishChannel = usePublishChannel();
   const unpublishChannel = useUnpublishChannel();
@@ -96,7 +106,10 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
     },
   });
 
-  const stats = useMemo(() => buildStats(endpoints, suspended), [endpoints, suspended]);
+  const stats = useMemo(
+    () => buildStats(endpoints, triggers.length, suspended),
+    [endpoints, suspended, triggers.length],
+  );
 
   // An endpoint whose App row still carries the agent identity. Every App of
   // this agent should agree, so the first one is the one the control edits.
