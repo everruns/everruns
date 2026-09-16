@@ -33,7 +33,7 @@ import type {
   SlackChannelConfig,
   WebhookChannelConfig,
 } from "@/lib/api/types";
-import { getChannelTypeDisplayName } from "@/lib/app-channels";
+import { getChannelTypeDisplayName, getEndpointLifecyclePresentation } from "@/lib/app-channels";
 
 function iconFor(kind: ChannelType) {
   switch (kind) {
@@ -82,30 +82,14 @@ function channelName(channel: AppChannel): string {
   return getChannelTypeDisplayName(channel.channel_type);
 }
 
-/// What the endpoint's own lifecycle says, which is what ingress reads
-/// (EVE-1007). `app.status` is deliberately not consulted: publishing one
-/// endpoint no longer publishes its siblings, so reading the App here would
-/// show a row as live that is not.
-function endpointStatusText(channel: AppChannel): string {
-  if (!channel.enabled) return "Paused";
-  switch (channel.status) {
-    case "live":
-      return "Live";
-    case "disabled":
-      return "Paused";
-    default:
-      return "Draft — not accepting traffic";
-  }
-}
-
 function channelSubline(channel: AppChannel, _app: App): React.ReactNode {
-  const statusText = endpointStatusText(channel);
+  const { description } = getEndpointLifecyclePresentation(channel);
 
   if (channel.channel_type === "schedule") {
     const config = channel.channel_config as ScheduleChannelConfig;
     return (
       <>
-        Schedule · <CronLabel expr={config.cron_expression} tz={config.timezone} /> · {statusText}
+        Schedule · <CronLabel expr={config.cron_expression} tz={config.timezone} /> · {description}
       </>
     );
   }
@@ -113,7 +97,7 @@ function channelSubline(channel: AppChannel, _app: App): React.ReactNode {
   return (
     <>
       {getChannelTypeDisplayName(channel.channel_type)} · {relativeTime(lastInvokedAt)} ·{" "}
-      {statusText}
+      {description}
     </>
   );
 }
@@ -185,7 +169,8 @@ export function ChannelRow({
   timeline?: TimelineBin[];
 }) {
   const Icon = iconFor(channel.channel_type);
-  const isLive = channel.enabled && channel.status === "live";
+  const lifecycle = getEndpointLifecyclePresentation(channel);
+  const { isLive } = lifecycle;
   const canRunNow = !!onRunNow && channel.channel_type === "schedule" && isLive;
   const panelId = `endpoint-panel-${channel.id}`;
 
@@ -221,9 +206,7 @@ export function ChannelRow({
               <div className="flex flex-wrap items-center gap-2">
                 <p className="truncate font-medium">{channelName(channel)}</p>
                 <Badge variant="outline">{getChannelTypeDisplayName(channel.channel_type)}</Badge>
-                <Badge variant={isLive ? "default" : "secondary"}>
-                  {isLive ? "live" : !channel.enabled ? "disabled" : "draft"}
-                </Badge>
+                <Badge variant={isLive ? "default" : "secondary"}>{lifecycle.label}</Badge>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">{channelSubline(channel, app)}</p>
             </div>

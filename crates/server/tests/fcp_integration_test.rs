@@ -798,6 +798,28 @@ async fn fcp_endpoint_channels_isolate_rate_limits_and_session_cookies() {
         .assert_status(StatusCode::CREATED)
         .json();
     let second_channel_id = second_channel["id"].as_str().unwrap();
+    assert_eq!(second_channel["status"], "draft");
+
+    let second_path = format!("/v1/e/{second_channel_id}/fcp");
+    send_fcp_post_to_path(
+        &server,
+        &second_path,
+        "unpublished endpoint",
+        vec![("content-type", "text/plain")],
+    )
+    .await
+    .assert_status(StatusCode::NOT_FOUND);
+
+    server
+        .post(
+            &format!(
+                "/v1/apps/{}/channels/{second_channel_id}/publish",
+                app.public_id
+            ),
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::OK);
 
     let first_path = format!("/v1/e/{first_channel_id}/fcp");
     let first = send_fcp_post_to_path(

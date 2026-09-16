@@ -1,12 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Pencil, Play, Radio, Trash2 } from "lucide-react";
 import { useApp } from "@/hooks/use-apps";
 import { usePolicies } from "@/hooks/use-policies";
-import { deleteChannel, triggerChannel, updateChannel } from "@/lib/api/apps";
+import {
+  deleteChannel,
+  publishChannel,
+  triggerChannel,
+  unpublishChannel,
+  updateChannel,
+} from "@/lib/api/apps";
 import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +42,7 @@ import {
   type SectionTabItem,
 } from "@/components/layout";
 import type { ScheduleChannelConfig } from "@/lib/api/types";
-import { getChannelTypeDisplayName } from "@/lib/app-channels";
+import { getChannelTypeDisplayName, getEndpointLifecyclePresentation } from "@/lib/app-channels";
 import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
 function channelTitle(state: ChannelFormState): string {
@@ -74,8 +80,10 @@ export function ChannelEditor({
   const formStateKind = formState?.kind;
   const isReadOnly = isReadOnlyStatus(app?.status);
   const canManage = !policiesLoading && can("app.manage") && !isReadOnly;
+  const canDangerous = !policiesLoading && can("app.dangerous") && !isReadOnly;
   const canRunNow =
     canManage && formState?.kind === "schedule" && formState.enabled && app?.status === "published";
+  const lifecycle = channel ? getEndpointLifecyclePresentation(channel) : null;
 
   useEffect(() => {
     if (app && !policiesLoading && !canManage) router.replace(nav.returnHref);
@@ -117,6 +125,16 @@ export function ChannelEditor({
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.apps.detail(appId) }),
   });
+  const togglePublished = useMutation({
+    mutationFn: (publish: boolean) => {
+      if (!canDangerous) throw new Error("Channel publishing is not available for this app");
+      return publish ? publishChannel(appId, channelId) : unpublishChannel(appId, channelId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps.detail(appId) });
+    },
+  });
 
   const removeChannel = useMutation({
     mutationFn: () => {
@@ -138,25 +156,7 @@ export function ChannelEditor({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.apps.detail(appId) }),
   });
 
-  const subline = useMemo(() => {
-    if (!formState || !channel) return "";
-    if (formState.kind === "schedule") {
-      const config = channel.channel_config as ScheduleChannelConfig;
-      return (
-        <>
-          Schedule · <CronLabel expr={config.cron_expression} tz={config.timezone} /> ·{" "}
-          {!formState.enabled
-            ? "Paused"
-            : app?.status === "published"
-              ? "Active"
-              : "Active when published"}
-        </>
-      );
-    }
-    return `${getChannelTypeDisplayName(formState.kind)} · ${formState.enabled ? "Enabled" : "Disabled"}`;
-  }, [app?.status, channel, formState]);
-
-  if (isLoading || policiesLoading || !formState)
+  if (isLoading || policiesLoading)
     return <div className="container mx-auto p-6">Loading channel...</div>;
   if (!app || !channel) {
     return (
@@ -169,6 +169,8 @@ export function ChannelEditor({
       />
     );
   }
+  if (!formState || !lifecycle)
+    return <div className="container mx-auto p-6">Loading channel...</div>;
 
   const tabItems: SectionTabItem[] = [
     ...(formState.kind === "schedule" ? [{ value: "schedule", label: "Schedule" }] : []),
@@ -176,6 +178,16 @@ export function ChannelEditor({
     { value: "session", label: "Session" },
     { value: "runs", label: "Runs" },
   ];
+  let subline: React.ReactNode = `${getChannelTypeDisplayName(formState.kind)} · ${lifecycle.description}`;
+  if (formState.kind === "schedule") {
+    const config = channel.channel_config as ScheduleChannelConfig;
+    subline = (
+      <>
+        Schedule · <CronLabel expr={config.cron_expression} tz={config.timezone} /> ·{" "}
+        {lifecycle.description}
+      </>
+    );
+  }
 
   return (
     <PageContainer>
@@ -190,9 +202,7 @@ export function ChannelEditor({
               <Pencil className="size-3" />
               Editing
             </Badge>
-            <Badge variant={formState.enabled ? "default" : "secondary"}>
-              {formState.enabled ? "active" : "paused"}
-            </Badge>
+            <Badge variant={lifecycle.isLive ? "default" : "secondary"}>{lifecycle.label}</Badge>
           </>
         }
         description={subline}
@@ -205,6 +215,14 @@ export function ChannelEditor({
             >
               <Check className="size-4" />
               {saveChannel.isPending ? "Saving..." : "Save"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => togglePublished.mutate(!lifecycle.isLive)}
+              disabled={!canDangerous || !formState.enabled || togglePublished.isPending}
+            >
+              {lifecycle.isLive ? "Unpublish" : "Publish"}
             </Button>
             <Button
               type="button"

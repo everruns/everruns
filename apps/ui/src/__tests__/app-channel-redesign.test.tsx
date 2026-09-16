@@ -9,6 +9,7 @@ import {
 } from "@/components/apps/channel-form";
 import { ChannelRow } from "@/components/apps/channel-row";
 import type { App, AppChannel } from "@/lib/api/types";
+import { getEndpointLifecyclePresentation } from "@/lib/app-channels";
 
 const app: App = {
   id: "app_123",
@@ -196,6 +197,14 @@ describe("app channel redesign", () => {
     expect(
       runNow.closest("[aria-disabled]") ?? runNow.closest("[disabled]") ?? runNow,
     ).toHaveAttribute("data-disabled");
+  });
+
+  it("presents enabled draft endpoints as draft instead of active", () => {
+    expect(getEndpointLifecyclePresentation(draftChannel)).toEqual({
+      label: "draft",
+      description: "Draft — not accepting traffic",
+      isLive: false,
+    });
   });
 
   // The publish switch is the row's only write path for liveness, and it must

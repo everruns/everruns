@@ -1,10 +1,29 @@
 import type {
   AgUiToolVisibility,
+  AppChannel,
   ChannelType,
   InvocationSessionMode,
   SessionStrategy,
   SlackReplyMode,
 } from "@/lib/api/types";
+
+export interface EndpointLifecyclePresentation {
+  label: "live" | "disabled" | "draft";
+  description: "Live" | "Paused" | "Draft — not accepting traffic";
+  isLive: boolean;
+}
+
+export function getEndpointLifecyclePresentation(
+  channel: Pick<AppChannel, "enabled" | "status">,
+): EndpointLifecyclePresentation {
+  if (!channel.enabled) {
+    return { label: "disabled", description: "Paused", isLive: false };
+  }
+  if (channel.status === "live") {
+    return { label: "live", description: "Live", isLive: true };
+  }
+  return { label: "draft", description: "Draft — not accepting traffic", isLive: false };
+}
 
 export function getChannelTypeDisplayName(channelType: ChannelType): string {
   switch (channelType) {
