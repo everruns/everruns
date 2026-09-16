@@ -4652,7 +4652,7 @@ async fn create_agent_synthesis_fixture_schema(conn: &mut PgConnection) {
             display_name TEXT,
             system_prompt TEXT NOT NULL,
             harness_id UUID NOT NULL,
-            tags TEXT[] NOT NULL DEFAULT '{{}}',
+            tags TEXT[] NOT NULL DEFAULT '{}',
             status VARCHAR(50) NOT NULL DEFAULT 'active'
         );
         CREATE UNIQUE INDEX idx_agents_org_name
