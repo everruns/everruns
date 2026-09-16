@@ -2,6 +2,8 @@
 // Routes:
 //   GET/POST   /v1/orgs/{org}/invites
 //   DELETE     /v1/orgs/{org}/invites/{inviteId}
+//   GET        /v1/me/invitations
+//   POST       /v1/me/invitations/{inviteId}/accept
 //   POST       /v1/invites/{token}/accept
 
 import { api } from "./client";
@@ -33,8 +35,18 @@ export interface AcceptedInvitation {
   role: OrgRole;
 }
 
+export interface PendingInvitation {
+  id: string;
+  org_name: string;
+  role: OrgRole;
+}
+
 interface InvitationsListResponse {
   data: Invitation[];
+}
+
+interface PendingInvitationsListResponse {
+  data: PendingInvitation[];
 }
 
 export async function listInvites(org: string): Promise<Invitation[]> {
@@ -61,6 +73,18 @@ export async function revokeInvite(org: string, inviteId: string): Promise<void>
 export async function acceptInvite(token: string): Promise<AcceptedInvitation> {
   const response = await api.post<AcceptedInvitation>(
     `/v1/invites/${encodeURIComponent(token)}/accept`,
+  );
+  return response.data;
+}
+
+export async function listPendingInvitations(): Promise<PendingInvitation[]> {
+  const response = await api.get<PendingInvitationsListResponse>("/v1/me/invitations");
+  return response.data.data;
+}
+
+export async function acceptPendingInvitation(inviteId: string): Promise<AcceptedInvitation> {
+  const response = await api.post<AcceptedInvitation>(
+    `/v1/me/invitations/${encodeURIComponent(inviteId)}/accept`,
   );
   return response.data;
 }
