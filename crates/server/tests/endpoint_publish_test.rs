@@ -490,3 +490,46 @@ async fn non_live_rejections_are_indistinguishable_from_not_found() {
         "a suspended agent must look exactly like an endpoint that was never issued"
     );
 }
+
+/// A channel added to an App that is *already published* must come up live.
+///
+/// This is a regression guard for a real backend divergence: the in-memory
+/// backend derived a new endpoint's status from `enabled` alone and produced
+/// `draft`, leaving the endpoint unreachable, while PostgreSQL — which selects
+/// the App's status in the same statement as the insert — produced `live`.
+#[tokio::test]
+async fn a_channel_added_to_a_published_app_comes_up_live() {
+    let server = TestServer::new().await;
+    let s = create_siblings(&server, "added-after-publish").await;
+
+    server
+        .post(&format!("/v1/apps/{}/publish", s.app_id), json!({}))
+        .await
+        .assert_status(StatusCode::OK);
+
+    let added: Value = server
+        .post(
+            &format!("/v1/apps/{}/a2a-channels", s.app_id),
+            json!({
+                "session_mode": "shared_session",
+                "message": "Handle this A2A request",
+                "agent_card_name": "Added after publish",
+                "agent_card_description": "Endpoint created while the App was already published",
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let added_id = channel_id_of(&added);
+
+    assert_eq!(
+        channel_status(&server, &s.app_id, &added_id).await,
+        "live",
+        "an endpoint created on a published App must be live, not stranded in draft"
+    );
+    assert_eq!(
+        agent_card_status(&server, &added_id).await,
+        StatusCode::OK,
+        "and it must actually be reachable"
+    );
+}
