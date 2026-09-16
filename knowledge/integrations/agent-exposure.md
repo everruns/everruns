@@ -394,8 +394,8 @@ rest proceeds.
    (shared agents), or does the endpoint always live with its agent?
 3. ~~Is `Exposures` an ops page or a nav-level concept?~~ **Settled by EVE-1010: nav-level,
    under Operational, and the word is user-facing.** It is the only cross-agent surface
-   the design keeps, so it decides whether "exposure" becomes user vocabulary. Settled by
-   EVE-1010.
+   the design keeps, so it was the surface that decided whether "exposure" became user
+   vocabulary.
 4. ~~EVE-978 (suggested prompts) picks a source per surface.~~ Settled: **agent config**,
    falling back to the harness, resolved by `everruns_platform::exposure::resolve_starters`
    over the `starters` field Platform Chat already uses. Endpoint config was not available
