@@ -178,6 +178,10 @@ export const queryKeys = {
     invitations: (orgId: string) => ["organization", orgId, "invitations"] as const,
   },
 
+  invitations: {
+    pending: () => ["invitations", "pending"] as const,
+  },
+
   // Agent Identity Connection queries
   identityConnections: {
     all: ["identity-connections"] as const,

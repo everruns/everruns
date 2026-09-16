@@ -13,7 +13,7 @@ mod test_harness;
 
 use chrono::Utc;
 use serde_json::json;
-use sqlx::PgPool;
+use sqlx::{Connection, PgConnection, PgPool};
 use uuid::Uuid;
 
 use everruns_core::message_filter::MessageQuery;
@@ -4634,4 +4634,267 @@ async fn expired_session_schedule_claim_is_reclaimable_pg() {
         "a schedule whose claim lease expired must be reclaimable, or an instance \
          that died mid-fire strands it forever"
     );
+}
+
+const SYNTHESIZE_AGENTLESS_APPS_MIGRATION: &str =
+    include_str!("../migrations/134_synthesize_agents_for_agentless_apps.sql");
+
+async fn create_agent_synthesis_fixture_schema(conn: &mut PgConnection) {
+    sqlx::raw_sql(
+        "
+        CREATE SCHEMA eve999_agent_synthesis;
+        SET search_path TO eve999_agent_synthesis, public;
+        CREATE TABLE agents (
+            id UUID PRIMARY KEY,
+            org_id BIGINT NOT NULL,
+            public_id TEXT NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            display_name TEXT,
+            system_prompt TEXT NOT NULL,
+            harness_id UUID NOT NULL,
+            tags TEXT[] NOT NULL DEFAULT '{{}}',
+            status VARCHAR(50) NOT NULL DEFAULT 'active'
+        );
+        CREATE UNIQUE INDEX idx_agents_org_name
+            ON agents (org_id, name) WHERE status != 'deleted';
+        CREATE TABLE agent_capabilities (
+            agent_id UUID NOT NULL REFERENCES agents(id),
+            capability_id VARCHAR(50) NOT NULL
+        );
+        CREATE TABLE apps (
+            id UUID PRIMARY KEY,
+            public_id TEXT NOT NULL,
+            org_id BIGINT NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            harness_id UUID NOT NULL,
+            agent_id UUID REFERENCES agents(id)
+        );
+        ",
+    )
+    .execute(conn)
+    .await
+    .expect("create isolated Agent synthesis schema");
+}
+
+async fn connect_to_fixture_schema(database_url: &str) -> PgConnection {
+    let mut conn = PgConnection::connect(database_url)
+        .await
+        .expect("connect to PostgreSQL fixture");
+    sqlx::raw_sql("SET search_path TO eve999_agent_synthesis, public")
+        .execute(&mut conn)
+        .await
+        .expect("select Agent synthesis fixture schema");
+    conn
+}
+
+#[tokio::test]
+async fn agent_synthesis_migration_avoids_preclaimed_names_and_honors_name_limit() {
+    let database_url = get_database_url();
+    let mut conn = PgConnection::connect(&database_url)
+        .await
+        .expect("connect to PostgreSQL");
+    create_agent_synthesis_fixture_schema(&mut conn).await;
+    let harness_id = Uuid::now_v7();
+    let preclaimed_agent_id = Uuid::now_v7();
+    let preclaimed_app_id = Uuid::now_v7();
+    let preclaimed_name = format!("preclaimed-agent-{}", preclaimed_app_id.simple());
+    sqlx::query(
+        "
+        INSERT INTO agents (
+            id, org_id, public_id, name, display_name, system_prompt, harness_id
+        ) VALUES ($1, 7, $2, $3, 'Preclaimed', '', $4)
+        ",
+    )
+    .bind(preclaimed_agent_id)
+    .bind(format!("agent_{}", preclaimed_agent_id.simple()))
+    .bind(&preclaimed_name)
+    .bind(harness_id)
+    .execute(&mut conn)
+    .await
+    .expect("preclaim the old deterministic Agent name");
+    for (app_id, app_name) in [
+        (preclaimed_app_id, "Preclaimed".to_string()),
+        (Uuid::now_v7(), "x".repeat(255)),
+    ] {
+        sqlx::query(
+            "
+            INSERT INTO apps (id, public_id, org_id, name, harness_id, agent_id)
+            VALUES ($1, $2, 7, $3, $4, NULL)
+            ",
+        )
+        .bind(app_id)
+        .bind(format!("app_{}", app_id.simple()))
+        .bind(app_name)
+        .bind(harness_id)
+        .execute(&mut conn)
+        .await
+        .expect("insert grandfathered App fixture");
+    }
+
+    sqlx::raw_sql(SYNTHESIZE_AGENTLESS_APPS_MIGRATION)
+        .execute(&mut conn)
+        .await
+        .expect("run Agent synthesis migration");
+
+    let synthesized: Vec<(Uuid, Uuid, String, Vec<String>, String, Uuid)> = sqlx::query_as(
+        "
+        SELECT app.id, agent.id, agent.name, agent.tags, agent.system_prompt, agent.harness_id
+        FROM apps AS app
+        JOIN agents AS agent ON agent.id = app.agent_id
+        ORDER BY app.id
+        ",
+    )
+    .fetch_all(&mut conn)
+    .await
+    .expect("load synthesized Agents");
+    assert_eq!(synthesized.len(), 2);
+    for (_, agent_id, name, tags, system_prompt, synthesized_harness_id) in synthesized {
+        assert!(name.len() <= 64, "Agent name exceeded contract: {name}");
+        assert!(name.ends_with(&format!("-agent-{}", agent_id.simple())));
+        assert_ne!(name, preclaimed_name);
+        assert_eq!(tags[0], "synthesized-from-app");
+        assert_eq!(system_prompt, "");
+        assert_eq!(synthesized_harness_id, harness_id);
+    }
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM agent_capabilities")
+            .fetch_one(&mut conn)
+            .await
+            .expect("count synthesized Agent capabilities"),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM apps WHERE agent_id IS NULL")
+            .fetch_one(&mut conn)
+            .await
+            .expect("count agent-less Apps"),
+        0
+    );
+    sqlx::raw_sql("DROP SCHEMA eve999_agent_synthesis CASCADE")
+        .execute(&mut conn)
+        .await
+        .expect("drop Agent synthesis fixture schema");
+}
+
+#[tokio::test]
+async fn agent_synthesis_migration_waits_for_concurrent_app_assignment() {
+    let database_url = get_database_url();
+    let mut setup = PgConnection::connect(&database_url)
+        .await
+        .expect("connect to PostgreSQL");
+    create_agent_synthesis_fixture_schema(&mut setup).await;
+    let harness_id = Uuid::now_v7();
+    let app_id = Uuid::now_v7();
+    let assigned_agent_id = Uuid::now_v7();
+    sqlx::query(
+        "
+        INSERT INTO agents (
+            id, org_id, public_id, name, display_name, system_prompt, harness_id
+        ) VALUES ($1, 7, $2, 'assigned-agent', 'Assigned', '', $3)
+        ",
+    )
+    .bind(assigned_agent_id)
+    .bind(format!("agent_{}", assigned_agent_id.simple()))
+    .bind(harness_id)
+    .execute(&mut setup)
+    .await
+    .expect("insert concurrently assigned Agent");
+    sqlx::query(
+        "
+        INSERT INTO apps (id, public_id, org_id, name, harness_id, agent_id)
+        VALUES ($1, $2, 7, 'Concurrent', $3, NULL)
+        ",
+    )
+    .bind(app_id)
+    .bind(format!("app_{}", app_id.simple()))
+    .bind(harness_id)
+    .execute(&mut setup)
+    .await
+    .expect("insert concurrent App fixture");
+
+    let mut writer = connect_to_fixture_schema(&database_url).await;
+    sqlx::query("BEGIN")
+        .execute(&mut writer)
+        .await
+        .expect("begin App assignment");
+    sqlx::query("UPDATE apps SET agent_id = $1 WHERE id = $2")
+        .bind(assigned_agent_id)
+        .bind(app_id)
+        .execute(&mut writer)
+        .await
+        .expect("assign Agent before migration snapshot");
+
+    let mut migration_conn = connect_to_fixture_schema(&database_url).await;
+    let migration_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut migration_conn)
+        .await
+        .expect("load migration connection pid");
+    let migration = tokio::spawn(async move {
+        sqlx::query("BEGIN")
+            .execute(&mut migration_conn)
+            .await
+            .expect("begin migration transaction");
+        sqlx::raw_sql(SYNTHESIZE_AGENTLESS_APPS_MIGRATION)
+            .execute(&mut migration_conn)
+            .await
+            .expect("run migration after concurrent assignment");
+        sqlx::query("COMMIT")
+            .execute(&mut migration_conn)
+            .await
+            .expect("commit migration transaction");
+    });
+
+    let lock_wait_observed = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let waiting: bool = sqlx::query_scalar(
+                "
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM pg_locks
+                    WHERE pid = $1
+                      AND mode = 'ShareRowExclusiveLock'
+                      AND NOT granted
+                )
+                ",
+            )
+            .bind(migration_pid)
+            .fetch_one(&mut setup)
+            .await
+            .expect("inspect migration lock");
+            if waiting {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .is_ok();
+    assert!(
+        lock_wait_observed,
+        "migration did not wait for the active App writer"
+    );
+
+    sqlx::query("COMMIT")
+        .execute(&mut writer)
+        .await
+        .expect("commit concurrent App assignment");
+    migration.await.expect("join migration task");
+
+    let linked_agent_id: Uuid = sqlx::query_scalar("SELECT agent_id FROM apps WHERE id = $1")
+        .bind(app_id)
+        .fetch_one(&mut setup)
+        .await
+        .expect("load App Agent after migration");
+    assert_eq!(linked_agent_id, assigned_agent_id);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM agents")
+            .fetch_one(&mut setup)
+            .await
+            .expect("count Agents after migration"),
+        1
+    );
+    sqlx::raw_sql("DROP SCHEMA eve999_agent_synthesis CASCADE")
+        .execute(&mut setup)
+        .await
+        .expect("drop Agent synthesis concurrency schema");
 }
