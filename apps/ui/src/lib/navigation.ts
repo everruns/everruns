@@ -22,6 +22,7 @@ import {
   ListTodo,
   MessageCircle,
   MessageSquare,
+  Radio,
   Server,
   Settings,
   Shield,
@@ -61,6 +62,11 @@ export const defaultChatsNavigation: NavigationItem[] = [
 
 export const defaultOperationalNavigation: NavigationItem[] = [
   { name: "Sessions", href: "/sessions", icon: MessageSquare },
+  // "What in this org is reachable from outside right now" is a question
+  // security and ops ask, and no agent page can answer it — it shows one agent
+  // (EVE-1010). It sits here rather than under Building because reading it is
+  // an operational act; the editing it links to lives on the agent.
+  { name: "Exposures", href: "/exposures", icon: Radio },
   { name: "Reports", href: "/reports", icon: ChartColumn },
 ];
 
