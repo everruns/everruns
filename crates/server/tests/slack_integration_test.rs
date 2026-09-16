@@ -1508,6 +1508,15 @@ async fn test_slack_legacy_routes_reject_multiple_enabled_channels() {
         .assert_status(StatusCode::CREATED)
         .json();
     let second_channel_id = second_channel["id"].as_str().unwrap();
+
+    let legacy = server
+        .get(&format!("/v1/apps/{}/slack/manifest", app.public_id))
+        .await
+        .assert_status(StatusCode::CONFLICT);
+    assert_eq!(
+        legacy.json::<Value>()["detail"],
+        "Multiple enabled Slack channels; use an endpoint-scoped /v1/e/{channel_id}/slack/... URL"
+    );
     server
         .post(
             &format!(
@@ -1518,15 +1527,6 @@ async fn test_slack_legacy_routes_reject_multiple_enabled_channels() {
         )
         .await
         .assert_success();
-
-    let legacy = server
-        .get(&format!("/v1/apps/{}/slack/manifest", app.public_id))
-        .await
-        .assert_status(StatusCode::CONFLICT);
-    assert_eq!(
-        legacy.json::<Value>()["detail"],
-        "Multiple enabled Slack channels; use an endpoint-scoped /v1/e/{channel_id}/slack/... URL"
-    );
 
     server
         .get(&format!("/v1/e/{first_channel_id}/slack/manifest"))
