@@ -112,7 +112,7 @@ impl Database {
             r#"
             SELECT a.id, a.org_id, a.public_id, a.name, a.description, a.harness_id, a.agent_id, a.agent_version_policy, a.agent_version_id, a.agent_identity_id, a.owner_principal_id, a.resolved_owner_user_id, a.channel_type, a.channel_config, a.channel_config_encrypted, a.status, a.published_at, a.created_at, a.updated_at, a.archived_at, a.deleted_at
             FROM apps a
-            JOIN app_channels ac ON ac.app_id = a.id
+            JOIN agent_endpoints ac ON ac.app_id = a.id
             WHERE ac.public_id = $1
             "#,
         )

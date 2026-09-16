@@ -10,9 +10,11 @@ tags:
 ---
 # Agent Exposure (retiring the App abstraction)
 
-> Status: **Accepted, not implemented.** The direction is decided; the phases are
-> tracked as separate issues in Linear (OSS project, EVE team), EVE-998 through EVE-1011,
-> and none has landed.
+> Status: **Accepted, partially implemented.** The direction is decided; the phases are
+> tracked as separate issues in Linear (OSS project, EVE team), EVE-998 through EVE-1011.
+> Phases 0, 1 and 4 have landed: App is hidden from the product surface, grandfathered
+> agent-less Apps have synthesized Agents, and channels now live in `agent_endpoints`
+> owned by an Agent.
 > [apps.md](apps.md) remains the accurate description of what exists today and stays
 > authoritative until the final phase removes it.
 >
@@ -317,9 +319,14 @@ rest proceeds.
    change. Fixes the AG-UI addressing gap on its own.
 3. **Reserve the new tag prefixes** (EVE-1002) before anything writes them, and keep the old ones
    reserved forever. Must precede phase 4.
-4. **`agent_endpoints`** (EVE-1003) with an `agent_id` FK, backfilled from `app_channels ⋈ apps`.
-   `sessions.app_id` gains `endpoint_id`, and budget `subject_type` gains `agent_endpoint`
-   (`agent` already exists), in EVE-1004.
+4. **`agent_endpoints`** (EVE-1003, landed) with an `agent_id` FK, backfilled from
+   `app_channels ⋈ apps`. `app_channels` is now a read-only view over `agent_endpoints`,
+   kept for one release; every writer targets the table. `status`, `agent_identity_id`,
+   `agent_version_policy`/`agent_version_id`, and `owner_principal_id`/
+   `resolved_owner_user_id` are first-class endpoint columns. The `auth` config did not
+   move: it lives inside the channel-config encryption envelope, so lifting it is its own
+   migration (EVE-1019). `sessions.app_id` gains `endpoint_id`, and budget `subject_type`
+   gains `agent_endpoint` (`agent` already exists), in EVE-1004.
 5. **Unify the binding enums** (EVE-1005); move webhook from endpoint to trigger type
    (EVE-1006).
 6. **Per-endpoint publish**, `agent.exposures_suspended`, stop reading `App.status`

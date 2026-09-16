@@ -425,9 +425,11 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "channel_config_encrypted",
         id_column: "id",
     },
-    // App channel config (multi-channel) — same secrets, per-channel
+    // Endpoint channel config (multi-channel) — same secrets, per-endpoint.
+    // Re-parented from `app_channels` onto `agent_endpoints` (EVE-1003); the
+    // `app_channels` view is read-only and cannot be rotated through.
     EncryptedColumn {
-        table: "app_channels",
+        table: "agent_endpoints",
         column: "channel_config_encrypted",
         id_column: "id",
     },

@@ -1247,6 +1247,7 @@ jobs:
         if: ${{ matrix.shard == 'domain' }}
         run: |
           cargo test -p everruns-server \
+            --test agent_endpoints_migration_test \
             --test app_api_integration_test \
             --test command_policy_enforcement_test \
             --test fcp_integration_test \

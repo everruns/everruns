@@ -1,0 +1,455 @@
+//! Tenancy and reuse evidence for re-parenting channels from App to Agent
+//! (EVE-1003, migration 135).
+//!
+//! The migration moves `app_channels` rows into `agent_endpoints`, owned by an
+//! Agent, and leaves `app_channels` behind as a compatibility view. The risk it
+//! carries is not that endpoints stop being readable — it is that the
+//! session-ownership anchor moves and `shared_session` reuse silently stops
+//! keying on the values that stop cross-org and cross-app adoption.
+//!
+//! These tests pin the reuse keys (org + app + owner) and the tag-containment
+//! semantics (`tags @> $tags`) against the real repository lookups, so a later
+//! phase that re-homes the tags cannot quietly relax them.
+//!
+//! See knowledge/integrations/agent-exposure.md "Invariants that must not move",
+//! knowledge/integrations/app-invocation-channels.md, and TM-AUTHZ-009 /
+//! TM-A2A-007.
+//!
+//! Run with: cargo test -p everruns-server --test agent_endpoints_migration_test -- --test-threads=1
+
+mod test_harness;
+
+use everruns_provider::typed_id::PrincipalId;
+use everruns_server::storage::Database;
+use sqlx::{PgPool, Row};
+use test_harness::get_database_url;
+use uuid::Uuid;
+
+async fn pool() -> PgPool {
+    PgPool::connect(&get_database_url())
+        .await
+        .expect("Failed to connect to PostgreSQL")
+}
+
+/// One isolated org + agent + app + endpoint + owner principal, seeded directly
+/// so the test exercises the migrated schema rather than the App create path.
+struct Fixture {
+    org_id: i64,
+    app_id: Uuid,
+    endpoint_id: Uuid,
+    owner_principal_id: Uuid,
+    workspace_id: Uuid,
+}
+
+fn hex32() -> String {
+    Uuid::new_v4().simple().to_string()
+}
+
+async fn seed(pool: &PgPool, org_name: &str, app_status: &str) -> Fixture {
+    let org_id: i64 = sqlx::query_scalar(
+        "INSERT INTO organizations (public_id, name) VALUES ($1, $2) RETURNING org_id",
+    )
+    .bind(format!("org_{}", hex32()))
+    .bind(format!("{org_name}-{}", hex32()))
+    .fetch_one(pool)
+    .await
+    .expect("seed organization");
+
+    let owner_principal_id = Uuid::now_v7();
+    sqlx::query("INSERT INTO principals (id, public_id, org_id, kind) VALUES ($1, $2, $3, 'user')")
+        .bind(owner_principal_id)
+        .bind(format!("principal_{}", hex32()))
+        .bind(org_id)
+        .execute(pool)
+        .await
+        .expect("seed principal");
+
+    let workspace_id = Uuid::now_v7();
+    sqlx::query("INSERT INTO workspaces (id, org_id, public_id, name) VALUES ($1, $2, $3, $4)")
+        .bind(workspace_id)
+        .bind(org_id)
+        .bind(format!("wsp_{}", hex32()))
+        .bind(format!("workspace-{}", hex32()))
+        .execute(pool)
+        .await
+        .expect("seed workspace");
+
+    let harness_id = Uuid::now_v7();
+    sqlx::query("INSERT INTO harnesses (id, org_id, name) VALUES ($1, $2, $3)")
+        .bind(harness_id)
+        .bind(org_id)
+        .bind(format!("harness-{}", hex32()))
+        .execute(pool)
+        .await
+        .expect("seed harness");
+
+    let agent_id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO agents (id, org_id, public_id, name, system_prompt, harness_id)
+         VALUES ($1, $2, $3, $4, '', $5)",
+    )
+    .bind(agent_id)
+    .bind(org_id)
+    .bind(format!("agent_{}", hex32()))
+    .bind(format!("agent-{}", hex32()))
+    .bind(harness_id)
+    .execute(pool)
+    .await
+    .expect("seed agent");
+
+    let app_id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO apps (id, org_id, public_id, name, harness_id, agent_id, status,
+                           agent_version_policy, owner_principal_id, channel_type, channel_config)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'default', $8, 'slack', '{}'::jsonb)",
+    )
+    .bind(app_id)
+    .bind(org_id)
+    .bind(format!("app_{}", hex32()))
+    .bind(format!("app-{}", hex32()))
+    .bind(harness_id)
+    .bind(agent_id)
+    .bind(app_status)
+    .bind(owner_principal_id)
+    .execute(pool)
+    .await
+    .expect("seed app");
+
+    let endpoint_id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO agent_endpoints (id, agent_id, app_id, public_id, channel_type,
+                                      channel_config, enabled, status, agent_version_policy,
+                                      owner_principal_id)
+         VALUES ($1, $2, $3, $4, 'slack', '{}'::jsonb, true, 'live', 'default', $5)",
+    )
+    .bind(endpoint_id)
+    .bind(agent_id)
+    .bind(app_id)
+    .bind(format!("appchan_{}", hex32()))
+    .bind(owner_principal_id)
+    .execute(pool)
+    .await
+    .expect("seed endpoint");
+
+    Fixture {
+        org_id,
+        app_id,
+        endpoint_id,
+        owner_principal_id,
+        workspace_id,
+    }
+}
+
+async fn seed_session(pool: &PgPool, fixture: &Fixture, owner: Uuid, tags: &[&str]) -> Uuid {
+    let session_id = Uuid::now_v7();
+    let tags: Vec<String> = tags.iter().map(|t| (*t).to_string()).collect();
+    sqlx::query(
+        "INSERT INTO sessions (id, org_id, workspace_id, app_id, owner_principal_id, tags, status)
+         VALUES ($1, $2, $3, $4, $5, $6, 'started')",
+    )
+    .bind(session_id)
+    .bind(fixture.org_id)
+    .bind(fixture.workspace_id)
+    .bind(fixture.app_id)
+    .bind(owner)
+    .bind(&tags)
+    .execute(pool)
+    .await
+    .expect("seed session");
+    session_id
+}
+
+/// Acceptance: every `app_channels` row resolves to an `agent_endpoints` row
+/// with the same id and a non-null `agent_id`. Asserted over the whole database
+/// so any rows an earlier test or the migration backfill produced are covered,
+/// not just the ones this test seeds.
+#[tokio::test]
+async fn every_app_channel_has_an_endpoint_with_an_agent() {
+    let pool = pool().await;
+    let _fixture = seed(&pool, "endpoint-invariant", "published").await;
+
+    let orphans: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)
+         FROM app_channels ac
+         LEFT JOIN agent_endpoints ae ON ae.id = ac.id
+         WHERE ae.id IS NULL OR ae.agent_id IS NULL",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("count orphaned channels");
+
+    assert_eq!(
+        orphans, 0,
+        "every app_channels row must have an agent_endpoints row with the same id and an agent_id"
+    );
+}
+
+/// The compatibility view must expose the former `app_channels` shape verbatim,
+/// because App read paths still select these columns by name.
+#[tokio::test]
+async fn app_channels_view_mirrors_the_endpoint_row() {
+    let pool = pool().await;
+    let fixture = seed(&pool, "endpoint-view", "published").await;
+
+    let row = sqlx::query(
+        "SELECT id, app_id, public_id, channel_type, channel_config,
+                channel_config_encrypted, durable_schedule_id, enabled, created_at, updated_at
+         FROM app_channels WHERE id = $1",
+    )
+    .bind(fixture.endpoint_id)
+    .fetch_one(&pool)
+    .await
+    .expect("read channel through the compatibility view");
+
+    assert_eq!(row.get::<Uuid, _>("id"), fixture.endpoint_id);
+    assert_eq!(row.get::<Uuid, _>("app_id"), fixture.app_id);
+    assert_eq!(row.get::<String, _>("channel_type"), "slack");
+    assert!(row.get::<bool, _>("enabled"));
+}
+
+/// `shared_session` reuse keys on org + app + owner + tag containment. After the
+/// re-parenting it must still adopt the session it adopted before.
+#[tokio::test]
+async fn shared_session_reuse_still_matches_after_reparenting() {
+    let pool = pool().await;
+    let db = Database::new(pool.clone());
+    let fixture = seed(&pool, "endpoint-reuse", "published").await;
+
+    let routing_tags = [
+        "__internal:app_channel:shared".to_string(),
+        format!("app_channel:{}", fixture.endpoint_id),
+    ];
+    let expected = seed_session(
+        &pool,
+        &fixture,
+        fixture.owner_principal_id,
+        &[
+            "__internal:app_channel:shared",
+            &format!("app_channel:{}", fixture.endpoint_id),
+            "slack:channel:C123",
+        ],
+    )
+    .await;
+
+    let found = db
+        .find_app_session_by_tags_and_owner(
+            fixture.org_id,
+            fixture.app_id,
+            PrincipalId::from(fixture.owner_principal_id),
+            &routing_tags,
+        )
+        .await
+        .expect("reuse lookup");
+
+    assert_eq!(
+        found.map(|s| s.id.uuid()),
+        Some(expected),
+        "the shared session must still be adopted after channels are re-parented onto the agent"
+    );
+}
+
+/// TM-AUTHZ-009: a session carrying the same surface tags but owned by a
+/// different principal must never be adopted. This is what makes
+/// `owner_principal_id` load-bearing on the endpoint rather than collapsible
+/// onto the agent.
+#[tokio::test]
+async fn session_owned_by_another_principal_is_not_adopted() {
+    let pool = pool().await;
+    let db = Database::new(pool.clone());
+    let fixture = seed(&pool, "endpoint-owner", "published").await;
+
+    let other_principal = Uuid::now_v7();
+    sqlx::query("INSERT INTO principals (id, public_id, org_id, kind) VALUES ($1, $2, $3, 'user')")
+        .bind(other_principal)
+        .bind(format!("principal_{}", hex32()))
+        .bind(fixture.org_id)
+        .execute(&pool)
+        .await
+        .expect("seed second principal");
+
+    let tag = format!("app_channel:{}", fixture.endpoint_id);
+    // Same org, same app, same surface tags — only the owner differs.
+    seed_session(&pool, &fixture, other_principal, &[&tag]).await;
+
+    let found = db
+        .find_app_session_by_tags_and_owner(
+            fixture.org_id,
+            fixture.app_id,
+            PrincipalId::from(fixture.owner_principal_id),
+            &[tag],
+        )
+        .await
+        .expect("reuse lookup");
+
+    assert!(
+        found.is_none(),
+        "a session owned by a different principal must not be adopted even when surface tags overlap"
+    );
+}
+
+/// TM-A2A-007: reuse must not cross an org boundary, even with identical tags
+/// and an identically-shaped app.
+#[tokio::test]
+async fn cross_org_reuse_fails() {
+    let pool = pool().await;
+    let db = Database::new(pool.clone());
+    let mine = seed(&pool, "endpoint-org-a", "published").await;
+    let theirs = seed(&pool, "endpoint-org-b", "published").await;
+
+    let tag = "app_channel:shared-surface".to_string();
+    seed_session(&pool, &theirs, theirs.owner_principal_id, &[&tag]).await;
+
+    let found = db
+        .find_app_session_by_tags_and_owner(
+            mine.org_id,
+            theirs.app_id,
+            PrincipalId::from(theirs.owner_principal_id),
+            &[tag],
+        )
+        .await
+        .expect("reuse lookup");
+
+    assert!(
+        found.is_none(),
+        "a session in another org must not be adopted (TM-A2A-007)"
+    );
+}
+
+/// Reuse must not cross an app boundary within the same org and owner.
+#[tokio::test]
+async fn cross_app_reuse_fails() {
+    let pool = pool().await;
+    let db = Database::new(pool.clone());
+    let first = seed(&pool, "endpoint-app-a", "published").await;
+
+    // A second app in the same org, owned by the same principal.
+    let second_app = Uuid::now_v7();
+    let harness_id: Uuid = sqlx::query_scalar("SELECT harness_id FROM apps WHERE id = $1")
+        .bind(first.app_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read harness");
+    let agent_id: Uuid = sqlx::query_scalar("SELECT agent_id FROM apps WHERE id = $1")
+        .bind(first.app_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read agent");
+    sqlx::query(
+        "INSERT INTO apps (id, org_id, public_id, name, harness_id, agent_id, status,
+                           agent_version_policy, owner_principal_id, channel_type, channel_config)
+         VALUES ($1, $2, $3, $4, $5, $6, 'published', 'default', $7, 'slack', '{}'::jsonb)",
+    )
+    .bind(second_app)
+    .bind(first.org_id)
+    .bind(format!("app_{}", hex32()))
+    .bind(format!("app-{}", hex32()))
+    .bind(harness_id)
+    .bind(agent_id)
+    .bind(first.owner_principal_id)
+    .execute(&pool)
+    .await
+    .expect("seed second app");
+
+    let tag = format!("app_channel:{}", first.endpoint_id);
+    seed_session(&pool, &first, first.owner_principal_id, &[&tag]).await;
+
+    let found = db
+        .find_app_session_by_tags_and_owner(
+            first.org_id,
+            second_app,
+            PrincipalId::from(first.owner_principal_id),
+            &[tag],
+        )
+        .await
+        .expect("reuse lookup");
+
+    assert!(
+        found.is_none(),
+        "a session owned by a different app must not be adopted (TM-AUTHZ-009)"
+    );
+}
+
+/// Containment, not equality: a candidate must carry *every* routing tag. A
+/// session holding only a subset must not be adopted, which is what stops a
+/// caller from being matched by seeding one broad tag.
+#[tokio::test]
+async fn reuse_requires_containment_of_every_routing_tag() {
+    let pool = pool().await;
+    let db = Database::new(pool.clone());
+    let fixture = seed(&pool, "endpoint-containment", "published").await;
+
+    let endpoint_tag = format!("app_channel:{}", fixture.endpoint_id);
+    // Session carries only the first of the two tags the lookup requires.
+    seed_session(
+        &pool,
+        &fixture,
+        fixture.owner_principal_id,
+        &[&endpoint_tag],
+    )
+    .await;
+
+    let required = [endpoint_tag.clone(), "slack:thread:T999".to_string()];
+    let found = db
+        .find_app_session_by_tags_and_owner(
+            fixture.org_id,
+            fixture.app_id,
+            PrincipalId::from(fixture.owner_principal_id),
+            &required,
+        )
+        .await
+        .expect("reuse lookup");
+
+    assert!(
+        found.is_none(),
+        "reuse requires the candidate to contain every routing tag, not merely overlap"
+    );
+
+    // The superset case still matches, so containment did not become equality.
+    let found = db
+        .find_app_session_by_tags_and_owner(
+            fixture.org_id,
+            fixture.app_id,
+            PrincipalId::from(fixture.owner_principal_id),
+            &[endpoint_tag],
+        )
+        .await
+        .expect("reuse lookup");
+    assert!(
+        found.is_some(),
+        "a candidate carrying a superset of the routing tags must still be adopted"
+    );
+}
+
+/// An endpoint is owned by an agent, so creating one against an agent-less App
+/// must fail loudly rather than write a row with no owner.
+#[tokio::test]
+async fn endpoint_creation_requires_the_app_to_have_an_agent() {
+    let pool = pool().await;
+    let db = Database::new(pool.clone());
+    let fixture = seed(&pool, "endpoint-no-agent", "draft").await;
+
+    sqlx::query("UPDATE apps SET agent_id = NULL WHERE id = $1")
+        .bind(fixture.app_id)
+        .execute(&pool)
+        .await
+        .expect("clear agent");
+
+    let result = db
+        .create_app_channel(
+            fixture.app_id,
+            everruns_server::storage::CreateAppChannelRow {
+                public_id: format!("appchan_{}", hex32()),
+                channel_type: "slack".to_string(),
+                channel_config: serde_json::json!({}),
+                channel_config_encrypted: None,
+                durable_schedule_id: None,
+                enabled: true,
+            },
+        )
+        .await;
+
+    assert!(
+        result.is_err(),
+        "creating an endpoint on an agent-less App must fail; an endpoint must be owned by an agent"
+    );
+}

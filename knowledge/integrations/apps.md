@@ -26,7 +26,7 @@ Top-level deployment entity. Composes existing building blocks (Harness and Agen
 - Each newly created or updated App references exactly one Agent
 - The storage field remains nullable solely to grandfather existing agent-less Apps. Those rows are not backfilled or rewritten and remain runtime-compatible, but any later App update must assign an Agent.
 - When `FEATURE_AGENT_VERSIONS` is enabled, each App may choose an Agent version policy: `default`, `latest`, or `pinned`. See [agent-versions.md](../runtime-resources/agent-versions.md).
-- Each App has zero or more **Channels** (stored in `app_channels` table)
+- Each App has zero or more **Channels** (rows in `agent_endpoints`, read back through the `app_channels` view)
 - Apps have a publish lifecycle: `draft` → `published` → `draft`
 - Apps also participate in the default building-block lifecycle: `active/draft/published -> archived -> deleted`
 - Only published apps accept incoming requests
@@ -35,7 +35,9 @@ Top-level deployment entity. Composes existing building blocks (Harness and Agen
 
 A distribution channel attached to an App. Each channel has its own type, config, and enabled flag.
 
-- Stored in `app_channels` table (one-to-many with `apps`)
+- Stored in `agent_endpoints`, owned by an Agent and still carrying the owning `app_id`
+  (one-to-many with `apps`). `app_channels` remains as a read-only compatibility view for
+  one release; see [agent-exposure.md](agent-exposure.md).
 - Uses dual-ID pattern: `appchan_` prefix
 - `channel_type` is optional at create time; when present it creates the first channel automatically
 - Channels can be added, updated, or removed via `/v1/apps/{app_id}/channels`
