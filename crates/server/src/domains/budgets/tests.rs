@@ -30,7 +30,15 @@ async fn create_session_with_owner(
     agent_id: Option<AgentId>,
     resolved_owner_user_id: Option<Uuid>,
 ) -> SessionRow {
-    create_session_with_owner_and_tags(db, org_id, agent_id, resolved_owner_user_id, vec![]).await
+    create_session_with_owner_tags_and_endpoint(
+        db,
+        org_id,
+        agent_id,
+        resolved_owner_user_id,
+        vec![],
+        None,
+    )
+    .await
 }
 
 async fn create_session_with_owner_and_tags(
@@ -40,12 +48,31 @@ async fn create_session_with_owner_and_tags(
     resolved_owner_user_id: Option<Uuid>,
     tags: Vec<String>,
 ) -> SessionRow {
+    create_session_with_owner_tags_and_endpoint(
+        db,
+        org_id,
+        agent_id,
+        resolved_owner_user_id,
+        tags,
+        None,
+    )
+    .await
+}
+
+async fn create_session_with_owner_tags_and_endpoint(
+    db: &Arc<StorageBackend>,
+    org_id: i64,
+    agent_id: Option<AgentId>,
+    resolved_owner_user_id: Option<Uuid>,
+    tags: Vec<String>,
+    endpoint_id: Option<Uuid>,
+) -> SessionRow {
     db.create_session(CreateSessionRow {
         source: everruns_platform::SessionSource::Api,
         workspace_id: None,
         org_id,
         app_id: None,
-        endpoint_id: None,
+        endpoint_id,
         harness_id: None,
         agent_id,
         agent_version_id: None,
@@ -148,6 +175,132 @@ async fn create_detached_session(db: &Arc<StorageBackend>, origin: &SessionRow) 
         budget_root_session_id: Some(origin.id),
     };
     db.create_session(input).await.unwrap()
+}
+
+async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
+    let (svc, db) = make_service();
+    let harness_id = everruns_provider::typed_id::HarnessId::new();
+    let agent = db
+        .create_agent(
+            1,
+            CreateAgentRow {
+                public_id: AgentId::new().to_string(),
+                name: format!("{channel_type} budget test agent"),
+                display_name: None,
+                description: None,
+                intro_markdown: None,
+                short_description: None,
+                starters: serde_json::json!([]),
+                system_prompt: String::new(),
+                default_model_id: None,
+                harness_id,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+                is_built_in: false,
+            },
+        )
+        .await
+        .unwrap();
+    let endpoint_public_id = format!("appchan_{}", Uuid::new_v4().simple());
+    let app = db
+        .create_app(
+            1,
+            CreateAppRow {
+                public_id: format!("app_{}", Uuid::new_v4().simple()),
+                name: format!("{channel_type} budget test app"),
+                description: None,
+                harness_id: harness_id.uuid(),
+                agent_id: Some(agent.id.uuid()),
+                agent_version_policy: "default".into(),
+                agent_version_id: None,
+                agent_identity_id: None,
+                owner_principal_id: PrincipalId::new(),
+                resolved_owner_user_id: None,
+                channel_type: None,
+                channel_config: serde_json::json!({}),
+                channel_config_encrypted: None,
+            },
+        )
+        .await
+        .unwrap();
+    let endpoint = db
+        .create_app_channel(
+            app.id,
+            CreateAppChannelRow {
+                public_id: endpoint_public_id.clone(),
+                channel_type: channel_type.into(),
+                channel_config: serde_json::json!({}),
+                channel_config_encrypted: None,
+                durable_schedule_id: None,
+                enabled: true,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        db.get_agent_endpoint_public_id(2, endpoint.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let session = create_session_with_owner_tags_and_endpoint(
+        &db,
+        1,
+        Some(agent.id),
+        None,
+        vec![format!("{channel_type}:endpoint:{endpoint_public_id}")],
+        Some(endpoint.id),
+    )
+    .await;
+    let budget = db
+        .create_budget(CreateBudgetRow {
+            org_id: session.org_id,
+            subject_type: "agent_endpoint".into(),
+            subject_id: endpoint_public_id,
+            currency: "tokens".into(),
+            limit: 150.0,
+            soft_limit: None,
+            period: None,
+            metadata: None,
+        })
+        .await
+        .unwrap();
+    let data = LlmGenerationData::success(
+        vec![],
+        vec![],
+        Some("endpoint session spent its budget".into()),
+        vec![],
+        "gpt-5.4-mini".into(),
+        Some("openai".into()),
+        Some(TokenUsage::new(100, 50)),
+        None,
+        None,
+    );
+
+    svc.on_event(&Event::new(session.id, EventContext::empty(), data))
+        .await;
+
+    let updated = db
+        .get_budget(session.org_id, budget.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.balance, 0.0);
+    assert_eq!(updated.status, "exhausted");
+
+    let result = svc
+        .check_budgets_for_session(session.org_id, &session.id.to_string(), None)
+        .await;
+    assert!(result.should_stop());
+    assert_eq!(
+        result.budget_id,
+        Some(everruns_provider::typed_id::BudgetId::from_uuid(budget.id))
+    );
 }
 
 fn make_budget_row(limit: f64, balance: f64, soft_limit: Option<f64>, currency: &str) -> BudgetRow {
@@ -1242,6 +1395,16 @@ async fn test_list_budgets_for_session_hierarchy_includes_app_and_channel_from_t
     let subjects: Vec<&str> = budgets.iter().map(|b| b.subject_type.as_str()).collect();
     assert!(subjects.contains(&"app"), "subjects: {subjects:?}");
     assert!(subjects.contains(&"app_channel"), "subjects: {subjects:?}");
+}
+
+#[tokio::test]
+async fn test_slack_endpoint_budget_exhausts_and_stops_session() {
+    assert_endpoint_budget_exhausts_and_stops("slack").await;
+}
+
+#[tokio::test]
+async fn test_fcp_endpoint_budget_exhausts_and_stops_session() {
+    assert_endpoint_budget_exhausts_and_stops("fcp").await;
 }
 
 #[tokio::test]

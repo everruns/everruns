@@ -163,6 +163,29 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    pub async fn get_agent_endpoint_public_id(
+        &self,
+        org_id: i64,
+        endpoint_id: Uuid,
+    ) -> Result<Option<String>> {
+        let channel = self.app_channels.read().get(&endpoint_id).cloned();
+        let Some(channel) = channel else {
+            return Ok(None);
+        };
+        let agent_id = self
+            .apps
+            .read()
+            .get(&channel.app_id)
+            .and_then(|app| app.agent_id);
+        let belongs_to_org = agent_id.is_some_and(|agent_id| {
+            self.agents
+                .read()
+                .values()
+                .any(|agent| agent.id.uuid() == agent_id && agent.org_id == org_id)
+        });
+        Ok(belongs_to_org.then_some(channel.public_id))
+    }
+
     pub async fn update_app_channel(
         &self,
         id: Uuid,

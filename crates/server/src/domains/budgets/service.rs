@@ -46,13 +46,7 @@ struct BudgetScope {
     /// Public ID of the originating app channel, extracted from session tags
     /// (`app_channel:<channel_id>`). `None` for ad-hoc sessions.
     app_channel_subject_id: Option<String>,
-    /// Public ID of the endpoint the session arrived through (EVE-1004).
-    ///
-    /// Same value as `app_channel_subject_id` during the transition: migration
-    /// 137 retyped each `app_channel` budget in place, so the identifier did
-    /// not move — only the subject type's name did. Kept as its own field so
-    /// the two can diverge when `app_channel` is deleted (EVE-1011) without
-    /// another round of call-site edits.
+    /// Public ID of the endpoint referenced by `sessions.endpoint_id`.
     endpoint_subject_id: Option<String>,
     session_id: Option<uuid::Uuid>,
     user_id: Option<uuid::Uuid>,
@@ -129,7 +123,9 @@ impl BudgetService {
         if let Ok(parsed_session_id) = SessionId::parse(session_id)
             && let Some(session) = self.db.get_session(org_id, parsed_session_id).await?
         {
-            return Ok(Self::scope_from_session(&session, session_id, agent_id));
+            return self
+                .scope_from_session(&session, session_id, agent_id)
+                .await;
         }
 
         Ok(BudgetScope {
@@ -150,14 +146,23 @@ impl BudgetService {
         })
     }
 
-    fn scope_from_session(
+    async fn scope_from_session(
+        &self,
         session: &SessionRow,
         _session_subject_id: &str,
         agent_id_override: Option<&str>,
-    ) -> BudgetScope {
+    ) -> Result<BudgetScope, anyhow::Error> {
         let (app_subject_id, app_channel_subject_id) = extract_app_subjects(&session.tags);
+        let endpoint_subject_id = match session.endpoint_id {
+            Some(endpoint_id) => {
+                self.db
+                    .get_agent_endpoint_public_id(session.org_id, endpoint_id)
+                    .await?
+            }
+            None => None,
+        };
         let root_session_id = session.root_session_id.unwrap_or(session.id);
-        BudgetScope {
+        Ok(BudgetScope {
             // Session-scoped budgets are owned by the root of a delegation
             // tree, so descendants debit and check the same shared pool.
             session_subject_id: root_session_id.to_string(),
@@ -167,14 +172,14 @@ impl BudgetService {
             user_subject_id: session.resolved_owner_user_id.map(|id| id.to_string()),
             org_subject_id: everruns_core::org_public_id_from_internal(session.org_id),
             app_subject_id,
-            endpoint_subject_id: app_channel_subject_id.clone(),
+            endpoint_subject_id,
             app_channel_subject_id,
             session_id: Some(session.id.uuid()),
             user_id: session.resolved_owner_user_id,
             principal_id: Some(session.owner_principal_id.uuid()),
             agent_id: session.agent_id.map(|id| id.uuid()),
             harness_id: session.harness_id.map(|id| id.uuid()),
-        }
+        })
     }
 
     pub async fn list_budgets_for_session_hierarchy(
@@ -278,7 +283,20 @@ impl BudgetService {
         };
 
         let session_public_id = event.session_id.to_string();
-        let scope = Self::scope_from_session(&session, &session_public_id, None);
+        let scope = match self
+            .scope_from_session(&session, &session_public_id, None)
+            .await
+        {
+            Ok(scope) => scope,
+            Err(error) => {
+                error!(
+                    session_id = %event.session_id,
+                    error = %error,
+                    "Failed to resolve session scope for budget tracking"
+                );
+                return;
+            }
+        };
 
         // Find all active budgets in the subject hierarchy
         let budgets = match self

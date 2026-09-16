@@ -4267,6 +4267,14 @@ impl StorageBackend {
         dispatch!(self, get_app_channel_by_public_id, public_id)
     }
 
+    pub async fn get_agent_endpoint_public_id(
+        &self,
+        org_id: i64,
+        endpoint_id: Uuid,
+    ) -> Result<Option<String>> {
+        dispatch!(self, get_agent_endpoint_public_id, org_id, endpoint_id)
+    }
+
     pub async fn update_app_channel(
         &self,
         id: Uuid,

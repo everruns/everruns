@@ -75,9 +75,9 @@ See source files for full definitions:
 
 A spending cap bound to a **subject** (who) in a **currency** (what unit). Multiple budgets per subject allowed; the most restrictive one wins.
 
-**Subject types**: `session`, `app_channel`, `app`, `agent`, `user`, `org`, budgets cascade through the hierarchy from most specific (session) to most general (org). A session's effective budgets include all matching levels.
+**Subject types**: `session`, `agent_endpoint`, `app_channel`, `app`, `agent`, `user`, `org`, budgets cascade through the hierarchy from most specific (session) to most general (org). A session's effective budgets include all matching levels.
 
-`app` and `app_channel` are **gated behind the experimental `app_budgets` feature flag** (`FEATURE_APP_BUDGETS`, auto-enabled in `DeploymentGrade::Dev`). Sessions opt into these levels via the standard tags emitted by the apps domain (`app:<app_id>`, `app_channel:<channel_id>`). The legacy `slack:app:<id>` tag is also recognised for backwards compatibility.
+`agent_endpoint` budgets resolve from the session's structural endpoint reference. Slack and FCP routing tags do not determine budget identity. `app` and `app_channel` are legacy compatibility levels gated behind the experimental `app_budgets` feature flag (`FEATURE_APP_BUDGETS`, auto-enabled in `DeploymentGrade::Dev`). Sessions opt into those legacy levels via the standard tags emitted by the apps domain (`app:<app_id>`, `app_channel:<channel_id>`). The legacy `slack:app:<id>` tag is also recognised for backwards compatibility.
 
 **Currencies**: Strings (not enum), new currencies added without migrations. Built-in: `usd` (via ModelProfile cost lookup), `tokens` (raw count), `credits` (1 credit = 1000 tokens).
 
@@ -127,7 +127,7 @@ INSERT usage_journal row
   │
   ▼
 Look up session → find active budgets in hierarchy
-  (root session → app_channel → app → agent → user → org)
+  (root session → agent endpoint → app_channel → app → agent → user → org)
   │
   ▼ (for each matching budget)
 compute_debit(currency, tokens, cache tokens, model, provider, provider_cost_usd)
@@ -171,7 +171,7 @@ cross-org linkage. Ordinary user forks carry lineage only and remain independent
 budget roots. Detached count caps (`max_active_detached_tasks` /
 `max_total_detached_tasks`) remain an independent admission bound (TM-DOS-030).
 
-**Worker integration**: The worker checks `BudgetCheckResult` between atoms via gRPC. When a budget is `paused` or `exhausted`, the turn loop stops scheduling the next atom. Current implementation resolves the full hierarchy (`root session`, `app_channel`, `app`, `agent`, `user`, `org`) from the session owner and org context before checking.
+**Worker integration**: The worker checks `BudgetCheckResult` between atoms via gRPC. When a budget is `paused` or `exhausted`, the turn loop stops scheduling the next atom. Current implementation resolves the full hierarchy (`root session`, `agent endpoint`, legacy `app_channel`, legacy `app`, `agent`, `user`, `org`) from the session owner and org context before checking.
 
 ## Soft Enforcement: Pause
 
