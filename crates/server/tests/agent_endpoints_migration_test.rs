@@ -453,3 +453,99 @@ async fn endpoint_creation_requires_the_app_to_have_an_agent() {
         "creating an endpoint on an agent-less App must fail; an endpoint must be owned by an agent"
     );
 }
+
+/// The update path writes to `agent_endpoints` rather than the read-only view.
+/// It must preserve endpoint identity and keep the derived `status` column in
+/// step with the `App.status × enabled` pair it is derived from, so the column
+/// does not drift before the publish phase makes it authoritative.
+#[tokio::test]
+async fn updating_an_endpoint_preserves_identity_and_keeps_status_honest() {
+    let pool = pool().await;
+    let db = Database::new(pool.clone());
+    let fixture = seed(&pool, "endpoint-update", "published").await;
+
+    let public_id: String =
+        sqlx::query_scalar("SELECT public_id FROM agent_endpoints WHERE id = $1")
+            .bind(fixture.endpoint_id)
+            .fetch_one(&pool)
+            .await
+            .expect("read public_id");
+
+    // Disabling must drive the derived status to 'disabled'.
+    let updated = db
+        .update_app_channel(
+            fixture.endpoint_id,
+            everruns_server::storage::UpdateAppChannel {
+                channel_config: Some(serde_json::json!({"team_id": "T1"})),
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update endpoint")
+        .expect("endpoint exists");
+
+    assert_eq!(updated.id, fixture.endpoint_id, "row id must not change");
+    assert_eq!(
+        updated.public_id, public_id,
+        "public_id is the ingress identity and must survive an update"
+    );
+    assert!(!updated.enabled);
+
+    let status: String = sqlx::query_scalar("SELECT status FROM agent_endpoints WHERE id = $1")
+        .bind(fixture.endpoint_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read status");
+    assert_eq!(status, "disabled");
+
+    // Re-enabling under a published App must return it to 'live'.
+    db.update_app_channel(
+        fixture.endpoint_id,
+        everruns_server::storage::UpdateAppChannel {
+            enabled: Some(true),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("re-enable endpoint")
+    .expect("endpoint exists");
+
+    let status: String = sqlx::query_scalar("SELECT status FROM agent_endpoints WHERE id = $1")
+        .bind(fixture.endpoint_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read status");
+    assert_eq!(status, "live");
+
+    // The agent and owner the endpoint was created with are untouched by an update.
+    let (agent_id, owner): (Uuid, Uuid) =
+        sqlx::query_as("SELECT agent_id, owner_principal_id FROM agent_endpoints WHERE id = $1")
+            .bind(fixture.endpoint_id)
+            .fetch_one(&pool)
+            .await
+            .expect("read ownership");
+    assert_eq!(owner, fixture.owner_principal_id);
+    assert!(!agent_id.is_nil());
+}
+
+/// Deleting an endpoint removes it from the table and therefore from the view.
+#[tokio::test]
+async fn deleting_an_endpoint_removes_it_from_the_view() {
+    let pool = pool().await;
+    let db = Database::new(pool.clone());
+    let fixture = seed(&pool, "endpoint-delete", "published").await;
+
+    assert!(
+        db.delete_app_channel(fixture.endpoint_id)
+            .await
+            .expect("delete endpoint")
+    );
+
+    let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM app_channels WHERE id = $1")
+        .bind(fixture.endpoint_id)
+        .fetch_one(&pool)
+        .await
+        .expect("count view rows");
+    assert_eq!(remaining, 0);
+}
