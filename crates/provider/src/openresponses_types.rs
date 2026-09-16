@@ -211,6 +211,7 @@ pub struct InputVideoContent {
 /// Content parts in a message (polymorphic).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
+#[non_exhaustive]
 pub enum ContentPart {
     #[serde(rename = "input_text")]
     InputText { text: String },

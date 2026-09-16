@@ -335,26 +335,11 @@ mod tests {
     use wiremock::matchers::{header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
     fn config() -> LlmCallConfig {
-        LlmCallConfig {
-            model: "mai-code-1-flash".into(),
-            temperature: Some(0.25),
-            max_tokens: Some(64),
-            tools: vec![],
-            reasoning_effort: None,
-            reasoning_state: None,
-            speed: None,
-            verbosity: None,
-            metadata: Default::default(),
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: None,
-            driver_options: Default::default(),
-            parallel_tool_calls: Some(false),
-            volatile_suffix_len: 0,
-            extra_headers: vec![],
-            cache_diagnostics: None,
-        }
+        let mut config = LlmCallConfig::new("mai-code-1-flash");
+        config.temperature = Some(0.25);
+        config.max_tokens = Some(64);
+        config.parallel_tool_calls = Some(false);
+        config
     }
 
     #[tokio::test]

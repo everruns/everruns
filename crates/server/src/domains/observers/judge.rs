@@ -204,14 +204,13 @@ impl JudgeClient for LlmJudgeClient {
         else {
             return Ok(None);
         };
-        let provider_config = ProviderConfig {
-            provider: everruns_provider::runtime_provider::ProviderKey::new(&resolved.provider_id),
-            provider_type: driver_id,
-            api_key: Some(runtime_provider.credentials.api_key),
-            base_url: runtime_provider.credentials.base_url,
-            metadata: Default::default(),
-            request_options: runtime_provider.request_options,
-        };
+        let mut provider_config = ProviderConfig::for_provider(
+            everruns_provider::runtime_provider::ProviderKey::new(&resolved.provider_id),
+            driver_id,
+        );
+        provider_config.api_key = Some(runtime_provider.credentials.api_key);
+        provider_config.base_url = runtime_provider.credentials.base_url;
+        provider_config.request_options = runtime_provider.request_options;
         let driver = self.driver_registry.create_chat_driver(&provider_config)?;
 
         let (system, user) = build_judge_messages(rubric, evidence);
@@ -219,29 +218,13 @@ impl JudgeClient for LlmJudgeClient {
             LlmMessage::text(LlmMessageRole::System, system),
             LlmMessage::text(LlmMessageRole::User, user),
         ];
-        let config = LlmCallConfig {
-            speed: None,
-            verbosity: None,
-            model: resolved.model_id,
-            temperature: Some(0.0),
-            max_tokens: Some(700),
-            tools: Vec::new(),
-            reasoning_effort: None,
-            metadata: std::collections::HashMap::from([
-                ("org_id".to_string(), org_id.to_string()),
-                ("scorer".to_string(), "observer_llm_judge".to_string()),
-            ]),
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: None,
-            driver_options: Default::default(),
-            parallel_tool_calls: None,
-            volatile_suffix_len: 0,
-            extra_headers: Vec::new(),
-            cache_diagnostics: None,
-            reasoning_state: None,
-        };
+        let mut config = LlmCallConfig::new(resolved.model_id);
+        config.temperature = Some(0.0);
+        config.max_tokens = Some(700);
+        config.metadata = std::collections::HashMap::from([
+            ("org_id".to_string(), org_id.to_string()),
+            ("scorer".to_string(), "observer_llm_judge".to_string()),
+        ]);
 
         let response = driver
             .chat_completion(

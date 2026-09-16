@@ -32,6 +32,7 @@ pub enum BillingPressureReason {
 /// (`classify_runtime_error_message`) so untyped errors keep working.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum LlmErrorKind {
     /// Invalid or missing credentials, or access denied (401/403, bad API key).
     Authentication,

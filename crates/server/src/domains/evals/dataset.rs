@@ -307,6 +307,10 @@ fn message_text(msg: &Message) -> String {
             // Rendered above via `reasoning_display_text`, ahead of the content
             // parts, so it is not repeated here.
             ContentPart::Reasoning(_) => {}
+            // `ContentPart` is `#[non_exhaustive]`; this arm is required outside
+            // `everruns-core` and is unreachable in-workspace, where every crate
+            // shares one core version.
+            _ => {}
         }
     }
     parts.join("\n")

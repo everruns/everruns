@@ -56,14 +56,13 @@ pub async fn build_embeddings_driver(
         .provider_type
         .parse()
         .expect("DriverId::from_str is infallible");
-    let provider_config = ProviderConfig {
-        provider: everruns_provider::runtime_provider::ProviderKey::new(provider.id.to_string()),
+    let mut provider_config = ProviderConfig::for_provider(
+        everruns_provider::runtime_provider::ProviderKey::new(provider.id.to_string()),
         provider_type,
-        api_key: Some(resolved.credentials.api_key),
-        base_url: resolved.credentials.base_url,
-        metadata: Default::default(),
-        request_options: resolved.request_options,
-    };
+    );
+    provider_config.api_key = Some(resolved.credentials.api_key);
+    provider_config.base_url = resolved.credentials.base_url;
+    provider_config.request_options = resolved.request_options;
     let driver = driver_registry
         .create_embeddings_driver(&provider_config)
         .map_err(|e| anyhow!("failed to build embeddings driver: {e}"))?;

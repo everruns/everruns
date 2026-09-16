@@ -374,14 +374,14 @@ impl GrpcClient {
         let request_options = non_empty_string(response.request_options_json)
             .and_then(|json| serde_json::from_str(&json).ok())
             .unwrap_or_default();
-        Ok(Some(everruns_provider::driver_registry::ProviderConfig {
-            provider: everruns_provider::runtime_provider::ProviderKey::new(provider_id),
+        let mut config = everruns_provider::driver_registry::ProviderConfig::for_provider(
+            everruns_provider::runtime_provider::ProviderKey::new(provider_id),
             provider_type,
-            api_key: non_empty_string(response.api_key),
-            base_url: non_empty_string(response.base_url),
-            metadata: everruns_provider::driver_registry::ProviderMetadata::default(),
-            request_options,
-        }))
+        );
+        config.api_key = non_empty_string(response.api_key);
+        config.base_url = non_empty_string(response.base_url);
+        config.request_options = request_options;
+        Ok(Some(config))
     }
 
     /// Get MCP server info by name prefix (for MCP tool execution)

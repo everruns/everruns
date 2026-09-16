@@ -603,9 +603,10 @@ mod tests {
         }
     }
     fn done(id: &str) -> LlmStreamEvent {
-        LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
-            response_id: Some(id.into()),
-            ..Default::default()
+        LlmStreamEvent::Done(Box::new({
+            let mut metadata = LlmCompletionMetadata::default();
+            metadata.response_id = Some(id.into());
+            metadata
         }))
     }
     fn stream(events: Vec<LlmStreamEvent>) -> LlmResponseStream {

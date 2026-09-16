@@ -431,6 +431,9 @@ impl AnthropicChatDriver {
                             })
                         }
                     }
+                    // `LlmContentPart` is `#[non_exhaustive]`: a part this build
+                    // does not know is dropped rather than failing the request.
+                    _ => None,
                 })
                 .collect(),
         }
@@ -1230,27 +1233,27 @@ impl ChatDriver for AnthropicChatDriver {
                                 let cache_read = *cache_read_tokens.lock().unwrap();
                                 let cache_creation = *cache_creation_tokens.lock().unwrap();
 
-                                Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
-                                    total_tokens: Some(in_tokens + out_tokens),
-                                    prompt_tokens: Some(in_tokens),
-                                    completion_tokens: Some(out_tokens),
-                                    cache_read_tokens: cache_read,
-                                    cache_creation_tokens: cache_creation,
-                                    provider_cost_usd: None,
-                                    model: Some(model),
-                                    finish_reason: finish_reason
+                                Ok(LlmStreamEvent::Done(Box::new({
+                                    let mut metadata = LlmCompletionMetadata::default();
+                                    metadata.total_tokens = Some(in_tokens + out_tokens);
+                                    metadata.prompt_tokens = Some(in_tokens);
+                                    metadata.completion_tokens = Some(out_tokens);
+                                    metadata.cache_read_tokens = cache_read;
+                                    metadata.cache_creation_tokens = cache_creation;
+                                    metadata.model = Some(model);
+                                    metadata.finish_reason = finish_reason
                                         .lock()
                                         .unwrap()
                                         .clone()
-                                        .or_else(|| Some("stop".to_string())),
-                                    retry_metadata: retry_metadata_for_done
-                                        .map(|arc| (*arc).clone()),
-                                    response_id: response_id.lock().unwrap().clone(),
-                                    phase: None,
-                                    cache_diagnostics: diagnostics_payload
+                                        .or_else(|| Some("stop".to_string()));
+                                    metadata.retry_metadata = retry_metadata_for_done
+                                        .map(|arc| (*arc).clone());
+                                    metadata.response_id = response_id.lock().unwrap().clone();
+                                    metadata.cache_diagnostics = diagnostics_payload
                                         .lock()
                                         .unwrap()
-                                        .clone(),
+                                        .clone();
+                                    metadata
                                 })))
                             }
                             "error" => Ok(LlmStreamEvent::Error(
@@ -2281,26 +2284,9 @@ mod tests {
     use everruns_provider::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
 
     fn contract_config(model: &str, max_tokens: Option<u32>) -> LlmCallConfig {
-        LlmCallConfig {
-            model: model.into(),
-            temperature: None,
-            max_tokens,
-            tools: vec![],
-            reasoning_effort: None,
-            reasoning_state: None,
-            metadata: Default::default(),
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: None,
-            driver_options: Default::default(),
-            parallel_tool_calls: None,
-            volatile_suffix_len: 0,
-            extra_headers: vec![],
-            cache_diagnostics: None,
-            speed: None,
-            verbosity: None,
-        }
+        let mut config = LlmCallConfig::new(model);
+        config.max_tokens = max_tokens;
+        config
     }
 
     fn contract_tool(name: &str, deferrable: DeferrablePolicy) -> ToolDefinition {
@@ -2923,26 +2909,8 @@ mod tests {
         use everruns_provider::{Provider, StaticHeaderAuth};
         use wiremock::matchers::{body_json, header, method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
-        let config = LlmCallConfig {
-            model: "claude-test".into(),
-            temperature: None,
-            max_tokens: Some(32),
-            tools: vec![],
-            reasoning_effort: None,
-            reasoning_state: None,
-            metadata: Default::default(),
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: None,
-            driver_options: Default::default(),
-            parallel_tool_calls: None,
-            volatile_suffix_len: 0,
-            extra_headers: vec![],
-            cache_diagnostics: None,
-            speed: None,
-            verbosity: None,
-        };
+        let mut config = LlmCallConfig::new("claude-test");
+        config.max_tokens = Some(32);
         for (status, message, category) in [
             (413, "Request too large", "size"),
             (

@@ -827,19 +827,15 @@ impl ChatDriver for LlmSimDriver {
             if let Some(calls) = tool_calls_tail {
                 tail.push(Ok(LlmStreamEvent::ToolCalls(calls)));
             }
-            tail.push(Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
-                total_tokens: Some(prompt_tokens + completion_tokens),
-                prompt_tokens: Some(prompt_tokens),
-                completion_tokens: Some(completion_tokens),
-                cache_read_tokens: None,
-                cache_creation_tokens: None,
-                provider_cost_usd: None,
-                model: Some(model_name_done),
-                finish_reason: Some("stop".to_string()),
-                retry_metadata: None,
-                response_id: response_id_for_done,
-                phase: None,
-                cache_diagnostics: None,
+            tail.push(Ok(LlmStreamEvent::Done(Box::new({
+                let mut metadata = LlmCompletionMetadata::default();
+                metadata.total_tokens = Some(prompt_tokens + completion_tokens);
+                metadata.prompt_tokens = Some(prompt_tokens);
+                metadata.completion_tokens = Some(completion_tokens);
+                metadata.model = Some(model_name_done);
+                metadata.finish_reason = Some("stop".to_string());
+                metadata.response_id = response_id_for_done;
+                metadata
             }))));
             tail
         };
@@ -1174,26 +1170,7 @@ mod tests {
     }
 
     fn make_config() -> LlmCallConfig {
-        LlmCallConfig {
-            speed: None,
-            verbosity: None,
-            model: "test-model".to_string(),
-            temperature: None,
-            max_tokens: None,
-            tools: vec![],
-            reasoning_effort: None,
-            metadata: std::collections::HashMap::new(),
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: None,
-            driver_options: Default::default(),
-            parallel_tool_calls: None,
-            volatile_suffix_len: 0,
-            extra_headers: Vec::new(),
-            cache_diagnostics: None,
-            reasoning_state: None,
-        }
+        LlmCallConfig::new("test-model")
     }
 
     fn user_message(content: &str) -> LlmMessage {

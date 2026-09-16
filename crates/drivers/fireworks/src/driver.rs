@@ -375,26 +375,11 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn config() -> LlmCallConfig {
-        LlmCallConfig {
-            reasoning_state: None,
-            model: "accounts/fireworks/models/example".into(),
-            temperature: Some(0.25),
-            max_tokens: Some(64),
-            tools: vec![],
-            reasoning_effort: None,
-            speed: None,
-            verbosity: None,
-            metadata: Default::default(),
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: None,
-            driver_options: Default::default(),
-            parallel_tool_calls: Some(false),
-            volatile_suffix_len: 0,
-            extra_headers: vec![],
-            cache_diagnostics: None,
-        }
+        let mut config = LlmCallConfig::new("accounts/fireworks/models/example");
+        config.temperature = Some(0.25);
+        config.max_tokens = Some(64);
+        config.parallel_tool_calls = Some(false);
+        config
     }
 
     #[tokio::test]

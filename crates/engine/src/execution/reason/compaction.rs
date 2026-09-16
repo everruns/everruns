@@ -1,5 +1,4 @@
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
@@ -942,29 +941,14 @@ pub(super) async fn apply_reactive_compaction(
                     configuration_update: None,
                 },
             ];
-            let summary_config = crate::driver_registry::LlmCallConfig {
-                speed: None,
-                verbosity: None,
-                model: settings
+            let mut summary_config = crate::driver_registry::LlmCallConfig::new(
+                settings
                     .summarization_model
                     .clone()
                     .unwrap_or_else(|| context.summarization_model_fallback.to_string()),
-                temperature: Some(0.0),
-                max_tokens: Some(2000),
-                tools: vec![],
-                reasoning_effort: None,
-                metadata: HashMap::new(),
-                previous_response_id: None,
-                provider_opaque_context: None,
-                tool_search: None,
-                prompt_cache: None,
-                driver_options: Default::default(),
-                parallel_tool_calls: None,
-                volatile_suffix_len: 0,
-                extra_headers: Vec::new(),
-                cache_diagnostics: None,
-                reasoning_state: None,
-            };
+            );
+            summary_config.temperature = Some(0.0);
+            summary_config.max_tokens = Some(2000);
 
             match context
                 .chat_driver
