@@ -1586,13 +1586,8 @@ where
         request_id,
     } = request;
 
-    if app.status != AppStatus::Published {
+    if !channel.status.is_live() {
         return Err(CommandError::forbidden("App is not published".to_string()));
-    }
-    if !channel.enabled {
-        return Err(CommandError::forbidden(
-            "App channel is disabled".to_string(),
-        ));
     }
     let message_template = match source {
         AppInvocationSource::Schedule => {
@@ -1845,9 +1840,6 @@ pub async fn resolve_api_app_channel(
         .await
         .map_err(classify_anyhow)?
         .ok_or_else(|| CommandError::not_found("App"))?;
-    if app.status != AppStatus::Published {
-        return Err(CommandError::forbidden("App is not published".to_string()));
-    }
     let channel_public_id: AppChannelId = channel_id
         .parse()
         .map_err(|e| CommandError::bad_request(format!("Invalid channel ID: {e}")))?;
@@ -1858,10 +1850,20 @@ pub async fn resolve_api_app_channel(
     if channel.channel_type != ChannelType::ApiEndpoint {
         return Err(CommandError::not_found("Channel"));
     }
-    if !channel.enabled {
-        return Err(CommandError::forbidden(
-            "App channel is disabled".to_string(),
-        ));
+    // EVE-1007: the endpoint's own status, folded with the agent-level terms, is
+    // the authority. The rejection stays the same forbidden shape a draft App
+    // produced before, so a key holder cannot tell the reasons apart.
+    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(db, &app, &channel)
+        .await
+        .map_err(classify_anyhow)?
+    {
+        tracing::debug!(
+            app_id = %app.public_id,
+            endpoint_id = %channel.public_id,
+            reason = reason.as_str(),
+            "api_endpoint request rejected: endpoint not live"
+        );
+        return Err(CommandError::forbidden("App is not published".to_string()));
     }
     Ok((app, channel))
 }
@@ -3053,6 +3055,16 @@ impl Command for PublishApp {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("App"))?;
+        // Ingress reads endpoint status alone (EVE-1007), so the App publish
+        // switch has to move the endpoints it owns or publishing would change
+        // nothing. Disabled endpoints are deliberately left alone.
+        ctx.db
+            .set_app_endpoint_publish(existing.id, true)
+            .await
+            .map_err(classify_anyhow)?;
+
+        // `row_to_app` re-loads the endpoints, so it already sees the statuses
+        // the call above wrote.
         let app = q::row_to_app(&ctx.db, encryption, row, ctx.org_id()).await;
         sync_all_schedule_bindings(ctx, &app).await?;
         Ok(redact_app_for_response(app))
@@ -3118,6 +3130,15 @@ impl Command for UnpublishApp {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("App"))?;
+        // Mirror of publish: lower only the live endpoints, so an endpoint the
+        // operator had explicitly disabled stays disabled across the cycle.
+        ctx.db
+            .set_app_endpoint_publish(existing.id, false)
+            .await
+            .map_err(classify_anyhow)?;
+
+        // `row_to_app` re-loads the endpoints, so it already sees the statuses
+        // the call above wrote.
         let app = q::row_to_app(&ctx.db, encryption, row, ctx.org_id()).await;
         sync_all_schedule_bindings(ctx, &app).await?;
         Ok(redact_app_for_response(app))
@@ -3987,6 +4008,9 @@ impl Command for UpdateChannelCmd {
             channel_config_encrypted,
             durable_schedule_id: UpdateField::Unchanged,
             enabled: self.req.enabled,
+            // The App channel API has no status field of its own; the repository
+            // keeps `status` in step with an `enabled` change.
+            status: None,
         };
 
         let row = if enforce_schedule_cap {
@@ -4017,6 +4041,138 @@ impl Command for UpdateChannelCmd {
 }
 
 inventory::submit! { CommandDescriptor::of::<UpdateChannelCmd>() }
+
+// ============================================================================
+// PublishEndpoint / UnpublishEndpoint
+// ============================================================================
+
+/// Publish or unpublish one endpoint (EVE-1007).
+///
+/// This is the control the App-level publish switch was too coarse to be:
+/// obtaining a Slack manifest used to require publishing the whole App, which
+/// simultaneously exposed every sibling endpoint on it — including a public
+/// chat surface. Moving one endpoint leaves its siblings exactly as they were.
+async fn set_endpoint_published(
+    ctx: &Ctx,
+    app_id: &str,
+    channel_id: &str,
+    published: bool,
+) -> Result<AppChannel, CommandError> {
+    let app_id: AppId = app_id
+        .parse()
+        .map_err(|e| CommandError::bad_request(format!("Invalid app ID: {e}")))?;
+    let app = ctx
+        .db
+        .get_app_by_public_id(ctx.org_id(), &app_id.to_string())
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("App"))?;
+    if !matches!(app.status.as_str(), "draft" | "published") {
+        return Err(CommandError::bad_request(
+            "Archived or deleted apps cannot be edited",
+        ));
+    }
+
+    // THREAT[TM-TENANT-012]: `get_app_channel_by_public_id` takes a bare global
+    // id, so the org-scoped parent fetch above and this ownership assertion are
+    // what keep the mutation inside the caller's tenant.
+    let channel_row = ctx
+        .db
+        .get_app_channel_by_public_id(channel_id)
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Channel"))?;
+    if channel_row.app_id != app.id {
+        return Err(CommandError::bad_request(
+            "Channel does not belong to this app",
+        ));
+    }
+    if published && !channel_row.enabled {
+        return Err(CommandError::bad_request(
+            "Enable the channel before publishing it",
+        ));
+    }
+
+    let row = ctx
+        .db
+        .update_app_channel(
+            channel_row.id,
+            UpdateAppChannel {
+                status: Some(if published { "live" } else { "draft" }.to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Channel"))?;
+    Ok(q::channel_row_to_channel(ctx.encryption.as_ref(), row))
+}
+
+/// Publish a single endpoint without touching its siblings.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct PublishEndpoint {
+    /// App's prefixed public identifier.
+    pub app_id: String,
+    /// Channel's prefixed public identifier.
+    pub channel_id: String,
+}
+
+impl Command for PublishEndpoint {
+    type Output = AppChannel;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "publish_app_channel",
+            category: "apps",
+            description: "Publish one endpoint, leaving its siblings unchanged.",
+            method: "POST",
+            path: "/v1/apps/{id}/channels/{channel_id}/publish",
+        }
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&APP_DANGEROUS)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<AppChannel, CommandError> {
+        set_endpoint_published(ctx, &self.app_id, &self.channel_id, true).await
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<PublishEndpoint>() }
+
+/// Unpublish a single endpoint without touching its siblings.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UnpublishEndpoint {
+    /// App's prefixed public identifier.
+    pub app_id: String,
+    /// Channel's prefixed public identifier.
+    pub channel_id: String,
+}
+
+impl Command for UnpublishEndpoint {
+    type Output = AppChannel;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "unpublish_app_channel",
+            category: "apps",
+            description: "Stop one endpoint accepting traffic, leaving its siblings unchanged.",
+            method: "POST",
+            path: "/v1/apps/{id}/channels/{channel_id}/unpublish",
+        }
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&APP_DANGEROUS)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<AppChannel, CommandError> {
+        set_endpoint_published(ctx, &self.app_id, &self.channel_id, false).await
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<UnpublishEndpoint>() }
 
 // ============================================================================
 // DeleteChannel
@@ -4191,6 +4347,7 @@ mod tests {
             channel_type: ChannelType::Webhook,
             channel_config: json!({}),
             enabled: true,
+            status: everruns_platform::EndpointStatus::Live,
             created_at: now,
             updated_at: now,
         };

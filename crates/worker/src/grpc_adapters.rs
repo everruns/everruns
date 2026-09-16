@@ -1435,6 +1435,10 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         parallel_tool_calls: proto_agent.parallel_tool_calls,
         tools: vec![],
         status,
+        // Execution-side view of an Agent: exposure state is a control-plane
+        // concern and is not carried on the execution proto.
+        exposures_suspended: false,
+        exposed: false,
         created_at: proto_timestamp_or_now(proto_agent.created_at.as_ref()),
         updated_at: proto_timestamp_or_now(proto_agent.updated_at.as_ref()),
         archived_at: None,

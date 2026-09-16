@@ -27,9 +27,13 @@ Top-level deployment entity. Composes existing building blocks (Harness and Agen
 - The storage field remains nullable solely to grandfather existing agent-less Apps. Those rows are not backfilled or rewritten and remain runtime-compatible, but any later App update must assign an Agent.
 - When `FEATURE_AGENT_VERSIONS` is enabled, each App may choose an Agent version policy: `default`, `latest`, or `pinned`. See [agent-versions.md](../runtime-resources/agent-versions.md).
 - Each App has zero or more **Channels** (rows in `agent_endpoints`, read back through the `app_channels` view)
-- Apps have a publish lifecycle: `draft` → `published` → `draft`
+- Apps have a publish lifecycle: `draft` → `published` → `draft`. Since EVE-1007 this is a
+  convenience over the endpoints it owns rather than the gate itself: publishing raises the
+  enabled endpoints, unpublishing lowers the live ones, and ingress reads only
+  `agent_endpoints.status`. See [agent-exposure.md](agent-exposure.md), "Publish and expose".
 - Apps also participate in the default building-block lifecycle: `active/draft/published -> archived -> deleted`
-- Only published apps accept incoming requests
+- An endpoint accepts requests only when its own status is `live`, its agent is `active`,
+  and the agent's exposures are not suspended
 
 ### App Channel
 

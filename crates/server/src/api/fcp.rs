@@ -39,7 +39,7 @@ use everruns_core::events::{
     TurnCancelledData, TurnFailedData,
 };
 use everruns_core::{Caller, ContentPart, ExternalActor};
-use everruns_platform::{App, AppChannel, AppStatus, ChannelType, FcpChannelConfig};
+use everruns_platform::{App, AppChannel, ChannelType, FcpChannelConfig};
 use everruns_provider::execution_phase::ExecutionPhase;
 use serde::Deserialize;
 use serde_json::Value;
@@ -166,17 +166,26 @@ async fn resolve_context(state: &FcpState, target: FcpTarget) -> Result<FcpConte
             }
         }
     };
-    if app.status != AppStatus::Published {
-        return Err(not_found_response());
-    }
     let channel = match endpoint_channel {
-        Some(channel) if channel.channel_type == ChannelType::Fcp && channel.enabled => channel,
+        Some(channel) if channel.channel_type == ChannelType::Fcp => channel,
         Some(_) => return Err(not_found_response()),
         None => match app.fcp_channel() {
             Some(channel) => channel.clone(),
             None => return Err(not_found_response()),
         },
     };
+    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&state.db, &app, &channel)
+        .await
+        .map_err(|_| internal_error_response())?
+    {
+        tracing::debug!(
+            app_id = %app.public_id,
+            endpoint_id = %channel.public_id,
+            reason = reason.as_str(),
+            "FCP request rejected: endpoint not live"
+        );
+        return Err(not_found_response());
+    }
     let config = match channel.fcp_config() {
         Some(config) => config,
         None => {

@@ -159,6 +159,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         root_agent_id: None,
         tags: vec![],
         status: "active".to_string(),
+        exposures_suspended: false,
         created_at: now,
         updated_at: now,
         archived_at: None,

@@ -911,6 +911,90 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/exposures/resume": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "POST /v1/agents/{agent_id}/exposures/resume - Let live endpoints serve again",
+        "operationId": "resume_agent_exposures",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exposures resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Agent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/exposures/suspend": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "POST /v1/agents/{agent_id}/exposures/suspend - Take every endpoint offline",
+        "operationId": "suspend_agent_exposures",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exposures suspended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Agent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/health-checks": {
       "get": {
         "tags": [
@@ -2997,6 +3081,128 @@
           },
           "429": {
             "description": "Per-channel rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/apps/{app_id}/channels/{channel_id}/publish": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "PATCH /v1/apps/{app_id}/channels/{channel_id} - Update a channel\nPOST /v1/apps/{app_id}/channels/{channel_id}/publish - Publish one endpoint",
+        "operationId": "publish_channel",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "description": "App ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "Channel ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Endpoint published",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "App or channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/apps/{app_id}/channels/{channel_id}/unpublish": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "POST /v1/apps/{app_id}/channels/{channel_id}/unpublish - Unpublish one endpoint",
+        "operationId": "unpublish_channel",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "description": "App ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "Channel ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Endpoint unpublished",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "App or channel not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -17263,6 +17469,14 @@
             "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent.",
             "example": "Customer Support Agent"
           },
+          "exposed": {
+            "type": "boolean",
+            "description": "Whether any endpoint on this agent is currently live. Derived from the\nendpoint rows on read and never stored: a stored flag would be a second\nwriter for state the endpoints already own."
+          },
+          "exposures_suspended": {
+            "type": "boolean",
+            "description": "Incident switch: when true, no endpoint on this agent accepts traffic\n(EVE-1007). Distinct from archiving — it leaves per-endpoint status\nuntouched so clearing it restores exactly the previously live set."
+          },
           "forked_from_agent_id": {
             "type": [
               "string",
@@ -18198,6 +18412,10 @@
             "type": "string",
             "description": "External identifier (appchan_<32-hex>). Shown as \"id\" in API.",
             "example": "appchan_01933b5a000070008000000000000001"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EndpointStatus",
+            "description": "Per-endpoint lifecycle. Authoritative for ingress (EVE-1007); `enabled`\nis retained for the App API's existing shape."
           },
           "updated_at": {
             "type": "string",
@@ -22845,6 +23063,16 @@
           }
         }
       },
+      "EndpointStatus": {
+        "type": "string",
+        "description": "Per-endpoint lifecycle (EVE-1007).\n\nThis is the authority for whether an exposure accepts traffic. It replaced\nthe two-dimensional `App.status × AppChannel.enabled` matrix, which could\nexpress \"published App, disabled channel\" and forced publishing a whole App —\nand therefore every sibling endpoint on it — to make one endpoint reachable.\n\nLiveness is not this value alone; see `endpoint_is_live` in\n`crates/server/src/api/app_ingress.rs` for the agent-level terms, which are\nfolded in at resolution time rather than stored here.",
+        "enum": [
+          "draft",
+          "live",
+          "disabled"
+        ],
+        "example": "live"
+      },
       "EnqueueTaskOptions": {
         "type": "object",
         "description": "Options for enqueuing a standalone task",
@@ -26668,6 +26896,14 @@
                   ],
                   "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent.",
                   "example": "Customer Support Agent"
+                },
+                "exposed": {
+                  "type": "boolean",
+                  "description": "Whether any endpoint on this agent is currently live. Derived from the\nendpoint rows on read and never stored: a stored flag would be a second\nwriter for state the endpoints already own."
+                },
+                "exposures_suspended": {
+                  "type": "boolean",
+                  "description": "Incident switch: when true, no endpoint on this agent accepts traffic\n(EVE-1007). Distinct from archiving — it leaves per-endpoint status\nuntouched so clearing it restores exactly the previously live set."
                 },
                 "forked_from_agent_id": {
                   "type": [
@@ -41831,6 +42067,14 @@
                 ],
                 "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent.",
                 "example": "Customer Support Agent"
+              },
+              "exposed": {
+                "type": "boolean",
+                "description": "Whether any endpoint on this agent is currently live. Derived from the\nendpoint rows on read and never stored: a stored flag would be a second\nwriter for state the endpoints already own."
+              },
+              "exposures_suspended": {
+                "type": "boolean",
+                "description": "Incident switch: when true, no endpoint on this agent accepts traffic\n(EVE-1007). Distinct from archiving — it leaves per-endpoint status\nuntouched so clearing it restores exactly the previously live set."
               },
               "forked_from_agent_id": {
                 "type": [

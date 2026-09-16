@@ -4245,6 +4245,17 @@ impl StorageBackend {
         dispatch!(self, list_app_channels, app_id)
     }
 
+    pub async fn set_app_endpoint_publish(&self, app_id: Uuid, published: bool) -> Result<u64> {
+        dispatch!(self, set_app_endpoint_publish, app_id, published)
+    }
+
+    pub async fn agents_with_live_endpoints(
+        &self,
+        agent_ids: &[Uuid],
+    ) -> Result<std::collections::HashSet<Uuid>> {
+        dispatch!(self, agents_with_live_endpoints, agent_ids)
+    }
+
     pub async fn app_has_channels(&self, app_id: Uuid) -> Result<bool> {
         dispatch!(self, app_has_channels, app_id)
     }

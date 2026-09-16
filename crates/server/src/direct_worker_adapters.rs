@@ -2215,6 +2215,9 @@ impl DirectWorkerAdapters {
                 "deleted" => AgentStatus::Deleted,
                 _ => AgentStatus::Active,
             },
+            // Execution-side adapter: exposure state is a control-plane concern.
+            exposures_suspended: false,
+            exposed: false,
             created_at: r.created_at,
             updated_at: r.updated_at,
             archived_at: r.archived_at,

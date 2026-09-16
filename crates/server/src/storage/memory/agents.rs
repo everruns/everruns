@@ -45,6 +45,7 @@ impl InMemoryDatabase {
             max_iterations: input.max_iterations,
             parallel_tool_calls: input.parallel_tool_calls,
             status: "active".to_string(),
+            exposures_suspended: false,
             is_built_in: input.is_built_in,
             created_at: now,
             updated_at: now,
@@ -136,6 +137,7 @@ impl InMemoryDatabase {
             max_iterations: input.max_iterations,
             parallel_tool_calls: input.parallel_tool_calls,
             status: "active".to_string(),
+            exposures_suspended: false,
             is_built_in: input.is_built_in,
             created_at: now,
             updated_at: now,
@@ -330,6 +332,9 @@ impl InMemoryDatabase {
             if let Some(status) = input.status {
                 agent.status = status;
             }
+            if let Some(suspended) = input.exposures_suspended {
+                agent.exposures_suspended = suspended;
+            }
             if let Some(tools) = input.tools {
                 agent.tools = tools;
             }
@@ -474,6 +479,7 @@ impl InMemoryDatabase {
                 max_iterations: input.max_iterations,
                 parallel_tool_calls: input.parallel_tool_calls,
                 status: "active".to_string(),
+                exposures_suspended: false,
                 is_built_in: input.is_built_in,
                 created_at: now,
                 updated_at: now,
@@ -554,6 +560,7 @@ impl InMemoryDatabase {
                 max_iterations: input.max_iterations,
                 parallel_tool_calls: input.parallel_tool_calls,
                 status: "active".to_string(),
+                exposures_suspended: false,
                 is_built_in: input.is_built_in,
                 created_at: now,
                 updated_at: now,

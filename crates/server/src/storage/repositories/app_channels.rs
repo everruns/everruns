@@ -52,7 +52,7 @@ const INSERT_CHANNEL_SQL: &str = r#"
         app.owner_principal_id, app.resolved_owner_user_id
     FROM apps AS app
     WHERE app.id = $1 AND app.agent_id IS NOT NULL
-    RETURNING id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled, created_at, updated_at
+    RETURNING id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
 "#;
 
 fn schedule_cap_lock_key(org_id: i64) -> i64 {
@@ -131,7 +131,7 @@ impl Database {
     pub async fn list_app_channels(&self, app_id: Uuid) -> Result<Vec<AppChannelRow>> {
         let rows = sqlx::query_as::<_, AppChannelRow>(
             r#"
-            SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled, created_at, updated_at
+            SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
             FROM agent_endpoints
             WHERE app_id = $1
             ORDER BY created_at ASC
@@ -176,7 +176,7 @@ impl Database {
     ) -> Result<Option<AppChannelRow>> {
         let row = sqlx::query_as::<_, AppChannelRow>(
             r#"
-            SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled, created_at, updated_at
+            SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
             FROM agent_endpoints
             WHERE public_id = $1
             "#,
@@ -205,17 +205,18 @@ impl Database {
                 channel_config_encrypted = COALESCE($4, ae.channel_config_encrypted),
                 durable_schedule_id = CASE WHEN $5 THEN $6 ELSE ae.durable_schedule_id END,
                 enabled = COALESCE($7, ae.enabled),
-                -- Publish still reads App-level status this release, so keep the
-                -- derived endpoint status in step with the pair it is derived
-                -- from rather than letting it drift.
-                status = CASE
+                -- `status` is authoritative for ingress (EVE-1007). An explicit
+                -- value wins; otherwise an `enabled` change still moves it, so
+                -- the App API's enable/disable cannot leave a disabled endpoint
+                -- reachable while that API is still the everyday control.
+                status = COALESCE($8, CASE
                     WHEN NOT COALESCE($7, ae.enabled) THEN 'disabled'
                     WHEN (SELECT a.status FROM apps AS a WHERE a.id = ae.app_id) = 'published' THEN 'live'
                     ELSE 'draft'
-                END,
+                END),
                 updated_at = NOW()
             WHERE ae.id = $1
-            RETURNING ae.id, ae.app_id, ae.public_id, ae.channel_type, ae.channel_config, ae.channel_config_encrypted, ae.durable_schedule_id, ae.enabled, ae.created_at, ae.updated_at
+            RETURNING ae.id, ae.app_id, ae.public_id, ae.channel_type, ae.channel_config, ae.channel_config_encrypted, ae.durable_schedule_id, ae.enabled, ae.status, ae.created_at, ae.updated_at
             "#,
         )
         .bind(id)
@@ -225,6 +226,7 @@ impl Database {
         .bind(input.durable_schedule_id.is_changed())
         .bind(input.durable_schedule_id.into_value())
         .bind(input.enabled)
+        .bind(&input.status)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -267,17 +269,18 @@ impl Database {
                 channel_config_encrypted = COALESCE($4, ae.channel_config_encrypted),
                 durable_schedule_id = CASE WHEN $5 THEN $6 ELSE ae.durable_schedule_id END,
                 enabled = COALESCE($7, ae.enabled),
-                -- Publish still reads App-level status this release, so keep the
-                -- derived endpoint status in step with the pair it is derived
-                -- from rather than letting it drift.
-                status = CASE
+                -- `status` is authoritative for ingress (EVE-1007). An explicit
+                -- value wins; otherwise an `enabled` change still moves it, so
+                -- the App API's enable/disable cannot leave a disabled endpoint
+                -- reachable while that API is still the everyday control.
+                status = COALESCE($8, CASE
                     WHEN NOT COALESCE($7, ae.enabled) THEN 'disabled'
                     WHEN (SELECT a.status FROM apps AS a WHERE a.id = ae.app_id) = 'published' THEN 'live'
                     ELSE 'draft'
-                END,
+                END),
                 updated_at = NOW()
             WHERE ae.id = $1
-            RETURNING ae.id, ae.app_id, ae.public_id, ae.channel_type, ae.channel_config, ae.channel_config_encrypted, ae.durable_schedule_id, ae.enabled, ae.created_at, ae.updated_at
+            RETURNING ae.id, ae.app_id, ae.public_id, ae.channel_type, ae.channel_config, ae.channel_config_encrypted, ae.durable_schedule_id, ae.enabled, ae.status, ae.created_at, ae.updated_at
             "#,
         )
         .bind(id)
@@ -287,6 +290,7 @@ impl Database {
         .bind(input.durable_schedule_id.is_changed())
         .bind(input.durable_schedule_id.into_value())
         .bind(input.enabled)
+        .bind(&input.status)
         .fetch_optional(&mut *tx)
         .await?;
         tx.commit().await?;
@@ -303,6 +307,57 @@ impl Database {
             .await?;
 
         Ok(result.rows_affected() > 0)
+    }
+
+    /// Agent ids, from the given set, that currently have at least one live
+    /// endpoint (EVE-1007).
+    ///
+    /// Exposure state is derived on read and never stored: a stored flag would
+    /// be a second writer for state the endpoint rows already own, and it would
+    /// drift the moment an endpoint changed by any other path. Batched so a list
+    /// page costs one query rather than one per agent.
+    ///
+    /// This answers the endpoint half only. The agent-level terms
+    /// (`status`, `exposures_suspended`) are applied by the caller, which
+    /// already holds the agent row.
+    pub async fn agents_with_live_endpoints(
+        &self,
+        agent_ids: &[Uuid],
+    ) -> Result<std::collections::HashSet<Uuid>> {
+        if agent_ids.is_empty() {
+            return Ok(std::collections::HashSet::new());
+        }
+        let rows = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            SELECT DISTINCT agent_id
+            FROM agent_endpoints
+            WHERE agent_id = ANY($1) AND status = 'live'
+            "#,
+        )
+        .bind(agent_ids)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().collect())
+    }
+
+    /// Bridge the App publish switch onto endpoint status (EVE-1007).
+    ///
+    /// Ingress reads `agent_endpoints.status` alone now, so the App-level
+    /// publish/unpublish API — which is still the everyday control until the
+    /// App domain is deleted — has to move the endpoints it owns. Publishing
+    /// only raises endpoints the operator had enabled, and unpublishing lowers
+    /// only the live ones, so an explicitly disabled endpoint stays disabled
+    /// across a publish cycle.
+    pub async fn set_app_endpoint_publish(&self, app_id: Uuid, published: bool) -> Result<u64> {
+        let sql = if published {
+            "UPDATE agent_endpoints SET status = 'live', updated_at = NOW()
+             WHERE app_id = $1 AND enabled = true AND status <> 'live'"
+        } else {
+            "UPDATE agent_endpoints SET status = 'draft', updated_at = NOW()
+             WHERE app_id = $1 AND status = 'live'"
+        };
+        let result = sqlx::query(sql).bind(app_id).execute(&self.pool).await?;
+        Ok(result.rows_affected())
     }
 
     pub async fn count_enabled_schedule_channels_for_org(&self, org_id: i64) -> Result<i64> {
