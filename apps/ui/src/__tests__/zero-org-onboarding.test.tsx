@@ -6,8 +6,9 @@ import {
 
 // Mock next/navigation
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: mockPush, replace: jest.fn() }),
+  useRouter: () => ({ push: mockPush, replace: mockReplace }),
 }));
 
 // Mock org provider
@@ -28,14 +29,112 @@ jest.mock("@/hooks/use-organizations", () => ({
   useCreateOrganization: () => createOrgState,
 }));
 
+const mockAcceptMutateAsync = jest.fn();
+const pendingInvitationsState = {
+  data: [] as Array<{
+    id: string;
+    org_name: string;
+    role: "owner" | "admin" | "member";
+  }>,
+  isLoading: false,
+  isError: false,
+};
+const acceptInvitationState = {
+  mutateAsync: mockAcceptMutateAsync,
+  isPending: false,
+  isError: false,
+  variables: undefined as string | undefined,
+};
+jest.mock("@/hooks/use-invitations", () => ({
+  usePendingInvitations: () => pendingInvitationsState,
+  useAcceptPendingInvitation: () => acceptInvitationState,
+}));
+
 describe("ZeroOrgOnboarding", () => {
   beforeEach(() => {
     mockPush.mockClear();
+    mockReplace.mockClear();
     mockMutateAsync.mockClear();
+    mockAcceptMutateAsync.mockClear();
     mockSetCurrentOrg.mockClear();
     createOrgState.isPending = false;
     createOrgState.isError = false;
     createOrgState.error = null;
+    pendingInvitationsState.data = [];
+    pendingInvitationsState.isLoading = false;
+    pendingInvitationsState.isError = false;
+    acceptInvitationState.isPending = false;
+    acceptInvitationState.isError = false;
+    acceptInvitationState.variables = undefined;
+  });
+
+  it("offers pending invitations before organization creation", () => {
+    pendingInvitationsState.data = [
+      {
+        id: "orginv_one",
+        org_name: "Acme",
+        role: "member",
+      },
+      {
+        id: "orginv_two",
+        org_name: "Beta Labs",
+        role: "admin",
+      },
+    ];
+
+    render(<ZeroOrgOnboarding />);
+
+    expect(screen.getByRole("heading", { name: "Join your team" })).toBeInTheDocument();
+    expect(screen.getByText("Acme")).toBeInTheDocument();
+    expect(screen.getByText("Beta Labs")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Join" })).toHaveLength(2);
+    expect(screen.getByLabelText("Organisation name")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /create organisation/i })).toBeInTheDocument();
+  });
+
+  it("joins a pending invitation and continues to chats", async () => {
+    pendingInvitationsState.data = [
+      {
+        id: "orginv_one",
+        org_name: "Acme",
+        role: "member",
+      },
+    ];
+    mockAcceptMutateAsync.mockResolvedValue({ org_id: "org_acme", role: "member" });
+
+    render(<ZeroOrgOnboarding />);
+    fireEvent.click(screen.getByRole("button", { name: "Join" }));
+
+    await waitFor(() => {
+      expect(mockAcceptMutateAsync).toHaveBeenCalledWith("orginv_one");
+      expect(mockReplace).toHaveBeenCalledWith("/chats");
+    });
+  });
+
+  it("keeps organization creation available when invitation loading fails", () => {
+    pendingInvitationsState.isError = true;
+
+    render(<ZeroOrgOnboarding />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/invitations could not be loaded/i);
+    expect(screen.getByRole("heading", { name: "Create your organisation" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Organisation name")).toBeInTheDocument();
+  });
+
+  it("shows a generic join error without navigating", () => {
+    pendingInvitationsState.data = [
+      {
+        id: "orginv_one",
+        org_name: "Acme",
+        role: "member",
+      },
+    ];
+    acceptInvitationState.isError = true;
+
+    render(<ZeroOrgOnboarding />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/failed to join organisation/i);
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it("creates the first org and redirects to setup (default OSS flow)", async () => {
