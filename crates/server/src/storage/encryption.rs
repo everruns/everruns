@@ -712,6 +712,28 @@ mod tests {
                 }
             }
 
+            // Detect DROP TABLE [IF EXISTS] <table>
+            // A dropped table's encrypted columns no longer exist, so they must not
+            // stay registered for key rotation. `app_channels` is the case that
+            // motivated this: EVE-1003 moved its rows into `agent_endpoints` and left
+            // a read-only view behind, and rotating through that view would rewrite
+            // the same underlying rows a second time.
+            if trimmed.starts_with("drop table") {
+                let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                // ["drop", "table", "<table>"] or ["drop", "table", "if", "exists", "<table>"]
+                let name_idx = if parts.len() >= 5 && parts[2] == "if" && parts[3] == "exists" {
+                    4
+                } else {
+                    2
+                };
+                if parts.len() > name_idx {
+                    // `cascade`/`restrict` land in a later part, so only the
+                    // statement terminator can be attached to the name here.
+                    let dropped = parts[name_idx].trim_end_matches(';').to_string();
+                    found.retain(|(table, _)| *table != dropped);
+                }
+            }
+
             // Detect ALTER TABLE <old> RENAME TO <new>
             // When a table is renamed, move all tracked encrypted columns to the new name.
             if trimmed.starts_with("alter table")
