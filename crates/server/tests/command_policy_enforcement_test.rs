@@ -758,6 +758,22 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     // Produces an analysis report. Non-read-only only because it spends utility
     // LLM budget and is rate limited; it does not write the agent.
     "analyze_agent",
+    // --- Operational state on the agents row (EVE-1007) ----------------------
+    // Unlike the bindings above these do write the `agents` row, so they are
+    // exempted on a narrower ground: `exposures_suspended` is deployment state,
+    // not definition. Built-in agents are seeded per org, so suspending one
+    // org's row changes nothing for any other org, and the definition the
+    // immutability guard exists to protect — prompt, name, capabilities — is
+    // untouched.
+    //
+    // Guarding them would be actively worse than the immutability concern it
+    // would serve: a built-in agent can be referenced by an App and therefore
+    // exposed, and blocking this would leave an operator with no way to take it
+    // off the internet during an incident. Same shape of reasoning as
+    // `copy_agent` above — a protection that makes the agent unusable is the
+    // wrong protection.
+    "suspend_agent_exposures",
+    "resume_agent_exposures",
 ];
 
 /// The guard lives in `Command::execute`, so it must hold over `dispatch()` —

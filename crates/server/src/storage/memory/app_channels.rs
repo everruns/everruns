@@ -6,19 +6,33 @@ use crate::errors::BadRequestError;
 use anyhow::Result;
 use uuid::Uuid;
 
-/// Mirrors the PostgreSQL derivation for a newly created endpoint. The
-/// in-memory backend has no App publish state to consult, so a new endpoint is
-/// draft until something publishes it.
-fn derive_status(enabled: bool) -> String {
-    if enabled { "draft" } else { "disabled" }.to_string()
+/// Mirrors the PostgreSQL derivation for a newly created or re-enabled endpoint.
+///
+/// The App's publish state is part of it: a channel added to an App that is
+/// already published must come up live, exactly as the `INSERT ... SELECT FROM
+/// apps` in the PostgreSQL backend does. Deriving from `enabled` alone would
+/// leave it unreachable until something re-published the App.
+fn derive_status(enabled: bool, app_status: Option<&str>) -> String {
+    if !enabled {
+        "disabled"
+    } else if app_status == Some("published") {
+        "live"
+    } else {
+        "draft"
+    }
+    .to_string()
 }
 
-/// Publish state of the App owning a channel, read before the channel lock is
-/// taken so the two maps are never held at once.
+/// Publish state of an App, read before the channel lock is taken so the two
+/// maps are never held at once.
 impl InMemoryDatabase {
+    fn app_status(&self, app_id: Uuid) -> Option<String> {
+        self.apps.read().get(&app_id).map(|a| a.status.clone())
+    }
+
     fn app_status_for_channel(&self, channel_id: Uuid) -> Option<String> {
         let app_id = self.app_channels.read().get(&channel_id)?.app_id;
-        self.apps.read().get(&app_id).map(|a| a.status.clone())
+        self.app_status(app_id)
     }
 }
 
@@ -52,6 +66,7 @@ impl InMemoryDatabase {
         input: CreateAppChannelRow,
     ) -> Result<AppChannelRow> {
         self.require_app_agent(app_id)?;
+        let app_status = self.app_status(app_id);
         let now = Self::now();
         let id = Uuid::now_v7();
         let row = AppChannelRow {
@@ -63,7 +78,7 @@ impl InMemoryDatabase {
             channel_config_encrypted: input.channel_config_encrypted,
             durable_schedule_id: input.durable_schedule_id,
             enabled: input.enabled,
-            status: derive_status(input.enabled),
+            status: derive_status(input.enabled, app_status.as_deref()),
             created_at: now,
             updated_at: now,
         };
@@ -79,6 +94,7 @@ impl InMemoryDatabase {
         max_enabled_schedule_channels: i64,
     ) -> Result<AppChannelRow> {
         self.require_app_agent(app_id)?;
+        let app_status = self.app_status(app_id);
         let apps = self.apps.read();
         let org_app_ids: std::collections::HashSet<Uuid> = apps
             .values()
@@ -112,7 +128,7 @@ impl InMemoryDatabase {
             channel_config_encrypted: input.channel_config_encrypted,
             durable_schedule_id: input.durable_schedule_id,
             enabled: input.enabled,
-            status: derive_status(input.enabled),
+            status: derive_status(input.enabled, app_status.as_deref()),
             created_at: now,
             updated_at: now,
         };
@@ -174,13 +190,7 @@ impl InMemoryDatabase {
             // owning App's publish state implies — so re-enabling a channel on
             // a published App makes it live again rather than stranding it in
             // draft.
-            ch.status = if !enabled {
-                "disabled".to_string()
-            } else if app_status.as_deref() == Some("published") {
-                "live".to_string()
-            } else {
-                "draft".to_string()
-            };
+            ch.status = derive_status(enabled, app_status.as_deref());
         }
         if let Some(status) = input.status.clone() {
             ch.status = status;
@@ -239,13 +249,7 @@ impl InMemoryDatabase {
             // owning App's publish state implies — so re-enabling a channel on
             // a published App makes it live again rather than stranding it in
             // draft.
-            ch.status = if !enabled {
-                "disabled".to_string()
-            } else if app_status.as_deref() == Some("published") {
-                "live".to_string()
-            } else {
-                "draft".to_string()
-            };
+            ch.status = derive_status(enabled, app_status.as_deref());
         }
         if let Some(status) = input.status.clone() {
             ch.status = status;
