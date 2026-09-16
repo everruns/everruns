@@ -11,11 +11,31 @@ impl InMemoryDatabase {
     // App Channel CRUD
     // ============================================
 
+    // Mirrors the PostgreSQL backend, where an endpoint row carries a NOT NULL
+    // `agent_id` derived from its App (EVE-1003). Without this the in-memory
+    // backend would accept a channel the real one rejects.
+    fn require_app_agent(&self, app_id: Uuid) -> Result<()> {
+        let has_agent = self
+            .apps
+            .read()
+            .get(&app_id)
+            .is_some_and(|app| app.agent_id.is_some());
+        if has_agent {
+            Ok(())
+        } else {
+            Err(BadRequestError::new(format!(
+                "App {app_id} was not found or has no agent; an endpoint must be owned by an agent"
+            ))
+            .into())
+        }
+    }
+
     pub async fn create_app_channel(
         &self,
         app_id: Uuid,
         input: CreateAppChannelRow,
     ) -> Result<AppChannelRow> {
+        self.require_app_agent(app_id)?;
         let now = Self::now();
         let id = Uuid::now_v7();
         let row = AppChannelRow {
@@ -41,6 +61,7 @@ impl InMemoryDatabase {
         input: CreateAppChannelRow,
         max_enabled_schedule_channels: i64,
     ) -> Result<AppChannelRow> {
+        self.require_app_agent(app_id)?;
         let apps = self.apps.read();
         let org_app_ids: std::collections::HashSet<Uuid> = apps
             .values()

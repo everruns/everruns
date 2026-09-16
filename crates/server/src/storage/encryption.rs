@@ -425,9 +425,11 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "channel_config_encrypted",
         id_column: "id",
     },
-    // App channel config (multi-channel) — same secrets, per-channel
+    // Endpoint channel config (multi-channel) — same secrets, per-endpoint.
+    // Re-parented from `app_channels` onto `agent_endpoints` (EVE-1003); the
+    // `app_channels` view is read-only and cannot be rotated through.
     EncryptedColumn {
-        table: "app_channels",
+        table: "agent_endpoints",
         column: "channel_config_encrypted",
         id_column: "id",
     },
@@ -707,6 +709,28 @@ mod tests {
                     if col_name.ends_with("_encrypted") {
                         found.remove(&(parts[2].to_string(), col_name.to_string()));
                     }
+                }
+            }
+
+            // Detect DROP TABLE [IF EXISTS] <table>
+            // A dropped table's encrypted columns no longer exist, so they must not
+            // stay registered for key rotation. `app_channels` is the case that
+            // motivated this: EVE-1003 moved its rows into `agent_endpoints` and left
+            // a read-only view behind, and rotating through that view would rewrite
+            // the same underlying rows a second time.
+            if trimmed.starts_with("drop table") {
+                let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                // ["drop", "table", "<table>"] or ["drop", "table", "if", "exists", "<table>"]
+                let name_idx = if parts.len() >= 5 && parts[2] == "if" && parts[3] == "exists" {
+                    4
+                } else {
+                    2
+                };
+                if parts.len() > name_idx {
+                    // `cascade`/`restrict` land in a later part, so only the
+                    // statement terminator can be attached to the name here.
+                    let dropped = parts[name_idx].trim_end_matches(';').to_string();
+                    found.retain(|(table, _)| *table != dropped);
                 }
             }
 
