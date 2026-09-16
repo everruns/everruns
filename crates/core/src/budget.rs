@@ -61,6 +61,10 @@ pub enum BudgetSubjectType {
     App,
     /// Bound to a single `AppChannel` (only sessions for that channel count).
     AppChannel,
+    /// Bound to a single agent endpoint — the exposure a session arrived
+    /// through (EVE-1004). Successor to `AppChannel`, which is retained until
+    /// the App abstraction is deleted.
+    AgentEndpoint,
 }
 
 impl BudgetSubjectType {
@@ -73,6 +77,7 @@ impl BudgetSubjectType {
             BudgetSubjectType::Organization => "org",
             BudgetSubjectType::App => "app",
             BudgetSubjectType::AppChannel => "app_channel",
+            BudgetSubjectType::AgentEndpoint => "agent_endpoint",
         }
     }
 }
@@ -92,6 +97,7 @@ impl From<&str> for BudgetSubjectType {
             "org" | "organization" => BudgetSubjectType::Organization,
             "app" => BudgetSubjectType::App,
             "app_channel" => BudgetSubjectType::AppChannel,
+            "agent_endpoint" => BudgetSubjectType::AgentEndpoint,
             _ => BudgetSubjectType::Session,
         }
     }

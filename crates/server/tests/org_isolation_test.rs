@@ -945,6 +945,7 @@ async fn create_session_in_org(
             workspace_id: None,
             org_id,
             app_id: None,
+            endpoint_id: None,
             harness_id: None,
             agent_id: None,
             agent_version_id: None,

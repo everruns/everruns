@@ -943,6 +943,7 @@ async fn process_slack_message(
                     app.agent_id.map(|agent_id| agent_id.uuid()),
                     app.agent_id,
                     app.internal_id,
+                    Some(slack_channel.internal_id),
                     app.owner_principal_id,
                     app.resolved_owner_user_id,
                     everruns_platform::SessionSource::Slack,
@@ -3654,6 +3655,7 @@ mod tests {
                     workspace_id: None,
                     org_id: app.org_id,
                     app_id: Some(app.internal_id),
+                    endpoint_id: None,
                     harness_id: Some(everruns_provider::typed_id::HarnessId::from_uuid(
                         uuid::Uuid::nil(),
                     )),
@@ -3821,6 +3823,7 @@ mod tests {
             workspace_id: None,
             org_id: 1,
             app_id: None,
+            endpoint_id: None,
             harness_id: Some(everruns_provider::typed_id::HarnessId::from_uuid(
                 uuid::Uuid::nil(),
             )),

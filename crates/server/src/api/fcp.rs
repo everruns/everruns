@@ -798,6 +798,7 @@ async fn resolve_session(
             app.agent_id.map(|agent_id| agent_id.uuid()),
             app.agent_id,
             app.internal_id,
+            Some(channel.internal_id),
             app.owner_principal_id,
             app.resolved_owner_user_id,
             everruns_platform::SessionSource::Fcp,

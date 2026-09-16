@@ -5458,7 +5458,14 @@ export interface components {
      * @description Subject type: what entity this budget constrains.
      * @enum {string}
      */
-    BudgetSubjectType: "session" | "agent" | "user" | "organization" | "app" | "app_channel";
+    BudgetSubjectType:
+      | "session"
+      | "agent"
+      | "user"
+      | "organization"
+      | "app"
+      | "app_channel"
+      | "agent_endpoint";
     /**
      * @description Built-in tool configuration
      *

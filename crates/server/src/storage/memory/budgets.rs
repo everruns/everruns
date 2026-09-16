@@ -82,6 +82,7 @@ impl InMemoryDatabase {
                 org_public_id,
                 app_id: None,
                 app_channel_id: None,
+                endpoint_id: None,
             },
         )
         .await

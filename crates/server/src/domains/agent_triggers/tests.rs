@@ -251,6 +251,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
             source: everruns_platform::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
+            endpoint_id: None,
             harness_id: Some(preserved_harness.id),
             agent_id: Some(agent.id),
             agent_version_id: None,

@@ -20,6 +20,11 @@ pub struct BudgetSubjectLookup<'a> {
     pub org_public_id: Option<&'a str>,
     pub app_id: Option<&'a str>,
     pub app_channel_id: Option<&'a str>,
+    /// Public id of the endpoint the session arrived through. During the
+    /// transition this is the same `appchan_` id as `app_channel_id` — the
+    /// endpoint kept its identifier when it was re-parented — but the subject
+    /// type it resolves under is the new one (EVE-1004).
+    pub endpoint_id: Option<&'a str>,
 }
 
 impl<'a> BudgetSubjectLookup<'a> {
@@ -29,6 +34,9 @@ impl<'a> BudgetSubjectLookup<'a> {
         let mut pairs = Vec::new();
         if let Some(id) = self.session_id {
             pairs.push(("session", id));
+        }
+        if let Some(id) = self.endpoint_id {
+            pairs.push(("agent_endpoint", id));
         }
         if let Some(id) = self.app_channel_id {
             pairs.push(("app_channel", id));
@@ -146,6 +154,7 @@ impl Database {
                 org_public_id,
                 app_id: None,
                 app_channel_id: None,
+                endpoint_id: None,
             },
         )
         .await

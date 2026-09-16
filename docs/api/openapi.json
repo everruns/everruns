@@ -19213,7 +19213,8 @@
           "user",
           "organization",
           "app",
-          "app_channel"
+          "app_channel",
+          "agent_endpoint"
         ]
       },
       "BuiltinTool": {

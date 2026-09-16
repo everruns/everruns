@@ -10,7 +10,7 @@ use utoipa::ToSchema;
 
 fn validate_subject_type(ctx: &Ctx, subject_type: &str) -> Result<(), CommandError> {
     const ALWAYS_ON: &[&str] = &["session", "agent", "user", "org"];
-    const APP_BUDGET_TYPES: &[&str] = &["app", "app_channel"];
+    const APP_BUDGET_TYPES: &[&str] = &["app", "app_channel", "agent_endpoint"];
     if ALWAYS_ON.contains(&subject_type) {
         return Ok(());
     }

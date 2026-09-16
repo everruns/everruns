@@ -852,6 +852,12 @@ pub struct SessionRow {
     pub workspace_id: Uuid,
     #[sqlx(default)]
     pub app_id: Option<Uuid>,
+    /// Endpoint whose ingress created this session (EVE-1004). `app_id` says
+    /// which bundle; this says which door. NULL for user, API, and
+    /// platform-created sessions, and for app-channel sessions predating the
+    /// routing tag the backfill reads.
+    #[sqlx(default)]
+    pub endpoint_id: Option<Uuid>,
     #[sqlx(default)]
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
@@ -1075,6 +1081,10 @@ pub struct CreateSessionRow {
     /// variants (see `SessionSource::is_client_declarable`).
     pub source: everruns_platform::SessionSource,
     pub app_id: Option<Uuid>,
+    /// Endpoint whose ingress created this session (EVE-1004). Set by the
+    /// app-channel ingress paths, which all know their endpoint; `None`
+    /// everywhere else.
+    pub endpoint_id: Option<Uuid>,
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
     pub agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,

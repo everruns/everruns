@@ -1170,6 +1170,10 @@ async fn find_or_create_trigger_session(
                 Some(agent.id.uuid()),
                 Some(agent.id),
                 app_id,
+                // Migrated App schedules (migration 106) kept
+                // `execution_app_id` but never an endpoint pointer, so there
+                // is nothing structural to record here.
+                None,
                 execution_context.owner_principal_id,
                 execution_context.resolved_owner_user_id,
                 everruns_platform::SessionSource::Schedule,

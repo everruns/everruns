@@ -70,13 +70,21 @@ const RESERVED_SESSION_TAG_PREFIXES: &[&str] = &[
     "app:",
     "app_channel:",
     "slack:app:",
+    // Per-transport endpoint namespaces. Added with EVE-1004, which made them
+    // attribution inputs: migration 137 reads all three endpoint tag spellings
+    // to decide which endpoint a session arrived through. Not exploitable
+    // before this — every routing lookup also anchors on `app_id`, which only
+    // internal callers can set — but the list is what keeps that true as
+    // readers are added.
+    "slack:endpoint:",
+    "fcp:endpoint:",
     "ag_ui:app:",
     "agent:",
     "endpoint:",
 ];
 const RESERVED_SESSION_TAG_ERROR: &str = "Tags with '__internal:', 'app:', 'app_channel:', \
-    'slack:app:', 'ag_ui:app:', 'agent:', or 'endpoint:' prefixes are reserved for internal \
-    subsystems";
+    'slack:app:', 'slack:endpoint:', 'fcp:endpoint:', 'ag_ui:app:', 'agent:', or 'endpoint:' \
+    prefixes are reserved for internal subsystems";
 
 /// Policy: View sessions (read-only).
 pub const SESSION_VIEW: Policy = Policy {
@@ -206,6 +214,7 @@ impl SessionService {
             agent_public_id,
             None,
             None,
+            None,
             source,
             req,
         )
@@ -232,6 +241,14 @@ impl SessionService {
         agent_internal_id: Option<Uuid>,
         agent_public_id: Option<AgentId>,
         app_internal_id: Uuid,
+        // Internal id of the endpoint this ingress resolved, recorded as
+        // `sessions.endpoint_id` so provenance names the door, not the bundle
+        // (EVE-1004). `None` only where the caller genuinely has no endpoint
+        // pointer — migrated App schedules, whose trigger row kept
+        // `execution_app_id` but never an endpoint id. Leaving those NULL is
+        // the same rule the 137 backfill follows: derive or leave unknown,
+        // never guess an App's endpoint for it.
+        endpoint_internal_id: Option<Uuid>,
         owner_principal_id: PrincipalId,
         resolved_owner_user_id: Option<Uuid>,
         source: SessionSource,
@@ -243,6 +260,7 @@ impl SessionService {
             agent_internal_id,
             agent_public_id,
             Some(app_internal_id),
+            endpoint_internal_id,
             Some((owner_principal_id, resolved_owner_user_id)),
             source,
             req,
@@ -272,6 +290,7 @@ impl SessionService {
             harness_id,
             Some(agent_internal_id),
             Some(agent_public_id),
+            None,
             None,
             Some((owner_principal_id, resolved_owner_user_id)),
             // An agent trigger is a schedule fire by construction.
@@ -377,6 +396,10 @@ impl SessionService {
                 harness_uuid,
                 agent_internal_id,
                 agent_public_id,
+                // A fork is not an app-channel arrival: it has no `app_id`
+                // today and gets no `endpoint_id` for the same reason. It
+                // keeps only the origin, below.
+                None,
                 None,
                 None,
                 // A fork keeps the origin of what it branched from: a forked
@@ -548,6 +571,11 @@ impl SessionService {
         agent_internal_id: Option<Uuid>,
         agent_public_id: Option<AgentId>,
         app_id: Option<Uuid>,
+        // Endpoint whose ingress is creating this session (EVE-1004). Every
+        // app-channel path knows its endpoint, so this is passed rather than
+        // inferred from tags — the tag spelling differs per transport and a
+        // multi-endpoint App makes `app_id` alone ambiguous.
+        endpoint_id: Option<Uuid>,
         // (principal, resolved_user) override; used by app-channel ingress so
         // the session owner matches the App row (not the internal caller).
         owner_override: Option<(PrincipalId, Option<Uuid>)>,
@@ -807,6 +835,7 @@ impl SessionService {
             org_id,
             source,
             app_id,
+            endpoint_id,
             harness_id: Some(harness_id),
             agent_id,
             agent_version_id: resolved_agent_version.as_ref().map(|version| version.id),
@@ -996,6 +1025,7 @@ impl SessionService {
             org_id,
             source,
             app_id: None,
+            endpoint_id: None,
             harness_id: Some(harness_id),
             agent_id: None,
             agent_version_id: None,
@@ -3153,6 +3183,7 @@ mod tests {
                 workspace_id: None,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
+                endpoint_id: None,
                 harness_id: Some(harness.id),
                 agent_id: Some(missing_agent_id),
                 agent_version_id: None,
@@ -3490,6 +3521,7 @@ mod tests {
                 None,
                 None,
                 app_internal_id,
+                Some(Uuid::new_v4()),
                 app_owner.id,
                 app_owner.resolved_user_id,
                 SessionSource::Api,
@@ -4344,6 +4376,7 @@ mod tests {
                 workspace_id: None,
                 org_id: caller.org_id,
                 app_id: None,
+                endpoint_id: None,
                 harness_id: Some(other_harness.id),
                 agent_id: Some(AgentId::from_uuid(other_agent.internal_id)),
                 agent_version_id: None,
@@ -4702,6 +4735,7 @@ mod tests {
                 workspace_id: None,
                 org_id: caller.org_id,
                 app_id: None,
+                endpoint_id: None,
                 harness_id: None,
                 agent_id: None,
                 agent_version_id: None,
@@ -4963,6 +4997,8 @@ mod tests {
             vec!["app:app_other".to_string()],
             vec!["app_channel:appchan_other".to_string()],
             vec!["slack:app:app_legacy_other".to_string()],
+            vec!["slack:endpoint:appchan_other".to_string()],
+            vec!["fcp:endpoint:appchan_other".to_string()],
             vec!["ag_ui:app:app_ag_ui_other".to_string()],
             vec!["agent:agent_other".to_string()],
             vec!["endpoint:endpoint_other".to_string()],
@@ -5027,6 +5063,8 @@ mod tests {
             "app:app_someone_else",
             "app_channel:appchan_someone_else",
             "slack:app:app_legacy_someone_else",
+            "slack:endpoint:appchan_someone_else",
+            "fcp:endpoint:appchan_someone_else",
             "ag_ui:app:app_ag_ui_someone_else",
             "agent:agent_someone_else",
             "endpoint:endpoint_someone_else",
@@ -5165,6 +5203,7 @@ mod tests {
             None,
             None,
             app_id,
+            Some(Uuid::new_v4()),
             owner_principal.id,
             owner_principal.resolved_user_id,
             SessionSource::Api,
@@ -5180,6 +5219,7 @@ mod tests {
                 None,
                 None,
                 app_id,
+                Some(Uuid::new_v4()),
                 owner_principal.id,
                 owner_principal.resolved_user_id,
                 SessionSource::Api,
