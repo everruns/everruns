@@ -80,6 +80,7 @@ export function ChannelEditor({
   const formStateKind = formState?.kind;
   const isReadOnly = isReadOnlyStatus(app?.status);
   const canManage = !policiesLoading && can("app.manage") && !isReadOnly;
+  const canDangerous = !policiesLoading && can("app.dangerous") && !isReadOnly;
   const canRunNow =
     canManage && formState?.kind === "schedule" && formState.enabled && app?.status === "published";
   const lifecycle = channel ? getEndpointLifecyclePresentation(channel) : null;
@@ -126,7 +127,7 @@ export function ChannelEditor({
   });
   const togglePublished = useMutation({
     mutationFn: (publish: boolean) => {
-      if (!canManage) throw new Error("Channel management is not available for this app");
+      if (!canDangerous) throw new Error("Channel publishing is not available for this app");
       return publish ? publishChannel(appId, channelId) : unpublishChannel(appId, channelId);
     },
     onSuccess: () => {
@@ -219,7 +220,7 @@ export function ChannelEditor({
               type="button"
               variant="outline"
               onClick={() => togglePublished.mutate(!lifecycle.isLive)}
-              disabled={!canManage || !formState.enabled || togglePublished.isPending}
+              disabled={!canDangerous || !formState.enabled || togglePublished.isPending}
             >
               {lifecycle.isLive ? "Unpublish" : "Publish"}
             </Button>

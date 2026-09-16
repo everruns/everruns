@@ -6,6 +6,7 @@ import type { App, AppChannel } from "@/lib/api/types";
 
 const mockUseApp = jest.fn();
 const mockPublishChannel = jest.fn();
+const mockCan = jest.fn();
 
 jest.mock("next/navigation", () => ({
   usePathname: () => "/agents/agent_123/endpoints/appchan_draft",
@@ -17,7 +18,7 @@ jest.mock("@/hooks/use-apps", () => ({
 }));
 
 jest.mock("@/hooks/use-policies", () => ({
-  usePolicies: () => ({ can: () => true, isLoading: false }),
+  usePolicies: () => ({ can: mockCan, isLoading: false }),
 }));
 
 jest.mock("@/lib/api/apps", () => ({
@@ -66,6 +67,7 @@ describe("ChannelEditor endpoint lifecycle", () => {
     jest.clearAllMocks();
     mockUseApp.mockReturnValue({ data: publishedApp, isLoading: false });
     mockPublishChannel.mockResolvedValue({ ...draftChannel, status: "live" });
+    mockCan.mockReturnValue(true);
   });
 
   it("shows and publishes an enabled draft endpoint instead of calling it active", async () => {
@@ -92,5 +94,28 @@ describe("ChannelEditor endpoint lifecycle", () => {
     await waitFor(() =>
       expect(mockPublishChannel).toHaveBeenCalledWith(publishedApp.id, draftChannel.id),
     );
+  });
+
+  it("does not publish when channel management is allowed without dangerous actions", async () => {
+    mockCan.mockImplementation((action: string) => action === "app.manage");
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChannelEditor
+          appId={publishedApp.id}
+          channelId={draftChannel.id}
+          nav={{ breadcrumbs: [], returnHref: "/agents/agent_123", returnLabel: "Test agent" }}
+        />
+      </QueryClientProvider>,
+    );
+
+    const publishButton = await screen.findByRole("button", { name: "Publish" });
+    expect(publishButton).toBeDisabled();
+
+    fireEvent.click(publishButton);
+    expect(mockPublishChannel).not.toHaveBeenCalled();
   });
 });
