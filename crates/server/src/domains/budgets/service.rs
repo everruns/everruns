@@ -46,6 +46,14 @@ struct BudgetScope {
     /// Public ID of the originating app channel, extracted from session tags
     /// (`app_channel:<channel_id>`). `None` for ad-hoc sessions.
     app_channel_subject_id: Option<String>,
+    /// Public ID of the endpoint the session arrived through (EVE-1004).
+    ///
+    /// Same value as `app_channel_subject_id` during the transition: migration
+    /// 137 retyped each `app_channel` budget in place, so the identifier did
+    /// not move — only the subject type's name did. Kept as its own field so
+    /// the two can diverge when `app_channel` is deleted (EVE-1011) without
+    /// another round of call-site edits.
+    endpoint_subject_id: Option<String>,
     session_id: Option<uuid::Uuid>,
     user_id: Option<uuid::Uuid>,
     principal_id: Option<uuid::Uuid>,
@@ -62,6 +70,7 @@ impl BudgetScope {
             org_public_id: Some(self.org_subject_id.as_str()),
             app_id: self.app_subject_id.as_deref(),
             app_channel_id: self.app_channel_subject_id.as_deref(),
+            endpoint_id: self.endpoint_subject_id.as_deref(),
         }
     }
 }
@@ -130,6 +139,7 @@ impl BudgetService {
             org_subject_id: everruns_core::org_public_id_from_internal(org_id),
             app_subject_id: None,
             app_channel_subject_id: None,
+            endpoint_subject_id: None,
             session_id: SessionId::parse(session_id).ok().map(|id| id.uuid()),
             user_id: None,
             principal_id: None,
@@ -157,6 +167,7 @@ impl BudgetService {
             user_subject_id: session.resolved_owner_user_id.map(|id| id.to_string()),
             org_subject_id: everruns_core::org_public_id_from_internal(session.org_id),
             app_subject_id,
+            endpoint_subject_id: app_channel_subject_id.clone(),
             app_channel_subject_id,
             session_id: Some(session.id.uuid()),
             user_id: session.resolved_owner_user_id,
@@ -188,6 +199,7 @@ impl BudgetService {
         let mut budgets = Vec::new();
         for (subject_type, subject_id) in [
             ("session", Some(scope.session_subject_id.as_str())),
+            ("agent_endpoint", scope.endpoint_subject_id.as_deref()),
             ("app_channel", scope.app_channel_subject_id.as_deref()),
             ("app", scope.app_subject_id.as_deref()),
             ("agent", scope.agent_subject_id.as_deref()),

@@ -164,6 +164,9 @@ enum AgUiTarget {
 struct AuthorizedAgUiRequest {
     app: App,
     channel_id: String,
+    /// Internal id of the endpoint this request arrived through, recorded on
+    /// any session it creates (EVE-1004).
+    endpoint_internal_id: uuid::Uuid,
     channel_config: AgUiChannelConfig,
 }
 
@@ -298,8 +301,9 @@ async fn authorize_ag_ui_request(
     }
 
     Ok(AuthorizedAgUiRequest {
-        app,
         channel_id: channel.public_id.to_string(),
+        endpoint_internal_id: channel.internal_id,
+        app,
         channel_config,
     })
 }
@@ -475,12 +479,14 @@ async fn run_agent(
     let AuthorizedAgUiRequest {
         app,
         channel_id,
+        endpoint_internal_id,
         channel_config,
     } = authorize_ag_ui_request(&state, target, &headers, peer_addr).await?;
 
     run_app_agent_stream(
         state,
         app,
+        endpoint_internal_id,
         channel_config,
         "ag_ui",
         vec![format!("ag_ui:channel:{channel_id}")],
@@ -499,6 +505,7 @@ async fn run_agent(
 pub(crate) async fn run_app_agent_stream(
     state: AgUiState,
     app: App,
+    endpoint_internal_id: uuid::Uuid,
     channel_config: AgUiChannelConfig,
     tag_prefix: &str,
     extra_routing_tags: Vec<String>,
@@ -551,6 +558,7 @@ pub(crate) async fn run_app_agent_stream(
     let session = find_or_create_session(
         &state,
         &app,
+        endpoint_internal_id,
         &channel_config,
         &routing_tags,
         &thread_tag,
@@ -879,6 +887,7 @@ impl From<anyhow::Error> for SessionError {
 async fn find_or_create_session(
     state: &AgUiState,
     app: &App,
+    endpoint_internal_id: uuid::Uuid,
     config: &AgUiChannelConfig,
     routing_tags: &[String],
     thread_id: &str,
@@ -938,6 +947,7 @@ async fn find_or_create_session(
                     app.agent_id.map(|agent_id| agent_id.uuid()),
                     app.agent_id,
                     app.internal_id,
+                    Some(endpoint_internal_id),
                     app.owner_principal_id,
                     app.resolved_owner_user_id,
                     everruns_platform::SessionSource::AgUi,

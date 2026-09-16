@@ -152,6 +152,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_provider::typ
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
+            endpoint_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_version_id: None,

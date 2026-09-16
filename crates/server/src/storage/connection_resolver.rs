@@ -623,6 +623,7 @@ mod tests {
             org_id: DEFAULT_ORG_ID,
             workspace_id: None,
             app_id: None,
+            endpoint_id: None,
             harness_id: None,
             agent_id: None,
             agent_version_id: None,

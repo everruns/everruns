@@ -327,8 +327,19 @@ rest proceeds.
    `agent_version_policy`/`agent_version_id`, and `owner_principal_id`/
    `resolved_owner_user_id` are first-class endpoint columns. The `auth` config did not
    move: it lives inside the channel-config encryption envelope, so lifting it is its own
-   migration (EVE-1019). `sessions.app_id` gains `endpoint_id`, and budget `subject_type`
-   gains `agent_endpoint` (`agent` already exists), in EVE-1004.
+   migration (EVE-1019).
+
+   **4b — session and budget attribution** (EVE-1004, landed). `sessions.endpoint_id` and
+   the `agent_endpoint` budget subject follow the exposure down from the bundle. Sessions
+   are attributed from the endpoint routing tag the server itself wrote — three spellings,
+   because the convention grew per transport — and from an App's sole endpoint when it has
+   only one; anything ambiguous stays NULL rather than being guessed into a door it may not
+   have come through. `app_channel` budgets convert 1:1 (the endpoint kept its `appchan_`
+   id, so only the subject type's name moves). `app` budgets have no 1:1 successor and fan
+   out to one budget per endpoint, **preserving** the cap rather than dividing it: dividing
+   would tighten every existing cap without consent, and the App budget stays enforced
+   alongside until phase 8, so the original ceiling keeps binding meanwhile.
+   `sessions.app_id` and the `app`/`app_channel` subject types survive until phase 8.
 5. **Unify the binding enums** (EVE-1005); move webhook from endpoint to trigger type
    (EVE-1006).
 6. **Per-endpoint publish**, `agent.exposures_suspended`, stop reading `App.status`

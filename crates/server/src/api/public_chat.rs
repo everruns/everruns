@@ -102,7 +102,7 @@ async fn get_config(
     State(state): State<AgUiState>,
     Path(app_id): Path<String>,
 ) -> Result<Json<PublicChatBootstrap>, Response> {
-    let (app, config) = resolve_published_channel(&state, &app_id).await?;
+    let (app, _endpoint_internal_id, config) = resolve_published_channel(&state, &app_id).await?;
 
     let branding = &config.branding;
     let name = branding
@@ -161,7 +161,7 @@ async fn run_public_chat(
 ) -> Result<Response, Response> {
     let request_id = req_id.map(|Extension(r)| r.0);
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
-    let (app, config) = resolve_published_channel(&state, &app_id).await?;
+    let (app, endpoint_internal_id, config) = resolve_published_channel(&state, &app_id).await?;
 
     // 1. Authentication. A channel with a real inline `auth` provider requires
     //    a verified credential (e.g. Google sign-in); those visitors are
@@ -230,6 +230,7 @@ async fn run_public_chat(
     let sse = run_app_agent_stream(
         state,
         app,
+        endpoint_internal_id,
         config.ag_ui_stream_config(),
         ROUTING_TAG_PREFIX,
         vec![visitor_binding],
@@ -335,7 +336,7 @@ async fn verify_turnstile(
 async fn resolve_published_channel(
     state: &AgUiState,
     app_id: &str,
-) -> Result<(App, PublicChatChannelConfig), Response> {
+) -> Result<(App, uuid::Uuid, PublicChatChannelConfig), Response> {
     // Feature-gated: when the deployment flag is off, the surface does not exist.
     if !*PUBLIC_CHAT_ENABLED {
         return Err(ErrorResponse::feature_not_enabled("public_chat").into_response());
@@ -363,7 +364,8 @@ async fn resolve_published_channel(
         return Err(not_found());
     }
     let config = channel.public_chat_config().ok_or_else(not_found)?;
-    Ok((app, config))
+    let endpoint_internal_id = channel.internal_id;
+    Ok((app, endpoint_internal_id, config))
 }
 
 fn auth_mode_str(mode: &AppEndpointAuthMode) -> &'static str {
