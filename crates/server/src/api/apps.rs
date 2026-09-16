@@ -126,6 +126,14 @@ pub fn routes(state: AppState) -> Router {
             "/v1/apps/{app_id}/channels/{channel_id}",
             axum::routing::patch(update_channel).delete(delete_channel),
         )
+        .route(
+            "/v1/apps/{app_id}/channels/{channel_id}/publish",
+            post(publish_channel),
+        )
+        .route(
+            "/v1/apps/{app_id}/channels/{channel_id}/unpublish",
+            post(unpublish_channel),
+        )
         // A2A channel sub-routes (channel-specific because the API key is
         // generated server-side and returned exactly once). Uses a dedicated
         // path prefix to avoid colliding with `/channels/{channel_id}`.
@@ -442,6 +450,58 @@ pub async fn trigger_channel(
 }
 
 /// PATCH /v1/apps/{app_id}/channels/{channel_id} - Update a channel
+/// POST /v1/apps/{app_id}/channels/{channel_id}/publish - Publish one endpoint
+#[utoipa::path(
+    post,
+    path = "/v1/apps/{app_id}/channels/{channel_id}/publish",
+    params(
+        ("app_id" = String, Path, description = "App ID (prefixed)"),
+        ("channel_id" = String, Path, description = "Channel ID (prefixed)")
+    ),
+    responses(
+        (status = 200, description = "Endpoint published", body = AppChannel),
+        (status = 400, description = "Invalid request", body = ErrorResponse),
+        (status = 404, description = "App or channel not found", body = ErrorResponse),
+    ),
+    tag = "apps"
+)]
+pub async fn publish_channel(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((app_id, channel_id)): Path<(String, String)>,
+) -> ApiResult<AppChannel> {
+    let channel = crate::domains::apps::PublishEndpoint { app_id, channel_id }
+        .run(&state.ctx(&org))
+        .await?;
+    Ok(Json(channel))
+}
+
+/// POST /v1/apps/{app_id}/channels/{channel_id}/unpublish - Unpublish one endpoint
+#[utoipa::path(
+    post,
+    path = "/v1/apps/{app_id}/channels/{channel_id}/unpublish",
+    params(
+        ("app_id" = String, Path, description = "App ID (prefixed)"),
+        ("channel_id" = String, Path, description = "Channel ID (prefixed)")
+    ),
+    responses(
+        (status = 200, description = "Endpoint unpublished", body = AppChannel),
+        (status = 400, description = "Invalid request", body = ErrorResponse),
+        (status = 404, description = "App or channel not found", body = ErrorResponse),
+    ),
+    tag = "apps"
+)]
+pub async fn unpublish_channel(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((app_id, channel_id)): Path<(String, String)>,
+) -> ApiResult<AppChannel> {
+    let channel = crate::domains::apps::UnpublishEndpoint { app_id, channel_id }
+        .run(&state.ctx(&org))
+        .await?;
+    Ok(Json(channel))
+}
+
 pub async fn update_channel(
     org: ResolvedOrg,
     State(state): State<AppState>,

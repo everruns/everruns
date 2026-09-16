@@ -218,9 +218,9 @@ pub use everruns_core::channel::SessionBinding;
 pub use app::{
     A2aChannelConfig, AgUiChannelConfig, AgentVersionPolicy, ApiEndpointChannelConfig, App,
     AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
-    AppEndpointAuthRequirements, AppStatus, CaptchaProvider, ChannelType, FcpChannelConfig,
-    PublicChatBranding, PublicChatCaptchaConfig, PublicChatChannelConfig, SlackChannelConfig,
-    SlackReplyMode,
+    AppEndpointAuthRequirements, AppStatus, CaptchaProvider, ChannelType, EndpointStatus,
+    FcpChannelConfig, PublicChatBranding, PublicChatCaptchaConfig, PublicChatChannelConfig,
+    SlackChannelConfig, SlackReplyMode,
 };
 
 // Payment accounting records (EVE-838). The execution-contract types

@@ -318,6 +318,16 @@ pub struct Agent {
     pub mcp_servers: ScopedMcpServers,
     /// Current lifecycle status of the agent.
     pub status: AgentStatus,
+    /// Incident switch: when true, no endpoint on this agent accepts traffic
+    /// (EVE-1007). Distinct from archiving — it leaves per-endpoint status
+    /// untouched so clearing it restores exactly the previously live set.
+    #[serde(default)]
+    pub exposures_suspended: bool,
+    /// Whether any endpoint on this agent is currently live. Derived from the
+    /// endpoint rows on read and never stored: a stored flag would be a second
+    /// writer for state the endpoints already own.
+    #[serde(default)]
+    pub exposed: bool,
     /// Timestamp when the agent was created.
     #[cfg_attr(feature = "openapi", schema(example = "2026-04-01T10:00:00Z"))]
     pub created_at: DateTime<Utc>,
@@ -465,6 +475,8 @@ mod tests {
             tools: vec![],
             mcp_servers: ScopedMcpServers::default(),
             status: AgentStatus::Active,
+            exposures_suspended: false,
+            exposed: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             archived_at: None,

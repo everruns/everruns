@@ -522,6 +522,9 @@ pub struct AgentRow {
     pub root_agent_id: Option<AgentId>,
     pub tags: Vec<String>,
     pub status: String,
+    /// Incident switch: when true no endpoint on this agent accepts traffic,
+    /// without rewriting the per-endpoint status it must restore to (EVE-1007).
+    pub exposures_suspended: bool,
     /// Platform-supplied agent (mirrors `HarnessRow::is_built_in`). Its
     /// definition is immutable through the API and excluded from the per-org
     /// agent limit; bindings around it stay editable.
@@ -700,6 +703,8 @@ pub struct UpdateAgent {
     pub root_agent_id: Option<AgentId>,
     pub tags: Option<Vec<String>>,
     pub status: Option<String>,
+    /// Agent-level exposure incident switch (EVE-1007).
+    pub exposures_suspended: Option<bool>,
     pub initial_files: Option<serde_json::Value>,
     pub tools: Option<serde_json::Value>,
     pub mcp_servers: Option<serde_json::Value>,
@@ -2910,6 +2915,9 @@ pub struct AppChannelRow {
     pub channel_config_encrypted: Option<Vec<u8>>,
     pub durable_schedule_id: Option<Uuid>,
     pub enabled: bool,
+    /// Per-endpoint lifecycle; authoritative for ingress (EVE-1007).
+    #[sqlx(default)]
+    pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -2973,6 +2981,10 @@ pub struct UpdateAppChannel {
     pub channel_config_encrypted: Option<Vec<u8>>,
     pub durable_schedule_id: UpdateField<Uuid>,
     pub enabled: Option<bool>,
+    /// Set the endpoint lifecycle directly. When `None`, an `enabled` change
+    /// still moves `status` between `disabled` and the App's publish state so
+    /// the two cannot drift while the App API is still the everyday control.
+    pub status: Option<String>,
 }
 
 // ============================================

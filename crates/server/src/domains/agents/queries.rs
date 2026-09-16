@@ -82,6 +82,11 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_capability::Capabi
         parallel_tool_calls: row.parallel_tool_calls,
         tools: serde_json::from_value(row.tools).unwrap_or_default(),
         status: AgentStatus::from(row.status.as_str()),
+        // `exposed` is derived from the endpoint rows, which this row-level
+        // mapping cannot see. Callers that surface it use
+        // `with_derived_exposure`.
+        exposures_suspended: row.exposures_suspended,
+        exposed: false,
         created_at: row.created_at,
         updated_at: row.updated_at,
         archived_at: row.archived_at,
@@ -288,10 +293,56 @@ pub async fn resolve(
     match row {
         Some(row) if row.status != "deleted" => {
             let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
-            Ok(Some(row_to_agent(row, caps)))
+            with_derived_exposure_one(db, Some(row_to_agent(row, caps))).await
         }
         _ => Ok(None),
     }
+}
+
+/// Fill in `Agent::exposed` for a batch of agents (EVE-1007).
+///
+/// ```text
+/// exposed(agent) = any endpoint live
+///               && agent.status == active
+///               && !agent.exposures_suspended
+/// ```
+///
+/// The same formula the ingress gate applies per request, evaluated here for
+/// list badges. Derived on every read rather than stored, so it cannot drift
+/// from the endpoint rows.
+pub async fn with_derived_exposure(
+    db: &StorageBackend,
+    agents: &mut [Agent],
+) -> anyhow::Result<()> {
+    let candidates: Vec<uuid::Uuid> = agents
+        .iter()
+        .filter(|agent| {
+            agent.status == everruns_platform::AgentStatus::Active && !agent.exposures_suspended
+        })
+        .map(|agent| agent.internal_id)
+        .collect();
+    if candidates.is_empty() {
+        return Ok(());
+    }
+    let live = db.agents_with_live_endpoints(&candidates).await?;
+    for agent in agents.iter_mut() {
+        agent.exposed = live.contains(&agent.internal_id);
+    }
+    Ok(())
+}
+
+/// Single-agent convenience over [`with_derived_exposure`].
+pub async fn with_derived_exposure_one(
+    db: &StorageBackend,
+    agent: Option<Agent>,
+) -> anyhow::Result<Option<Agent>> {
+    let Some(agent) = agent else {
+        return Ok(None);
+    };
+    let mut one = [agent];
+    with_derived_exposure(db, &mut one).await?;
+    let [agent] = one;
+    Ok(Some(agent))
 }
 
 /// Load agent by public ID string, with capabilities.
@@ -304,7 +355,7 @@ pub async fn get_by_public_id(
     match row {
         Some(row) if row.status != "deleted" => {
             let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
-            Ok(Some(row_to_agent(row, caps)))
+            with_derived_exposure_one(db, Some(row_to_agent(row, caps))).await
         }
         _ => Ok(None),
     }
@@ -320,7 +371,7 @@ pub async fn get_by_name(
     match row {
         Some(row) if row.status != "deleted" => {
             let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
-            Ok(Some(row_to_agent(row, caps)))
+            with_derived_exposure_one(db, Some(row_to_agent(row, caps))).await
         }
         _ => Ok(None),
     }
@@ -485,5 +536,6 @@ pub async fn load_agents_list(
         let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
         agents.push(row_to_agent(row, caps));
     }
+    with_derived_exposure(db, &mut agents).await?;
     Ok(agents)
 }

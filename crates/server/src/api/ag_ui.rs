@@ -56,7 +56,7 @@ use everruns_core::events::{
 };
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
 use everruns_platform::exposure::{PublicToolVisibility, public_tool_activity_text};
-use everruns_platform::{AgUiChannelConfig, App, AppStatus, ChannelType};
+use everruns_platform::{AgUiChannelConfig, App, ChannelType};
 use everruns_provider::execution_phase::ExecutionPhase;
 use everruns_provider::typed_id::ImageId;
 #[cfg(test)]
@@ -208,14 +208,9 @@ async fn authorize_ag_ui_request(
     // AG-UI channel / is misconfigured". Every such case collapses to a single
     // generic 404 (matching the FCP channel in `api/fcp.rs`); the real reason is
     // logged server-side only.
-    if app.status != AppStatus::Published {
-        tracing::debug!(app_id = %app.public_id, status = ?app.status, "AG-UI request rejected: app not published");
-        return Err(not_found());
-    }
-
     let channel = match endpoint_channel {
         Some(channel) => {
-            if channel.channel_type != ChannelType::AgUi || !channel.enabled {
+            if channel.channel_type != ChannelType::AgUi {
                 return Err(not_found());
             }
             channel
@@ -233,6 +228,19 @@ async fn authorize_ag_ui_request(
             }
         },
     };
+    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&state.db, &app, &channel)
+        .await
+        .map_err(internal_error)?
+    {
+        tracing::debug!(
+            app_id = %app.public_id,
+            endpoint_id = %channel.public_id,
+            reason = reason.as_str(),
+            "AG-UI request rejected: endpoint not live"
+        );
+        return Err(not_found());
+    }
+
     let Some(channel_config) = channel.ag_ui_config() else {
         tracing::error!(app_id = %app.public_id, "AG-UI channel config did not deserialize");
         return Err(not_found());
@@ -1753,7 +1761,7 @@ mod tests {
             owner: None,
             effective_owner: None,
             channels: vec![],
-            status: AppStatus::Published,
+            status: everruns_platform::AppStatus::Published,
             published_at: None,
             created_at: now,
             updated_at: now,

@@ -348,6 +348,8 @@ pub mod tests {
                     tools: vec![],
                     mcp_servers: Default::default(),
                     status: AgentStatus::Active,
+                    exposures_suspended: false,
+                    exposed: false,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                     archived_at: None,

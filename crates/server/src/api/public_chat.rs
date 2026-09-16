@@ -24,7 +24,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_platform::{
-    App, AppEndpointAuthMode, AppEndpointAuthProviderConfig, AppStatus, PublicChatChannelConfig,
+    App, AppEndpointAuthMode, AppEndpointAuthProviderConfig, PublicChatChannelConfig,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -349,11 +349,19 @@ async fn resolve_published_channel(
     .map_err(internal_error)?
     .ok_or_else(not_found)?;
 
-    if app.status != AppStatus::Published {
+    let channel = app.public_chat_channel().ok_or_else(not_found)?;
+    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&state.db, &app, channel)
+        .await
+        .map_err(internal_error)?
+    {
+        tracing::debug!(
+            app_id = %app.public_id,
+            endpoint_id = %channel.public_id,
+            reason = reason.as_str(),
+            "Public chat request rejected: endpoint not live"
+        );
         return Err(not_found());
     }
-
-    let channel = app.public_chat_channel().ok_or_else(not_found)?;
     let config = channel.public_chat_config().ok_or_else(not_found)?;
     Ok((app, config))
 }

@@ -7,7 +7,9 @@ use crate::services::row_to_principal;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use crate::storage::models::UpdateAppChannel;
-use everruns_platform::{AgentVersionPolicy, App, AppChannel, AppStatus, ChannelType};
+use everruns_platform::{
+    AgentVersionPolicy, App, AppChannel, AppStatus, ChannelType, EndpointStatus,
+};
 use everruns_provider::typed_id::AppId;
 use everruns_provider::typed_id::{
     AgentId, AgentIdentityId, AgentVersionId, AppChannelId, HarnessId,
@@ -112,6 +114,7 @@ pub fn channel_row_to_channel(
         channel_type: ChannelType::from_str_opt(&row.channel_type).unwrap_or(ChannelType::Slack),
         channel_config,
         enabled: row.enabled,
+        status: EndpointStatus::from(row.status.as_str()),
         created_at: row.created_at,
         updated_at: row.updated_at,
     }
@@ -172,6 +175,13 @@ pub async fn row_to_app(
                 channel_type: ct,
                 channel_config: config,
                 enabled: true,
+                // Legacy fallback: this App predates `app_channels` rows, so the
+                // only lifecycle it has is its own publish state.
+                status: if row.status == "published" {
+                    EndpointStatus::Live
+                } else {
+                    EndpointStatus::Draft
+                },
                 created_at: row.created_at,
                 updated_at: row.updated_at,
             }]

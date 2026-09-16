@@ -40,6 +40,58 @@ pub enum AppStatus {
     Deleted,
 }
 
+/// Per-endpoint lifecycle (EVE-1007).
+///
+/// This is the authority for whether an exposure accepts traffic. It replaced
+/// the two-dimensional `App.status × AppChannel.enabled` matrix, which could
+/// express "published App, disabled channel" and forced publishing a whole App —
+/// and therefore every sibling endpoint on it — to make one endpoint reachable.
+///
+/// Liveness is not this value alone; see `endpoint_is_live` in
+/// `crates/server/src/api/app_ingress.rs` for the agent-level terms, which are
+/// folded in at resolution time rather than stored here.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "live"))]
+#[serde(rename_all = "lowercase")]
+pub enum EndpointStatus {
+    /// Configured but never published; refuses traffic.
+    #[default]
+    Draft,
+    /// Published and accepting traffic, subject to the agent-level terms.
+    Live,
+    /// Explicitly turned off; refuses traffic.
+    Disabled,
+}
+
+impl EndpointStatus {
+    /// Whether the endpoint's own state permits traffic. Callers must still
+    /// apply the agent-level terms.
+    pub fn is_live(self) -> bool {
+        matches!(self, EndpointStatus::Live)
+    }
+}
+
+impl std::fmt::Display for EndpointStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EndpointStatus::Draft => write!(f, "draft"),
+            EndpointStatus::Live => write!(f, "live"),
+            EndpointStatus::Disabled => write!(f, "disabled"),
+        }
+    }
+}
+
+impl From<&str> for EndpointStatus {
+    fn from(s: &str) -> Self {
+        match s {
+            "live" => EndpointStatus::Live,
+            "disabled" => EndpointStatus::Disabled,
+            _ => EndpointStatus::Draft,
+        }
+    }
+}
+
 /// How an App resolves the Agent version it runs.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -279,6 +331,10 @@ pub struct AppChannel {
     /// Whether this channel is enabled.
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// Per-endpoint lifecycle. Authoritative for ingress (EVE-1007); `enabled`
+    /// is retained for the App API's existing shape.
+    #[serde(default)]
+    pub status: EndpointStatus,
     /// Timestamp when this channel was created.
     pub created_at: DateTime<Utc>,
     /// Timestamp when this channel was last updated.
@@ -363,6 +419,13 @@ impl AppChannel {
     }
 }
 
+// These accessors answer "which channel of this type does this app have",
+// and deliberately filter on `enabled` rather than liveness. Liveness is
+// applied separately by `endpoint_liveness` at the ingress gates, because
+// non-ingress callers — Slack delivery recovery for sessions that are
+// already running, for one — must keep working when an endpoint is
+// unpublished or its agent is suspended. Folding liveness in here would
+// orphan in-flight deliveries.
 impl App {
     /// Find the first Slack channel on this app.
     pub fn slack_channel(&self) -> Option<&AppChannel> {
@@ -1408,6 +1471,7 @@ mod tests {
             channel_type,
             channel_config: config,
             enabled: true,
+            status: EndpointStatus::Live,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

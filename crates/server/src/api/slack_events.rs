@@ -31,8 +31,7 @@ use everruns_core::channel::{
 };
 use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
 use everruns_platform::{
-    App, AppChannel, AppStatus, ChannelType, ConversationStarter, SlackChannelConfig,
-    SlackReplyMode,
+    App, AppChannel, ChannelType, ConversationStarter, SlackChannelConfig, SlackReplyMode,
 };
 use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 use everruns_provider::url_validation::validate_safe_url;
@@ -441,13 +440,8 @@ async fn resolve_slack_channel(
         }
     };
 
-    if app.status != AppStatus::Published {
-        tracing::debug!(app_id = %app.public_id, status = ?app.status, "Slack ingress rejected: app not published");
-        return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
-    }
-
     let channel = match endpoint_channel {
-        Some(channel) if channel.channel_type == ChannelType::Slack && channel.enabled => channel,
+        Some(channel) if channel.channel_type == ChannelType::Slack => channel,
         Some(_) => {
             return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
         }
@@ -466,6 +460,23 @@ async fn resolve_slack_channel(
             }
         },
     };
+
+    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&state.db, &app, &channel)
+        .await
+        .map_err(|_| {
+            ErrorResponse::new("Internal server error")
+                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+        })?
+    {
+        tracing::debug!(
+            app_id = %app.public_id,
+            endpoint_id = %channel.public_id,
+            reason = reason.as_str(),
+            "Slack ingress rejected: endpoint not live"
+        );
+        return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
+    }
+
     Ok((app, channel))
 }
 
@@ -3160,10 +3171,11 @@ mod tests {
                 channel_type: ChannelType::Slack,
                 channel_config: serde_json::json!({}),
                 enabled: true,
+                status: everruns_platform::EndpointStatus::Live,
                 created_at: now,
                 updated_at: now,
             }],
-            status: AppStatus::Published,
+            status: everruns_platform::AppStatus::Published,
             published_at: None,
             created_at: now,
             updated_at: now,

@@ -442,6 +442,8 @@ mod tests {
             tools: vec![],
             mcp_servers: Default::default(),
             status: AgentStatus::Active,
+            exposures_suspended: false,
+            exposed: false,
             created_at: chrono::Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 0).unwrap(),
             updated_at: chrono::Utc.with_ymd_and_hms(2026, 1, 5, 0, 0, 0).unwrap(),
             archived_at: None,

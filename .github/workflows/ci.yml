@@ -1249,6 +1249,7 @@ jobs:
           cargo test -p everruns-server \
             --test agent_endpoints_migration_test \
             --test app_api_integration_test \
+            --test endpoint_publish_test \
             --test command_policy_enforcement_test \
             --test fcp_integration_test \
             --test guardrails_integration_test \

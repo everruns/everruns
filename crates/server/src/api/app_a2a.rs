@@ -430,11 +430,6 @@ async fn authenticate_request(
     // channel is disabled / misconfigured". Every such case collapses to a
     // single generic 404 (matching the FCP channel in `api/fcp.rs`); the real
     // reason is logged server-side only.
-    if app.status != everruns_platform::AppStatus::Published {
-        tracing::debug!(app_id = %app.public_id, status = ?app.status, "A2A request rejected: app not published");
-        return Err(not_found());
-    }
-
     let channel_id_typed = channel_id
         .parse::<everruns_provider::typed_id::AppChannelId>()
         .map_err(|e| bad_request(format!("Invalid channel ID: {e}")))?;
@@ -442,11 +437,20 @@ async fn authenticate_request(
     if channel.channel_type != everruns_platform::ChannelType::A2a {
         return Err(not_found());
     }
-    // THREAT[TM-AUTHZ-006]: Anonymous A2A ingress must never reach draft or
-    // disabled app channels, and every request must present the per-channel
-    // API key before session creation.
-    if !channel.enabled {
-        tracing::debug!(app_id = %app.public_id, "A2A request rejected: channel disabled");
+    // THREAT[TM-AUTHZ-006]: Anonymous A2A ingress must never reach a non-live
+    // endpoint, and every request must present the per-channel API key before
+    // session creation. Liveness is resolved before auth so a caller cannot
+    // distinguish a misconfigured endpoint from a bad key.
+    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&state.db, &app, channel)
+        .await
+        .map_err(internal_error)?
+    {
+        tracing::debug!(
+            app_id = %app.public_id,
+            endpoint_id = %channel.public_id,
+            reason = reason.as_str(),
+            "A2A request rejected: endpoint not live"
+        );
         return Err(not_found());
     }
 
@@ -1381,15 +1385,21 @@ async fn agent_card(
         .await
         .map_err(internal_error)?
         .ok_or_else(not_found)?;
-    // Agent Card is only published when the app is live and the channel is on.
-    if app.status != everruns_platform::AppStatus::Published {
-        return Err(not_found());
-    }
     let channel_id_typed = channel_id
         .parse::<everruns_provider::typed_id::AppChannelId>()
         .map_err(|_| not_found())?;
     let channel = app.channel_by_id(&channel_id_typed).ok_or_else(not_found)?;
-    if channel.channel_type != everruns_platform::ChannelType::A2a || !channel.enabled {
+    if channel.channel_type != everruns_platform::ChannelType::A2a {
+        return Err(not_found());
+    }
+    // The Agent Card is only served for a live endpoint: it advertises the
+    // invocation URL and security scheme, so publishing it for a draft or
+    // suspended endpoint would leak a surface that refuses traffic.
+    if crate::api::app_ingress::endpoint_liveness(&state.db, &app, channel)
+        .await
+        .map_err(internal_error)?
+        .is_err()
+    {
         return Err(not_found());
     }
     let config = channel.a2a_config().ok_or_else(not_found)?;

@@ -1538,6 +1538,128 @@ impl Command for SetDefaultAgentVersion {
 
 inventory::submit! { CommandDescriptor::of::<SetDefaultAgentVersion>() }
 
+// ============================================================================
+// SuspendAgentExposures / ResumeAgentExposures
+// ============================================================================
+
+/// Take every endpoint on an agent off the internet in one action (EVE-1007).
+///
+/// This is the incident control, and is deliberately separate from archiving and
+/// from per-endpoint publish: it leaves every endpoint's own `status` untouched,
+/// so resuming restores exactly the set that was live before — which is what
+/// makes it safe to reach for under pressure.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SuspendAgentExposures {
+    /// Agent's prefixed public identifier.
+    pub agent_id: String,
+}
+
+impl Command for SuspendAgentExposures {
+    type Output = Agent;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "suspend_agent_exposures",
+            category: "agents",
+            description: "Stop every endpoint on an agent from accepting traffic.",
+            method: "POST",
+            path: "/v1/agents/{agent_id}/exposures/suspend",
+        }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents", "exposures"], "suspend")
+                .with_examples(&["everruns agents exposures suspend --agent_id agt_01h9..."]),
+        )
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&AGENT_MANAGE)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("agent_id")
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
+        set_exposures_suspended(ctx, &self.agent_id, true).await
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<SuspendAgentExposures>() }
+
+/// Clear the agent-level exposure suspend, restoring the previously live set.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ResumeAgentExposures {
+    /// Agent's prefixed public identifier.
+    pub agent_id: String,
+}
+
+impl Command for ResumeAgentExposures {
+    type Output = Agent;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "resume_agent_exposures",
+            category: "agents",
+            description: "Let an agent's live endpoints accept traffic again.",
+            method: "POST",
+            path: "/v1/agents/{agent_id}/exposures/resume",
+        }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        Some(
+            CliRoute::new(&["agents", "exposures"], "resume")
+                .with_examples(&["everruns agents exposures resume --agent_id agt_01h9..."]),
+        )
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&AGENT_MANAGE)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("agent_id")
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
+        set_exposures_suspended(ctx, &self.agent_id, false).await
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ResumeAgentExposures>() }
+
+async fn set_exposures_suspended(
+    ctx: &Ctx,
+    agent_id: &str,
+    suspended: bool,
+) -> Result<Agent, CommandError> {
+    let agent = resolve_agent_for_mutation(ctx, agent_id).await?;
+    let row = ctx
+        .db
+        .update_agent(
+            ctx.org_id(),
+            AgentId::from_uuid(agent.internal_id),
+            UpdateAgent {
+                exposures_suspended: Some(suspended),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Agent"))?;
+    let caps = q::get_capabilities(&ctx.db, row.org_id, row.id.uuid())
+        .await
+        .map_err(classify_anyhow)?;
+    let agent = q::row_to_agent(row, caps);
+    q::with_derived_exposure_one(&ctx.db, Some(agent))
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Agent"))
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RollbackAgentVersion {
     /// Agent's prefixed public identifier.

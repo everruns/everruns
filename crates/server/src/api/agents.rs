@@ -527,6 +527,14 @@ pub fn routes(state: AppState) -> Router {
             post(set_default_agent_version),
         )
         .route(
+            "/v1/agents/{agent_id}/exposures/suspend",
+            post(suspend_agent_exposures),
+        )
+        .route(
+            "/v1/agents/{agent_id}/exposures/resume",
+            post(resume_agent_exposures),
+        )
+        .route(
             "/v1/agents/{agent_id}/versions/{version_id}/rollback",
             post(rollback_agent_version),
         )
@@ -872,6 +880,54 @@ pub async fn set_default_agent_version(
     state
         .dispatcher(&org)
         .run_with_urls(crate::domains::agents::SetDefaultAgentVersion { agent_id, req })
+        .await
+}
+
+/// POST /v1/agents/{agent_id}/exposures/suspend - Take every endpoint offline
+#[utoipa::path(
+    post,
+    path = "/v1/agents/{agent_id}/exposures/suspend",
+    params(
+        ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
+    ),
+    responses(
+        (status = 200, description = "Exposures suspended", body = WithUrls<Agent>),
+        (status = 404, description = "Agent not found", body = ErrorResponse),
+    ),
+    tag = "agents"
+)]
+pub async fn suspend_agent_exposures(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> ApiResult<WithUrls<Agent>> {
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::agents::SuspendAgentExposures { agent_id })
+        .await
+}
+
+/// POST /v1/agents/{agent_id}/exposures/resume - Let live endpoints serve again
+#[utoipa::path(
+    post,
+    path = "/v1/agents/{agent_id}/exposures/resume",
+    params(
+        ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
+    ),
+    responses(
+        (status = 200, description = "Exposures resumed", body = WithUrls<Agent>),
+        (status = 404, description = "Agent not found", body = ErrorResponse),
+    ),
+    tag = "agents"
+)]
+pub async fn resume_agent_exposures(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> ApiResult<WithUrls<Agent>> {
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::agents::ResumeAgentExposures { agent_id })
         .await
 }
 

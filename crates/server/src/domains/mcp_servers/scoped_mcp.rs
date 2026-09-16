@@ -458,6 +458,8 @@ mod tests {
             tools: vec![],
             mcp_servers: Default::default(),
             status: AgentStatus::Active,
+            exposures_suspended: false,
+            exposed: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             archived_at: None,

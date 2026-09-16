@@ -87,6 +87,9 @@ impl DbAgentStore {
                     parallel_tool_calls: row.parallel_tool_calls,
                     tools: from_json(row.tools),
                     status: AgentStatus::from(row.status.as_str()),
+                    // Execution-side load: exposure state is a control-plane concern.
+                    exposures_suspended: false,
+                    exposed: false,
                     created_at: row.created_at,
                     updated_at: row.updated_at,
                     archived_at: row.archived_at,
