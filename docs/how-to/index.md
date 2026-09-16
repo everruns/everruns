@@ -23,6 +23,7 @@ Each how-to here solves one concrete problem. They assume you already understand
 - [Consume events via raw SSE](/how-to/consume-events-via-sse/), when you don't want the SDK: curl, EventSource, or any HTTP client.
 - [Handle errors and cancel turns](/how-to/handle-errors-and-cancellation/), graceful failure paths, turn cancellation, retries.
 - [Orchestrate multi-agent pipelines](/how-to/orchestrate-multi-agent-pipelines/), chain sessions together.
+- [Build a foreman agent](/how-to/build-a-foreman-agent/), put one agent in front of a team of specialists and let it triage and delegate.
 
 ## Packaging and distribution
 
