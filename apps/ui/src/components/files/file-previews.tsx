@@ -335,7 +335,7 @@ export function JSONPreview({ content }: { content: string }) {
   if (!formatted || !markdown) {
     return (
       <div className="p-4 text-sm text-muted-foreground text-center">
-        <AlertCircle className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
+        <AlertCircle className="h-8 w-8 mx-auto mb-2 text-warning" />
         <p>Invalid JSON</p>
       </div>
     );
@@ -545,7 +545,7 @@ export function SVGPreview({
   if (!svgSource.trim()) {
     return (
       <div className="p-4 text-sm text-muted-foreground text-center">
-        <AlertCircle className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
+        <AlertCircle className="h-8 w-8 mx-auto mb-2 text-warning" />
         <p>Empty or invalid SVG</p>
       </div>
     );
@@ -649,7 +649,7 @@ export function PdfPreview({ content }: { content: string }) {
   if (!content.trim()) {
     return (
       <div className="p-4 text-sm text-muted-foreground text-center">
-        <AlertCircle className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
+        <AlertCircle className="h-8 w-8 mx-auto mb-2 text-warning" />
         <p>Empty or invalid PDF</p>
       </div>
     );

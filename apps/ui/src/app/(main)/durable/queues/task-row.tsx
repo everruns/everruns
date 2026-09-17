@@ -14,17 +14,17 @@ import type { DurableTask, TaskStatus } from "@/lib/api/types";
 export function getTaskStatusIcon(status: TaskStatus) {
   switch (status) {
     case "completed":
-      return <CheckCircle className="h-4 w-4 text-green-500" />;
+      return <CheckCircle className="h-4 w-4 text-success" />;
     case "claimed":
-      return <Activity className="h-4 w-4 text-blue-500 animate-pulse" />;
+      return <Activity className="h-4 w-4 text-info animate-pulse" />;
     case "failed":
-      return <XCircle className="h-4 w-4 text-red-500" />;
+      return <XCircle className="h-4 w-4 text-destructive" />;
     case "dead":
-      return <AlertTriangle className="h-4 w-4 text-red-700" />;
+      return <AlertTriangle className="h-4 w-4 text-destructive" />;
     case "cancelled":
-      return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+      return <AlertTriangle className="h-4 w-4 text-warning" />;
     default:
-      return <Clock className="h-4 w-4 text-gray-500" />;
+      return <Clock className="h-4 w-4 text-muted-foreground" />;
   }
 }
 
@@ -71,7 +71,7 @@ export function TaskRow({ task }: { task: DurableTask }) {
         {task.last_error ? (
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger className="text-sm text-red-600 max-w-[150px] truncate block">
+              <TooltipTrigger className="text-sm text-destructive max-w-[150px] truncate block">
                 {task.last_error}
               </TooltipTrigger>
               <TooltipContent className="max-w-sm">

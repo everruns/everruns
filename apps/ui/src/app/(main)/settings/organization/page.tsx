@@ -305,8 +305,8 @@ export default function OrganizationPage() {
         ) : (
           <div className="space-y-6">
             {!canManage && (
-              <Card className="flex items-start gap-3 border-amber-500/30 bg-amber-500/5 p-4 text-sm">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <Card className="flex items-start gap-3 border-warning/30 bg-warning/5 p-4 text-sm">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
                 <p>
                   Only organization owners and admins can change these settings. You have read-only
                   access as a member.
@@ -646,7 +646,7 @@ function AutoSaveBadge({ saveState }: { saveState: GroupSaveState }) {
       role="status"
       aria-live="polite"
       variant="outline"
-      className={cn(saveState.state === "saved" && "text-green-700")}
+      className={cn(saveState.state === "saved" && "text-success")}
     >
       <Check className="h-3 w-3" />
       Saved

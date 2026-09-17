@@ -102,7 +102,7 @@ export function UrlElicitationToolCall({
       <div
         className={cn(
           "flex items-center gap-2 px-3 py-1.5 text-sm",
-          accepted ? "text-green-700 dark:text-green-400" : "text-muted-foreground",
+          accepted ? "text-success" : "text-muted-foreground",
         )}
       >
         {accepted ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
@@ -130,7 +130,7 @@ export function UrlElicitationToolCall({
             {after}
           </p>
           {elicitation.url_is_punycode && (
-            <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+            <p className="mt-2 flex items-start gap-1.5 text-xs text-warning">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>
                 This domain is written in Punycode, so it can look like a different one. Check it

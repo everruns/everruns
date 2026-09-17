@@ -79,7 +79,9 @@ function ScheduleRow({
       <TableCell className="max-w-[200px]">
         <div className="flex items-center gap-2 min-w-0">
           <Clock
-            className={`h-4 w-4 shrink-0 ${schedule.enabled ? "text-green-500" : "text-gray-400"}`}
+            className={`h-4 w-4 shrink-0 ${
+              schedule.enabled ? "text-success" : "text-muted-foreground"
+            }`}
           />
           <div className="min-w-0 flex-1">
             <div className="font-medium">

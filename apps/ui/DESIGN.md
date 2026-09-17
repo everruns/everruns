@@ -20,7 +20,13 @@ colors:
   muted-foreground: "hsl(0 0% 45%)"
   accent: "hsl(43 60% 53%)"
   accent-foreground: "hsl(43 60% 30%)"
-  destructive: "hsl(0 84% 60%)"
+  success: "hsl(163 94% 24%)"
+  success-foreground: "hsl(0 0% 98%)"
+  warning: "hsl(26 90% 37%)"
+  warning-foreground: "hsl(0 0% 98%)"
+  info: "hsl(201 96% 32%)"
+  info-foreground: "hsl(0 0% 98%)"
+  destructive: "hsl(0 72% 51%)"
   destructive-foreground: "hsl(0 0% 98%)"
   border: "hsl(0 0% 88%)"
   input: "hsl(0 0% 85%)"
@@ -166,10 +172,20 @@ gold accent. Descriptive brand names map to systematic tokens as follows:
   (`background hsl(220 15% 8%)`, `card hsl(220 15% 10%)`).
 - **Muted (`muted` / `muted-foreground`):** Quiet grays for secondary text,
   metadata, and disabled states.
-- **Destructive (`hsl(0 84% 60%)`):** Errors and irreversible actions only.
+- **Success (`success` / `success-foreground`):** Positive outcomes and healthy
+  states. Use `success` for indicators and translucent surfaces, and
+  `success-foreground` on a solid success fill.
+- **Warning (`warning` / `warning-foreground`):** Conditions that need
+  attention, including degraded and waiting states. Use the foreground pair on
+  a solid warning fill.
+- **Info (`info` / `info-foreground`):** Active, running, and informational
+  states. Use the foreground pair on a solid info fill.
+- **Destructive (`hsl(0 72% 51%)`):** Errors and irreversible actions only.
 
 Every token has a light and dark value in `design-system.css`; the tokens above
-capture the light theme as the canonical reference.
+capture the light theme as the canonical reference. Dark mode uses lighter
+status colors with dark foreground pairs so indicators remain legible on
+charcoal surfaces and solid fills.
 
 ## Typography
 
@@ -250,6 +266,16 @@ status dots, circular Lucide glyphs, and the rings in the Everruns logo.
 - **Do** keep every corner sharp.
 - **Do** reserve gold (`accent`) for active states, focus rings, and highlights;
   use navy (`primary`) for the single most important action per screen.
+- **Do** use `success`, `warning`, `info`, and `destructive` for status meaning;
+  keep raw palette colors only for categorical or ordinal encodings.
+- **Do** keep explicit palette ramps for pass-rate and worker-load thresholds,
+  categorical dashboard and cost series, workflow event types, file-type icons,
+  folder icons, model-family labels, and favorite stars. These colors
+  distinguish values rather than communicate status.
+- **Do** keep the loading-wave ramp as direct HSL values so its ordered
+  navy-to-gold sequence remains stable in each theme.
+- **Do** keep white text on saturated destructive fills, black scrims, and the
+  white document canvas used for file previews.
 - **Don't** place dark text on a gold surface or use gold for body text, its
   contrast is too low for WCAG AA.
 - **Don't** add decorative shadows to content cards or exceed `shadow-md` on overlays.

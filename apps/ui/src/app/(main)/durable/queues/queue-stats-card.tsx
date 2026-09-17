@@ -34,7 +34,7 @@ export function QueueStatsCard({
           </div>
           <div>
             <p className="text-muted-foreground text-xs">Failed/hr</p>
-            <p className={cn("font-medium", stats.failed_last_hour > 0 && "text-red-500")}>
+            <p className={cn("font-medium", stats.failed_last_hour > 0 && "text-destructive")}>
               {stats.failed_last_hour}
             </p>
           </div>

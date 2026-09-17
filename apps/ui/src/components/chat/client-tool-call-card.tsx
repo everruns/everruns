@@ -27,12 +27,12 @@ export function ClientToolCallCard({ toolCall, toolResult }: ClientToolCallCardP
 
   const statusIcon = isComplete ? (
     hasError ? (
-      <span className="text-red-600 text-xs">&#x2717;</span>
+      <span className="text-destructive text-xs">&#x2717;</span>
     ) : (
-      <Check className="h-3 w-3 text-green-600/80" />
+      <Check className="h-3 w-3 text-success/80" />
     )
   ) : (
-    <Loader2 className="h-3 w-3 animate-spin text-amber-500/70" />
+    <Loader2 className="h-3 w-3 animate-spin text-warning/70" />
   );
 
   const fullText = toolResult?.result ? getFullText(toolResult.result) : "";
@@ -43,21 +43,19 @@ export function ClientToolCallCard({ toolCall, toolResult }: ClientToolCallCardP
       {/* Tool name with client-side indicator */}
       <div className="flex items-center gap-1">
         {statusIcon}
-        <MonitorSmartphone className="h-3 w-3 text-amber-500/70" />
-        <span className="font-mono text-amber-700 dark:text-amber-400">
+        <MonitorSmartphone className="h-3 w-3 text-warning/70" />
+        <span className="font-mono text-warning">
           {toolResult?.display_name ?? toolCall.display_name ?? toolCall.name}
         </span>
         {!isComplete && (
-          <span className="text-amber-500/70 italic text-[10px] ml-1">
-            {t("waiting_for_client")}
-          </span>
+          <span className="text-warning/70 italic text-[10px] ml-1">{t("waiting_for_client")}</span>
         )}
         {argsPreview && <span className="opacity-60">{argsPreview}</span>}
       </div>
 
       {/* Error message */}
       {hasError && (
-        <div className="text-red-600 ml-4 mt-0.5">
+        <div className="text-destructive ml-4 mt-0.5">
           {t("error_prefix", { value: toolResult?.error ?? "" })}
         </div>
       )}

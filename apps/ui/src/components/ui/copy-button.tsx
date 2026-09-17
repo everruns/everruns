@@ -47,7 +47,7 @@ export function CopyButton({ value, label = "Copy", kind = "value", className }:
             aria-label={label}
           >
             {copied ? (
-              <Check className="h-3 w-3 text-green-500" />
+              <Check className="h-3 w-3 text-success" />
             ) : kind === "id" ? (
               <Hash className="h-3 w-3 text-muted-foreground" />
             ) : (
@@ -60,7 +60,7 @@ export function CopyButton({ value, label = "Copy", kind = "value", className }:
         </TooltipTrigger>
         <TooltipContent className="max-w-[min(40rem,calc(100vw-2rem))] break-all font-mono">
           <span>{label}</span>
-          {copied && <span className="ml-2 text-green-600">Copied</span>}
+          {copied && <span className="ml-2 text-success">Copied</span>}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

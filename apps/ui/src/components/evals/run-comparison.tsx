@@ -42,9 +42,9 @@ function caseKeyOf(r: EvalCaseResult): string {
 function verdictClasses(verdict: Verdict): string {
   switch (verdict) {
     case "passed":
-      return "bg-green-500/15 text-green-700 dark:text-green-400";
+      return "bg-success/15 text-success";
     case "failed":
-      return "bg-red-500/15 text-red-700 dark:text-red-400";
+      return "bg-destructive/15 text-destructive";
     case "skipped":
       return "bg-muted text-muted-foreground";
     default:
@@ -132,9 +132,9 @@ export function RunComparison({ evalId, runs }: { evalId: string; runs: EvalRun[
                   const regressed = prev?.verdict === "passed" && agg?.verdict === "failed";
                   const improved = prev?.verdict === "failed" && agg?.verdict === "passed";
                   const ring = regressed
-                    ? "ring-2 ring-red-500"
+                    ? "ring-2 ring-destructive"
                     : improved
-                      ? "ring-2 ring-green-500"
+                      ? "ring-2 ring-success"
                       : "";
                   const text =
                     agg == null
@@ -169,10 +169,10 @@ export function RunComparison({ evalId, runs }: { evalId: string; runs: EvalRun[
       </div>
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded ring-2 ring-red-500" /> regressed
+          <span className="inline-block w-3 h-3 rounded ring-2 ring-destructive" /> regressed
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded ring-2 ring-green-500" /> improved
+          <span className="inline-block w-3 h-3 rounded ring-2 ring-success" /> improved
         </span>
         <span>cells show mean score (✓/✗ when no numeric score); runs ordered oldest → newest</span>
       </div>

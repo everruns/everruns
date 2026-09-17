@@ -32,15 +32,15 @@ import { getWorkerStatusBadgeVariant } from "@/lib/status-utils";
 function getStatusColor(status: WorkerStatus) {
   switch (status) {
     case "active":
-      return "bg-green-500";
+      return "bg-success";
     case "draining":
-      return "bg-yellow-500";
+      return "bg-warning";
     case "stopped":
-      return "bg-red-500";
+      return "bg-destructive";
     case "stale":
-      return "bg-gray-500";
+      return "bg-muted-foreground";
     default:
-      return "bg-gray-500";
+      return "bg-muted-foreground";
   }
 }
 
@@ -98,7 +98,7 @@ function WorkerRow({
       </TableCell>
       <TableCell>
         {worker.accepting_tasks ? (
-          <div className="flex items-center gap-1 text-green-600">
+          <div className="flex items-center gap-1 text-success">
             <CheckCircle className="h-3 w-3" />
             <span className="text-xs">Yes</span>
           </div>
@@ -106,7 +106,7 @@ function WorkerRow({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger>
-                <div className="flex items-center gap-1 text-yellow-600">
+                <div className="flex items-center gap-1 text-warning">
                   <Pause className="h-3 w-3" />
                   <span className="text-xs">No</span>
                 </div>
@@ -132,9 +132,9 @@ function WorkerRow({
       </TableCell>
       <TableCell>
         <div className="text-sm">
-          <p className="text-green-600">{(worker.tasks_completed ?? 0).toLocaleString()}</p>
+          <p className="text-success">{(worker.tasks_completed ?? 0).toLocaleString()}</p>
           {(worker.tasks_failed ?? 0) > 0 && (
-            <p className="text-xs text-red-600">{worker.tasks_failed} failed</p>
+            <p className="text-xs text-destructive">{worker.tasks_failed} failed</p>
           )}
         </div>
       </TableCell>

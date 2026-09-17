@@ -35,14 +35,11 @@ function taskKindIcon(kind: string) {
 function chipClasses(state: SessionTaskState): string {
   switch (state) {
     case "running":
-      // primary — blue tint, matches Badge variant="default"
       return "bg-primary text-primary-foreground border-transparent";
     case "awaiting_input":
-      // amber — stands out, matches taskStateBadge in resources/page.tsx
-      return "bg-amber-500 text-white border-transparent";
+      return "bg-warning text-warning-foreground border-transparent";
     case "queued":
     default:
-      // outline — muted, matches Badge variant="outline"
       return "bg-transparent text-foreground border-border";
   }
 }

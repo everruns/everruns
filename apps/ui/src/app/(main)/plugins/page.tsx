@@ -598,7 +598,7 @@ export function InstalledPluginCard({
         </div>
         <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
           {plugin.warnings.length > 0 && (
-            <Badge variant="outline" className="text-amber-600 border-amber-400 text-xs gap-1">
+            <Badge variant="outline" className="text-warning border-warning text-xs gap-1">
               <AlertTriangle className="h-3 w-3" />
               {plugin.warnings.length} warning{plugin.warnings.length !== 1 ? "s" : ""}
             </Badge>
@@ -625,7 +625,7 @@ export function InstalledPluginCard({
             <button
               type="button"
               onClick={() => setWarningsExpanded((v) => !v)}
-              className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-700"
+              className="flex items-center gap-1 text-xs text-warning hover:text-warning"
             >
               {warningsExpanded ? (
                 <ChevronDown className="h-3 w-3" />
@@ -637,7 +637,7 @@ export function InstalledPluginCard({
             {warningsExpanded && (
               <ul className="mt-1.5 space-y-1">
                 {plugin.warnings.map((w, i) => (
-                  <li key={i} className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded">
+                  <li key={i} className="text-xs text-warning bg-warning/10 px-2 py-1 rounded">
                     {w}
                   </li>
                 ))}

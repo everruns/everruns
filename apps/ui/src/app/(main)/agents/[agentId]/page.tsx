@@ -579,7 +579,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                   <div>
                     <p className="text-sm font-medium mb-2">Token Usage</p>
                     <div className="flex items-center gap-2 p-2 border bg-muted/50">
-                      <Zap className="w-4 h-4 text-yellow-500" />
+                      <Zap className="w-4 h-4 text-accent-foreground" />
                       <div className="flex-1">
                         <p className="text-sm font-medium">
                           {formatTokens(totalTokens(agent.usage))} total

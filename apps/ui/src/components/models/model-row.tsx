@@ -96,7 +96,7 @@ export function ModelRow({
               {model.enabled && (
                 <Badge
                   variant="outline"
-                  className="text-xs bg-green-50 text-green-700 border-green-200"
+                  className="text-xs bg-success/10 text-success border-success/30"
                 >
                   Enabled
                 </Badge>
@@ -185,7 +185,7 @@ export function ModelRow({
                   aria-label={model.healthy ? "Model healthy" : "Model not ready"}
                   className={
                     "inline-block h-2.5 w-2.5 rounded-full " +
-                    (model.healthy ? "bg-green-500" : "bg-gray-300")
+                    (model.healthy ? "bg-success" : "bg-muted-foreground/40")
                   }
                 />
               </TooltipTrigger>
@@ -276,18 +276,18 @@ export function ModelRow({
                 Capabilities
               </div>
               <div className="space-y-0.5">
-                <div className={profile.tool_call ? "text-green-700" : "text-muted-foreground"}>
+                <div className={profile.tool_call ? "text-success" : "text-muted-foreground"}>
                   {profile.tool_call ? "\u2713" : "\u2717"} Tool Calling
                 </div>
                 <div
-                  className={profile.structured_output ? "text-green-700" : "text-muted-foreground"}
+                  className={profile.structured_output ? "text-success" : "text-muted-foreground"}
                 >
                   {profile.structured_output ? "\u2713" : "\u2717"} Structured Output
                 </div>
-                <div className={profile.reasoning ? "text-green-700" : "text-muted-foreground"}>
+                <div className={profile.reasoning ? "text-success" : "text-muted-foreground"}>
                   {profile.reasoning ? "\u2713" : "\u2717"} Reasoning
                 </div>
-                <div className={profile.attachment ? "text-green-700" : "text-muted-foreground"}>
+                <div className={profile.attachment ? "text-success" : "text-muted-foreground"}>
                   {profile.attachment ? "\u2713" : "\u2717"} Attachments
                 </div>
               </div>

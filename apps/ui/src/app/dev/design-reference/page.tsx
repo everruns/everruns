@@ -303,7 +303,7 @@ export default function DevDesignReferencePage() {
           <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
             {checklist.map((item) => (
               <div key={item} className="flex items-start gap-2 text-sm leading-6">
-                <Check className="mt-1 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <Check className="mt-1 size-4 shrink-0 text-success" />
                 <span>{item}</span>
               </div>
             ))}

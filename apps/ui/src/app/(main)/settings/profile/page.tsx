@@ -105,7 +105,7 @@ export default function ProfilePage() {
                 </p>
               )}
               {updateProfile.isSuccess && !hasChanges && (
-                <p className="text-sm text-green-600">Saved successfully</p>
+                <p className="text-sm text-success">Saved successfully</p>
               )}
             </div>
 
