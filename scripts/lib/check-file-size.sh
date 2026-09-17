@@ -35,9 +35,15 @@ ALLOWLIST="scripts/lib/file-size-allowlist.txt"
 EXCLUDE_RE='(^apps/ui/src/lib/api/generated/)'
 
 list_source_files() {
+  # A file deleted in the working tree is still listed by git until the deletion
+  # is staged, so skip what is not on disk; an allowlisted one is then reported
+  # as a stale entry rather than crashing the guard.
   git ls-files -z '*.rs' '*.ts' '*.tsx' \
     | tr '\0' '\n' \
     | grep -Ev "$EXCLUDE_RE" \
+    | while IFS= read -r file; do
+        [ -f "$file" ] && printf '%s\n' "$file"
+      done \
     | sort
 }
 

@@ -45,7 +45,6 @@
 2037 crates/platform/src/session_sandbox.rs
 2788 crates/provider/src/driver_registry.rs
 2195 crates/provider/src/openai_protocol.rs
-6056 crates/provider/src/openresponses_protocol.rs
 1535 crates/provider/src/openresponses_types.rs
 2933 crates/server/src/api/ag_ui.rs
 1952 crates/server/src/api/agents.rs
