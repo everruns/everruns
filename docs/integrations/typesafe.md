@@ -110,6 +110,13 @@ Two things worth knowing when you write the questions:
 - **Routing**: which handler, team, or tool should take this — with a confidence to gate on
 - **Screening**: does this content match a policy, and how clearly
 
+## Embedding the Framework
+
+Running the Everruns Framework in your own application rather than on the
+platform? The same capability attaches to an agent you build yourself, and the
+classifier is also callable directly with no agent at all. See
+[Direct classification](/framework/direct-classification/).
+
 ## Guardrails
 
 The same model backs Everruns [guardrails](/capabilities/guardrails/) when a

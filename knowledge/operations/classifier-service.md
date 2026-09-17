@@ -14,7 +14,7 @@ tags:
     two are siblings, not layers.
   - The contract is provider-neutral (noul/choice/score), not TypeSafe-shaped.
     Core names none of the vendor; `everruns-host` owns the adapter. Swapping
-    vendors, or answering judgments with a fine-tuned local model, is a host
+    vendors, or classifying with a fine-tuned local model, is a host
     change only.
   - Answers are values, not text. The point is removing the parse step, not
     saving tokens: a guardrail that fails open on malformed JSON is a security
@@ -84,7 +84,7 @@ separate confidence because the probability already is one.
 ## Implementation
 
 [`integrations/typesafe`](../../integrations/typesafe/README.md) owns the
-concrete service ([`src/judgment.rs`](../../integrations/typesafe/src/classifier.rs))
+concrete service ([`src/classifier.rs`](../../integrations/typesafe/src/classifier.rs))
 and the vendor client it calls ([`src/client`](../../integrations/typesafe/src/client/)).
 Nothing above core learns the vendor.
 

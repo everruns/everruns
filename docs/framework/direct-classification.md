@@ -144,6 +144,60 @@ A deployment running the Everruns platform configures a separate
 `UTILITY_TYPESAFE_API_KEY` for its [guardrails](/capabilities/guardrails/) — a
 different account from the one an embedding application holds.
 
+## Giving an agent the classifier
+
+Everything above is agentless: your code asks, your code decides. The other
+half is letting an *agent* classify as part of its own work — checking a claim
+against a source before citing it, rating a draft before sending it.
+
+`Jev` is the same classifier as a capability, so an agent gets it as a tool:
+
+```rust
+use everruns::{Agent, Engine, Model, OpenAI};
+use everruns_integrations_typesafe::Jev;
+
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let agent = Agent::builder()
+    .name("reviewer")
+    .instructions(
+        "You review copy. When asked how something reads, measure it with \
+         jev_evaluate and report the numbers rather than judging by eye.",
+    )
+    .model(Model::new("gpt-5.6-terra", OpenAI::from_env()?))
+    .capability(Jev::new(std::env::var("TYPESAFE_API_KEY")?))
+    .build()?;
+
+let session = Engine::new().create(agent);
+let turn = session
+    .run("Rate this subject line for pushiness: 'Act now before it is too late'")
+    .await?;
+# Ok(())
+# }
+```
+
+The agent calls `jev_evaluate`, writing its own questions about whatever it is
+looking at, and gets the same calibrated numbers back. It is the identical tool
+the hosted [TypeSafe integration](/integrations/typesafe/) gives platform
+agents — same name, same schema — so behavior matches whether you embed the
+Framework or run on Everruns.
+
+Which one to reach for:
+
+| | you decide | the agent decides |
+|---|---|---|
+| **who asks** | your code writes the questions | the model writes the questions |
+| **use** | `Classifier` | the `Jev` capability |
+| **good for** | a policy check, a routing rule, a gate | verification inside a longer task |
+
+Add the dependency alongside `everruns`:
+
+```toml
+everruns-integrations-typesafe = { version = "0.1", default-features = false }
+```
+
+`default-features = false` leaves out the hosted connector catalog, which only
+the platform needs.
+
 ## What stays with an agent
 
 A judgment owns no session, no history, and no workspace, and runs no tools.
@@ -151,4 +205,5 @@ Reach for an [agent](/framework/agents/) as soon as the work needs any of those.
 Typed output guarantees the interface, not the truth: validate thresholds
 against your own data and consequences.
 
-Runnable: [`direct_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_classification.rs).
+Runnable: [`direct_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_classification.rs)
+and [`agent_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/agent_classification.rs).

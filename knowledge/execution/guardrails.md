@@ -210,7 +210,7 @@ was a silent bypass, since a malformed verdict read as `allow`.
 the same agent. Their calibration is measured by the
 [guardrail-calibration study](../../evals/guardrail-calibration/README.md), whose
 first run found the default threshold of 50 was not the best point on its corpus
-— see [Coverage of model-backed judgment](../evaluation/evals.md#coverage-of-model-backed-judgment). When a check selects `jev` and the deployment configured no judgment
+— see [Coverage of model-backed classification](../evaluation/evals.md#coverage-of-model-backed-classification). When a check selects `jev` and the deployment configured no classifier
 service (`UTILITY_TYPESAFE_API_KEY` unset), the check is skipped with a warning
 and the stage proceeds — fail-open, and visible in logs rather than silent.
 

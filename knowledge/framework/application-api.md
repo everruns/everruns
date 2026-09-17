@@ -53,7 +53,7 @@ The Framework owns value-first configuration for:
   stores or their file format into the application API.
 - direct, agentless model calls over the same provider values an agent uses,
   for work that is one prompt and one answer;
-- direct, agentless judgments over the same `ClassifierService` the platform's
+- direct, agentless classification over the same `ClassifierService` the platform's
   guardrails use, for work whose answer is a number rather than prose.
 
 The application execution boundary is the concrete `everruns::Engine`.
@@ -239,7 +239,7 @@ the direct completion: a thin value-first layer over the `ClassifierService`
 contract core already owns, reaching a classifier the way `Model` reaches a
 chat model. The contract differs because the work differs — state plus typed
 questions in, calibrated answers out, and the threshold that decides an outcome
-stays in the caller's code. There is nothing to stream, because a judgment is
+stays in the caller's code. There is nothing to stream, because a classification is
 one round trip.
 
 The concrete service is supplied, never assumed: `Classifier::new` takes any
@@ -249,12 +249,17 @@ role `Model::simulated` plays for completions.
 
 Deliberately excluded, and for the same reasons as the completion layer:
 history, tools, workspaces, durability, events, hooks. Also excluded: retry and
-threshold policy. A judgment returns the distribution; what counts as a block,
+threshold policy. A classification returns the distribution; what counts as a block,
 a routing decision, or an escalation is the application's, and burying it in
 the layer would recreate the parse-and-trust problem one level down.
 
-- Direct judgments stay a thin layer over `ClassifierService` with no policy of
-  their own. The number is the layer's output; the decision is the caller's.
+- Direct classification stays a thin layer over `ClassifierService` with no
+  policy of its own. The number is the layer's output; the decision is the
+  caller's.
+- Two paths, split by who writes the questions: `Classifier` when the
+  application asks and decides, the `jev` capability when the agent asks as part
+  of its own work. Both reach the same tool contract, so behavior matches
+  whether the Framework is embedded or the platform runs it.
 - Question ids are caller-side labels and never reach the model, so each
   question must carry its whole meaning in its instructions.
 
@@ -323,7 +328,7 @@ entrypoints.
 - `crates/everruns/src/mcp.rs`
 - `crates/everruns/src/plugin.rs`
 - `crates/everruns/src/llm.rs`
-- `crates/everruns/src/judgment.rs`
+- `crates/everruns/src/classifier.rs`
 - `crates/everruns/src/local.rs`
 - `crates/everruns/src/work.rs`
 - `crates/everruns/tests/application_parity.rs`
