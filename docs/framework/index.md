@@ -8,23 +8,24 @@ crate. Use it to describe agents, attach models and tools, run multi-turn sessio
 observe events, and embed agent execution directly in a Rust process.
 
 ```rust
-use everruns::{Agent, Engine, Model};
+use everruns::{Agent, Engine, OpenAI};
 
 let agent = Agent::builder()
     .instructions("Answer in one short sentence.")
-    .model(Model::simulated("Hello from Everruns."))
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .build()?;
 
 let engine = Engine::new();
 let turn = engine.create(agent).send_and_wait("Say hello.").await?;
-assert_eq!(turn.response, "Hello from Everruns.");
+println!("{}", turn.response);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-This example needs no database, server, worker or credential, because
-`Model::simulated` is a test double that replays a canned response rather than
-calling a model. Agents that do real work need a model provider — see
-[Supported providers](/framework/supported-providers/).
+No database, server or worker is required — an agent runs inside your process.
+A model provider is: pick one from
+[Supported providers](/framework/supported-providers/), or use the
+[test simulator](/framework/testing-and-simulation/) when writing tests.
 
 ## Choose the right surface
 

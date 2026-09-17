@@ -267,7 +267,16 @@ forces a second crate dependency.
 
 Every application surface promoted in an atomic unit has a downstream-style
 compile/run fixture that imports only `everruns`, uses offline simulation and
-temporary files, and does not require credentials or network access. The same
+temporary files, and does not require credentials or network access.
+
+This governs **fixtures**, not public documentation. It says a promoted surface
+must be *provable* without credentials; it does not say the simulator is how the
+surface should be *introduced*. Read as a docs rule it inverts the product:
+every page opens on a canned response, and a reader meets a test double before
+they meet a model. Public pages lead with a real provider doing real work, and
+mention the simulator afterwards, as a testing tool. Snippets on interior
+reference pages may still use `Model::simulated` when the model is incidental to
+the API being shown. The same
 bar applies when the event/history, hooks, task/wake, workspace-policy, and
 capability-SPI units land. Product worker/server and local host behavior must
 remain aligned through the shared engine kernel. Facade-only dependency guards

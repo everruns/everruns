@@ -13,28 +13,6 @@ This boundary is open: a new provider does not require a new closed enum variant
 or provider-specific branch in application code. The Framework constructs its
 execution-facing model specification internally when the agent builds.
 
-## Simulated models, for tests
-
-```rust
-use everruns::{Agent, Model};
-
-let agent = Agent::builder()
-    .instructions("Answer deterministically.")
-    .model(Model::simulated("fixed response"))
-    .build()?;
-# Ok::<(), everruns::BuildError>(())
-```
-
-`Model::simulated` is backed by the focused `everruns-llmsim` crate. It is a
-**test double that runs no inference** — it replays canned responses so tests
-can assert on agent behavior without a network call or an API key. It is not a
-local model and not a way to run Everruns without a provider. Depend on the
-crate directly when building a low-level host or scripting multi-turn provider
-behavior; ordinary Framework applications need only `everruns`.
-
-For real work, pick a provider from
-[Supported providers](/framework/supported-providers/).
-
 ## OpenAI convenience
 
 With the `openai` feature, `OpenAI::from_env` reads `OPENAI_API_KEY` and the
@@ -79,3 +57,25 @@ For a complete driver boundary, see [Custom providers](/framework/custom-provide
 
 To call a model once without building an agent, see
 [Direct model calls](/framework/direct-model-calls/).
+
+## Simulated models, for tests
+
+```rust
+use everruns::{Agent, Model};
+
+let agent = Agent::builder()
+    .instructions("Answer deterministically.")
+    .model(Model::simulated("fixed response"))
+    .build()?;
+# Ok::<(), everruns::BuildError>(())
+```
+
+`Model::simulated` is backed by the focused `everruns-llmsim` crate. It is a
+**test double that runs no inference** — it replays canned responses so tests
+can assert on agent behavior without a network call or an API key. It is not a
+local model and not a way to run Everruns without a provider. Depend on the
+crate directly when building a low-level host or scripting multi-turn provider
+behavior; ordinary Framework applications need only `everruns`.
+
+For real work, pick a provider from
+[Supported providers](/framework/supported-providers/).
