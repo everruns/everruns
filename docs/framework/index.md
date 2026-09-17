@@ -8,21 +8,24 @@ crate. Use it to describe agents, attach models and tools, run multi-turn sessio
 observe events, and embed agent execution directly in a Rust process.
 
 ```rust
-use everruns::{Agent, Engine, Model};
+use everruns::{Agent, Engine, OpenAI};
 
 let agent = Agent::builder()
     .instructions("Answer in one short sentence.")
-    .model(Model::simulated("Hello from Everruns."))
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .build()?;
 
 let engine = Engine::new();
 let turn = engine.create(agent).send_and_wait("Say hello.").await?;
-assert_eq!(turn.response, "Hello from Everruns.");
+println!("{}", turn.response);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-The default build runs this example offline. A database, server, worker, network
-connection, and provider credential are not required.
+No database, server or worker is required — an agent runs inside your process.
+A model provider is: pick one from
+[Supported providers](/framework/supported-providers/), or use the
+[test simulator](/framework/testing-and-simulation/) when writing tests.
 
 ## Choose the right surface
 
@@ -43,7 +46,8 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Agents](/framework/agents/), instructions, files, workspaces, MCP, plugins, and context inspection.
 - [Workspace security](/framework/workspace-security/), configure portable read and write scopes with secure defaults.
 - [Workspaces and Environments](/framework/workspaces-and-environments/), bind sessions to isolated or explicitly shared backend-owned heads.
-- [Models and providers](/framework/models-and-providers/), simulation, OpenAI, and the open provider boundary.
+- [Models and providers](/framework/models-and-providers/), the model/provider split and the open provider boundary.
+- [Supported providers](/framework/supported-providers/), every driver that ships today and what each one supports.
 - [Direct model calls](/framework/direct-model-calls/), one prompt and one answer without an agent.
 - [Credentials](/framework/credentials/), each driver's own vendor-standard environment variables.
 - [Tools and macros](/framework/tools-and-macros/), typed function tools through `everruns::tool`.
