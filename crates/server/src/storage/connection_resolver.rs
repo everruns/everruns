@@ -798,7 +798,6 @@ mod tests {
         (db, encryption(), session.id, server_id, provider)
     }
 
-
     // ---------------------------------------------------------------
     // EVE-1029: MCP credential resolution is a pure function of actsAs.
     //
@@ -807,9 +806,9 @@ mod tests {
     // alone would pass just as well with the fallback still in place.
     // ---------------------------------------------------------------
 
-    use everruns_core::McpServerActsAs;
-    use crate::storage::models::{CreateAgentIdentityConnectionRow, CreatePrincipalRow};
     use crate::kernel_imports::AgentIdentityId;
+    use crate::storage::models::{CreateAgentIdentityConnectionRow, CreatePrincipalRow};
+    use everruns_core::McpServerActsAs;
 
     /// A session whose owner principal really is a person.
     const ATTENDED: &str = "user";
@@ -891,9 +890,7 @@ mod tests {
                 connection_type: "oauth".to_string(),
                 provider_user_id: None,
                 provider_username: Some("the-human".to_string()),
-                access_token_encrypted: Some(
-                    encryption.encrypt_string("user-token").unwrap(),
-                ),
+                access_token_encrypted: Some(encryption.encrypt_string("user-token").unwrap()),
                 refresh_token_encrypted: None,
                 scopes: None,
                 expires_at: None,
@@ -911,9 +908,7 @@ mod tests {
                 connection_type: "oauth".to_string(),
                 provider_user_id: None,
                 provider_username: Some("the-agent".to_string()),
-                access_token_encrypted: Some(
-                    encryption.encrypt_string("identity-token").unwrap(),
-                ),
+                access_token_encrypted: Some(encryption.encrypt_string("identity-token").unwrap()),
                 refresh_token_encrypted: None,
                 scopes: None,
                 expires_at: None,
@@ -977,7 +972,10 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(token, None, "must fail closed rather than borrow the identity grant");
+        assert_eq!(
+            token, None,
+            "must fail closed rather than borrow the identity grant"
+        );
         // The identity grant is still there, unread and unmodified.
         let identity = fixture
             .db
@@ -1037,7 +1035,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn user_attachment_in_an_unattended_session_fails_closed_though_the_owner_holds_a_grant() {
+    async fn user_attachment_in_an_unattended_session_fails_closed_though_the_owner_holds_a_grant()
+    {
         // The owner principal is the agent identity, but its lineage resolves
         // to a human who *does* hold a grant. That is precisely the borrow this
         // rule forbids.

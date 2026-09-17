@@ -178,10 +178,9 @@ async fn resolve_matched_scoped_mcp_server(
             // A non-`none` attachment resolves its credential from a connection
             // store keyed by the preset, never from the preset's own config.
             resolved.auth_mode = McpServerAuthMode::OAuth;
-            resolved.oauth_provider_id =
-                Some(everruns_core::mcp_oauth_provider_id_for_uuid(
-                    preset_server_id,
-                ));
+            resolved.oauth_provider_id = Some(everruns_core::mcp_oauth_provider_id_for_uuid(
+                preset_server_id,
+            ));
 
             if server.acts_as == McpServerActsAs::User {
                 // THREAT[TM-TOOL-041]: a `user` attachment can never carry

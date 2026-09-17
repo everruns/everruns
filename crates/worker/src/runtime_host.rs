@@ -505,11 +505,11 @@ mod mcp_credential_tests {
 
     use super::*;
     use crate::worker_adapters::WorkerAdapters;
-    use std::collections::HashMap;
     use everruns_core::McpServerActsAs;
     use everruns_core::connection_services::UserConnectionResolver;
     use everruns_provider::error::Result as CoreResult;
     use everruns_provider::typed_id::SessionId as CoreSessionId;
+    use std::collections::HashMap;
     use std::sync::Mutex as StdMutex;
 
     /// Records which lookup the worker used. The legacy lookup and the
@@ -827,8 +827,7 @@ mod mcp_credential_tests {
             &self,
             _org_id: i64,
             _provider: &everruns_provider::runtime_provider::ProviderKey,
-        ) -> CoreResult<Option<everruns_provider::driver_registry::ProviderConfig>>
-        {
+        ) -> CoreResult<Option<everruns_provider::driver_registry::ProviderConfig>> {
             unimplemented!()
         }
         async fn resolve_image(
@@ -842,8 +841,7 @@ mod mcp_credential_tests {
             &self,
             _org_id: i64,
             _image_ids: &[Uuid],
-        ) -> CoreResult<HashMap<Uuid, everruns_core::image_services::ResolvedImage>>
-        {
+        ) -> CoreResult<HashMap<Uuid, everruns_core::image_services::ResolvedImage>> {
             unimplemented!()
         }
         async fn resolve_files_batch(
@@ -983,13 +981,10 @@ mod mcp_credential_tests {
         }
         fn sqldb_store(
             &self,
-        ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>
-        {
+        ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> {
             unimplemented!()
         }
-        fn storage_store(
-            &self,
-        ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+        fn storage_store(&self) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
             unimplemented!()
         }
         fn image_artifact_store(
