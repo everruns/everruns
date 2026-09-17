@@ -1,5 +1,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { createElement } from "react";
+import { render, screen } from "@testing-library/react";
+import { MiniTimeline } from "@/components/apps/mini-timeline";
 
 const sourceRoot = join(process.cwd(), "src");
 const rawPaletteUtility =
@@ -10,9 +13,6 @@ const rawPaletteExceptions: Record<string, Record<string, number>> = {
     "text-blue-600": 1,
     "text-green-600": 1,
     "text-yellow-600": 1,
-  },
-  "app/(main)/durable/queues/queue-stats-card.tsx": {
-    "bg-blue-500": 1,
   },
   "app/(main)/durable/workers/page.tsx": {
     "bg-green-500": 1,
@@ -115,6 +115,19 @@ function sourceFiles(directory: string): string[] {
 }
 
 describe("semantic status colors", () => {
+  it("renders running timeline bins with the info treatment", () => {
+    render(
+      createElement(MiniTimeline, {
+        runs: [{ hour: "Now", running: 1 }],
+        length: 1,
+      }),
+    );
+
+    expect(screen.getByTitle("Now: 0 ok, 0 errors, 1 running")).toHaveClass(
+      "border-info/30",
+      "bg-info",
+    );
+  });
   it("defines each status color and foreground pair for both themes", () => {
     const designSystem = readFileSync(join(sourceRoot, "app/design-system.css"), "utf8");
 

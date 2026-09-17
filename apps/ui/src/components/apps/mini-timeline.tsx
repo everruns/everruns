@@ -36,7 +36,7 @@ export function MiniTimeline({
               total === 0 && "border-muted bg-muted/40",
               ok > 0 && err === 0 && "border-success/30 bg-success",
               err > 0 && "border-destructive/30 bg-destructive",
-              running > 0 && "border-warning/30 bg-warning",
+              running > 0 && "border-info/30 bg-info",
             )}
           />
         );
