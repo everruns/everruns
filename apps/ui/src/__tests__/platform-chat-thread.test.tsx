@@ -75,7 +75,7 @@ beforeEach(() => {
 });
 
 test("creates and pins a Platform Chat thread when the user has none", async () => {
-  mockUseChatThreads.mockReturnValue({ threads: [], isLoading: false, error: null });
+  mockUseChatThreads.mockReturnValue({ threads: [], isLoading: false, isRead: true, error: null });
 
   render(<Probe ensure />);
 
@@ -95,6 +95,7 @@ test("adopts an existing Platform Chat thread instead of creating a second", asy
   mockUseChatThreads.mockReturnValue({
     threads: [thread({})],
     isLoading: false,
+    isRead: true,
     error: null,
   });
 
@@ -108,6 +109,7 @@ test("does not recreate a thread the user archived", async () => {
   mockUseChatThreads.mockReturnValue({
     threads: [thread({ archived_at: "2026-02-01T00:00:00Z" })],
     isLoading: false,
+    isRead: true,
     error: null,
   });
 
@@ -123,6 +125,7 @@ test("ignores threads bound to another harness or to an agent", async () => {
       thread({ id: "ses_agent", agent_id: "agent_1" }),
     ],
     isLoading: false,
+    isRead: true,
     error: null,
   });
 
@@ -133,7 +136,7 @@ test("ignores threads bound to another harness or to an agent", async () => {
 });
 
 test("reads without creating when ensure is off", async () => {
-  mockUseChatThreads.mockReturnValue({ threads: [], isLoading: false, error: null });
+  mockUseChatThreads.mockReturnValue({ threads: [], isLoading: false, isRead: true, error: null });
 
   render(<Probe />);
 
@@ -146,6 +149,7 @@ test("does not create when the thread list could not be read", async () => {
   mockUseChatThreads.mockReturnValue({
     threads: [],
     isLoading: false,
+    isRead: false,
     error: new Error("Network error"),
   });
 
@@ -155,9 +159,45 @@ test("does not create when the thread list could not be read", async () => {
 });
 
 test("waits for the thread list before deciding to create", async () => {
-  mockUseChatThreads.mockReturnValue({ threads: [], isLoading: true, error: null });
+  mockUseChatThreads.mockReturnValue({ threads: [], isLoading: true, isRead: false, error: null });
 
   render(<Probe ensure />);
 
   await waitFor(() => expect(mockCreate).not.toHaveBeenCalled());
+});
+
+test("does not create while a failed read is still retrying", async () => {
+  // React Query holds a query that is between retry attempts as neither
+  // loading nor errored, with an empty list in hand. That state says nothing
+  // about whether the thread exists: acting on it mints one duplicate pinned
+  // thread per page load that hits a transient blip. Only `isRead` means the
+  // list was actually read.
+  mockUseChatThreads.mockReturnValue({
+    threads: [],
+    isLoading: false,
+    isRead: false,
+    error: null,
+  });
+
+  render(<Probe ensure />);
+
+  await waitFor(() => expect(mockCreate).not.toHaveBeenCalled());
+});
+
+test("does not create a second thread when only the pin failed", async () => {
+  // The thread exists once create resolves; retrying the *create* to recover a
+  // cosmetic pin is how a page load ends up with two threads.
+  mockPin.mockRejectedValue(new Error("Pin failed"));
+  mockUseChatThreads.mockReturnValue({
+    threads: [],
+    isLoading: false,
+    isRead: true,
+    error: null,
+  });
+
+  const { rerender } = render(<Probe ensure />);
+
+  await waitFor(() => expect(mockPin).toHaveBeenCalledTimes(1));
+  rerender(<Probe ensure />);
+  await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
 });

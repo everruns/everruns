@@ -89,7 +89,12 @@ function thread(overrides: Partial<Session> & { id: string }): Session {
 describe("Chats surface", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseChatThreads.mockReturnValue({ threads: [], isLoading: false, error: null });
+    mockUseChatThreads.mockReturnValue({
+      threads: [],
+      isLoading: false,
+      isRead: true,
+      error: null,
+    });
     intelligenceStatus.isLoading = false;
     intelligenceStatus.available = true;
     intelligenceStatus.canManage = true;
@@ -125,6 +130,7 @@ describe("Chats surface", () => {
     mockUseChatThreads.mockReturnValue({
       threads: [thread({ id: "sess_1" }), thread({ id: "sess_2", title: "Latency" })],
       isLoading: false,
+      isRead: true,
       error: null,
     });
 
@@ -141,6 +147,7 @@ describe("Chats surface", () => {
         thread({ id: "sess_2", title: "Pinned", is_pinned: true }),
       ],
       isLoading: false,
+      isRead: true,
       error: null,
     });
 
@@ -159,6 +166,7 @@ describe("Chats surface", () => {
         thread({ id: "sess_2", title: "Done", archived_at: "2026-08-09T11:00:00Z" }),
       ],
       isLoading: false,
+      isRead: true,
       error: null,
     });
 
@@ -192,6 +200,7 @@ describe("Chats surface", () => {
     mockUseChatThreads.mockReturnValue({
       threads: [thread({ id: "sess_1" })],
       isLoading: false,
+      isRead: true,
       error: null,
     });
     rerender(<ChatsPageClient />);
@@ -204,7 +213,12 @@ describe("Chats surface", () => {
 describe("Thread surface", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseChatThreads.mockReturnValue({ threads: [], isLoading: false, error: null });
+    mockUseChatThreads.mockReturnValue({
+      threads: [],
+      isLoading: false,
+      isRead: true,
+      error: null,
+    });
     mockSessionContext.mockReturnValue({
       session: thread({ id: "sess_1" }),
       agent: { id: "agent_1", name: "scout", display_name: "Scout" },
@@ -279,6 +293,7 @@ describe("Thread surface", () => {
     mockUseChatThreads.mockReturnValue({
       threads: [thread({ id: "sess_1", title: null, preview: "what broke last night?" })],
       isLoading: false,
+      isRead: true,
       error: null,
     });
     mockSessionContext.mockReturnValue({
