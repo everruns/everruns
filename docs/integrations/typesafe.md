@@ -44,7 +44,7 @@ Agents with the TypeSafe capability get one tool:
 
 | Tool | Description |
 |------|-------------|
-| `typesafe_evaluate` | Ask typed questions about content and get calibrated answers |
+| `jev_evaluate` | Ask typed questions about content and get calibrated answers |
 
 A call gives it the content plus the questions to ask about it:
 
@@ -123,7 +123,7 @@ personal connection.
 
 - The API key is stored as a user connection and never exposed to the agent or
   written into session transcripts.
-- Content passed to `typesafe_evaluate` leaves the platform for TypeSafe, like
+- Content passed to `jev_evaluate` leaves the platform for TypeSafe, like
   any other integration that inspects content. Calls are capped at 20 questions
   and 32 KiB of content.
 - The content being judged is sent as **data**, and every question states so — a

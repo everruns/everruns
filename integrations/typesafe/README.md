@@ -6,8 +6,8 @@
 [![Documentation](https://docs.rs/everruns-integrations-typesafe/badge.svg)](https://docs.rs/everruns-integrations-typesafe)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-`everruns-integrations-typesafe` contributes the `typesafe` capability: one
-tool, `typesafe_evaluate`, that lets an agent ask typed questions about content
+`everruns-integrations-typesafe` contributes the `jev` capability: one
+tool, `jev_evaluate`, that lets an agent ask typed questions about content
 and get calibrated numbers back — a probability, a selected option, a graded
 level — instead of forming a second impression in prose. Use it to verify,
 rate, route, or classify.
@@ -24,9 +24,9 @@ Looking for the client on its own, with no Everruns dependency? That is
 
 ```rust
 use everruns_core::capabilities::Capability;
-use everruns_integrations_typesafe::TypeSafeCapability;
+use everruns_integrations_typesafe::JevCapability;
 
-assert_eq!(TypeSafeCapability.id(), "typesafe");
+assert_eq!(JevCapability.id(), "jev");
 ```
 
 An agent's call looks like this:
@@ -44,11 +44,11 @@ An agent's call looks like this:
 
 ## What It Provides
 
-- The `typesafe` capability and its `typesafe_evaluate` tool, with answers
+- The `jev` capability and its `jev_evaluate` tool, with answers
   rendered decision-ready (a score also carries `normalized`, `level`, `label`)
 - A user-scoped TypeSafe API-key connection, with a `TYPESAFE_API_KEY` session
   secret as fallback
-- `TypeSafe::new(key)` for `AgentBuilder::capability`, keeping an
+- `Jev::new(key)` for `AgentBuilder::capability`, keeping an
   application-owned credential inside the client
 - Inventory-based Everruns integration and connector registration
 

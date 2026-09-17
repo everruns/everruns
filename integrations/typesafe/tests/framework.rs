@@ -2,7 +2,7 @@
 
 use everruns::IntoCapability;
 use everruns_core::Capability;
-use everruns_integrations_typesafe::{TypeSafe, TypeSafeCapability, TypeSafeClient};
+use everruns_integrations_typesafe::{Jev, JevCapability, TypeSafeClient};
 use serde_json::json;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
 
@@ -42,7 +42,7 @@ async fn an_agent_tool_call_returns_decision_ready_numbers() {
         .mount(&server)
         .await;
 
-    let definition = TypeSafe::with_client(
+    let definition = Jev::with_client(
         TypeSafeClient::builder(CREDENTIAL)
             .base_url(server.uri())
             .build(),
@@ -55,7 +55,7 @@ async fn an_agent_tool_call_returns_decision_ready_numbers() {
     let output = definition.tools()[0]
         .invoke(
             joke_call(),
-            everruns::capability::Context::new("typesafe_evaluate", "session", "workspace"),
+            everruns::capability::Context::new("jev_evaluate", "session", "workspace"),
         )
         .await
         .expect("tool call succeeds");
@@ -76,7 +76,7 @@ async fn framework_reports_http_errors_without_upstream_credential_echoes() {
         .mount(&server)
         .await;
 
-    let definition = TypeSafe::with_client(
+    let definition = Jev::with_client(
         TypeSafeClient::builder(CREDENTIAL)
             .base_url(server.uri())
             .build(),
@@ -89,7 +89,7 @@ async fn framework_reports_http_errors_without_upstream_credential_echoes() {
     let error = definition.tools()[0]
         .invoke(
             joke_call(),
-            everruns::capability::Context::new("typesafe_evaluate", "session", "workspace"),
+            everruns::capability::Context::new("jev_evaluate", "session", "workspace"),
         )
         .await
         .unwrap_err();
@@ -99,12 +99,12 @@ async fn framework_reports_http_errors_without_upstream_credential_echoes() {
 
 #[test]
 fn adapters_share_tool_protocol_and_keep_credentials_private() {
-    let spec = TypeSafe::new(CREDENTIAL).into_capability();
+    let spec = Jev::new(CREDENTIAL).into_capability();
     assert!(!format!("{spec:?}").contains(CREDENTIAL));
-    assert_eq!(spec.capability_ref().id(), "typesafe");
+    assert_eq!(spec.capability_ref().id(), "jev");
 
     let definition = spec.into_parts().definition.unwrap();
-    let hosted = TypeSafeCapability;
+    let hosted = JevCapability;
     let tools = hosted.tools();
     let framework = definition.tools()[0].spec();
     assert_eq!(framework.name(), tools[0].name());

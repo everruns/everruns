@@ -24,7 +24,7 @@ dataset.jsonl ──► Eval (generic) ──► GenericRuntimeSubject ──►
 
 ## Typed judgments
 
-The `jev` harness profile carries the TypeSafe capability, so its cases
+The `jev` harness profile carries the Jev capability, so its cases
 measure something the other profiles cannot: whether a model *reaches for a
 measurement* instead of asserting one, and whether the questions it writes are
 answerable.

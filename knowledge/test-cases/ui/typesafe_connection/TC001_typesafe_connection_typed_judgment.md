@@ -1,7 +1,7 @@
 ---
 type: Test Case
 title: "TC001: TypeSafe Connection - Typed Judgment"
-description: "Verify that an agent with the TypeSafe capability prompts for an API key via Settings > Connections, validates it, and returns calibrated numbers from typesafe_evaluate rather than a prose opinion."
+description: "Verify that an agent with the TypeSafe capability prompts for an API key via Settings > Connections, validates it, and returns calibrated numbers from jev_evaluate rather than a prose opinion."
 tags:
   - everruns
   - test-case
@@ -14,7 +14,7 @@ tags:
 
 Verify that an agent with the TypeSafe capability prompts for an API key via
 Settings > Connections, validates it, and returns calibrated numbers from
-`typesafe_evaluate` rather than a prose opinion.
+`jev_evaluate` rather than a prose opinion.
 
 ## Preconditions
 
@@ -29,13 +29,13 @@ Settings > Connections, validates it, and returns calibrated numbers from
 
 | Field | Value |
 |-------|-------|
-| Capability | `[Experimental] TypeSafe Judgments` |
-| First Message | Rate this joke with typesafe_evaluate: "I told my wife she was drawing her eyebrows too high. She looked surprised." Ask whether it is a joke and how funny it is on a four-level scale. Report the numbers. |
+| Capability | `[Experimental] Jev Judgments` |
+| First Message | Rate this joke with jev_evaluate: "I told my wife she was drawing her eyebrows too high. She looked surprised." Ask whether it is a joke and how funny it is on a four-level scale. Report the numbers. |
 | TypeSafe API Key | Valid key from typesafe.ai |
 
 ## Steps
 
-1. Create an agent and enable the **[Experimental] TypeSafe Judgments**
+1. Create an agent and enable the **[Experimental] Jev Judgments**
    capability. Save.
 2. Start a session with the agent and send the first message.
 3. Observe the tool call. **Expected:** the turn fails with a message naming
@@ -50,7 +50,7 @@ Settings > Connections, validates it, and returns calibrated numbers from
 
 ## Expected Results
 
-- `typesafe_evaluate` succeeds and its result carries an `answers` object with
+- `jev_evaluate` succeeds and its result carries an `answers` object with
   one entry per question the agent asked.
 - The yes/no answer is a `probability_yes` between 0 and 1; the graded answer
   carries `score`, `level`, `label`, `confidence`, and a `probabilities` map

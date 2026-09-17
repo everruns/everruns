@@ -101,7 +101,7 @@ truth — validate thresholds against your own data and consequences.
 ## Using it with Everruns
 
 [`everruns-integrations-typesafe`](../../../integrations/typesafe/) wraps this
-client as the `typesafe` capability: one tool, `typesafe_evaluate`, that lets an
+client as the `jev` capability: one tool, `jev_evaluate`, that lets an
 agent ask its own typed questions about content and get calibrated numbers back
 instead of forming a second impression in prose.
 

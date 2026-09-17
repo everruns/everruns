@@ -19,7 +19,7 @@
 //! - `min_tool_calls` / `max_tool_calls`: bounds on total tool calls (e.g.
 //!   `max_tool_calls: 0` asserts a plain question wastes no tool round-trips).
 //! - `expect_jev_questions`: `{ "types": ["noul", "score"], "min": 2 }` —
-//!   grades the `typesafe_evaluate` questions the model *wrote*, not just that
+//!   grades the `jev_evaluate` questions the model *wrote*, not just that
 //!   it called the tool. A question the model asks badly returns a confident
 //!   number about the wrong thing, which is worse than no number at all.
 //!
@@ -315,7 +315,7 @@ pub fn jev_questions() -> Box<dyn Scorer> {
             .cloned()
             .unwrap_or_default();
         if questions.is_empty() {
-            return Score::fail("jev_questions", "no typesafe_evaluate questions recorded");
+            return Score::fail("jev_questions", "no jev_evaluate questions recorded");
         }
 
         let mut faults = Vec::new();
@@ -417,7 +417,7 @@ mod tests {
     }
 
     fn with_questions(questions: serde_json::Value) -> Transcript {
-        let mut t = transcript("done", &["typesafe_evaluate"]);
+        let mut t = transcript("done", &["jev_evaluate"]);
         t.metadata
             .insert(crate::subject::JEV_QUESTIONS_KEY.into(), questions);
         t

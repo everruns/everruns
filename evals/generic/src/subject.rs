@@ -28,7 +28,7 @@ use everruns::{
     SessionEvent, WorkspacePolicy,
 };
 
-use everruns_integrations_typesafe::TypeSafe;
+use everruns_integrations_typesafe::Jev;
 use mira::subject::summarize_events;
 use mira::{ErrorKind, Part, RunCx, Sample, Source, Subject, Target, Transcript};
 
@@ -255,7 +255,7 @@ fn extract_tool_calls(events: &[serde_json::Value]) -> Vec<String> {
         .collect()
 }
 
-/// Every question the model asked `typesafe_evaluate`, flattened across calls.
+/// Every question the model asked `jev_evaluate`, flattened across calls.
 ///
 /// Read from `tool.started`, which carries the arguments; `tool.completed`
 /// carries only the name.
@@ -264,7 +264,7 @@ fn extract_jev_questions(events: &[serde_json::Value]) -> Vec<serde_json::Value>
         .iter()
         .filter(|e| e.get("type").and_then(|t| t.as_str()) == Some("tool.started"))
         .filter_map(|e| e.get("data").and_then(|d| d.get("tool_call")))
-        .filter(|call| call.get("name").and_then(|n| n.as_str()) == Some("typesafe_evaluate"))
+        .filter(|call| call.get("name").and_then(|n| n.as_str()) == Some("jev_evaluate"))
         .filter_map(|call| call.get("arguments"))
         .filter_map(|args| args.get("questions").and_then(|q| q.as_array()))
         .flat_map(|questions| questions.iter().cloned())
@@ -352,14 +352,14 @@ fn build_session_with_provider(
             // workspace() installs session_file_system with the contained policy.
             // Adding it explicitly as well makes Agent::build reject the profile.
             "session_file_system" => {}
-            // The hosted `typesafe` capability resolves a user connection or a
+            // The hosted `jev` capability resolves a user connection or a
             // session secret; an in-process run has neither store, so attach the
             // Framework adapter with an application-owned key instead.
-            "typesafe" => {
-                let typesafe = TypeSafe::from_env().map_err(|_| {
+            "jev" => {
+                let jev = Jev::from_env().map_err(|_| {
                     missing_credential(harness.credential_env.unwrap_or("TYPESAFE_API_KEY"))
                 })?;
-                builder = builder.capability(typesafe);
+                builder = builder.capability(jev);
             }
             id => builder = builder.capability(CapabilityRef::new(id)),
         }
@@ -632,7 +632,7 @@ mod tests {
         // tool.started; a call to another tool must not contribute.
         let events = vec![
             json!({"type": "tool.started", "data": {"tool_call": {
-                "name": "typesafe_evaluate",
+                "name": "jev_evaluate",
                 "arguments": {"state": "a joke", "questions": [
                     {"id": "funny", "type": "noul", "instructions": "Would an audience laugh?"}
                 ]}
@@ -641,13 +641,13 @@ mod tests {
                 "name": "read_file", "arguments": {"path": "x"}
             }}}),
             json!({"type": "tool.started", "data": {"tool_call": {
-                "name": "typesafe_evaluate",
+                "name": "jev_evaluate",
                 "arguments": {"state": "a joke", "questions": [
                     {"id": "quality", "type": "score", "instructions": "How good?",
                      "levels": ["Bad", "Good"]}
                 ]}
             }}}),
-            json!({"type": "tool.completed", "data": {"tool_name": "typesafe_evaluate"}}),
+            json!({"type": "tool.completed", "data": {"tool_name": "jev_evaluate"}}),
         ];
         let questions = extract_jev_questions(&events);
         assert_eq!(questions.len(), 2, "questions flatten across calls");
@@ -683,7 +683,7 @@ mod tests {
             "Rate this joke and tell me the numbers: \"I told my wife she was \
              drawing her eyebrows too high. She looked surprised.\"",
         )
-        .meta("requires", serde_json::json!(["typesafe"]))
+        .meta("requires", serde_json::json!(["jev"]))
         .meta(
             "expect_jev_questions",
             serde_json::json!({"types": ["score"], "min": 1}),
@@ -698,10 +698,7 @@ mod tests {
             transcript.metadata.get(SKIPPED_KEY)
         );
         assert!(
-            transcript
-                .tool_calls
-                .iter()
-                .any(|c| c == "typesafe_evaluate"),
+            transcript.tool_calls.iter().any(|c| c == "jev_evaluate"),
             "the model must measure rather than opine; saw {:?}",
             transcript.tool_calls
         );

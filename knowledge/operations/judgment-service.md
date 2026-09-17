@@ -104,7 +104,7 @@ carrying both the client and the connector would close that loop.
   mirrors `UTILITY_OPENAI_API_KEY`: both are platform-owned credentials for
   internal model work, distinct from the `TYPESAFE_API_KEY` session secret the
   agent-facing capability falls back to.
-- Credentials are deployment-owned. The agent-facing `typesafe` capability is a
+- Credentials are deployment-owned. The agent-facing `jev` capability is a
   separate surface with its own user-scoped connection; the two never share a
   key (THREAT[TM-LLM-021]).
 - Transport is host-owned. Like the utility LLM service, it does not route

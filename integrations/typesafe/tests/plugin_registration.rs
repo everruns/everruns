@@ -21,29 +21,29 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     registry
 }
 
-fn typesafe_plugin() -> &'static IntegrationPlugin {
+fn jev_plugin() -> &'static IntegrationPlugin {
     inventory::iter::<IntegrationPlugin>()
-        .find(|plugin| (plugin.factory)().id() == "typesafe")
-        .expect("TypeSafe IntegrationPlugin should be submitted via inventory")
+        .find(|plugin| (plugin.factory)().id() == "jev")
+        .expect("Jev IntegrationPlugin should be submitted via inventory")
 }
 
 #[test]
 fn plugin_is_experimental_only() {
-    assert!(typesafe_plugin().experimental_only);
-    assert!(typesafe_plugin().feature_flag.is_none());
+    assert!(jev_plugin().experimental_only);
+    assert!(jev_plugin().feature_flag.is_none());
 }
 
 #[test]
 fn capability_is_available_in_dev_and_withheld_in_prod() {
-    assert!(registry_for_grade(DeploymentGrade::Dev).has("typesafe"));
-    assert!(!registry_for_grade(DeploymentGrade::Prod).has("typesafe"));
+    assert!(registry_for_grade(DeploymentGrade::Dev).has("jev"));
+    assert!(!registry_for_grade(DeploymentGrade::Prod).has("jev"));
 }
 
 #[test]
 fn capability_metadata_is_stable() {
     let registry = registry_for_grade(DeploymentGrade::Dev);
-    let capability = registry.get("typesafe").expect("capability");
-    assert_eq!(capability.name(), "[Experimental] TypeSafe Judgments");
+    let capability = registry.get("jev").expect("capability");
+    assert_eq!(capability.name(), "[Experimental] Jev Judgments");
     assert_eq!(capability.icon(), Some("scale"));
     assert_eq!(capability.category(), Some("Reasoning"));
     assert!(capability.dependencies().is_empty());

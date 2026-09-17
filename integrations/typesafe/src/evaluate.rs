@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 
 use typesafe_systemone::{Answer, Evaluation, Question, TypeSafeClient};
 
-pub(crate) const TOOL_NAME: &str = "typesafe_evaluate";
+pub(crate) const TOOL_NAME: &str = "jev_evaluate";
 pub(crate) const TOOL_DESCRIPTION: &str = "Ask TypeSafe's System One model typed questions about \
     some content and get calibrated numbers back: a probability for a yes/no question (noul), a \
     selected option with its full distribution (choice), or a position along ordered levels \
@@ -25,7 +25,7 @@ const MAX_INSTRUCTIONS_LEN: usize = 2_000;
 /// Hard cap on options/levels for one question.
 const MAX_CRITERIA: usize = 20;
 
-/// Input to the `typesafe_evaluate` tool.
+/// Input to the `jev_evaluate` tool.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EvaluateInput {

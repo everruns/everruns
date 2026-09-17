@@ -17,7 +17,7 @@ creates (integrations depend on `everruns-platform`, which depends on the host).
 
 ## Capability
 
-`typesafe` contributes one tool, `typesafe_evaluate`. The agent supplies the
+`jev` contributes one tool, `jev_evaluate`. The agent supplies the
 content and its own typed questions; the tool returns every answer with its
 distribution. Score answers additionally carry `normalized`, `level`, and
 `label` so the calling code can threshold without re-deriving the level count.

@@ -10,17 +10,17 @@ use everruns_core::Capability;
 
 use typesafe_systemone::TypeSafeClient;
 
-use crate::{TypeSafeCapability, evaluate, evaluate::EvaluateInput};
+use crate::{JevCapability, evaluate, evaluate::EvaluateInput};
 
-/// TypeSafe judgments for `AgentBuilder::capability`.
+/// Jev judgments for `AgentBuilder::capability`.
 ///
 /// The client retains the credential privately; it never enters capability
 /// config or metadata. Cloned agents reuse the HTTP connection pool.
-pub struct TypeSafe {
+pub struct Jev {
     client: TypeSafeClient,
 }
 
-impl TypeSafe {
+impl Jev {
     /// Configure an application-owned API key.
     pub fn new(api_key: impl Into<String>) -> Self {
         Self::with_client(TypeSafeClient::new(api_key.into()))
@@ -37,9 +37,9 @@ impl TypeSafe {
     }
 }
 
-impl IntoCapability for TypeSafe {
+impl IntoCapability for Jev {
     fn into_capability(self) -> CapabilitySpec {
-        let capability = TypeSafeCapability;
+        let capability = JevCapability;
         definition::Definition::new(capability.id(), capability.name(), capability.description())
             .instructions(capability.system_prompt_addition().unwrap_or_default())
             .tool(self)
@@ -48,7 +48,7 @@ impl IntoCapability for TypeSafe {
 }
 
 #[definition::async_trait]
-impl Handler for TypeSafe {
+impl Handler for Jev {
     type Input = EvaluateInput;
     type Output = Value;
     type Error = definition::Error;
@@ -70,6 +70,6 @@ impl Handler for TypeSafe {
     ) -> Result<Value, Self::Error> {
         evaluate::evaluate(&self.client, input)
             .await
-            .map_err(|error| definition::Error::user("typesafe_evaluate_failed", error))
+            .map_err(|error| definition::Error::user("jev_evaluate_failed", error))
     }
 }

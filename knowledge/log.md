@@ -2,6 +2,13 @@
 
 ## 2026-09-17
 
+* **The agent-facing surface is named for the model, the credential surface for
+  the vendor.** The capability is `jev` and its tool is `jev_evaluate`, matching
+  the guardrail engine value: an agent author is choosing the thing that
+  answers. The connection, the crate, the session secret, and the docs page stay
+  TypeSafe, because that is the account the key belongs to. Renamed before
+  anything shipped, so no stored config carries the old ids.
+
 * **The guardrail engines were shipped without anyone knowing how well they
   work.** Unit tests proved the plumbing and the fail-open contract; nothing
   measured block rate against false-positive rate, which is the number that
@@ -55,7 +62,7 @@
   each one needs.
 
 * **Typed judgments are now an agent-facing capability too.** The `typesafe`
-  integration contributes `typesafe_evaluate`, so an agent can verify or rate
+  integration contributes `jev_evaluate`, so an agent can verify or rate
   something and get numbers back instead of forming a second impression in
   prose. Its user connection is deliberately separate from the deployment key
   that backs the judgment service.

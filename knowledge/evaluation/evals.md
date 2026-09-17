@@ -259,7 +259,7 @@ mean by "validate thresholds against your own data and consequences".
 
 **Typed-judgment tool use is graded on the questions, not just the call.** The
 [Generic study](../../evals/generic/README.md)'s `jev` harness profile carries
-the `typesafe` capability and measures whether a model reaches for a
+the `jev` capability and measures whether a model reaches for a
 measurement instead of asserting one — and, through the `jev_questions`
 scorer, whether the questions it writes are answerable: instructions that carry
 their own meaning (the question id never reaches the model), at least two
