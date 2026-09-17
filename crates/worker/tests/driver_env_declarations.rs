@@ -27,7 +27,10 @@ const DECLARED: &[(DriverId, &[&str])] = &[
         DriverId::Anthropic,
         &["ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"],
     ),
-    (DriverId::Gemini, &["GEMINI_API_KEY", "GOOGLE_API_KEY"]),
+    (
+        DriverId::Gemini,
+        &["GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_BASE_URL"],
+    ),
     (
         DriverId::OpenRouter,
         &["OPENROUTER_API_KEY", "OPENROUTER_BASE_URL"],

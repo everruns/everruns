@@ -647,6 +647,10 @@ pub fn descriptor() -> DriverDescriptor {
             "Create an API key in [Google AI Studio](https://aistudio.google.com/apikey).",
         )
         .with_api_key_fallback_env("GOOGLE_API_KEY"),
+        // Google defines no endpoint variable for the Gemini API, but
+        // GEMINI_BASE_URL was recognized before these names moved onto the
+        // drivers; declaring it keeps existing dev setups working.
+        base_url_env: Some("GEMINI_BASE_URL".into()),
         ..DriverDescriptor::chat_only(DriverId::Gemini, |config| {
             let provider =
                 everruns_provider::Provider::new(config.provider.clone(), GeminiChatDriver::new())

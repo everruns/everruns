@@ -46,7 +46,7 @@ let model = Model::new("claude-sonnet-5", everruns_anthropic::from_env("anthropi
 | OpenAI (Chat Completions) | `OPENAI_API_KEY` | `OPENAI_BASE_URL` |
 | Azure OpenAI | `AZURE_OPENAI_API_KEY` | `AZURE_OPENAI_ENDPOINT` |
 | Anthropic | `ANTHROPIC_API_KEY` | `ANTHROPIC_BASE_URL` |
-| Google Gemini | `GEMINI_API_KEY`, or `GOOGLE_API_KEY` | — |
+| Google Gemini | `GEMINI_API_KEY`, or `GOOGLE_API_KEY` | `GEMINI_BASE_URL` |
 | OpenRouter | `OPENROUTER_API_KEY` | `OPENROUTER_BASE_URL` |
 | Fireworks AI | `FIREWORKS_API_KEY` | `FIREWORKS_BASE_URL` |
 | Meta Model API | `LLAMA_API_KEY`, or `META_API_KEY` | `LLAMA_BASE_URL` |
