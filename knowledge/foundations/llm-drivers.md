@@ -934,34 +934,49 @@ Env-based credential loading is an explicit, injected concern routed through a
 single shared boundary in `crates/core/src/credential_provider.rs`:
 
 - **`CredentialProvider`** (trait), the injectable source. Its one method,
-  `resolve(&DriverId) -> Option<ProviderCredentials>`, returns the `api_key` and
-  optional `base_url` for a driver, decoupled from where they came from. Drivers
-  and dev stores depend on this trait, not on the environment.
-- **`ProviderCredentials`**: `{ api_key: Option<String>, base_url: Option<String> }`.
+  `resolve(&DriverDescriptor) -> Option<ProviderCredentials>`, returns the
+  credentials for a driver, decoupled from where they came from. It takes the
+  descriptor rather than a bare `DriverId` because only the driver knows which
+  fields it needs and what they are called. Drivers and dev stores depend on
+  this trait, not on the environment.
+- **`ProviderCredentials`**: the driver's declared credential fields as a map,
+  plus an optional `base_url`. Same shape an operator-entered form produces, so
+  `document()` yields exactly what the server stores and multi-field drivers
+  (Bedrock's four AWS fields, MAI's Entra block) are expressible.
 - **`EnvCredentialProvider`**: the shared library implementation of the
   env-based source, and the **sanctioned pattern** for any caller that wants
-  env-driven credentials. It is the only *library/shared* component that reads
-  provider credential env vars; new env-credential code belongs here, not in a
-  driver. (Some standalone examples and `#[ignore]` live integration tests still
-  read `*_API_KEY` directly to gate themselves; those are caller-side and should
-  prefer this provider, but they are not part of the driver/library surface this
-  contract governs.) Recognized variables:
+  env-driven credentials. It is the only component in the workspace that pairs a
+  driver's declared variable names with a real `std::env::var` lookup, which is
+  what makes "keep it out of server wiring" sufficient to keep the environment
+  out of server credential resolution.
 
-  | Driver | API key | Base URL |
-  |--------|---------|----------|
-  | `openai`, `openai_completions` | `OPENAI_API_KEY` | `OPENAI_BASE_URL` |
-  | `openrouter` | `OPENROUTER_API_KEY` | `OPENROUTER_BASE_URL` |
-  | `anthropic` | `ANTHROPIC_API_KEY` | `ANTHROPIC_BASE_URL` |
-  | `gemini` | `GEMINI_API_KEY` | `GEMINI_BASE_URL` |
+**Names belong to the drivers, not to this resolver.** Each credential field
+declares the variables its vendor's own SDK reads (`FormField::env`, plus
+alternates the vendor also honors), and a driver declares its endpoint variable
+as `DriverDescriptor::base_url_env`. Resolution walks that declaration, honoring
+the same mutually-exclusive groups `CredentialFormSchema::validate` enforces, so
+a half-populated OAuth block configures nothing rather than half-configuring a
+provider.
 
-  Every other driver (Azure OpenAI, Bedrock, MAI, external) returns `None`; supply
-  its dev credentials explicitly.
+The per-driver table is published in `docs/framework/credentials.md` and pinned
+against the drivers' own declarations by
+`crates/worker/tests/driver_env_declarations.rs`, so it cannot drift.
+
+**A driver that declares no variable is never configured from the environment**,
+however its id is spelled. That is the default the registry's built-in schema
+gives; a driver opts in by naming what its vendor reads.
+
+> This replaced a scheme that derived `<UPPERCASE_DRIVER_ID>_API_KEY` and
+> `_BASE_URL` from the driver id centrally. That could express one key and one
+> URL, so it silently resolved nothing for Bedrock and MAI — a gap its own test
+> encoded as expected — and `openai_completions` needed its vendor's real names
+> hardcoded in the resolver because the driver had nowhere to state them.
 
 Standalone/dev/CLI entrypoints opt in by constructing `EnvCredentialProvider` and
 passing it where credentials are needed, e.g.
-`everruns_host::InMemoryProviderStore::from_credential_provider(&EnvCredentialProvider)`, the
-in-memory dev store used by `just start-dev`. **The server path never constructs
-an `EnvCredentialProvider`.**
+`everruns_host::InMemoryProviderStore::from_credential_provider(&registry, &EnvCredentialProvider)`,
+the in-memory dev store used by `just start-dev`. **The server path never
+constructs an `EnvCredentialProvider`.**
 
 Note: the `DEFAULT_*_API_KEY` env vars are a *separate* mechanism (Path 1 seed
 materialization, below), not this provider. They are read at startup and written
@@ -974,28 +989,52 @@ into the DB, never read by a driver.
 - Attach credentials/auth and the endpoint to a runtime `Provider`; protocol
   driver constructors remain credential-free.
 - In a standalone/dev/CLI entrypoint, construct `EnvCredentialProvider` (or any
-  other `CredentialProvider`) and inject it.
-- Add a new env var mapping for an existing driver in `EnvCredentialProvider`,
-  that one file, if dev ergonomics need it.
+  other `CredentialProvider`) and inject it, or call the driver crate's
+  `from_env(id)`.
+- Declare a driver's variables on its own credential schema and descriptor,
+  using the names that driver's vendor SDK reads.
 
 **Don't**
 
 - ❌ Read a credential (`*_API_KEY`, secret, or endpoint base URL) from
   `std::env::var(...)` in any driver crate or protocol driver. (Non-credential
   knobs are fine.)
-- ❌ Reintroduce a `Driver::from_env()` / `*Store::from_env()` constructor. These
-  were removed deliberately; their name invites use on the server path.
-- ❌ Construct `EnvCredentialProvider` anywhere reachable from org-scoped
-  execution, or otherwise let a `None` from the resolver fall through to env.
+- ❌ Add a driver's variable names anywhere but that driver's own declaration.
+  A central mapping keyed by driver id is what this design replaced.
+- ❌ Construct `EnvCredentialProvider`, or call any `from_env`, anywhere
+  reachable from org-scoped execution, or otherwise let a `None` from the
+  resolver fall through to env.
+
+**On `from_env`**
+
+Driver-crate `from_env(id)` constructors are sanctioned, reversing an earlier
+rule that banned them because "their name invites use on the server path". Two
+things changed. They perform no env access of their own: each is a three-line
+delegation to `provider_from_env`, which resolves through
+`EnvCredentialProvider` and then builds the provider via the driver's own
+registered factory — the same path an operator-entered credential takes. And
+the invitation is now answered structurally rather than by convention: the
+provider isolation guard (`scripts/lib/check-provider-isolation.sh`) fails the
+build if server or platform code calls `from_env`, `provider_from_env`, or
+constructs an `EnvCredentialProvider`.
+
+The banned shape was a driver reading env *itself*. That remains banned.
 
 ### Adding a new driver
 
 A new driver inherits the contract for free: implement only credential-taking
-constructors, never an env read. If the driver should be configurable from the
-environment for dev/CLI use, add its env var mapping to the `match` in
-`EnvCredentialProvider::resolve_with` (`crates/core/src/credential_provider.rs`)
-and a unit test beside the existing ones, do **not** add a `from_env` to the
-driver crate.
+constructors, never an env read. To make it configurable from the environment
+for dev/CLI use, declare the variables **its vendor's SDK reads** on its own
+credential fields (`FormField::env`, `env_fallback` for alternates the vendor
+also honors) and, if that vendor defines an endpoint variable,
+`DriverDescriptor::base_url_env`. Then expose `descriptor()` and a `from_env(id)`
+delegating to `provider_from_env`, and add the driver to the table in
+`docs/framework/credentials.md` and to
+`crates/worker/tests/driver_env_declarations.rs`.
+
+Declaring nothing is a valid choice and the safe default: the driver is then
+only ever configured explicitly. Never add the names to a central mapping —
+that is the design this replaced.
 
 ### Single-Tenant / Dev: Startup Materialization
 

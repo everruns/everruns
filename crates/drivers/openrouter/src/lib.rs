@@ -25,7 +25,7 @@ pub mod options;
 mod request_ext;
 mod types;
 
-pub use driver::{OpenRouterChatDriver, provider, register_driver};
+pub use driver::{OpenRouterChatDriver, descriptor, from_env, provider, register_driver};
 pub use request_ext::OpenRouterRequestExtension;
 pub use types::{
     OpenRouterArchitecture, OpenRouterModelInfo, OpenRouterModelsResponse, OpenRouterPricing,

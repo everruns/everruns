@@ -3,7 +3,7 @@
 import { use } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -187,10 +187,10 @@ export default function WorkflowDetailPage({
               The workflow could not be loaded. It may not exist or the API is unavailable.
             </p>
             <div className="flex gap-2">
-              <Button variant="outline" render={<Link href="/durable/workflows" />}>
+              <LinkButton variant="outline" href="/durable/workflows">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to Workflows
-              </Button>
+              </LinkButton>
               <Button onClick={() => refetch()} variant="outline">
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Retry

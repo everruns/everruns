@@ -39,8 +39,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let release_date = today_utc();
     let request = release_request(&task, &release_date);
-    let api_key = std::env::var("OPENAI_API_KEY")?;
-    let agent = agent::build(api_key, &workspace)?;
+    // OPENAI_API_KEY, declared by the OpenAI driver itself.
+    let agent = agent::build(everruns::OpenAI::from_env()?, &workspace)?;
     let engine = Engine::new();
     let session = engine.create(agent);
 

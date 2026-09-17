@@ -8571,6 +8571,21 @@ export interface components {
        *     their own defaults; this only seeds the form input.
        */
       default_value?: string | null;
+      /**
+       * @description Environment variables this field can be read from in standalone/dev use,
+       *     most preferred first.
+       *
+       *     Declared by the driver, because only the driver knows what its vendor's
+       *     own SDK reads: `AWS_ACCESS_KEY_ID` for Bedrock, `AZURE_TENANT_ID` for
+       *     MAI's Entra group, `ANTHROPIC_API_KEY` for Anthropic. Later entries are
+       *     alternates the vendor also honors (`GOOGLE_API_KEY`,
+       *     `AWS_DEFAULT_REGION`), not a second field.
+       *
+       *     Empty means the field cannot be supplied from the environment, so a
+       *     group containing a required field with no variable never resolves from
+       *     env alone. Server credential resolution ignores this entirely.
+       */
+      env?: string[];
       /** @description Input type. */
       field_type: components["schemas"]["FieldType"];
       /**

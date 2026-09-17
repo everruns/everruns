@@ -80,6 +80,18 @@ impl Model {
             bundled_provider: Some(provider),
         }
     }
+
+    /// The provider-visible model id.
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// The provider bundled with this model, if any. A model built from a bare
+    /// id carries none: the agent builder takes one from `.provider(...)`, and
+    /// a direct completion asks for one explicitly.
+    pub(crate) fn bundled_provider(&self) -> Option<&Provider> {
+        self.bundled_provider.as_ref()
+    }
 }
 
 impl From<&str> for Model {

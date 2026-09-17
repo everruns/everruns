@@ -34,8 +34,8 @@ mod types;
 mod tests;
 
 pub use driver::{
-    OpenAIChatDriver, OpenAICompletionsChatDriver, azure_provider, completions_provider, provider,
-    register_driver,
+    OpenAIChatDriver, OpenAICompletionsChatDriver, azure_descriptor, azure_provider,
+    completions_descriptor, completions_provider, descriptor, from_env, provider, register_driver,
 };
 pub use embeddings::OpenAIEmbeddingsDriver;
 pub use types::{

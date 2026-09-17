@@ -15,5 +15,7 @@
 
 mod driver;
 
-pub use driver::{META_DEFAULT_API_URL, MetaChatDriver, provider, register_driver};
+pub use driver::{
+    META_DEFAULT_API_URL, MetaChatDriver, descriptor, from_env, provider, register_driver,
+};
 pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};

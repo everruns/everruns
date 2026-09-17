@@ -40,6 +40,15 @@ branches.
 - Built-in provider conveniences and custom providers converge on the same
   resolution and execution path.
 - Provider-specific protocol differences remain behind the driver boundary.
+- A driver owns the names of the environment variables it can be configured
+  from, declared on its own credential fields and following that vendor's SDK
+  convention. No central mapping keyed by driver id: it can express only one
+  key, and a multi-field driver would silently resolve nothing. Declaring a name
+  reads nothing, so the declaration is identical on every deployment, and a
+  driver that declares none is configured only explicitly. Pairing declarations
+  with a real lookup belongs to standalone/CLI/dev entrypoints, per the
+  fail-closed Key Resolution Contract in
+  [LLM drivers](../foundations/llm-drivers.md).
 
 The exact driver trait, provider constructors, and stream events live in the
 public API reference. Framework usage lives in the public [Models and

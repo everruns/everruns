@@ -25,6 +25,6 @@ mod credential;
 mod driver;
 
 pub use credential::BedrockCredential;
-pub use driver::{BedrockAuth, BedrockChatDriver, provider, register_driver};
+pub use driver::{BedrockAuth, BedrockChatDriver, descriptor, from_env, provider, register_driver};
 
 pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};

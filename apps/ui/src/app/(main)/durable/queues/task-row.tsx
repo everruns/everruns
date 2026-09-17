@@ -1,11 +1,10 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertTriangle, CheckCircle, Clock, XCircle, Activity, ExternalLink } from "lucide-react";
-import Link from "next/link";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import { formatDistanceToNow } from "@/lib/formatting";
 import { getTaskStatusBadgeVariant } from "@/lib/status-utils";
@@ -96,14 +95,14 @@ export function TaskRow({ task }: { task: DurableTask }) {
       <TableCell>
         <div className="flex items-center gap-1">
           {task.workflow_id ? (
-            <Button
+            <LinkButton
               variant="ghost"
               size="sm"
               aria-label={`View workflow ${task.workflow_id}`}
-              render={<Link href={`/durable/workflows/${task.workflow_id}`} />}
+              href={`/durable/workflows/${task.workflow_id}`}
             >
               <ExternalLink className="h-3 w-3" />
-            </Button>
+            </LinkButton>
           ) : (
             <Badge variant="outline" className="text-xs">
               standalone

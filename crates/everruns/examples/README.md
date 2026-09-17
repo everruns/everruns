@@ -5,13 +5,14 @@ Most use `gpt-5.6-terra` and require `OPENAI_API_KEY`;
 `capability_configuration`, `canonical_events`, `session_work`,
 `workspace_policy`, and `session_history` run entirely offline.
 `workspace_heads` also runs offline against a local Git repository.
-`live_session` defaults to an offline simulator; add `--features openai` and
-`-- --live` to use GPT-6 Astra with real API credentials.
+`live_session` and `direct_llm` default to an offline simulator; add
+`--features openai` and `-- --live` to use a real model with API credentials.
 
 | Example | What it demonstrates | Run |
 |---|---|---|
 | [`capability_configuration.rs`](capability_configuration.rs) | One open entrypoint for typed Compaction and ToolSearch, a code-defined Definition, and a dynamic vendor reference | `cargo run -p everruns --example capability_configuration` |
 | [`workspace_policy.rs`](workspace_policy.rs) | Safe read/write scopes, default restrictions, and trusted starter files | `cargo run -p everruns --example workspace_policy` |
+| [`direct_llm.rs`](direct_llm.rs) | One prompt and one answer with no agent: `Model::complete`, the completion builder, and streaming | `cargo run -p everruns --example direct_llm` |
 | [`live_session.rs`](live_session.rs) | Non-blocking send, iteration-boundary corrections, transcript, and optional live OpenAI mode | `cargo run -p everruns --example live_session` |
 | [`hello.rs`](hello.rs) | Minimal agent, typed tool, turn result, and event observation | `cargo run -p everruns --features openai --example hello` |
 | [`production_agent.rs`](production_agent.rs) | Tool safety boundary and production-shaped multi-turn use | `cargo run -p everruns --features openai --example production_agent` |

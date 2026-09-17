@@ -83,6 +83,45 @@ Agents are immutable values. An engine snapshots an agent when it creates a
 session, which makes ownership and isolation predictable even when many
 sessions run concurrently.
 
+Not every call needs all of that. When the work is one prompt and one answer,
+call the model directly — same provider, same credentials, no agent loop:
+
+```rust
+use everruns::{Model, OpenAI};
+
+let model = Model::new("gpt-5.6-terra", OpenAI::from_env()?);
+let answer = model.complete("Name the three primary colors.").await?;
+```
+
+See [Direct model calls](https://docs.everruns.com/framework/direct-model-calls/).
+
+## Credentials come from your vendor's own variables
+
+Every driver declares the environment variables its vendor's SDK reads, so a
+shell that already works with that vendor already configures the driver:
+
+```rust
+use everruns::{Agent, Model, OpenAI};
+
+// OPENAI_API_KEY, and OPENAI_BASE_URL when set.
+let openai = OpenAI::from_env()?;
+
+// ANTHROPIC_API_KEY. Every driver crate has the same entry point.
+let anthropic = everruns_anthropic::from_env("anthropic")?;
+
+// AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION — a driver is not
+// limited to one key.
+let bedrock = everruns_bedrock::from_env("bedrock")?;
+```
+
+There is no Everruns naming scheme: the names belong to the drivers. A driver
+that declares nothing is never configured from the environment.
+
+This is for standalone, CLI, and development use. Server deployments resolve
+credentials from encrypted storage and read no environment variables — drivers
+only declare names, they never read them. See
+[Credentials](https://docs.everruns.com/framework/credentials/).
+
 ## Give agents tools and capabilities
 
 For a single operation, annotate an async Rust function with
@@ -184,6 +223,8 @@ includes the exact command for each one.
   isolated sessions, and resume.
 - [`live_session`](examples/live_session.rs) — non-blocking sends, steering,
   and waiting.
+- [`direct_llm`](examples/direct_llm.rs) — one-shot, builder, and streamed
+  model calls with no agent.
 
 ### Tools, capabilities, and orchestration
 
@@ -218,6 +259,8 @@ includes the exact command for each one.
 - [Framework guide](https://docs.everruns.com/framework/)
 - [Agents](https://docs.everruns.com/framework/agents/)
 - [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
+- [Direct model calls](https://docs.everruns.com/framework/direct-model-calls/)
+- [Credentials](https://docs.everruns.com/framework/credentials/)
 - [Sessions](https://docs.everruns.com/framework/sessions/)
 - [Events and cancellation](https://docs.everruns.com/framework/events-and-cancellation/)
 - [Persistence](https://docs.everruns.com/framework/persistence/)
