@@ -1,7 +1,7 @@
 //! Host-owned workspace, head, and session-environment contracts.
 //!
 //! A workspace is logical lineage. A head is one reopenable mutable view of
-//! that lineage. Physical storage stays provider-owned and is projected into
+//! that lineage. Physical storage stays backend-owned and is projected into
 //! execution through the existing [`SessionFileSystem`] contract.
 
 use std::any::{Any, TypeId};
@@ -18,17 +18,17 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-/// Stable, provider-defined SPI identifier.
+/// Stable, backend-defined SPI identifier.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct WorkspaceProviderId(String);
+pub struct WorkspaceBackendId(String);
 
-impl WorkspaceProviderId {
+impl WorkspaceBackendId {
     pub fn new(value: impl Into<String>) -> Result<Self, WorkspaceError> {
         let value = value.into();
         if value.trim().is_empty() || value.len() > 128 {
             return Err(WorkspaceError::InvalidRequest(
-                "workspace provider id must contain 1..=128 characters".into(),
+                "workspace backend id must contain 1..=128 characters".into(),
             ));
         }
         Ok(Self(value))
@@ -39,7 +39,7 @@ impl WorkspaceProviderId {
     }
 }
 
-impl fmt::Display for WorkspaceProviderId {
+impl fmt::Display for WorkspaceBackendId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.0)
     }
@@ -76,13 +76,13 @@ impl fmt::Display for WorkspaceHeadId {
     }
 }
 
-/// Provider-owned data sufficient to reopen the exact recorded head.
+/// Backend-owned data sufficient to reopen the exact recorded head.
 ///
-/// Callers persist this value opaquely. Providers must not place credentials
+/// Callers persist this value opaquely. Backends must not place credentials
 /// in `payload`; local persistence intentionally stores it as plain data.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceBinding {
-    pub provider_id: WorkspaceProviderId,
+    pub provider_id: WorkspaceBackendId,
     pub workspace_id: WorkspaceId,
     pub head_id: WorkspaceHeadId,
     pub access: WorkspaceHeadAccess,
@@ -91,7 +91,7 @@ pub struct WorkspaceBinding {
 }
 
 impl WorkspaceBinding {
-    /// Maximum provider payload accepted by Framework persistence.
+    /// Maximum backend payload accepted by Framework persistence.
     pub const MAX_PAYLOAD_BYTES: usize = 64 * 1024;
 
     pub fn validate(&self) -> Result<(), WorkspaceError> {
@@ -113,7 +113,7 @@ pub enum WorkspaceHeadAccess {
     Shared,
 }
 
-/// Provider-neutral identity and base metadata for a logical workspace.
+/// Backend-neutral identity and base metadata for a logical workspace.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkspaceDescriptor {
     pub id: WorkspaceId,
@@ -121,7 +121,7 @@ pub struct WorkspaceDescriptor {
     pub metadata: BTreeMap<String, String>,
 }
 
-/// Provider-neutral identity and base metadata for a head.
+/// Backend-neutral identity and base metadata for a head.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkspaceHeadDescriptor {
     pub id: WorkspaceHeadId,
@@ -131,7 +131,7 @@ pub struct WorkspaceHeadDescriptor {
     pub metadata: BTreeMap<String, String>,
 }
 
-/// A provider-produced head resource before the Framework attaches lifecycle.
+/// A backend-produced head resource before the Framework attaches lifecycle.
 pub struct WorkspaceHeadResource {
     pub workspace: WorkspaceDescriptor,
     pub head: WorkspaceHeadDescriptor,
@@ -147,14 +147,14 @@ pub struct WorkspaceHeadRequest {
     pub access: WorkspaceHeadAccess,
 }
 
-/// Provider-neutral checkpoint metadata.
+/// Backend-neutral checkpoint metadata.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkspaceCheckpoint {
     pub revision: String,
     pub metadata: BTreeMap<String, String>,
 }
 
-/// Provider-neutral mutable-head status.
+/// Backend-neutral mutable-head status.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WorkspaceHeadStatus {
     pub dirty: bool,
@@ -163,7 +163,7 @@ pub struct WorkspaceHeadStatus {
     pub metadata: BTreeMap<String, String>,
 }
 
-/// Provider-neutral diff summary for one mutable head.
+/// Backend-neutral diff summary for one mutable head.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WorkspaceDiff {
     pub changed: bool,
@@ -171,13 +171,18 @@ pub struct WorkspaceDiff {
     pub metadata: BTreeMap<String, String>,
 }
 
-/// Errors exposed by workspace providers and lifecycle operations.
+/// Errors exposed by workspace backends and lifecycle operations.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum WorkspaceError {
     #[error("invalid workspace request: {0}")]
     InvalidRequest(String),
-    #[error("workspace provider is unavailable: {0}")]
+    /// The workspace backend is not available.
+    #[error("workspace backend is unavailable: {0}")]
+    BackendUnavailable(String),
+    /// Compatibility variant emitted by built-in backends during its deprecation window.
+    #[deprecated(note = "use BackendUnavailable")]
+    #[error("workspace backend is unavailable: {0}")]
     ProviderUnavailable(String),
     #[error("workspace or head was not found")]
     NotFound,
@@ -185,20 +190,25 @@ pub enum WorkspaceError {
     Archived,
     #[error("workspace head has a conflicting update")]
     Conflict,
-    #[error("workspace binding does not match the requested provider, workspace, or head")]
+    #[error("workspace binding does not match the requested backend, workspace, or head")]
     BindingMismatch,
-    #[error("workspace provider failed: {0}")]
+    /// The workspace backend rejected the requested operation.
+    #[error("workspace backend failed: {0}")]
+    Backend(String),
+    /// Compatibility variant emitted by built-in backends during its deprecation window.
+    #[deprecated(note = "use Backend")]
+    #[error("workspace backend failed: {0}")]
     Provider(String),
 }
 
-/// Open service-provider interface for physical workspace implementations.
+/// Open interface for physical workspace implementations.
 ///
 /// Git worktrees are one implementation. Remote filesystems, containers, and
 /// object-backed snapshots can implement the same trait without registering a
 /// backend enum or exposing physical paths in the universal contract.
 #[async_trait]
-pub trait WorkspaceProvider: Send + Sync {
-    fn id(&self) -> WorkspaceProviderId;
+pub trait WorkspaceBackend: Send + Sync {
+    fn id(&self) -> WorkspaceBackendId;
 
     async fn open_workspace(&self, locator: &str) -> Result<WorkspaceDescriptor, WorkspaceError>;
 
@@ -231,42 +241,42 @@ pub trait WorkspaceProvider: Send + Sync {
 
     async fn diff(&self, binding: &WorkspaceBinding) -> Result<WorkspaceDiff, WorkspaceError>;
 
-    /// Archive a head while retaining its provider-owned contents.
+    /// Archive a head while retaining its backend-owned contents.
     async fn archive(&self, binding: &WorkspaceBinding) -> Result<(), WorkspaceError>;
 
-    /// Explicitly destroy provider-owned head storage.
+    /// Explicitly destroy backend-owned head storage.
     ///
-    /// Providers must never call this from `Drop`. Provider-specific durable
-    /// lineage such as a Git branch is retained unless the provider documents
+    /// Backends must never call this from `Drop`. Backend-specific durable
+    /// lineage such as a Git branch is retained unless the backend documents
     /// a separate, explicit deletion operation.
     async fn destroy(&self, binding: &WorkspaceBinding) -> Result<(), WorkspaceError>;
 }
 
-/// One logical workspace opened through a provider.
+/// One logical workspace opened through a backend.
 #[derive(Clone)]
 pub struct Workspace {
-    provider: Arc<dyn WorkspaceProvider>,
+    backend: Arc<dyn WorkspaceBackend>,
     descriptor: WorkspaceDescriptor,
 }
 
 impl Workspace {
     pub fn from_descriptor(
-        provider: Arc<dyn WorkspaceProvider>,
+        backend: Arc<dyn WorkspaceBackend>,
         descriptor: WorkspaceDescriptor,
     ) -> Self {
         Self {
-            provider,
+            backend,
             descriptor,
         }
     }
 
     pub async fn open(
-        provider: Arc<dyn WorkspaceProvider>,
+        backend: Arc<dyn WorkspaceBackend>,
         locator: impl AsRef<str>,
     ) -> Result<Self, WorkspaceError> {
-        let descriptor = provider.open_workspace(locator.as_ref()).await?;
+        let descriptor = backend.open_workspace(locator.as_ref()).await?;
         Ok(Self {
-            provider,
+            backend,
             descriptor,
         })
     }
@@ -296,10 +306,10 @@ impl Workspace {
         &self,
         binding: &WorkspaceBinding,
     ) -> Result<WorkspaceHead, WorkspaceError> {
-        if binding.provider_id != self.provider.id() || binding.workspace_id != self.id() {
+        if binding.provider_id != self.backend.id() || binding.workspace_id != self.id() {
             return Err(WorkspaceError::BindingMismatch);
         }
-        let resource = self.provider.reopen_head(binding).await?;
+        let resource = self.backend.reopen_head(binding).await?;
         self.attach(resource, Some(binding))
     }
 
@@ -310,7 +320,7 @@ impl Workspace {
     ) -> Result<WorkspaceHead, WorkspaceError> {
         resource.binding.validate()?;
         if resource.workspace.id != self.id()
-            || resource.binding.provider_id != self.provider.id()
+            || resource.binding.provider_id != self.backend.id()
             || resource.binding.workspace_id != self.id()
             || resource.binding.head_id != resource.head.id
             || resource.binding.access != resource.head.access
@@ -319,7 +329,7 @@ impl Workspace {
             return Err(WorkspaceError::BindingMismatch);
         }
         Ok(WorkspaceHead {
-            provider: self.provider.clone(),
+            backend: self.backend.clone(),
             workspace: resource.workspace,
             descriptor: resource.head,
             binding: resource.binding,
@@ -332,7 +342,7 @@ impl fmt::Debug for Workspace {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("Workspace")
-            .field("provider", &self.provider.id())
+            .field("backend", &self.backend.id())
             .field("descriptor", &self.descriptor)
             .finish()
     }
@@ -366,7 +376,7 @@ impl WorkspaceHeadBuilder {
         }
         let resource = self
             .workspace
-            .provider
+            .backend
             .create_head(
                 &self.workspace.descriptor,
                 WorkspaceHeadRequest {
@@ -383,7 +393,7 @@ impl WorkspaceHeadBuilder {
 /// One stable, reopenable mutable view of a workspace.
 #[derive(Clone)]
 pub struct WorkspaceHead {
-    provider: Arc<dyn WorkspaceProvider>,
+    backend: Arc<dyn WorkspaceBackend>,
     workspace: WorkspaceDescriptor,
     descriptor: WorkspaceHeadDescriptor,
     binding: WorkspaceBinding,
@@ -391,11 +401,16 @@ pub struct WorkspaceHead {
 }
 
 impl WorkspaceHead {
-    /// Provider that owns this head. Applications normally use lifecycle
+    /// Backend that owns this head. Applications normally use lifecycle
     /// methods on the head; the facade uses this handle to make typed resume
     /// available for the Agent lifetime.
-    pub fn provider(&self) -> Arc<dyn WorkspaceProvider> {
-        self.provider.clone()
+    pub fn backend(&self) -> Arc<dyn WorkspaceBackend> {
+        self.backend.clone()
+    }
+
+    #[deprecated(note = "use WorkspaceHead::backend")]
+    pub fn provider(&self) -> Arc<dyn WorkspaceBackend> {
+        self.backend()
     }
 
     pub fn workspace_id(&self) -> WorkspaceId {
@@ -427,30 +442,30 @@ impl WorkspaceHead {
     }
 
     pub async fn checkpoint(&self) -> Result<WorkspaceCheckpoint, WorkspaceError> {
-        self.provider.checkpoint(&self.binding).await
+        self.backend.checkpoint(&self.binding).await
     }
 
     pub async fn status(&self) -> Result<WorkspaceHeadStatus, WorkspaceError> {
-        self.provider.status(&self.binding).await
+        self.backend.status(&self.binding).await
     }
 
     pub async fn diff(&self) -> Result<WorkspaceDiff, WorkspaceError> {
-        self.provider.diff(&self.binding).await
+        self.backend.diff(&self.binding).await
     }
 
     pub async fn archive(&self) -> Result<(), WorkspaceError> {
-        self.provider.archive(&self.binding).await
+        self.backend.archive(&self.binding).await
     }
 
     pub async fn destroy(self) -> Result<(), WorkspaceError> {
-        self.provider.destroy(&self.binding).await
+        self.backend.destroy(&self.binding).await
     }
 
     /// Create a new isolated head from this head's current checkpoint.
     pub async fn fork(&self, name: impl Into<String>) -> Result<WorkspaceHead, WorkspaceError> {
         let checkpoint = self.checkpoint().await?;
         Workspace {
-            provider: self.provider.clone(),
+            backend: self.backend.clone(),
             descriptor: self.workspace.clone(),
         }
         .head(name)
@@ -464,7 +479,7 @@ impl fmt::Debug for WorkspaceHead {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("WorkspaceHead")
-            .field("provider", &self.provider.id())
+            .field("backend", &self.backend.id())
             .field("workspace", &self.workspace)
             .field("descriptor", &self.descriptor)
             .field("binding", &self.binding)

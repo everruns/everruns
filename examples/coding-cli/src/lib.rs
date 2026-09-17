@@ -1,6 +1,6 @@
 //! A minimal coding agent built only on the public `everruns` library.
 //!
-//! The example opens provider-owned Git workspace heads, binds them directly
+//! The example opens backend-owned Git workspace heads, binds them directly
 //! when creating a Framework session, and equips one Agent with owner-defined
 //! typed capabilities. It deliberately contains no process-global workspace
 //! state and no application-defined filesystem tools.
@@ -12,7 +12,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
 use everruns::{
     Agent, AgentBuilder, AgentInstructionsConfig, BashkitShell, DuckDuckGo, FileSystem,
-    LocalConfig, LocalGitWorkspaceProvider, Model, ReasoningEffort, Session, SessionId, Skills,
+    LocalConfig, LocalGitWorkspace, Model, ReasoningEffort, Session, SessionId, Skills,
     StatelessTodoList, WebFetch, Workspace, WorkspaceHead, WorkspaceHeadAccess, WorkspacePolicy,
 };
 
@@ -29,7 +29,7 @@ verifiable changes and explain what you did.";
     name = "ercode",
     version,
     about = "Everruns coding CLI on durable Framework workspace heads",
-    long_about = "Run a coding agent in a provider-owned Git workspace head. New heads are \
+    long_about = "Run a coding agent in a backend-owned Git workspace head. New heads are \
 isolated by default and survive process exit. Resume reopens the exact head recorded for a typed \
 session; shared-head mode is an explicit opt-in for a second session on an existing shared head.",
     after_long_help = "Examples:\n  \
@@ -213,7 +213,7 @@ pub enum SessionMode {
 
 /// Public-API wrapper for one trusted local Git repository and its durable state.
 pub struct CodingWorkspace {
-    provider: Arc<LocalGitWorkspaceProvider>,
+    backend: Arc<LocalGitWorkspace>,
     workspace: Option<Workspace>,
     local: LocalConfig,
 }
@@ -222,42 +222,42 @@ impl CodingWorkspace {
     /// Open durable Framework state without selecting a new repository.
     ///
     /// Typed resume and shared-head reuse reopen the recorded workspace through
-    /// its opaque provider binding, so they intentionally use this constructor.
+    /// its opaque backend binding, so they intentionally use this constructor.
     pub fn from_state(state_dir: impl AsRef<Path>) -> Result<Self> {
         let state_dir = state_dir.as_ref();
-        let provider = Arc::new(
-            LocalGitWorkspaceProvider::new(state_dir.join("workspace-provider"))
-                .context("initialize the local Git workspace provider")?,
+        let backend = Arc::new(
+            LocalGitWorkspace::new(state_dir.join("workspace-provider"))
+                .context("initialize the local Git workspace backend")?,
         );
         Ok(Self {
-            provider,
+            backend,
             workspace: None,
             local: LocalConfig::new(state_dir.join("runtime")),
         })
     }
 
-    /// Open a trusted Git repository through the public local workspace provider.
+    /// Open a trusted Git repository through the public local workspace backend.
     pub async fn open(repository: impl AsRef<Path>, state_dir: impl AsRef<Path>) -> Result<Self> {
         let mut context = Self::from_state(state_dir)?;
         let locator = repository.as_ref().to_str().ok_or_else(|| {
             anyhow!("local Git repository path must be valid UTF-8 for durable resume")
         })?;
-        let workspace = Workspace::open(context.provider.clone(), locator)
+        let workspace = Workspace::open(context.backend.clone(), locator)
             .await
             .context("open the trusted local Git repository")?;
         context.workspace = Some(workspace);
         Ok(context)
     }
 
-    /// Attach durable local session state, the workspace provider, and policy.
+    /// Attach durable local session state, the workspace backend, and policy.
     pub fn configure_agent(&self, builder: AgentBuilder, policy: WorkspacePolicy) -> AgentBuilder {
         builder
             .local(self.local.clone())
-            .workspace_provider(self.provider.clone())
+            .workspace_backend(self.backend.clone())
             .workspace_policy(policy)
     }
 
-    /// Create a provider-owned head. Dropping the handle never destroys it.
+    /// Create a backend-owned head. Dropping the handle never destroys it.
     pub async fn create_head(
         &self,
         name: impl Into<String>,

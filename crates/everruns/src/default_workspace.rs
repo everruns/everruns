@@ -1,3 +1,4 @@
+#![allow(deprecated)] // Built-in backends emit legacy errors during their deprecation window.
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -5,16 +6,16 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use everruns_core::session_files::SessionFileSystem;
 use everruns_host::{
-    Environment, InMemorySessionFileStore, RealDiskFileStore, Workspace, WorkspaceBinding,
-    WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff, WorkspaceError, WorkspaceHeadAccess,
-    WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest, WorkspaceHeadResource,
-    WorkspaceHeadStatus, WorkspaceProvider, WorkspaceProviderId,
+    Environment, InMemorySessionFileStore, RealDiskFileStore, Workspace, WorkspaceBackend,
+    WorkspaceBackendId, WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff,
+    WorkspaceError, WorkspaceHeadAccess, WorkspaceHeadDescriptor, WorkspaceHeadId,
+    WorkspaceHeadRequest, WorkspaceHeadResource, WorkspaceHeadStatus,
 };
 use everruns_provider::typed_id::{SessionId, WorkspaceId};
 use uuid::Uuid;
 
 pub(crate) struct DefaultWorkspace {
-    provider: Arc<dyn WorkspaceProvider>,
+    backend: Arc<dyn WorkspaceBackend>,
     locator: &'static str,
     shared: bool,
 }
@@ -22,7 +23,7 @@ pub(crate) struct DefaultWorkspace {
 impl DefaultWorkspace {
     pub(crate) fn in_memory() -> Self {
         Self {
-            provider: Arc::new(DefaultMemoryWorkspaceProvider::new()),
+            backend: Arc::new(DefaultMemoryWorkspaceBackend::new()),
             locator: "memory",
             shared: false,
         }
@@ -30,21 +31,21 @@ impl DefaultWorkspace {
 
     pub(crate) fn directory(root: PathBuf) -> Self {
         Self {
-            provider: Arc::new(DefaultDirectoryWorkspaceProvider { root }),
+            backend: Arc::new(DefaultDirectoryWorkspaceBackend { root }),
             locator: "directory",
             shared: true,
         }
     }
 
-    pub(crate) fn provider(&self) -> Arc<dyn WorkspaceProvider> {
-        self.provider.clone()
+    pub(crate) fn backend(&self) -> Arc<dyn WorkspaceBackend> {
+        self.backend.clone()
     }
 
     pub(crate) async fn environment(
         &self,
         session_id: SessionId,
     ) -> Result<Environment, WorkspaceError> {
-        let workspace = Workspace::open(self.provider.clone(), self.locator).await?;
+        let workspace = Workspace::open(self.backend.clone(), self.locator).await?;
         let mut head = workspace.head(if self.shared {
             "default".to_string()
         } else {
@@ -62,23 +63,23 @@ impl DefaultWorkspace {
 impl Clone for DefaultWorkspace {
     fn clone(&self) -> Self {
         Self {
-            provider: self.provider.clone(),
+            backend: self.backend.clone(),
             locator: self.locator,
             shared: self.shared,
         }
     }
 }
 
-const DIRECTORY_PROVIDER_ID: &str = "everruns.framework.directory.v1";
-const MEMORY_PROVIDER_ID: &str = "everruns.framework.memory.v1";
+const DIRECTORY_BACKEND_ID: &str = "everruns.framework.directory.v1";
+const MEMORY_BACKEND_ID: &str = "everruns.framework.memory.v1";
 
-struct DefaultDirectoryWorkspaceProvider {
+struct DefaultDirectoryWorkspaceBackend {
     root: PathBuf,
 }
 
-impl DefaultDirectoryWorkspaceProvider {
-    fn provider_id() -> WorkspaceProviderId {
-        WorkspaceProviderId::new(DIRECTORY_PROVIDER_ID).expect("static provider id is valid")
+impl DefaultDirectoryWorkspaceBackend {
+    fn backend_id() -> WorkspaceBackendId {
+        WorkspaceBackendId::new(DIRECTORY_BACKEND_ID).expect("static backend id is valid")
     }
 
     fn root_identity(
@@ -112,7 +113,7 @@ impl DefaultDirectoryWorkspaceProvider {
 
     fn resource(&self, binding: WorkspaceBinding) -> Result<WorkspaceHeadResource, WorkspaceError> {
         let (root, encoded, workspace_id, head_id) = self.root_identity()?;
-        if binding.provider_id != Self::provider_id()
+        if binding.provider_id != Self::backend_id()
             || binding.workspace_id != workspace_id
             || binding.head_id != head_id
             || binding.access != WorkspaceHeadAccess::Shared
@@ -150,7 +151,7 @@ impl DefaultDirectoryWorkspaceProvider {
     fn binding(&self) -> Result<WorkspaceBinding, WorkspaceError> {
         let (_, payload, workspace_id, head_id) = self.root_identity()?;
         Ok(WorkspaceBinding {
-            provider_id: Self::provider_id(),
+            provider_id: Self::backend_id(),
             workspace_id,
             head_id,
             access: WorkspaceHeadAccess::Shared,
@@ -160,9 +161,9 @@ impl DefaultDirectoryWorkspaceProvider {
 }
 
 #[async_trait]
-impl WorkspaceProvider for DefaultDirectoryWorkspaceProvider {
-    fn id(&self) -> WorkspaceProviderId {
-        Self::provider_id()
+impl WorkspaceBackend for DefaultDirectoryWorkspaceBackend {
+    fn id(&self) -> WorkspaceBackendId {
+        Self::backend_id()
     }
 
     async fn open_workspace(&self, locator: &str) -> Result<WorkspaceDescriptor, WorkspaceError> {
@@ -243,14 +244,14 @@ impl WorkspaceProvider for DefaultDirectoryWorkspaceProvider {
     }
 }
 
-struct DefaultMemoryWorkspaceProvider {
+struct DefaultMemoryWorkspaceBackend {
     instance: Uuid,
     file_system: Arc<dyn SessionFileSystem>,
     heads: Mutex<HashSet<WorkspaceHeadId>>,
     archived: Mutex<HashSet<WorkspaceHeadId>>,
 }
 
-impl DefaultMemoryWorkspaceProvider {
+impl DefaultMemoryWorkspaceBackend {
     fn new() -> Self {
         Self {
             instance: Uuid::new_v4(),
@@ -260,8 +261,8 @@ impl DefaultMemoryWorkspaceProvider {
         }
     }
 
-    fn provider_id() -> WorkspaceProviderId {
-        WorkspaceProviderId::new(MEMORY_PROVIDER_ID).expect("static provider id is valid")
+    fn backend_id() -> WorkspaceBackendId {
+        WorkspaceBackendId::new(MEMORY_BACKEND_ID).expect("static backend id is valid")
     }
 
     fn workspace_id(&self) -> WorkspaceId {
@@ -269,7 +270,7 @@ impl DefaultMemoryWorkspaceProvider {
     }
 
     fn validate(&self, binding: &WorkspaceBinding) -> Result<(), WorkspaceError> {
-        if binding.provider_id != Self::provider_id()
+        if binding.provider_id != Self::backend_id()
             || binding.workspace_id != self.workspace_id()
             || binding.payload != self.instance.as_bytes()
         {
@@ -316,9 +317,9 @@ impl DefaultMemoryWorkspaceProvider {
 }
 
 #[async_trait]
-impl WorkspaceProvider for DefaultMemoryWorkspaceProvider {
-    fn id(&self) -> WorkspaceProviderId {
-        Self::provider_id()
+impl WorkspaceBackend for DefaultMemoryWorkspaceBackend {
+    fn id(&self) -> WorkspaceBackendId {
+        Self::backend_id()
     }
 
     async fn open_workspace(&self, locator: &str) -> Result<WorkspaceDescriptor, WorkspaceError> {
@@ -355,7 +356,7 @@ impl WorkspaceProvider for DefaultMemoryWorkspaceProvider {
             .map_err(|_| WorkspaceError::Provider("workspace state is unavailable".into()))?
             .insert(head_id);
         self.resource(WorkspaceBinding {
-            provider_id: Self::provider_id(),
+            provider_id: Self::backend_id(),
             workspace_id: self.workspace_id(),
             head_id,
             access: request.access,
@@ -404,7 +405,7 @@ impl WorkspaceProvider for DefaultMemoryWorkspaceProvider {
     }
 
     async fn destroy(&self, binding: &WorkspaceBinding) -> Result<(), WorkspaceError> {
-        if binding.provider_id != Self::provider_id()
+        if binding.provider_id != Self::backend_id()
             || binding.workspace_id != self.workspace_id()
             || binding.payload != self.instance.as_bytes()
         {

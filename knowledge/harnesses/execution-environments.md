@@ -184,7 +184,7 @@ explicit containment block and an honest durability class:
 
 ```json
 {
-  "target": { "kind": "managed", "provider": "daytona" },
+  "target": { "kind": "managed", "vendor": "daytona" },
   "containment": {
     "level": "isolated",
     "filesystem": { "writable_roots": ["/home/daytona/workspace"] },
@@ -320,8 +320,8 @@ An agent version declares named environments and a default:
   "environments": {
     "default": "scratch",
     "profiles": {
-      "scratch": { "target": { "kind": "vfs", "provider": "bashkit" } },
-      "build":   { "target": { "kind": "managed", "provider": "daytona" } },
+      "scratch": { "target": { "kind": "vfs", "vendor": "bashkit" } },
+      "build":   { "target": { "kind": "managed", "vendor": "daytona" } },
       "here":    { "target": { "kind": "host" }, "containment": { "level": "none" } }
     }
   }
@@ -608,12 +608,12 @@ POST /v1/agents
     "default": "scratch",
     "profiles": {
       "scratch": {
-        "target": { "kind": "vfs", "provider": "bashkit" },
+        "target": { "kind": "vfs", "vendor": "bashkit" },
         "containment": { "level": "isolated", "network": { "mode": "deny" } },
         "durability": "checkpointed"
       },
       "build": {
-        "target": { "kind": "managed", "provider": "daytona",
+        "target": { "kind": "managed", "vendor": "daytona",
                     "options": { "size": "small", "snapshot": "everruns-rust" } },
         "containment": { "level": "isolated",
                          "network": { "mode": "allowlist", "allowed_hosts": ["crates.io"] } },
@@ -680,7 +680,7 @@ POST /v1/sessions
   "title": "Rename the config module",
   "workspace_id": "wsp_01933b5a00007000800000000000001",
   "environment": {
-    "target": { "kind": "vfs", "provider": "bashkit" },
+    "target": { "kind": "vfs", "vendor": "bashkit" },
     "containment": { "level": "isolated", "network": { "mode": "deny" } },
     "durability": "checkpointed"
   }
@@ -705,7 +705,7 @@ Response:
   "environment": {
     "self_url": "https://api.example/v1/sessions/session_01933…/environment",
     "name": "inline",
-    "target": { "kind": "vfs", "provider": "bashkit" },
+    "target": { "kind": "vfs", "vendor": "bashkit" },
     "containment": { "level": "isolated", "network": { "mode": "deny" } },
     "durability": "checkpointed",
     "capabilities": {
@@ -783,7 +783,7 @@ GET /v1/sessions/{session_id}/environment
   "self_url": "https://api.example/v1/sessions/session_.../environment",
   "name": "build",
   "environment_id": "env_...",
-  "target": { "kind": "managed", "provider": "daytona" },
+  "target": { "kind": "managed", "vendor": "daytona" },
   "containment": { "level": "isolated", "network": { "mode": "allowlist" } },
   "durability": "checkpointed",
   "capabilities": {
@@ -814,7 +814,7 @@ starts, and moving work elsewhere is a new session against the same
 
 ### Targets this deployment can actually offer
 
-The UI cannot render an honest picker from provider names alone.
+The UI cannot render an honest picker from vendor names alone.
 
 ```http
 GET /v1/environment-targets
@@ -823,11 +823,11 @@ GET /v1/environment-targets
 ```json
 {
   "items": [
-    { "kind": "vfs", "provider": "bashkit", "available": true,
+    { "kind": "vfs", "vendor": "bashkit", "available": true,
       "capabilities": { "native_processes": false, "packages": false, "pty": false,
                         "ports": false, "portable_checkpoint": true },
       "containment_levels": ["isolated"] },
-    { "kind": "managed", "provider": "daytona", "available": true,
+    { "kind": "managed", "vendor": "daytona", "available": true,
       "requires_connection": true,
       "capabilities": { "native_processes": true, "packages": true, "pty": true,
                         "ports": true, "portable_checkpoint": true },

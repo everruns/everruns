@@ -20,13 +20,13 @@ use super::SqliteDb;
 
 /// Durable session identity catalog for local Framework hosts.
 ///
-/// SQLite stores session ids plus the provider-owned, credential-free opaque
+/// SQLite stores session ids plus the backend-owned, credential-free opaque
 /// workspace binding required to reopen the exact head. Full runtime session
 /// configuration remains in memory and is rebuilt from the resuming Agent, so
 /// MCP credentials and other host configuration are not serialized. Canonical
 /// events remain the sole conversation write path.
 // THREAT[TM-FS-017]: never serialize Agent/Session configuration or credentials
-// here. Environment bindings are size-bounded and providers must keep secrets
+// here. Environment bindings are size-bounded and backends must keep secrets
 // out of their opaque payload.
 #[derive(Clone)]
 pub struct LocalSessionStore {
@@ -108,7 +108,7 @@ impl LocalSessionStore {
 }
 
 // serde_json represents Vec<u8> as decimal values, so the encoded ceiling is
-// larger than the provider payload ceiling while remaining strictly bounded.
+// larger than the backend payload ceiling while remaining strictly bounded.
 const MAX_BINDING_BYTES: usize = WorkspaceBinding::MAX_PAYLOAD_BYTES * 4 + 4096;
 
 #[async_trait]
@@ -311,8 +311,8 @@ fn store_error(error: impl std::fmt::Display) -> AgentLoopError {
 mod tests {
     use everruns_core::execution_loading::SessionStore;
     use everruns_host::{
-        EnvironmentBindingStore, RuntimeSessionStore, WorkspaceHeadAccess, WorkspaceHeadId,
-        WorkspaceProviderId,
+        EnvironmentBindingStore, RuntimeSessionStore, WorkspaceBackendId, WorkspaceHeadAccess,
+        WorkspaceHeadId,
     };
     use everruns_provider::typed_id::WorkspaceId;
 
@@ -366,7 +366,7 @@ mod tests {
         let first = SessionId::new();
         let second = SessionId::new();
         let binding = WorkspaceBinding {
-            provider_id: WorkspaceProviderId::new("test.workspace").unwrap(),
+            provider_id: WorkspaceBackendId::new("test.workspace").unwrap(),
             workspace_id: WorkspaceId::from_seed(41),
             head_id: WorkspaceHeadId::new(),
             access: WorkspaceHeadAccess::Isolated,
@@ -394,7 +394,7 @@ mod tests {
     async fn explicitly_shared_binding_accepts_multiple_sessions() {
         let store = LocalSessionStore::new(SqliteDb::open_in_memory().unwrap()).unwrap();
         let binding = WorkspaceBinding {
-            provider_id: WorkspaceProviderId::new("test.workspace").unwrap(),
+            provider_id: WorkspaceBackendId::new("test.workspace").unwrap(),
             workspace_id: WorkspaceId::from_seed(42),
             head_id: WorkspaceHeadId::new(),
             access: WorkspaceHeadAccess::Shared,
@@ -409,7 +409,7 @@ mod tests {
         for initial_access in [WorkspaceHeadAccess::Isolated, WorkspaceHeadAccess::Shared] {
             let store = LocalSessionStore::new(SqliteDb::open_in_memory().unwrap()).unwrap();
             let mut binding = WorkspaceBinding {
-                provider_id: WorkspaceProviderId::new("test.workspace").unwrap(),
+                provider_id: WorkspaceBackendId::new("test.workspace").unwrap(),
                 workspace_id: WorkspaceId::from_seed(43),
                 head_id: WorkspaceHeadId::new(),
                 access: initial_access,
