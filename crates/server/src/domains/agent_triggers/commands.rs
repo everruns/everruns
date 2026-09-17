@@ -1224,7 +1224,6 @@ pub async fn invoke_webhook_agent_trigger(
     })
 }
 
-
 #[derive(Debug, Clone)]
 struct TriggerExecutionContext {
     harness_id: everruns_provider::typed_id::HarnessId,

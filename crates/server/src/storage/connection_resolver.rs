@@ -1185,7 +1185,11 @@ mod tests {
             .await
             .unwrap();
         let second_token = resolver_for(&second)
-            .get_mcp_connection_token(second.session_id, &second.provider, McpServerActsAs::Service)
+            .get_mcp_connection_token(
+                second.session_id,
+                &second.provider,
+                McpServerActsAs::Service,
+            )
             .await
             .unwrap();
 

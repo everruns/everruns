@@ -13,7 +13,8 @@ use crate::domains::plugins::oauth_anchor::humanize_connection_name;
 use crate::kernel_imports::{
     Caller, EgressService, McpServerAuthMode,
     everruns_provider::typed_id::{AgentIdentityId, SessionId},
-    everruns_provider::url_validation::validate_safe_url, mcp_oauth_provider_id_for_uuid,
+    everruns_provider::url_validation::validate_safe_url,
+    mcp_oauth_provider_id_for_uuid,
 };
 use crate::oauth_client::{egress_oauth_json, exchange_oauth_code};
 use crate::storage::{EncryptionService, StorageBackend};
@@ -689,9 +690,10 @@ pub async fn authorize_connection(
             // Eager creation: a service grant needs an owner now. Same guarded
             // write as the lazy first-fire path, so the two converge on one
             // identity under concurrency (EVE-758, EVE-1030).
-            let (identity_id, _principal) = ensure_identity_for_agent(&state.db, org.org_id, &agent)
-                .await
-                .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
+            let (identity_id, _principal) =
+                ensure_identity_for_agent(&state.db, org.org_id, &agent)
+                    .await
+                    .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
             Some(identity_id.to_string())
         }
         _ => None,
@@ -1559,13 +1561,15 @@ fn enforce_identity_grant_policy(
     caller: &Caller,
 ) -> Result<(), (StatusCode, String)> {
     let resolver = state.auth.permission_resolver.as_ref();
-    MCP_SERVER_MANAGE.evaluate_with(resolver, caller).map_err(|_| {
-        (
+    MCP_SERVER_MANAGE
+        .evaluate_with(resolver, caller)
+        .map_err(|_| {
+            (
             StatusCode::FORBIDDEN,
             "Permission denied: authorizing an agent service grant requires MCP server management"
                 .to_string(),
         )
-    })?;
+        })?;
     AGENT_IDENTITY_MANAGE
         .evaluate_with(resolver, caller)
         .map_err(|_| {
