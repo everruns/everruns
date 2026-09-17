@@ -140,6 +140,18 @@
   because an approval nobody granted is the finding. See
   [Soft Approval](execution/soft-approval.md).
 
+* **Two audit variants no consumer could observe were classified as a breaking
+  release.** `AgentAction` is public in the published `everruns-platform`, and at
+  `0.x` the minor is the breaking slot, so adding `ApprovalRequested` /
+  `ApprovalGranted` demanded `0.24.1 -> 0.25.0` plus patch re-pins for thirteen
+  published dependants that changed nothing. Single-versioning has since removed
+  that bookkeeping, so the cascade is no longer the reason to care. The enum is
+  `#[non_exhaustive]` for the reason that outlived it: an external `match` on it
+  cannot be broken by a future audit action, which is the break `LlmErrorKind`
+  inflicted twice. No `_` arm was needed, since every match on `AgentAction`
+  lives in the defining crate. See
+  [Release Process](project/release-process.md).
+
 ## 2026-09-16
 
 * **Demo screenshots are maintained product assets, not disposable PR evidence.** The canonical set
