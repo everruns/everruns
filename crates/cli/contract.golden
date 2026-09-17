@@ -11,12 +11,12 @@ agents list
 agents preview	--capabilities --mcp-servers --system-prompt --tools
 agents update	--description --file/-f --harness/-H --initial-files-dir --model --name --system-prompt --tag/-t... --writable <agent_id>
 agents upsert	--capabilities --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --short-description --starters --system-prompt! --tags... --tools <id>
-agents versions create	--agent! --req!
+agents versions create	--agent! --change-kind --summary
 agents versions diff	--agent! --from-version-id! --to-version-id!
-agents versions fork	--agent! --req! --version-id!
+agents versions fork	--agent! --description --display-name --name! --version-id!
 agents versions list	--agent!
-agents versions rollback	--agent! --req! --version-id!
-agents versions set-default	--agent! --req!
+agents versions rollback	--agent! --save-version --summary --version-id!
+agents versions set-default	--agent! --version-id!
 capabilities list	--status
 chat	--no-stream --session/-s! --timeout <message>!
 connections list	

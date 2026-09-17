@@ -1511,6 +1511,7 @@ inventory::submit! { CommandDescriptor::of::<ListAgentVersions>() }
 pub struct CreateAgentVersionCmd {
     /// Agent's prefixed public identifier.
     pub agent_id: String,
+    #[serde(flatten)]
     pub req: CreateAgentVersionRequest,
 }
 
@@ -1532,12 +1533,10 @@ impl Command for CreateAgentVersionCmd {
         // `CliArg::new(..).short(..)` is a const fn, but an array of them
         // is only promoted inside a const initializer.
         const ROUTE: CliRoute = CliRoute::new(&["agents", "versions"], "create")
-            .with_args(&[
-                CliArg::new("agent_id").long("agent"),
-            ])
+            .with_args(&[CliArg::new("agent_id").long("agent")])
             .with_examples(&[CliExample::new(
                 "Snapshot an agent before a risky change",
-                "everruns agents versions create --agent agt_01h9 --req '{\"summary\":\"before the rewrite\"}'",
+                "everruns agents versions create --agent agt_01h9 --summary 'before the rewrite'",
             )]);
         Some(ROUTE)
     }
@@ -1567,6 +1566,7 @@ inventory::submit! { CommandDescriptor::of::<CreateAgentVersionCmd>() }
 pub struct SetDefaultAgentVersion {
     /// Agent's prefixed public identifier.
     pub agent_id: String,
+    #[serde(flatten)]
     pub req: SetDefaultAgentVersionRequest,
 }
 
@@ -1588,12 +1588,10 @@ impl Command for SetDefaultAgentVersion {
         // `CliArg::new(..).short(..)` is a const fn, but an array of them
         // is only promoted inside a const initializer.
         const ROUTE: CliRoute = CliRoute::new(&["agents", "versions"], "set-default")
-            .with_args(&[
-                CliArg::new("agent_id").long("agent"),
-            ])
+            .with_args(&[CliArg::new("agent_id").long("agent")])
             .with_examples(&[CliExample::new(
                 "Point new sessions at a different version",
-                "everruns agents versions set-default --agent agt_01h9 --req '{\"version_id\":\"ver_01h9\"}'",
+                "everruns agents versions set-default --agent agt_01h9 --version-id ver_01h9",
             )]);
         Some(ROUTE)
     }
@@ -1767,6 +1765,7 @@ pub struct RollbackAgentVersion {
     pub agent_id: String,
     /// Agent version's prefixed public identifier.
     pub version_id: AgentVersionId,
+    #[serde(flatten)]
     pub req: RollbackAgentVersionRequest,
 }
 
@@ -1793,7 +1792,7 @@ impl Command for RollbackAgentVersion {
             ])
             .with_examples(&[CliExample::new(
                 "Undo a bad change by restoring a snapshot",
-                "everruns agents versions rollback --agent agt_01h9 --version-id ver_01h9 --req '{\"save_version\":true}'",
+                "everruns agents versions rollback --agent agt_01h9 --version-id ver_01h9 --save-version",
             )]);
         Some(ROUTE)
     }
@@ -1955,6 +1954,7 @@ pub struct ForkAgentVersion {
     pub agent_id: String,
     /// Agent version's prefixed public identifier.
     pub version_id: AgentVersionId,
+    #[serde(flatten)]
     pub req: ForkAgentVersionRequest,
 }
 
@@ -1981,7 +1981,7 @@ impl Command for ForkAgentVersion {
             ])
             .with_examples(&[CliExample::new(
                 "Start a new agent from an old snapshot",
-                "everruns agents versions fork --agent agt_01h9 --version-id ver_01h9 --req '{\"name\":\"triage-fork\"}'",
+                "everruns agents versions fork --agent agt_01h9 --version-id ver_01h9 --name triage-fork",
             )]);
         Some(ROUTE)
     }

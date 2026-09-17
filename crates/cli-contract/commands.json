@@ -914,17 +914,23 @@
         "help": "Agent's prefixed public identifier."
       },
       {
-        "field": "req",
-        "long": "req",
-        "kind": "json",
-        "required": true,
-        "help": "Request body for the `create_agent_version` operation."
+        "field": "change_kind",
+        "long": "change-kind",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "summary",
+        "long": "summary",
+        "kind": "string",
+        "required": false,
+        "help": "Free-text summary of what changed in this version."
       }
     ],
     "examples": [
       {
         "intent": "Snapshot an agent before a risky change",
-        "command": "everruns agents versions create --agent agt_01h9 --req '{\"summary\":\"before the rewrite\"}'"
+        "command": "everruns agents versions create --agent agt_01h9 --summary 'before the rewrite'"
       }
     ]
   },
@@ -987,11 +993,25 @@
         "help": "Agent's prefixed public identifier."
       },
       {
-        "field": "req",
-        "long": "req",
-        "kind": "json",
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "display_name",
+        "long": "display-name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable display name."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
         "required": true,
-        "help": "Request body for the `fork_agent_version` operation."
+        "help": "Human-readable name."
       },
       {
         "field": "version_id",
@@ -1004,7 +1024,7 @@
     "examples": [
       {
         "intent": "Start a new agent from an old snapshot",
-        "command": "everruns agents versions fork --agent agt_01h9 --version-id ver_01h9 --req '{\"name\":\"triage-fork\"}'"
+        "command": "everruns agents versions fork --agent agt_01h9 --version-id ver_01h9 --name triage-fork"
       }
     ]
   },
@@ -1053,11 +1073,18 @@
         "help": "Agent's prefixed public identifier."
       },
       {
-        "field": "req",
-        "long": "req",
-        "kind": "json",
-        "required": true,
-        "help": "Request body for the `rollback_agent_version` operation."
+        "field": "save_version",
+        "long": "save-version",
+        "kind": "boolean",
+        "required": false,
+        "help": "When true, snapshot the current agent state as a new version before rolling back. Use this to..."
+      },
+      {
+        "field": "summary",
+        "long": "summary",
+        "kind": "string",
+        "required": false,
+        "help": "Free-text summary attached to the rollback."
       },
       {
         "field": "version_id",
@@ -1070,7 +1097,7 @@
     "examples": [
       {
         "intent": "Undo a bad change by restoring a snapshot",
-        "command": "everruns agents versions rollback --agent agt_01h9 --version-id ver_01h9 --req '{\"save_version\":true}'"
+        "command": "everruns agents versions rollback --agent agt_01h9 --version-id ver_01h9 --save-version"
       }
     ]
   },
@@ -1093,17 +1120,17 @@
         "help": "Agent's prefixed public identifier."
       },
       {
-        "field": "req",
-        "long": "req",
-        "kind": "json",
+        "field": "version_id",
+        "long": "version-id",
+        "kind": "string",
         "required": true,
-        "help": "Request body for the `set_default_agent_version` operation."
+        "help": "Agent version's prefixed public identifier."
       }
     ],
     "examples": [
       {
         "intent": "Point new sessions at a different version",
-        "command": "everruns agents versions set-default --agent agt_01h9 --req '{\"version_id\":\"ver_01h9\"}'"
+        "command": "everruns agents versions set-default --agent agt_01h9 --version-id ver_01h9"
       }
     ]
   },

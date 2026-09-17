@@ -2770,20 +2770,23 @@
           "type": "object"
         }
       },
-      "properties": {
-        "agent_id": {
-          "description": "Agent's prefixed public identifier.",
-          "type": "string"
-        },
-        "req": {
+      "allOf": [
+        {
           "$ref": "#/$defs/CreateAgentVersionRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "description": "Agent's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
         }
-      },
-      "required": [
-        "agent_id",
-        "req"
-      ],
-      "type": "object"
+      ]
     },
     "method": "POST",
     "name": "create_agent_version",
@@ -8669,24 +8672,27 @@
           "type": "object"
         }
       },
-      "description": "Enqueue an async dataset export for a completed eval run and return a handle.\n\nThe export runs as a fire-and-forget background job (mirroring the eval\nrunner): it reconstructs each surviving case's model-view messages (faithful\nto what the model saw, via the compaction model-view masking), joins reward +\nefficiency metadata, and stores the produced NDJSON on the handle. Fetch the\nNDJSON via `GET .../dataset/{dataset_id}` once `status` is `completed`. Gated\nby `DATASET_EXPORT` and org-scoped through `get_run` (which resolves only\nruns owned by the caller's org).",
-      "properties": {
-        "eval_id": {
-          "type": "string"
-        },
-        "req": {
+      "allOf": [
+        {
           "$ref": "#/$defs/ExportEvalRunDatasetRequest"
         },
-        "run_id": {
-          "type": "string"
+        {
+          "properties": {
+            "eval_id": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "eval_id",
+            "run_id"
+          ],
+          "type": "object"
         }
-      },
-      "required": [
-        "eval_id",
-        "run_id",
-        "req"
       ],
-      "type": "object"
+      "description": "Enqueue an async dataset export for a completed eval run and return a handle.\n\nThe export runs as a fire-and-forget background job (mirroring the eval\nrunner): it reconstructs each surviving case's model-view messages (faithful\nto what the model saw, via the compaction model-view masking), joins reward +\nefficiency metadata, and stores the produced NDJSON on the handle. Fetch the\nNDJSON via `GET .../dataset/{dataset_id}` once `status` is `completed`. Gated\nby `DATASET_EXPORT` and org-scoped through `get_run` (which resolves only\nruns owned by the caller's org)."
     },
     "method": "POST",
     "name": "export_eval_run_dataset",
@@ -9017,25 +9023,28 @@
           "type": "string"
         }
       },
-      "properties": {
-        "agent_id": {
-          "description": "Agent's prefixed public identifier.",
-          "type": "string"
-        },
-        "req": {
+      "allOf": [
+        {
           "$ref": "#/$defs/ForkAgentVersionRequest"
         },
-        "version_id": {
-          "$ref": "#/$defs/agentverId",
-          "description": "Agent version's prefixed public identifier."
+        {
+          "properties": {
+            "agent_id": {
+              "description": "Agent's prefixed public identifier.",
+              "type": "string"
+            },
+            "version_id": {
+              "$ref": "#/$defs/agentverId",
+              "description": "Agent version's prefixed public identifier."
+            }
+          },
+          "required": [
+            "agent_id",
+            "version_id"
+          ],
+          "type": "object"
         }
-      },
-      "required": [
-        "agent_id",
-        "version_id",
-        "req"
-      ],
-      "type": "object"
+      ]
     },
     "method": "POST",
     "name": "fork_agent_version",
@@ -14640,25 +14649,28 @@
           "type": "string"
         }
       },
-      "properties": {
-        "agent_id": {
-          "description": "Agent's prefixed public identifier.",
-          "type": "string"
-        },
-        "req": {
+      "allOf": [
+        {
           "$ref": "#/$defs/RollbackAgentVersionRequest"
         },
-        "version_id": {
-          "$ref": "#/$defs/agentverId",
-          "description": "Agent version's prefixed public identifier."
+        {
+          "properties": {
+            "agent_id": {
+              "description": "Agent's prefixed public identifier.",
+              "type": "string"
+            },
+            "version_id": {
+              "$ref": "#/$defs/agentverId",
+              "description": "Agent version's prefixed public identifier."
+            }
+          },
+          "required": [
+            "agent_id",
+            "version_id"
+          ],
+          "type": "object"
         }
-      },
-      "required": [
-        "agent_id",
-        "version_id",
-        "req"
-      ],
-      "type": "object"
+      ]
     },
     "method": "POST",
     "name": "rollback_agent_version",
@@ -14902,20 +14914,23 @@
           "type": "object"
         }
       },
-      "properties": {
-        "agent_id": {
-          "description": "Agent's prefixed public identifier.",
-          "type": "string"
-        },
-        "req": {
+      "allOf": [
+        {
           "$ref": "#/$defs/SetDefaultAgentVersionRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "description": "Agent's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
         }
-      },
-      "required": [
-        "agent_id",
-        "req"
-      ],
-      "type": "object"
+      ]
     },
     "method": "POST",
     "name": "set_default_agent_version",

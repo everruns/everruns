@@ -200,6 +200,38 @@ mod tests {
         );
     }
 
+    /// No command presents its request body as a single `req` argument.
+    ///
+    /// A command struct that wraps its body in `req: SomeRequest` without
+    /// `#[serde(flatten)]` deserializes from `{"req": {…}}`, which reaches a
+    /// caller as `--req '{"summary":"…"}'`: a JSON blob where flags belong,
+    /// undiscoverable from `--help` and unparseable by anything that does not
+    /// already know the inner type. The HTTP handlers build these commands
+    /// field-wise from a path param and a typed body, so flattening changes the
+    /// command surface only and leaves the REST body untouched.
+    ///
+    /// 32 of 36 such commands already flattened; this is what keeps the other
+    /// four from coming back.
+    #[test]
+    fn no_command_takes_its_request_body_as_one_argument() {
+        let offenders: Vec<&str> = inventory::iter::<CommandDescriptor>
+            .into_iter()
+            .filter(|desc| {
+                (desc.param_schema)()
+                    .get("properties")
+                    .and_then(|properties| properties.get("req"))
+                    .is_some()
+            })
+            .map(|desc| (desc.meta)().name)
+            .collect();
+
+        assert!(
+            offenders.is_empty(),
+            "these commands expose a nested `req` object instead of flags; add \
+             #[serde(flatten)] to the field: {offenders:?}"
+        );
+    }
+
     /// The harness the offline eval subject reproduces: the real system prompt
     /// and the real tool schemas.
     ///
