@@ -8,6 +8,9 @@
 [package]
 name = "everruns-integrations-typesafe"
 version = "0.1.0"
+# Not published yet: depends on typesafe-systemone, which is currently private
+# (crates.io 403 for the new name). Keep private until that is resolved.
+publish = false
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
