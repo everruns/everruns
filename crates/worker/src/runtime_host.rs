@@ -505,6 +505,7 @@ mod mcp_credential_tests {
 
     use super::*;
     use crate::worker_adapters::WorkerAdapters;
+    use std::collections::HashMap;
     use everruns_core::McpServerActsAs;
     use everruns_core::connection_services::UserConnectionResolver;
     use everruns_provider::error::Result as CoreResult;
@@ -570,16 +571,18 @@ mod mcp_credential_tests {
                 .iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
-            secret_bindings: Vec::new(),
+            secret_bindings: HashMap::new(),
         }
     }
 
-    fn authorization_of(connection: &everruns_mcp::transport::McpConnection) -> Option<String> {
+    /// The header the transport would actually send.
+    fn authorization_of(connection: &McpConnection) -> Option<String> {
         match &connection.endpoint {
-            everruns_mcp::transport::McpEndpoint::Http { headers, .. } => headers
+            McpEndpoint::Http { headers, .. } => headers
                 .iter()
                 .find(|(k, _)| k.eq_ignore_ascii_case("authorization"))
                 .map(|(_, v)| v.clone()),
+            #[cfg(feature = "stdio")]
             _ => None,
         }
     }
@@ -587,10 +590,7 @@ mod mcp_credential_tests {
     async fn resolve_with(
         info: crate::mcp_executor::McpServerInfo,
         resolver: RecordingResolver,
-    ) -> (
-        everruns_mcp::transport::McpConnection,
-        Arc<RecordingResolver>,
-    ) {
+    ) -> (McpConnection, Arc<RecordingResolver>) {
         let resolver = Arc::new(resolver);
         let adapters = StubAdapters {
             info,
