@@ -62,7 +62,7 @@ impl Question {
     /// A yes/no question.
     ///
     /// ```
-    /// use typesafe_systemone::Question;
+    /// use everruns_integrations_typesafe::Question;
     /// let q = Question::noul("Does this message convey urgency?");
     /// ```
     pub fn noul(instructions: impl Into<Value>) -> Self {
@@ -95,7 +95,7 @@ impl Question {
     /// A single-selection question over the given options.
     ///
     /// ```
-    /// use typesafe_systemone::Question;
+    /// use everruns_integrations_typesafe::Question;
     /// let q = Question::choice(
     ///     "Which team should handle this?",
     ///     [("billing", "Payments, invoicing, refunds"), ("technical", "Bugs and outages")],
@@ -131,7 +131,7 @@ impl Question {
     /// A graded question over ordered levels, lowest first.
     ///
     /// ```
-    /// use typesafe_systemone::Question;
+    /// use everruns_integrations_typesafe::Question;
     /// let q = Question::score(
     ///     "How funny is this joke?",
     ///     ["Not funny at all", "Mildly amusing", "Genuinely funny", "Hilarious"],

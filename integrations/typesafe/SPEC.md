@@ -1,14 +1,14 @@
 # TypeSafe Integration
 
 This crate is the Everruns capability only. The vendor client is the standalone
-[`typesafe-systemone`](../../crates/drivers/typesafe/README.md) crate, which
+[`client`](src/client/) module, which
 carries no Everruns dependency — so it can be published and used on its own, and
 so `everruns-host` can depend on it without the cycle an integration crate
 creates (integrations depend on `everruns-platform`, which depends on the host).
 
 ## Split
 
-- [`crates/drivers/typesafe`](../../crates/drivers/typesafe/) owns the HTTP
+- [`src/client`](src/client/) owns the HTTP
   endpoint, the three question types, the typed answers, retries, and the
   credential-safe error contract.
 - This crate owns `capability` (the hosted capability and its tool), `evaluate`
@@ -66,4 +66,4 @@ connection or the `TYPESAFE_API_KEY` session secret. See
 The client's own coverage — wire shape, retries, terminal statuses, credential
 safety, pre-flight validation, and the real-API smoke tests behind the
 `integration` feature — lives in
-[`crates/drivers/typesafe/tests`](../../crates/drivers/typesafe/tests/).
+[`tests/client.rs`](tests/client.rs).

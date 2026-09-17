@@ -18,7 +18,7 @@ harness engine for building unstoppable agents. It registers with
 integration plugin system.
 
 Looking for the client on its own, with no Everruns dependency? That is
-[`typesafe-systemone`](https://crates.io/crates/typesafe-systemone).
+the [`client`](src/client/) module of this crate.
 
 ## Quick Example
 

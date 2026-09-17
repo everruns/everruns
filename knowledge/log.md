@@ -2,6 +2,24 @@
 
 ## 2026-09-17
 
+* **Two crates for TypeSafe became one, by removing the constraint instead of
+  working around it.** The vendor client sat in `crates/drivers/typesafe` only
+  because `everruns-host` held the judgment service, and a host dependency
+  cannot point at an integration crate without closing the loop
+  (integration → platform → host). Moving the service into
+  `integrations/typesafe` inverts that: `crates/server` and `crates/worker`
+  already depend on integrations, so they compose it into `HostComposition`
+  from above. Host no longer knows TypeSafe exists, and the client has one
+  home.
+
+* **Judgments got the same promoted surface direct model calls got.** `Judge`
+  and `Judge::about` mirror `Model::complete` and `Model::completion` over the
+  `JudgmentService` contract core already owned — state plus typed questions in,
+  calibrated numbers out, and the threshold that decides an outcome staying in
+  the caller's code. No streaming, because a judgment is one round trip. The
+  facade names no vendor: `Judge::new` takes any service the way `Model::new`
+  takes any provider, and `Judge::simulated` keeps tests offline.
+
 * **The agent-facing surface is named for the model, the credential surface for
   the vendor.** The capability is `jev` and its tool is `jev_evaluate`, matching
   the guardrail engine value: an agent author is choosing the thing that

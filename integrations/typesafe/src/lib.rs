@@ -1,8 +1,8 @@
 //! [TypeSafe](https://typesafe.ai) typed judgments for Everruns agents.
 //!
-//! This crate is the [Everruns](https://everruns.com) capability. The vendor
-//! client it runs on is the standalone [`typesafe_systemone`] crate, which
-//! carries no Everruns dependency and can be used on its own.
+//! One crate covers the whole surface: the vendor [`client`], the agent-facing
+//! `jev` capability, the connector an operator configures, and the
+//! [`TypeSafeJudgmentService`] the platform wires in to back guardrail checks.
 //!
 //! The `jev` capability contributes one tool, `jev_evaluate`: the
 //! agent hands it content and its own typed questions, and gets calibrated
@@ -36,10 +36,12 @@
 #![warn(missing_docs)]
 
 mod capability;
+pub mod client;
 #[cfg(feature = "hosted")]
 mod connection;
 mod evaluate;
 mod framework;
+mod judgment;
 
 pub use capability::JevCapability;
 #[cfg(feature = "hosted")]
@@ -47,10 +49,14 @@ pub use connection::TypeSafeConnector;
 pub use evaluate::EvaluateInput;
 pub use framework::Jev;
 
-/// The client this capability runs on, re-exported so embedders do not need a
-/// second dependency to build one.
-pub use typesafe_systemone as client;
-pub use typesafe_systemone::{Error, Evaluation, Question, Result, TypeSafeClient};
+/// The vendor client this capability runs on, re-exported at the crate root so
+/// callers reach it without naming the module.
+pub use client::{Error, Evaluation, Question, Result, RetryPolicy, TypeSafeClient};
+/// The judgment service the platform wires into its host composition, and the
+/// deployment credential that enables it.
+pub use judgment::{
+    JUDGMENT_MODEL, SystemJudgmentConfig, TypeSafeJudgmentService, UTILITY_TYPESAFE_API_KEY_ENV,
+};
 
 /// Capability id.
 ///
@@ -59,6 +65,6 @@ pub use typesafe_systemone::{Error, Evaluation, Question, Result, TypeSafeClient
 /// account issues them.
 pub const CAPABILITY_ID: &str = "jev";
 /// Session-secret name used when no user connection is configured.
-pub const TYPESAFE_API_KEY_SECRET: &str = typesafe_systemone::API_KEY_ENV;
+pub const TYPESAFE_API_KEY_SECRET: &str = client::API_KEY_ENV;
 /// Connection provider id for the hosted connector catalog.
 pub const TYPESAFE_CONNECTION_PROVIDER: &str = "typesafe";

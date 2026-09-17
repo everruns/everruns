@@ -4,7 +4,7 @@ use everruns_capability::definition::schemars::{self, JsonSchema};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use typesafe_systemone::{Answer, Evaluation, Question, TypeSafeClient};
+use crate::client::{Answer, Evaluation, Question, TypeSafeClient};
 
 pub(crate) const TOOL_NAME: &str = "jev_evaluate";
 pub(crate) const TOOL_DESCRIPTION: &str = "Ask TypeSafe's System One model typed questions about \
@@ -308,7 +308,7 @@ mod tests {
             wire["questions"]["kind"]["criteria"]["observational"],
             Value::Null
         );
-        assert_eq!(wire["model"], typesafe_systemone::DEFAULT_MODEL);
+        assert_eq!(wire["model"], crate::client::DEFAULT_MODEL);
     }
 
     #[test]

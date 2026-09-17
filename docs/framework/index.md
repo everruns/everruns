@@ -45,6 +45,7 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Workspaces and Environments](/framework/workspaces-and-environments/), bind sessions to isolated or explicitly shared backend-owned heads.
 - [Models and providers](/framework/models-and-providers/), simulation, OpenAI, and the open provider boundary.
 - [Direct model calls](/framework/direct-model-calls/), one prompt and one answer without an agent.
+- [Direct judgments](/framework/direct-judgments/), a calibrated number rather than prose, without an agent.
 - [Credentials](/framework/credentials/), each driver's own vendor-standard environment variables.
 - [Tools and macros](/framework/tools-and-macros/), typed function tools through `everruns::tool`.
 - [Sessions](/framework/sessions/), independent, multi-turn conversations.

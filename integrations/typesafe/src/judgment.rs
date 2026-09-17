@@ -2,9 +2,18 @@
 //!
 //! Core owns the neutral contract (`JudgmentService`); this module owns the
 //! vendor. Nothing above core learns that the judgments come from TypeSafe.
+//!
+//! It lives in this crate rather than in `everruns-host` so the vendor client
+//! needs only one home: the platform composes the service from above
+//! (`crates/server/src/platform.rs`, `crates/worker/src/platform.rs`), which is
+//! the direction that already works — server and worker depend on integrations,
+//! never the reverse.
 
 use std::collections::BTreeMap;
 
+use crate::client::{
+    Answer, Evaluation, Question, RetryPolicy, TypeSafeClient, question::DEFAULT_MODEL,
+};
 use async_trait::async_trait;
 use everruns_core::{
     DisabledJudgmentService, JudgmentAnswer, JudgmentOutcome, JudgmentQuestion, JudgmentRequest,
@@ -12,9 +21,6 @@ use everruns_core::{
 };
 use everruns_provider::error::{AgentLoopError, Result};
 use std::sync::Arc;
-use typesafe_systemone::{
-    Answer, Evaluation, Question, RetryPolicy, TypeSafeClient, question::DEFAULT_MODEL,
-};
 
 /// Environment variable used by the deployment-owned judgment client.
 ///
@@ -44,6 +50,16 @@ impl std::fmt::Debug for TypeSafeJudgmentService {
 }
 
 impl TypeSafeJudgmentService {
+    /// Construct the service from the application's own `TYPESAFE_API_KEY`.
+    ///
+    /// This is the embedder's path — an application holding its own key, the
+    /// same variable [`TypeSafeClient::from_env`] reads. The platform's
+    /// deployment credential is a different variable and a different account:
+    /// see [`SystemJudgmentConfig::from_env`].
+    pub fn from_env() -> crate::client::Result<Self> {
+        Ok(Self::with_client(TypeSafeClient::from_env()?))
+    }
+
     /// Construct the fixed-model service with a deployment-owned key.
     pub fn new(api_key: impl Into<String>) -> Self {
         // THREAT[TM-LLM-037]: Judgment credentials remain deployment-owned and

@@ -1,13 +1,13 @@
 //! Route a support ticket: one request, three judgments, code decides.
 //!
 //! ```sh
-//! TYPESAFE_API_KEY=... cargo run -p typesafe-systemone --example triage
+//! TYPESAFE_API_KEY=... cargo run -p everruns-integrations-typesafe --example triage
 //! ```
 //!
 //! Confidence is the second axis. The answer says *what*; confidence says
 //! whether to act on it without a person in the loop.
 
-use typesafe_systemone::{Evaluation, Question, TypeSafeClient};
+use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeClient};
 
 /// Below this, the distribution is too flat to auto-route.
 const AUTO_ROUTE_CONFIDENCE: f64 = 0.7;

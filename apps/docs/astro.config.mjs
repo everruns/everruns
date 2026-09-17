@@ -184,6 +184,7 @@ export default defineConfig({
                     { label: "Workspace Security", slug: "framework/workspace-security" },
                     { label: "Models and Providers", slug: "framework/models-and-providers" },
                     { label: "Direct Model Calls", slug: "framework/direct-model-calls" },
+                    { label: "Direct Judgments", slug: "framework/direct-judgments" },
                     { label: "Credentials", slug: "framework/credentials" },
                     { label: "Tools and Macros", slug: "framework/tools-and-macros" },
                     { label: "Sessions", slug: "framework/sessions" },

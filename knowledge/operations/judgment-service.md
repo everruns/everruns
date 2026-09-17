@@ -81,24 +81,29 @@ A noul near 0.5 means yes and no are near-equally likely. It does not mean
 "medium intensity", and it is not a confidence value; noul answers have no
 separate confidence because the probability already is one.
 
-## Host Implementation
+## Implementation
 
-`everruns-host` owns the concrete service behind its optional
-`typesafe-judgment` feature ([`crates/host/src/judgment.rs`](../../crates/host/src/judgment.rs)),
-backed by the standalone [`typesafe-systemone`](../../crates/drivers/typesafe/README.md)
-client. Nothing above core learns the vendor.
+[`integrations/typesafe`](../../integrations/typesafe/README.md) owns the
+concrete service ([`src/judgment.rs`](../../integrations/typesafe/src/judgment.rs))
+and the vendor client it calls ([`src/client`](../../integrations/typesafe/src/client/)).
+Nothing above core learns the vendor.
 
-That client is filed under `crates/drivers/` as a **judgment driver**: the same
-shape as the LLM wire-protocol drivers — a vendor client below the platform
-layer, so host and everything above it can depend on it without a cycle — but
-it answers typed questions rather than chat completions, so it is not
-registered in `DriverRegistry`. It is also the reason the client is a separate
-crate from `integrations/typesafe`: an integration crate depends on
-`everruns-platform`, which depends on `everruns-host`, so a single crate
-carrying both the client and the connector would close that loop.
+**One crate, composed from above.** The earlier split — vendor client under
+`crates/drivers/`, capability under `integrations/` — existed because
+`everruns-host` held the service, and a host dependency cannot point at an
+integration crate (integration → `everruns-platform` → `everruns-host` would
+close the loop). Moving the service into the integration crate removes the
+constraint instead of working around it: `crates/server` and `crates/worker`
+already depend on integrations, so they compose the service into
+`HostComposition` from above, and the client needs only one home. Host no
+longer knows TypeSafe exists.
 
 - Model is fixed (`jev-latest`), for the same reason the utility model is: call
   sites must not be able to turn it into a selectable one.
+- Two credentials, two audiences: `SystemJudgmentConfig::from_env` reads the
+  platform's `UTILITY_TYPESAFE_API_KEY`, while `TypeSafeJudgmentService::from_env`
+  reads an embedding application's own `TYPESAFE_API_KEY` — the latter is what
+  [`Judge`](../framework/application-api.md#direct-judgment-boundary) uses outside the platform.
 - Configured from process environment: `UTILITY_TYPESAFE_API_KEY`. Unset or
   empty means the service is disabled and `is_configured()` is false. The name
   mirrors `UTILITY_OPENAI_API_KEY`: both are platform-owned credentials for

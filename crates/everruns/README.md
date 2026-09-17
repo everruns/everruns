@@ -95,6 +95,19 @@ let answer = model.complete("Name the three primary colors.").await?;
 
 See [Direct model calls](https://docs.everruns.com/framework/direct-model-calls/).
 
+And when the answer is a number rather than prose — *does this hold, how severe
+is it, which of these* — ask for a judgment instead of parsing one out of text:
+
+```rust
+use everruns::{Judge, TypeSafeJudgmentService};
+
+let judge = Judge::new(TypeSafeJudgmentService::from_env()?);
+let spam = judge.probability("Is this message spam?", text).await?;
+```
+
+The threshold stays in your code, so there is no written verdict to misparse.
+See [Direct judgments](https://docs.everruns.com/framework/direct-judgments/).
+
 ## Credentials come from your vendor's own variables
 
 Every driver declares the environment variables its vendor's SDK reads, so a
@@ -260,6 +273,7 @@ includes the exact command for each one.
 - [Agents](https://docs.everruns.com/framework/agents/)
 - [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Direct model calls](https://docs.everruns.com/framework/direct-model-calls/)
+- [Direct judgments](https://docs.everruns.com/framework/direct-judgments/)
 - [Credentials](https://docs.everruns.com/framework/credentials/)
 - [Sessions](https://docs.everruns.com/framework/sessions/)
 - [Events and cancellation](https://docs.everruns.com/framework/events-and-cancellation/)

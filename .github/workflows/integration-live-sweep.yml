@@ -56,9 +56,9 @@ jobs:
           - name: Brave Search API Tests
             command: cargo test -p everruns-integrations-brave-search --features integration
           - name: TypeSafe System One API Tests
-            command: cargo test -p typesafe-systemone --features integration
+            command: cargo test -p everruns-integrations-typesafe --features integration
           - name: Judgment Service Live Tests
-            command: bash -lc 'UTILITY_TYPESAFE_API_KEY="${UTILITY_TYPESAFE_API_KEY:-$TYPESAFE_API_KEY}" cargo test -p everruns-host --features typesafe-live-tests --test judgment_live_test'
+            command: bash -lc 'UTILITY_TYPESAFE_API_KEY="${UTILITY_TYPESAFE_API_KEY:-$TYPESAFE_API_KEY}" cargo test -p everruns-integrations-typesafe --features live-tests --test judgment_live'
           # ARD Live Registry Tests are quarantined: the public reference
           # registry (https://agenticresourcediscovery.org/api/v1) was
           # decommissioned (now docs-only; 405/404 on the API, registry/api

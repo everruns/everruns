@@ -9,7 +9,8 @@
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::deployment::DeploymentGrade;
 use everruns_host::DirectEgressService;
-use everruns_host::{HostComposition, SystemJudgmentConfig, SystemUtilityLlmConfig};
+use everruns_host::{HostComposition, SystemUtilityLlmConfig};
+use everruns_integrations_typesafe::SystemJudgmentConfig;
 use everruns_platform::BuiltInHarnessDefinition;
 use everruns_platform::connector::{ConnectorPlugin, ConnectorRegistry};
 use everruns_platform::email::{EmailSender, SystemEmailConfig};
@@ -148,13 +149,14 @@ mod tests {
         let composition = oss_host_composition_for_grade(DeploymentGrade::Dev);
         let service = composition.judgment_service();
         // Process env decides which one; both are valid, a missing service is not.
-        let configured = std::env::var(everruns_host::UTILITY_TYPESAFE_API_KEY_ENV)
-            .is_ok_and(|key| !key.trim().is_empty());
+        let configured =
+            std::env::var(everruns_integrations_typesafe::UTILITY_TYPESAFE_API_KEY_ENV)
+                .is_ok_and(|key| !key.trim().is_empty());
         assert_eq!(
             service.is_configured(),
             configured,
             "judgment service configuration must follow {}",
-            everruns_host::UTILITY_TYPESAFE_API_KEY_ENV
+            everruns_integrations_typesafe::UTILITY_TYPESAFE_API_KEY_ENV
         );
         assert_eq!(
             service.name(),
