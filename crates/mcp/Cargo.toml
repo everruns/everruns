@@ -1,6 +1,6 @@
 [package]
 name = "everruns-mcp"
-version = "0.19.8"
+version = "0.19.9"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

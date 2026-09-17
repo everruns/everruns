@@ -207,26 +207,26 @@ futures-util = "0.3"
 # Everruns SDK
 everruns-sdk = "0.2.0"
 everruns-capability = { path = "crates/capability", version = "0.18.4", default-features = false }
-everruns-builtins = { path = "crates/builtins", version = "0.18.11" }
-everruns-core = { path = "crates/core", version = "0.24.0" }
-everruns-engine = { path = "crates/engine", version = "0.19.3" }
-everruns-host = { path = "crates/host", version = "0.23.1" }
-everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.18.10", default-features = false }
+everruns-builtins = { path = "crates/builtins", version = "0.18.12" }
+everruns-core = { path = "crates/core", version = "0.25.0" }
+everruns-engine = { path = "crates/engine", version = "0.20.0" }
+everruns-host = { path = "crates/host", version = "0.24.0" }
+everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.18.11", default-features = false }
 everruns-test-support = { path = "crates/test-support", version = "0.18.2", default-features = false }
-everruns-platform = { path = "crates/platform", version = "0.24.1" }
+everruns-platform = { path = "crates/platform", version = "0.24.2" }
 everruns-provider = { path = "crates/provider", version = "0.25.0", default-features = false }
 everruns-model-profiles = { path = "crates/model-profiles", version = "0.3.0" }
-everruns-mcp = { path = "crates/mcp", version = "0.19.8" }
+everruns-mcp = { path = "crates/mcp", version = "0.19.9" }
 everruns-ard = { path = "crates/ard", version = "0.18.0" }
 everruns-openai = { path = "crates/drivers/openai", version = "0.18.8" }
 everruns = { path = "crates/everruns", version = "0.18.0" }
 everruns-macros = { path = "crates/macros", version = "0.18.4" }
-everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.18.8" }
-everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.18.7" }
-everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.18.7" }
-everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.18.7" }
-everruns-integrations-lua = { path = "integrations/lua", version = "0.18.7" }
-everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.18.7" }
+everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.18.9" }
+everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.18.8" }
+everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.18.8" }
+everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.18.8" }
+everruns-integrations-lua = { path = "integrations/lua", version = "0.18.8" }
+everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.18.8" }
 everruns-integrations-typesafe = { path = "integrations/typesafe", version = "0.1.0" }
 
 # A2A protocol

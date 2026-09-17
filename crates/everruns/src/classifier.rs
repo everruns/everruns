@@ -27,8 +27,8 @@
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use everruns::Classifier;
 //!
-//! let judge = Classifier::simulated(0.93);
-//! let p = judge
+//! let classifier = Classifier::simulated(0.93);
+//! let p = classifier
 //!     .probability("Does this convey urgency?", "I've been on hold for two hours.")
 //!     .await?;
 //! assert!(p > 0.9);
@@ -81,7 +81,7 @@ impl fmt::Display for ClassifierError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ClassifierError::MissingService => {
-                write!(f, "judge has no service; use Classifier::new(service)")
+                write!(f, "classifier has no service; use Classifier::new(service)")
             }
             ClassifierError::NoQuestions => {
                 write!(f, "classification has no questions; ask at least one")
@@ -113,7 +113,7 @@ impl From<AgentLoopError> for ClassifierError {
 
 /// A classifier, and the service used to reach it.
 ///
-/// Cheap to clone and safe to share: one judge can serve many concurrent
+/// Cheap to clone and safe to share: one classifier can serve many concurrent
 /// calls.
 #[derive(Clone)]
 pub struct Classifier {
@@ -245,7 +245,7 @@ pub struct Classification {
 }
 
 impl Classification {
-    /// Reach the model through `service`, replacing the judge's own.
+    /// Reach the model through `service`, replacing the classifier's own.
     pub fn service(mut self, service: impl ClassifierService + 'static) -> Self {
         self.service = Some(Arc::new(service));
         self
@@ -559,8 +559,8 @@ mod tests {
         assert!(matches!(empty, Err(ClassifierError::NoQuestions)));
 
         // No service at all.
-        let judge = Classifier { service: None };
-        let orphan = judge.about("x").noul("q", "Is it?").send().await;
+        let classifier = Classifier { service: None };
+        let orphan = classifier.about("x").noul("q", "Is it?").send().await;
         assert!(matches!(orphan, Err(ClassifierError::MissingService)));
 
         // A service the deployment never configured answers nothing, and says

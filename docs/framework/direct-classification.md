@@ -16,8 +16,8 @@ use everruns::Classifier;
 use everruns_integrations_typesafe::TypeSafeClassifier;
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let judge = Classifier::new(TypeSafeClassifier::from_env()?);
-let spam = judge
+let classifier = Classifier::new(TypeSafeClassifier::from_env()?);
+let spam = classifier
     .probability("Is this message spam?", "Claim your prize now!")
     .await?;
 if spam > 0.9 {
@@ -45,8 +45,8 @@ three shapes:
 ```rust
 use everruns::Classifier;
 
-# async fn run(judge: Classifier) -> Result<(), Box<dyn std::error::Error>> {
-let answers = judge
+# async fn run(classifier: Classifier) -> Result<(), Box<dyn std::error::Error>> {
+let answers = classifier
     .about("I've been on hold for two hours and my card was charged twice.")
     .noul("urgent", "Does this convey urgency?")
     .score(

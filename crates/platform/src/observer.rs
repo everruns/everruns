@@ -160,7 +160,7 @@ pub struct LlmJudgeConfig {
     /// vs. low score means.
     pub rubric: String,
     /// Org model to judge with. When `None`, the org's default model is used.
-    /// Classifier calls go through the org's own providers and are billed to it.
+    /// Judge calls go through the org's own providers and are billed to it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub model_id: Option<everruns_provider::typed_id::ModelId>,
@@ -329,13 +329,13 @@ pub struct TraceScore {
     /// improvement loop.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
-    /// Classifier LLM input tokens (llm_judge scores only).
+    /// Judge LLM input tokens (llm_judge scores only).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub judge_input_tokens: Option<u64>,
-    /// Classifier LLM output tokens (llm_judge scores only).
+    /// Judge LLM output tokens (llm_judge scores only).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub judge_output_tokens: Option<u64>,
-    /// Classifier call cost in USD when the provider reports it (llm_judge only).
+    /// Judge call cost in USD when the provider reports it (llm_judge only).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub judge_cost_usd: Option<f64>,
     /// Error details if errored.

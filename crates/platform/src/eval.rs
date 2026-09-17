@@ -354,7 +354,7 @@ pub enum Scorer {
             schema(example = "Score the fraction of cited claims supported by their source.")
         )]
         rubric: Option<String>,
-        /// Classifier model; the org's default is used when absent.
+        /// Judge model; the org's default is used when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         model_id: Option<ModelId>,
         /// Minimum judged score `[0,1]` to pass.
