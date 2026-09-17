@@ -245,7 +245,17 @@ one round trip.
 The concrete service is supplied, never assumed: `Classifier::new` takes any
 `ClassifierService`, exactly as `Model::new` takes any `Provider`, so the facade
 depends on no vendor. `Classifier::simulated` keeps tests and examples offline, the
-role `Model::simulated` plays for completions.
+role `Model::simulated` plays for completions. `everruns` re-exports the TypeSafe
+service behind its `jev` feature, the way it re-exports `OpenAI`, so one import
+reaches both halves without the vendor entering the default build.
+
+The model is named, not fixed. `Model::new` takes a model id because a provider
+is transport and serves many; a classifier service has a default of its own, so
+`Classifier::model` and `Classification::model` are overrides — per classifier
+and per call. That asymmetry is the whole of it: there will be other
+classifiers, and pinning a version rather than tracking a vendor default is the
+caller's decision. A deployment that must pin one does so by not exposing the
+knob in the config it accepts, not by the type being unable to carry one.
 
 Deliberately excluded, and for the same reasons as the completion layer:
 history, tools, workspaces, durability, events, hooks. Also excluded: retry and

@@ -5,15 +5,14 @@
 //!
 //! Offline (no API key):
 //! ```text
-//! cargo run -p everruns --example agent_classification
+//! cargo run -p everruns --features jev --example agent_classification
 //! ```
 //! Live (requires TYPESAFE_API_KEY and OPENAI_API_KEY):
 //! ```text
-//! cargo run -p everruns --features openai --example agent_classification -- --live
+//! cargo run -p everruns --features jev,openai --example agent_classification -- --live
 //! ```
 
-use everruns::{Agent, Engine, Model};
-use everruns_integrations_typesafe::Jev;
+use everruns::{Agent, Engine, Jev, Model};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -27,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         #[cfg(not(feature = "openai"))]
         {
-            return Err("Live mode needs --features openai".into());
+            return Err("Live mode needs --features jev,openai".into());
         }
     } else {
         println!("Offline simulator: the model does not really call the tool.\n");

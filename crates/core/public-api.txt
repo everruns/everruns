@@ -249,6 +249,7 @@ everruns_core::classifier::ClassificationQuestion::Choice	variant
 everruns_core::classifier::ClassificationQuestion::Noul	variant
 everruns_core::classifier::ClassificationQuestion::Score	variant
 everruns_core::classifier::ClassificationRequest	struct
+everruns_core::classifier::ClassificationRequest::new	function
 everruns_core::classifier::ClassificationUsage	struct
 everruns_core::classifier::ClassifierService	trait
 everruns_core::classifier::DisabledClassifierService	struct
