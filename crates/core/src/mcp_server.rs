@@ -458,6 +458,7 @@ pub struct ScopedMcpServer {
     #[cfg_attr(feature = "openapi", schema(rename = "use"))]
     pub preset: Option<McpServerPresetRef>,
     /// Identity whose grant this attachment requests.
+    #[serde(default)]
     #[cfg_attr(feature = "openapi", schema(rename = "actsAs"))]
     pub acts_as: McpServerActsAs,
 }
