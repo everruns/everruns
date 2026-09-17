@@ -35,6 +35,12 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
   `crates/server/migrations/`, run `bash scripts/lib/check-migration-ordering.sh` and renumber.
 - Run `just pre-push` before pushing. It scopes expensive checks to changed surfaces and shares a
   dedicated pre-push Rust target across worktrees; use `just pre-push-full` to force every check.
+- CI links the heavy Rust jobs with `lld` via a job-scoped
+  `CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS`, not a checked-in `.cargo/config.toml`, so a
+  checkout without `lld` still builds. Linking dominates local test builds too (`crates/server`
+  alone has 51 test binaries); to get the same speedup, install `lld` and export that variable.
+  Jobs sharing a `rust-cache` `shared-key` must agree on the flag — `RUSTFLAGS` is part of cargo's
+  fingerprint, so a mismatch silently invalidates the shared target dir.
 - Knowledge captures why/what; link to source instead of copying fields, enum variants, SQL DDL,
   or API shapes. `docs/` holds public product documentation only, durable decisions and
   investigations belong in `knowledge/`. Run `just check-okf` after knowledge
