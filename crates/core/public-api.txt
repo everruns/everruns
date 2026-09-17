@@ -799,10 +799,15 @@ everruns_core::mcp_server::McpProtocolMode::V2025March	variant
 everruns_core::mcp_server::McpProtocolMode::V2026July	variant
 everruns_core::mcp_server::McpSecretBindingMetadata	struct
 everruns_core::mcp_server::McpServer	struct
+everruns_core::mcp_server::McpServerActsAs	enum
+everruns_core::mcp_server::McpServerActsAs::None	variant
+everruns_core::mcp_server::McpServerActsAs::Service	variant
+everruns_core::mcp_server::McpServerActsAs::User	variant
 everruns_core::mcp_server::McpServerAuthMode	enum
 everruns_core::mcp_server::McpServerAuthMode::ApiKey	variant
 everruns_core::mcp_server::McpServerAuthMode::None	variant
 everruns_core::mcp_server::McpServerAuthMode::OAuth	variant
+everruns_core::mcp_server::McpServerPresetRef	struct
 everruns_core::mcp_server::McpServerStatus	enum
 everruns_core::mcp_server::McpServerStatus::Active	variant
 everruns_core::mcp_server::McpServerStatus::Archived	variant

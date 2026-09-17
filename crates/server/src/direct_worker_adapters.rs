@@ -43,11 +43,12 @@ use tokio::sync::OnceCell;
 use uuid::Uuid;
 
 use crate::domains::budgets::BudgetService;
-use crate::domains::mcp_servers::McpServerService;
 use crate::domains::mcp_servers::scoped_mcp::{
-    build_scoped_mcp_tool_definitions, merge_effective_scoped_mcp_servers_with_capabilities,
+    build_scoped_mcp_tool_definitions, materialize_scoped_mcp_servers,
+    merge_effective_scoped_mcp_servers_with_capabilities,
     resolve_scoped_mcp_server_with_capabilities, validate_scoped_mcp_servers,
 };
+use crate::domains::mcp_servers::{McpServerResolved, McpServerService};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::max_iterations;
@@ -59,6 +60,24 @@ use everruns_durable::WorkflowEventStore;
 // Helper to create store errors
 fn store_error(msg: impl Into<String>) -> AgentLoopError {
     AgentLoopError::store(msg)
+}
+
+fn resolved_mcp_server_to_worker_info(
+    resolved: McpServerResolved,
+    secret_bindings: HashMap<String, Vec<everruns_mcp::McpSecretBinding>>,
+) -> McpServerInfo {
+    McpServerInfo {
+        id: resolved.id,
+        name: resolved.name,
+        url: resolved.url,
+        api_key: resolved.api_key,
+        headers: resolved.headers,
+        auth_mode: resolved.auth_mode,
+        protocol_mode: resolved.protocol_mode,
+        oauth_provider_id: resolved.oauth_provider_id,
+        acts_as: resolved.acts_as,
+        secret_bindings,
+    }
 }
 
 /// Extract file name from path
@@ -1424,12 +1443,17 @@ impl WorkerAdapters for DirectWorkerAdapters {
             }
 
             if let Some(resolved) = resolve_scoped_mcp_server_with_capabilities(
+                &self.mcp_server_service,
+                org_id,
                 &harness,
                 agent.as_ref(),
                 &session,
                 server_prefix,
                 &self.capability_registry,
-            ) {
+            )
+            .await
+            .map_err(|e| store_error(format!("Failed to resolve scoped MCP server: {e}")))?
+            {
                 let secret_bindings =
                     crate::domains::agents::credentials::resolve_runtime_secret_bindings(
                         self.db.as_ref(),
@@ -1441,17 +1465,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
                     )
                     .await
                     .map_err(|e| store_error(format!("Failed to resolve MCP credentials: {e}")))?;
-                return Ok(McpServerInfo {
-                    id: resolved.id,
-                    name: resolved.name,
-                    url: resolved.url,
-                    api_key: resolved.api_key,
-                    headers: resolved.headers,
-                    auth_mode: resolved.auth_mode,
-                    protocol_mode: resolved.protocol_mode,
-                    oauth_provider_id: resolved.oauth_provider_id,
+                return Ok(resolved_mcp_server_to_worker_info(
+                    resolved,
                     secret_bindings,
-                });
+                ));
             }
         }
 
@@ -1476,17 +1493,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
         .await
         .map_err(|e| store_error(format!("Failed to resolve MCP credentials: {e}")))?;
 
-        Ok(McpServerInfo {
-            id: resolved.id,
-            name: resolved.name,
-            url: resolved.url,
-            api_key: resolved.api_key,
-            headers: resolved.headers,
-            auth_mode: resolved.auth_mode,
-            protocol_mode: resolved.protocol_mode,
-            oauth_provider_id: resolved.oauth_provider_id,
+        Ok(resolved_mcp_server_to_worker_info(
+            resolved,
             secret_bindings,
-        })
+        ))
     }
 
     // =========================================================================
@@ -1570,17 +1580,29 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 let egress = self.egress_service.clone().unwrap_or_else(|| {
                     Arc::new(everruns_host::DirectEgressService::for_runtime_traffic_from_env())
                 });
-                build_scoped_mcp_tool_definitions(
+                match materialize_scoped_mcp_servers(
+                    &self.mcp_server_service,
+                    org_id,
                     &effective,
-                    Some(session.id),
-                    self.connection_resolver.as_ref(),
-                    egress.as_ref(),
                 )
                 .await
-                .unwrap_or_else(|error| {
-                    tracing::warn!(error = %error, "Failed to build scoped MCP tool definitions");
-                    vec![]
-                })
+                {
+                    Ok(effective) => build_scoped_mcp_tool_definitions(
+                        &effective,
+                        Some(session.id),
+                        self.connection_resolver.as_ref(),
+                        egress.as_ref(),
+                    )
+                    .await
+                    .unwrap_or_else(|error| {
+                        tracing::warn!(error = %error, "Failed to build scoped MCP tool definitions");
+                        vec![]
+                    }),
+                    Err(error) => {
+                        tracing::warn!(error = %error, "Failed to materialize scoped MCP servers");
+                        vec![]
+                    }
+                }
             }
         } else {
             vec![]
@@ -3244,6 +3266,25 @@ mod tests {
             string_to_provider_type("custom-provider").to_string(),
             "custom-provider"
         );
+    }
+
+    #[test]
+    fn direct_mcp_adapter_preserves_acts_as() {
+        let resolved = McpServerResolved {
+            id: Uuid::new_v4(),
+            name: "linear".to_string(),
+            url: "https://mcp.linear.app/mcp".to_string(),
+            auth_mode: everruns_core::McpServerAuthMode::OAuth,
+            protocol_mode: everruns_core::McpProtocolMode::Auto,
+            oauth_provider_id: Some("mcp_oauth_linear".to_string()),
+            acts_as: everruns_core::McpServerActsAs::Service,
+            api_key: None,
+            headers: HashMap::new(),
+        };
+
+        let info = resolved_mcp_server_to_worker_info(resolved, HashMap::new());
+
+        assert_eq!(info.acts_as, everruns_core::McpServerActsAs::Service);
     }
 
     // =========================================================================

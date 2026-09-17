@@ -12,6 +12,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
+use std::str::FromStr;
 
 use crate::typed_id::McpServerId;
 
@@ -79,6 +80,102 @@ impl From<&str> for McpServerAuthMode {
 impl McpServerAuthMode {
     pub fn is_none(&self) -> bool {
         matches!(self, McpServerAuthMode::None)
+    }
+}
+/// Identity whose OAuth grant a scoped MCP attachment requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "service"))]
+#[serde(rename_all = "lowercase")]
+pub enum McpServerActsAs {
+    /// Do not resolve a credential for this attachment.
+    #[default]
+    None,
+    /// Resolve the agent service identity's grant.
+    Service,
+    /// Resolve the invoking user's grant.
+    User,
+}
+
+impl McpServerActsAs {
+    /// Return whether the attachment requests no acting identity.
+    pub fn is_none(&self) -> bool {
+        matches!(self, Self::None)
+    }
+}
+
+impl std::fmt::Display for McpServerActsAs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::None => write!(f, "none"),
+            Self::Service => write!(f, "service"),
+            Self::User => write!(f, "user"),
+        }
+    }
+}
+
+impl From<&str> for McpServerActsAs {
+    fn from(value: &str) -> Self {
+        match value {
+            "service" => Self::Service,
+            "user" => Self::User,
+            _ => Self::None,
+        }
+    }
+}
+
+/// Reference to an organization MCP server catalog entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(value_type = String, example = "catalog:linear"))]
+pub struct McpServerPresetRef(String);
+
+impl McpServerPresetRef {
+    /// Return the organization catalog entry name without the `catalog:` prefix.
+    pub fn catalog_name(&self) -> &str {
+        self.0
+            .strip_prefix("catalog:")
+            .expect("validated catalog reference")
+    }
+}
+
+impl std::fmt::Display for McpServerPresetRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl FromStr for McpServerPresetRef {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let Some(name) = value.strip_prefix("catalog:") else {
+            return Err("MCP server preset reference must start with 'catalog:'".to_string());
+        };
+        if name.trim().is_empty() {
+            return Err("MCP server catalog preset name cannot be empty".to_string());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+
+impl Serialize for McpServerPresetRef {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for McpServerPresetRef {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -333,45 +430,124 @@ pub struct McpServer {
 /// support.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(try_from = "ScopedMcpServerWire", into = "ScopedMcpServerWire")]
 pub struct ScopedMcpServer {
     /// MCP transport type. Only remote HTTP is supported today.
-    #[serde(
-        default = "default_scoped_transport_type",
-        rename = "type",
-        alias = "transport_type"
-    )]
+    #[cfg_attr(feature = "openapi", schema(rename = "type"))]
     pub transport_type: McpServerTransportType,
     /// URL of the remote MCP server endpoint. Required for HTTP transport;
     /// empty/ignored for stdio.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub url: String,
     /// Additional HTTP headers sent on MCP requests (HTTP transport only).
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub headers: HashMap<String, String>,
     /// Executable to spawn for a stdio transport server.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
     /// Arguments passed to the stdio `command`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub args: Vec<String>,
     /// Environment variables set for the stdio `command`.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub env: HashMap<String, String>,
     /// Authentication mode used when executing tools from this scoped server.
-    #[serde(default, skip_serializing_if = "McpServerAuthMode::is_none")]
     pub auth_mode: McpServerAuthMode,
     /// Protocol-era adoption policy for the MCP client (`auto` negotiates).
-    #[serde(default, skip_serializing_if = "McpProtocolMode::is_auto")]
     pub protocol_mode: McpProtocolMode,
     /// Provider id used to resolve a user-scoped bearer token.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth_provider_id: Option<String>,
     /// Whether to discover tool definitions live from this server.
+    pub tool_discovery: bool,
+    /// Organization catalog preset that supplies transport and authentication policy.
+    #[cfg_attr(feature = "openapi", schema(rename = "use"))]
+    pub preset: Option<McpServerPresetRef>,
+    /// Identity whose grant this attachment requests.
+    #[cfg_attr(feature = "openapi", schema(rename = "actsAs"))]
+    pub acts_as: McpServerActsAs,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ScopedMcpServerWire {
+    #[serde(
+        rename = "type",
+        alias = "transport_type",
+        skip_serializing_if = "Option::is_none"
+    )]
+    transport_type: Option<McpServerTransportType>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    url: String,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    headers: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    command: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    args: Vec<String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    env: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "McpServerAuthMode::is_none")]
+    auth_mode: McpServerAuthMode,
+    #[serde(default, skip_serializing_if = "McpProtocolMode::is_auto")]
+    protocol_mode: McpProtocolMode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    oauth_provider_id: Option<String>,
     #[serde(
         default = "default_scoped_tool_discovery",
         skip_serializing_if = "is_true"
     )]
-    pub tool_discovery: bool,
+    tool_discovery: bool,
+    #[serde(rename = "use", skip_serializing_if = "Option::is_none")]
+    preset: Option<McpServerPresetRef>,
+    #[serde(
+        default,
+        rename = "actsAs",
+        alias = "acts_as",
+        skip_serializing_if = "McpServerActsAs::is_none"
+    )]
+    acts_as: McpServerActsAs,
+}
+
+impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
+    type Error = String;
+
+    fn try_from(wire: ScopedMcpServerWire) -> Result<Self, Self::Error> {
+        if wire.preset.is_some() && wire.transport_type.is_some() {
+            return Err(
+                "MCP server preset reference cannot be combined with inline field 'type'"
+                    .to_string(),
+            );
+        }
+        Ok(Self {
+            transport_type: wire
+                .transport_type
+                .unwrap_or_else(default_scoped_transport_type),
+            url: wire.url,
+            headers: wire.headers,
+            command: wire.command,
+            args: wire.args,
+            env: wire.env,
+            auth_mode: wire.auth_mode,
+            protocol_mode: wire.protocol_mode,
+            oauth_provider_id: wire.oauth_provider_id,
+            tool_discovery: wire.tool_discovery,
+            preset: wire.preset,
+            acts_as: wire.acts_as,
+        })
+    }
+}
+
+impl From<ScopedMcpServer> for ScopedMcpServerWire {
+    fn from(server: ScopedMcpServer) -> Self {
+        Self {
+            transport_type: server.preset.is_none().then_some(server.transport_type),
+            url: server.url,
+            headers: server.headers,
+            command: server.command,
+            args: server.args,
+            env: server.env,
+            auth_mode: server.auth_mode,
+            protocol_mode: server.protocol_mode,
+            oauth_provider_id: server.oauth_provider_id,
+            tool_discovery: server.tool_discovery,
+            preset: server.preset,
+            acts_as: server.acts_as,
+        }
+    }
 }
 
 impl Default for ScopedMcpServer {
@@ -387,6 +563,8 @@ impl Default for ScopedMcpServer {
             command: None,
             args: Vec::new(),
             env: HashMap::new(),
+            preset: None,
+            acts_as: McpServerActsAs::None,
         }
     }
 }
@@ -1116,6 +1294,81 @@ mod tests {
         assert!(!config.tool_discovery);
         assert_eq!(config.auth_mode, McpServerAuthMode::OAuth);
         assert_eq!(serde_json::to_value(config).unwrap(), wire);
+    }
+    #[test]
+    fn scoped_config_acts_as_is_strict_and_omits_none() {
+        let legacy = r#"{"type":"http","url":"https://example.com/mcp"}"#;
+        let config: ScopedMcpServer = serde_json::from_str(legacy).unwrap();
+        assert_eq!(config.acts_as, McpServerActsAs::None);
+        assert_eq!(serde_json::to_string(&config).unwrap(), legacy);
+
+        for (wire_name, expected) in [
+            ("service", McpServerActsAs::Service),
+            ("user", McpServerActsAs::User),
+        ] {
+            let config: ScopedMcpServer = serde_json::from_value(json!({
+                "url": "https://example.com/mcp",
+                "actsAs": wire_name
+            }))
+            .unwrap();
+            assert_eq!(config.acts_as, expected);
+            assert_eq!(
+                serde_json::to_value(config).unwrap()["actsAs"],
+                json!(wire_name)
+            );
+        }
+
+        let alias: ScopedMcpServer = serde_json::from_value(json!({
+            "url": "https://example.com/mcp",
+            "acts_as": "service"
+        }))
+        .unwrap();
+        assert_eq!(alias.acts_as, McpServerActsAs::Service);
+        assert_eq!(
+            serde_json::to_value(alias).unwrap()["actsAs"],
+            json!("service")
+        );
+
+        for invalid in ["Service", "users", ""] {
+            assert!(
+                serde_json::from_value::<ScopedMcpServer>(json!({
+                    "use": "catalog:linear",
+                    "actsAs": invalid
+                }))
+                .is_err(),
+                "{invalid}"
+            );
+        }
+    }
+
+    #[test]
+    fn scoped_config_parses_only_nonempty_catalog_references() {
+        let config: ScopedMcpServer = serde_json::from_value(json!({
+            "use": "catalog:linear",
+            "actsAs": "service"
+        }))
+        .unwrap();
+        assert_eq!(
+            config.preset.as_ref().map(McpServerPresetRef::catalog_name),
+            Some("linear")
+        );
+        assert_eq!(
+            serde_json::to_value(config).unwrap(),
+            json!({"use":"catalog:linear","actsAs":"service"})
+        );
+
+        for invalid in ["garbage", "", "catalog:"] {
+            assert!(
+                serde_json::from_value::<ScopedMcpServer>(json!({"use": invalid})).is_err(),
+                "{invalid}"
+            );
+        }
+        assert!(
+            serde_json::from_value::<ScopedMcpServer>(
+                json!({"use":"catalog:linear","type":"http"})
+            )
+            .is_err()
+        );
     }
 
     #[test]

@@ -18,8 +18,8 @@ use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    Caller, EgressService, McpProtocolMode, McpServer, McpServerAuthMode, McpServerStatus,
-    McpToolDefinition, mcp_oauth_provider_id_for_uuid,
+    Caller, EgressService, McpProtocolMode, McpServer, McpServerActsAs, McpServerAuthMode,
+    McpServerStatus, McpToolDefinition, mcp_oauth_provider_id_for_uuid,
 };
 use everruns_host::DirectEgressService;
 use serde::{Deserialize, Serialize};
@@ -770,6 +770,43 @@ impl McpServerService {
             auth_mode: server.auth_mode,
             protocol_mode: server.protocol_mode,
             oauth_provider_id: server.oauth_provider_id,
+            acts_as: McpServerActsAs::None,
+            api_key,
+            headers,
+        }))
+    }
+
+    /// Resolve an active organization MCP server by its exact catalog name.
+    pub async fn resolve_by_name(
+        &self,
+        caller: &Caller,
+        name: &str,
+    ) -> Result<Option<McpServerResolved>> {
+        let Some(row) = self
+            .db
+            .get_mcp_server_by_name(caller.org_id, name)
+            .await?
+            .filter(|row| row.status == "active")
+        else {
+            return Ok(None);
+        };
+        let server = Self::row_to_mcp_server(&row);
+        let api_key = if server.auth_mode == McpServerAuthMode::ApiKey && server.api_key_set {
+            self.decrypt_api_key(caller, server.id.uuid()).await?
+        } else {
+            None
+        };
+        let headers =
+            serde_json::from_value::<HashMap<String, String>>(row.headers).unwrap_or_default();
+
+        Ok(Some(McpServerResolved {
+            id: server.id.uuid(),
+            name: server.name,
+            url: server.url,
+            auth_mode: server.auth_mode,
+            protocol_mode: server.protocol_mode,
+            oauth_provider_id: server.oauth_provider_id,
+            acts_as: McpServerActsAs::None,
             api_key,
             headers,
         }))
@@ -813,6 +850,7 @@ pub struct McpServerResolved {
     /// Protocol-era adoption policy (`auto` negotiates every protocol era).
     pub protocol_mode: McpProtocolMode,
     pub oauth_provider_id: Option<String>,
+    pub acts_as: McpServerActsAs,
     pub api_key: Option<String>,
     pub headers: HashMap<String, String>,
 }
