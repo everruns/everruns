@@ -43,6 +43,7 @@ everruns-integrations-deno = { path = "../../integrations/deno" }
 everruns-integrations-browserless = { path = "../../integrations/browserless" }
 everruns-integrations-e2b = { path = "../../integrations/e2b" }
 everruns-integrations-sprites = { path = "../../integrations/sprites" }
+everruns-integrations-typesafe = { path = "../../integrations/typesafe" }
 everruns-openai = { path = "../drivers/openai" }
 everruns-openrouter = { path = "../drivers/openrouter" }
 everruns-mai = { path = "../drivers/mai" }

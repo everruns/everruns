@@ -1,0 +1,60 @@
+# TypeSafe System One Integration
+# Decision: The client layer is dependency-light and everruns-free so the crate
+#   is usable as a plain TypeSafe SDK outside this workspace
+#   (`default-features = false`).
+# Decision: Capability, framework adapter, and connector live behind features
+#   layered on top of that client, mirroring the other API-key integrations.
+# Decision: API key resolved via user connections (connection_resolver), with a
+#   session-secret fallback, same contract as brave-search.
+
+[package]
+name = "everruns-integrations-typesafe"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-integrations-typesafe"
+description = "TypeSafe System One client and typed-judgment capability for Everruns agents"
+readme = "README.md"
+keywords = ["typesafe", "classification", "llm", "agents", "everruns"]
+categories = ["api-bindings", "development-tools"]
+
+[dependencies]
+# Client layer: no everruns dependency, so `default-features = false` yields a
+# standalone TypeSafe SDK.
+reqwest = { workspace = true, features = ["json"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["time"] }
+tracing.workspace = true
+
+# Capability layer.
+everruns-capability = { workspace = true, features = ["definition"], optional = true }
+everruns-core = { workspace = true, optional = true }
+everruns-provider = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
+
+# Hosted layer: connector catalog + inventory plugin registration.
+everruns-platform = { workspace = true, optional = true }
+inventory = { workspace = true, optional = true }
+
+[features]
+default = ["hosted"]
+# The Everruns capability and its tool, without the hosted plugin catalogs.
+capability = [
+    "dep:everruns-capability",
+    "dep:everruns-core",
+    "dep:everruns-provider",
+    "dep:async-trait",
+]
+hosted = ["capability", "dep:everruns-platform", "dep:inventory"]
+integration = [] # Gate real-API tests; CI passes --features integration
+
+[dev-dependencies]
+everruns = { path = "../../crates/everruns" }
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"

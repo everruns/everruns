@@ -50,6 +50,7 @@ members = [
     "integrations/browserless",
     "integrations/e2b",
     "integrations/sprites",
+    "integrations/typesafe",
     "examples/support-agent",
     "examples/everruns-support-agent",
     "examples/coding-review-agent",
@@ -225,6 +226,7 @@ everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "
 everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.18.5" }
 everruns-integrations-lua = { path = "integrations/lua", version = "0.18.5" }
 everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.18.5" }
+everruns-integrations-typesafe = { path = "integrations/typesafe", version = "0.1.0", default-features = false }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }

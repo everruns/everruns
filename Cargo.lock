@@ -2874,6 +2874,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-integrations-typesafe"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "everruns",
+ "everruns-capability",
+ "everruns-core",
+ "everruns-platform",
+ "everruns-provider",
+ "inventory",
+ "reqwest 0.13.5",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-integrations-web-fetch"
 version = "0.18.5"
 dependencies = [

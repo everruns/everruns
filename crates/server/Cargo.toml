@@ -114,6 +114,7 @@ everruns-integrations-deno = { path = "../../integrations/deno" }
 everruns-integrations-browserless = { path = "../../integrations/browserless" }
 everruns-integrations-e2b = { path = "../../integrations/e2b" }
 everruns-integrations-sprites = { path = "../../integrations/sprites" }
+everruns-integrations-typesafe = { path = "../../integrations/typesafe" }
 rusqlite = { version = "0.39", features = ["bundled", "serialize", "column_decltype", "hooks"] }
 everruns-host = { path = "../host", features = ["direct-egress", "utility-openai", "observability"] }  # HostComposition and deployment-owned utility LLM/telemetry wiring
 everruns-worker = { path = "../worker" }  # For AgentRunner trait
