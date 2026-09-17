@@ -776,8 +776,8 @@ impl McpServerService {
         }))
     }
 
-    /// Resolve an active organization MCP server by its exact catalog name.
-    pub async fn resolve_by_name(
+    /// Resolve transport metadata for an active organization MCP server by name.
+    pub async fn resolve_transport_by_name(
         &self,
         caller: &Caller,
         name: &str,
@@ -790,24 +790,19 @@ impl McpServerService {
         else {
             return Ok(None);
         };
-        let server = Self::row_to_mcp_server(&row);
-        let api_key = if server.auth_mode == McpServerAuthMode::ApiKey && server.api_key_set {
-            self.decrypt_api_key(caller, server.id.uuid()).await?
-        } else {
-            None
-        };
+        let settings = Self::settings_from_row(&row);
         let headers =
             serde_json::from_value::<HashMap<String, String>>(row.headers).unwrap_or_default();
 
         Ok(Some(McpServerResolved {
-            id: server.id.uuid(),
-            name: server.name,
-            url: server.url,
-            auth_mode: server.auth_mode,
-            protocol_mode: server.protocol_mode,
-            oauth_provider_id: server.oauth_provider_id,
+            id: row.id.uuid(),
+            name: row.name,
+            url: row.url,
+            auth_mode: McpServerAuthMode::None,
+            protocol_mode: settings.protocol_mode,
+            oauth_provider_id: None,
             acts_as: McpServerActsAs::None,
-            api_key,
+            api_key: None,
             headers,
         }))
     }
@@ -837,10 +832,10 @@ pub struct McpServerWithTools {
     pub tools_cached_at: Option<DateTime<Utc>>,
 }
 
-/// Resolved MCP server with decrypted credentials, ready for tool execution.
+/// Resolved MCP server descriptor for worker transport.
 ///
-/// Produced by `McpServerService::resolve_by_prefix` and consumed by both
-/// the gRPC service and direct worker adapters.
+/// Organization-level resolution can include credentials. Scoped catalog
+/// resolution includes transport metadata only.
 #[derive(Debug, Clone)]
 pub struct McpServerResolved {
     pub id: Uuid,
@@ -1026,6 +1021,40 @@ mod tests {
 
         let result = svc.decrypt_api_key(&test_caller(1), Uuid::new_v4()).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn catalog_transport_resolution_omits_configured_credentials() {
+        let db = Arc::new(StorageBackend::in_memory());
+        db.create_mcp_server(
+            1,
+            CreateMcpServerRow {
+                name: "catalog-auth".into(),
+                description: None,
+                url: "https://example.com/mcp".into(),
+                transport_type: "streamable_http".into(),
+                api_key_encrypted: Some(vec![1, 2, 3]),
+                headers: Some(serde_json::json!({"X-Literal": "value"})),
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+        let svc = McpServerService::new(db, None);
+
+        let resolved = svc
+            .resolve_transport_by_name(&test_caller(1), "catalog-auth")
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(resolved.auth_mode, McpServerAuthMode::None);
+        assert!(resolved.oauth_provider_id.is_none());
+        assert!(resolved.api_key.is_none());
+        assert_eq!(
+            resolved.headers.get("X-Literal"),
+            Some(&"value".to_string())
+        );
     }
 
     // --- resolve_by_prefix tests ---

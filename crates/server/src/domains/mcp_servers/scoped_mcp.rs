@@ -162,7 +162,7 @@ async fn resolve_matched_scoped_mcp_server(
     if let Some(preset) = &server.preset {
         let preset_name = preset.catalog_name();
         let mut resolved = mcp_server_service
-            .resolve_by_name(&everruns_core::Caller::internal(org_id), preset_name)
+            .resolve_transport_by_name(&everruns_core::Caller::internal(org_id), preset_name)
             .await?
             .ok_or_else(|| {
                 anyhow!("Catalog MCP server preset '{preset_name}' is missing or not active")
@@ -187,7 +187,7 @@ async fn resolve_matched_scoped_mcp_server(
 }
 
 pub async fn materialize_scoped_mcp_servers(
-    mcp_server_service: &McpServerService,
+    db: &StorageBackend,
     org_id: i64,
     servers: &ScopedMcpServers,
 ) -> Result<ScopedMcpServers> {
@@ -198,21 +198,21 @@ pub async fn materialize_scoped_mcp_servers(
             continue;
         };
         let preset_name = preset.catalog_name();
-        let resolved = mcp_server_service
-            .resolve_by_name(&everruns_core::Caller::internal(org_id), preset_name)
+        let row = db
+            .get_mcp_server_by_name(org_id, preset_name)
             .await?
+            .filter(|row| row.status == "active")
             .ok_or_else(|| {
                 anyhow!("Catalog MCP server preset '{preset_name}' is missing or not active")
             })?;
+        let settings = McpServerService::settings_from_row(&row);
         materialized.insert(
             name.clone(),
             ScopedMcpServer {
-                transport_type: McpServerTransportType::Http,
-                url: resolved.url,
-                headers: resolved.headers,
-                auth_mode: resolved.auth_mode,
-                protocol_mode: resolved.protocol_mode,
-                oauth_provider_id: resolved.oauth_provider_id,
+                transport_type: McpServerTransportType::from(row.transport_type.as_str()),
+                url: row.url,
+                headers: serde_json::from_value(row.headers).unwrap_or_default(),
+                protocol_mode: settings.protocol_mode,
                 acts_as: server.acts_as,
                 ..Default::default()
             },
@@ -221,6 +221,23 @@ pub async fn materialize_scoped_mcp_servers(
     Ok(materialized)
 }
 
+pub async fn build_materialized_scoped_mcp_tool_definitions(
+    db: &StorageBackend,
+    org_id: i64,
+    servers: &ScopedMcpServers,
+    session_id: Option<SessionId>,
+    connection_resolver: Option<&Arc<dyn UserConnectionResolver>>,
+    egress_service: &dyn EgressService,
+) -> Result<Vec<ToolDefinition>> {
+    let materialized = materialize_scoped_mcp_servers(db, org_id, servers).await?;
+    build_scoped_mcp_tool_definitions(
+        &materialized,
+        session_id,
+        connection_resolver,
+        egress_service,
+    )
+    .await
+}
 pub async fn build_scoped_mcp_tool_definitions(
     servers: &ScopedMcpServers,
     session_id: Option<SessionId>,
@@ -383,6 +400,22 @@ pub fn validate_scoped_mcp_servers(servers: &ScopedMcpServers) -> Result<()> {
 
     Ok(())
 }
+
+pub fn validate_capability_mcp_servers(servers: &ScopedMcpServers) -> Result<()> {
+    for (name, server) in servers {
+        if server.preset.is_some() {
+            return Err(anyhow!(
+                "Capability-contributed MCP server '{name}' cannot use a catalog preset"
+            ));
+        }
+        if server.acts_as != McpServerActsAs::None {
+            return Err(anyhow!(
+                "Capability-contributed MCP server '{name}' cannot set actsAs"
+            ));
+        }
+    }
+    validate_scoped_mcp_servers(servers)
+}
 fn validate_catalog_reference_shape(name: &str, server: &ScopedMcpServer) -> Result<()> {
     let conflicting_field = if !server.url.is_empty() {
         Some("url")
@@ -474,6 +507,7 @@ mod tests {
     use crate::storage::models::{CreateMcpServerRow, UpdateMcpServer};
     use chrono::Utc;
     use everruns_platform::{Agent, AgentStatus, generate_agent_public_id};
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct MutableConnectionResolver {
         token: tokio::sync::RwLock<Option<String>>,
@@ -487,6 +521,94 @@ mod tests {
             _provider: &str,
         ) -> everruns_provider::error::Result<Option<String>> {
             Ok(self.token.read().await.clone())
+        }
+    }
+
+    #[derive(Default)]
+    struct CountingConnectionResolver {
+        calls: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl UserConnectionResolver for CountingConnectionResolver {
+        async fn get_connection_token(
+            &self,
+            _session_id: SessionId,
+            _provider: &str,
+        ) -> everruns_provider::error::Result<Option<String>> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(Some("legacy-token".to_string()))
+        }
+    }
+
+    #[derive(Default)]
+    struct CatalogPreviewEgress {
+        calls: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl EgressService for CatalogPreviewEgress {
+        async fn send(
+            &self,
+            request: everruns_core::EgressRequest,
+        ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
+            assert!(
+                request
+                    .headers
+                    .keys()
+                    .all(|name| !name.eq_ignore_ascii_case("Authorization"))
+            );
+            let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+            match body["method"].as_str().unwrap_or_default() {
+                "initialize" => Ok(everruns_core::EgressResponse {
+                    status: 200,
+                    headers: std::collections::BTreeMap::from([(
+                        "Mcp-Session-Id".to_string(),
+                        "preview-session".to_string(),
+                    )]),
+                    body: serde_json::to_vec(&serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": 0,
+                        "result": {
+                            "protocolVersion": "2025-06-18",
+                            "capabilities": {}
+                        }
+                    }))
+                    .unwrap(),
+                }),
+                "notifications/initialized" => Ok(everruns_core::EgressResponse {
+                    status: 202,
+                    headers: Default::default(),
+                    body: Vec::new(),
+                }),
+                "tools/list" => {
+                    self.calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(everruns_core::EgressResponse {
+                        status: 200,
+                        headers: Default::default(),
+                        body: serde_json::to_vec(&serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": 1,
+                            "result": {
+                                "tools": [{
+                                    "name": "echo",
+                                    "description": "Echo a message",
+                                    "inputSchema": {"type": "object"}
+                                }]
+                            }
+                        }))
+                        .unwrap(),
+                    })
+                }
+                method => panic!("unexpected MCP preview method: {method}"),
+            }
+        }
+
+        async fn send_stream(
+            &self,
+            _request: everruns_core::EgressRequest,
+        ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
+            panic!("MCP discovery should not use streaming egress")
         }
     }
 
@@ -531,7 +653,7 @@ mod tests {
             CreateMcpServerRow {
                 name: name.to_string(),
                 description: None,
-                url: "https://catalog.example.com/mcp".to_string(),
+                url: "http://8.8.8.8/mcp".to_string(),
                 transport_type: "http".to_string(),
                 api_key_encrypted: None,
                 headers: Some(serde_json::json!({"X-Catalog":"value"})),
@@ -1041,11 +1163,80 @@ mod tests {
             .unwrap()
             .unwrap();
             assert_eq!(resolved.name, prefix);
-            assert_eq!(resolved.url, "https://catalog.example.com/mcp");
+            assert_eq!(resolved.url, "http://8.8.8.8/mcp");
+            assert_eq!(resolved.auth_mode, McpServerAuthMode::None);
             assert_eq!(resolved.protocol_mode, McpProtocolMode::V2025June);
+            assert!(resolved.oauth_provider_id.is_none());
+            assert!(resolved.api_key.is_none());
             assert_eq!(resolved.acts_as, acts_as);
             assert_eq!(resolved.headers.get("X-Catalog"), Some(&"value".into()));
         }
+    }
+    #[tokio::test]
+    async fn catalog_preview_discovery_never_uses_legacy_connection_tokens() {
+        let db = StorageBackend::in_memory();
+        seed_catalog_server(&db, "linear", true).await;
+        let resolver = Arc::new(CountingConnectionResolver::default());
+        let resolver_trait: Arc<dyn UserConnectionResolver> = resolver.clone();
+        let egress = CatalogPreviewEgress::default();
+
+        for acts_as in [
+            McpServerActsAs::None,
+            McpServerActsAs::Service,
+            McpServerActsAs::User,
+        ] {
+            let servers =
+                ScopedMcpServers::from([("docs".to_string(), catalog_server("linear", acts_as))]);
+            let materialized =
+                materialize_scoped_mcp_servers(&db, everruns_core::DEFAULT_ORG_ID, &servers)
+                    .await
+                    .unwrap();
+            let docs = materialized.get("docs").unwrap();
+            assert_eq!(docs.auth_mode, McpServerAuthMode::None);
+            assert!(docs.oauth_provider_id.is_none());
+            assert_eq!(docs.acts_as, acts_as);
+            let discovered = fetch_mcp_tools(&egress, &docs.url, None, &docs.headers)
+                .await
+                .unwrap();
+            assert_eq!(discovered.len(), 1);
+
+            let tools = build_materialized_scoped_mcp_tool_definitions(
+                &db,
+                everruns_core::DEFAULT_ORG_ID,
+                &servers,
+                Some(SessionId::new()),
+                Some(&resolver_trait),
+                &egress,
+            )
+            .await
+            .unwrap();
+            assert_eq!(tools.len(), 1, "catalog preview must expose one MCP tool");
+            assert!(tools[0].name().contains("echo"));
+        }
+
+        assert_eq!(resolver.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(egress.calls.load(Ordering::SeqCst), 6);
+    }
+
+    #[test]
+    fn capability_mcp_validation_rejects_catalog_presets_and_execution_identity() {
+        let preset = ScopedMcpServers::from([(
+            "docs".to_string(),
+            catalog_server("linear", McpServerActsAs::None),
+        )]);
+        let error = validate_capability_mcp_servers(&preset).unwrap_err();
+        assert!(error.to_string().contains("cannot use a catalog preset"));
+
+        let identity = ScopedMcpServers::from([(
+            "docs".to_string(),
+            ScopedMcpServer {
+                url: "https://docs.example.com/mcp".to_string(),
+                acts_as: McpServerActsAs::Service,
+                ..Default::default()
+            },
+        )]);
+        let error = validate_capability_mcp_servers(&identity).unwrap_err();
+        assert!(error.to_string().contains("cannot set actsAs"));
     }
 
     #[test]

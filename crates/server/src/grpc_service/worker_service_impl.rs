@@ -389,50 +389,37 @@ impl WorkerService for WorkerServiceImpl {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
                 vec![]
             } else {
-                match crate::domains::mcp_servers::scoped_mcp::materialize_scoped_mcp_servers(
-                    &self.mcp_server_service,
+                match crate::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions(
+                    &self.db,
                     req.org_id,
                     &effective,
+                    Some(session.id),
+                    self.connection_resolver.as_ref(),
+                    self.mcp_server_service.egress_service().as_ref(),
                 )
                 .await
                 {
-                    Ok(effective) => {
-                        crate::domains::mcp_servers::scoped_mcp::build_scoped_mcp_tool_definitions(
-                            &effective,
-                            Some(session.id),
-                            self.connection_resolver.as_ref(),
-                            self.mcp_server_service.egress_service().as_ref(),
-                        )
-                        .await
-                        .map(|defs| {
-                            defs.into_iter()
-                                .map(|tool| McpToolDef {
-                                    name: tool.name().to_string(),
-                                    description: tool.description().to_string(),
-                                    parameters: Some(
-                                        everruns_internal_protocol::json_to_proto_struct(
-                                            tool.parameters(),
-                                        ),
-                                    ),
-                                    capability_id: tool
-                                        .capability_attribution()
-                                        .map(|(id, _)| id.to_string())
-                                        .unwrap_or_default(),
-                                    capability_name: tool
-                                        .capability_attribution()
-                                        .and_then(|(_, name)| name)
-                                        .unwrap_or_default()
-                                        .to_string(),
-                                })
-                                .collect()
+                    Ok(definitions) => definitions
+                        .into_iter()
+                        .map(|tool| McpToolDef {
+                            name: tool.name().to_string(),
+                            description: tool.description().to_string(),
+                            parameters: Some(everruns_internal_protocol::json_to_proto_struct(
+                                tool.parameters(),
+                            )),
+                            capability_id: tool
+                                .capability_attribution()
+                                .map(|(id, _)| id.to_string())
+                                .unwrap_or_default(),
+                            capability_name: tool
+                                .capability_attribution()
+                                .and_then(|(_, name)| name)
+                                .unwrap_or_default()
+                                .to_string(),
                         })
-                        .unwrap_or_else(|error| {
-                            tracing::warn!(error = %error, "Failed to build scoped MCP tool definitions");
-                            vec![]
-                        })
-                    }
+                        .collect(),
                     Err(error) => {
-                        tracing::warn!(error = %error, "Failed to materialize scoped MCP servers");
+                        tracing::warn!(error = %error, "Failed to build scoped MCP tool definitions");
                         vec![]
                     }
                 }
@@ -5170,22 +5157,31 @@ mod tests {
     }
 
     #[test]
-    fn grpc_mcp_adapter_preserves_acts_as() {
-        let resolved = crate::domains::mcp_servers::McpServerResolved {
-            id: uuid::Uuid::new_v4(),
-            name: "linear".to_string(),
-            url: "https://mcp.linear.app/mcp".to_string(),
-            auth_mode: everruns_core::McpServerAuthMode::OAuth,
-            protocol_mode: everruns_core::McpProtocolMode::Auto,
-            oauth_provider_id: Some("mcp_oauth_linear".to_string()),
-            acts_as: everruns_core::McpServerActsAs::User,
-            api_key: None,
-            headers: std::collections::HashMap::new(),
-        };
+    fn grpc_mcp_adapter_preserves_neutral_catalog_descriptors() {
+        for (acts_as, wire_value) in [
+            (everruns_core::McpServerActsAs::None, "none"),
+            (everruns_core::McpServerActsAs::Service, "service"),
+            (everruns_core::McpServerActsAs::User, "user"),
+        ] {
+            let resolved = crate::domains::mcp_servers::McpServerResolved {
+                id: uuid::Uuid::new_v4(),
+                name: "linear".to_string(),
+                url: "https://mcp.linear.app/mcp".to_string(),
+                auth_mode: everruns_core::McpServerAuthMode::None,
+                protocol_mode: everruns_core::McpProtocolMode::Auto,
+                oauth_provider_id: None,
+                acts_as,
+                api_key: None,
+                headers: std::collections::HashMap::new(),
+            };
 
-        let proto = resolved_mcp_server_to_proto(resolved, std::collections::HashMap::new());
+            let proto = resolved_mcp_server_to_proto(resolved, std::collections::HashMap::new());
 
-        assert_eq!(proto.acts_as, "user");
+            assert_eq!(proto.acts_as, wire_value);
+            assert_eq!(proto.auth_mode, "none");
+            assert!(proto.oauth_provider_id.is_none());
+            assert!(proto.api_key.is_none());
+        }
     }
     #[test]
     fn ambiguous_bindings_do_not_rewrite_a_different_proto_tool() {
