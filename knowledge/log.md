@@ -1,5 +1,19 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-17
+
+* **Which identity an MCP server acts under was a side effect of its auth mode,
+  not a stated property.** `api_key` happened to be org-wide, `oauth` happened to
+  be per-user, and `agent_identity_connections` silently shadowed
+  `user_connections` whenever a session carried an identity - so the account a
+  write landed under could change with session wiring, with no config change and
+  no event saying so. There was also no way to express "the agent itself", which
+  is what scheduled work and the Linear case need. `agent-mcp-attachments.md`
+  proposes `actsAs` (`none`/`service`/`user`) as an explicit, fail-closed
+  property of each attachment, demotes org MCP servers to presets that supply
+  transport and OAuth client registration only, and restricts unattended runs to
+  `service` so they stop borrowing whichever human the session resolved to.
+
 ## 2026-09-16
 
 * **Blueprint config schemas were hand-written JSON that nothing validated.**
