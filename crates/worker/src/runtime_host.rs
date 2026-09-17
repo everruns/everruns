@@ -81,12 +81,24 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             && !has_authorization(&headers)
             && let Some(provider) = info.oauth_provider_id.as_deref()
         {
-            match self
-                .adapters
-                .connection_resolver()
-                .get_connection_token(self.session_id.into(), provider)
-                .await
-            {
+            // An attachment that declares an acting identity resolves through
+            // the `actsAs`-aware lookup, which reads exactly one store and has
+            // no fallback. Attachments that declare none (legacy org-level MCP
+            // servers and inline scoped entries) keep the existing lookup, so
+            // configs predating `actsAs` behave exactly as they do today
+            // (EVE-1029).
+            let resolver = self.adapters.connection_resolver();
+            let resolved = if info.acts_as.is_none() {
+                resolver
+                    .get_connection_token(self.session_id.into(), provider)
+                    .await
+            } else {
+                resolver
+                    .get_mcp_connection_token(self.session_id.into(), provider, info.acts_as)
+                    .await
+            };
+
+            match resolved {
                 Ok(Some(token)) => {
                     headers.insert("Authorization".to_string(), format!("Bearer {token}"));
                 }

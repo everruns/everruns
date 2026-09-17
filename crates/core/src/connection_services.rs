@@ -38,6 +38,37 @@ pub trait UserConnectionResolver: Send + Sync {
         provider: &str,
     ) -> Result<Option<String>>;
 
+    /// Resolve a decrypted MCP connection token as a pure function of the
+    /// attachment's `actsAs`.
+    ///
+    /// This is deliberately *not* `get_connection_token`: that one prefers an
+    /// agent identity grant and falls back to the session owner's user grant,
+    /// so the remote account a write lands under can change because session
+    /// wiring changed. For MCP the acting identity is configuration, so each
+    /// `actsAs` reads exactly one store and nothing else (EVE-1029, D2 of
+    /// `knowledge/integrations/agent-mcp-attachments.md`):
+    ///
+    /// - [`McpServerActsAs::None`] reads no connection store at all.
+    /// - [`McpServerActsAs::Service`] reads only the agent identity's grant.
+    /// - [`McpServerActsAs::User`] reads only the invoking user's grant, and
+    ///   only when a human actually initiated the session.
+    ///
+    /// `Ok(None)` means "no credential", which callers surface as
+    /// `connection_required` rather than an unauthenticated request.
+    ///
+    /// THREAT[TM-TOOL-041]: the default implementation is fail-closed on
+    /// purpose. A resolver that has not opted in must never silently fall back
+    /// to the identity-preferring lookup, because that is the substitution this
+    /// method exists to remove.
+    async fn get_mcp_connection_token(
+        &self,
+        _session_id: SessionId,
+        _provider: &str,
+        _acts_as: crate::mcp_server::McpServerActsAs,
+    ) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Resolve the user ID of the connection used for a session/provider pair.
     ///
     /// This is used by leased resources to bind cleanup to the same provider

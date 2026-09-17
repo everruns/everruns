@@ -167,9 +167,35 @@ async fn resolve_matched_scoped_mcp_server(
             .ok_or_else(|| {
                 anyhow!("Catalog MCP server preset '{preset_name}' is missing or not active")
             })?;
+        // The catalog row's own id is the connection-store key; the descriptor
+        // id is rewritten below to the session-scoped one, so capture it first.
+        let preset_server_id = resolved.id;
         resolved.id = scoped_mcp_server_uuid(session_id, &name);
         resolved.name = name;
         resolved.acts_as = server.acts_as;
+
+        if !server.acts_as.is_none() {
+            // A non-`none` attachment resolves its credential from a connection
+            // store keyed by the preset, never from the preset's own config.
+            resolved.auth_mode = McpServerAuthMode::OAuth;
+            resolved.oauth_provider_id =
+                Some(everruns_core::mcp_oauth_provider_id_for_uuid(
+                    preset_server_id,
+                ));
+
+            if server.acts_as == McpServerActsAs::User {
+                // THREAT[TM-TOOL-041]: a `user` attachment can never carry
+                // service auth. Dropping these here rather than at validation
+                // means a config written before validation existed, or written
+                // straight to the database, still cannot present an org-held
+                // credential as the invoking user (EVE-1029, D2).
+                resolved.api_key = None;
+                resolved
+                    .headers
+                    .retain(|key, _| !key.eq_ignore_ascii_case("authorization"));
+            }
+        }
+
         return Ok(Some(resolved));
     }
 
@@ -1131,7 +1157,7 @@ mod tests {
     #[tokio::test]
     async fn two_logical_names_can_resolve_the_same_catalog_preset() {
         let db = Arc::new(StorageBackend::in_memory());
-        seed_catalog_server(&db, "linear", true).await;
+        let preset_id = seed_catalog_server(&db, "linear", true).await;
         let service = McpServerService::new(db, None);
         let harness = test_harness();
         let agent = test_agent();
@@ -1147,6 +1173,7 @@ mod tests {
             ),
         ]);
 
+        let mut descriptor_ids = Vec::new();
         for (prefix, acts_as) in [
             ("issues", McpServerActsAs::Service),
             ("projects", McpServerActsAs::User),
@@ -1164,13 +1191,115 @@ mod tests {
             .unwrap();
             assert_eq!(resolved.name, prefix);
             assert_eq!(resolved.url, "http://8.8.8.8/mcp");
-            assert_eq!(resolved.auth_mode, McpServerAuthMode::None);
             assert_eq!(resolved.protocol_mode, McpProtocolMode::V2025June);
-            assert!(resolved.oauth_provider_id.is_none());
-            assert!(resolved.api_key.is_none());
             assert_eq!(resolved.acts_as, acts_as);
             assert_eq!(resolved.headers.get("X-Catalog"), Some(&"value".into()));
+            // Both attachments declare an acting identity, so both point at the
+            // connection store keyed by the shared preset (EVE-1029). The
+            // descriptor still carries no credential of its own.
+            assert_eq!(resolved.auth_mode, McpServerAuthMode::OAuth);
+            assert_eq!(
+                resolved.oauth_provider_id.as_deref(),
+                Some(everruns_core::mcp_oauth_provider_id_for_uuid(preset_id.uuid()).as_str())
+            );
+            assert!(resolved.api_key.is_none());
+            descriptor_ids.push(resolved.id);
         }
+
+        // Same preset, same provider key, but distinct session-scoped
+        // descriptor ids — that is what makes two logical names independent.
+        assert_ne!(descriptor_ids[0], descriptor_ids[1]);
+    }
+
+    #[tokio::test]
+    async fn user_attachment_discards_preset_api_key_and_authorization_header() {
+        // A preset carrying service auth, of the shape a config written before
+        // validation existed could still have.
+        let db = Arc::new(StorageBackend::in_memory());
+        let settings = crate::domains::mcp_servers::service::McpServerSettings {
+            auth_mode: McpServerAuthMode::OAuth,
+            protocol_mode: McpProtocolMode::V2025June,
+            oauth: Some(crate::domains::mcp_servers::service::McpServerOAuthSettings::default()),
+        };
+        db.create_mcp_server(
+            everruns_core::DEFAULT_ORG_ID,
+            CreateMcpServerRow {
+                name: "linear".to_string(),
+                description: None,
+                url: "http://8.8.8.8/mcp".to_string(),
+                transport_type: "http".to_string(),
+                api_key_encrypted: None,
+                headers: Some(serde_json::json!({
+                    "X-Catalog": "value",
+                    "Authorization": "Bearer org-service-token",
+                })),
+                settings: Some(serde_json::to_value(settings).unwrap()),
+            },
+        )
+        .await
+        .unwrap();
+        let service = McpServerService::new(db, None);
+        let harness = test_harness();
+        let agent = test_agent();
+        let mut session = test_session(harness.id, agent.public_id);
+        session.mcp_servers = ScopedMcpServers::from([(
+            "projects".into(),
+            catalog_server("linear", McpServerActsAs::User),
+        )]);
+
+        let resolved = resolve_scoped_mcp_server(
+            &service,
+            everruns_core::DEFAULT_ORG_ID,
+            &harness,
+            Some(&agent),
+            &session,
+            "projects",
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+        // THREAT[TM-TOOL-041]: a `user` attachment can never carry service auth.
+        assert!(
+            !has_authorization_header(&resolved.headers),
+            "org-held Authorization must not survive onto a user attachment"
+        );
+        assert!(resolved.api_key.is_none());
+        // Non-credential headers are untouched, so this is a scrub, not a wipe.
+        assert_eq!(resolved.headers.get("X-Catalog"), Some(&"value".into()));
+    }
+
+    #[tokio::test]
+    async fn none_attachment_keeps_preset_transport_and_literal_headers() {
+        let db = Arc::new(StorageBackend::in_memory());
+        seed_catalog_server(&db, "linear", false).await;
+        let service = McpServerService::new(db, None);
+        let harness = test_harness();
+        let agent = test_agent();
+        let mut session = test_session(harness.id, agent.public_id);
+        session.mcp_servers = ScopedMcpServers::from([(
+            "docs".into(),
+            catalog_server("linear", McpServerActsAs::None),
+        )]);
+
+        let resolved = resolve_scoped_mcp_server(
+            &service,
+            everruns_core::DEFAULT_ORG_ID,
+            &harness,
+            Some(&agent),
+            &session,
+            "docs",
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+        // `none` reads no connection store, so it must not be wired to one.
+        assert_eq!(resolved.acts_as, McpServerActsAs::None);
+        assert_eq!(resolved.auth_mode, McpServerAuthMode::None);
+        assert!(resolved.oauth_provider_id.is_none());
+        assert!(resolved.api_key.is_none());
+        assert_eq!(resolved.headers.get("X-Catalog"), Some(&"value".into()));
     }
     #[tokio::test]
     async fn catalog_preview_discovery_never_uses_legacy_connection_tokens() {

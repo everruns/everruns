@@ -141,6 +141,85 @@ impl InMemoryDatabase {
             .and_then(|conn| conn.access_token_encrypted.clone()))
     }
 
+    /// Whether a human actually initiated this session.
+    ///
+    /// True only when the owning principal is itself a `user` principal. See
+    /// the Postgres twin for why the denormalized `resolved_owner_user_id` is
+    /// not the right signal (EVE-1029).
+    pub async fn session_has_human_initiator(&self, session_id: SessionId) -> Result<bool> {
+        let sessions = self.sessions.read();
+        let Some(session) = sessions.get(&session_id) else {
+            return Ok(false);
+        };
+        let owner_principal_id = session.owner_principal_id;
+        drop(sessions);
+
+        let principals = self.principals.read();
+        Ok(principals
+            .get(&owner_principal_id)
+            .is_some_and(|p| p.kind == "user"))
+    }
+
+    /// Get the agent identity's connection for a session/provider pair.
+    ///
+    /// Reads identity connections only — never a user connection (EVE-1029).
+    pub async fn get_agent_identity_connection_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<Vec<u8>>> {
+        let sessions = self.sessions.read();
+        let Some(session) = sessions.get(&session_id) else {
+            return Ok(None);
+        };
+        let Some(identity_id) = session.agent_identity_id else {
+            return Ok(None);
+        };
+        drop(sessions);
+
+        let id_connections = self.agent_identity_connections.read();
+        Ok(id_connections
+            .values()
+            .find(|c| {
+                c.agent_identity_id == identity_id
+                    && c.provider == provider
+                    && c.access_token_encrypted.is_some()
+            })
+            .and_then(|c| c.access_token_encrypted.clone()))
+    }
+
+    /// Get the invoking user's own connection row for a session/provider pair.
+    ///
+    /// Reads user connections only — an identity grant for the same provider
+    /// neither satisfies nor suppresses this lookup (EVE-1029).
+    pub async fn get_owner_user_connection_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<UserConnectionRow>> {
+        let sessions = self.sessions.read();
+        let Some(session) = sessions.get(&session_id) else {
+            return Ok(None);
+        };
+        let Some(owner_user_id) = session.resolved_owner_user_id else {
+            return Ok(None);
+        };
+        drop(sessions);
+
+        let connections = self.user_connections.read();
+        let mut matched: Vec<_> = connections
+            .values()
+            .filter(|conn| {
+                conn.user_id == owner_user_id
+                    && conn.provider == provider
+                    && conn.access_token_encrypted.is_some()
+            })
+            .cloned()
+            .collect();
+        matched.sort_by_key(|conn| conn.created_at);
+        Ok(matched.into_iter().next())
+    }
+
     /// Get provider metadata for a session/provider pair.
     /// Same resolution order as get_connection_token_for_session.
     pub async fn get_connection_metadata_for_session(

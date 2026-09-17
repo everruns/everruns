@@ -488,6 +488,104 @@ impl UserConnectionResolver for DbConnectionResolver {
         }
     }
 
+    /// Resolve an MCP credential as a pure function of `acts_as`.
+    ///
+    /// Each arm reads exactly one store. There is deliberately no path from one
+    /// arm to another and no fallback to [`Self::get_connection_token`], whose
+    /// identity-preferring lookup is the substitution EVE-1029 removes. The
+    /// fallback stays for the non-MCP providers that depend on it today; MCP no
+    /// longer routes through it.
+    ///
+    /// THREAT[TM-TOOL-041]: resolver-side invariant, not validation. It must
+    /// hold for configs written before validation existed or written straight
+    /// to the database, so it is enforced here rather than at the write path.
+    async fn get_mcp_connection_token(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+        acts_as: everruns_core::McpServerActsAs,
+    ) -> Result<Option<String>> {
+        let Some(server_id) = Self::parse_mcp_oauth_provider(provider) else {
+            return Ok(None);
+        };
+
+        match acts_as {
+            // Reads no connection store at all. Literal headers only, and those
+            // are applied by the caller, not here.
+            everruns_core::McpServerActsAs::None => Ok(None),
+
+            // Only the agent identity's own grant. Never a user connection, and
+            // never a session-scoped grant — those are authorized by a human in
+            // the session, which is user auth wearing a service label.
+            everruns_core::McpServerActsAs::Service => {
+                let encrypted = self
+                    .db
+                    .get_agent_identity_connection_for_session(session_id, provider)
+                    .await
+                    .map_err(|e| {
+                        AgentLoopError::store(format!("Failed to resolve identity grant: {e}"))
+                    })?;
+
+                match encrypted {
+                    Some(blob) => {
+                        let token = self.encryption.decrypt_to_string(&blob).map_err(|e| {
+                            AgentLoopError::store(format!("Failed to decrypt identity grant: {e}"))
+                        })?;
+                        Ok(Some(token))
+                    }
+                    None => Ok(None),
+                }
+            }
+
+            // Only the invoking user's grant, and only when a human actually
+            // initiated the session. An unattended run has no invoking user to
+            // act as, so it fails closed instead of borrowing the owner's.
+            everruns_core::McpServerActsAs::User => {
+                if !self
+                    .db
+                    .session_has_human_initiator(session_id)
+                    .await
+                    .map_err(|e| {
+                        AgentLoopError::store(format!("Failed to resolve session initiator: {e}"))
+                    })?
+                {
+                    return Ok(None);
+                }
+
+                // A session-scoped grant is authorized in-session by the
+                // invoking human, so it is that user's credential and is
+                // preferred while it lasts.
+                if let Some(credentials) = self
+                    .db
+                    .get_mcp_oauth_session_credentials(session_id, server_id)
+                    .await
+                    .map_err(|e| {
+                        AgentLoopError::store(format!("Failed to resolve session OAuth grant: {e}"))
+                    })?
+                {
+                    return self
+                        .resolve_session_oauth_token(session_id, server_id, credentials)
+                        .await;
+                }
+
+                let Some(row) = self
+                    .db
+                    .get_owner_user_connection_for_session(session_id, provider)
+                    .await
+                    .map_err(|e| {
+                        AgentLoopError::store(format!("Failed to resolve user connection: {e}"))
+                    })?
+                else {
+                    return Ok(None);
+                };
+
+                let user_id = row.user_id;
+                self.resolve_user_oauth_token(session_id, server_id, user_id, row)
+                    .await
+            }
+        }
+    }
+
     async fn get_connection_user(
         &self,
         session_id: SessionId,
@@ -698,6 +796,388 @@ mod tests {
         );
         let provider = format!("mcp_oauth_{server_id}");
         (db, encryption(), session.id, server_id, provider)
+    }
+
+
+    // ---------------------------------------------------------------
+    // EVE-1029: MCP credential resolution is a pure function of actsAs.
+    //
+    // The defect class here is reading the *wrong* store, so every test
+    // asserts both what was read and what was not. A happy-path assertion
+    // alone would pass just as well with the fallback still in place.
+    // ---------------------------------------------------------------
+
+    use everruns_core::McpServerActsAs;
+    use crate::storage::models::{CreateAgentIdentityConnectionRow, CreatePrincipalRow};
+    use crate::kernel_imports::AgentIdentityId;
+
+    /// A session whose owner principal really is a person.
+    const ATTENDED: &str = "user";
+    /// A session fired by a trigger/schedule: the owner principal is the
+    /// agent's own identity, which may still *resolve* to a human by lineage.
+    const UNATTENDED: &str = "agent_identity";
+
+    struct McpFixture {
+        db: StorageBackend,
+        encryption: EncryptionService,
+        session_id: SessionId,
+        provider: String,
+        user_id: Uuid,
+        identity_id: AgentIdentityId,
+    }
+
+    /// Seed a session with both stores populated unless told otherwise, so a
+    /// test that asserts "did not read X" is meaningful: X is always there to
+    /// be read incorrectly.
+    async fn mcp_setup(
+        owner_kind: &str,
+        with_user_grant: bool,
+        with_identity_grant: bool,
+    ) -> McpFixture {
+        let memory = Arc::new(InMemoryDatabase::new());
+        let db = StorageBackend::InMemory(memory);
+        let encryption = encryption();
+        let server_id = Uuid::now_v7();
+        db.create_mcp_server_with_id(
+            DEFAULT_ORG_ID,
+            server_id,
+            CreateMcpServerRow {
+                name: "linear".to_string(),
+                description: None,
+                url: "https://mcp.linear.app/mcp".to_string(),
+                transport_type: "streamable_http".to_string(),
+                api_key_encrypted: None,
+                headers: None,
+                settings: Some(serde_json::json!({
+                    "auth_mode": "o_auth",
+                    "oauth": {
+                        "token_endpoint": "https://api.linear.app/oauth/token",
+                        "client_id": "test-client"
+                    }
+                })),
+            },
+        )
+        .await
+        .unwrap();
+
+        let user_id = Uuid::now_v7();
+        let identity_id = AgentIdentityId::from_seed(7);
+        let owner_principal_id = PrincipalId::from_seed(42);
+        db.create_principal(CreatePrincipalRow {
+            id: owner_principal_id,
+            org_id: DEFAULT_ORG_ID,
+            kind: owner_kind.to_string(),
+            subject_id: Some(Uuid::now_v7()),
+            parent_principal_id: None,
+            // Populated even for the unattended case on purpose: this is the
+            // lineage an unattended run would borrow a human through.
+            resolved_user_id: Some(user_id),
+            metadata: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+
+        let mut input = session_input(Some(user_id));
+        input.owner_principal_id = owner_principal_id;
+        input.agent_identity_id = Some(identity_id);
+        let session = db.create_session(input).await.unwrap();
+
+        let provider = format!("mcp_oauth_{server_id}");
+
+        if with_user_grant {
+            db.upsert_user_connection(CreateUserConnectionRow {
+                user_id,
+                provider: provider.clone(),
+                connection_type: "oauth".to_string(),
+                provider_user_id: None,
+                provider_username: Some("the-human".to_string()),
+                access_token_encrypted: Some(
+                    encryption.encrypt_string("user-token").unwrap(),
+                ),
+                refresh_token_encrypted: None,
+                scopes: None,
+                expires_at: None,
+                installation_id: None,
+                provider_metadata: None,
+            })
+            .await
+            .unwrap();
+        }
+
+        if with_identity_grant {
+            db.upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
+                agent_identity_id: identity_id,
+                provider: provider.clone(),
+                connection_type: "oauth".to_string(),
+                provider_user_id: None,
+                provider_username: Some("the-agent".to_string()),
+                access_token_encrypted: Some(
+                    encryption.encrypt_string("identity-token").unwrap(),
+                ),
+                refresh_token_encrypted: None,
+                scopes: None,
+                expires_at: None,
+                installation_id: None,
+                provider_metadata: None,
+            })
+            .await
+            .unwrap();
+        }
+
+        McpFixture {
+            db,
+            encryption,
+            session_id: session.id,
+            provider,
+            user_id,
+            identity_id,
+        }
+    }
+
+    fn resolver_for(fixture: &McpFixture) -> DbConnectionResolver {
+        // No grant in these fixtures is expired, so the exchange must never be
+        // called; a refresh here would mean the resolver took a path it should
+        // not have.
+        let exchange = Arc::new(FakeRefreshExchange {
+            calls: AtomicUsize::new(0),
+            delay: StdDuration::ZERO,
+            fail: false,
+        });
+        DbConnectionResolver::with_oauth_refresh(
+            fixture.db.clone(),
+            fixture.encryption.clone(),
+            None,
+            exchange,
+        )
+    }
+
+    #[tokio::test]
+    async fn user_attachment_resolves_the_invoking_user_and_never_the_identity_grant() {
+        let fixture = mcp_setup(ATTENDED, true, true).await;
+        let resolver = resolver_for(&fixture);
+
+        let token = resolver
+            .get_mcp_connection_token(fixture.session_id, &fixture.provider, McpServerActsAs::User)
+            .await
+            .unwrap();
+
+        assert_eq!(token.as_deref(), Some("user-token"));
+        // The Warp-confusion case: the session carries an identity holding a
+        // grant for this very preset, and it must not have been consulted.
+        assert_ne!(token.as_deref(), Some("identity-token"));
+    }
+
+    #[tokio::test]
+    async fn user_attachment_without_user_grant_fails_closed_leaving_identity_grant_untouched() {
+        let fixture = mcp_setup(ATTENDED, false, true).await;
+        let resolver = resolver_for(&fixture);
+
+        let token = resolver
+            .get_mcp_connection_token(fixture.session_id, &fixture.provider, McpServerActsAs::User)
+            .await
+            .unwrap();
+
+        assert_eq!(token, None, "must fail closed rather than borrow the identity grant");
+        // The identity grant is still there, unread and unmodified.
+        let identity = fixture
+            .db
+            .get_agent_identity_connection_for_session(fixture.session_id, &fixture.provider)
+            .await
+            .unwrap()
+            .expect("identity grant should be untouched");
+        assert_eq!(
+            fixture.encryption.decrypt_to_string(&identity).unwrap(),
+            "identity-token"
+        );
+    }
+
+    #[tokio::test]
+    async fn service_attachment_resolves_the_identity_and_never_the_user_grant() {
+        let fixture = mcp_setup(ATTENDED, true, true).await;
+        let resolver = resolver_for(&fixture);
+
+        let token = resolver
+            .get_mcp_connection_token(
+                fixture.session_id,
+                &fixture.provider,
+                McpServerActsAs::Service,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(token.as_deref(), Some("identity-token"));
+        assert_ne!(token.as_deref(), Some("user-token"));
+    }
+
+    #[tokio::test]
+    async fn service_attachment_without_identity_grant_fails_closed_despite_a_user_grant() {
+        let fixture = mcp_setup(ATTENDED, true, false).await;
+        let resolver = resolver_for(&fixture);
+
+        let token = resolver
+            .get_mcp_connection_token(
+                fixture.session_id,
+                &fixture.provider,
+                McpServerActsAs::Service,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            token, None,
+            "a service attachment must never spend the invoking user's token"
+        );
+        // The user grant is still there, unread.
+        let user_grant = fixture
+            .db
+            .get_user_connection(fixture.user_id, &fixture.provider)
+            .await
+            .unwrap();
+        assert!(user_grant.is_some(), "user grant should be untouched");
+    }
+
+    #[tokio::test]
+    async fn user_attachment_in_an_unattended_session_fails_closed_though_the_owner_holds_a_grant() {
+        // The owner principal is the agent identity, but its lineage resolves
+        // to a human who *does* hold a grant. That is precisely the borrow this
+        // rule forbids.
+        let fixture = mcp_setup(UNATTENDED, true, false).await;
+        let resolver = resolver_for(&fixture);
+
+        let token = resolver
+            .get_mcp_connection_token(fixture.session_id, &fixture.provider, McpServerActsAs::User)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            token, None,
+            "an unattended run has no invoking user and must not borrow one"
+        );
+        assert!(
+            !fixture
+                .db
+                .session_has_human_initiator(fixture.session_id)
+                .await
+                .unwrap()
+        );
+        // The grant it declined to spend is still present and resolvable for a
+        // genuinely attended session, so this is a refusal, not an absence.
+        assert!(
+            fixture
+                .db
+                .get_user_connection(fixture.user_id, &fixture.provider)
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn none_attachment_reads_no_connection_store_at_all() {
+        let fixture = mcp_setup(ATTENDED, true, true).await;
+        let resolver = resolver_for(&fixture);
+
+        let token = resolver
+            .get_mcp_connection_token(fixture.session_id, &fixture.provider, McpServerActsAs::None)
+            .await
+            .unwrap();
+
+        assert_eq!(token, None);
+        // Both stores are populated, so None here proves neither was consulted.
+        assert!(
+            fixture
+                .db
+                .get_user_connection(fixture.user_id, &fixture.provider)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            fixture
+                .db
+                .get_agent_identity_connection_for_session(fixture.session_id, &fixture.provider)
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn attended_session_is_decided_by_the_owner_principal_not_the_resolved_owner() {
+        // Both fixtures carry the same resolved_owner_user_id; only the owner
+        // principal's kind differs. If resolution ever regresses to reading the
+        // denormalized column, these two agree and this test fails.
+        let attended = mcp_setup(ATTENDED, true, false).await;
+        let unattended = mcp_setup(UNATTENDED, true, false).await;
+
+        assert!(
+            attended
+                .db
+                .session_has_human_initiator(attended.session_id)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !unattended
+                .db
+                .session_has_human_initiator(unattended.session_id)
+                .await
+                .unwrap()
+        );
+
+        let attended_session = attended
+            .db
+            .get_session_unscoped(attended.session_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let unattended_session = unattended
+            .db
+            .get_session_unscoped(unattended.session_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(attended_session.resolved_owner_user_id.is_some());
+        assert!(
+            unattended_session.resolved_owner_user_id.is_some(),
+            "the unattended session must still resolve a human, or this test proves nothing"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_non_mcp_provider_never_resolves_through_the_acts_as_path() {
+        let fixture = mcp_setup(ATTENDED, true, true).await;
+        let resolver = resolver_for(&fixture);
+
+        for acts_as in [
+            McpServerActsAs::None,
+            McpServerActsAs::Service,
+            McpServerActsAs::User,
+        ] {
+            let token = resolver
+                .get_mcp_connection_token(fixture.session_id, "github", acts_as)
+                .await
+                .unwrap();
+            assert_eq!(token, None, "{acts_as} must not resolve a non-MCP provider");
+        }
+    }
+
+    #[tokio::test]
+    async fn identity_grant_is_unreachable_from_a_session_without_that_identity() {
+        let fixture = mcp_setup(ATTENDED, false, true).await;
+        let other = mcp_setup(ATTENDED, false, false).await;
+
+        // Same identity id seed, different database: proves the lookup is
+        // session-scoped rather than keyed only by the identity.
+        assert_eq!(fixture.identity_id, other.identity_id);
+        assert!(
+            other
+                .db
+                .get_agent_identity_connection_for_session(other.session_id, &other.provider)
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test]
