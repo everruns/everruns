@@ -146,20 +146,30 @@ jobs:
               echo "Created and pushed $TAG"
             fi
 
-            # Record the newest existing Publish Crate run so we can detect the one
-            # this dispatch creates (gh workflow run does not return a run id).
-            BEFORE=$(gh run list --workflow=publish-crates.yml --limit=1 \
-              --json databaseId --jq '.[0].databaseId // 0')
-            gh workflow run publish-crates.yml \
-              -f package="$PKG" -f tag="$TAG" -f sha="$SHA"
+            # gh workflow run does not return a run ID. Give this dispatch a
+            # controller-unique identity, then accept only a workflow run whose
+            # event, package, tag, SHA, and correlation all match.
+            CORRELATION="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${i}-${SHA}"
+            gh workflow run publish-crates.yml --ref "$TAG" \
+              -f package="$PKG" -f tag="$TAG" -f sha="$SHA" \
+              -f correlation="$CORRELATION"
 
-            # Wait for the new run to appear, then follow it to a terminal state.
+            # The global run list may contain newer concurrent manual dispatches.
+            # The selector ignores every run except this exact trusted release.
             RUN_ID=""
             for _ in $(seq 1 30); do
               sleep 6
-              CAND=$(gh run list --workflow=publish-crates.yml --limit=1 \
-                --json databaseId --jq '.[0].databaseId // 0')
-              if [ "$CAND" != "$BEFORE" ] && [ "$CAND" != "0" ]; then RUN_ID="$CAND"; break; fi
+              gh run list --workflow=publish-crates.yml --event=workflow_dispatch \
+                --limit=100 --json databaseId,displayTitle,event,headSha \
+                > publish-runs.json
+              if CAND=$(python3 scripts/select_publish_run.py \
+                --package "$PKG" --tag "$TAG" --sha "$SHA" \
+                --correlation "$CORRELATION" < publish-runs.json); then
+                RUN_ID="$CAND"
+                break
+              elif [ "$?" -eq 2 ]; then
+                exit 1
+              fi
             done
             if [ -z "$RUN_ID" ]; then
               echo "::error::Publish Crate run for $PKG did not start"; exit 1

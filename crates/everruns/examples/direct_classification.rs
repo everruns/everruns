@@ -1,7 +1,7 @@
 //! Ask for a judgment directly — no agent, no session, no history.
 //!
 //! The counterpart to `direct_llm`: same shape, different contract. A model
-//! answers in prose you have to parse; a judge answers in numbers your code
+//! answers in prose you have to parse; a classifier answers in numbers your code
 //! can act on.
 //!
 //! Offline (no API key):
@@ -10,9 +10,9 @@
 //! ```
 //! TypeSafe System One (requires TYPESAFE_API_KEY):
 //! ```text
-//! cargo run -p everruns --features jev --example direct_classification -- --live
+//! cargo run -p everruns --example direct_classification -- --live
 //! ```
-//! An optional positional argument replaces the content being judged.
+//! An optional positional argument replaces the content being classified.
 
 use everruns::Classifier;
 
@@ -31,16 +31,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("Usage: direct_classification [--live] [CONTENT]".into());
     }
 
-    let judge = if live {
-        #[cfg(feature = "jev")]
-        {
-            println!("TypeSafe System One over HTTP.\n");
-            Classifier::new(everruns::TypeSafeClassifier::from_env()?)
-        }
-        #[cfg(not(feature = "jev"))]
-        {
-            return Err("Live mode requires: cargo run -p everruns --features jev --example direct_classification -- --live".into());
-        }
+    let classifier = if live {
+        println!("TypeSafe System One over HTTP.\n");
+        Classifier::new(everruns_integrations_typesafe::TypeSafeClassifier::from_env()?)
     } else {
         println!("Offline simulator: fixed answers; no model inference.\n");
         Classifier::simulated(0.87)
@@ -48,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // One question, one number. This is the whole API for the common case.
     println!("> {content}");
-    let urgency = judge
+    let urgency = classifier
         .probability("Does this convey urgency?", content.clone())
         .await?;
     println!("urgency: {urgency:.2}\n");
@@ -56,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Independent questions ride one request and answer in parallel, so asking
     // several is the cheap path. Ids label answers for this code and are never
     // shown to the model, so each question reads on its own.
-    let answers = judge
+    let answers = classifier
         .about(content)
         .noul("urgent", "Does this convey urgency?")
         .score(

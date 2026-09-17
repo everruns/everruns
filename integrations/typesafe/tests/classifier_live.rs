@@ -1,6 +1,6 @@
 //! Live tests for the deployment classifier.
 //!
-//! Gated behind `typesafe-live-tests`, which also pulls in the implementation:
+//! Gated behind `typesafe-live-tests`:
 //!
 //!   cargo test -p everruns-integrations-typesafe --features live-tests
 //!

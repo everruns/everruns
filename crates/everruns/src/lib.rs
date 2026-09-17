@@ -96,9 +96,6 @@ pub use everruns_integrations_bashkit::BashkitShell;
 pub use everruns_integrations_duckduckgo::DuckDuckGo;
 #[cfg(feature = "filesystem")]
 pub use everruns_integrations_filesystem::FileSystem;
-/// The TypeSafe-backed classifier, for [`Classifier::new`].
-#[cfg(feature = "jev")]
-pub use everruns_integrations_typesafe::TypeSafeClassifier;
 #[cfg(feature = "web-fetch")]
 pub use everruns_integrations_web_fetch::WebFetch;
 pub use history::{

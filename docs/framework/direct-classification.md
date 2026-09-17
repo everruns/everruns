@@ -12,7 +12,8 @@ A classifier answers them as numbers instead, and the decision stays in your
 code:
 
 ```rust
-use everruns::{Classifier, TypeSafeClassifier};
+use everruns::Classifier;
+use everruns_integrations_typesafe::TypeSafeClassifier;
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 let judge = Classifier::new(TypeSafeClassifier::from_env()?);
@@ -134,11 +135,17 @@ assert!(p > 0.9);
 ## Credentials
 
 `TypeSafeClassifier::from_env()` reads your application's own
-`TYPESAFE_API_KEY`, and requires the `jev` feature:
+`TYPESAFE_API_KEY`. The classifier itself comes from the integration crate, so
+add it alongside `everruns`:
 
 ```toml
-everruns = { version = "0.22", features = ["jev"] }
+everruns = "0.22"
+everruns-integrations-typesafe = { version = "0.1", default-features = false }
 ```
+
+`default-features = false` leaves out the hosted connector catalog, which only
+the platform needs. `everruns` itself stays vendor-free: `Classifier::new`
+takes any `ClassifierService`, exactly as `Model::new` takes any provider.
 
 A deployment running the Everruns platform configures a separate
 `UTILITY_TYPESAFE_API_KEY` for its [guardrails](/capabilities/guardrails/) — a

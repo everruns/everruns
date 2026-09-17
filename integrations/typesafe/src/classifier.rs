@@ -1,7 +1,7 @@
 //! Deployment-owned TypeSafe classifier wiring.
 //!
 //! Core owns the neutral contract (`ClassifierService`); this module owns the
-//! vendor. Nothing above core learns that the judgments come from TypeSafe.
+//! vendor. Nothing above core learns that the classifications come from TypeSafe.
 //!
 //! It lives in this crate rather than in `everruns-host` so the vendor client
 //! needs only one home: the platform composes the service from above

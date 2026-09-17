@@ -8,6 +8,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 python3 scripts/sync-publish-pin-versions.py --check
+python3 scripts/plan-crate-release.py --self-test
 
 python3 - <<'PY'
 import importlib.util
@@ -21,6 +22,7 @@ import tomllib
 repo = pathlib.Path.cwd()
 workflow = (repo / ".github/workflows/publish-crates.yml").read_text()
 release = (repo / ".github/workflows/release.yml").read_text()
+crate_release = (repo / ".github/workflows/crate-release.yml").read_text()
 failures: list[str] = []
 
 
@@ -36,6 +38,13 @@ require('cargo publish --locked --no-verify --package "$PACKAGE"' in workflow, "
 require("CRATES=(" not in workflow, "workflow must not retain a bulk crate publish list")
 require("workspace package version" not in workflow.lower(), "workflow must not validate against the product workspace version")
 require("publish-crates" not in release and "publish-crate" not in release, "product releases must not dispatch library publishing")
+require("run-name: Publish " in workflow, "publish workflow must expose correlated inputs in its run name")
+require("correlation:" in workflow, "publish workflow must require a correlation input")
+require('--ref "$TAG"' in crate_release, "crate controller must dispatch from the trusted package tag")
+require(
+    "scripts/select_publish_run.py" in crate_release,
+    "crate controller must select the uniquely correlated publish run",
+)
 
 metadata = json.loads(subprocess.check_output(
     ["cargo", "metadata", "--no-deps", "--format-version", "1"], text=True
@@ -60,6 +69,94 @@ spec = importlib.util.spec_from_file_location(
 )
 sync = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sync)
+
+packages = [
+    {
+        "name": "public-owner",
+        "manifest_path": "/repo/public-owner/Cargo.toml",
+        "publish": None,
+        "dependencies": [
+            {
+                "name": "private-target",
+                "path": "/repo/private-target",
+                "kind": None,
+                "optional": True,
+            },
+            {
+                "name": "private-dev-target",
+                "path": "/repo/private-dev-target",
+                "kind": "dev",
+                "optional": False,
+            },
+            {
+                "name": "registry-restricted-target",
+                "path": "/repo/registry-restricted-target",
+                "kind": None,
+                "optional": False,
+            },
+            {
+                "name": "explicit-crates-io-target",
+                "path": "/repo/explicit-crates-io-target",
+                "kind": None,
+                "optional": False,
+            },
+            {
+                "name": "private-target",
+                "path": "/repo/private-target",
+                "kind": "build",
+                "optional": False,
+            },
+        ],
+    },
+    {
+        "name": "private-target",
+        "manifest_path": "/repo/private-target/Cargo.toml",
+        "publish": [],
+        "dependencies": [],
+    },
+    {
+        "name": "registry-restricted-target",
+        "manifest_path": "/repo/registry-restricted-target/Cargo.toml",
+        "publish": ["internal"],
+        "dependencies": [],
+    },
+    {
+        "name": "explicit-crates-io-target",
+        "manifest_path": "/repo/explicit-crates-io-target/Cargo.toml",
+        "publish": ["crates-io"],
+        "dependencies": [],
+    },
+    {
+        "name": "private-dev-target",
+        "manifest_path": "/repo/private-dev-target/Cargo.toml",
+        "publish": [],
+        "dependencies": [],
+    },
+]
+require(sync.crates_io_publishable(packages[0]), "default publish target must include crates.io")
+require(
+    not sync.crates_io_publishable(packages[2]),
+    "registry-restricted package must not be treated as crates.io-publishable",
+)
+require(
+    sync.crates_io_publishable(packages[3]),
+    "package that explicitly allows crates-io must be treated as publishable",
+)
+private_failures = sync.private_dependency_failures(packages)
+require(
+    private_failures
+    == [
+        "public-owner: private-target is an optional normal path dependency on "
+        "non-crates.io workspace package private-target",
+        "public-owner: registry-restricted-target is a normal path dependency on "
+        "non-crates.io workspace package registry-restricted-target",
+        "public-owner: private-target is a build path dependency on non-crates.io "
+        "workspace package private-target",
+    ],
+    "crates.io packages must reject optional normal and build path dependencies "
+    "on private or registry-restricted workspace packages while permitting "
+    f"dev-only and crates.io edges, got {private_failures}",
+)
 
 manifest = tomllib.loads("""
 [dependencies]
@@ -115,6 +212,44 @@ with tempfile.TemporaryDirectory() as directory:
         not sync.rewrite_inline_dependency(fixture, "dev-dependencies", "everruns-host", "0.21.0"),
         "rewriting an already-current pin must report no change",
     )
+
+selector_spec = importlib.util.spec_from_file_location(
+    "select_publish_run", repo / "scripts/select_publish_run.py"
+)
+selector = importlib.util.module_from_spec(selector_spec)
+selector_spec.loader.exec_module(selector)
+package = "everruns-core"
+tag = "crate/everruns-core/v0.24.0"
+sha = "a" * 40
+correlation = f"100-1-4-{sha}"
+intended = {
+    "databaseId": 42,
+    "displayTitle": selector.expected_title(package, tag, sha, correlation),
+    "event": "workflow_dispatch",
+    "headSha": sha,
+}
+runs = [
+    {
+        "databaseId": 99,
+        "displayTitle": selector.expected_title(
+            "everruns-host",
+            "crate/everruns-host/v0.23.0",
+            sha,
+            f"manual-{sha}",
+        ),
+        "event": "workflow_dispatch",
+        "headSha": sha,
+    },
+    intended,
+]
+require(
+    selector.select_run(runs, package, tag, sha, correlation) == 42,
+    "newer concurrent unrelated dispatch must not displace the intended run",
+)
+require(
+    selector.select_run(runs, package, tag, "b" * 40, correlation) is None,
+    "publish-run selection must reject the wrong release SHA",
+)
 
 legacy_macros = repo / "crates/everruns-macros"
 require(not legacy_macros.exists(), "legacy crates/everruns-macros path must not exist")
