@@ -29,6 +29,27 @@ fn git(repository: &Path, args: &[&str]) {
 
 #[test]
 #[allow(deprecated)]
+fn duplicate_workspace_backend_keeps_emitting_legacy_build_error() {
+    let first_state = tempfile::tempdir().unwrap();
+    let second_state = tempfile::tempdir().unwrap();
+    let error = Agent::builder()
+        .workspace_backend(Arc::new(
+            LocalGitWorkspace::new(first_state.path()).unwrap(),
+        ))
+        .workspace_backend(Arc::new(
+            LocalGitWorkspace::new(second_state.path()).unwrap(),
+        ))
+        .build()
+        .expect_err("duplicate backend ids must fail");
+
+    assert!(matches!(
+        error,
+        everruns::BuildError::DuplicateWorkspaceProvider { .. }
+    ));
+}
+
+#[test]
+#[allow(deprecated)]
 fn deprecated_workspace_names_forward_to_backend_api() {
     fn implements_backend<T: everruns::WorkspaceProvider>() {}
     fn implements_prelude_backend<T: everruns::prelude::WorkspaceProvider>() {}
@@ -40,6 +61,14 @@ fn deprecated_workspace_names_forward_to_backend_api() {
     let _builder = Agent::builder().workspace_provider(backend);
     let _id: Option<everruns::WorkspaceProviderId> = None;
     let _prelude_id: Option<everruns::prelude::WorkspaceProviderId> = None;
+    assert_eq!(
+        everruns::WorkspaceError::BackendUnavailable("offline".into()).to_string(),
+        "workspace backend is unavailable: offline"
+    );
+    assert_eq!(
+        everruns::WorkspaceError::Backend("failed".into()).to_string(),
+        "workspace backend failed: failed"
+    );
 }
 
 fn repository() -> tempfile::TempDir {
@@ -123,15 +152,20 @@ async fn workspace_shorthand_is_one_explicitly_shared_reopenable_head() {
 }
 
 #[tokio::test]
+#[allow(deprecated)]
 async fn typed_resume_reopens_exact_head_and_isolation_is_enforced() {
     let repository = repository();
     let data = tempfile::tempdir().unwrap();
-    let provider_state = data.path().join("git-heads");
-    let provider = Arc::new(LocalGitWorkspace::new(&provider_state).unwrap());
-    let workspace = Workspace::open(provider.clone(), repository.path().to_string_lossy())
+    let backend_state = data.path().join("git-heads");
+    let backend = Arc::new(LocalGitWorkspace::new(&backend_state).unwrap());
+    let workspace = Workspace::open(backend.clone(), repository.path().to_string_lossy())
         .await
         .unwrap();
     let head = workspace.head("session").create().await.unwrap();
+    let legacy = head.provider();
+    let canonical = head.backend();
+    assert_eq!(legacy.id(), canonical.id());
+    assert!(Arc::ptr_eq(&legacy, &canonical));
     let environment = Environment::builder()
         .workspace(head.clone())
         .build()
@@ -158,12 +192,21 @@ async fn typed_resume_reopens_exact_head_and_isolation_is_enforced() {
     drop(session);
     drop(first_agent);
 
-    let reopened_provider = Arc::new(LocalGitWorkspace::new(&provider_state).unwrap());
+    let unavailable = restore(agent(config.clone()), session_id)
+        .await
+        .err()
+        .expect("unregistered workspace backend must fail");
+    assert!(matches!(
+        unavailable,
+        ResumeError::WorkspaceProviderUnavailable { .. }
+    ));
+
+    let reopened_backend = Arc::new(LocalGitWorkspace::new(&backend_state).unwrap());
     let resumed_agent = Agent::builder()
         .instructions("Be concise.")
         .model(Model::simulated("ok"))
         .local(config)
-        .workspace_backend(reopened_provider)
+        .workspace_backend(reopened_backend)
         .build()
         .unwrap();
     let resumed = restore(resumed_agent, session_id).await.unwrap();
@@ -178,7 +221,7 @@ async fn typed_resume_reopens_exact_head_and_isolation_is_enforced() {
         .instructions("Be concise.")
         .model(Model::simulated("ok"))
         .local(LocalConfig::new(data.path().join("runtime")))
-        .workspace_backend(Arc::new(LocalGitWorkspace::new(&provider_state).unwrap()))
+        .workspace_backend(Arc::new(LocalGitWorkspace::new(&backend_state).unwrap()))
         .build()
         .unwrap();
     let missing = restore(missing_agent, session_id)
@@ -192,11 +235,64 @@ async fn typed_resume_reopens_exact_head_and_isolation_is_enforced() {
 }
 
 #[tokio::test]
+#[allow(deprecated)]
+async fn workspace_backend_failures_keep_emitting_legacy_workspace_errors() {
+    let data = tempfile::tempdir().unwrap();
+    let file = data.path().join("not-a-directory");
+    std::fs::write(&file, "file").unwrap();
+    let unavailable =
+        LocalGitWorkspace::new(file.join("state")).expect_err("invalid state parent must fail");
+    assert!(matches!(
+        unavailable,
+        everruns::WorkspaceError::ProviderUnavailable(_)
+    ));
+
+    let state = tempfile::tempdir().unwrap();
+    let not_repository = tempfile::tempdir().unwrap();
+    let backend = Arc::new(LocalGitWorkspace::new(state.path()).unwrap());
+    let failure = Workspace::open(backend, not_repository.path().to_string_lossy())
+        .await
+        .expect_err("non-repository locator must fail");
+    assert!(matches!(failure, everruns::WorkspaceError::Provider(_)));
+}
+
+#[tokio::test]
+#[allow(deprecated)]
+async fn backend_identity_conflicts_keep_emitting_legacy_session_error() {
+    let repository = repository();
+    let configured_state = tempfile::tempdir().unwrap();
+    let selected_state = tempfile::tempdir().unwrap();
+    let configured = Arc::new(LocalGitWorkspace::new(configured_state.path()).unwrap());
+    let selected = Arc::new(LocalGitWorkspace::new(selected_state.path()).unwrap());
+    let workspace = Workspace::open(selected, repository.path().to_string_lossy())
+        .await
+        .unwrap();
+    let environment = Environment::builder()
+        .workspace(workspace.head("conflict").create().await.unwrap())
+        .build()
+        .unwrap();
+    let agent = Agent::builder()
+        .instructions("Be concise.")
+        .model(Model::simulated("ok"))
+        .workspace_backend(configured)
+        .build()
+        .unwrap();
+    let error = create_session(agent)
+        .environment(environment)
+        .start()
+        .await
+        .err()
+        .expect("different backend instance with the same id must fail");
+
+    assert_eq!(error, SessionEnvironmentError::ProviderConflict);
+}
+
+#[tokio::test]
 async fn shared_head_requires_explicit_shared_creation() {
     let repository = repository();
     let data = tempfile::tempdir().unwrap();
-    let provider = Arc::new(LocalGitWorkspace::new(data.path().join("heads")).unwrap());
-    let workspace = Workspace::open(provider, repository.path().to_string_lossy())
+    let backend = Arc::new(LocalGitWorkspace::new(data.path().join("heads")).unwrap());
+    let workspace = Workspace::open(backend, repository.path().to_string_lossy())
         .await
         .unwrap();
     let shared = workspace.head("shared").shared().create().await.unwrap();
@@ -224,8 +320,8 @@ async fn shared_head_requires_explicit_shared_creation() {
 async fn workspace_scoped_compute_extension_addresses_the_selected_head() {
     let repository = repository();
     let data = tempfile::tempdir().unwrap();
-    let provider = Arc::new(LocalGitWorkspace::new(data.path().join("heads")).unwrap());
-    let workspace = Workspace::open(provider, repository.path().to_string_lossy())
+    let backend = Arc::new(LocalGitWorkspace::new(data.path().join("heads")).unwrap());
+    let workspace = Workspace::open(backend, repository.path().to_string_lossy())
         .await
         .unwrap();
     let head = workspace.head("compute").create().await.unwrap();
@@ -267,13 +363,13 @@ async fn workspace_scoped_compute_extension_addresses_the_selected_head() {
 async fn head_filesystem_keeps_policy_and_symlink_containment() {
     let repository = repository();
     let data = tempfile::tempdir().unwrap();
-    let provider_state = data.path().join("heads");
-    let provider = Arc::new(LocalGitWorkspace::new(&provider_state).unwrap());
-    let workspace = Workspace::open(provider, repository.path().to_string_lossy())
+    let backend_state = data.path().join("heads");
+    let backend = Arc::new(LocalGitWorkspace::new(&backend_state).unwrap());
+    let workspace = Workspace::open(backend, repository.path().to_string_lossy())
         .await
         .unwrap();
     let readonly_head = workspace.head("readonly").create().await.unwrap();
-    let readonly_path = provider_state
+    let readonly_path = backend_state
         .join("worktrees")
         .join(workspace.id().to_string())
         .join(readonly_head.id().to_string());
@@ -308,7 +404,7 @@ async fn head_filesystem_keeps_policy_and_symlink_containment() {
     assert!(!readonly_path.join("blocked.txt").exists());
 
     let writable_head = workspace.head("writable").create().await.unwrap();
-    let writable_path = provider_state
+    let writable_path = backend_state
         .join("worktrees")
         .join(workspace.id().to_string())
         .join(writable_head.id().to_string());
@@ -353,9 +449,9 @@ async fn head_filesystem_keeps_policy_and_symlink_containment() {
 async fn concurrent_sessions_write_separate_heads_without_collisions() {
     let repository = repository();
     let data = tempfile::tempdir().unwrap();
-    let provider_state = data.path().join("heads");
-    let provider = Arc::new(LocalGitWorkspace::new(&provider_state).unwrap());
-    let workspace = Workspace::open(provider, repository.path().to_string_lossy())
+    let backend_state = data.path().join("heads");
+    let backend = Arc::new(LocalGitWorkspace::new(&backend_state).unwrap());
+    let workspace = Workspace::open(backend, repository.path().to_string_lossy())
         .await
         .unwrap();
     let left = workspace.head("left").create().await.unwrap();
@@ -411,7 +507,7 @@ async fn concurrent_sessions_write_separate_heads_without_collisions() {
     right_result.unwrap();
 
     let worktree = |head_id: WorkspaceHeadId| {
-        provider_state
+        backend_state
             .join("worktrees")
             .join(workspace.id().to_string())
             .join(head_id.to_string())
@@ -504,8 +600,8 @@ async fn test_head() -> (
 ) {
     let repository = repository();
     let data = tempfile::tempdir().unwrap();
-    let provider = Arc::new(LocalGitWorkspace::new(data.path().join("git-heads")).unwrap());
-    let workspace = Workspace::open(provider, repository.path().to_string_lossy())
+    let backend = Arc::new(LocalGitWorkspace::new(data.path().join("git-heads")).unwrap());
+    let workspace = Workspace::open(backend, repository.path().to_string_lossy())
         .await
         .unwrap();
     let head = workspace.head("compute").create().await.unwrap();

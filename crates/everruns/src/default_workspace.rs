@@ -1,3 +1,4 @@
+#![allow(deprecated)] // Built-in backends emit legacy errors during their deprecation window.
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};

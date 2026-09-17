@@ -1,5 +1,7 @@
 //! Public local Git-worktree workspace backend.
 
+#![allow(deprecated)] // Built-in backends emit legacy errors during their deprecation window.
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

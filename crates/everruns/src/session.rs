@@ -722,9 +722,13 @@ pub enum SessionEnvironmentError {
     AlreadyStarted,
     /// The Session is already bound to a different Environment.
     AlreadyBound,
-    /// The Environment's workspace backend conflicts with the Agent configuration.
+    /// Canonical workspace-backend conflict error name.
+    ///
+    /// Environment binding continues to emit
+    /// [`ProviderConflict`](Self::ProviderConflict) during its deprecation
+    /// window.
     BackendConflict,
-    /// Compatibility name for [`SessionEnvironmentError::BackendConflict`].
+    /// Compatibility variant emitted during its deprecation window.
     #[deprecated(note = "use BackendConflict")]
     ProviderConflict,
     /// The recorded Environment or workspace head cannot be reopened.

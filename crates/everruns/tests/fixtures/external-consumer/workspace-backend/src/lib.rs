@@ -114,4 +114,18 @@ fn deprecated_provider_names_remain_compatible() {
 
     let id: WorkspaceProviderId = WorkspaceProvider::id(&ExternalWorkspaceBackend);
     assert_eq!(id.as_str(), "example.external-workspace");
+    let failure = WorkspaceError::Provider("legacy".into());
+    assert!(matches!(failure, WorkspaceError::Provider(_)));
+}
+
+#[test]
+fn backend_error_names_are_available_to_downstream_implementations() {
+    assert!(matches!(
+        WorkspaceError::BackendUnavailable("offline".into()),
+        WorkspaceError::BackendUnavailable(_)
+    ));
+    assert!(matches!(
+        WorkspaceError::Backend("failed".into()),
+        WorkspaceError::Backend(_)
+    ));
 }

@@ -231,12 +231,16 @@ pub enum BuildError {
         /// Why the MCP server configuration was rejected.
         reason: String,
     },
-    /// Two workspace backends registered the same stable SPI id.
+    /// Canonical duplicate workspace-backend error name.
+    ///
+    /// [`AgentBuilder::build`] continues to emit
+    /// [`DuplicateWorkspaceProvider`](Self::DuplicateWorkspaceProvider) during
+    /// its deprecation window.
     DuplicateWorkspaceBackend {
         /// The colliding workspace backend id.
         id: String,
     },
-    /// Compatibility name for [`BuildError::DuplicateWorkspaceBackend`].
+    /// Compatibility variant emitted during its deprecation window.
     #[deprecated(note = "use DuplicateWorkspaceBackend")]
     DuplicateWorkspaceProvider {
         /// The colliding workspace backend id.
@@ -488,7 +492,7 @@ impl Agent {
     ) -> Result<(), crate::SessionEnvironmentError> {
         let head = environment.workspace_head();
         if !self.state.remember_backend(head.backend()) {
-            return Err(crate::SessionEnvironmentError::BackendConflict);
+            return Err(legacy_workspace_provider_conflict());
         }
         binding_store
             .bind(session_id, head.binding())
@@ -531,9 +535,7 @@ impl Agent {
             return Ok(None);
         };
         let backend = self.state.backend(&binding.provider_id).ok_or_else(|| {
-            crate::ResumeError::WorkspaceBackendUnavailable {
-                provider_id: binding.provider_id.to_string(),
-            }
+            legacy_workspace_provider_unavailable(binding.provider_id.to_string())
         })?;
         let descriptor = backend
             .open_workspace_from_binding(&binding)
@@ -1139,7 +1141,7 @@ impl AgentBuilder {
                 .insert(id.clone(), backend.clone())
                 .is_some()
             {
-                return Err(BuildError::DuplicateWorkspaceBackend { id: id.to_string() });
+                return Err(legacy_duplicate_workspace_provider(id.to_string()));
             }
         }
         let default_workspace_root = self.workspace_root.clone().or({
@@ -1163,9 +1165,9 @@ impl AgentBuilder {
             .insert(default_backend_id.clone(), default_backend)
             .is_some()
         {
-            return Err(BuildError::DuplicateWorkspaceBackend {
-                id: default_backend_id.to_string(),
-            });
+            return Err(legacy_duplicate_workspace_provider(
+                default_backend_id.to_string(),
+            ));
         }
         let instructions = self.instructions.unwrap_or_default();
         if instructions.trim().is_empty() {
@@ -1379,12 +1381,15 @@ impl fmt::Debug for AgentBuilder {
     }
 }
 
+#[allow(deprecated)]
 fn map_workspace_resume_error(error: everruns_host::WorkspaceError) -> crate::ResumeError {
     match error {
         everruns_host::WorkspaceError::BindingMismatch => crate::ResumeError::WorkspaceMismatch,
         everruns_host::WorkspaceError::NotFound
         | everruns_host::WorkspaceError::Archived
+        | everruns_host::WorkspaceError::BackendUnavailable(_)
         | everruns_host::WorkspaceError::ProviderUnavailable(_)
+        | everruns_host::WorkspaceError::Backend(_)
         | everruns_host::WorkspaceError::Provider(_)
         | everruns_host::WorkspaceError::Conflict
         | everruns_host::WorkspaceError::InvalidRequest(_) => {
@@ -1394,6 +1399,20 @@ fn map_workspace_resume_error(error: everruns_host::WorkspaceError) -> crate::Re
     }
 }
 
+#[allow(deprecated)]
+fn legacy_duplicate_workspace_provider(id: String) -> BuildError {
+    BuildError::DuplicateWorkspaceProvider { id }
+}
+
+#[allow(deprecated)]
+fn legacy_workspace_provider_conflict() -> crate::SessionEnvironmentError {
+    crate::SessionEnvironmentError::ProviderConflict
+}
+
+#[allow(deprecated)]
+fn legacy_workspace_provider_unavailable(provider_id: String) -> crate::ResumeError {
+    crate::ResumeError::WorkspaceProviderUnavailable { provider_id }
+}
 fn framework_capability_registry(hosted_base: bool) -> everruns_core::CapabilityRegistry {
     #[cfg(not(feature = "builtins"))]
     let _ = hosted_base;

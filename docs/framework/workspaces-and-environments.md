@@ -74,6 +74,28 @@ remembered automatically in that Agent snapshot. The default memory backend
 and `AgentBuilder::workspace(path)` shorthand backend are registered by the
 Framework itself.
 
+## Compatibility window
+
+Use `WorkspaceBackend`, `WorkspaceBackendId`, `LocalGitWorkspace`,
+`AgentBuilder::workspace_backend`, and `WorkspaceHead::backend` in new code.
+The provider-named types and methods remain as deprecated forwarding aliases.
+
+Existing error matches keep their behavior during the deprecation window.
+Framework and built-in backend paths continue to emit
+`BuildError::DuplicateWorkspaceProvider`,
+`ResumeError::WorkspaceProviderUnavailable`,
+`SessionEnvironmentError::ProviderConflict`,
+`WorkspaceError::ProviderUnavailable`, and `WorkspaceError::Provider`.
+Their replacements are `BuildError::DuplicateWorkspaceBackend`,
+`ResumeError::WorkspaceBackendUnavailable`,
+`SessionEnvironmentError::BackendConflict`,
+`WorkspaceError::BackendUnavailable`, and `WorkspaceError::Backend`. Match both
+names while migrating. New `WorkspaceBackend` implementations should return the
+backend-named `WorkspaceError` variants.
+
+Persisted `WorkspaceBinding::provider_id`, SQLite columns, and existing
+`workspace-provider` state directory names do not change in this migration.
+
 ## Workspace, roots, policy, and sandbox
 
 These concepts are deliberately separate:

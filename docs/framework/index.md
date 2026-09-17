@@ -42,7 +42,7 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Architecture](/framework/architecture/), understand Agent, Engine, Session, and the shared immediate/durable execution kernel.
 - [Agents](/framework/agents/), instructions, files, workspaces, MCP, plugins, and context inspection.
 - [Workspace security](/framework/workspace-security/), configure portable read and write scopes with secure defaults.
-- [Workspaces and Environments](/framework/workspaces-and-environments/), bind sessions to isolated or explicitly shared provider-owned heads.
+- [Workspaces and Environments](/framework/workspaces-and-environments/), bind sessions to isolated or explicitly shared backend-owned heads.
 - [Models and providers](/framework/models-and-providers/), simulation, OpenAI, and the open provider boundary.
 - [Direct model calls](/framework/direct-model-calls/), one prompt and one answer without an agent.
 - [Credentials](/framework/credentials/), each driver's own vendor-standard environment variables.

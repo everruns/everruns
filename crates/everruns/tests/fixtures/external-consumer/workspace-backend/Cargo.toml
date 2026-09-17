@@ -1,5 +1,5 @@
 [package]
-name = "external-workspace-provider"
+name = "external-workspace-backend"
 version = "0.0.0"
 edition = "2024"
 publish = false

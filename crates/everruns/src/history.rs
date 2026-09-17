@@ -412,12 +412,16 @@ pub enum ResumeError {
     Unavailable,
     /// The canonical event history is internally inconsistent or malformed.
     Corrupt,
-    /// The backend recorded for this session was not registered on the Agent.
+    /// Canonical unavailable workspace-backend error name.
+    ///
+    /// Resume continues to emit
+    /// [`WorkspaceProviderUnavailable`](Self::WorkspaceProviderUnavailable)
+    /// during its deprecation window.
     WorkspaceBackendUnavailable {
         /// Stable open backend id needed to reopen the head.
         provider_id: String,
     },
-    /// Compatibility name for [`ResumeError::WorkspaceBackendUnavailable`].
+    /// Compatibility variant emitted during its deprecation window.
     #[deprecated(note = "use WorkspaceBackendUnavailable")]
     WorkspaceProviderUnavailable {
         /// Stable open backend id needed to reopen the head.

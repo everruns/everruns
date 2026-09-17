@@ -177,6 +177,11 @@ pub struct WorkspaceDiff {
 pub enum WorkspaceError {
     #[error("invalid workspace request: {0}")]
     InvalidRequest(String),
+    /// The workspace backend is not available.
+    #[error("workspace backend is unavailable: {0}")]
+    BackendUnavailable(String),
+    /// Compatibility variant emitted by built-in backends during its deprecation window.
+    #[deprecated(note = "use BackendUnavailable")]
     #[error("workspace backend is unavailable: {0}")]
     ProviderUnavailable(String),
     #[error("workspace or head was not found")]
@@ -187,6 +192,11 @@ pub enum WorkspaceError {
     Conflict,
     #[error("workspace binding does not match the requested backend, workspace, or head")]
     BindingMismatch,
+    /// The workspace backend rejected the requested operation.
+    #[error("workspace backend failed: {0}")]
+    Backend(String),
+    /// Compatibility variant emitted by built-in backends during its deprecation window.
+    #[deprecated(note = "use Backend")]
     #[error("workspace backend failed: {0}")]
     Provider(String),
 }
