@@ -2509,7 +2509,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.23.0"
+version = "0.23.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2546,7 +2546,6 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
- "typesafe-systemone",
  "uuid",
  "wiremock",
 ]

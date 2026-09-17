@@ -95,6 +95,18 @@ changes bump no crate versions and the gate finds nothing to classify, so it is 
 meaningful on a release change — run it there before opening the PR, and take the bump it requires.
 CI runs the same script in the **Crate Semver Bumps** job.
 
+The gate does not invoke `cargo-semver-checks` when the declared version already advances the
+breaking slot: the minor component for `0.x`, the patch component for `0.0.x`, or the major
+component for stable crates. No API classification can demand a larger increment. This also keeps
+an old baseline that no longer compiles against its registry dependencies from blocking an already
+correct breaking bump. Patch releases still fail closed into full API classification.
+
+For candidates that still need classification, the gate prefers the exact
+`crate/<package>/v<version>` release tag as the baseline. The tag includes the historical workspace
+and lockfile, so later crate publications cannot make an old baseline resolve a new, incompatible
+dependency graph. If the tag is unavailable, the gate uses the crates.io baseline and still fails
+closed on build or classification errors.
+
 An under-bump is not caught by the publish-cone gate below, which compares version *requirements*
 rather than API. `everruns-host` 0.20.4 shipped API breakage in the patch slot: the `^0.20.3` pin of
 every published dependant still admitted it, so `strand-check` stayed green while the published

@@ -40,6 +40,41 @@ def metadata() -> dict[str, Any]:
     return json.loads(output)
 
 
+def crates_io_publishable(package: dict[str, Any]) -> bool:
+    """Whether Cargo permits publishing this package to crates.io."""
+    registries = package.get("publish")
+    return registries is None or (
+        isinstance(registries, list) and "crates-io" in registries
+    )
+
+
+def private_dependency_failures(packages: list[dict[str, Any]]) -> list[str]:
+    """Reject publishable packages that Cargo cannot resolve from crates.io."""
+    by_directory = {
+        Path(package["manifest_path"]).resolve().parent: package for package in packages
+    }
+    failures: list[str] = []
+    for package in sorted(packages, key=lambda item: item["name"]):
+        if not crates_io_publishable(package):
+            continue
+        for dependency in package.get("dependencies", []):
+            if dependency.get("kind") not in (None, "normal", "build"):
+                continue
+            path = dependency.get("path")
+            if not isinstance(path, str):
+                continue
+            target = by_directory.get(Path(path).resolve())
+            if target is None or crates_io_publishable(target):
+                continue
+            article = "an optional" if dependency.get("optional") else "a"
+            failures.append(
+                f"{package['name']}: {dependency['name']} is {article} "
+                f"{dependency.get('kind') or 'normal'} path dependency on non-crates.io "
+                f"workspace package {target['name']}"
+            )
+    return failures
+
+
 # Dev-dependencies are pinned only where the declaration already carries a
 # version of its own. A version-less path dev-dependency never reaches
 # downstream consumers (`cargo publish` drops it entirely), and crate-release.yml
@@ -150,13 +185,14 @@ def main() -> int:
     published = {
         manifest: package
         for manifest, package in packages.items()
-        if package.get("publish") != []
+        if crates_io_publishable(package)
     }
     root_path = REPO / "Cargo.toml"
     root = load(root_path)
     workspace_dependencies = root["workspace"].get("dependencies", {})
     failures: list[str] = []
     rewrites: dict[tuple[Path, str, str], str] = {}
+    failures.extend(private_dependency_failures(cargo["packages"]))
 
     for manifest_path, package in sorted(published.items(), key=lambda item: item[1]["name"]):
         manifest = load(manifest_path)
