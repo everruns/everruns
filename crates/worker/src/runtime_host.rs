@@ -582,7 +582,12 @@ mod mcp_credential_tests {
                 .iter()
                 .find(|(k, _)| k.eq_ignore_ascii_case("authorization"))
                 .map(|(_, v)| v.clone()),
-            #[cfg(feature = "stdio")]
+            // `McpEndpoint::Stdio` exists only when `everruns-mcp/stdio` is
+            // enabled, which a workspace-wide `--all-features` build does. The
+            // arm must therefore compile both with and without it, so the
+            // wildcard stays and the lint is silenced rather than cfg-gated on
+            // a feature this crate does not declare.
+            #[allow(unreachable_patterns)]
             _ => None,
         }
     }
