@@ -2546,6 +2546,7 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "typesafe-systemone",
  "uuid",
  "wiremock",
 ]
@@ -2870,6 +2871,25 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+ "wiremock",
+]
+
+[[package]]
+name = "everruns-integrations-typesafe"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "everruns",
+ "everruns-capability",
+ "everruns-core",
+ "everruns-platform",
+ "everruns-provider",
+ "inventory",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "typesafe-systemone",
  "wiremock",
 ]
 
@@ -3208,6 +3228,7 @@ dependencies = [
  "everruns-integrations-openai-image",
  "everruns-integrations-parallel",
  "everruns-integrations-sprites",
+ "everruns-integrations-typesafe",
  "everruns-integrations-web-fetch",
  "everruns-internal-protocol",
  "everruns-mcp",
@@ -3350,6 +3371,7 @@ dependencies = [
  "everruns-integrations-openai-image",
  "everruns-integrations-parallel",
  "everruns-integrations-sprites",
+ "everruns-integrations-typesafe",
  "everruns-internal-protocol",
  "everruns-llmsim",
  "everruns-mai",
@@ -8870,6 +8892,19 @@ name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+
+[[package]]
+name = "typesafe-systemone"
+version = "0.1.0"
+dependencies = [
+ "reqwest 0.13.5",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
 
 [[package]]
 name = "ucd-trie"

@@ -16,6 +16,7 @@
 * [Container sandbox](container_sandbox/) - 1 manual UI case.
 * [Cross org resolution](cross_org_resolution/) - 1 manual UI case.
 * [Cursor connection](cursor_connection/) - 1 manual UI case.
+* [TypeSafe connection](typesafe_connection/) - 1 manual UI case.
 * [Daytona connection](daytona_connection/) - 1 manual UI case.
 * [Deno connection](deno_connection/) - 1 manual UI case.
 * [Durable operations](durable_operations/) - 4 manual UI cases.

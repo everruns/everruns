@@ -18,7 +18,9 @@ repository.
 
 ## Capture contract
 
-Every scene has matching light and dark PNGs at 1440 by 900 pixels. The pair must show the same
+Every scene has matching light and dark PNGs rendered from a 1440 by 900 CSS-pixel viewport at a
+device pixel ratio of 2. The resulting 2880 by 1800 assets preserve the intended desktop composition
+while providing enough detail for Retina displays and cropping. The pair must show the same
 application state, use the standard sidebar, contain no browser chrome, and avoid hover states,
 menus, loading indicators, error overlays, secrets, or personal data. Capture from a real local
 stack after the page reaches its stable state; do not mock or paint the product UI.
@@ -84,9 +86,10 @@ The script resolves the current pinned Platform Chat session through the session
 session IDs never become part of the asset contract.
 
 Before committing, inspect all ten images at original resolution. Confirm paired scene state,
-correct theme, 1440 by 900 dimensions, readable primary content, no clipped page header, no dev
-overlay, and no sensitive values. The capture script removes Next.js' development-only portal from
-the frame; therefore these assets are presentation material, never debugging or regression-test
+correct theme, 2880 by 1800 output dimensions, the unchanged 1440 by 900 CSS composition, readable
+primary content, no clipped page header, no dev overlay, and no sensitive values. The capture script
+asserts the PNG dimensions after every capture and removes Next.js' development-only portal from the
+frame; therefore these assets are presentation material, never debugging or regression-test
 evidence.
 
 ## Refresh policy

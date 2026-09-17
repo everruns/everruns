@@ -2,6 +2,72 @@
 
 ## 2026-09-17
 
+* **The agent-facing surface is named for the model, the credential surface for
+  the vendor.** The capability is `jev` and its tool is `jev_evaluate`, matching
+  the guardrail engine value: an agent author is choosing the thing that
+  answers. The connection, the crate, the session secret, and the docs page stay
+  TypeSafe, because that is the account the key belongs to. Renamed before
+  anything shipped, so no stored config carries the old ids.
+
+* **The guardrail engines were shipped without anyone knowing how well they
+  work.** Unit tests proved the plumbing and the fail-open contract; nothing
+  measured block rate against false-positive rate, which is the number that
+  decides whether a guardrail is usable. The new
+  [guardrail-calibration study](../evals/guardrail-calibration/README.md) runs a
+  labeled corpus through the shipped decision path across both engines and a
+  threshold sweep. Its first run found neither engine dominates at the default:
+  `jev` caught every violation but over-blocked a benign staging-table deletion,
+  `utility_llm` never over-blocked but missed a path-traversal read. `jev` at
+  threshold 70 shed the false positive without losing a violation — evidence
+  that the default of 50 is worth revisiting, on a corpus far too small to
+  revisit it with.
+
+* **The guardrail engine value now names the model, and the deployment key names
+  its role.** The engine value is `jev`, not the service behind it: an agent
+  author is choosing between prose a parser has to trust and a calibrated
+  number from a specific model, so the config says which model. If the
+  judgment service is
+  ever backed by something else, the value gains a sibling rather than changing
+  meaning. The deployment credential became `UTILITY_TYPESAFE_API_KEY`, mirroring
+  `UTILITY_OPENAI_API_KEY` — both are platform-owned credentials for internal
+  model work, and the name now keeps them visibly distinct from the
+  `TYPESAFE_API_KEY` session secret the agent-facing capability falls back to.
+  Everything that spends the deployment credential is gated on it: unset means a
+  disabled service, jev checks are skipped with a log line naming the variable,
+  and the turn proceeds.
+
+* **Model-backed guardrails had a fail-open that read as allow.** `llm_judge`
+  and `moderation` prompted the utility model for a JSON verdict and parsed it
+  back, so a missing fragment, a parse error, or an unrecognized verdict
+  silently downgraded a block to an allow - and moderation simulated a
+  probability by asking a text model to write 0-100 per category. Both check
+  types now take an `engine`: the new `jev` engine asks a typed question and
+  gets a calibrated probability, so the configured `threshold` decides in code
+  and there is nothing to misparse. It also answers every check on a stage
+  in one request instead of one per check. `utility_llm` stays the default, so
+  existing configs are unchanged and the two are directly comparable on the same
+  agent. Recorded in [Guardrails](execution/guardrails.md) and the new
+  [Judgment Service](operations/judgment-service.md), with the egress and
+  steering analysis in TM-LLM-037/038.
+
+* **Operators had no single place to learn what the system model keys do.**
+  `UTILITY_OPENAI_API_KEY` was mentioned only in passing on a feature page, and
+  the new `TYPESAFE_API_KEY` had nowhere at all. Both are now documented
+  together in the public environment-variables reference, including the point
+  that a missing key fails open — a guardrail whose engine is unconfigured
+  weakens policy silently rather than wedging traffic.
+
+* **Eval coverage gaps are now written down.** Model-backed guardrails have no
+  calibration coverage, and typed-judgment tool *use* is unmeasured; both are
+  recorded in [Evals](evaluation/evals.md#known-coverage-gaps) with the shape
+  each one needs.
+
+* **Typed judgments are now an agent-facing capability too.** The `typesafe`
+  integration contributes `jev_evaluate`, so an agent can verify or rate
+  something and get numbers back instead of forming a second impression in
+  prose. Its user connection is deliberately separate from the deployment key
+  that backs the judgment service.
+
 * **Which identity an MCP server acts under was a side effect of its auth mode,
   not a stated property.** `api_key` happened to be org-wide, `oauth` happened to
   be per-user, and `agent_identity_connections` silently shadowed
@@ -33,9 +99,10 @@
 
 * **Demo screenshots are maintained product assets, not disposable PR evidence.** The canonical set
   now covers Platform Chat, Sessions, Agents, Harnesses, and Durable Execution in matching light and
-  dark 1440-by-900 frames. Its scene data, framing constraints, refresh policy, and reproducible
-  capture entry point are recorded in [Demo Screenshot Set](ui/demo-screenshots.md); transient UI
-  review evidence remains upload-only.
+  dark frames. Captures preserve a 1440-by-900 CSS viewport while rendering 2880-by-1800 HiDPI
+  assets. Their scene data, framing constraints, refresh policy, and reproducible capture entry point
+  are recorded in [Demo Screenshot Set](ui/demo-screenshots.md); transient UI review evidence remains
+  upload-only.
 
 * **Blueprint config schemas were hand-written JSON that nothing validated.**
   Each blueprint carried a `json!` schema duplicating the shape, bounds, and

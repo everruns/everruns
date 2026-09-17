@@ -643,6 +643,9 @@ everruns_core::guardrail_checks::GuardrailAction	enum
 everruns_core::guardrail_checks::GuardrailAction::Block	variant
 everruns_core::guardrail_checks::GuardrailAction::Log	variant
 everruns_core::guardrail_checks::GuardrailCheck	struct
+everruns_core::guardrail_checks::GuardrailEngine	enum
+everruns_core::guardrail_checks::GuardrailEngine::Jev	variant
+everruns_core::guardrail_checks::GuardrailEngine::UtilityLlm	variant
 everruns_core::guardrail_checks::GuardrailHit	struct
 everruns_core::guardrail_checks::GuardrailMode	enum
 everruns_core::guardrail_checks::GuardrailMode::Active	variant
@@ -669,6 +672,7 @@ everruns_core::guardrail_checks::MAX_ENTRY_LEN	constant
 everruns_core::guardrail_checks::MAX_JUDGE_PROMPT_LEN	constant
 everruns_core::guardrail_checks::MAX_MCP_REF_LEN	constant
 everruns_core::guardrail_checks::MAX_REPLACEMENT_LEN	constant
+everruns_core::guardrail_checks::default_judge_threshold	function
 everruns_core::guardrail_checks::default_moderation_threshold	function
 everruns_core::guardrail_checks::wildcard_match	function
 everruns_core::guardrail_gallery	module
@@ -707,6 +711,20 @@ everruns_core::image_services::ImageResolver	trait
 everruns_core::image_services::ResolvedImage	struct
 everruns_core::image_services::StoredImage	struct
 everruns_core::image_services::StoredImageInfo	struct
+everruns_core::judgment	module
+everruns_core::judgment::DisabledJudgmentService	struct
+everruns_core::judgment::JudgmentAnswer	enum
+everruns_core::judgment::JudgmentAnswer::Choice	variant
+everruns_core::judgment::JudgmentAnswer::Noul	variant
+everruns_core::judgment::JudgmentAnswer::Score	variant
+everruns_core::judgment::JudgmentOutcome	struct
+everruns_core::judgment::JudgmentQuestion	enum
+everruns_core::judgment::JudgmentQuestion::Choice	variant
+everruns_core::judgment::JudgmentQuestion::Noul	variant
+everruns_core::judgment::JudgmentQuestion::Score	variant
+everruns_core::judgment::JudgmentRequest	struct
+everruns_core::judgment::JudgmentService	trait
+everruns_core::judgment::JudgmentUsage	struct
 everruns_core::leased_resource	module
 everruns_core::leased_resource::LEASED_RESOURCES_FEATURE	constant
 everruns_core::leased_resource::LeasedResource	struct
@@ -1426,6 +1444,7 @@ everruns_core::tool_context::ToolContextService::ConnectionResolver	variant
 everruns_core::tool_context::ToolContextService::EgressService	variant
 everruns_core::tool_context::ToolContextService::EventEmitter	variant
 everruns_core::tool_context::ToolContextService::ImageArtifactStore	variant
+everruns_core::tool_context::ToolContextService::JudgmentService	variant
 everruns_core::tool_context::ToolContextService::LeasedResourceStore	variant
 everruns_core::tool_context::ToolContextService::McpInvoker	variant
 everruns_core::tool_context::ToolContextService::MessageRetriever	variant

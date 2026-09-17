@@ -17,7 +17,7 @@ use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::runtime_context::AssembledTurnContext;
 use everruns_core::session::SessionExecutionState;
 use everruns_core::{
-    CapabilityRegistry, CapabilityStatus, DependencyBlocker, EgressService,
+    CapabilityRegistry, CapabilityStatus, DependencyBlocker, EgressService, JudgmentService,
     ResolvedExecutionSnapshot, TokenUsage, ToolRegistry, UtilityLlmService,
     org_public_id_from_internal, resolve_runtime_capabilities,
 };
@@ -216,6 +216,11 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     }
 
     fn utility_llm_service(&self) -> Option<Arc<dyn UtilityLlmService>> {
+        None
+    }
+
+    /// Judgment service for capability internals that ask typed questions.
+    fn judgment_service(&self) -> Option<Arc<dyn JudgmentService>> {
         None
     }
 
@@ -707,6 +712,7 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         image_store: adapter.image_artifact_store(org_id),
         provider_credential_store: adapter.provider_credential_store(org_id),
         utility_llm_service: adapter.utility_llm_service(),
+        judgment_service: adapter.judgment_service(),
         mcp_invoker,
         egress_service: adapter.egress_service(),
         message_retriever: Some(adapter.message_store()),
@@ -1493,6 +1499,9 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
     }
     if let Some(utility_llm_service) = adapter.utility_llm_service() {
         atom = atom.with_utility_llm_service(utility_llm_service);
+    }
+    if let Some(judgment_service) = adapter.judgment_service() {
+        atom = atom.with_judgment_service(judgment_service);
     }
     // Schedule store powers the `usage_limit_auto_continue` capability, which
     // schedules a continuation after a provider usage limit resets.

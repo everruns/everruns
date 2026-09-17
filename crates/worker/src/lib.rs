@@ -12,6 +12,7 @@ extern crate everruns_integrations_github;
 extern crate everruns_integrations_openai_image;
 extern crate everruns_integrations_parallel;
 extern crate everruns_integrations_sprites;
+extern crate everruns_integrations_typesafe;
 
 pub mod activities;
 pub mod adapters;

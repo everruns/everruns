@@ -22,6 +22,7 @@ extern crate everruns_integrations_github;
 extern crate everruns_integrations_openai_image;
 extern crate everruns_integrations_parallel;
 extern crate everruns_integrations_sprites;
+extern crate everruns_integrations_typesafe;
 
 // Shared low-level security primitives (constant-time comparison, etc.)
 pub mod security;

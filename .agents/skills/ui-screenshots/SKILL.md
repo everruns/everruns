@@ -22,7 +22,7 @@ Each script documents its own usage and requirements in its header; read it if t
 ```bash
 .agents/skills/ui-screenshots/scripts/check-config.sh                       # GitHub auth, agent-browser
 .agents/skills/ui-screenshots/scripts/take-screenshot.sh <URL> <OUTPUT>
-.agents/skills/ui-screenshots/scripts/capture-demo-screenshots.sh [URL] [OUTPUT_DIR]
+.agents/skills/ui-screenshots/scripts/capture-demo-screenshots.sh [URL] [OUTPUT_DIR] # 2x HiDPI
 .agents/skills/ui-screenshots/scripts/upload-screenshot.sh <PATH> <PR> [DESCRIPTION]
 ```
 
@@ -34,6 +34,16 @@ For anything the scripts do not cover, drive `agent-browser` directly (`open`, `
 ```bash
 npm install -g agent-browser
 agent-browser install            # add --with-deps on Linux when system libs are missing
+```
+
+The maintained demo capture uses the repository's Playwright installation so it can set DPR 2
+without changing the 1440 by 900 CSS viewport. Install `apps/ui` dependencies and its Chromium build
+before running it:
+
+```bash
+cd apps/ui
+pnpm install --frozen-lockfile
+pnpm exec playwright install chromium
 ```
 
 Uploading needs `GITHUB_TOKEN` or an authenticated `gh` CLI session. The token must have push access
