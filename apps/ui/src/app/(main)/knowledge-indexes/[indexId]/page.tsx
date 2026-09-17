@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { use, useMemo, useState } from "react";
 import { Archive, GitBranch, Library, Pencil, RefreshCw } from "lucide-react";
 import { GithubIcon as Github } from "@/components/icons/github-icon";
@@ -12,7 +11,7 @@ import {
 } from "@/components/knowledge-indexes/knowledge-index-diagnostic";
 import { KnowledgeIndexFormDialog } from "@/components/knowledge-indexes/knowledge-index-form-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -387,13 +386,9 @@ function DiagnosticAction({
   }
   if (diagnostic.action === "configure_provider" && diagnostic.providerId) {
     return (
-      <Button
-        size="sm"
-        variant="outline"
-        render={<Link href={`/settings/providers/${diagnostic.providerId}`} />}
-      >
+      <LinkButton size="sm" variant="outline" href={`/settings/providers/${diagnostic.providerId}`}>
         Configure provider
-      </Button>
+      </LinkButton>
     );
   }
   if (

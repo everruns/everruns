@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { useAgents, useCapabilities } from "@/hooks";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/button";
 import { Plus, Boxes } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { AgentCard } from "@/components/agents";
@@ -35,10 +34,10 @@ export default function AgentsAllPageClient() {
         actions={
           <>
             <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
-            <Button variant="accent" render={<Link href="/agents/new" />}>
+            <LinkButton variant="accent" href="/agents/new">
               <Plus className="size-4" />
               New agent
-            </Button>
+            </LinkButton>
           </>
         }
       />
@@ -55,10 +54,10 @@ export default function AgentsAllPageClient() {
                 icon={<Boxes />}
                 title="No agents yet"
                 action={
-                  <Button variant="accent" render={<Link href="/agents/new" />}>
+                  <LinkButton variant="accent" href="/agents/new">
                     <Plus className="size-4" />
                     Create your first agent
-                  </Button>
+                  </LinkButton>
                 }
               />
             }

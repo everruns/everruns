@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/button";
 import { EntityCard, EntityCardDetail, EntityCardFooter } from "@/components/ui/entity-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Pencil, Boxes, Shield } from "lucide-react";
@@ -82,15 +82,15 @@ export function AgentCard({
           actions={
             showEditButton &&
             agent.status === "active" && (
-              <Button
+              <LinkButton
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
                 aria-label={`Edit ${getDisplayName(agent)}`}
-                render={<Link href={`/agents/${agent.id}/edit`} />}
+                href={`/agents/${agent.id}/edit`}
               >
                 <Pencil className="icon-sharp h-4 w-4" />
-              </Button>
+              </LinkButton>
             )
           }
         />

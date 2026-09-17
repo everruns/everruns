@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SearchInput } from "@/components/ui/search-input";
 import {
@@ -140,13 +140,9 @@ function WorkflowRow({
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            render={<Link href={`/durable/workflows/${workflow.id}`} />}
-          >
+          <LinkButton variant="outline" size="sm" href={`/durable/workflows/${workflow.id}`}>
             View
-          </Button>
+          </LinkButton>
           {workflow.status === "running" && (
             <Button variant="outline" size="sm" onClick={() => onCancel(workflow.id)}>
               Cancel
@@ -211,14 +207,14 @@ function TaskRow({ task }: { task: DurableTask }) {
       </TableCell>
       <TableCell>
         {task.workflow_id ? (
-          <Button
+          <LinkButton
             variant="ghost"
             size="sm"
             aria-label={`View workflow ${task.workflow_id}`}
-            render={<Link href={`/durable/workflows/${task.workflow_id}`} />}
+            href={`/durable/workflows/${task.workflow_id}`}
           >
             <ExternalLink className="h-3 w-3" />
-          </Button>
+          </LinkButton>
         ) : (
           <Badge variant="outline">standalone</Badge>
         )}
@@ -273,14 +269,14 @@ function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string)
             Requeue
           </Button>
           {entry.workflow_id ? (
-            <Button
+            <LinkButton
               variant="ghost"
               size="sm"
               aria-label={`View workflow ${entry.workflow_id}`}
-              render={<Link href={`/durable/workflows/${entry.workflow_id}`} />}
+              href={`/durable/workflows/${entry.workflow_id}`}
             >
               <ExternalLink className="h-3 w-3" />
-            </Button>
+            </LinkButton>
           ) : (
             <Badge variant="outline">standalone</Badge>
           )}

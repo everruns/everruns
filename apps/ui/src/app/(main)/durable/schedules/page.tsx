@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { SearchInput } from "@/components/ui/search-input";
@@ -176,14 +176,14 @@ function ScheduleRow({
               </Tooltip>
             </TooltipProvider>
           )}
-          <Button
+          <LinkButton
             variant="ghost"
             size="sm"
             aria-label={`View schedule ${schedule.name}`}
-            render={<Link href={`/durable/schedules/${schedule.id}`} />}
+            href={`/durable/schedules/${schedule.id}`}
           >
             <Settings className="h-3 w-3" />
-          </Button>
+          </LinkButton>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

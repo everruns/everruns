@@ -3,8 +3,7 @@ import { useMemo, useState } from "react";
 
 import { useEvals } from "@/hooks";
 import { useAgents, usePageTitle } from "@/hooks";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/button";
 import { EntityCard } from "@/components/ui/entity-card";
 import { Badge } from "@/components/ui/badge";
 import { ClipboardCheck, Plus } from "lucide-react";
@@ -144,10 +143,10 @@ export default function EvalsPage() {
           </>
         }
         actions={
-          <Button variant="accent" nativeButton={false} render={<Link href="/evals/new" />}>
+          <LinkButton variant="accent" href="/evals/new">
             <Plus className="size-4" />
             New Eval
-          </Button>
+          </LinkButton>
         }
       />
 
@@ -169,10 +168,10 @@ export default function EvalsPage() {
             emptyState={
               <div className="py-12 text-center">
                 <p className="mb-4 text-muted-foreground">No evals yet</p>
-                <Button nativeButton={false} render={<Link href="/evals/new" />}>
+                <LinkButton href="/evals/new">
                   <Plus className="mr-2 size-4" />
                   Create your first eval
-                </Button>
+                </LinkButton>
               </div>
             }
           >
