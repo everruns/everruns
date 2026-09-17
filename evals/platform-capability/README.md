@@ -144,6 +144,31 @@ exists for: this model answers from `discover` alone and never runs
 `everruns skills --help`, which is the pointer being too weak rather than the
 tree being broken.
 
+### What inlining the surface map changed
+
+The v1 prompt named no nouns and no operation families, so the model opened
+almost every turn with `discover {phrase}` and then `discover --all` — a whole
+catalog dump, some 1500 tokens, to learn what exists. The prompt now carries
+that map, generated from inventory, for about 330 tokens.
+
+Measured like for like, two trials over the seven command-line cases:
+
+| | before | after |
+|---|---|---|
+| `discover --all` calls | 7 | 2 |
+| cases passed | 7/14 | 9/14 |
+| mean tool calls | 5.07 | 5.57 |
+
+The mechanism works and the headline does not. Catalog dumps fell by most of
+their volume, which is the real token saving, but the **number** of calls did
+not drop — it rose slightly, within noise at this sample size. Knowing the tree
+exists appears to buy a `--help` probe the model was not making before, which is
+the behaviour the contract was built for and still costs a call.
+
+So inlining the map is worth keeping on its own merits, and it is not a fix for
+the tool-call budgets. Those remain a question about what the budget is for
+rather than about what the model does.
+
 ## Offline checks
 
 `cargo test` in this directory runs no model and needs no credentials. It

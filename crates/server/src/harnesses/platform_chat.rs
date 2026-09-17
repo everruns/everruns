@@ -11,7 +11,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
         "platform-chat",
         "Platform Chat",
         "Conversational harness for the Everruns Platform chat.",
-        SYSTEM_PROMPT,
+        system_prompt(),
     )
     .with_icon("everruns")
     .with_parent_name("base")
@@ -83,9 +83,23 @@ pub fn definition() -> BuiltInHarnessDefinition {
     // VFS decision, not separately.
 }
 
-pub(crate) const SYSTEM_PROMPT: &str = "\
-You are a helpful assistant on the Everruns platform.
+/// The shipped prompt: a generated map of the surface, then the rules.
+///
+/// The orientation comes first because it is what the rules are about. Without
+/// it the prompt opens with how to render a link to an entity the model has no
+/// idea it can reach.
+pub(crate) fn system_prompt() -> String {
+    format!(
+        "{PROMPT_HEAD}\n{}\n{PROMPT_RULES}",
+        crate::api::mcp_endpoint::cli_tree::surface_orientation()
+    )
+}
 
+const PROMPT_HEAD: &str = "\
+You are a helpful assistant on the Everruns platform.
+";
+
+const PROMPT_RULES: &str = "\
 ## Rendering entity references
 
 All tool results include `name` and `ui_link` fields. When referencing entities (agents, harnesses, sessions) in your responses, always render them as clickable markdown links with the entity name — never show raw IDs.
@@ -200,29 +214,28 @@ mod tests {
 
     #[test]
     fn platform_chat_requires_authoritative_resource_preflight() {
-        assert!(SYSTEM_PROMPT.contains("does not search resource instances"));
-        assert!(SYSTEM_PROMPT.contains("Call `query` once"));
-        assert!(SYSTEM_PROMPT.contains("at most once"));
-        assert!(
-            SYSTEM_PROMPT
-                .contains("Do not discover the create/update operation before confirmation")
-        );
-        assert!(SYSTEM_PROMPT.contains("project only the IDs"));
-        assert!(SYSTEM_PROMPT.contains("all five authoritative views"));
-        assert!(SYSTEM_PROMPT.contains("`list_user_connections`"));
-        assert!(SYSTEM_PROMPT.contains("do not return the hydrated `config`"));
-        assert!(SYSTEM_PROMPT.contains("installed:"));
-        assert!(SYSTEM_PROMPT.contains("connected:"));
-        assert!(SYSTEM_PROMPT.contains("Never treat zero operation matches"));
+        let prompt = system_prompt();
+        assert!(prompt.contains("does not search resource instances"));
+        assert!(prompt.contains("Call `query` once"));
+        assert!(prompt.contains("at most once"));
+        assert!(prompt.contains("Do not discover the create/update operation before confirmation"));
+        assert!(prompt.contains("project only the IDs"));
+        assert!(prompt.contains("all five authoritative views"));
+        assert!(prompt.contains("`list_user_connections`"));
+        assert!(prompt.contains("do not return the hydrated `config`"));
+        assert!(prompt.contains("installed:"));
+        assert!(prompt.contains("connected:"));
+        assert!(prompt.contains("Never treat zero operation matches"));
     }
 
     #[test]
     fn platform_chat_routes_plaintext_credentials_to_write_only_setup() {
-        assert!(SYSTEM_PROMPT.contains("Never request, repeat, store, or pass a plaintext"));
-        assert!(SYSTEM_PROMPT.contains("`create_agent_credential_binding`"));
-        assert!(SYSTEM_PROMPT.contains("returned `setup_url`"));
-        assert!(SYSTEM_PROMPT.contains("session-per-invocation"));
-        assert!(SYSTEM_PROMPT.contains("bind the `channel_key` parameter of `visti_send`"));
+        let prompt = system_prompt();
+        assert!(prompt.contains("Never request, repeat, store, or pass a plaintext"));
+        assert!(prompt.contains("`create_agent_credential_binding`"));
+        assert!(prompt.contains("returned `setup_url`"));
+        assert!(prompt.contains("session-per-invocation"));
+        assert!(prompt.contains("bind the `channel_key` parameter of `visti_send`"));
     }
 
     #[test]
