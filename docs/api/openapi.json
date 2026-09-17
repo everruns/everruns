@@ -18488,7 +18488,7 @@
           "api_key",
           "google_oidc",
           "oidc",
-          "o_auth2_introspection",
+          "oauth2_introspection",
           "http_basic",
           "mtls"
         ]
@@ -18571,7 +18571,7 @@
               "type": {
                 "type": "string",
                 "enum": [
-                  "o_auth2_introspection"
+                  "oauth2_introspection"
                 ]
               }
             }

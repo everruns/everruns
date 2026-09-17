@@ -613,6 +613,7 @@ pub enum AppEndpointAuthMode {
     ApiKey,
     GoogleOidc,
     Oidc,
+    #[serde(rename = "oauth2_introspection")]
     OAuth2Introspection,
     HttpBasic,
     Mtls,
@@ -633,6 +634,7 @@ pub enum AppEndpointAuthProviderConfig {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         jwks_url: Option<String>,
     },
+    #[serde(rename = "oauth2_introspection")]
     OAuth2Introspection {
         introspection_url: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]

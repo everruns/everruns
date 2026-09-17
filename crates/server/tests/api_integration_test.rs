@@ -5149,6 +5149,47 @@ async fn test_endpoint_auth_is_stored_in_separate_ciphertext() {
     assert!(hash.starts_with("$argon2id$"));
     assert!(!hash.contains("YExample0"));
 }
+#[tokio::test]
+async fn test_endpoint_auth_accepts_documented_oauth2_introspection_spelling() {
+    let server = TestServer::new().await;
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({ "name": "oauth2-introspection-agent", "display_name": "Test Agent", "system_prompt": "Test" }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let app: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "OAuth2 introspection endpoint",
+                "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent["id"],
+                "channel_type": "ag_ui",
+                "channel_config": {
+                    "anonymous": false,
+                    "auth": {
+                        "mode": "oauth2_introspection",
+                        "provider": {
+                            "type": "oauth2_introspection",
+                            "introspection_url": "https://identity.example.com/oauth2/introspect",
+                            "client_id": "everruns"
+                        }
+                    }
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let auth = &app["channels"][0]["auth"];
+    assert_eq!(auth["mode"], "oauth2_introspection");
+    assert_eq!(auth["provider"]["type"], "oauth2_introspection");
+}
 
 #[tokio::test]
 async fn test_endpoint_write_lazily_splits_encrypted_legacy_auth() {

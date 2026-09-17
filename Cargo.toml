@@ -211,7 +211,7 @@ everruns-engine = { path = "crates/engine", version = "0.19.2" }
 everruns-host = { path = "crates/host", version = "0.22.1" }
 everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.18.9", default-features = false }
 everruns-test-support = { path = "crates/test-support", version = "0.18.2", default-features = false }
-everruns-platform = { path = "crates/platform", version = "0.23.0" }
+everruns-platform = { path = "crates/platform", version = "0.24.0" }
 everruns-provider = { path = "crates/provider", version = "0.24.0", default-features = false }
 everruns-model-profiles = { path = "crates/model-profiles", version = "0.3.0" }
 everruns-mcp = { path = "crates/mcp", version = "0.19.7" }

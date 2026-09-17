@@ -5151,7 +5151,7 @@ export interface components {
       | "api_key"
       | "google_oidc"
       | "oidc"
-      | "o_auth2_introspection"
+      | "oauth2_introspection"
       | "http_basic"
       | "mtls";
     /** @description OIDC/OAuth/basic/mTLS provider details for one App endpoint. */
@@ -5174,7 +5174,7 @@ export interface components {
           client_secret_configured?: boolean;
           introspection_url: string;
           /** @enum {string} */
-          type: "o_auth2_introspection";
+          type: "oauth2_introspection";
         }
       | {
           password?: string | null;
