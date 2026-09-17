@@ -45,8 +45,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Crate Releases
 
-Independently versioned crates published this cycle. `everruns-provider` and `everruns-core` carried additive-only public-type changes (kept non-breaking via `#[non_exhaustive]`, [#3610](https://github.com/everruns/everruns/pull/3610)); every other published crate takes a compatible patch bump to re-pin the cone. All bumps are patch (additive) — no breaking contract changes this cycle:
+Independently versioned crates published this cycle, classified with `cargo-semver-checks` against each crate's crates.io baseline. Four base crates carry a one-time breaking change and take the 0.x breaking slot (minor): the `#[non_exhaustive]` markers added to existing public enums (`ContentPart`, `CapabilityStatus`) and a variant added to the exhaustive `BudgetSubjectType` enum ([#3610](https://github.com/everruns/everruns/pull/3610), [#3623](https://github.com/everruns/everruns/pull/3623)) are breaking for external consumers, so `everruns-core`, `everruns-platform`, `everruns-provider`, and `everruns-model-profiles` bump their minor. Every other published crate takes a compatible patch bump to re-pin the cone.
 
+Breaking (minor bump — 0.x breaking slot):
+- `everruns-core` 0.22.0 → 0.23.0
+- `everruns-model-profiles` 0.2.1 → 0.3.0
+- `everruns-platform` 0.22.0 → 0.23.0
+- `everruns-provider` 0.23.0 → 0.24.0
+
+Additive (patch bump):
 - `everruns` 0.21.1 → 0.21.2
 - `everruns-anthropic` 0.18.6 → 0.18.7
 - `everruns-ard` 0.18.5 → 0.18.6
@@ -54,7 +61,6 @@ Independently versioned crates published this cycle. `everruns-provider` and `ev
 - `everruns-builtins` 0.18.9 → 0.18.10
 - `everruns-capability` 0.18.3 → 0.18.4
 - `everruns-cli` 0.18.6 → 0.18.7
-- `everruns-core` 0.22.0 → 0.22.1
 - `everruns-engine` 0.19.1 → 0.19.2
 - `everruns-fireworks` 0.18.6 → 0.18.7
 - `everruns-gemini` 0.18.6 → 0.18.7
@@ -81,11 +87,8 @@ Independently versioned crates published this cycle. `everruns-provider` and `ev
 - `everruns-mai` 0.18.6 → 0.18.7
 - `everruns-mcp` 0.19.6 → 0.19.7
 - `everruns-meta` 0.18.6 → 0.18.7
-- `everruns-model-profiles` 0.2.1 → 0.2.2
 - `everruns-openai` 0.18.6 → 0.18.7
 - `everruns-openrouter` 0.18.6 → 0.18.7
-- `everruns-platform` 0.22.0 → 0.22.1
-- `everruns-provider` 0.23.0 → 0.23.1
 - `everruns-test-support` 0.18.8 → 0.18.9
 - `everruns-turbopuffer` 0.18.6 → 0.18.7
 

@@ -384,7 +384,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -497,14 +497,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-model-profiles"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "everruns-provider"
-version = "0.23.1"
+version = "0.24.0"
 dependencies = [
  "anyhow",
  "async-trait",
