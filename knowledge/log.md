@@ -1,5 +1,22 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-17
+
+* **The Framework had no harness, so every embedding application rebuilt one by
+  hand and no two agreed.** `everruns` collapses harness, agent, and session into
+  one builder and synthesizes an anonymous harness per session, so a built-in
+  world such as `generic` exists once for the platform and again as an ad-hoc
+  builder chain in each application, and an agent carries its own shell and
+  filesystem capabilities, which means moving it to a container edits the agent.
+  A proposal promotes the harness to an application-facing value holding a
+  required environment, a capability set, and model defaults, with no base prompt
+  and no starter files: a written world-description drifts from the world, and the
+  preamble should derive from `ComputeCapabilities` instead. Requirements are
+  checked against the environment at session creation rather than discovered by
+  the model at the first tool call. The name was re-examined against the prior art
+  and kept; no other product has this middle layer, because no other product
+  treats capabilities as composable modules.
+
 ## 2026-09-16
 
 * **Blueprint config schemas were hand-written JSON that nothing validated.**
