@@ -34,3 +34,6 @@ integration = []
 [dev-dependencies]
 everruns-capability.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
+
+[lints]
+workspace = true

@@ -92,6 +92,19 @@ authors = ["Everruns Contributors"]
 homepage = "https://everruns.com"
 repository = "https://github.com/everruns/everruns"
 
+[workspace.lints.clippy]
+# A crate opts in with `[lints] workspace = true`. Cargo does not inherit these
+# by default, so a crate still carrying unwrap/expect debt is simply not opted
+# in — the floor stays silent there instead of drowning real warnings.
+# scripts/lib/check-lint-floor.sh ratchets that membership: a crate may join the
+# floor, and a new crate must, but none may leave.
+#
+# Test code is exempt per opted-in target root, via
+# `#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]`.
+# A panic in a test is a failing test; a panic in production is an outage.
+unwrap_used = "deny"
+expect_used = "deny"
+
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1.50", features = ["full"] }

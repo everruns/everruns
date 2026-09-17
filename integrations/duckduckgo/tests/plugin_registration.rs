@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration test: verify DuckDuckGo plugin is published by the crate catalog.
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};

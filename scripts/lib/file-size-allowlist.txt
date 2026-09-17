@@ -19,7 +19,7 @@
 1673 crates/core/src/skill.rs
 2277 crates/core/src/tool_narration.rs
 3218 crates/drivers/anthropic/src/driver.rs
-1784 crates/drivers/llmsim/src/lib.rs
+1785 crates/drivers/llmsim/src/lib.rs
 2285 crates/durable/src/engine/executor.rs
 3714 crates/durable/src/persistence/memory.rs
 3921 crates/durable/src/persistence/postgres.rs
@@ -95,12 +95,12 @@
 4728 crates/test-support/tests/reason_atom_test.rs
 4386 crates/worker/src/grpc_adapters.rs
 2500 crates/worker/src/unified_worker.rs
-3577 integrations/bashkit/src/lib.rs
+3578 integrations/bashkit/src/lib.rs
 1761 integrations/browserless/src/tools.rs
 2393 integrations/daytona/src/client.rs
 3741 integrations/daytona/src/tools.rs
-1543 integrations/daytona/tests/tool_integration.rs
-4503 integrations/filesystem/src/lib.rs
-1819 integrations/lua/src/lib.rs
+1544 integrations/daytona/tests/tool_integration.rs
+4509 integrations/filesystem/src/lib.rs
+1820 integrations/lua/src/lib.rs
 1720 integrations/openai-image/src/image_capability.rs
-1980 integrations/web-fetch/src/lib.rs
+1981 integrations/web-fetch/src/lib.rs

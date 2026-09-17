@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Experimental Docker container tools for Everruns agents.
 //!
 //! This capability provides tools for running and interacting with a Docker container

@@ -45,3 +45,6 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"
 urlencoding = "2"
 tempfile.workspace = true
+
+[lints]
+workspace = true

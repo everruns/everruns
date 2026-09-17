@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! OpenAI provider drivers for Everruns.
 //!
 //! `everruns-openai` is part of the [Everruns](https://everruns.com)

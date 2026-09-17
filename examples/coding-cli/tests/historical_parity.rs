@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Contract for the intentionally small coding CLI surface.
 
 use clap::{CommandFactory, Parser};

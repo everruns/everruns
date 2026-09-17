@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Meta Model API provider support for the
 //! [Everruns Framework](https://docs.everruns.com/framework/).
 //!

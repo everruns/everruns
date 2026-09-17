@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration tests for Daytona plugin registration and capability.
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};

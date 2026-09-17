@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live Daytona API integration tests.
 //!
 //! These tests hit the real Daytona API and are gated behind:

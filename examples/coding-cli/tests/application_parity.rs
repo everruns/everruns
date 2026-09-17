@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! External-crate acceptance tests for promoted Framework application APIs.
 //!
 //! This package has exactly one Everruns dependency: the public `everruns`

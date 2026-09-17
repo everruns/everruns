@@ -36,3 +36,6 @@ everruns-integrations-openai-image = { path = "../../integrations/openai-image" 
 everruns-integrations-parallel = { path = "../../integrations/parallel" }
 everruns-integrations-sprites = { path = "../../integrations/sprites" }
 everruns-integrations-typesafe = { path = "../../integrations/typesafe", features = ["hosted"] }
+
+[lints]
+workspace = true

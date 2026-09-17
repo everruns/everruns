@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! GitHub-backed blueprints for Everruns.
 //!
 //! This crate registers the `github_scout` capability through Everruns' inventory

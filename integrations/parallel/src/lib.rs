@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Parallel web search and fetch for Everruns agents.
 //!
 //! `everruns-integrations-parallel` is part of the

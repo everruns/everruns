@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 #![deny(missing_docs)]
 
 //! The catalog of integration crates composed into the hosted Everruns product.

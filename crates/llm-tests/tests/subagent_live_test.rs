@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 // Live end-to-end test for background spawn_agent subagent delegation against a real LLM
 // through the runtime: InProcessRuntime + the local-host PlatformStore
 // (`everruns::local` owns the embeddable PlatformStore implementation the

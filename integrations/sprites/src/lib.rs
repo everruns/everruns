@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Persistent Sprites microVM sandboxes for Everruns agents.
 //!
 //! This integration contributes tools for creating, managing, executing in, and

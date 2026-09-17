@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! `ercode` — a terminal coding agent using public Framework APIs.
 
 use std::io::{IsTerminal, Write};

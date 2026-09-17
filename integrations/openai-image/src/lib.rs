@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! OpenAI Image Generation integration.
 //!
 //! Provides the `gpt_image_gen` capability with `generate_image` and

@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Cursor Cloud Agents integration for Everruns.
 //!
 //! This integration contributes tools for launching and managing Cursor Cloud

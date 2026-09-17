@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Acceptance tests for the coding-cli example (EVE-835).
 //!
 //! These prove the example works through the public `everruns` surface and

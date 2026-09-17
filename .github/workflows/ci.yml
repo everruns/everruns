@@ -684,6 +684,22 @@ jobs:
       - name: Check no oversized file grew and no new file crossed the threshold
         run: bash scripts/lib/check-file-size.sh
 
+  lint-floor:
+    name: Clippy Lint Floor
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Check every crate is on the lint floor or has recorded debt
+        run: bash scripts/lib/check-lint-floor.sh
+
   clippy:
     name: Clippy Lints
     runs-on: ubuntu-latest
@@ -2519,6 +2535,7 @@ jobs:
       - clippy
       - integration-catalog
       - file-size
+      - lint-floor
       - unit-test
       - worker-test
       - shell-test

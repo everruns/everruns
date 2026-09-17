@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! DuckDuckGo Instant Answer integration for Everruns.
 //!
 //! Instant answers via DuckDuckGo Instant Answer API.

@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration test: verify Cursor plugin and connection provider registration.
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};

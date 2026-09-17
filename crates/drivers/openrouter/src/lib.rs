@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! OpenRouter provider driver for Everruns.
 //!
 //! `everruns-openrouter` is part of the [Everruns](https://everruns.com)

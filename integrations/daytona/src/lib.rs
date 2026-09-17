@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Daytona cloud sandboxes for Everruns agents.
 //!
 //! `everruns-integrations-daytona` is part of the

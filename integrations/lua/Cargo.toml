@@ -30,3 +30,6 @@ chrono.workspace = true
 regex.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 uuid.workspace = true
+
+[lints]
+workspace = true
