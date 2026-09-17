@@ -1161,6 +1161,93 @@ mod tests {
         }
     }
 
+    // ---------------------------------------------------------------
+    // EVE-1030 acceptance: what an authorized service grant buys, and what
+    // revoking it takes away. These sit here rather than beside the authorize
+    // handler because the property being asserted is what the *resolver* does
+    // with the row the authorize flow writes.
+    // ---------------------------------------------------------------
+
+    #[tokio::test]
+    async fn two_different_invoking_users_reach_the_remote_as_the_same_identity() {
+        // One agent identity, two sessions owned by different humans. A service
+        // attachment must present the agent's credential in both, or "acts as
+        // itself" would not hold across users.
+        let first = mcp_setup(ATTENDED, true, true).await;
+        let second = mcp_setup(ATTENDED, true, true).await;
+        assert_ne!(
+            first.user_id, second.user_id,
+            "the two sessions must have different humans or this proves nothing"
+        );
+
+        let first_token = resolver_for(&first)
+            .get_mcp_connection_token(first.session_id, &first.provider, McpServerActsAs::Service)
+            .await
+            .unwrap();
+        let second_token = resolver_for(&second)
+            .get_mcp_connection_token(second.session_id, &second.provider, McpServerActsAs::Service)
+            .await
+            .unwrap();
+
+        assert_eq!(first_token.as_deref(), Some("identity-token"));
+        assert_eq!(second_token, first_token);
+        // Neither user's own grant leaked in, despite both holding one.
+        assert_ne!(first_token.as_deref(), Some("user-token"));
+    }
+
+    #[tokio::test]
+    async fn revoking_the_identity_grant_returns_the_attachment_to_connection_required() {
+        let fixture = mcp_setup(ATTENDED, true, true).await;
+        let resolver = resolver_for(&fixture);
+
+        // Authorized: the service attachment resolves the agent's credential.
+        assert_eq!(
+            resolver
+                .get_mcp_connection_token(
+                    fixture.session_id,
+                    &fixture.provider,
+                    McpServerActsAs::Service
+                )
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("identity-token")
+        );
+
+        // Revoked: this is exactly what the delete endpoint does.
+        assert!(
+            fixture
+                .db
+                .delete_agent_identity_connection(fixture.identity_id, &fixture.provider)
+                .await
+                .unwrap()
+        );
+
+        let after = resolver
+            .get_mcp_connection_token(
+                fixture.session_id,
+                &fixture.provider,
+                McpServerActsAs::Service,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            after, None,
+            "revocation must take effect on the next call, with no cached token surviving"
+        );
+        // It fell back to nothing, not to the invoking user's grant, which is
+        // still present and would be the tempting substitution.
+        assert!(
+            fixture
+                .db
+                .get_user_connection(fixture.user_id, &fixture.provider)
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
     #[tokio::test]
     async fn identity_grant_is_unreachable_from_a_session_without_that_identity() {
         let fixture = mcp_setup(ATTENDED, false, true).await;
