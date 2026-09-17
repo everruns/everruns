@@ -299,13 +299,7 @@ def identical_to_baseline(name: str, records=None) -> tuple[bool, str]:
             with urllib.request.urlopen(request, timeout=60) as response:
                 payload = response.read()
             with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
-                try:
-                    archive.extractall(tmp, filter="data")
-                except TypeError:
-                    # Python < 3.12 predates the filter= parameter; the
-                    # tarball comes from crates.io over TLS, so plain
-                    # extraction is acceptable here.
-                    archive.extractall(tmp)
+                archive.extractall(tmp, filter="data")
             unpacked = os.path.join(tmp, f"{name}-{baseline}")
             if not os.path.isdir(unpacked):
                 return False, "baseline archive layout unexpected"

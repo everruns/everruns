@@ -72,6 +72,7 @@ def bump(version: str, level: str) -> str:
         return f"{major}.{minor}.{patch + 1}"
     raise ValueError(level)
 
+
 def release_version(current: str, baseline: str, level: str) -> str:
     """Keep an existing bump when it is at least the required semver bump."""
     minimum = bump(baseline, level)
