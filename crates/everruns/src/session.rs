@@ -722,11 +722,18 @@ pub enum SessionEnvironmentError {
     AlreadyStarted,
     /// The Session is already bound to a different Environment.
     AlreadyBound,
-    /// The Environment's workspace provider conflicts with the Agent configuration.
+    /// Canonical workspace-backend conflict error name.
+    ///
+    /// Environment binding continues to emit
+    /// [`ProviderConflict`](Self::ProviderConflict) during its deprecation
+    /// window.
+    BackendConflict,
+    /// Compatibility variant emitted during its deprecation window.
+    #[deprecated(note = "use BackendConflict")]
     ProviderConflict,
     /// The recorded Environment or workspace head cannot be reopened.
     Unavailable,
-    /// The workspace provider rejected the requested operation.
+    /// The workspace backend rejected the requested operation.
     Workspace(everruns_host::WorkspaceError),
 }
 
@@ -746,8 +753,12 @@ impl std::fmt::Display for SessionEnvironmentError {
         match self {
             Self::AlreadyStarted => formatter.write_str("session execution already started"),
             Self::AlreadyBound => formatter.write_str("session is already bound to another head"),
+            Self::BackendConflict => {
+                formatter.write_str("another workspace backend uses the same backend id")
+            }
+            #[allow(deprecated)]
             Self::ProviderConflict => {
-                formatter.write_str("another workspace provider uses the same provider id")
+                formatter.write_str("another workspace backend uses the same backend id")
             }
             Self::Unavailable => formatter.write_str("environment binding store is unavailable"),
             Self::Workspace(error) => write!(formatter, "workspace selection failed: {error}"),

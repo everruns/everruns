@@ -9,13 +9,12 @@ const QUESTION: &str = "Can durable execution prevent duplicate payments? Search
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let api_key = std::env::var("OPENROUTER_API_KEY")?;
     let input = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
     let question = if input.is_empty() { QUESTION } else { &input };
     let agent = Agent::builder()
         .name("research-agent")
         .instructions(include_str!("instructions.md"))
-        .provider(everruns_openrouter::provider("openrouter", api_key))
+        .provider(everruns_openrouter::from_env("openrouter")?)
         .model(MODEL)
         .max_iterations(12)
         .capability(BraveSearch::from_env()?)

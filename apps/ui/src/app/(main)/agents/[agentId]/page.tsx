@@ -15,7 +15,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ResourceNotFound } from "@/components/resource-not-found";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button, LinkButton, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -292,21 +292,19 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
               {exportAgent.isPending ? "Exporting..." : "Export"}
             </Button>
             {agent.status === "active" && (
-              <Button variant="outline" render={<Link href={`/agents/${agentId}/edit`} />}>
+              <LinkButton variant="outline" href={`/agents/${agentId}/edit`}>
                 <Pencil className="size-4" />
                 Edit
-              </Button>
+              </LinkButton>
             )}
             {observersEnabled && agent.status === "active" && (
-              <Button
+              <LinkButton
                 variant="outline"
-                render={
-                  <Link href={{ pathname: "/observers/new", query: { agent_id: agentId } }} />
-                }
+                href={{ pathname: "/observers/new", query: { agent_id: agentId } }}
               >
                 <Telescope className="size-4" />
                 Observe this agent
-              </Button>
+              </LinkButton>
             )}
             <Button
               variant="accent"
@@ -399,10 +397,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         compactActionStrip={
           <>
             {agent.status === "active" && (
-              <Button variant="outline" render={<Link href={`/agents/${agentId}/edit`} />}>
+              <LinkButton variant="outline" href={`/agents/${agentId}/edit`}>
                 <Pencil className="size-4" />
                 Edit
-              </Button>
+              </LinkButton>
             )}
             <Button variant="outline" onClick={handleCopy} disabled={copyAgent.isPending}>
               <Copy className="size-4" />
@@ -579,7 +577,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                   <div>
                     <p className="text-sm font-medium mb-2">Token Usage</p>
                     <div className="flex items-center gap-2 p-2 border bg-muted/50">
-                      <Zap className="w-4 h-4 text-yellow-500" />
+                      <Zap className="w-4 h-4 text-accent-foreground" />
                       <div className="flex-1">
                         <p className="text-sm font-medium">
                           {formatTokens(totalTokens(agent.usage))} total

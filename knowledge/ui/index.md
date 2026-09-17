@@ -7,5 +7,6 @@
 * [MCP Entity Cards](mcp-cards.md) - MCP Apps entity cards and sandboxed HTML resources.
 * [Navigation Information Architecture](information-architecture.md) - How navigation is grouped by what you do with a thing, and the dismissed alternatives.
 * [Brand Specification](brand.md) - Brand identity, colors, typography.
+* [Demo Screenshot Set](demo-screenshots.md) - Maintained light and dark demo scenes, data, framing, and refresh contract.
 * [Documentation Site Specification](documentation.md) - Documentation site.
 * [Sign-up Experience Redesign, Analysis & Design Brief](signup-experience-redesign-brief.md) - Design brief for on-brand sign-up / onboarding screens.

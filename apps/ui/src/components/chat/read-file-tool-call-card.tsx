@@ -207,9 +207,9 @@ export function ReadFileToolCallCard({ toolCall, toolResult }: ReadFileToolCallC
 
   const statusIcon = isComplete ? (
     hasError ? (
-      <span className="text-red-500 text-xs font-bold">!</span>
+      <span className="text-destructive text-xs font-bold">!</span>
     ) : (
-      <Check className="h-3 w-3 text-green-600/80" />
+      <Check className="h-3 w-3 text-success/80" />
     )
   ) : (
     <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/60" />
@@ -250,7 +250,7 @@ export function ReadFileToolCallCard({ toolCall, toolResult }: ReadFileToolCallC
       </div>
 
       {hasError && (
-        <div className="ml-[22px] mt-0.5 text-[10px] text-red-600">
+        <div className="ml-[22px] mt-0.5 text-[10px] text-destructive">
           {t("error_prefix", { value: toolResult?.error ?? "" })}
         </div>
       )}

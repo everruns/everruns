@@ -233,6 +233,46 @@ published results are tracked in
 - Scorer failures do not expose internal provider or storage errors to public
   consumers.
 
+## Coverage of model-backed judgment
+
+Recorded here rather than in the specs these cover, so the picture has one home.
+
+**Guardrail calibration is measured, on a corpus too small to settle anything.**
+The [guardrail-calibration study](../../evals/guardrail-calibration/README.md)
+runs a labeled corpus through the shipped decision path across both engines and
+a threshold sweep, reporting block rate against false-positive rate. It exists
+because unit tests prove only the plumbing, while the number that decides
+whether a guardrail is usable is its calibration.
+
+Its first run (18 cases, three policy families) found the engines fail
+differently rather than one dominating: at the default threshold `jev` caught
+every violation and over-blocked one benign staging-table deletion, while
+`utility_llm` never over-blocked but missed a path-traversal read — the miss an
+attacker would reach for. `jev` at threshold 70 shed the false positive without
+losing a violation; at 90 its recall collapsed. `utility_llm` has one operating
+point and no dial, because it writes its own verdict.
+
+That is enough to show the engines differ and that the threshold matters. It is
+not enough to move the default from 50. The corpus is deliberately a plain JSONL
+file so a deployment can re-run it on its own traffic, which is what the specs
+mean by "validate thresholds against your own data and consequences".
+
+**Typed-judgment tool use is graded on the questions, not just the call.** The
+[Generic study](../../evals/generic/README.md)'s `jev` harness profile carries
+the `jev` capability and measures whether a model reaches for a
+measurement instead of asserting one — and, through the `jev_questions`
+scorer, whether the questions it writes are answerable: instructions that carry
+their own meaning (the question id never reaches the model), at least two
+ordered levels for a score, the primitive the case actually called for.
+
+A tool that is correctly implemented and badly used is indistinguishable, from
+the outside, from a tool that does not work. A question that leans on its id
+returns a confident number about the wrong thing, which is worse than no number.
+
+Both studies skip rather than fail when their credentials are absent: an
+unkeyed machine says nothing about a model, and an unarmed guardrail is
+unmeasured rather than permissive.
+
 ## Harness prompt experiments
 
 The standalone [Generic Mira study](../../evals/generic/README.md#harness-behavior-comparison)

@@ -41,7 +41,7 @@ mod turn;
 pub(crate) use everruns_capability::CapabilityRef;
 pub(crate) use everruns_core::{
     COMPACTION_CHECKPOINT_FORMAT_VERSION, CompactionCheckpoint, CompactionCheckpointPayload,
-    CompactionCheckpointStore, EgressService, McpToolInvoker, MessageQuery,
+    CompactionCheckpointStore, EgressService, JudgmentService, McpToolInvoker, MessageQuery,
     ProactiveCompactionAttempt, RuntimeAgent, UtilityLlmService, annotation_hook, capabilities,
     compaction_policy, connection_services, delegation_services, durability, event_emitter, events,
     execution_loading, file_services, finalized_tool_calls, image_services, llm_conversions,

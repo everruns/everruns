@@ -1,11 +1,41 @@
 ---
 title: Harnesses
-description: Harnesses are the base environment for sessions, system prompt, default model, and bundled capabilities that agents and sessions extend.
+description: A harness is what an agent runs on, the execution environment, default model, and bundled capabilities that agents and sessions extend.
 ---
 
-A **harness** defines the base environment for sessions: the system prompt foundation, the default model, and a bundle of capabilities. Every session is assigned exactly one harness. Agents and sessions then layer their own configuration on top.
+A **harness** is what an agent *runs on*. It answers "what environment am I working in, and what is available to me?", the execution environment, the default model, and a bundle of capabilities. Every session is assigned exactly one harness. Agents and sessions then layer their own configuration on top.
 
-Think of a harness as the "starter kit" shared across many agents, operations-side defaults that survive even when individual agents change.
+:::note[Harness here does not mean the agent loop]
+Elsewhere in the industry, "agent harness" usually names the loop that drives the model, the thing that assembles context, calls the LLM, and dispatches tools. Everruns describes itself as a *durable agentic harness engine* in that sense.
+
+A **Harness** (the entity on this page) is not that loop. The loop is the runtime, and you never configure it directly. A Harness is the reusable configuration a session runs on top of.
+:::
+
+The split that matters is **world versus behavior**:
+
+| | Answers | Owns |
+|---|---|---|
+| **Harness** | "What am I running in?" | Execution environment, network access, capability bundle, default model, starter files |
+| **Agent** | "What role am I playing?" | Instructions, domain capabilities, the agent's voice |
+| **Session** | "What is true for this one conversation?" | Per-conversation extras, overrides, a tighter network policy |
+
+A harness exists before any agent uses it, and many agents share one.
+
+### Who points at a harness
+
+Both an agent and a session carry a harness reference:
+
+- Every **agent** holds exactly one `harness_id`. It is the harness that agent's sessions run on by default. On create, an agent inherits the organization's default harness unless you pass `harness_id` or `harness_name`; an explicit choice stays pinned.
+- A **session** may name its own harness and override the agent's.
+
+Precedence when a session starts, first match wins:
+
+1. The harness named on the session request
+2. The agent's harness
+3. The organization default
+4. The built-in fallback
+
+So the same agent can be run on a different harness for one session without editing the agent, while changing it for good means updating the agent.
 
 For the design rationale (why three configuration layers exist), see [Concepts](/explanation/concepts/#why-three-configuration-layers-harness-agent-session).
 

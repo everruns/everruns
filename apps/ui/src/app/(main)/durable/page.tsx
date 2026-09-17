@@ -26,7 +26,7 @@ import {
   Play,
 } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/button";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import { getHealthBadgeVariant, getWorkflowStatusBadgeVariant } from "@/lib/status-utils";
 
@@ -43,11 +43,11 @@ const MetricsCharts = dynamic(
 function getHealthStatusColor(status: string) {
   switch (status) {
     case "healthy":
-      return "bg-green-500";
+      return "bg-success";
     case "degraded":
-      return "bg-yellow-500";
+      return "bg-warning";
     case "unhealthy":
-      return "bg-red-500";
+      return "bg-destructive";
     default:
       return "bg-muted-foreground";
   }
@@ -172,10 +172,10 @@ export default function DurableDashboardPage() {
         {health &&
           (health.dlq_size > 0 ||
             (health.open_circuit_breakers && health.open_circuit_breakers.length > 0)) && (
-            <Card className="border-yellow-500/50 bg-yellow-500/5">
+            <Card className="border-warning/50 bg-warning/5">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                  <AlertTriangle className="h-5 w-5 text-warning" />
                   <CardTitle className="text-base">Attention Required</CardTitle>
                 </div>
               </CardHeader>
@@ -186,13 +186,9 @@ export default function DurableDashboardPage() {
                       <Inbox className="h-4 w-4 inline mr-2" />
                       {health.dlq_size} items in dead letter queue
                     </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      render={<Link href="/durable/workflows?tab=dlq" />}
-                    >
+                    <LinkButton variant="outline" size="sm" href="/durable/workflows?tab=dlq">
                       View DLQ
-                    </Button>
+                    </LinkButton>
                   </div>
                 )}
                 {health.open_circuit_breakers && health.open_circuit_breakers.length > 0 && (
@@ -202,13 +198,9 @@ export default function DurableDashboardPage() {
                       {health.open_circuit_breakers.length} circuit breakers open:{" "}
                       {health.open_circuit_breakers.join(", ")}
                     </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      render={<Link href="/durable/circuit-breakers" />}
-                    >
+                    <LinkButton variant="outline" size="sm" href="/durable/circuit-breakers">
                       Manage
-                    </Button>
+                    </LinkButton>
                   </div>
                 )}
               </CardContent>
@@ -232,9 +224,9 @@ export default function DurableDashboardPage() {
                   {schedulesData.data.filter((s) => !s.enabled).length} paused
                 </CardDescription>
               </div>
-              <Button variant="outline" size="sm" render={<Link href="/durable/schedules" />}>
+              <LinkButton variant="outline" size="sm" href="/durable/schedules">
                 View All
-              </Button>
+              </LinkButton>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
@@ -246,7 +238,7 @@ export default function DurableDashboardPage() {
                   >
                     <div className="flex items-center gap-2">
                       {schedule.enabled ? (
-                        <Play className="h-4 w-4 text-green-500" />
+                        <Play className="h-4 w-4 text-success" />
                       ) : (
                         <Pause className="h-4 w-4 text-muted-foreground" />
                       )}
@@ -283,9 +275,9 @@ export default function DurableDashboardPage() {
                 <CardTitle>Workers</CardTitle>
                 <CardDescription>Active worker pool status</CardDescription>
               </div>
-              <Button variant="outline" size="sm" render={<Link href="/durable/workers" />}>
+              <LinkButton variant="outline" size="sm" href="/durable/workers">
                 View All
-              </Button>
+              </LinkButton>
             </CardHeader>
             <CardContent>
               {workersData && workersData.data.length > 0 ? (
@@ -332,10 +324,10 @@ export default function DurableDashboardPage() {
                           <div
                             className={`w-2 h-2 rounded-full ${
                               worker.status === "active"
-                                ? "bg-green-500"
+                                ? "bg-success"
                                 : worker.status === "draining"
-                                  ? "bg-yellow-500"
-                                  : "bg-red-500"
+                                  ? "bg-warning"
+                                  : "bg-destructive"
                             }`}
                           />
                           <EntityIdentity
@@ -376,9 +368,9 @@ export default function DurableDashboardPage() {
                 <CardTitle>Recent Workflows</CardTitle>
                 <CardDescription>Latest workflow executions</CardDescription>
               </div>
-              <Button variant="outline" size="sm" render={<Link href="/durable/workflows" />}>
+              <LinkButton variant="outline" size="sm" href="/durable/workflows">
                 View All
-              </Button>
+              </LinkButton>
             </CardHeader>
             <CardContent>
               {workflowsData && workflowsData.data.length > 0 ? (
@@ -444,13 +436,13 @@ export default function DurableDashboardPage() {
 function WorkflowStatusIcon({ status }: { status: string }) {
   switch (status) {
     case "completed":
-      return <CheckCircle className="h-4 w-4 text-green-500" />;
+      return <CheckCircle className="h-4 w-4 text-success" />;
     case "running":
-      return <Activity className="h-4 w-4 text-blue-500 animate-pulse" />;
+      return <Activity className="h-4 w-4 text-info animate-pulse" />;
     case "failed":
-      return <AlertTriangle className="h-4 w-4 text-red-500" />;
+      return <AlertTriangle className="h-4 w-4 text-destructive" />;
     case "cancelled":
-      return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+      return <AlertTriangle className="h-4 w-4 text-warning" />;
     default:
       return <Clock className="h-4 w-4 text-muted-foreground" />;
   }

@@ -54,7 +54,7 @@ function CopySnippetButton({ value }: { value: string }) {
       className="absolute top-2 right-2 inline-flex h-7 w-7 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
       aria-label={copied ? "Copied" : "Copy to clipboard"}
     >
-      {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+      {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
     </button>
   );
 }

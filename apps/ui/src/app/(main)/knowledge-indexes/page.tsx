@@ -9,7 +9,7 @@ import { ArchiveKnowledgeIndexDialog } from "@/components/knowledge-indexes/arch
 import { KnowledgeIndexDiagnosticBadge } from "@/components/knowledge-indexes/knowledge-index-diagnostic";
 import { KnowledgeIndexFormDialog } from "@/components/knowledge-indexes/knowledge-index-form-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import { SearchInput } from "@/components/ui/search-input";
 import {
@@ -444,14 +444,10 @@ function KnowledgeIndexRow({
               {knowledgeIndexSyncActionLabel(diagnostic)}
             </Button>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            render={<Link href={`/knowledge-indexes/${index.id}`} />}
-          >
+          <LinkButton variant="outline" size="sm" href={`/knowledge-indexes/${index.id}`}>
             <FolderOpen className="size-4" />
             Open
-          </Button>
+          </LinkButton>
           <Button variant="outline" size="sm" onClick={() => onEdit(index)} disabled={isReadOnly}>
             <Pencil className="size-4" />
             Edit

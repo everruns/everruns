@@ -13,9 +13,9 @@ const noticeVariants = cva(
   {
     variants: {
       variant: {
-        info: "border-l-[3px] border-l-primary",
-        warning: "border-l-[3px] border-l-accent",
-        success: "border-l-[3px] border-l-emerald-600 dark:border-l-emerald-500",
+        info: "border-l-[3px] border-l-info",
+        warning: "border-l-[3px] border-l-warning",
+        success: "border-l-[3px] border-l-success",
         destructive: "border-l-[3px] border-l-destructive",
       },
       hasIcon: {
@@ -33,9 +33,9 @@ const noticeVariants = cva(
 const noticeIconVariants = cva("mt-0.5 text-muted-foreground", {
   variants: {
     variant: {
-      info: "text-primary",
-      warning: "text-accent-foreground",
-      success: "text-emerald-700 dark:text-emerald-400",
+      info: "text-info",
+      warning: "text-warning",
+      success: "text-success",
       destructive: "text-destructive",
     },
   },

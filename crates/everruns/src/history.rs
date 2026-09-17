@@ -412,14 +412,24 @@ pub enum ResumeError {
     Unavailable,
     /// The canonical event history is internally inconsistent or malformed.
     Corrupt,
-    /// The provider recorded for this session was not registered on the Agent.
-    WorkspaceProviderUnavailable {
-        /// Stable open provider id needed to reopen the head.
+    /// Canonical unavailable workspace-backend error name.
+    ///
+    /// Resume continues to emit
+    /// [`WorkspaceProviderUnavailable`](Self::WorkspaceProviderUnavailable)
+    /// during its deprecation window.
+    WorkspaceBackendUnavailable {
+        /// Stable open backend id needed to reopen the head.
         provider_id: String,
     },
-    /// The recorded provider could not reopen the exact workspace head.
+    /// Compatibility variant emitted during its deprecation window.
+    #[deprecated(note = "use WorkspaceBackendUnavailable")]
+    WorkspaceProviderUnavailable {
+        /// Stable open backend id needed to reopen the head.
+        provider_id: String,
+    },
+    /// The recorded backend could not reopen the exact workspace head.
     WorkspaceUnavailable,
-    /// The provider returned a different workspace/head than was recorded.
+    /// The backend returned a different workspace/head than was recorded.
     WorkspaceMismatch,
     /// The persisted opaque workspace binding could not be decoded.
     WorkspaceBindingCorrupt,
@@ -433,11 +443,15 @@ impl fmt::Display for ResumeError {
             }
             Self::Unavailable => f.write_str("session history is unavailable"),
             Self::Corrupt => f.write_str("session history is corrupt"),
+            Self::WorkspaceBackendUnavailable { provider_id } => {
+                write!(f, "workspace backend {provider_id} is unavailable")
+            }
+            #[allow(deprecated)]
             Self::WorkspaceProviderUnavailable { provider_id } => {
-                write!(f, "workspace provider {provider_id} is unavailable")
+                write!(f, "workspace backend {provider_id} is unavailable")
             }
             Self::WorkspaceUnavailable => f.write_str("recorded workspace head is unavailable"),
-            Self::WorkspaceMismatch => f.write_str("workspace provider reopened a different head"),
+            Self::WorkspaceMismatch => f.write_str("workspace backend reopened a different head"),
             Self::WorkspaceBindingCorrupt => f.write_str("persisted workspace binding is corrupt"),
         }
     }

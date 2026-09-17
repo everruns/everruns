@@ -14,7 +14,7 @@ import {
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ResourceNotFound } from "@/components/resource-not-found";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -194,10 +194,10 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
             {!harness.is_built_in && (
               <>
                 {harness.status === "active" && (
-                  <Button variant="outline" render={<Link href={`/harnesses/${harnessId}/edit`} />}>
+                  <LinkButton variant="outline" href={`/harnesses/${harnessId}/edit`}>
                     <Pencil className="size-4" />
                     Edit
-                  </Button>
+                  </LinkButton>
                 )}
                 <Button
                   variant="outline"

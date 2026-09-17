@@ -49,6 +49,10 @@ Use `OpenAI::new(key)` when the host already owns an explicitly resolved
 credential. Never put credentials in a model id, log them as model identity, or
 select provider behavior with vendor-specific detection.
 
+`from_env` is not OpenAI-specific: every driver declares the variables its own
+vendor SDK reads, and each driver crate exposes the same entry point. See
+[Credentials](/framework/credentials/) for the per-driver table.
+
 ## Explicit assembly
 
 Applications with their own driver can use the shared boundary directly:
@@ -66,3 +70,6 @@ fn agent_for(driver: impl ChatDriver) -> Result<Agent, BuildError> {
 ```
 
 For a complete driver boundary, see [Custom providers](/framework/custom-providers/).
+
+To call a model once without building an agent, see
+[Direct model calls](/framework/direct-model-calls/).

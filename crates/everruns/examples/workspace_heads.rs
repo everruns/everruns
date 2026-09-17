@@ -3,9 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use everruns::{
-    Agent, Engine, LocalConfig, LocalGitWorkspaceProvider, Model, Workspace, WorkspacePolicy,
-};
+use everruns::{Agent, Engine, LocalConfig, LocalGitWorkspace, Model, Workspace, WorkspacePolicy};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -18,16 +16,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(PathBuf::from)
         .unwrap_or_else(|| repository.join(".everruns-local"));
 
-    let provider = Arc::new(LocalGitWorkspaceProvider::new(
-        state.join("workspace-provider"),
-    )?);
-    let workspace = Workspace::open(provider.clone(), repository.to_string_lossy()).await?;
+    let backend = Arc::new(LocalGitWorkspace::new(state.join("workspace-provider"))?);
+    let workspace = Workspace::open(backend.clone(), repository.to_string_lossy()).await?;
     let head = workspace.head("example").create().await?;
     let agent = Agent::builder()
         .instructions("Work only in the selected workspace head.")
         .model(Model::simulated("ready"))
         .local(LocalConfig::new(state.join("runtime")))
-        .workspace_provider(provider)
+        .workspace_backend(backend)
         .workspace_policy(WorkspacePolicy::read_write())
         .build()?;
     let session = Engine::new()

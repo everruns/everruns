@@ -26,7 +26,7 @@
 #                             contracts from core, and verifies the concrete
 #                             filesystem/command hosts are host-owned, without
 #                             importing platform.
-#   external-workspace-provider implements the open workspace lifecycle SPI
+#   external-workspace-backend implements the open workspace lifecycle SPI
 #                             using only the published host crate.
 #
 # The fixtures live under `crates/everruns/tests/fixtures/external-consumer` and
@@ -82,6 +82,6 @@ CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
 echo "External execution contracts compile against focused core and host seams under -D warnings."
 
 CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
-  cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-workspace-provider
+  cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-workspace-backend
 
-echo "External workspace provider implements the open host SPI under -D warnings."
+echo "External workspace backend implements the open host SPI under -D warnings."

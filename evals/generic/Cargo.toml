@@ -23,6 +23,10 @@ everruns = { path = "../../crates/everruns", features = ["bashkit"] }
 everruns-anthropic = { path = "../../crates/drivers/anthropic" }
 everruns-openai = { path = "../../crates/drivers/openai" }
 everruns-openrouter = { path = "../../crates/drivers/openrouter" }
+# Attached through its Framework adapter rather than by capability id: the
+# hosted capability resolves a user connection, which an in-process run has
+# no store for.
+everruns-integrations-typesafe = { path = "../../integrations/typesafe", default-features = false }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
 serde_json = "1"
 regex = "1"

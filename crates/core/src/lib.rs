@@ -87,6 +87,7 @@ pub mod egress;
 pub mod exec_tool_result;
 pub mod execution_context;
 pub mod execution_snapshot;
+pub mod judgment;
 pub mod utility_llm;
 
 // Execution feature decisions (EVE-878): the org/product feature-flag records
@@ -345,6 +346,10 @@ pub use system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllow
 // email delivery is a hosted product side effect, never consumed during a
 // turn. The OAuth 2.1 protocol client moved to `everruns-mcp` (its only
 // consumer), and the connector catalog moved to `everruns-platform`.
+pub use judgment::{
+    DisabledJudgmentService, JudgmentAnswer, JudgmentOutcome, JudgmentQuestion, JudgmentRequest,
+    JudgmentService, JudgmentUsage,
+};
 pub use utility_llm::{
     DisabledUtilityLlmService, UTILITY_LLM_MODEL, UtilityLlmReasoningEffort, UtilityLlmRequest,
     UtilityLlmService,
@@ -460,8 +465,8 @@ pub use events::{
 };
 pub use finalized_tool_calls::{FinalizedToolCallsContext, FinalizedToolCallsHook};
 pub use guardrail_checks::{
-    CompiledJudgeCheck, GuardrailAction, GuardrailHit, GuardrailMode, GuardrailOnFail,
-    GuardrailRule, GuardrailStage, GuardrailsConfig, MAX_JUDGE_PROMPT_LEN,
+    CompiledJudgeCheck, GuardrailAction, GuardrailEngine, GuardrailHit, GuardrailMode,
+    GuardrailOnFail, GuardrailRule, GuardrailStage, GuardrailsConfig, MAX_JUDGE_PROMPT_LEN,
 };
 pub use guardrail_gallery::{
     DataEgress, GuardrailGalleryItem, find_guardrail_gallery_item, guardrail_gallery,
@@ -477,12 +482,12 @@ pub use leased_resource::{
 pub use mcp_proxy::{McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools};
 pub use mcp_server::{
     MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
-    McpContent, McpError, McpProtocolMode, McpSecretBindingMetadata, McpServer, McpServerAuthMode,
-    McpServerStatus, McpServerTransportType, McpToolAnnotations, McpToolCallParams,
-    McpToolCallRequest, McpToolCallResponse, McpToolCallResult, McpToolDefinition,
-    McpToolsListRequest, McpToolsListResponse, McpToolsListResult, ScopedMcpServer,
-    ScopedMcpServers, apply_mcp_secret_binding_schemas, is_mcp_tool,
-    mcp_oauth_provider_id_for_uuid, mcp_oauth_session_secret_name, mcp_tool_name,
+    McpContent, McpError, McpProtocolMode, McpSecretBindingMetadata, McpServer, McpServerActsAs,
+    McpServerAuthMode, McpServerPresetRef, McpServerStatus, McpServerTransportType,
+    McpToolAnnotations, McpToolCallParams, McpToolCallRequest, McpToolCallResponse,
+    McpToolCallResult, McpToolDefinition, McpToolsListRequest, McpToolsListResponse,
+    McpToolsListResult, ScopedMcpServer, ScopedMcpServers, apply_mcp_secret_binding_schemas,
+    is_mcp_tool, mcp_oauth_provider_id_for_uuid, mcp_oauth_session_secret_name, mcp_tool_name,
     merge_scoped_mcp_servers, normalize_mcp_error_code, parse_mcp_tool_name,
     sanitize_mcp_server_name, scoped_mcp_servers_is_empty,
 };

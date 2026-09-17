@@ -43,11 +43,12 @@ use tokio::sync::OnceCell;
 use uuid::Uuid;
 
 use crate::domains::budgets::BudgetService;
-use crate::domains::mcp_servers::McpServerService;
 use crate::domains::mcp_servers::scoped_mcp::{
-    build_scoped_mcp_tool_definitions, merge_effective_scoped_mcp_servers_with_capabilities,
+    build_materialized_scoped_mcp_tool_definitions,
+    merge_effective_scoped_mcp_servers_with_capabilities,
     resolve_scoped_mcp_server_with_capabilities, validate_scoped_mcp_servers,
 };
+use crate::domains::mcp_servers::{McpServerResolved, McpServerService};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::max_iterations;
@@ -59,6 +60,24 @@ use everruns_durable::WorkflowEventStore;
 // Helper to create store errors
 fn store_error(msg: impl Into<String>) -> AgentLoopError {
     AgentLoopError::store(msg)
+}
+
+fn resolved_mcp_server_to_worker_info(
+    resolved: McpServerResolved,
+    secret_bindings: HashMap<String, Vec<everruns_mcp::McpSecretBinding>>,
+) -> McpServerInfo {
+    McpServerInfo {
+        id: resolved.id,
+        name: resolved.name,
+        url: resolved.url,
+        api_key: resolved.api_key,
+        headers: resolved.headers,
+        auth_mode: resolved.auth_mode,
+        protocol_mode: resolved.protocol_mode,
+        oauth_provider_id: resolved.oauth_provider_id,
+        acts_as: resolved.acts_as,
+        secret_bindings,
+    }
 }
 
 /// Extract file name from path
@@ -279,6 +298,7 @@ pub struct DirectWorkerAdapters {
     connector_registry: everruns_platform::connector::ConnectorRegistry,
     driver_registry: DriverRegistry,
     utility_llm_service: Option<Arc<dyn UtilityLlmService>>,
+    judgment_service: Option<Arc<dyn everruns_core::JudgmentService>>,
     egress_service: Option<Arc<dyn EgressService>>,
     sqldb_store: std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>,
     storage_store: Option<Arc<dyn everruns_core::session_services::SessionStorageStore>>,
@@ -319,6 +339,7 @@ impl DirectWorkerAdapters {
             connector_registry: everruns_platform::connector::ConnectorRegistry::new(),
             driver_registry,
             utility_llm_service: None,
+            judgment_service: None,
             egress_service: None,
             sqldb_store,
             storage_store: None,
@@ -560,6 +581,14 @@ impl DirectWorkerAdapters {
 
     pub fn with_utility_llm_service(mut self, service: Arc<dyn UtilityLlmService>) -> Self {
         self.utility_llm_service = Some(service);
+        self
+    }
+
+    pub fn with_judgment_service(
+        mut self,
+        service: Arc<dyn everruns_core::JudgmentService>,
+    ) -> Self {
+        self.judgment_service = Some(service);
         self
     }
 
@@ -1424,12 +1453,17 @@ impl WorkerAdapters for DirectWorkerAdapters {
             }
 
             if let Some(resolved) = resolve_scoped_mcp_server_with_capabilities(
+                &self.mcp_server_service,
+                org_id,
                 &harness,
                 agent.as_ref(),
                 &session,
                 server_prefix,
                 &self.capability_registry,
-            ) {
+            )
+            .await
+            .map_err(|e| store_error(format!("Failed to resolve scoped MCP server: {e}")))?
+            {
                 let secret_bindings =
                     crate::domains::agents::credentials::resolve_runtime_secret_bindings(
                         self.db.as_ref(),
@@ -1441,17 +1475,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
                     )
                     .await
                     .map_err(|e| store_error(format!("Failed to resolve MCP credentials: {e}")))?;
-                return Ok(McpServerInfo {
-                    id: resolved.id,
-                    name: resolved.name,
-                    url: resolved.url,
-                    api_key: resolved.api_key,
-                    headers: resolved.headers,
-                    auth_mode: resolved.auth_mode,
-                    protocol_mode: resolved.protocol_mode,
-                    oauth_provider_id: resolved.oauth_provider_id,
+                return Ok(resolved_mcp_server_to_worker_info(
+                    resolved,
                     secret_bindings,
-                });
+                ));
             }
         }
 
@@ -1476,17 +1503,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
         .await
         .map_err(|e| store_error(format!("Failed to resolve MCP credentials: {e}")))?;
 
-        Ok(McpServerInfo {
-            id: resolved.id,
-            name: resolved.name,
-            url: resolved.url,
-            api_key: resolved.api_key,
-            headers: resolved.headers,
-            auth_mode: resolved.auth_mode,
-            protocol_mode: resolved.protocol_mode,
-            oauth_provider_id: resolved.oauth_provider_id,
+        Ok(resolved_mcp_server_to_worker_info(
+            resolved,
             secret_bindings,
-        })
+        ))
     }
 
     // =========================================================================
@@ -1570,17 +1590,22 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 let egress = self.egress_service.clone().unwrap_or_else(|| {
                     Arc::new(everruns_host::DirectEgressService::for_runtime_traffic_from_env())
                 });
-                build_scoped_mcp_tool_definitions(
+                match build_materialized_scoped_mcp_tool_definitions(
+                    &self.db,
+                    org_id,
                     &effective,
                     Some(session.id),
                     self.connection_resolver.as_ref(),
                     egress.as_ref(),
                 )
                 .await
-                .unwrap_or_else(|error| {
-                    tracing::warn!(error = %error, "Failed to build scoped MCP tool definitions");
-                    vec![]
-                })
+                {
+                    Ok(definitions) => definitions,
+                    Err(error) => {
+                        tracing::warn!(error = %error, "Failed to build scoped MCP tool definitions");
+                        vec![]
+                    }
+                }
             }
         } else {
             vec![]
@@ -1724,6 +1749,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     fn utility_llm_service(&self) -> Option<Arc<dyn UtilityLlmService>> {
         self.utility_llm_service.clone()
+    }
+
+    fn judgment_service(&self) -> Option<Arc<dyn everruns_core::JudgmentService>> {
+        self.judgment_service.clone()
     }
 
     fn egress_service(&self) -> Option<Arc<dyn EgressService>> {
@@ -3246,6 +3275,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn direct_mcp_adapter_preserves_neutral_catalog_descriptors() {
+        for acts_as in [
+            everruns_core::McpServerActsAs::None,
+            everruns_core::McpServerActsAs::Service,
+            everruns_core::McpServerActsAs::User,
+        ] {
+            let resolved = McpServerResolved {
+                id: Uuid::new_v4(),
+                name: "linear".to_string(),
+                url: "https://mcp.linear.app/mcp".to_string(),
+                auth_mode: everruns_core::McpServerAuthMode::None,
+                protocol_mode: everruns_core::McpProtocolMode::Auto,
+                oauth_provider_id: None,
+                acts_as,
+                api_key: None,
+                headers: HashMap::new(),
+            };
+
+            let info = resolved_mcp_server_to_worker_info(resolved, HashMap::new());
+
+            assert_eq!(info.acts_as, acts_as);
+            assert_eq!(info.auth_mode, everruns_core::McpServerAuthMode::None);
+            assert!(info.oauth_provider_id.is_none());
+            assert!(info.api_key.is_none());
+        }
+    }
+
     // =========================================================================
     // Capability deduplication helpers (EVE-47)
     // =========================================================================
@@ -3332,6 +3389,179 @@ mod tests {
         assert!(tools.is_empty());
     }
 
+    #[tokio::test]
+    async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() {
+        use crate::storage::models::{
+            CreateAgentRow, CreateAgentVersionRow, CreateMcpServerRow, CreateSessionRow,
+        };
+        use everruns_internal_protocol::proto::{
+            GetMcpServerByPrefixRequest, Uuid as ProtoUuid,
+            worker_service_server::WorkerService as GrpcWorkerService,
+        };
+        use everruns_provider::typed_id::{AgentVersionId, PrincipalId};
+
+        let adapters = test_adapters();
+        let org_id = everruns_core::DEFAULT_ORG_ID;
+        let harness_id =
+            seed_harness_for_platform_store(&adapters.db, org_id, "pinned-mcp-harness", false)
+                .await;
+        adapters
+            .db
+            .create_mcp_server(
+                org_id,
+                CreateMcpServerRow {
+                    name: "pinned-catalog".to_string(),
+                    description: None,
+                    url: "https://pinned.example.com/mcp".to_string(),
+                    transport_type: "http".to_string(),
+                    api_key_encrypted: None,
+                    headers: None,
+                    settings: Some(serde_json::json!({
+                        "auth_mode": "oauth",
+                        "oauth": {}
+                    })),
+                },
+            )
+            .await
+            .expect("create pinned catalog server");
+
+        let agent_id = AgentId::new();
+        adapters
+            .db
+            .create_agent_with_id(
+                org_id,
+                agent_id,
+                CreateAgentRow {
+                    public_id: agent_id.to_string(),
+                    name: "pinned-mcp-agent".to_string(),
+                    display_name: None,
+                    description: None,
+                    intro_markdown: None,
+                    short_description: None,
+                    starters: serde_json::json!([]),
+                    system_prompt: String::new(),
+                    default_model_id: None,
+                    harness_id,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    tools: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({
+                        "docs": {
+                            "type": "http",
+                            "url": "https://current.example.com/mcp"
+                        }
+                    }),
+                    network_access: None,
+                    max_iterations: None,
+                    parallel_tool_calls: None,
+                    is_built_in: false,
+                },
+            )
+            .await
+            .expect("create current agent")
+            .expect("agent should be created");
+
+        let version_id = AgentVersionId::new();
+        let pinned_config = serde_json::json!({
+            "mcp_servers": {
+                "docs": {
+                    "use": "catalog:pinned-catalog",
+                    "actsAs": "service"
+                }
+            }
+        });
+        adapters
+            .db
+            .create_agent_version(CreateAgentVersionRow {
+                id: version_id,
+                public_id: version_id.to_string(),
+                org_id,
+                agent_id,
+                version_number: 1,
+                semver_major: 0,
+                semver_minor: 1,
+                semver_patch: 0,
+                version: "0.1.0".to_string(),
+                is_published: true,
+                parent_version_id: None,
+                source_version_id: None,
+                created_by_principal_id: None,
+                change_kind: "minor".to_string(),
+                summary: None,
+                config_hash: "pinned-mcp-config".to_string(),
+                authored_config: pinned_config.clone(),
+                resolved_config: pinned_config,
+            })
+            .await
+            .expect("create pinned agent version");
+
+        let session = adapters
+            .db
+            .create_session(CreateSessionRow {
+                source: everruns_platform::SessionSource::Api,
+                workspace_id: None,
+                org_id,
+                app_id: None,
+                endpoint_id: None,
+                harness_id: Some(harness_id),
+                agent_id: Some(agent_id),
+                agent_version_id: Some(version_id),
+                agent_config_hash: None,
+                agent_identity_id: None,
+                owner_principal_id: PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
+                title: None,
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                system_prompt: None,
+                initial_files: serde_json::json!([]),
+                hints: None,
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+                blueprint_id: None,
+                blueprint_config: None,
+                parent_session_id: None,
+                budget_root_session_id: None,
+            })
+            .await
+            .expect("create pinned session");
+
+        let direct = adapters
+            .get_mcp_server_by_prefix(org_id, Some(session.id.uuid()), "docs")
+            .await
+            .expect("direct pinned MCP lookup");
+        let grpc_service = crate::grpc_service::WorkerServiceImpl::new(
+            adapters.event_service.as_ref().clone(),
+            adapters.db.clone(),
+            None,
+            None,
+            crate::oss_host_composition_for_grade(everruns_core::DeploymentGrade::Dev),
+        );
+        let grpc = grpc_service
+            .get_mcp_server_by_prefix(tonic::Request::new(GetMcpServerByPrefixRequest {
+                org_id,
+                session_id: Some(ProtoUuid {
+                    value: session.id.uuid().to_string(),
+                }),
+                server_prefix: "docs".to_string(),
+            }))
+            .await
+            .expect("gRPC pinned MCP lookup")
+            .into_inner()
+            .server
+            .expect("gRPC MCP descriptor");
+
+        assert_eq!(direct.url, "https://pinned.example.com/mcp");
+        assert_eq!(direct.acts_as, everruns_core::McpServerActsAs::Service);
+        assert_eq!(grpc.url, direct.url);
+        assert_eq!(grpc.acts_as, direct.acts_as.to_string());
+        assert_eq!(grpc.auth_mode, "none");
+    }
     // =========================================================================
     // grep_files parity tests (EVE-58)
     // =========================================================================

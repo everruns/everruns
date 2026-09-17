@@ -18,8 +18,8 @@ use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    Caller, EgressService, McpProtocolMode, McpServer, McpServerAuthMode, McpServerStatus,
-    McpToolDefinition, mcp_oauth_provider_id_for_uuid,
+    Caller, EgressService, McpProtocolMode, McpServer, McpServerActsAs, McpServerAuthMode,
+    McpServerStatus, McpToolDefinition, mcp_oauth_provider_id_for_uuid,
 };
 use everruns_host::DirectEgressService;
 use serde::{Deserialize, Serialize};
@@ -770,7 +770,39 @@ impl McpServerService {
             auth_mode: server.auth_mode,
             protocol_mode: server.protocol_mode,
             oauth_provider_id: server.oauth_provider_id,
+            acts_as: McpServerActsAs::None,
             api_key,
+            headers,
+        }))
+    }
+
+    /// Resolve transport metadata for an active organization MCP server by name.
+    pub async fn resolve_transport_by_name(
+        &self,
+        caller: &Caller,
+        name: &str,
+    ) -> Result<Option<McpServerResolved>> {
+        let Some(row) = self
+            .db
+            .get_mcp_server_by_name(caller.org_id, name)
+            .await?
+            .filter(|row| row.status == "active")
+        else {
+            return Ok(None);
+        };
+        let settings = Self::settings_from_row(&row);
+        let headers =
+            serde_json::from_value::<HashMap<String, String>>(row.headers).unwrap_or_default();
+
+        Ok(Some(McpServerResolved {
+            id: row.id.uuid(),
+            name: row.name,
+            url: row.url,
+            auth_mode: McpServerAuthMode::None,
+            protocol_mode: settings.protocol_mode,
+            oauth_provider_id: None,
+            acts_as: McpServerActsAs::None,
+            api_key: None,
             headers,
         }))
     }
@@ -800,10 +832,10 @@ pub struct McpServerWithTools {
     pub tools_cached_at: Option<DateTime<Utc>>,
 }
 
-/// Resolved MCP server with decrypted credentials, ready for tool execution.
+/// Resolved MCP server descriptor for worker transport.
 ///
-/// Produced by `McpServerService::resolve_by_prefix` and consumed by both
-/// the gRPC service and direct worker adapters.
+/// Organization-level resolution can include credentials. Scoped catalog
+/// resolution includes transport metadata only.
 #[derive(Debug, Clone)]
 pub struct McpServerResolved {
     pub id: Uuid,
@@ -813,6 +845,7 @@ pub struct McpServerResolved {
     /// Protocol-era adoption policy (`auto` negotiates every protocol era).
     pub protocol_mode: McpProtocolMode,
     pub oauth_provider_id: Option<String>,
+    pub acts_as: McpServerActsAs,
     pub api_key: Option<String>,
     pub headers: HashMap<String, String>,
 }
@@ -988,6 +1021,40 @@ mod tests {
 
         let result = svc.decrypt_api_key(&test_caller(1), Uuid::new_v4()).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn catalog_transport_resolution_omits_configured_credentials() {
+        let db = Arc::new(StorageBackend::in_memory());
+        db.create_mcp_server(
+            1,
+            CreateMcpServerRow {
+                name: "catalog-auth".into(),
+                description: None,
+                url: "https://example.com/mcp".into(),
+                transport_type: "streamable_http".into(),
+                api_key_encrypted: Some(vec![1, 2, 3]),
+                headers: Some(serde_json::json!({"X-Literal": "value"})),
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+        let svc = McpServerService::new(db, None);
+
+        let resolved = svc
+            .resolve_transport_by_name(&test_caller(1), "catalog-auth")
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(resolved.auth_mode, McpServerAuthMode::None);
+        assert!(resolved.oauth_provider_id.is_none());
+        assert!(resolved.api_key.is_none());
+        assert_eq!(
+            resolved.headers.get("X-Literal"),
+            Some(&"value".to_string())
+        );
     }
 
     // --- resolve_by_prefix tests ---

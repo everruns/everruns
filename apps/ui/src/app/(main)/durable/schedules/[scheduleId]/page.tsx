@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -76,13 +76,13 @@ import { getScheduleExecutionBadgeVariant } from "@/lib/status-utils";
 function getStatusIcon(status: ScheduleExecutionStatus) {
   switch (status) {
     case "completed":
-      return <CheckCircle className="h-4 w-4 text-green-500" />;
+      return <CheckCircle className="h-4 w-4 text-success" />;
     case "running":
-      return <Activity className="h-4 w-4 text-blue-500 animate-pulse" />;
+      return <Activity className="h-4 w-4 text-info animate-pulse" />;
     case "failed":
-      return <XCircle className="h-4 w-4 text-red-500" />;
+      return <XCircle className="h-4 w-4 text-destructive" />;
     case "skipped":
-      return <SkipForward className="h-4 w-4 text-yellow-500" />;
+      return <SkipForward className="h-4 w-4 text-warning" />;
     case "pending":
     default:
       return <Clock className="h-4 w-4 text-muted-foreground" />;
@@ -158,7 +158,7 @@ function ExecutionRow({ execution }: { execution: ScheduleExecution }) {
         {execution.error ? (
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger className="text-sm text-red-500 max-w-[200px] truncate block">
+              <TooltipTrigger className="text-sm text-destructive max-w-[200px] truncate block">
                 {execution.error}
               </TooltipTrigger>
               <TooltipContent className="max-w-sm">
@@ -354,10 +354,10 @@ export default function ScheduleDetailPage() {
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Retry
               </Button>
-              <Button variant="outline" render={<Link href="/durable/schedules" />}>
+              <LinkButton variant="outline" href="/durable/schedules">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to Schedules
-              </Button>
+              </LinkButton>
             </div>
           </CardContent>
         </Card>
@@ -412,7 +412,7 @@ export default function ScheduleDetailPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Clock
-                  className={`h-6 w-6 ${schedule.enabled ? "text-green-500" : "text-muted-foreground"}`}
+                  className={`h-6 w-6 ${schedule.enabled ? "text-success" : "text-muted-foreground"}`}
                 />
                 <div>
                   <CardTitle>
@@ -553,15 +553,15 @@ export default function ScheduleDetailPage() {
                   <p className="text-sm text-muted-foreground">Total Executions</p>
                 </div>
                 <div className="text-center p-4 bg-muted">
-                  <p className="text-2xl font-bold text-green-500">{stats.successful_executions}</p>
+                  <p className="text-2xl font-bold text-success">{stats.successful_executions}</p>
                   <p className="text-sm text-muted-foreground">Successful</p>
                 </div>
                 <div className="text-center p-4 bg-muted">
-                  <p className="text-2xl font-bold text-red-500">{stats.failed_executions}</p>
+                  <p className="text-2xl font-bold text-destructive">{stats.failed_executions}</p>
                   <p className="text-sm text-muted-foreground">Failed</p>
                 </div>
                 <div className="text-center p-4 bg-muted">
-                  <p className="text-2xl font-bold text-yellow-500">{stats.skipped_executions}</p>
+                  <p className="text-2xl font-bold text-warning">{stats.skipped_executions}</p>
                   <p className="text-sm text-muted-foreground">Skipped</p>
                 </div>
                 <div className="text-center p-4 bg-muted">

@@ -22,6 +22,7 @@ use everruns_core::{
     session_services::KeyInfo, session_services::SecretInfo, session_services::SessionStorageStore,
 };
 use everruns_provider::credential_provider::CredentialProvider;
+use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::error::{AgentLoopError, Result};
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
@@ -182,37 +183,44 @@ impl InMemoryProviderStore {
     }
 
     /// Configure a default model from explicitly injected credentials.
-    pub async fn from_credential_provider(provider: &dyn CredentialProvider) -> Self {
+    ///
+    /// Credential resolution is descriptor-driven: `registry` supplies the
+    /// driver's own declaration of what it needs, so this never guesses a field
+    /// or variable name on a driver's behalf. The first driver in `preference`
+    /// order that resolves wins.
+    pub async fn from_credential_provider(
+        registry: &DriverRegistry,
+        credentials: &dyn CredentialProvider,
+    ) -> Self {
+        const PREFERENCE: [(DriverId, &str); 2] = [
+            (DriverId::OpenAI, "gpt-5.4"),
+            (DriverId::Anthropic, "claude-sonnet-4-20250514"),
+        ];
+
         let store = Self::new();
-        if let Some(credentials) = provider
-            .resolve(&DriverId::OpenAI)
-            .filter(|credentials| credentials.api_key.is_some())
-        {
-            let config = everruns_provider::driver_registry::ProviderConfig::new(DriverId::OpenAI)
-                .with_api_key(credentials.api_key.expect("filtered above"));
-            let config = match credentials.base_url {
-                Some(base_url) => config.with_base_url(base_url),
+        for (driver, model) in PREFERENCE {
+            let Some(resolved) = registry
+                .descriptor(&driver)
+                .and_then(|descriptor| credentials.resolve(descriptor))
+            else {
+                continue;
+            };
+            // `document` is the same credential shape an operator-entered form
+            // produces, so multi-field drivers stay expressible here.
+            let Some(document) = resolved.document() else {
+                continue;
+            };
+            let config = everruns_provider::driver_registry::ProviderConfig::new(driver.clone())
+                .with_api_key(document);
+            let config = match resolved.base_url() {
+                Some(base_url) => config.with_base_url(base_url.to_string()),
                 None => config,
             };
             store.set_provider_config(config).await;
             store
-                .set_default_model_spec(ModelSpec::on("openai", "gpt-5.4"))
+                .set_default_model_spec(ModelSpec::on(driver.as_str(), model))
                 .await;
-        } else if let Some(credentials) = provider
-            .resolve(&DriverId::Anthropic)
-            .filter(|credentials| credentials.api_key.is_some())
-        {
-            let config =
-                everruns_provider::driver_registry::ProviderConfig::new(DriverId::Anthropic)
-                    .with_api_key(credentials.api_key.expect("filtered above"));
-            let config = match credentials.base_url {
-                Some(base_url) => config.with_base_url(base_url),
-                None => config,
-            };
-            store.set_provider_config(config).await;
-            store
-                .set_default_model_spec(ModelSpec::on("anthropic", "claude-sonnet-4-20250514"))
-                .await;
+            break;
         }
         store
     }

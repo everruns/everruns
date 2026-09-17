@@ -9,13 +9,12 @@ const QUESTION: &str = "Investigate the checkout error-rate alert using the bund
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let api_key = std::env::var("MODEL_API_KEY").or_else(|_| std::env::var("META_API_KEY"))?;
     let input = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
     let question = if input.is_empty() { QUESTION } else { &input };
     let agent = Agent::builder()
         .name("incident-commander-agent")
         .instructions(include_str!("instructions.md"))
-        .provider(everruns_meta::provider("meta", api_key))
+        .provider(everruns_meta::from_env("meta")?)
         .model(MODEL)
         .max_iterations(12)
         .tool(tools::inspect_evidence())

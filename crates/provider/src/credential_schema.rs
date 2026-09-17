@@ -42,11 +42,111 @@ impl CredentialFormSchema {
     }
 
     /// The common single-field API key schema.
-    pub fn api_key(instructions_markdown: impl Into<String>) -> Self {
+    ///
+    /// `api_key_env` is the environment variable the driver's vendor reads for
+    /// this key (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, ...). It is a required
+    /// argument, not a default: nothing outside the driver can know the right
+    /// name, and a driver that had to stay silent about it would be resolved by
+    /// guesswork instead.
+    pub fn api_key(
+        api_key_env: impl Into<String>,
+        instructions_markdown: impl Into<String>,
+    ) -> Self {
         Self {
-            fields: vec![FormField::password("api_key", "API Key").required()],
+            fields: vec![
+                FormField::password("api_key", "API Key")
+                    .required()
+                    .env(api_key_env),
+            ],
             instructions_markdown: instructions_markdown.into(),
         }
+    }
+
+    /// Declare a further variable the vendor also honors for the `api_key`
+    /// field, tried after the one [`api_key`](Self::api_key) named.
+    ///
+    /// For vendors that renamed their variable and kept reading the old one
+    /// (`GEMINI_API_KEY` then `GOOGLE_API_KEY`).
+    pub fn with_api_key_fallback_env(mut self, api_key_env: impl Into<String>) -> Self {
+        if let Some(field) = self.fields.iter_mut().find(|field| field.name == "api_key") {
+            field.env.push(api_key_env.into());
+        }
+        self
+    }
+
+    /// Resolve this schema's fields from an environment lookup.
+    ///
+    /// Each field takes the first of its declared variables that holds a
+    /// non-empty value. The result then follows the same rules
+    /// [`validate`](Self::validate) enforces, so a partially configured
+    /// environment yields nothing rather than a half-configured provider:
+    /// every ungrouped required field must have resolved, and a group
+    /// contributes its fields only when every required field in it resolved,
+    /// the first complete group in declaration order winning.
+    ///
+    /// The result is the field map [`assemble_credential_document`] stores, so
+    /// an env-resolved credential and an operator-entered one reach the driver
+    /// in the same shape. An empty map means the environment carries no usable
+    /// credential for this driver.
+    pub fn resolve_from_env<F>(&self, lookup: F) -> BTreeMap<String, String>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        let resolved: Vec<(&FormField, Option<String>)> = self
+            .fields
+            .iter()
+            .map(|field| (field, field.resolve_env(&lookup)))
+            .collect();
+
+        // Ungrouped required fields are mandatory, exactly as in `validate`.
+        // Without this an incomplete environment resolves to a partial
+        // credential and builds a broken provider, rather than falling through
+        // to whatever the caller configures explicitly. A shell carrying only
+        // `AWS_REGION` is the everyday case.
+        let ungrouped_satisfied = resolved
+            .iter()
+            .filter(|(field, _)| field.group.is_none() && field.required)
+            .all(|(_, value)| value.is_some());
+        if !ungrouped_satisfied {
+            return BTreeMap::new();
+        }
+
+        let mut fields = BTreeMap::new();
+        let mut group_taken = false;
+        let mut seen_groups: Vec<&str> = Vec::new();
+
+        for (field, value) in &resolved {
+            let Some(group) = field.group.as_deref() else {
+                if let Some(value) = value {
+                    fields.insert(field.name.clone(), value.clone());
+                }
+                continue;
+            };
+            if seen_groups.contains(&group) {
+                continue;
+            }
+            seen_groups.push(group);
+            if group_taken {
+                continue;
+            }
+            let members = resolved
+                .iter()
+                .filter(|(member, _)| member.group.as_deref() == Some(group));
+            let complete = members
+                .clone()
+                .all(|(member, value)| !member.required || value.is_some());
+            if !complete {
+                continue;
+            }
+            for (member, value) in members {
+                if let Some(value) = value {
+                    fields.insert(member.name.clone(), value.clone());
+                }
+            }
+            group_taken = true;
+        }
+
+        fields
     }
 
     /// Whether the schema declares any mutually-exclusive credential groups
@@ -153,6 +253,20 @@ pub struct FormField {
     /// common single-method case.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+    /// Environment variables this field can be read from in standalone/dev use,
+    /// most preferred first.
+    ///
+    /// Declared by the driver, because only the driver knows what its vendor's
+    /// own SDK reads: `AWS_ACCESS_KEY_ID` for Bedrock, `AZURE_TENANT_ID` for
+    /// MAI's Entra group, `ANTHROPIC_API_KEY` for Anthropic. Later entries are
+    /// alternates the vendor also honors (`GOOGLE_API_KEY`,
+    /// `AWS_DEFAULT_REGION`), not a second field.
+    ///
+    /// Empty means the field cannot be supplied from the environment, so a
+    /// group containing a required field with no variable never resolves from
+    /// env alone. Server credential resolution ignores this entirely.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub env: Vec<String>,
 }
 
 impl FormField {
@@ -167,6 +281,7 @@ impl FormField {
             help_text: None,
             default_value: None,
             group: None,
+            env: Vec::new(),
         }
     }
 
@@ -208,6 +323,29 @@ impl FormField {
     pub fn in_group(mut self, group: impl Into<String>) -> Self {
         self.group = Some(group.into());
         self
+    }
+
+    /// Declare the environment variable this field is read from, following the
+    /// vendor's own SDK convention.
+    pub fn env(mut self, name: impl Into<String>) -> Self {
+        self.env.push(name.into());
+        self
+    }
+
+    /// Declare a further variable the vendor also honors, tried after the ones
+    /// already declared.
+    pub fn env_fallback(self, name: impl Into<String>) -> Self {
+        self.env(name)
+    }
+
+    /// The first declared variable that holds a non-empty value.
+    fn resolve_env<F>(&self, lookup: &F) -> Option<String>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        self.env
+            .iter()
+            .find_map(|name| lookup(name).filter(|value| !value.trim().is_empty()))
     }
 }
 
@@ -276,6 +414,194 @@ pub fn parse_credential_document(document: Option<&str>) -> BTreeMap<String, Str
     }
 
     BTreeMap::from([("api_key".to_string(), document.to_string())])
+}
+
+#[cfg(test)]
+mod env_tests {
+    use super::*;
+
+    fn lookup(entries: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<String> {
+        move |name: &str| {
+            entries
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| value.to_string())
+        }
+    }
+
+    fn grouped_schema() -> CredentialFormSchema {
+        CredentialFormSchema {
+            fields: vec![
+                FormField::password("api_key", "API Key")
+                    .required()
+                    .in_group("API key")
+                    .env("AZURE_AI_API_KEY"),
+                FormField::text("tenant_id", "Tenant")
+                    .required()
+                    .in_group("OAuth")
+                    .env("AZURE_TENANT_ID"),
+                FormField::password("client_secret", "Secret")
+                    .required()
+                    .in_group("OAuth")
+                    .env("AZURE_CLIENT_SECRET"),
+                FormField::text("scope", "Scope")
+                    .in_group("OAuth")
+                    .env("AZURE_SCOPE"),
+            ],
+            instructions_markdown: String::new(),
+        }
+    }
+
+    #[test]
+    fn a_field_takes_its_first_declared_variable_that_has_a_value() {
+        let schema = CredentialFormSchema {
+            fields: vec![
+                FormField::password("api_key", "API Key")
+                    .required()
+                    .env("GEMINI_API_KEY")
+                    .env_fallback("GOOGLE_API_KEY"),
+            ],
+            instructions_markdown: String::new(),
+        };
+        assert_eq!(
+            schema.resolve_from_env(lookup(&[
+                ("GEMINI_API_KEY", "preferred"),
+                ("GOOGLE_API_KEY", "alternate"),
+            ])),
+            BTreeMap::from([("api_key".to_string(), "preferred".to_string())])
+        );
+        assert_eq!(
+            schema.resolve_from_env(lookup(&[("GOOGLE_API_KEY", "alternate")])),
+            BTreeMap::from([("api_key".to_string(), "alternate".to_string())])
+        );
+        // An empty value is not a value, so the alternate still wins.
+        assert_eq!(
+            schema.resolve_from_env(lookup(&[
+                ("GEMINI_API_KEY", "  "),
+                ("GOOGLE_API_KEY", "alternate"),
+            ])),
+            BTreeMap::from([("api_key".to_string(), "alternate".to_string())])
+        );
+        assert!(
+            schema
+                .resolve_from_env(lookup(&[("OPENAI_API_KEY", "other")]))
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_field_declaring_no_variable_never_resolves_from_the_environment() {
+        let schema = CredentialFormSchema {
+            fields: vec![FormField::password("api_key", "API Key").required()],
+            instructions_markdown: String::new(),
+        };
+        assert!(
+            schema
+                .resolve_from_env(lookup(&[("API_KEY", "set"), ("OPENAI_API_KEY", "set")]))
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_partial_ungrouped_credential_resolves_to_nothing() {
+        // AWS_REGION alone is an everyday shell state and is not a credential.
+        // Returning just the region here would build a provider that fails at
+        // its first request instead of falling through to explicit config.
+        let bedrock = CredentialFormSchema {
+            fields: vec![
+                FormField::password("access_key_id", "Access Key ID")
+                    .required()
+                    .env("AWS_ACCESS_KEY_ID"),
+                FormField::password("secret_access_key", "Secret Access Key")
+                    .required()
+                    .env("AWS_SECRET_ACCESS_KEY"),
+                FormField::text("region", "Region").env("AWS_REGION"),
+            ],
+            instructions_markdown: String::new(),
+        };
+        assert!(
+            bedrock
+                .resolve_from_env(lookup(&[("AWS_REGION", "eu-west-1")]))
+                .is_empty()
+        );
+        assert!(
+            bedrock
+                .resolve_from_env(lookup(&[
+                    ("AWS_ACCESS_KEY_ID", "AKIA"),
+                    ("AWS_REGION", "eu-west-1"),
+                ]))
+                .is_empty()
+        );
+        // Both required fields present: the optional region rides along.
+        assert_eq!(
+            bedrock.resolve_from_env(lookup(&[
+                ("AWS_ACCESS_KEY_ID", "AKIA"),
+                ("AWS_SECRET_ACCESS_KEY", "shh"),
+                ("AWS_REGION", "eu-west-1"),
+            ])),
+            BTreeMap::from([
+                ("access_key_id".to_string(), "AKIA".to_string()),
+                ("secret_access_key".to_string(), "shh".to_string()),
+                ("region".to_string(), "eu-west-1".to_string()),
+            ])
+        );
+    }
+
+    #[test]
+    fn a_group_resolves_only_when_all_of_its_required_fields_are_present() {
+        let schema = grouped_schema();
+        // A half-populated OAuth block configures nothing.
+        assert!(
+            schema
+                .resolve_from_env(lookup(&[("AZURE_TENANT_ID", "tenant")]))
+                .is_empty()
+        );
+        assert_eq!(
+            schema.resolve_from_env(lookup(&[
+                ("AZURE_TENANT_ID", "tenant"),
+                ("AZURE_CLIENT_SECRET", "secret"),
+            ])),
+            BTreeMap::from([
+                ("tenant_id".to_string(), "tenant".to_string()),
+                ("client_secret".to_string(), "secret".to_string()),
+            ])
+        );
+    }
+
+    #[test]
+    fn the_first_complete_group_wins_and_never_mixes_methods() {
+        let resolved = grouped_schema().resolve_from_env(lookup(&[
+            ("AZURE_AI_API_KEY", "key"),
+            ("AZURE_TENANT_ID", "tenant"),
+            ("AZURE_CLIENT_SECRET", "secret"),
+        ]));
+        assert_eq!(
+            resolved,
+            BTreeMap::from([("api_key".to_string(), "key".to_string())])
+        );
+    }
+
+    #[test]
+    fn an_optional_group_field_rides_along_with_its_complete_group() {
+        let resolved = grouped_schema().resolve_from_env(lookup(&[
+            ("AZURE_TENANT_ID", "tenant"),
+            ("AZURE_CLIENT_SECRET", "secret"),
+            ("AZURE_SCOPE", "scope"),
+        ]));
+        assert_eq!(resolved.get("scope").map(String::as_str), Some("scope"));
+    }
+
+    #[test]
+    fn a_resolved_map_assembles_into_the_same_document_the_form_produces() {
+        let resolved = grouped_schema().resolve_from_env(lookup(&[
+            ("AZURE_TENANT_ID", "tenant"),
+            ("AZURE_CLIENT_SECRET", "secret"),
+        ]));
+        assert_eq!(
+            assemble_credential_document(&resolved),
+            Some(r#"{"client_secret":"secret","tenant_id":"tenant"}"#.to_string())
+        );
+    }
 }
 
 #[cfg(test)]
@@ -364,11 +690,17 @@ mod tests {
 
     #[test]
     fn single_method_schema_requires_nonblank_key_but_accepts_unknown_optional_fields() {
-        let schema = CredentialFormSchema::api_key("Get a key");
+        let schema = CredentialFormSchema::api_key("VENDOR_API_KEY", "Get a key");
         assert_eq!(
             serde_json::to_value(&schema).unwrap(),
             serde_json::json!({
-                "fields": [{"name":"api_key","label":"API Key","field_type":"password","required":true}],
+                "fields": [{
+                    "name":"api_key",
+                    "label":"API Key",
+                    "field_type":"password",
+                    "required":true,
+                    "env":["VENDOR_API_KEY"]
+                }],
                 "instructions_markdown":"Get a key"
             })
         );

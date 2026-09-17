@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { SearchInput } from "@/components/ui/search-input";
@@ -79,7 +79,9 @@ function ScheduleRow({
       <TableCell className="max-w-[200px]">
         <div className="flex items-center gap-2 min-w-0">
           <Clock
-            className={`h-4 w-4 shrink-0 ${schedule.enabled ? "text-green-500" : "text-muted-foreground"}`}
+            className={`h-4 w-4 shrink-0 ${
+              schedule.enabled ? "text-success" : "text-muted-foreground"
+            }`}
           />
           <div className="min-w-0 flex-1">
             <div className="font-medium">
@@ -176,14 +178,14 @@ function ScheduleRow({
               </Tooltip>
             </TooltipProvider>
           )}
-          <Button
+          <LinkButton
             variant="ghost"
             size="sm"
             aria-label={`View schedule ${schedule.name}`}
-            render={<Link href={`/durable/schedules/${schedule.id}`} />}
+            href={`/durable/schedules/${schedule.id}`}
           >
             <Settings className="h-3 w-3" />
-          </Button>
+          </LinkButton>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

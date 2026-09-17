@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SearchInput } from "@/components/ui/search-input";
 import {
@@ -55,13 +55,13 @@ type TabValue = "workflows" | "tasks" | "dlq";
 function getStatusIcon(status: WorkflowStatus) {
   switch (status) {
     case "completed":
-      return <CheckCircle className="h-4 w-4 text-green-500" />;
+      return <CheckCircle className="h-4 w-4 text-success" />;
     case "running":
-      return <Activity className="h-4 w-4 text-blue-500 animate-pulse" />;
+      return <Activity className="h-4 w-4 text-info animate-pulse" />;
     case "failed":
-      return <XCircle className="h-4 w-4 text-red-500" />;
+      return <XCircle className="h-4 w-4 text-destructive" />;
     case "cancelled":
-      return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+      return <AlertTriangle className="h-4 w-4 text-warning" />;
     default:
       return <Clock className="h-4 w-4 text-muted-foreground" />;
   }
@@ -140,13 +140,9 @@ function WorkflowRow({
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            render={<Link href={`/durable/workflows/${workflow.id}`} />}
-          >
+          <LinkButton variant="outline" size="sm" href={`/durable/workflows/${workflow.id}`}>
             View
-          </Button>
+          </LinkButton>
           {workflow.status === "running" && (
             <Button variant="outline" size="sm" onClick={() => onCancel(workflow.id)}>
               Cancel
@@ -211,14 +207,14 @@ function TaskRow({ task }: { task: DurableTask }) {
       </TableCell>
       <TableCell>
         {task.workflow_id ? (
-          <Button
+          <LinkButton
             variant="ghost"
             size="sm"
             aria-label={`View workflow ${task.workflow_id}`}
-            render={<Link href={`/durable/workflows/${task.workflow_id}`} />}
+            href={`/durable/workflows/${task.workflow_id}`}
           >
             <ExternalLink className="h-3 w-3" />
-          </Button>
+          </LinkButton>
         ) : (
           <Badge variant="outline">standalone</Badge>
         )}
@@ -244,7 +240,7 @@ function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string)
       <TableCell>
         <TooltipProvider>
           <Tooltip>
-            <TooltipTrigger className="text-sm text-red-600 max-w-[200px] truncate block">
+            <TooltipTrigger className="text-sm text-destructive max-w-[200px] truncate block">
               {entry.last_error}
             </TooltipTrigger>
             <TooltipContent className="max-w-sm">
@@ -273,14 +269,14 @@ function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string)
             Requeue
           </Button>
           {entry.workflow_id ? (
-            <Button
+            <LinkButton
               variant="ghost"
               size="sm"
               aria-label={`View workflow ${entry.workflow_id}`}
-              render={<Link href={`/durable/workflows/${entry.workflow_id}`} />}
+              href={`/durable/workflows/${entry.workflow_id}`}
             >
               <ExternalLink className="h-3 w-3" />
-            </Button>
+            </LinkButton>
           ) : (
             <Badge variant="outline">standalone</Badge>
           )}
@@ -604,7 +600,7 @@ export default function WorkflowsPage() {
                   <Skeleton className="h-48" />
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                    <CheckCircle className="h-12 w-12 mb-4 text-green-500" />
+                    <CheckCircle className="h-12 w-12 mb-4 text-success" />
                     <h3 className="text-lg font-medium mb-2">DLQ is Empty</h3>
                     <p className="text-sm text-center max-w-md">
                       No tasks have failed permanently. All tasks are being processed successfully.

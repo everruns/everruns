@@ -34,7 +34,7 @@ export function QueueStatsCard({
           </div>
           <div>
             <p className="text-muted-foreground text-xs">Failed/hr</p>
-            <p className={cn("font-medium", stats.failed_last_hour > 0 && "text-red-500")}>
+            <p className={cn("font-medium", stats.failed_last_hour > 0 && "text-destructive")}>
               {stats.failed_last_hour}
             </p>
           </div>
@@ -51,7 +51,7 @@ export function QueueStatsCard({
           <div className="mt-3">
             <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
               <div
-                className="h-full bg-blue-500 rounded-full"
+                className="h-full bg-info rounded-full"
                 style={{ width: `${(stats.claimed / totalActive) * 100}%` }}
               />
             </div>

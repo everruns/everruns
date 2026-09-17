@@ -10,14 +10,9 @@
 
 use std::fmt;
 
-use crate::Provider;
+use everruns_provider::credential_provider::EnvCredentialProvider;
 
-/// API key environment variable, matching the repo-wide convention documented on
-/// `everruns_provider::credential_provider::EnvCredentialProvider`.
-const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
-/// Optional base-URL override environment variable (OpenAI-compatible proxies,
-/// self-hosted endpoints, Azure gateways).
-const OPENAI_BASE_URL_ENV: &str = "OPENAI_BASE_URL";
+use crate::Provider;
 
 /// Re-exported `everruns-openai` drivers for direct, low-level use.
 pub use everruns_openai::{OpenAIChatDriver, OpenAICompletionsChatDriver, register_driver};
@@ -25,22 +20,26 @@ pub use everruns_openai::{OpenAIChatDriver, OpenAICompletionsChatDriver, registe
 /// Why an [`OpenAI`] provider configuration could not be produced.
 ///
 /// Typed and cheap to match on. Credential values never appear in the error —
-/// only the name of the missing environment variable.
+/// only the names of the variables the driver declares.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum OpenAIError {
-    /// A required environment variable was unset or empty.
+    /// None of the driver's declared variables carried a usable credential.
     MissingEnvVar {
-        /// The variable name that was expected (e.g. `OPENAI_API_KEY`).
-        var: &'static str,
+        /// Every variable the OpenAI driver declares, most preferred first.
+        vars: Vec<String>,
     },
 }
 
 impl fmt::Display for OpenAIError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            OpenAIError::MissingEnvVar { var } => {
-                write!(f, "required environment variable {var} is not set")
+            OpenAIError::MissingEnvVar { vars } => {
+                write!(
+                    f,
+                    "no OpenAI credentials in the environment; set {}",
+                    vars.join(" or ")
+                )
             }
         }
     }
@@ -84,10 +83,11 @@ impl OpenAI {
     /// Configure OpenAI, reading the API key (and optional base URL) from the
     /// environment.
     ///
-    /// Reads `OPENAI_API_KEY` (required) and `OPENAI_BASE_URL` (optional),
-    /// matching the repo-wide credential-variable convention. An unset or empty
-    /// `OPENAI_API_KEY` returns [`OpenAIError::MissingEnvVar`] rather than
-    /// panicking.
+    /// The variables are the OpenAI driver's own declaration — `OPENAI_API_KEY`
+    /// and the optional `OPENAI_BASE_URL`, matching the `openai` SDK — resolved
+    /// through the shared [`EnvCredentialProvider`]. Nothing here restates
+    /// them, so they cannot drift from what the driver reads. An unset or empty
+    /// key returns [`OpenAIError::MissingEnvVar`] rather than panicking.
     ///
     /// This is the sanctioned standalone/dev entry point for env-based
     /// credentials; explicit constructors stay environment-free.
@@ -117,15 +117,16 @@ impl OpenAI {
     where
         F: Fn(&str) -> Option<String>,
     {
-        let non_empty = |s: String| (!s.is_empty()).then_some(s);
-        let api_key =
-            lookup(OPENAI_API_KEY_ENV)
-                .and_then(non_empty)
-                .ok_or(OpenAIError::MissingEnvVar {
-                    var: OPENAI_API_KEY_ENV,
-                })?;
-        let base_url = lookup(OPENAI_BASE_URL_ENV).and_then(non_empty);
-        Ok(Self { api_key, base_url })
+        let driver = everruns_openai::descriptor();
+        let credentials = EnvCredentialProvider::resolve_with(&driver, lookup)
+            .filter(|credentials| credentials.api_key().is_some())
+            .ok_or_else(|| OpenAIError::MissingEnvVar {
+                vars: driver.declared_env_vars(),
+            })?;
+        Ok(Self {
+            api_key: credentials.api_key().expect("filtered above").to_string(),
+            base_url: credentials.base_url().map(str::to_owned),
+        })
     }
 
     /// Override the API base URL (OpenAI-compatible proxy, self-hosted endpoint,
@@ -190,10 +191,11 @@ mod tests {
     #[test]
     fn from_lookup_missing_key_is_typed_error() {
         let err = OpenAI::from_lookup(|_| None).unwrap_err();
+        // The names come from the driver's declaration, not from this module.
         assert_eq!(
             err,
             OpenAIError::MissingEnvVar {
-                var: "OPENAI_API_KEY"
+                vars: vec!["OPENAI_API_KEY".to_string(), "OPENAI_BASE_URL".to_string()],
             }
         );
     }
@@ -202,12 +204,26 @@ mod tests {
     fn from_lookup_empty_key_is_missing() {
         let err =
             OpenAI::from_lookup(|name| (name == "OPENAI_API_KEY").then(String::new)).unwrap_err();
-        assert_eq!(
-            err,
-            OpenAIError::MissingEnvVar {
-                var: "OPENAI_API_KEY"
-            }
-        );
+        assert!(matches!(err, OpenAIError::MissingEnvVar { .. }));
+    }
+
+    #[test]
+    fn a_base_url_alone_is_not_a_credential() {
+        let err = OpenAI::from_lookup(|name| {
+            (name == "OPENAI_BASE_URL").then(|| "https://proxy.example/v1".to_string())
+        })
+        .unwrap_err();
+        assert!(matches!(err, OpenAIError::MissingEnvVar { .. }));
+    }
+
+    #[test]
+    fn another_vendors_variable_does_not_configure_openai() {
+        for other in ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "AWS_ACCESS_KEY_ID"] {
+            assert!(
+                OpenAI::from_lookup(|name| (name == other).then(|| "key".to_string())).is_err(),
+                "{other} must not configure OpenAI"
+            );
+        }
     }
 
     #[test]
@@ -229,9 +245,9 @@ mod tests {
     }
 
     #[test]
-    fn openai_error_display_names_the_variable_only() {
+    fn openai_error_display_names_the_variables_only() {
         let rendered = OpenAIError::MissingEnvVar {
-            var: "OPENAI_API_KEY",
+            vars: vec!["OPENAI_API_KEY".to_string()],
         }
         .to_string();
         assert!(rendered.contains("OPENAI_API_KEY"), "got {rendered}");

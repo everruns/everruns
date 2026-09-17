@@ -3,7 +3,7 @@
 //! The application-facing crate for the [Everruns Framework](https://docs.everruns.com/framework/).
 //!
 //! Build agents, attach provider configuration, select model ids, add typed
-//! tools, run isolated multi-turn sessions, bind provider-owned workspace heads
+//! tools, run isolated multi-turn sessions, bind backend-owned workspace heads
 //! through Environments, read bounded history, resume typed
 //! session identities, observe events, cancel work, and inspect the next model context
 //! without constructing an execution host. Default features stay offline; the
@@ -54,6 +54,7 @@ mod engine;
 mod events;
 mod history;
 mod hooks;
+pub mod llm;
 mod mcp;
 mod plugin;
 mod session;
@@ -73,6 +74,10 @@ pub use everruns_builtins::{
     AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
     ToolSearch,
 };
+#[deprecated(note = "use WorkspaceBackend")]
+pub use everruns_host::WorkspaceBackend as WorkspaceProvider;
+#[deprecated(note = "use WorkspaceBackendId")]
+pub use everruns_host::WorkspaceBackendId as WorkspaceProviderId;
 pub use everruns_host::{
     Compute, ComputeCapabilities, ComputeError, ComputeKind, ComputeSession, Containment,
     ContainmentLevel, Durability, EnvironmentError, ExecRequest, ExecResult, NetworkPolicy,
@@ -95,6 +100,7 @@ pub use hooks::{
     AgentStartContext, CompletionContext, HookFailure, HookPoint, IntoHookResult, ToolEndContext,
     ToolStartContext, TurnStartContext,
 };
+pub use llm::{Completion, CompletionError};
 pub use mcp::McpServer;
 pub use plugin::PluginError;
 pub use session::{
@@ -106,7 +112,10 @@ pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
 #[cfg(feature = "local")]
 pub mod local;
 #[cfg(feature = "local")]
-pub use local::{LocalConfig, LocalGitWorkspaceProvider};
+#[deprecated(note = "use LocalGitWorkspace")]
+pub use local::LocalGitWorkspace as LocalGitWorkspaceProvider;
+#[cfg(feature = "local")]
+pub use local::{LocalConfig, LocalGitWorkspace};
 
 #[cfg(all(test, feature = "macros"))]
 mod tool_macro_tests;
@@ -162,10 +171,10 @@ pub use providers::openai::{OpenAI, OpenAIError};
 // low-level host `AgentBuilder` at the facade root. Advanced hosts that need
 // the low-level builders depend on `everruns-host` directly.
 pub use everruns_host::{
-    Environment, EnvironmentBuilder, Workspace, WorkspaceBinding, WorkspaceCheckpoint,
-    WorkspaceDescriptor, WorkspaceDiff, WorkspaceError, WorkspaceHead, WorkspaceHeadAccess,
-    WorkspaceHeadBuilder, WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest,
-    WorkspaceHeadResource, WorkspaceHeadStatus, WorkspaceProvider, WorkspaceProviderId,
+    Environment, EnvironmentBuilder, Workspace, WorkspaceBackend, WorkspaceBackendId,
+    WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff, WorkspaceError,
+    WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadBuilder, WorkspaceHeadDescriptor,
+    WorkspaceHeadId, WorkspaceHeadRequest, WorkspaceHeadResource, WorkspaceHeadStatus,
 };
 
 // --- Portable message, model, and platform types ------------------------
@@ -175,7 +184,8 @@ pub use everruns_core::{
     ReasoningConfig, WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
 };
 pub use everruns_provider::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmResponseStream, LlmStreamEvent,
+    ChatDriver, LlmCallConfig, LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart,
+    LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent,
 };
 // Reasoning is part of the public surface: `ReasoningConfig` above carries a
 // `ReasoningEffort`, and the artifact types appear on assistant messages.
@@ -190,7 +200,20 @@ pub use everruns_provider::runtime_provider::{
     BearerAuth, Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey,
     StaticHeaderAuth,
 };
-pub use everruns_provider::tool_types::ToolCall;
+// Credential resolution. A driver declares which environment variables it reads
+// on its own descriptor, following its vendor's SDK; `EnvCredentialProvider` is
+// the one place that pairs those declarations with the process environment, and
+// is for standalone/CLI/dev use only.
+pub use everruns_provider::credential_provider::{
+    CredentialProvider, EnvCredentialError, EnvCredentialProvider, ProviderCredentials,
+    provider_from_env,
+};
+pub use everruns_provider::credential_schema::{CredentialFormSchema, FieldType, FormField};
+pub use everruns_provider::driver_registry::{
+    BoxedChatDriver, DriverConfig, DriverDescriptor, DriverRegistry,
+};
+pub use everruns_provider::provider::DriverId;
+pub use everruns_provider::tool_types::{ToolCall, ToolDefinition};
 pub use everruns_provider::typed_id::{SessionId, WorkspaceId};
 
 // --- Deterministic in-process LLM simulator -----------------------------
@@ -217,6 +240,10 @@ pub mod prelude {
     #[cfg(feature = "local")]
     pub use crate::LocalConfig;
     #[cfg(feature = "local")]
+    pub use crate::LocalGitWorkspace;
+    #[cfg(feature = "local")]
+    #[allow(deprecated)]
+    #[deprecated(note = "use LocalGitWorkspace")]
     pub use crate::LocalGitWorkspaceProvider;
     #[cfg(feature = "web-fetch")]
     pub use crate::WebFetch;
@@ -229,25 +256,29 @@ pub mod prelude {
     };
     pub use crate::{
         Agent, AgentBuilder, AgentStartContext, BuildError, CancelError, CancellationToken,
-        CapabilityRef, CapabilitySpec, CompletionContext, Engine, Environment, EventStream,
-        EventStreamError, FunctionTool, HistoryCursor, HistoryCursorParseError, HistoryError,
-        HistoryPage, HistoryPages, HistoryQuery, HookFailure, HookPoint, InMemoryEngine,
-        InitialFile, IntoCapability, IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig,
-        McpServer, Model, PluginError, ResumeError, RunError, RunOptions, SendDisposition,
-        SentMessage, Session, SessionContext, SessionEnvironmentError, SessionEvent,
-        SessionEventKind, SessionId, SessionMessage, Tool, ToolEndContext, ToolInfo, ToolResponse,
-        ToolStartContext, Turn, TurnHandle, TurnStartContext, Workspace, WorkspaceDiff,
+        CapabilityRef, CapabilitySpec, Completion, CompletionContext, CompletionError, Engine,
+        Environment, EventStream, EventStreamError, FunctionTool, HistoryCursor,
+        HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages, HistoryQuery,
+        HookFailure, HookPoint, InMemoryEngine, InitialFile, IntoCapability, IntoHookResult,
+        IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model, PluginError, ResumeError,
+        RunError, RunOptions, SendDisposition, SentMessage, Session, SessionContext,
+        SessionEnvironmentError, SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool,
+        ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn, TurnHandle,
+        TurnStartContext, Workspace, WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff,
         WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId,
-        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError, WorkspaceProvider,
-        WorkspaceProviderId,
+        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
     };
     #[cfg(feature = "builtins")]
     pub use crate::{
         AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
         ToolSearch,
     };
+    pub use crate::{DriverId, EnvCredentialError, EnvCredentialProvider};
     #[cfg(feature = "openai")]
     pub use crate::{OpenAI, OpenAIError};
+    #[allow(deprecated)]
+    #[deprecated(note = "use WorkspaceBackend and WorkspaceBackendId")]
+    pub use crate::{WorkspaceProvider, WorkspaceProviderId};
     pub use everruns_core::turn::TurnStopReason;
     pub use everruns_core::{ContentPart, InputMessage, MessageRole};
 }

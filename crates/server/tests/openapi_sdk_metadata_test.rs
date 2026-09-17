@@ -1,7 +1,7 @@
 use everruns_server::openapi::ApiDoc;
 use serde_json::Value;
 use std::collections::BTreeMap;
-use utoipa::OpenApi;
+use utoipa::{OpenApi, PartialSchema};
 
 fn spec_value() -> Value {
     serde_json::to_value(ApiDoc::openapi()).expect("OpenAPI document is valid JSON")
@@ -20,6 +20,21 @@ fn contains_key(value: &Value, needle: &str) -> bool {
 #[test]
 fn retired_cost_tier_extension_is_not_emitted() {
     assert!(!contains_key(&spec_value(), "x-cost-tier"));
+}
+
+#[test]
+fn scoped_mcp_schema_uses_public_wire_names() {
+    let schema =
+        serde_json::to_value(<everruns_core::ScopedMcpServer as PartialSchema>::schema()).unwrap();
+    let properties = schema
+        .pointer("/properties")
+        .and_then(Value::as_object)
+        .expect("ScopedMcpServer properties exist");
+
+    assert!(properties.contains_key("use"));
+    assert!(properties.contains_key("actsAs"));
+    assert!(!properties.contains_key("preset"));
+    assert!(!properties.contains_key("acts_as"));
 }
 
 #[test]

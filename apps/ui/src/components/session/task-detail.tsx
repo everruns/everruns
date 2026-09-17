@@ -33,9 +33,15 @@ export function taskStateBadge(state: SessionTaskState) {
     case "running":
       return <Badge variant="default">Running</Badge>;
     case "awaiting_input":
-      return <Badge className="border-transparent bg-amber-500 text-white">Awaiting input</Badge>;
+      return (
+        <Badge className="border-transparent bg-warning text-warning-foreground">
+          Awaiting input
+        </Badge>
+      );
     case "succeeded":
-      return <Badge className="border-transparent bg-green-600 text-white">Succeeded</Badge>;
+      return (
+        <Badge className="border-transparent bg-success text-success-foreground">Succeeded</Badge>
+      );
     case "failed":
       return <Badge variant="destructive">Failed</Badge>;
     case "canceled":
@@ -71,7 +77,7 @@ function TaskInputPrompt({ task }: { task: SessionTask }) {
   if (task.state !== "awaiting_input" || !task.input_request) return null;
 
   return (
-    <div className="space-y-1 rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2">
+    <div className="space-y-1 rounded border border-warning/50 bg-warning/10 px-3 py-2">
       <div className="text-sm text-foreground">{task.input_request.prompt}</div>
       <div className="text-xs text-muted-foreground">
         Waiting for input. Fork this session into a chat to answer.

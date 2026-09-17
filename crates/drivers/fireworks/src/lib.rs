@@ -31,7 +31,8 @@
 mod driver;
 
 pub use driver::{
-    FIREWORKS_DEFAULT_API_URL, FireworksChatDriver, is_fireworks_api_url, provider, register_driver,
+    FIREWORKS_DEFAULT_API_URL, FireworksChatDriver, descriptor, from_env, is_fireworks_api_url,
+    provider, register_driver,
 };
 
 // Re-export core types for convenience.

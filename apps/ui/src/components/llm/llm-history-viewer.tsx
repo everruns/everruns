@@ -92,23 +92,21 @@ function ToolResultContentPart({
     <div
       className={cn(
         "border p-2",
-        error
-          ? "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900"
-          : "bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-900",
+        error ? "bg-destructive/10 border-destructive/30" : "bg-success/10 border-success/30",
       )}
     >
       <div className="flex items-center gap-2 mb-1">
         {error ? (
-          <XCircle className="w-3 h-3 text-red-500" />
+          <XCircle className="w-3 h-3 text-destructive" />
         ) : (
-          <CheckCircle className="w-3 h-3 text-green-500" />
+          <CheckCircle className="w-3 h-3 text-success" />
         )}
         <span className="text-xs font-medium">
           <EntityIdentity value={toolCallId}>Tool Result</EntityIdentity>
         </span>
       </div>
       {error ? (
-        <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+        <p className="text-xs text-destructive">{error}</p>
       ) : (
         <pre className="text-xs bg-background rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap break-all">
           {formattedResult}
@@ -278,24 +276,22 @@ function MetadataSection({ metadata }: { metadata: LlmGenerationMetadata }) {
             <div className="flex items-center gap-1">
               {metadata.success ? (
                 <>
-                  <CheckCircle className="w-3 h-3 text-green-500" />
-                  <span className="text-sm font-medium text-green-600 dark:text-green-400">
-                    Success
-                  </span>
+                  <CheckCircle className="w-3 h-3 text-success" />
+                  <span className="text-sm font-medium text-success">Success</span>
                 </>
               ) : (
                 <>
-                  <XCircle className="w-3 h-3 text-red-500" />
-                  <span className="text-sm font-medium text-red-600 dark:text-red-400">Failed</span>
+                  <XCircle className="w-3 h-3 text-destructive" />
+                  <span className="text-sm font-medium text-destructive">Failed</span>
                 </>
               )}
             </div>
           </div>
         </div>
         {metadata.error && (
-          <div className="mt-3 p-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded">
-            <p className="text-xs font-medium text-red-600 dark:text-red-400">Error</p>
-            <p className="text-sm text-red-700 dark:text-red-300">{metadata.error}</p>
+          <div className="mt-3 p-2 bg-destructive/10 border border-destructive/30 rounded">
+            <p className="text-xs font-medium text-destructive">Error</p>
+            <p className="text-sm text-destructive">{metadata.error}</p>
           </div>
         )}
         {metadata.usage && <UsageDisplay usage={metadata.usage} />}
@@ -315,7 +311,7 @@ function UsageDisplay({ usage }: { usage: TokenUsage }) {
   return (
     <div className="mt-3 p-3 bg-muted/50">
       <div className="flex items-center gap-2 mb-2">
-        <Zap className="w-4 h-4 text-yellow-500" />
+        <Zap className="w-4 h-4 text-accent-foreground" />
         <span className="text-sm font-medium">Token Usage</span>
         {effectiveCostUsd !== undefined && (
           <Badge

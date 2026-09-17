@@ -3,7 +3,7 @@
 import { use } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -40,13 +40,13 @@ function getStatusIcon(status: WorkflowStatus, size: "sm" | "lg" = "sm") {
   const sizeClass = size === "lg" ? "h-6 w-6" : "h-4 w-4";
   switch (status) {
     case "completed":
-      return <CheckCircle className={`${sizeClass} text-green-500`} />;
+      return <CheckCircle className={`${sizeClass} text-success`} />;
     case "running":
-      return <Activity className={`${sizeClass} text-blue-500 animate-pulse`} />;
+      return <Activity className={`${sizeClass} text-info animate-pulse`} />;
     case "failed":
-      return <XCircle className={`${sizeClass} text-red-500`} />;
+      return <XCircle className={`${sizeClass} text-destructive`} />;
     case "cancelled":
-      return <AlertTriangle className={`${sizeClass} text-yellow-500`} />;
+      return <AlertTriangle className={`${sizeClass} text-warning`} />;
     default:
       return <Clock className={`${sizeClass} text-muted-foreground`} />;
   }
@@ -63,21 +63,19 @@ function formatEventType(eventType: string): string {
 function getEventIcon(eventType: string) {
   // Event types from backend are snake_case (e.g., "workflow_started", "activity_completed")
   if (eventType.startsWith("workflow_")) {
-    if (eventType === "workflow_started") return <Play className="h-4 w-4 text-green-500" />;
-    if (eventType === "workflow_completed")
-      return <CheckCircle className="h-4 w-4 text-green-500" />;
-    if (eventType === "workflow_failed") return <XCircle className="h-4 w-4 text-red-500" />;
+    if (eventType === "workflow_started") return <Play className="h-4 w-4 text-info" />;
+    if (eventType === "workflow_completed") return <CheckCircle className="h-4 w-4 text-success" />;
+    if (eventType === "workflow_failed") return <XCircle className="h-4 w-4 text-destructive" />;
     if (eventType === "workflow_cancelled")
-      return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
-    return <Activity className="h-4 w-4 text-blue-500" />;
+      return <AlertTriangle className="h-4 w-4 text-warning" />;
+    return <Activity className="h-4 w-4 text-info" />;
   }
   if (eventType.startsWith("activity_")) {
-    if (eventType === "activity_scheduled") return <Clock className="h-4 w-4 text-blue-500" />;
-    if (eventType === "activity_started") return <Play className="h-4 w-4 text-blue-500" />;
-    if (eventType === "activity_completed")
-      return <CheckCircle className="h-4 w-4 text-green-500" />;
-    if (eventType === "activity_failed") return <XCircle className="h-4 w-4 text-red-500" />;
-    if (eventType === "activity_timed_out") return <Clock className="h-4 w-4 text-yellow-500" />;
+    if (eventType === "activity_scheduled") return <Clock className="h-4 w-4 text-info" />;
+    if (eventType === "activity_started") return <Play className="h-4 w-4 text-info" />;
+    if (eventType === "activity_completed") return <CheckCircle className="h-4 w-4 text-success" />;
+    if (eventType === "activity_failed") return <XCircle className="h-4 w-4 text-destructive" />;
+    if (eventType === "activity_timed_out") return <Clock className="h-4 w-4 text-warning" />;
     return <Activity className="h-4 w-4 text-muted-foreground" />;
   }
   if (eventType.startsWith("timer_")) {
@@ -187,10 +185,10 @@ export default function WorkflowDetailPage({
               The workflow could not be loaded. It may not exist or the API is unavailable.
             </p>
             <div className="flex gap-2">
-              <Button variant="outline" render={<Link href="/durable/workflows" />}>
+              <LinkButton variant="outline" href="/durable/workflows">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to Workflows
-              </Button>
+              </LinkButton>
               <Button onClick={() => refetch()} variant="outline">
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Retry
@@ -328,7 +326,7 @@ export default function WorkflowDetailPage({
             <CardContent>
               <ScrollArea className="h-[200px]">
                 <pre
-                  className={`text-sm p-3 rounded ${workflow.error ? "bg-red-500/10" : "bg-muted"}`}
+                  className={`text-sm p-3 rounded ${workflow.error ? "bg-destructive/10" : "bg-muted"}`}
                 >
                   {JSON.stringify(workflow.error || workflow.result, null, 2)}
                 </pre>

@@ -96,7 +96,7 @@ export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
           </p>
         )}
         {configChanged && (
-          <p className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2 mb-3">
+          <p className="text-sm text-warning flex items-center gap-2 mb-3">
             <AlertTriangle className="w-4 h-4 shrink-0" />
             This agent&apos;s configuration changed since this run — re-run to refresh results.
           </p>
@@ -168,9 +168,9 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 function CaseRow({ result }: { result: HealthCheckCaseResult }) {
   const icon = result.error ? (
-    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+    <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
   ) : result.passed ? (
-    <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+    <CheckCircle2 className="w-4 h-4 text-success shrink-0 mt-0.5" />
   ) : (
     <XCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
   );
@@ -199,7 +199,7 @@ function CaseRow({ result }: { result: HealthCheckCaseResult }) {
         </div>
         <p className="break-words text-xs text-muted-foreground">{result.user_message}</p>
         {result.error ? (
-          <p className="break-words text-xs text-amber-600 dark:text-amber-400">{result.error}</p>
+          <p className="break-words text-xs text-warning">{result.error}</p>
         ) : (
           <p className="break-words text-xs">{result.judge_reason}</p>
         )}

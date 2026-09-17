@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   ArrowRight,
   Blocks,
@@ -18,7 +17,7 @@ import {
 import reference from "../../../../design-reference.json";
 import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Notice, NoticeDescription, NoticeTitle } from "@/components/ui/notice";
 
@@ -126,9 +125,9 @@ export default function DevDesignReferencePage() {
         </Notice>
 
         <div className="flex flex-wrap gap-2">
-          <Button variant="accent" render={<Link href={reference.componentShowcase} />}>
+          <LinkButton variant="accent" href={reference.componentShowcase}>
             <Blocks /> Production components <ArrowRight />
-          </Button>
+          </LinkButton>
           <a href={reference.sourceUrl} target="_blank" rel="noreferrer">
             <Button variant="outline">
               External design project <ExternalLink />
@@ -303,7 +302,7 @@ export default function DevDesignReferencePage() {
           <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
             {checklist.map((item) => (
               <div key={item} className="flex items-start gap-2 text-sm leading-6">
-                <Check className="mt-1 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <Check className="mt-1 size-4 shrink-0 text-success" />
                 <span>{item}</span>
               </div>
             ))}

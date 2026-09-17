@@ -380,8 +380,8 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                           </>
                         ) : nameAvailability.available === true ? (
                           <>
-                            <Check className="w-3 h-3 text-green-600" />
-                            <span className="text-green-600">Name is available</span>
+                            <Check className="w-3 h-3 text-success" />
+                            <span className="text-success">Name is available</span>
                           </>
                         ) : nameAvailability.available === false ? (
                           <>

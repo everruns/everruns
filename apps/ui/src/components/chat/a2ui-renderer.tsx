@@ -306,10 +306,10 @@ function renderNode(
         "info",
       );
       const bg = {
-        info: "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300",
-        success: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-        warning: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-        error: "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300",
+        info: "border-info/40 bg-info/10 text-info",
+        success: "border-success/40 bg-success/10 text-success",
+        warning: "border-warning/40 bg-warning/10 text-warning",
+        error: "border-destructive/40 bg-destructive/10 text-destructive",
       }[variant];
       const title = optStr(props.title);
       return (
@@ -328,9 +328,9 @@ function renderNode(
       );
       const cls = {
         default: "",
-        success: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
-        warning: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
-        error: "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30",
+        success: "bg-success/15 text-success border-success/30",
+        warning: "bg-warning/15 text-warning border-warning/30",
+        error: "bg-destructive/15 text-destructive border-destructive/30",
       }[variant];
       return (
         <Badge key={key} variant="outline" className={cn(cls)}>

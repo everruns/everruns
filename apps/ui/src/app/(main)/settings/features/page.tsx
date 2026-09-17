@@ -38,8 +38,8 @@ export default function FeaturesSettingsPage() {
       </div>
 
       {!canManage && (
-        <Card className="flex items-start gap-3 border-amber-500/30 bg-amber-500/5 p-4 text-sm">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+        <Card className="flex items-start gap-3 border-warning/30 bg-warning/5 p-4 text-sm">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
           <p>Only organization owners and admins can change feature settings.</p>
         </Card>
       )}
@@ -73,7 +73,7 @@ export default function FeaturesSettingsPage() {
                   {flag.label}
                 </Label>
                 {flag.experimental && (
-                  <span className="inline-flex items-center gap-1 text-xs text-amber-600">
+                  <span className="inline-flex items-center gap-1 text-xs text-warning">
                     <FlaskConical className="h-3.5 w-3.5" />
                     Experimental
                   </span>

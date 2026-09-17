@@ -162,12 +162,17 @@ everruns-llmsim = { path = "../drivers/llmsim", features = ["host"] }
 everruns-test-support = { path = "../test-support", features = ["fixtures"] }
 tokio = { workspace = true, features = ["macros", "process", "rt-multi-thread", "time"] }
 serde = { workspace = true }
+# Stream consumption in the direct-completion tests and example.
+futures = { workspace = true }
 trybuild = { workspace = true }
 # Temporary workspaces and plugin fixtures used by facade acceptance tests.
 tempfile = { workspace = true }
 
 [[example]]
 name = "workspace_policy"
+
+[[example]]
+name = "direct_llm"
 
 [[example]]
 name = "production_agent"

@@ -480,7 +480,7 @@ fn validate_definition(definition: &DeclarativeCapabilityDefinition) -> Result<(
     validate_declarative_capability_definition(definition)
         .map_err(|message| CommandError::bad_request(format!("Invalid definition: {message}")))?;
     if let Some(servers) = &definition.mcp_servers {
-        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(servers)
+        crate::domains::mcp_servers::scoped_mcp::validate_capability_mcp_servers(servers)
             .map_err(|error| CommandError::bad_request(format!("Invalid MCP servers: {error}")))?;
     }
     Ok(())
@@ -643,7 +643,46 @@ async fn get_declarative_capability_by_public_id(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kernel_imports::{
+        Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, McpServerActsAs,
+        OrgRole, ScopedMcpServer, ScopedMcpServers,
+    };
+    use crate::services::CapabilityService;
+    use crate::storage::StorageBackend;
     use serde_json::json;
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    fn test_ctx() -> Ctx {
+        let db = Arc::new(StorageBackend::in_memory());
+        let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
+        Ctx::new(
+            Caller {
+                org_id: DEFAULT_ORG_ID,
+                org_public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+                user_id: Some(Uuid::nil()),
+                role: OrgRole::Owner,
+                is_platform_user: false,
+                is_internal: false,
+            },
+            db,
+            capability_service,
+            None,
+            Arc::new(DefaultPermissionResolver),
+        )
+    }
+
+    fn definition(
+        name: &str,
+        mcp_servers: Option<ScopedMcpServers>,
+    ) -> DeclarativeCapabilityDefinition {
+        DeclarativeCapabilityDefinition {
+            name: name.to_string(),
+            description: "test capability".to_string(),
+            mcp_servers,
+            ..Default::default()
+        }
+    }
 
     // Regression for EVE-324: bashkit's flag parser emits string values when
     // the tool schema declares no per-property types (as inventory commands
@@ -663,6 +702,52 @@ mod tests {
             serde_json::from_value(json!({ "limit": 5, "offset": 10 })).unwrap();
         assert_eq!(cmd.limit, Some(5));
         assert_eq!(cmd.offset, Some(10));
+    }
+
+    #[tokio::test]
+    async fn declarative_capability_create_and_update_reject_scoped_identity_features() {
+        let ctx = test_ctx();
+        let catalog_servers = ScopedMcpServers::from([(
+            "docs".to_string(),
+            ScopedMcpServer {
+                preset: Some("catalog:docs".parse().unwrap()),
+                ..Default::default()
+            },
+        )]);
+
+        let error = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+            definition: definition("catalog_capability", Some(catalog_servers)),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap_err();
+        assert!(error.message().contains("cannot use a catalog preset"));
+
+        let created = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
+            definition: definition("inline_capability", None),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let identity_servers = ScopedMcpServers::from([(
+            "docs".to_string(),
+            ScopedMcpServer {
+                url: "https://docs.example.com/mcp".to_string(),
+                acts_as: McpServerActsAs::User,
+                ..Default::default()
+            },
+        )]);
+        let error = UpdateDeclarativeCapabilityCmd {
+            id: created.public_id.to_string(),
+            req: UpdateDeclarativeCapabilityRequest {
+                definition: Some(definition("inline_capability", Some(identity_servers))),
+                status: None,
+            },
+        }
+        .execute(&ctx)
+        .await
+        .unwrap_err();
+        assert!(error.message().contains("cannot set actsAs"));
     }
 
     #[test]

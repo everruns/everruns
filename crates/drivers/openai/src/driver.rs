@@ -410,10 +410,21 @@ fn supports_model_listing(api_url: &str) -> bool {
 /// register_driver(&mut registry);
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
-    // Register OpenAI with Open Responses API (recommended). OpenAI providers
-    // also power realtime voice sessions (knowledge/operations/voice.md) and text embeddings
-    // (knowledge/foundations/providers.md phase 6), so the descriptor declares those services
-    // alongside Chat.
+    registry.register_descriptor(descriptor());
+
+    registry.register_descriptor(azure_descriptor());
+
+    registry.register_descriptor(completions_descriptor());
+}
+
+/// The OpenAI Responses driver's descriptor: identity, services, and the
+/// credential schema that declares its own environment variables.
+///
+/// OpenAI providers also power realtime voice sessions
+/// (knowledge/operations/voice.md) and text embeddings
+/// (knowledge/foundations/providers.md phase 6), so the descriptor declares
+/// those services alongside Chat.
+pub fn descriptor() -> DriverDescriptor {
     let openai_embeddings_factory: EmbeddingsDriverFactory = std::sync::Arc::new(|config| {
         Provider::new(config.provider.clone(), OpenAIChatDriver::new())
             .base_url(
@@ -425,53 +436,104 @@ pub fn register_driver(registry: &mut DriverRegistry) {
             .auth(BearerAuth::new(config.api_key.clone().unwrap_or_default()))
             .bind_embeddings(Box::new(crate::embeddings::OpenAIEmbeddingsDriver::new()))
     });
-    registry.register_descriptor(DriverDescriptor {
+    DriverDescriptor {
         display_name: "OpenAI".into(),
-        services: vec![ServiceKind::Chat, ServiceKind::Realtime, ServiceKind::Embeddings],
+        services: vec![
+            ServiceKind::Chat,
+            ServiceKind::Realtime,
+            ServiceKind::Embeddings,
+        ],
+        // Matches the openai SDK's own variables.
         credential_schema: CredentialFormSchema::api_key(
+            "OPENAI_API_KEY",
             "Create an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).",
         ),
+        base_url_env: Some("OPENAI_BASE_URL".into()),
         embeddings: Some(openai_embeddings_factory),
         ..DriverDescriptor::chat_only(DriverId::OpenAI, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             Provider::new(config.provider.clone(), OpenAIChatDriver::new())
-                .base_url(config.base_url.as_deref().unwrap_or("https://api.openai.com/v1"))
+                .base_url(
+                    config
+                        .base_url
+                        .as_deref()
+                        .unwrap_or("https://api.openai.com/v1"),
+                )
                 .auth(BearerAuth::new(api_key))
                 .into_boxed_driver()
         })
-    });
+    }
+}
 
-    registry.register_descriptor(DriverDescriptor {
+/// The Azure OpenAI driver's descriptor.
+pub fn azure_descriptor() -> DriverDescriptor {
+    DriverDescriptor {
         display_name: "Azure OpenAI".into(),
+        // Matches the openai SDK's AzureOpenAI client for the key. No endpoint
+        // variable: AZURE_OPENAI_ENDPOINT is the bare resource host, while this
+        // driver appends bare operation paths to base_url and applies no
+        // normalization (unlike MAI's `mai_api_base_url`), so the vendor value
+        // would resolve to `https://<resource>.openai.azure.com/responses`.
+        // Configure the resource endpoint explicitly as the base URL.
         credential_schema: CredentialFormSchema::api_key(
+            "AZURE_OPENAI_API_KEY",
             "Use an API key for your Azure OpenAI resource and set the resource endpoint as the base URL.",
         ),
+        base_url_env: None,
         ..DriverDescriptor::chat_only(DriverId::AzureOpenAI, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             Provider::new(config.provider.clone(), OpenAIChatDriver::new())
-                .base_url(config.base_url.as_deref().unwrap_or("https://api.openai.com/v1"))
+                .base_url(
+                    config
+                        .base_url
+                        .as_deref()
+                        .unwrap_or("https://api.openai.com/v1"),
+                )
                 .auth(StaticHeaderAuth::new("api-key", api_key))
                 .into_boxed_driver()
         })
-    });
+    }
+}
 
-    // Register OpenAI Completions with Chat Completions API
-    registry.register_descriptor(DriverDescriptor {
+/// The OpenAI Chat Completions driver's descriptor.
+pub fn completions_descriptor() -> DriverDescriptor {
+    DriverDescriptor {
         display_name: "OpenAI (Chat Completions)".into(),
+        // Same vendor account as the Responses driver above, so the same
+        // variables: this is what the historical `OPENAI_*` fallback in the
+        // resolver used to hardcode centrally.
         credential_schema: CredentialFormSchema::api_key(
+            "OPENAI_API_KEY",
             "Create an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).",
         ),
+        base_url_env: Some("OPENAI_BASE_URL".into()),
         ..DriverDescriptor::chat_only(DriverId::OpenAICompletions, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
-            Provider::new(
-                config.provider.clone(),
-                OpenAICompletionsChatDriver::new(),
-            )
-            .base_url(config.base_url.as_deref().unwrap_or("https://api.openai.com/v1"))
-            .auth(BearerAuth::new(api_key))
-            .into_boxed_driver()
+            Provider::new(config.provider.clone(), OpenAICompletionsChatDriver::new())
+                .base_url(
+                    config
+                        .base_url
+                        .as_deref()
+                        .unwrap_or("https://api.openai.com/v1"),
+                )
+                .auth(BearerAuth::new(api_key))
+                .into_boxed_driver()
         })
-    });
+    }
+}
+
+/// Build an OpenAI provider from this driver's declared environment variables
+/// (`OPENAI_API_KEY`, and `OPENAI_BASE_URL` when set).
+///
+/// Standalone/CLI/dev only: server paths resolve credentials from storage and
+/// must never read the environment.
+pub fn from_env(
+    id: impl Into<everruns_provider::ProviderKey>,
+) -> std::result::Result<
+    everruns_provider::Provider,
+    everruns_provider::credential_provider::EnvCredentialError,
+> {
+    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
 }
 
 impl Default for OpenAIChatDriver {
