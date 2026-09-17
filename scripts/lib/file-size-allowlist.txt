@@ -54,7 +54,6 @@
 2630 crates/server/src/api/mcp_endpoint/mod.rs
 1739 crates/server/src/api/organizations.rs
 1589 crates/server/src/api/sessions.rs
-5571 crates/server/src/api/slack_events.rs
 1741 crates/server/src/api/user_connections.rs
 1846 crates/server/src/api/voice.rs
 2796 crates/server/src/app_builder.rs
