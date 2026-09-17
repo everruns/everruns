@@ -8,6 +8,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 python3 scripts/sync-publish-pin-versions.py --check
+python3 scripts/plan-crate-release.py --self-test
 
 python3 - <<'PY'
 import importlib.util

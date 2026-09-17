@@ -38,12 +38,16 @@ which crates.io makes unrecoverable.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib
+import io
 import json
 import re
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
+from unittest import mock
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
@@ -54,8 +58,16 @@ sys.path.insert(0, str(REPO / "scripts"))
 _bumps = importlib.import_module("check-semver-bumps")
 
 
-class SemverClassificationError(RuntimeError):
+class ReleasePlanningError(RuntimeError):
+    """The release matrix could not be computed safely."""
+
+
+class SemverClassificationError(ReleasePlanningError):
     """cargo-semver-checks did not produce a complete classification."""
+
+
+class LockfileRegenerationError(RuntimeError):
+    """cargo could not regenerate a release lockfile."""
 
 
 def parse_version(version: str) -> tuple[int, int, int]:
@@ -183,6 +195,16 @@ def classify(candidates: list[str], runner=subprocess.run) -> tuple[dict[str, st
     return level, out
 
 
+def read_sparse_index(name: str) -> str:
+    return (
+        urllib.request.urlopen(
+            f"https://index.crates.io/{_bumps.index_path(name)}", timeout=30
+        )
+        .read()
+        .decode()
+    )
+
+
 def published_dependency_map(names: list[str]) -> dict[str, list[tuple[str, str]]]:
     records = _bumps.fetch_many(names, _bumps.index_records)
     out: dict[str, list[tuple[str, str]]] = {}
@@ -192,30 +214,26 @@ def published_dependency_map(names: list[str]) -> dict[str, list[tuple[str, str]
             out[name] = []
             continue
         # The sparse index records carry deps on each version row.
-        body = None
         try:
-            import urllib.request
-
-            body = (
-                urllib.request.urlopen(
-                    f"https://index.crates.io/{_bumps.index_path(name)}", timeout=30
-                )
-                .read()
-                .decode()
+            body = read_sparse_index(name)
+            entries = [
+                json.loads(row) for row in body.splitlines() if row.strip()
+            ]
+            selected = [entry for entry in entries if entry.get("vers") == latest]
+            deps = [
+                (dependency["name"], dependency["req"])
+                for entry in selected
+                for dependency in entry.get("deps", [])
+                if dependency.get("kind") != "dev"
+            ]
+        except Exception as exc:
+            raise ReleasePlanningError(
+                f"failed to read published dependencies for {name}: {exc}"
+            ) from exc
+        if not selected:
+            raise ReleasePlanningError(
+                f"sparse index omitted selected version {name} {latest}"
             )
-        except Exception:
-            out[name] = []
-            continue
-        deps: list[tuple[str, str]] = []
-        for row in body.splitlines():
-            if not row.strip():
-                continue
-            entry = json.loads(row)
-            if entry.get("vers") != latest:
-                continue
-            for d in entry.get("deps", []):
-                if d.get("kind") != "dev":
-                    deps.append((d["name"], d["req"]))
         out[name] = deps
     return out
 
@@ -287,11 +305,14 @@ def regenerate_lockfiles() -> None:
         if manifest in seen or not manifest.exists():
             continue
         seen.add(manifest)
-        subprocess.run(
-            ["cargo", "generate-lockfile", "--manifest-path", str(manifest)],
-            check=False,
-            capture_output=True,
-        )
+        argv = ["cargo", "generate-lockfile", "--manifest-path", str(manifest)]
+        try:
+            subprocess.run(argv, check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as exc:
+            diagnostic = (exc.stderr or exc.stdout or "no diagnostic").strip()
+            raise LockfileRegenerationError(
+                f"cargo generate-lockfile failed for {manifest}: {diagnostic}"
+            ) from exc
 
 
 def main() -> int:
@@ -304,7 +325,7 @@ def main() -> int:
 
     try:
         plan, baselines, _log = compute_plan()
-    except SemverClassificationError as exc:
+    except ReleasePlanningError as exc:
         print(f"::error::{exc}", file=sys.stderr)
         return 1
     if not plan:
@@ -327,7 +348,11 @@ def main() -> int:
         [sys.executable, str(REPO / "scripts/sync-publish-pin-versions.py"), "--write"],
         check=True,
     )
-    regenerate_lockfiles()
+    try:
+        regenerate_lockfiles()
+    except LockfileRegenerationError as exc:
+        print(f"::error::{exc}", file=sys.stderr)
+        return 1
     print("\nApplied. Verifying with the release gates...")
     cone = subprocess.run(
         [sys.executable, str(REPO / "scripts/check-publish-cone.py"), "--pre-merge"]
@@ -359,7 +384,9 @@ def self_test() -> int:
         "0.23.0",
     )
     expect("caret ^0.20 excludes 0.21", caret_allows("^0.20.1", "0.21.0"), False)
-    expect("caret ^0.20 allows 0.20.2", caret_allows("^0.20.1", "0.20.2"), True)
+    expect(
+        "caret ^0.20 allows 0.20.2", caret_allows("^0.20.1", "0.20.2"), True
+    )
 
     def classified_runner(*_args, **_kwargs):
         return subprocess.CompletedProcess(
@@ -376,19 +403,62 @@ def self_test() -> int:
     classified, _ = classify(["everruns-provider"], runner=classified_runner)
     expect("recognized major verdict", classified, {"everruns-provider": "minor"})
 
-    writes: list[str] = []
 
     def failed_runner(*_args, **_kwargs):
         return subprocess.CompletedProcess(
             [], returncode=101, stdout="", stderr="network or build failure"
         )
 
-    try:
-        levels, _ = classify(["everruns-provider"], runner=failed_runner)
-        writes.extend(levels)
-    except SemverClassificationError:
-        pass
-    expect("tool failure produces no plan or writes", writes, [])
+    def failed_compute_plan():
+        classify(["everruns-provider"], runner=failed_runner)
+        raise AssertionError("unreachable")
+
+    def run_write_cli(compute, lockfile_effect=None):
+        cli_stdout = io.StringIO()
+        cli_stderr = io.StringIO()
+        mutations: list[str] = []
+
+        def record_lockfile_write():
+            if lockfile_effect is None:
+                mutations.append("lockfile")
+            else:
+                lockfile_effect()
+
+        def record_command(argv, **_kwargs):
+            mutations.append("command")
+            return subprocess.CompletedProcess(argv, returncode=0)
+
+        with (
+            mock.patch.object(sys, "argv", [sys.argv[0], "--write"]),
+            mock.patch(__name__ + ".compute_plan", side_effect=compute),
+            mock.patch(
+                __name__ + ".set_manifest_version",
+                side_effect=lambda *_args: mutations.append("manifest"),
+            ),
+            mock.patch(
+                __name__ + ".regenerate_lockfiles",
+                side_effect=record_lockfile_write,
+            ),
+            mock.patch.object(subprocess, "run", side_effect=record_command),
+            contextlib.redirect_stdout(cli_stdout),
+            contextlib.redirect_stderr(cli_stderr),
+        ):
+            status = main()
+        return status, cli_stdout.getvalue(), cli_stderr.getvalue(), mutations
+
+    failed_cli_status, stdout, stderr, mutations = run_write_cli(failed_compute_plan)
+    expect("semver failure exits CLI nonzero", failed_cli_status, 1)
+    expect(
+        "semver failure produces no matrix",
+        "Planned crate release matrix" in stdout,
+        False,
+    )
+    expect(
+        "semver failure reports its diagnostic",
+        "exited 101" in stderr,
+        True,
+    )
+    expect("semver failure performs no mutations", mutations, [])
 
     def incomplete_runner(*_args, **_kwargs):
         return subprocess.CompletedProcess(
@@ -404,6 +474,95 @@ def self_test() -> int:
     except SemverClassificationError:
         incomplete_rejected = True
     expect("missing package verdict is rejected", incomplete_rejected, True)
+
+    def missing_index(*_args, **_kwargs):
+        raise OSError("registry unavailable")
+
+    def failed_dependency_compute():
+        with (
+            mock.patch.object(
+                _bumps,
+                "fetch_many",
+                return_value={"everruns-provider": [("0.24.0", False)]},
+            ),
+            mock.patch(__name__ + ".read_sparse_index", side_effect=missing_index),
+        ):
+            published_dependency_map(["everruns-provider"])
+        raise AssertionError("unreachable")
+
+    index_cli_status, index_stdout, index_stderr, index_mutations = run_write_cli(
+        failed_dependency_compute
+    )
+    expect("dependency index failure exits CLI nonzero", index_cli_status, 1)
+    expect(
+        "dependency index failure produces no matrix",
+        "Planned crate release matrix" in index_stdout,
+        False,
+    )
+    expect(
+        "dependency index failure reports its diagnostic",
+        "registry unavailable" in index_stderr,
+        True,
+    )
+    expect("dependency index failure performs no mutations", index_mutations, [])
+
+    lockfile_commands: list[list[str]] = []
+
+    def failed_lockfile_runner(argv, **_kwargs):
+        lockfile_commands.append(argv)
+        raise subprocess.CalledProcessError(
+            101, argv, stderr="dependency resolution failed"
+        )
+
+
+    def successful_compute():
+        return (
+            {"everruns-provider": "0.25.0"},
+            {"everruns-provider": "0.24.0"},
+            "",
+        )
+    lock_stdout = io.StringIO()
+    lock_stderr = io.StringIO()
+    lock_mutations: list[str] = []
+
+    def failed_write_runner(argv, **_kwargs):
+        if argv[0] == "cargo" and argv[1] == "generate-lockfile":
+            lock_mutations.append("lockfile")
+            return failed_lockfile_runner(argv)
+        lock_mutations.append("command")
+        return subprocess.CompletedProcess(argv, returncode=0)
+
+    with (
+        mock.patch.object(sys, "argv", [sys.argv[0], "--write"]),
+        mock.patch(__name__ + ".compute_plan", side_effect=successful_compute),
+        mock.patch(
+            __name__ + ".set_manifest_version",
+            side_effect=lambda *_args: lock_mutations.append("manifest"),
+        ),
+        mock.patch.object(subprocess, "run", side_effect=failed_write_runner),
+        contextlib.redirect_stdout(lock_stdout),
+        contextlib.redirect_stderr(lock_stderr),
+    ):
+        lockfile_cli_status = main()
+    lock_stdout = lock_stdout.getvalue()
+    lock_stderr = lock_stderr.getvalue()
+    expect("lockfile failure exits CLI nonzero", lockfile_cli_status, 1)
+    expect("lockfile failure stops at first command", len(lockfile_commands), 1)
+    expect(
+        "lockfile failure reports cargo diagnostic",
+        "dependency resolution failed" in lock_stderr,
+        True,
+    )
+    expect(
+        "lockfile failure makes no success claim",
+        "Applied. Verifying" in lock_stdout,
+        False,
+    )
+    expect(
+        "lockfile failure skips release gates",
+        lock_mutations,
+        ["manifest", "command", "lockfile"],
+    )
 
     # provider takes a breaking bump; a driver pinning ^0.20 must cascade to patch.
     baselines = {"everruns-provider": "0.20.1", "everruns-openai": "0.18.3"}
