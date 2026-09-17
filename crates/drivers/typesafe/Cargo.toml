@@ -13,6 +13,10 @@
 [package]
 name = "typesafe-systemone"
 version = "0.1.0"
+# Not published yet: first crates.io publish failed with 403 (token lacks
+# permission for this new name; Publish Crate run 35184069849). Keep private
+# until the registry token allows it, then remove this line.
+publish = false
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
