@@ -843,6 +843,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "unit"
+          # Heaviest shard writes the key; the others restore it (see `integration`).
+          save-if: ${{ matrix.shard == 'facade-cli' }}
 
       - name: Run pure unit tests (${{ matrix.shard }})
         shell: bash
@@ -989,6 +991,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "integration"
+          save-if: false
 
       - name: Run worker tests
         # Whole crate (lib + integration), not just --lib: the network_reliability
@@ -1234,10 +1237,19 @@ jobs:
         uses: dtolnay/rust-toolchain@1.96.0
 
 
+      # Exactly one producer per cache key. A shared key is only useful if the
+      # target/ stored under it matches what its consumers need, and entries are
+      # immutable so the FIRST job to finish wins the save. Before this was
+      # pinned, `worker-test` (3m, everruns-worker only) could beat the shards to
+      # it and store a thin target/: the key then reported `full match: true`
+      # while 490 of 532 crates still recompiled. The domain shard is the
+      # heaviest consumer of this key, so it is the one that writes it; every
+      # other job on `integration` restores and never saves.
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "integration"
+          save-if: ${{ matrix.shard == 'domain' }}
 
       - name: Cache cargo binaries
         uses: actions/cache@v6
@@ -1429,6 +1441,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "integration"
+          save-if: false
 
       - name: Cache cargo binaries
         uses: actions/cache@v6
@@ -1637,6 +1650,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "integration"
+          save-if: false
 
       - name: Cache cargo binaries
         uses: actions/cache@v6
