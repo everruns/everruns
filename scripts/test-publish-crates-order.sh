@@ -70,6 +70,58 @@ spec = importlib.util.spec_from_file_location(
 sync = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sync)
 
+packages = [
+    {
+        "name": "public-owner",
+        "manifest_path": "/repo/public-owner/Cargo.toml",
+        "publish": None,
+        "dependencies": [
+            {
+                "name": "private-target",
+                "path": "/repo/private-target",
+                "kind": None,
+                "optional": True,
+            },
+            {
+                "name": "private-dev-target",
+                "path": "/repo/private-dev-target",
+                "kind": "dev",
+                "optional": False,
+            },
+            {
+                "name": "private-target",
+                "path": "/repo/private-target",
+                "kind": "build",
+                "optional": False,
+            },
+        ],
+    },
+    {
+        "name": "private-target",
+        "manifest_path": "/repo/private-target/Cargo.toml",
+        "publish": [],
+        "dependencies": [],
+    },
+    {
+        "name": "private-dev-target",
+        "manifest_path": "/repo/private-dev-target/Cargo.toml",
+        "publish": [],
+        "dependencies": [],
+    },
+]
+private_failures = sync.private_dependency_failures(packages)
+require(
+    private_failures
+    == [
+        "public-owner: private-target is an optional normal path dependency on "
+        "private workspace package private-target",
+        "public-owner: private-target is a build path dependency on private "
+        "workspace package private-target",
+    ],
+    "published packages must reject optional normal and build path dependencies "
+    f"on private workspace packages while permitting dev-only edges, got {private_failures}",
+)
+
 manifest = tomllib.loads("""
 [dependencies]
 everruns-core = { path = "../core", version = "1.0.0" }

@@ -1,7 +1,7 @@
 # TypeSafe Integration
 # Decision: The vendor client lives in the standalone `typesafe-systemone` crate
-#   so it is publishable and usable outside Everruns; this crate is only the
-#   capability, its tool, and the connector catalog entry.
+#   so it is publishable and usable outside Everruns; this private crate owns
+#   the capability, connector catalog entry, and deployment judgment adapter.
 # Decision: API key resolved via user connections (connection_resolver), with a
 #   session-secret fallback, same contract as brave-search.
 
@@ -42,6 +42,8 @@ tracing.workspace = true
 [features]
 default = ["hosted"]
 hosted = ["dep:everruns-platform", "dep:inventory"]
+# Live tests against the deployment-owned judgment API. A missing key fails.
+typesafe-live-tests = []
 
 [dev-dependencies]
 everruns = { path = "../../crates/everruns" }

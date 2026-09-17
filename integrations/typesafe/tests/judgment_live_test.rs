@@ -1,8 +1,8 @@
 //! Live tests for the deployment judgment service.
 //!
-//! Gated behind `typesafe-live-tests`, which also pulls in the implementation:
+//! Gated behind `typesafe-live-tests`:
 //!
-//!   cargo test -p everruns-host --features typesafe-live-tests
+//!   cargo test -p everruns-integrations-typesafe --features typesafe-live-tests
 //!
 //! The key comes from `UTILITY_TYPESAFE_API_KEY`. The tests panic when it is
 //! missing, so a dropped credential never looks like a pass.
@@ -14,7 +14,7 @@
 #![cfg(feature = "typesafe-live-tests")]
 
 use everruns_core::{JudgmentQuestion, JudgmentRequest, JudgmentService};
-use everruns_host::TypeSafeJudgmentService;
+use everruns_integrations_typesafe::TypeSafeJudgmentService;
 
 fn service() -> TypeSafeJudgmentService {
     match std::env::var("UTILITY_TYPESAFE_API_KEY") {

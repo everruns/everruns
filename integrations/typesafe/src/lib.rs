@@ -40,12 +40,16 @@ mod capability;
 mod connection;
 mod evaluate;
 mod framework;
+mod system_judgment;
 
 pub use capability::JevCapability;
 #[cfg(feature = "hosted")]
 pub use connection::TypeSafeConnector;
 pub use evaluate::EvaluateInput;
 pub use framework::Jev;
+pub use system_judgment::{
+    JUDGMENT_MODEL, SystemJudgmentConfig, TypeSafeJudgmentService, UTILITY_TYPESAFE_API_KEY_ENV,
+};
 
 /// The client this capability runs on, re-exported so embedders do not need a
 /// second dependency to build one.

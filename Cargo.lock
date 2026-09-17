@@ -2546,7 +2546,6 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
- "typesafe-systemone",
  "uuid",
  "wiremock",
 ]

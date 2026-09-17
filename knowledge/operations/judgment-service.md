@@ -13,9 +13,9 @@ tags:
     host-owned, deployment-configured, never-agent-configurable posture. The
     two are siblings, not layers.
   - The contract is provider-neutral (noul/choice/score), not TypeSafe-shaped.
-    Core names none of the vendor; `everruns-host` owns the adapter. Swapping
-    vendors, or answering judgments with a fine-tuned local model, is a host
-    change only.
+    Core names none of the vendor; the private TypeSafe integration owns the
+    adapter. Swapping vendors, or answering judgments with a fine-tuned local
+    model, is an integration change only.
   - Answers are values, not text. The point is removing the parse step, not
     saving tokens: a guardrail that fails open on malformed JSON is a security
     control with a silent bypass, and this contract has no such path.
@@ -81,21 +81,20 @@ A noul near 0.5 means yes and no are near-equally likely. It does not mean
 "medium intensity", and it is not a confidence value; noul answers have no
 separate confidence because the probability already is one.
 
-## Host Implementation
+## Deployment Implementation
 
-`everruns-host` owns the concrete service behind its optional
-`typesafe-judgment` feature ([`crates/host/src/judgment.rs`](../../crates/host/src/judgment.rs)),
+The private `everruns-integrations-typesafe` crate owns the concrete service
+([`integrations/typesafe/src/system_judgment.rs`](../../integrations/typesafe/src/system_judgment.rs)),
 backed by the standalone [`typesafe-systemone`](../../crates/drivers/typesafe/README.md)
-client. Nothing above core learns the vendor.
+client. The published host remains provider-neutral and accepts the service
+through `JudgmentService`.
 
 That client is filed under `crates/drivers/` as a **judgment driver**: the same
 shape as the LLM wire-protocol drivers — a vendor client below the platform
 layer, so host and everything above it can depend on it without a cycle — but
 it answers typed questions rather than chat completions, so it is not
-registered in `DriverRegistry`. It is also the reason the client is a separate
-crate from `integrations/typesafe`: an integration crate depends on
-`everruns-platform`, which depends on `everruns-host`, so a single crate
-carrying both the client and the connector would close that loop.
+registered in `DriverRegistry`. The client remains a separate crate so the
+vendor protocol can be used independently of the Everruns integration.
 
 - Model is fixed (`jev-latest`), for the same reason the utility model is: call
   sites must not be able to turn it into a selectable one.
