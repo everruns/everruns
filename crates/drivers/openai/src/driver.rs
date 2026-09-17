@@ -469,12 +469,17 @@ pub fn descriptor() -> DriverDescriptor {
 pub fn azure_descriptor() -> DriverDescriptor {
     DriverDescriptor {
         display_name: "Azure OpenAI".into(),
-        // Matches the openai SDK's AzureOpenAI client.
+        // Matches the openai SDK's AzureOpenAI client for the key. No endpoint
+        // variable: AZURE_OPENAI_ENDPOINT is the bare resource host, while this
+        // driver appends bare operation paths to base_url and applies no
+        // normalization (unlike MAI's `mai_api_base_url`), so the vendor value
+        // would resolve to `https://<resource>.openai.azure.com/responses`.
+        // Configure the resource endpoint explicitly as the base URL.
         credential_schema: CredentialFormSchema::api_key(
             "AZURE_OPENAI_API_KEY",
             "Use an API key for your Azure OpenAI resource and set the resource endpoint as the base URL.",
         ),
-        base_url_env: Some("AZURE_OPENAI_ENDPOINT".into()),
+        base_url_env: None,
         ..DriverDescriptor::chat_only(DriverId::AzureOpenAI, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             Provider::new(config.provider.clone(), OpenAIChatDriver::new())

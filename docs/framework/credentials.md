@@ -44,8 +44,8 @@ let model = Model::new("claude-sonnet-5", everruns_anthropic::from_env("anthropi
 | --- | --- | --- |
 | OpenAI | `OPENAI_API_KEY` | `OPENAI_BASE_URL` |
 | OpenAI (Chat Completions) | `OPENAI_API_KEY` | `OPENAI_BASE_URL` |
-| Azure OpenAI | `AZURE_OPENAI_API_KEY` | `AZURE_OPENAI_ENDPOINT` |
-| Anthropic | `ANTHROPIC_API_KEY` | `ANTHROPIC_BASE_URL` |
+| Azure OpenAI | `AZURE_OPENAI_API_KEY` | — (see below) |
+| Anthropic | `ANTHROPIC_API_KEY` | — (see below) |
 | Google Gemini | `GEMINI_API_KEY`, or `GOOGLE_API_KEY` | `GEMINI_BASE_URL` |
 | OpenRouter | `OPENROUTER_API_KEY` | `OPENROUTER_BASE_URL` |
 | Fireworks AI | `FIREWORKS_API_KEY` | `FIREWORKS_BASE_URL` |
@@ -57,6 +57,15 @@ A driver is not limited to one key. Bedrock needs four AWS fields; MAI accepts
 either a resource key or a full Entra ID service principal. Alternates listed
 with "or" are variables the vendor itself also honors, tried in the order
 shown — not a second credential.
+
+Anthropic and Azure OpenAI declare no endpoint variable on purpose. A
+`base_url` here is the *versioned* API root — drivers append bare operation
+paths to it, and the defaults end in `/v1` — whereas `ANTHROPIC_BASE_URL` and
+`AZURE_OPENAI_ENDPOINT` name the bare host, because those SDKs add the version
+segment themselves. Importing either verbatim would resolve to
+`https://api.anthropic.com/messages` and fail. Point those drivers at a proxy
+with an explicit `Provider::new(...).base_url(...)`, or through the Settings
+UI, instead.
 
 A credential resolves whole or not at all. If any required variable is missing
 the driver is simply not configured from the environment, rather than being

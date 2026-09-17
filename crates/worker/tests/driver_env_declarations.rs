@@ -19,14 +19,8 @@ const DECLARED: &[(DriverId, &[&str])] = &[
         DriverId::OpenAICompletions,
         &["OPENAI_API_KEY", "OPENAI_BASE_URL"],
     ),
-    (
-        DriverId::AzureOpenAI,
-        &["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT"],
-    ),
-    (
-        DriverId::Anthropic,
-        &["ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"],
-    ),
+    (DriverId::AzureOpenAI, &["AZURE_OPENAI_API_KEY"]),
+    (DriverId::Anthropic, &["ANTHROPIC_API_KEY"]),
     (
         DriverId::Gemini,
         &["GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_BASE_URL"],
@@ -84,6 +78,29 @@ fn every_driver_declares_its_vendors_variables() {
                 .map(|name| name.to_string())
                 .collect::<Vec<_>>(),
             "{id} declares different variables than the documented table"
+        );
+    }
+}
+
+/// A `base_url` here is the *versioned* API root: drivers append bare operation
+/// paths to it, and their defaults end in `/v1`. A vendor variable naming the
+/// bare host instead cannot be imported verbatim — it resolves to
+/// `https://host/messages` and 404s — so these drivers deliberately declare no
+/// endpoint variable rather than a broken one.
+const NO_ENDPOINT_VARIABLE: &[(DriverId, &str)] = &[
+    (DriverId::Anthropic, "ANTHROPIC_BASE_URL"),
+    (DriverId::AzureOpenAI, "AZURE_OPENAI_ENDPOINT"),
+];
+
+#[test]
+fn a_vendor_variable_with_different_base_url_semantics_is_not_declared() {
+    let registry = create_driver_registry();
+    for (id, name) in NO_ENDPOINT_VARIABLE {
+        let descriptor = registry.descriptor(id).expect("registered");
+        assert_eq!(
+            descriptor.base_url_env, None,
+            "{id} must not import {name}: that variable names the host root, \
+             while base_url here is the versioned API root"
         );
     }
 }

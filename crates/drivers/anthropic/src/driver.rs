@@ -1379,12 +1379,18 @@ impl std::fmt::Debug for AnthropicChatDriver {
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
         display_name: "Anthropic".into(),
-        // Matches the anthropic SDK's own variables.
+        // Matches the anthropic SDK's own key variable.
         credential_schema: CredentialFormSchema::api_key(
             "ANTHROPIC_API_KEY",
             "Create an API key in the [Anthropic Console](https://console.anthropic.com/settings/keys).",
         ),
-        base_url_env: Some("ANTHROPIC_BASE_URL".into()),
+        // No endpoint variable, deliberately. Anthropic's ANTHROPIC_BASE_URL is
+        // the host root (its SDK appends `/v1/messages`), while a Provider
+        // base_url here is the versioned API root that drivers append bare
+        // paths to — DEFAULT_BASE_URL ends in `/v1`. Importing the vendor's
+        // value verbatim yields `https://api.anthropic.com/messages` and a 404.
+        // Point at a proxy with an explicit `.base_url(...)` instead.
+        base_url_env: None,
         ..DriverDescriptor::chat_only(DriverId::Anthropic, |config| {
             let provider = everruns_provider::Provider::new(
                 config.provider.clone(),
