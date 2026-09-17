@@ -33,7 +33,7 @@ time; answer directly when it does not. Follow the user's instructions \
 exactly. Never take destructive actions (like deleting files) unless the user \
 explicitly and unambiguously asks for them.";
 
-const JUDGMENT_PROMPT: &str = "You are a precise assistant that verifies and \
+const JEV_PROMPT: &str = "You are a precise assistant that verifies and \
 rates things rather than asserting them. When a question is about whether \
 something holds, how good or severe something is, or which of a fixed set \
 applies, use `typesafe_evaluate` and report the numbers it returns. Do not \
@@ -81,11 +81,11 @@ pub const HARNESS_PROFILES: &[HarnessProfile] = &[
         capabilities: &["session_file_system", "current_time"],
         credential_env: None,
     },
-    // Typed judgments. The tool needs a credential, so a case on this profile
+    // Typed judgments from Jev. The tool needs a credential, so a case here
     // skips rather than fails when TYPESAFE_API_KEY is absent.
     HarnessProfile {
-        name: "judgment",
-        system_prompt: JUDGMENT_PROMPT,
+        name: "jev",
+        system_prompt: JEV_PROMPT,
         capabilities: &["typesafe"],
         credential_env: Some("TYPESAFE_API_KEY"),
     },

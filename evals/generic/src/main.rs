@@ -30,7 +30,7 @@ mod subject;
 use mira::{Dataset, Eval, Target, eval};
 
 use crate::scorers::{
-    expected_tools, file_expectations, forbidden_tools, judgment_questions, response_avoids,
+    expected_tools, file_expectations, forbidden_tools, jev_questions, response_avoids,
     response_matches, tool_call_budget, turn_completed,
 };
 use crate::subject::GenericRuntimeSubject;
@@ -115,7 +115,7 @@ fn generic() -> Eval {
         // (see scorers.rs for the schema).
         .scorer(expected_tools())
         .scorer(forbidden_tools())
-        .scorer(judgment_questions())
+        .scorer(jev_questions())
         .scorer(response_matches())
         .scorer(response_avoids())
         .scorer(file_expectations())

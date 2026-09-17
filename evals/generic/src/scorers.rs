@@ -18,7 +18,7 @@
 //!   subject reads the named paths back into `Transcript.files`).
 //! - `min_tool_calls` / `max_tool_calls`: bounds on total tool calls (e.g.
 //!   `max_tool_calls: 0` asserts a plain question wastes no tool round-trips).
-//! - `expect_judgment_questions`: `{ "types": ["noul", "score"], "min": 2 }` —
+//! - `expect_jev_questions`: `{ "types": ["noul", "score"], "min": 2 }` —
 //!   grades the `typesafe_evaluate` questions the model *wrote*, not just that
 //!   it called the tool. A question the model asks badly returns a confident
 //!   number about the wrong thing, which is worse than no number at all.
@@ -300,28 +300,22 @@ pub fn tool_call_budget() -> Box<dyn Scorer> {
 ///   options — the API rejects fewer, and one level is not a scale;
 /// - the requested primitives are present, so "rate this" is not answered with
 ///   a yes/no.
-pub fn judgment_questions() -> Box<dyn Scorer> {
-    scorer("judgment_questions", |sample: &Sample, t: &Transcript| {
-        let Some(expect) = sample.metadata.get("expect_judgment_questions") else {
-            return Score::na(
-                "judgment_questions",
-                "sample declares no question expectations",
-            );
+pub fn jev_questions() -> Box<dyn Scorer> {
+    scorer("jev_questions", |sample: &Sample, t: &Transcript| {
+        let Some(expect) = sample.metadata.get("expect_jev_questions") else {
+            return Score::na("jev_questions", "sample declares no question expectations");
         };
-        if let Some(na) = gate("judgment_questions", t) {
+        if let Some(na) = gate("jev_questions", t) {
             return na;
         }
         let questions = t
             .metadata
-            .get(crate::subject::JUDGMENT_QUESTIONS_KEY)
+            .get(crate::subject::JEV_QUESTIONS_KEY)
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
         if questions.is_empty() {
-            return Score::fail(
-                "judgment_questions",
-                "no typesafe_evaluate questions recorded",
-            );
+            return Score::fail("jev_questions", "no typesafe_evaluate questions recorded");
         }
 
         let mut faults = Vec::new();
@@ -384,11 +378,11 @@ pub fn judgment_questions() -> Box<dyn Scorer> {
 
         if faults.is_empty() {
             Score::pass(
-                "judgment_questions",
+                "jev_questions",
                 format!("{} well-formed question(s)", questions.len()),
             )
         } else {
-            Score::fail("judgment_questions", faults.join("; "))
+            Score::fail("jev_questions", faults.join("; "))
         }
     })
 }
@@ -425,14 +419,14 @@ mod tests {
     fn with_questions(questions: serde_json::Value) -> Transcript {
         let mut t = transcript("done", &["typesafe_evaluate"]);
         t.metadata
-            .insert(crate::subject::JUDGMENT_QUESTIONS_KEY.into(), questions);
+            .insert(crate::subject::JEV_QUESTIONS_KEY.into(), questions);
         t
     }
 
     #[test]
-    fn judgment_questions_pass_when_well_formed() {
+    fn jev_questions_pass_when_well_formed() {
         let sample = Sample::new("j", "rate it").meta(
-            "expect_judgment_questions",
+            "expect_jev_questions",
             serde_json::json!({"types": ["score", "noul"], "min": 2}),
         );
         let t = with_questions(serde_json::json!([
@@ -442,54 +436,54 @@ mod tests {
              "instructions": "How funny is this joke to a general audience?",
              "levels": ["Not funny at all", "Mildly amusing", "Genuinely funny"]}
         ]));
-        assert!(score_of(judgment_questions().as_ref(), &sample, &t).pass);
+        assert!(score_of(jev_questions().as_ref(), &sample, &t).pass);
     }
 
     #[test]
-    fn judgment_questions_catch_a_question_leaning_on_its_id() {
+    fn jev_questions_catch_a_question_leaning_on_its_id() {
         // The id never reaches the model, so "?" asks nothing at all.
-        let sample = Sample::new("j", "rate it")
-            .meta("expect_judgment_questions", serde_json::json!({"min": 1}));
+        let sample =
+            Sample::new("j", "rate it").meta("expect_jev_questions", serde_json::json!({"min": 1}));
         let t = with_questions(serde_json::json!([
             {"id": "is_the_joke_funny", "type": "noul", "instructions": "?"}
         ]));
-        let score = score_of(judgment_questions().as_ref(), &sample, &t);
+        let score = score_of(jev_questions().as_ref(), &sample, &t);
         assert!(!score.pass, "{score:?}");
     }
 
     #[test]
-    fn judgment_questions_catch_a_degenerate_scale() {
-        let sample = Sample::new("j", "rate it")
-            .meta("expect_judgment_questions", serde_json::json!({"min": 1}));
+    fn jev_questions_catch_a_degenerate_scale() {
+        let sample =
+            Sample::new("j", "rate it").meta("expect_jev_questions", serde_json::json!({"min": 1}));
         let t = with_questions(serde_json::json!([
             {"id": "quality", "type": "score",
              "instructions": "How good is this piece of writing?",
              "levels": ["Good"]}
         ]));
-        assert!(!score_of(judgment_questions().as_ref(), &sample, &t).pass);
+        assert!(!score_of(jev_questions().as_ref(), &sample, &t).pass);
     }
 
     #[test]
-    fn judgment_questions_catch_the_wrong_primitive() {
+    fn jev_questions_catch_the_wrong_primitive() {
         // "Rate it" answered with a yes/no is a confident number about the
         // wrong question.
         let sample = Sample::new("j", "rate it").meta(
-            "expect_judgment_questions",
+            "expect_jev_questions",
             serde_json::json!({"types": ["score"], "min": 1}),
         );
         let t = with_questions(serde_json::json!([
             {"id": "any_good", "type": "noul",
              "instructions": "Is this piece of writing any good?"}
         ]));
-        let score = score_of(judgment_questions().as_ref(), &sample, &t);
+        let score = score_of(jev_questions().as_ref(), &sample, &t);
         assert!(!score.pass, "{score:?}");
     }
 
     #[test]
-    fn judgment_questions_are_na_without_expectations() {
+    fn jev_questions_are_na_without_expectations() {
         let sample = Sample::new("j", "rate it");
         let t = with_questions(serde_json::json!([]));
-        assert!(score_of(judgment_questions().as_ref(), &sample, &t).na);
+        assert!(score_of(jev_questions().as_ref(), &sample, &t).na);
     }
 
     #[test]

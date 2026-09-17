@@ -644,7 +644,7 @@ everruns_core::guardrail_checks::GuardrailAction::Block	variant
 everruns_core::guardrail_checks::GuardrailAction::Log	variant
 everruns_core::guardrail_checks::GuardrailCheck	struct
 everruns_core::guardrail_checks::GuardrailEngine	enum
-everruns_core::guardrail_checks::GuardrailEngine::Judgment	variant
+everruns_core::guardrail_checks::GuardrailEngine::Jev	variant
 everruns_core::guardrail_checks::GuardrailEngine::UtilityLlm	variant
 everruns_core::guardrail_checks::GuardrailHit	struct
 everruns_core::guardrail_checks::GuardrailMode	enum

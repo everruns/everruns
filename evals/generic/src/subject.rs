@@ -40,10 +40,10 @@ use crate::profiles::{
 /// harness profile lacks a required capability. Scorers N/A on it.
 pub const SKIPPED_KEY: &str = "skipped";
 
-/// Transcript metadata key holding the `typesafe_evaluate` questions the model
+/// Transcript metadata key holding the Jev questions the model
 /// wrote, so a scorer can grade the questions themselves and not only the fact
 /// that the tool was called.
-pub const JUDGMENT_QUESTIONS_KEY: &str = "typesafe_questions";
+pub const JEV_QUESTIONS_KEY: &str = "jev_questions";
 
 /// Build error meaning "this profile needs a credential this run does not have".
 /// Reported as a skip: an unkeyed machine says nothing about the model.
@@ -191,11 +191,11 @@ impl Subject for GenericRuntimeSubject {
         // everruns event shape (`data.tool_name`) doesn't match.
         transcript.tool_calls = extract_tool_calls(&transcript.events);
         transcript.tool_calls_count = transcript.tool_calls.len();
-        let questions = extract_judgment_questions(&transcript.events);
+        let questions = extract_jev_questions(&transcript.events);
         if !questions.is_empty() {
             transcript
                 .metadata
-                .insert(JUDGMENT_QUESTIONS_KEY.into(), questions.into());
+                .insert(JEV_QUESTIONS_KEY.into(), questions.into());
         }
 
         // Read back the workspace files the sample's expectations name, so
@@ -259,7 +259,7 @@ fn extract_tool_calls(events: &[serde_json::Value]) -> Vec<String> {
 ///
 /// Read from `tool.started`, which carries the arguments; `tool.completed`
 /// carries only the name.
-fn extract_judgment_questions(events: &[serde_json::Value]) -> Vec<serde_json::Value> {
+fn extract_jev_questions(events: &[serde_json::Value]) -> Vec<serde_json::Value> {
     events
         .iter()
         .filter(|e| e.get("type").and_then(|t| t.as_str()) == Some("tool.started"))
@@ -626,7 +626,7 @@ mod tests {
     }
 
     #[test]
-    fn judgment_questions_are_read_from_tool_started_events() {
+    fn jev_questions_are_read_from_tool_started_events() {
         use serde_json::json;
         // tool.completed carries only the name, so the questions must come from
         // tool.started; a call to another tool must not contribute.
@@ -649,7 +649,7 @@ mod tests {
             }}}),
             json!({"type": "tool.completed", "data": {"tool_name": "typesafe_evaluate"}}),
         ];
-        let questions = extract_judgment_questions(&events);
+        let questions = extract_jev_questions(&events);
         assert_eq!(questions.len(), 2, "questions flatten across calls");
         assert_eq!(questions[0]["type"], "noul");
         assert_eq!(questions[1]["type"], "score");
@@ -657,8 +657,8 @@ mod tests {
 
     #[test]
     fn a_credential_gated_profile_is_skipped_not_failed_when_unkeyed() {
-        let harness = profiles::harness_profile("judgment").unwrap();
-        let env = harness.credential_env.expect("judgment profile is gated");
+        let harness = profiles::harness_profile("jev").unwrap();
+        let env = harness.credential_env.expect("jev profile is gated");
         assert!(is_missing_credential(&missing_credential(env), harness));
         // A real fault on the same profile must not read as a skip.
         assert!(!is_missing_credential("Framework build failed", harness));
@@ -670,7 +670,7 @@ mod tests {
     /// End-to-end against the real model and the real tool. Runs only with both
     /// credentials present, since this crate is not part of the CI workspace.
     #[tokio::test]
-    async fn judgment_profile_measures_a_real_rating() {
+    async fn jev_profile_measures_a_real_rating() {
         let (Ok(_), Ok(_)) = (
             std::env::var("TYPESAFE_API_KEY"),
             std::env::var("OPENAI_API_KEY"),
@@ -679,17 +679,17 @@ mod tests {
             return;
         };
         let sample = Sample::new(
-            "judgment-rate-joke",
+            "jev-rate-joke",
             "Rate this joke and tell me the numbers: \"I told my wife she was \
              drawing her eyebrows too high. She looked surprised.\"",
         )
         .meta("requires", serde_json::json!(["typesafe"]))
         .meta(
-            "expect_judgment_questions",
+            "expect_jev_questions",
             serde_json::json!({"types": ["score"], "min": 1}),
         );
         let mut cx = RunCx::new(Target::openai("gpt-5.6"));
-        cx.params.insert("harness".into(), "judgment".into());
+        cx.params.insert("harness".into(), "jev".into());
 
         let transcript = GenericRuntimeSubject.run(&sample, &cx).await;
         assert!(
@@ -707,7 +707,7 @@ mod tests {
         );
         let questions = transcript
             .metadata
-            .get(JUDGMENT_QUESTIONS_KEY)
+            .get(JEV_QUESTIONS_KEY)
             .and_then(|v| v.as_array())
             .expect("questions recorded");
         assert!(

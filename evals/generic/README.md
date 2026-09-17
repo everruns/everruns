@@ -24,7 +24,7 @@ dataset.jsonl ──► Eval (generic) ──► GenericRuntimeSubject ──►
 
 ## Typed judgments
 
-The `judgment` harness profile carries the TypeSafe capability, so its cases
+The `jev` harness profile carries the TypeSafe capability, so its cases
 measure something the other profiles cannot: whether a model *reaches for a
 measurement* instead of asserting one, and whether the questions it writes are
 answerable.
@@ -32,7 +32,7 @@ answerable.
 That second half matters more than it looks. The model authors the questions,
 and the API answers whatever it is asked — so a question that leans on its id
 ("is_the_joke_funny" with instructions "?") or a scale with one level comes
-back as a confident number about the wrong thing. The `judgment_questions`
+back as a confident number about the wrong thing. The `jev_questions`
 scorer grades the questions themselves: instructions that carry the meaning,
 at least two ordered levels for a score, at least two options for a choice, and
 the primitive the case actually called for.
