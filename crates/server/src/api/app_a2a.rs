@@ -459,7 +459,7 @@ async fn authenticate_request(
         return Err(not_found());
     };
 
-    if let Some(auth) = config.auth.as_ref() {
+    if let Some(auth) = channel.auth.as_ref() {
         if auth.mode == everruns_platform::AppEndpointAuthMode::ApiKey {
             verify_a2a_api_key(headers, &config.api_key_hash)?;
         } else {
@@ -1433,7 +1433,7 @@ async fn agent_card(
         .or_else(|| app.description.clone())
         .unwrap_or_default();
 
-    let (security_schemes, security) = a2a_security_for_config(&config);
+    let (security_schemes, security) = a2a_security_for_config(&config, channel.auth.as_deref());
     let card = json!({
         "name": name,
         "description": description,
@@ -1469,8 +1469,11 @@ async fn agent_card(
     Ok(Json(card))
 }
 
-fn a2a_security_for_config(config: &everruns_platform::A2aChannelConfig) -> (Value, Value) {
-    let (mut schemes, mut requirements) = base_a2a_security(config);
+fn a2a_security_for_config(
+    config: &everruns_platform::A2aChannelConfig,
+    auth: Option<&everruns_platform::AppEndpointAuthConfig>,
+) -> (Value, Value) {
+    let (mut schemes, mut requirements) = base_a2a_security(auth);
     // THREAT[TM-A2A-010]: When the channel opts into HMAC signing, advertise
     // a vendor `everrunsHmacSignature` scheme alongside whichever primary
     // scheme is in use so the calling A2A client knows it must sign on top
@@ -1503,8 +1506,8 @@ fn a2a_security_for_config(config: &everruns_platform::A2aChannelConfig) -> (Val
     (schemes, requirements)
 }
 
-fn base_a2a_security(config: &everruns_platform::A2aChannelConfig) -> (Value, Value) {
-    let Some(auth) = config.auth.as_ref() else {
+fn base_a2a_security(auth: Option<&everruns_platform::AppEndpointAuthConfig>) -> (Value, Value) {
+    let Some(auth) = auth else {
         return (
             json!({ "apiKey": { "httpAuthSecurityScheme": { "scheme": "bearer" } } }),
             json!([{ "apiKey": [] }]),
@@ -1652,6 +1655,7 @@ mod tests {
                         introspection_url: "https://auth.example.test/introspect".to_string(),
                         client_id: None,
                         client_secret: None,
+                        client_secret_configured: false,
                     },
                 ),
                 requirements: everruns_platform::AppEndpointAuthRequirements {
@@ -1666,7 +1670,7 @@ mod tests {
             signing_secret: None,
         };
 
-        let (schemes, requirements) = a2a_security_for_config(&config);
+        let (schemes, requirements) = a2a_security_for_config(&config, config.auth.as_ref());
 
         assert_eq!(
             schemes["oauth2Bearer"]["httpAuthSecurityScheme"]["scheme"],

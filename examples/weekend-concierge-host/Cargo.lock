@@ -334,7 +334,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.21.2"
+version = "0.22.0"
 dependencies = [
  "async-trait",
  "base64",

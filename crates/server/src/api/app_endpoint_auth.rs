@@ -1,9 +1,7 @@
 // Shared auth verifier for public App endpoint channels.
 //
-// Decision: endpoint auth config is inline on `app_channels.channel_config.auth`
-// for the first product iteration. The verifier remains provider-shaped so the
-// same runtime can later read org-level reusable providers without changing
-// AG-UI/A2A ingress behavior.
+// The verifier remains provider-shaped so the same runtime can later read
+// org-level reusable providers without changing AG-UI/A2A ingress behavior.
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -216,6 +214,7 @@ impl AppEndpointAuthVerifier {
             introspection_url,
             client_id,
             client_secret,
+            ..
         }) = auth.provider.as_ref()
         else {
             return Err(AppEndpointAuthError::Misconfigured);
@@ -263,6 +262,7 @@ impl AppEndpointAuthVerifier {
             allowed_values,
             proxy_secret_header,
             proxy_secret,
+            ..
         }) = auth.provider.as_ref()
         else {
             return Err(AppEndpointAuthError::Misconfigured);
@@ -654,6 +654,7 @@ mod tests {
                 username: EXAMPLE_USERNAME.to_string(),
                 password: None,
                 password_hash: Some(hash_password(EXAMPLE_PASSWORD).unwrap()),
+                password_configured: false,
             }),
             requirements: AppEndpointAuthRequirements::default(),
         };
@@ -702,6 +703,7 @@ mod tests {
                 allowed_values: vec!["CN=trusted".to_string()],
                 proxy_secret_header: Some("x-proxy-secret".to_string()),
                 proxy_secret: Some("supersecret".to_string()),
+                proxy_secret_configured: false,
             }),
             requirements: AppEndpointAuthRequirements::default(),
         }
@@ -755,6 +757,7 @@ mod tests {
                 allowed_values: vec!["CN=trusted".to_string()],
                 proxy_secret_header: None,
                 proxy_secret: None,
+                proxy_secret_configured: false,
             }),
             requirements: AppEndpointAuthRequirements::default(),
         };

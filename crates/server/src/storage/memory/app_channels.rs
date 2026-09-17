@@ -74,6 +74,8 @@ impl InMemoryDatabase {
             channel_type: input.channel_type,
             channel_config: input.channel_config,
             channel_config_encrypted: input.channel_config_encrypted,
+            auth: input.auth,
+            auth_encrypted: input.auth_encrypted,
             durable_schedule_id: input.durable_schedule_id,
             enabled: input.enabled,
             status: initial_status(input.enabled),
@@ -123,6 +125,8 @@ impl InMemoryDatabase {
             channel_type: input.channel_type,
             channel_config: input.channel_config,
             channel_config_encrypted: input.channel_config_encrypted,
+            auth: input.auth,
+            auth_encrypted: input.auth_encrypted,
             durable_schedule_id: input.durable_schedule_id,
             enabled: input.enabled,
             status: initial_status(input.enabled),
@@ -199,9 +203,11 @@ impl InMemoryDatabase {
         if let Some(channel_config) = input.channel_config {
             ch.channel_config = channel_config;
         }
-        if let Some(encrypted) = input.channel_config_encrypted {
-            ch.channel_config_encrypted = Some(encrypted);
-        }
+        input
+            .channel_config_encrypted
+            .apply(&mut ch.channel_config_encrypted);
+        input.auth.apply(&mut ch.auth);
+        input.auth_encrypted.apply(&mut ch.auth_encrypted);
         input.durable_schedule_id.apply(&mut ch.durable_schedule_id);
         if let Some(enabled) = input.enabled {
             ch.enabled = enabled;
@@ -258,9 +264,11 @@ impl InMemoryDatabase {
         if let Some(channel_config) = input.channel_config {
             ch.channel_config = channel_config;
         }
-        if let Some(encrypted) = input.channel_config_encrypted {
-            ch.channel_config_encrypted = Some(encrypted);
-        }
+        input
+            .channel_config_encrypted
+            .apply(&mut ch.channel_config_encrypted);
+        input.auth.apply(&mut ch.auth);
+        input.auth_encrypted.apply(&mut ch.auth_encrypted);
         input.durable_schedule_id.apply(&mut ch.durable_schedule_id);
         if let Some(enabled) = input.enabled {
             ch.enabled = enabled;

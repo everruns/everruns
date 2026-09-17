@@ -236,6 +236,8 @@ async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
                 channel_type: channel_type.into(),
                 channel_config: serde_json::json!({}),
                 channel_config_encrypted: None,
+                auth: None,
+                auth_encrypted: None,
                 durable_schedule_id: None,
                 enabled: true,
             },

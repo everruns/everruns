@@ -117,7 +117,8 @@ function detailText(channel: AppChannel): string {
   }
   if (channel.channel_type === "public_chat") {
     const config = channel.channel_config as PublicChatChannelConfig;
-    const hasSignIn = !!config.auth && config.auth.mode !== "anonymous";
+    const auth = channel.auth ?? config.auth;
+    const hasSignIn = !!auth && auth.mode !== "anonymous";
     const tokenProtected = !!config.token_configured || !!config.token;
     let access: string;
     if (hasSignIn) {

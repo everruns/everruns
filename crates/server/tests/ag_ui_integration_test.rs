@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 use test_harness::TestServer;
 
 use everruns_platform::App;
+use everruns_server::storage::EncryptionService;
 
 fn unique_id(prefix: &str) -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -201,6 +202,198 @@ async fn create_published_ag_ui_app(server: &TestServer) -> App {
         .await
         .assert_success()
         .json()
+}
+fn ag_ui_payload_without_messages() -> Value {
+    json!({
+        "threadId": raw_uuid(),
+        "runId": raw_uuid(),
+        "state": {},
+        "messages": [],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {}
+    })
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_authless_rewrite_clears_encrypted_legacy_auth() {
+    let server = TestServer::new().await;
+    let app = create_published_ag_ui_app(&server).await;
+    let channel_id = app.channels[0].public_id.to_string();
+    let row = server
+        .db
+        .get_app_channel_by_public_id(&channel_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let legacy = json!({
+        "auth": {
+            "mode": "http_basic",
+            "provider": {
+                "type": "http_basic",
+                "username": "legacy",
+                "password_hash": "$argon2id$v=19$m=19456,t=2,p=1$invalid$invalid"
+            }
+        }
+    });
+    let ciphertext = server
+        .encryption
+        .as_ref()
+        .unwrap()
+        .encrypt_string(&serde_json::to_string(&legacy).unwrap())
+        .unwrap();
+    sqlx::query(
+        "UPDATE agent_endpoints
+         SET channel_config = '{}'::jsonb, channel_config_encrypted = $1,
+             auth = NULL, auth_encrypted = NULL
+         WHERE id = $2",
+    )
+    .bind(ciphertext)
+    .bind(row.id)
+    .execute(&server.pool)
+    .await
+    .unwrap();
+
+    server
+        .patch(
+            &format!("/v1/apps/{}/channels/{channel_id}", app.public_id),
+            json!({"channel_config": {}}),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    let row = server
+        .db
+        .get_app_channel_by_public_id(&channel_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(row.auth.is_none());
+    assert!(row.auth_encrypted.is_none());
+    assert!(row.channel_config_encrypted.is_none());
+    assert_eq!(
+        everruns_server::domains::apps::queries::decrypt_channel_config(
+            server.encryption.as_ref(),
+            row.channel_config_encrypted.as_deref(),
+            &row.channel_config,
+        ),
+        json!({})
+    );
+
+    send_ag_ui_run_to_path(
+        &server,
+        &format!("/v1/e/{channel_id}/ag-ui"),
+        &ag_ui_payload_without_messages(),
+        vec![],
+    )
+    .await
+    .assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_encrypted_legacy_auth_without_encryption_denies_anonymous_ingress() {
+    let server = TestServer::postgres_without_encryption().await;
+    let app = create_published_ag_ui_app(&server).await;
+    let channel_id = app.channels[0].public_id.to_string();
+    let row = server
+        .db
+        .get_app_channel_by_public_id(&channel_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let encryption =
+        EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[]).unwrap();
+    let legacy = json!({
+        "auth": {
+            "mode": "http_basic",
+            "provider": {
+                "type": "http_basic",
+                "username": "legacy",
+                "password_hash": "$argon2id$v=19$m=19456,t=2,p=1$invalid$invalid"
+            }
+        }
+    });
+    let ciphertext = encryption
+        .encrypt_string(&serde_json::to_string(&legacy).unwrap())
+        .unwrap();
+    sqlx::query(
+        "UPDATE agent_endpoints
+         SET channel_config = '{}'::jsonb, channel_config_encrypted = $1,
+             auth = NULL, auth_encrypted = NULL
+         WHERE id = $2",
+    )
+    .bind(ciphertext)
+    .bind(row.id)
+    .execute(&server.pool)
+    .await
+    .unwrap();
+
+    send_ag_ui_run_to_path(
+        &server,
+        &format!("/v1/e/{channel_id}/ag-ui"),
+        &ag_ui_payload_without_messages(),
+        vec![],
+    )
+    .await
+    .assert_status(StatusCode::NOT_FOUND);
+}
+async fn assert_malformed_legacy_auth_denies_anonymous_ingress(encrypted: bool) {
+    let server = TestServer::new().await;
+    let app = create_published_ag_ui_app(&server).await;
+    let channel_id = app.channels[0].public_id.to_string();
+    let row = server
+        .db
+        .get_app_channel_by_public_id(&channel_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let legacy = json!({
+        "auth": {
+            "mode": "malformed"
+        }
+    });
+    let (channel_config, channel_config_encrypted) = if encrypted {
+        let ciphertext = server
+            .encryption
+            .as_ref()
+            .unwrap()
+            .encrypt_string(&serde_json::to_string(&legacy).unwrap())
+            .unwrap();
+        (json!({}), Some(ciphertext))
+    } else {
+        (legacy, None)
+    };
+    sqlx::query(
+        "UPDATE agent_endpoints
+         SET channel_config = $1, channel_config_encrypted = $2,
+             auth = NULL, auth_encrypted = NULL
+         WHERE id = $3",
+    )
+    .bind(channel_config)
+    .bind(channel_config_encrypted)
+    .bind(row.id)
+    .execute(&server.pool)
+    .await
+    .unwrap();
+
+    send_ag_ui_run_to_path(
+        &server,
+        &format!("/v1/e/{channel_id}/ag-ui"),
+        &ag_ui_payload_without_messages(),
+        vec![],
+    )
+    .await
+    .assert_status(StatusCode::FORBIDDEN);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_malformed_plaintext_legacy_auth_denies_anonymous_ingress() {
+    assert_malformed_legacy_auth_denies_anonymous_ingress(false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_malformed_encrypted_legacy_auth_denies_anonymous_ingress() {
+    assert_malformed_legacy_auth_denies_anonymous_ingress(true).await;
 }
 
 async fn send_ag_ui_run(
