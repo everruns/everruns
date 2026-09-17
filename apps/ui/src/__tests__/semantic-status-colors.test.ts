@@ -11,9 +11,6 @@ const rawPaletteExceptions: Record<string, Record<string, number>> = {
     "text-green-600": 1,
     "text-yellow-600": 1,
   },
-  "app/(main)/durable/queues/queue-stats-card.tsx": {
-    "bg-blue-500": 1,
-  },
   "app/(main)/durable/workers/page.tsx": {
     "bg-green-500": 1,
     "bg-red-500": 1,

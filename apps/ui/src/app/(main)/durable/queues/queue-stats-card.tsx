@@ -51,7 +51,7 @@ export function QueueStatsCard({
           <div className="mt-3">
             <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
               <div
-                className="h-full bg-blue-500 rounded-full"
+                className="h-full bg-info rounded-full"
                 style={{ width: `${(stats.claimed / totalActive) * 100}%` }}
               />
             </div>
