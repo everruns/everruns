@@ -66,3 +66,6 @@ fn agent_for(driver: impl ChatDriver) -> Result<Agent, BuildError> {
 ```
 
 For a complete driver boundary, see [Custom providers](/framework/custom-providers/).
+
+To call a model once without building an agent, see
+[Direct model calls](/framework/direct-model-calls/).

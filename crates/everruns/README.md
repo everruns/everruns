@@ -83,6 +83,18 @@ Agents are immutable values. An engine snapshots an agent when it creates a
 session, which makes ownership and isolation predictable even when many
 sessions run concurrently.
 
+Not every call needs all of that. When the work is one prompt and one answer,
+call the model directly — same provider, same credentials, no agent loop:
+
+```rust
+use everruns::{Model, OpenAI};
+
+let model = Model::new("gpt-5.6-terra", OpenAI::from_env()?);
+let answer = model.complete("Name the three primary colors.").await?;
+```
+
+See [Direct model calls](https://docs.everruns.com/framework/direct-model-calls/).
+
 ## Give agents tools and capabilities
 
 For a single operation, annotate an async Rust function with
@@ -184,6 +196,8 @@ includes the exact command for each one.
   isolated sessions, and resume.
 - [`live_session`](examples/live_session.rs) — non-blocking sends, steering,
   and waiting.
+- [`direct_llm`](examples/direct_llm.rs) — one-shot, builder, and streamed
+  model calls with no agent.
 
 ### Tools, capabilities, and orchestration
 
@@ -218,6 +232,7 @@ includes the exact command for each one.
 - [Framework guide](https://docs.everruns.com/framework/)
 - [Agents](https://docs.everruns.com/framework/agents/)
 - [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
+- [Direct model calls](https://docs.everruns.com/framework/direct-model-calls/)
 - [Sessions](https://docs.everruns.com/framework/sessions/)
 - [Events and cancellation](https://docs.everruns.com/framework/events-and-cancellation/)
 - [Persistence](https://docs.everruns.com/framework/persistence/)
