@@ -27,6 +27,7 @@ CREATE TEMPORARY TABLE migrated_app_webhook_triggers ON COMMIT DROP AS
 SELECT
     uuidv7() AS trigger_id,
     apps.id AS app_id,
+    apps.public_id AS app_public_id,
     agent_endpoints.id AS endpoint_id,
     agent_endpoints.public_id AS ingress_id,
     apps.org_id,
@@ -74,6 +75,18 @@ SELECT
     app_id,
     'active'
 FROM migrated_app_webhook_triggers;
+UPDATE sessions AS session
+SET tags = ARRAY(
+        SELECT tag
+        FROM UNNEST(COALESCE(session.tags, ARRAY[]::TEXT[])) AS tag
+        WHERE tag <> 'app:' || migrated.app_public_id
+          AND tag <> 'app_channel:' || migrated.ingress_id
+    ) || ARRAY[
+        'app:' || migrated.app_public_id,
+        'app_channel:' || migrated.ingress_id
+    ]
+FROM migrated_app_webhook_triggers AS migrated
+WHERE session.endpoint_id = migrated.endpoint_id;
 
 UPDATE budgets AS budget
 SET subject_type = 'app_channel'

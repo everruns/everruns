@@ -87,6 +87,12 @@ async fn webhook_channel_migration_preserves_ingress_config_and_execution_contex
             created_at TIMESTAMPTZ NOT NULL,
             updated_at TIMESTAMPTZ NOT NULL
         );
+        CREATE TEMPORARY TABLE sessions (
+            id UUID PRIMARY KEY,
+            app_id UUID,
+            endpoint_id UUID REFERENCES agent_endpoints(id) ON DELETE SET NULL,
+            tags TEXT[] NOT NULL
+        );
 
         INSERT INTO agents (
             id, org_id, public_id, name, display_name, system_prompt,
@@ -235,6 +241,35 @@ async fn webhook_channel_migration_preserves_ingress_config_and_execution_contex
             '2026-08-02T00:00:00Z',
             '2026-09-02T01:00:00Z'
         );
+        INSERT INTO sessions (id, app_id, endpoint_id, tags)
+        VALUES
+        (
+            '00000000-0000-0000-0000-000000000013',
+            '00000000-0000-0000-0000-000000000002',
+            '00000000-0000-0000-0000-000000000007',
+            ARRAY[
+                'legacy-tag',
+                'app_channel_type:webhook',
+                '__internal:app_invocation'
+            ]
+        ),
+        (
+            '00000000-0000-0000-0000-000000000014',
+            '00000000-0000-0000-0000-000000000002',
+            '00000000-0000-0000-0000-000000000008',
+            ARRAY[
+                'app:app_00000000000000000000000000000002',
+                'app:app_00000000000000000000000000000002',
+                'app_channel:appchan_00000000000000000000000000000008',
+                'app_channel:appchan_00000000000000000000000000000008'
+            ]
+        ),
+        (
+            '00000000-0000-0000-0000-000000000015',
+            '00000000-0000-0000-0000-000000000002',
+            '00000000-0000-0000-0000-000000000009',
+            ARRAY['unrelated-tag']
+        );
         "#,
     )
     .execute(&mut *transaction)
@@ -382,6 +417,70 @@ async fn webhook_channel_migration_preserves_ingress_config_and_execution_contex
     assert_eq!(
         unrelated_budget.get::<Option<serde_json::Value>, _>("metadata"),
         Some(serde_json::json!({"policy": "unrelated"}))
+    );
+    let legacy_session = sqlx::query(
+        "SELECT endpoint_id, tags
+         FROM sessions
+         WHERE id = '00000000-0000-0000-0000-000000000013'",
+    )
+    .fetch_one(&mut *transaction)
+    .await
+    .expect("read legacy webhook session");
+    assert_eq!(
+        legacy_session.get::<Option<uuid::Uuid>, _>("endpoint_id"),
+        None
+    );
+    assert_eq!(
+        legacy_session.get::<Vec<String>, _>("tags"),
+        vec![
+            "legacy-tag",
+            "app_channel_type:webhook",
+            "__internal:app_invocation",
+            "app:app_00000000000000000000000000000002",
+            "app_channel:appchan_00000000000000000000000000000007",
+        ]
+    );
+    let already_tagged = sqlx::query(
+        "SELECT tags
+         FROM sessions
+         WHERE id = '00000000-0000-0000-0000-000000000014'",
+    )
+    .fetch_one(&mut *transaction)
+    .await
+    .expect("read already-tagged webhook session")
+    .get::<Vec<String>, _>("tags");
+    assert_eq!(
+        already_tagged
+            .iter()
+            .filter(|tag| *tag == "app:app_00000000000000000000000000000002")
+            .count(),
+        1
+    );
+    assert_eq!(
+        already_tagged
+            .iter()
+            .filter(|tag| { *tag == "app_channel:appchan_00000000000000000000000000000008" })
+            .count(),
+        1
+    );
+    let unrelated_session = sqlx::query(
+        "SELECT endpoint_id, tags
+         FROM sessions
+         WHERE id = '00000000-0000-0000-0000-000000000015'",
+    )
+    .fetch_one(&mut *transaction)
+    .await
+    .expect("read unrelated endpoint session");
+    assert_eq!(
+        unrelated_session
+            .get::<Option<uuid::Uuid>, _>("endpoint_id")
+            .expect("unrelated endpoint remains")
+            .to_string(),
+        "00000000-0000-0000-0000-000000000009"
+    );
+    assert_eq!(
+        unrelated_session.get::<Vec<String>, _>("tags"),
+        vec!["unrelated-tag"]
     );
 
     let migrated = &triggers[0];

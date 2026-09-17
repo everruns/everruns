@@ -388,16 +388,62 @@ async fn migrated_webhook_trigger_ephemeral_sessions_and_rate_limit_are_preserve
     .assert_status(StatusCode::TOO_MANY_REQUESTS);
 }
 #[tokio::test]
-async fn migrated_webhook_budget_is_selected_and_enforced_after_real_invocation() {
+async fn migrated_webhook_reuses_legacy_session_and_enforces_its_budget() {
     let server = TestServer::new().await;
-    let (app_id, _, ingress_id) = create_migrated_webhook_trigger(
+    let name = format!(
+        "budgeted-migrated-webhook-{}",
+        uuid::Uuid::now_v7().simple()
+    );
+    let (app_id, agent_id, ingress_id) = create_migrated_webhook_trigger(
         &server,
-        "budgeted-migrated-webhook",
+        &name,
         "shared_session",
         "{{payload.action}}",
         None,
     )
     .await;
+    let app = server
+        .db
+        .get_app_by_public_id(DEFAULT_ORG_ID, &app_id)
+        .await
+        .expect("get migrated App")
+        .expect("migrated App exists");
+    let legacy_session: Value = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "agent_id": agent_id,
+                "title": "legacy webhook session",
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let legacy_session_id: SessionId = legacy_session["id"].as_str().unwrap().parse().unwrap();
+    sqlx::query(
+        "UPDATE sessions
+         SET app_id = $2,
+             endpoint_id = NULL,
+             owner_principal_id = $3,
+             resolved_owner_user_id = $4,
+             tags = $5,
+             source = 'webhook'
+         WHERE id = $1",
+    )
+    .bind(legacy_session_id.uuid())
+    .bind(app.id)
+    .bind(app.owner_principal_id.uuid())
+    .bind(app.resolved_owner_user_id)
+    .bind(vec![
+        format!("app:{app_id}"),
+        format!("app_channel:{ingress_id}"),
+        "app_channel_type:webhook".to_string(),
+        "__internal:app_invocation".to_string(),
+        "legacy-tag".to_string(),
+    ])
+    .execute(&server.pool)
+    .await
+    .expect("model the migrated legacy webhook session");
     let budget = server
         .db
         .create_budget(CreateBudgetRow {
@@ -440,7 +486,9 @@ async fn migrated_webhook_budget_is_selected_and_enforced_after_real_invocation(
     .await
     .assert_status(StatusCode::ACCEPTED)
     .json();
+    assert!(!invoked["created_session"].as_bool().unwrap());
     let session_id = invoked["session_id"].as_str().unwrap();
+    assert_eq!(session_id, legacy_session_id.to_string());
     let session = server
         .db
         .get_session(DEFAULT_ORG_ID, session_id.parse().unwrap())
