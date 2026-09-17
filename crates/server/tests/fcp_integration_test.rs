@@ -14,7 +14,10 @@ use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
+use everruns_core::DEFAULT_ORG_ID;
 use everruns_platform::App;
+use everruns_provider::typed_id::AppChannelId;
+use everruns_server::storage::models::CreateAppChannelRow;
 
 fn unique_id(prefix: &str) -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -997,14 +1000,33 @@ async fn fcp_post_returns_404_for_app_without_fcp_channel() {
             json!({
                 "name": unique_id("Webhook-Only App"),
                 "harness_id": server.seed_base_harness_id,
-                "agent_id": agent_id,
-                "channel_type": "webhook",
-                "channel_config": { "token": "wh", "message": "Run." }
+                "agent_id": agent_id
             }),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
+    let app_row = server
+        .db
+        .get_app_by_public_id(DEFAULT_ORG_ID, &app.public_id.to_string())
+        .await
+        .expect("get webhook-only App")
+        .expect("webhook-only App exists");
+    server
+        .db
+        .create_app_channel(
+            app_row.id,
+            CreateAppChannelRow {
+                public_id: AppChannelId::new().to_string(),
+                channel_type: "webhook".to_string(),
+                channel_config: json!({ "token": "wh", "message": "Run." }),
+                channel_config_encrypted: None,
+                durable_schedule_id: None,
+                enabled: true,
+            },
+        )
+        .await
+        .expect("seed legacy webhook channel");
 
     server
         .post(&format!("/v1/apps/{}/publish", app.public_id), json!({}))

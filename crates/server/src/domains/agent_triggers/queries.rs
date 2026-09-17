@@ -3,21 +3,35 @@
 use crate::domains::common::{CommandError, classify_anyhow};
 use crate::errors::ResourceNotFoundError;
 use crate::storage::StorageBackend;
+use crate::storage::encryption::EncryptionService;
 use crate::storage::models::{AgentRow, AgentTriggerRow};
 use everruns_platform::{AgentTrigger, AgentTriggerType};
-use everruns_provider::typed_id::{AgentId, TriggerId};
+use everruns_provider::typed_id::{AgentId, AppChannelId, TriggerId};
 use std::sync::Arc;
 
 /// Map a storage row into the core [`AgentTrigger`].
 ///
 /// `AgentTriggerRow.agent_id` is the internal agent FK; API DTOs must carry
 /// the caller-facing agent public id.
-pub fn row_to_trigger(row: AgentTriggerRow, agent_public_id: AgentId) -> AgentTrigger {
+pub fn row_to_trigger(
+    row: AgentTriggerRow,
+    agent_public_id: AgentId,
+    encryption: Option<&Arc<EncryptionService>>,
+) -> AgentTrigger {
+    let config = crate::domains::apps::queries::decrypt_channel_config(
+        encryption,
+        row.config_encrypted.as_deref(),
+        &row.config,
+    );
     AgentTrigger {
         id: row.id,
         agent_id: agent_public_id,
         trigger_type: AgentTriggerType::from(row.trigger_type.as_str()),
-        config: row.config,
+        ingress_id: row
+            .ingress_id
+            .as_deref()
+            .and_then(|value| value.parse::<AppChannelId>().ok()),
+        config,
         enabled: row.enabled,
         created_at: row.created_at,
         updated_at: row.updated_at,
