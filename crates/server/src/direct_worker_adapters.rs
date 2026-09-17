@@ -3375,6 +3375,179 @@ mod tests {
         assert!(tools.is_empty());
     }
 
+    #[tokio::test]
+    async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() {
+        use crate::storage::models::{
+            CreateAgentRow, CreateAgentVersionRow, CreateMcpServerRow, CreateSessionRow,
+        };
+        use everruns_internal_protocol::proto::{
+            GetMcpServerByPrefixRequest, Uuid as ProtoUuid,
+            worker_service_server::WorkerService as GrpcWorkerService,
+        };
+        use everruns_provider::typed_id::{AgentVersionId, PrincipalId};
+
+        let adapters = test_adapters();
+        let org_id = everruns_core::DEFAULT_ORG_ID;
+        let harness_id =
+            seed_harness_for_platform_store(&adapters.db, org_id, "pinned-mcp-harness", false)
+                .await;
+        adapters
+            .db
+            .create_mcp_server(
+                org_id,
+                CreateMcpServerRow {
+                    name: "pinned-catalog".to_string(),
+                    description: None,
+                    url: "https://pinned.example.com/mcp".to_string(),
+                    transport_type: "http".to_string(),
+                    api_key_encrypted: None,
+                    headers: None,
+                    settings: Some(serde_json::json!({
+                        "auth_mode": "oauth",
+                        "oauth": {}
+                    })),
+                },
+            )
+            .await
+            .expect("create pinned catalog server");
+
+        let agent_id = AgentId::new();
+        adapters
+            .db
+            .create_agent_with_id(
+                org_id,
+                agent_id,
+                CreateAgentRow {
+                    public_id: agent_id.to_string(),
+                    name: "pinned-mcp-agent".to_string(),
+                    display_name: None,
+                    description: None,
+                    intro_markdown: None,
+                    short_description: None,
+                    starters: serde_json::json!([]),
+                    system_prompt: String::new(),
+                    default_model_id: None,
+                    harness_id,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    tools: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({
+                        "docs": {
+                            "type": "http",
+                            "url": "https://current.example.com/mcp"
+                        }
+                    }),
+                    network_access: None,
+                    max_iterations: None,
+                    parallel_tool_calls: None,
+                    is_built_in: false,
+                },
+            )
+            .await
+            .expect("create current agent")
+            .expect("agent should be created");
+
+        let version_id = AgentVersionId::new();
+        let pinned_config = serde_json::json!({
+            "mcp_servers": {
+                "docs": {
+                    "use": "catalog:pinned-catalog",
+                    "actsAs": "service"
+                }
+            }
+        });
+        adapters
+            .db
+            .create_agent_version(CreateAgentVersionRow {
+                id: version_id,
+                public_id: version_id.to_string(),
+                org_id,
+                agent_id,
+                version_number: 1,
+                semver_major: 0,
+                semver_minor: 1,
+                semver_patch: 0,
+                version: "0.1.0".to_string(),
+                is_published: true,
+                parent_version_id: None,
+                source_version_id: None,
+                created_by_principal_id: None,
+                change_kind: "minor".to_string(),
+                summary: None,
+                config_hash: "pinned-mcp-config".to_string(),
+                authored_config: pinned_config.clone(),
+                resolved_config: pinned_config,
+            })
+            .await
+            .expect("create pinned agent version");
+
+        let session = adapters
+            .db
+            .create_session(CreateSessionRow {
+                source: everruns_platform::SessionSource::Api,
+                workspace_id: None,
+                org_id,
+                app_id: None,
+                endpoint_id: None,
+                harness_id: Some(harness_id),
+                agent_id: Some(agent_id),
+                agent_version_id: Some(version_id),
+                agent_config_hash: None,
+                agent_identity_id: None,
+                owner_principal_id: PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
+                title: None,
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                system_prompt: None,
+                initial_files: serde_json::json!([]),
+                hints: None,
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+                blueprint_id: None,
+                blueprint_config: None,
+                parent_session_id: None,
+                budget_root_session_id: None,
+            })
+            .await
+            .expect("create pinned session");
+
+        let direct = adapters
+            .get_mcp_server_by_prefix(org_id, Some(session.id.uuid()), "docs")
+            .await
+            .expect("direct pinned MCP lookup");
+        let grpc_service = crate::grpc_service::WorkerServiceImpl::new(
+            adapters.event_service.as_ref().clone(),
+            adapters.db.clone(),
+            None,
+            None,
+            crate::oss_host_composition_for_grade(everruns_core::DeploymentGrade::Dev),
+        );
+        let grpc = grpc_service
+            .get_mcp_server_by_prefix(tonic::Request::new(GetMcpServerByPrefixRequest {
+                org_id,
+                session_id: Some(ProtoUuid {
+                    value: session.id.uuid().to_string(),
+                }),
+                server_prefix: "docs".to_string(),
+            }))
+            .await
+            .expect("gRPC pinned MCP lookup")
+            .into_inner()
+            .server
+            .expect("gRPC MCP descriptor");
+
+        assert_eq!(direct.url, "https://pinned.example.com/mcp");
+        assert_eq!(direct.acts_as, everruns_core::McpServerActsAs::Service);
+        assert_eq!(grpc.url, direct.url);
+        assert_eq!(grpc.acts_as, direct.acts_as.to_string());
+        assert_eq!(grpc.auth_mode, "none");
+    }
     // =========================================================================
     // grep_files parity tests (EVE-58)
     // =========================================================================
