@@ -671,6 +671,19 @@ jobs:
       - name: Check every plugin-publishing crate is named in the catalog
         run: bash scripts/lib/check-integration-catalog.sh
 
+  file-size:
+    name: Source File Size
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check no oversized file grew and no new file crossed the threshold
+        run: bash scripts/lib/check-file-size.sh
+
   clippy:
     name: Clippy Lints
     runs-on: ubuntu-latest
@@ -2504,6 +2517,8 @@ jobs:
       - msrv
       - knowledge
       - clippy
+      - integration-catalog
+      - file-size
       - unit-test
       - worker-test
       - shell-test
