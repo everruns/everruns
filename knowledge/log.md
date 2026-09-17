@@ -23,9 +23,10 @@
   revisit it with.
 
 * **The guardrail engine value now names the model, and the deployment key names
-  its role.** `engine: "judgment"` became `engine: "jev"`: an agent author is
-  choosing between prose a parser has to trust and a calibrated number from a
-  specific model, so the config says which model. If the judgment service is
+  its role.** The engine value is `jev`, not the service behind it: an agent
+  author is choosing between prose a parser has to trust and a calibrated
+  number from a specific model, so the config says which model. If the
+  judgment service is
   ever backed by something else, the value gains a sibling rather than changing
   meaning. The deployment credential became `UTILITY_TYPESAFE_API_KEY`, mirroring
   `UTILITY_OPENAI_API_KEY` — both are platform-owned credentials for internal
@@ -40,9 +41,9 @@
   back, so a missing fragment, a parse error, or an unrecognized verdict
   silently downgraded a block to an allow - and moderation simulated a
   probability by asking a text model to write 0-100 per category. Both check
-  types now take an `engine`: the new `judgment` engine asks a typed question
-  and gets a calibrated probability, so the configured `threshold` decides in
-  code and there is nothing to misparse. It also answers every check on a stage
+  types now take an `engine`: the new `jev` engine asks a typed question and
+  gets a calibrated probability, so the configured `threshold` decides in code
+  and there is nothing to misparse. It also answers every check on a stage
   in one request instead of one per check. `utility_llm` stays the default, so
   existing configs are unchanged and the two are directly comparable on the same
   agent. Recorded in [Guardrails](execution/guardrails.md) and the new

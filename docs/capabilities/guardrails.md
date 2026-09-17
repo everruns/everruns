@@ -53,7 +53,7 @@ Deterministic rules (`regex`, `blocklist`, `tool_pattern`) run in the streaming 
 The two model-backed types, `llm_judge` and `moderation`, choose which system model answers them with `engine`:
 
 - **`utility_llm`** (the default) prompts your org's utility model for a verdict — `allow`/`block` for a judge, 0-100 scores per category for moderation. One request per check.
-- **`judgment`** asks the deployment's [TypeSafe](/integrations/typesafe/) judgment service a typed question and gets a calibrated probability back. The `threshold` you configure (a percentage, default 50) decides the verdict, and every judgment-engine check on a stage is answered in a **single** request.
+- **`jev`** asks [Jev](/integrations/typesafe/), TypeSafe's System One model, a typed question and gets a calibrated probability back. The `threshold` you configure (a percentage, default 50) decides the verdict, and every jev check on a stage is answered in a **single** request. It needs `UTILITY_TYPESAFE_API_KEY` on the deployment.
 
 ```json
 {
@@ -65,9 +65,9 @@ The two model-backed types, `llm_judge` and `moderation`, choose which system mo
 }
 ```
 
-Two reasons to prefer `judgment` once your deployment has a key configured. It is cheaper on latency: four judge checks on a tool call cost one round trip instead of four. And the verdict is yours — the model reports how likely a violation is, your threshold decides what to do about it, and there is no written verdict to misparse. For moderation it also reads the *tail* of the distribution rather than a score: content that is probably fine but 30% likely to be a clear violation trips a 30% threshold, where an averaged score would hide it.
+Two reasons to prefer `jev` once your deployment has a key configured. It is cheaper on latency: four judge checks on a tool call cost one round trip instead of four. And the verdict is yours — the model reports how likely a violation is, your threshold decides what to do about it, and there is no written verdict to misparse. For moderation it also reads the *tail* of the distribution rather than a score: content that is probably fine but 30% likely to be a clear violation trips a 30% threshold, where an averaged score would hide it.
 
-`utility_llm` stays the default, so existing configs are unchanged. Both engines fail open, honor `on_fail` and advisory mode identically, and send the same bounded excerpt. A check set to `judgment` in a deployment with no judgment service configured is skipped with a warning.
+`utility_llm` stays the default, so existing configs are unchanged. Both engines fail open, honor `on_fail` and advisory mode identically, and send the same bounded excerpt. A check set to `jev` in a deployment with no judgment service configured is skipped with a warning.
 
 ### On-fail
 
