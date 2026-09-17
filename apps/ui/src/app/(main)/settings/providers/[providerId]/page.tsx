@@ -4,7 +4,7 @@ import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Boxes, Key, Plus, Save, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -117,13 +117,13 @@ export default function ProviderDetailPage({
         }
         description={getProviderLabel(provider.provider_type)}
         actions={
-          <Button
+          <LinkButton
             variant="outline"
-            render={<Link href={`/models?provider=${encodeURIComponent(provider.id)}`} />}
+            href={`/models?provider=${encodeURIComponent(provider.id)}`}
           >
             <Boxes className="h-4 w-4 mr-2" />
             View Models
-          </Button>
+          </LinkButton>
         }
       />
 
@@ -195,13 +195,13 @@ export default function ProviderDetailPage({
                   {formatCountLabel(modelCounts.total, "model")} available
                 </span>
                 <Badge variant="outline">{modelCounts.enabled} enabled</Badge>
-                <Button
+                <LinkButton
                   variant="outline"
                   size="sm"
-                  render={<Link href={`/models?provider=${encodeURIComponent(provider.id)}`} />}
+                  href={`/models?provider=${encodeURIComponent(provider.id)}`}
                 >
                   View provider models
-                </Button>
+                </LinkButton>
               </>
             )}
           </CardContent>

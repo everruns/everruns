@@ -1,10 +1,9 @@
 "use client";
 import { useMemo, useState } from "react";
 
-import Link from "next/link";
 import { Plus, Telescope } from "lucide-react";
 import { useObservers, usePageTitle } from "@/hooks";
-import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/button";
 import { EntityCard } from "@/components/ui/entity-card";
 import { Badge } from "@/components/ui/badge";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
@@ -116,10 +115,10 @@ export default function ObserversPageClient() {
           </>
         }
         actions={
-          <Button variant="accent" nativeButton={false} render={<Link href="/observers/new" />}>
+          <LinkButton variant="accent" href="/observers/new">
             <Plus className="size-4" />
             New Observer
-          </Button>
+          </LinkButton>
         }
       />
 
@@ -141,10 +140,10 @@ export default function ObserversPageClient() {
             emptyState={
               <div className="py-12 text-center">
                 <p className="mb-4 text-muted-foreground">No observers yet</p>
-                <Button nativeButton={false} render={<Link href="/observers/new" />}>
+                <LinkButton href="/observers/new">
                   <Plus className="mr-2 size-4" />
                   Create observer
-                </Button>
+                </LinkButton>
               </div>
             }
           >

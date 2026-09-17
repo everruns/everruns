@@ -9,7 +9,7 @@ import {
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/search-input";
 import { ArrowRight, Plus, Shield, LayoutGrid, List as ListIcon } from "lucide-react";
@@ -154,10 +154,10 @@ export default function HarnessesPageClient() {
           </>
         }
         actions={
-          <Button variant="accent" render={<Link href="/harnesses/new" />}>
+          <LinkButton variant="accent" href="/harnesses/new">
             <Plus className="size-4" />
             New harness
-          </Button>
+          </LinkButton>
         }
       />
 
@@ -224,10 +224,10 @@ export default function HarnessesPageClient() {
                 action={
                   !search &&
                   statusTab === "active" && (
-                    <Button variant="accent" render={<Link href="/harnesses/new" />}>
+                    <LinkButton variant="accent" href="/harnesses/new">
                       <Plus className="size-4" />
                       Create your first harness
-                    </Button>
+                    </LinkButton>
                   )
                 }
               />

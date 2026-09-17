@@ -26,7 +26,7 @@ import {
   Play,
 } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/button";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import { getHealthBadgeVariant, getWorkflowStatusBadgeVariant } from "@/lib/status-utils";
 
@@ -186,13 +186,9 @@ export default function DurableDashboardPage() {
                       <Inbox className="h-4 w-4 inline mr-2" />
                       {health.dlq_size} items in dead letter queue
                     </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      render={<Link href="/durable/workflows?tab=dlq" />}
-                    >
+                    <LinkButton variant="outline" size="sm" href="/durable/workflows?tab=dlq">
                       View DLQ
-                    </Button>
+                    </LinkButton>
                   </div>
                 )}
                 {health.open_circuit_breakers && health.open_circuit_breakers.length > 0 && (
@@ -202,13 +198,9 @@ export default function DurableDashboardPage() {
                       {health.open_circuit_breakers.length} circuit breakers open:{" "}
                       {health.open_circuit_breakers.join(", ")}
                     </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      render={<Link href="/durable/circuit-breakers" />}
-                    >
+                    <LinkButton variant="outline" size="sm" href="/durable/circuit-breakers">
                       Manage
-                    </Button>
+                    </LinkButton>
                   </div>
                 )}
               </CardContent>
@@ -232,9 +224,9 @@ export default function DurableDashboardPage() {
                   {schedulesData.data.filter((s) => !s.enabled).length} paused
                 </CardDescription>
               </div>
-              <Button variant="outline" size="sm" render={<Link href="/durable/schedules" />}>
+              <LinkButton variant="outline" size="sm" href="/durable/schedules">
                 View All
-              </Button>
+              </LinkButton>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
@@ -283,9 +275,9 @@ export default function DurableDashboardPage() {
                 <CardTitle>Workers</CardTitle>
                 <CardDescription>Active worker pool status</CardDescription>
               </div>
-              <Button variant="outline" size="sm" render={<Link href="/durable/workers" />}>
+              <LinkButton variant="outline" size="sm" href="/durable/workers">
                 View All
-              </Button>
+              </LinkButton>
             </CardHeader>
             <CardContent>
               {workersData && workersData.data.length > 0 ? (
@@ -376,9 +368,9 @@ export default function DurableDashboardPage() {
                 <CardTitle>Recent Workflows</CardTitle>
                 <CardDescription>Latest workflow executions</CardDescription>
               </div>
-              <Button variant="outline" size="sm" render={<Link href="/durable/workflows" />}>
+              <LinkButton variant="outline" size="sm" href="/durable/workflows">
                 View All
-              </Button>
+              </LinkButton>
             </CardHeader>
             <CardContent>
               {workflowsData && workflowsData.data.length > 0 ? (

@@ -13,7 +13,7 @@ import {
   usePageTitle,
 } from "@/hooks";
 import { ResourceNotFound } from "@/components/resource-not-found";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -340,10 +340,10 @@ export default function ObserverDetailPage({
         </div>
         <div className="flex gap-2">
           {!isArchived && (
-            <Button variant="outline" render={<Link href={`/observers/${observerId}/edit`} />}>
+            <LinkButton variant="outline" href={`/observers/${observerId}/edit`}>
               <Pencil className="mr-2 h-4 w-4" />
               Edit
-            </Button>
+            </LinkButton>
           )}
           {!isArchived && (
             <Button
