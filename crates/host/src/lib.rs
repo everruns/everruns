@@ -52,7 +52,6 @@ mod grep_limits;
 mod host;
 mod in_memory;
 mod in_process_execution;
-#[cfg(feature = "utility-openai")]
 #[cfg(feature = "typesafe-judgment")]
 mod judgment;
 #[cfg(feature = "mcp")]
@@ -127,7 +126,6 @@ pub use in_memory::{
     InMemorySessionStorageStore, InMemorySessionStore,
 };
 pub use in_process_execution::InProcessExecution;
-#[cfg(feature = "utility-openai")]
 #[cfg(feature = "typesafe-judgment")]
 pub use judgment::{
     JUDGMENT_MODEL, SystemJudgmentConfig, TYPESAFE_API_KEY_ENV, TypeSafeJudgmentService,

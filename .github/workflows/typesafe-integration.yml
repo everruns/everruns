@@ -7,12 +7,16 @@ on:
     paths:
       - 'integrations/typesafe/**'
       - 'crates/typesafe-systemone/**'
+      - 'crates/host/src/judgment.rs'
+      - 'crates/host/tests/judgment_live_test.rs'
   pull_request:
     branches: [main]
     types: [opened, reopened, synchronize, labeled, unlabeled]
     paths:
       - 'integrations/typesafe/**'
       - 'crates/typesafe-systemone/**'
+      - 'crates/host/src/judgment.rs'
+      - 'crates/host/tests/judgment_live_test.rs'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -96,3 +100,6 @@ jobs:
 
       - name: Run integration tests
         run: cargo test -p typesafe-systemone --features integration
+
+      - name: Run judgment service live tests
+        run: cargo test -p everruns-host --features typesafe-live-tests --test judgment_live_test
