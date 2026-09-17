@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { ChevronUp, Key, LogOut, User } from "lucide-react";
 import { McpConnectDialog, McpConnectMenuItem } from "@/components/layout/mcp-connect-button";
 import { NotificationIndicator, NotificationMenuSub } from "@/components/layout/notification-bell";
+import { ThemeMenuSub } from "@/components/layout/theme-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -122,6 +123,7 @@ export function SidebarUserMenu({
                   Personal access tokens
                 </DropdownMenuItem>
               )}
+              <ThemeMenuSub />
               <McpConnectMenuItem onSelect={() => setMcpDialogOpen(true)} />
               {requiresAuth && renderExtraItems?.({ user, navigate })}
             </DropdownMenuGroup>

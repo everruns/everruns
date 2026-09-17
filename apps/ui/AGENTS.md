@@ -10,6 +10,12 @@ Change tokens in both together, then run `pnpm run design:lint`.
 
 Design intent and brand rationale live in [`knowledge/ui/brand.md`](../../knowledge/ui/brand.md).
 
+Light and dark both ship. Style with semantic tokens (`bg-background`,
+`text-muted-foreground`, `border-border`), not raw palette colors — a
+`text-gray-500` looks fine in light mode and disappears in dark. `.dark` on
+`<html>` is the only switch; `src/lib/theme.ts` owns the cookie and the
+pre-paint script.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
