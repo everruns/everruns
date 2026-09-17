@@ -48,7 +48,7 @@ function getStatusIcon(status: WorkflowStatus, size: "sm" | "lg" = "sm") {
     case "cancelled":
       return <AlertTriangle className={`${sizeClass} text-yellow-500`} />;
     default:
-      return <Clock className={`${sizeClass} text-gray-500`} />;
+      return <Clock className={`${sizeClass} text-muted-foreground`} />;
   }
 }
 
@@ -78,7 +78,7 @@ function getEventIcon(eventType: string) {
       return <CheckCircle className="h-4 w-4 text-green-500" />;
     if (eventType === "activity_failed") return <XCircle className="h-4 w-4 text-red-500" />;
     if (eventType === "activity_timed_out") return <Clock className="h-4 w-4 text-yellow-500" />;
-    return <Activity className="h-4 w-4 text-gray-500" />;
+    return <Activity className="h-4 w-4 text-muted-foreground" />;
   }
   if (eventType.startsWith("timer_")) {
     return <Timer className="h-4 w-4 text-purple-500" />;
@@ -89,7 +89,7 @@ function getEventIcon(eventType: string) {
   if (eventType.startsWith("child_workflow_")) {
     return <MessageSquare className="h-4 w-4 text-blue-500" />;
   }
-  return <Activity className="h-4 w-4 text-gray-500" />;
+  return <Activity className="h-4 w-4 text-muted-foreground" />;
 }
 
 function EventTimeline({ events }: { events: WorkflowEvent[] }) {

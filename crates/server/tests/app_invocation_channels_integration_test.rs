@@ -7,13 +7,14 @@ use serde_json::{Value, json};
 use test_harness::TestServer;
 
 use everruns_core::DEFAULT_ORG_ID;
+use everruns_provider::typed_id::AppChannelId;
 use everruns_server::api::common::Pagination;
 use everruns_server::domains::apps::invoke_scheduled_app_channel;
 use everruns_server::domains::messages::MessageService;
 use everruns_server::domains::sessions::SessionService;
 use everruns_server::event_delivery::EventDelivery;
 use everruns_server::storage::SessionListFilters;
-use everruns_server::storage::models::CreateAuditLogRow;
+use everruns_server::storage::models::{CreateAppChannelRow, CreateAuditLogRow};
 
 async fn create_app(
     server: &TestServer,
@@ -34,7 +35,9 @@ async fn create_app(
         .assert_status(StatusCode::CREATED)
         .json();
 
-    server
+    let channel_type_for_create = (channel_type != "webhook").then_some(channel_type);
+    let channel_config_for_create = (channel_type != "webhook").then_some(channel_config.clone());
+    let app: Value = server
         .post(
             "/v1/apps",
             json!({
@@ -42,13 +45,84 @@ async fn create_app(
                 "description": "test app",
                 "harness_id": server.seed_generic_harness_id.clone(),
                 "agent_id": agent["id"],
-                "channel_type": channel_type,
-                "channel_config": channel_config,
+                "channel_type": channel_type_for_create,
+                "channel_config": channel_config_for_create,
             }),
         )
         .await
         .assert_status(StatusCode::CREATED)
-        .json()
+        .json();
+
+    if channel_type == "webhook" {
+        let app_row = server
+            .db
+            .get_app_by_public_id(DEFAULT_ORG_ID, app["id"].as_str().unwrap())
+            .await
+            .expect("get legacy webhook app")
+            .expect("legacy webhook app exists");
+        server
+            .db
+            .create_app_channel(
+                app_row.id,
+                CreateAppChannelRow {
+                    public_id: AppChannelId::new().to_string(),
+                    channel_type: channel_type.to_string(),
+                    channel_config,
+                    channel_config_encrypted: None,
+                    auth: None,
+                    auth_encrypted: None,
+                    durable_schedule_id: None,
+                    enabled: true,
+                },
+            )
+            .await
+            .expect("seed pre-migration webhook channel");
+        return server
+            .get(&format!("/v1/apps/{}", app["id"].as_str().unwrap()))
+            .await
+            .assert_status(StatusCode::OK)
+            .json();
+    }
+
+    app
+}
+
+#[tokio::test]
+async fn webhook_channel_creation_is_rejected_with_agent_trigger_guidance() {
+    let server = TestServer::in_memory().await;
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "deprecated-webhook-agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let response = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "deprecated-webhook-app",
+                "harness_id": server.seed_generic_harness_id.clone(),
+                "agent_id": agent["id"],
+                "channel_type": "webhook",
+                "channel_config": {
+                    "token": "secret",
+                    "session_mode": "shared_session",
+                    "message": "payload={{payload}}"
+                }
+            }),
+        )
+        .await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = response.text();
+    assert!(body.contains("webhook trigger"));
+    assert!(body.contains("app's agent"));
 }
 
 async fn publish_app(server: &TestServer, app_id: &str) {

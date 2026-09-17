@@ -189,7 +189,7 @@ export function FileViewer({ workspaceId, file, onClose, readOnly = false }: Fil
           <div className="p-4 text-sm text-muted-foreground">Loading...</div>
         ) : isBinary && !hasPreview ? (
           <div className="p-4 text-sm text-muted-foreground text-center">
-            <File className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+            <File className="h-12 w-12 mx-auto mb-2 text-muted-foreground/60" />
             <p>Binary file</p>
             <p className="text-xs mt-1">Use download to view this file</p>
           </div>

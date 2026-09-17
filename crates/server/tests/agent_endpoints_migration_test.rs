@@ -598,7 +598,7 @@ async fn endpoint_auth_migration_only_backfills_plaintext_transport_rows() {
         .expect("seed pre-migration endpoint");
     }
 
-    sqlx::raw_sql(include_str!("../migrations/138_agent_endpoint_auth.sql"))
+    sqlx::raw_sql(include_str!("../migrations/139_agent_endpoint_auth.sql"))
         .execute(&mut *tx)
         .await
         .expect("apply endpoint auth migration");

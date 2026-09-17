@@ -25,9 +25,9 @@ use everruns_platform::Harness;
 use everruns_platform::Session;
 use everruns_provider::model::Model;
 use everruns_provider::provider::Provider;
-use everruns_provider::typed_id::ScheduleId;
+use everruns_provider::typed_id::{AppChannelId, ScheduleId};
 use everruns_server::storage::models::{
-    CreateAgentRow, CreateSessionScheduleRow, UpdateOrganizationSettings,
+    CreateAgentRow, CreateAppChannelRow, CreateSessionScheduleRow, UpdateOrganizationSettings,
 };
 
 #[tokio::test]
@@ -4631,7 +4631,7 @@ async fn test_create_app_missing_agent_returns_not_found() {
 }
 
 #[tokio::test]
-async fn test_app_schedule_rejected_and_webhook_persists_in_postgres() {
+async fn test_app_trigger_channels_rejected_and_legacy_webhook_persists_in_postgres() {
     let server = TestServer::new().await;
 
     let agent: Value = server
@@ -4675,7 +4675,7 @@ async fn test_app_schedule_rejected_and_webhook_persists_in_postgres() {
         "unexpected response: {schedule_response:?}"
     );
 
-    let webhook_app: Value = server
+    let webhook_response: Value = server
         .post(
             "/v1/apps",
             json!({
@@ -4691,8 +4691,58 @@ async fn test_app_schedule_rejected_and_webhook_persists_in_postgres() {
             }),
         )
         .await
+        .assert_status(StatusCode::BAD_REQUEST)
+        .json();
+    assert!(
+        webhook_response["detail"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("webhook trigger on the app's agent"),
+        "unexpected response: {webhook_response:?}"
+    );
+
+    let webhook_app: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Webhook Repo Check",
+                "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent["id"]
+            }),
+        )
+        .await
         .assert_status(StatusCode::CREATED)
         .json();
+    let webhook_app_row = server
+        .db
+        .get_app_by_public_id(
+            DEFAULT_ORG_ID,
+            webhook_app["id"].as_str().expect("webhook App ID"),
+        )
+        .await
+        .expect("get webhook App")
+        .expect("webhook App exists");
+    server
+        .db
+        .create_app_channel(
+            webhook_app_row.id,
+            CreateAppChannelRow {
+                public_id: AppChannelId::new().to_string(),
+                channel_type: "webhook".to_string(),
+                channel_config: json!({
+                    "token": "secret-token",
+                    "session_mode": "session_per_invocation",
+                    "message": "check webhook"
+                }),
+                channel_config_encrypted: None,
+                auth: None,
+                auth_encrypted: None,
+                durable_schedule_id: None,
+                enabled: true,
+            },
+        )
+        .await
+        .expect("seed legacy webhook channel");
 
     let stored_webhook_app: Value = server
         .get(&format!("/v1/apps/{}", webhook_app["id"].as_str().unwrap()))
@@ -4839,13 +4889,7 @@ async fn test_publish_archived_app_returns_bad_request() {
             json!({
                 "name": "Archived Publish App",
                 "harness_id": server.seed_generic_harness_id,
-                "agent_id": agent["id"],
-                "channel_type": "webhook",
-                "channel_config": {
-                    "token": "secret-token",
-                    "session_mode": "session_per_invocation",
-                    "message": "check webhook"
-                }
+                "agent_id": agent["id"]
             }),
         )
         .await
