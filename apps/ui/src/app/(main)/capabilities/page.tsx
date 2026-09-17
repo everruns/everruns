@@ -9,7 +9,7 @@ import {
 } from "@/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
@@ -80,15 +80,10 @@ function DeclarativeCapabilityRow({ capability }: { capability: DeclarativeCapab
         </p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          render={<Link href={`/capabilities/declarative/${capability.id}`} />}
-        >
+        <LinkButton variant="outline" size="sm" href={`/capabilities/declarative/${capability.id}`}>
           <Pencil className="mr-1.5 h-3.5 w-3.5" />
           Edit
-        </Button>
+        </LinkButton>
         <Button
           type="button"
           variant="outline"
@@ -284,10 +279,10 @@ export default function CapabilitiesPage() {
           </>
         }
         actions={
-          <Button variant="accent" render={<Link href="/capabilities/declarative/new" />}>
+          <LinkButton variant="accent" href="/capabilities/declarative/new">
             <Plus className="size-4" />
             New Declarative
-          </Button>
+          </LinkButton>
         }
       />
 

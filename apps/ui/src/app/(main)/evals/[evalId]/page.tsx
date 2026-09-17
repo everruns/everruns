@@ -13,7 +13,7 @@ import {
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ResourceNotFound } from "@/components/resource-not-found";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -440,10 +440,10 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
           )}
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" render={<Link href={`/evals/${evalId}/edit`} />}>
+          <LinkButton variant="outline" href={`/evals/${evalId}/edit`}>
             <Pencil className="w-4 h-4 mr-2" />
             Edit
-          </Button>
+          </LinkButton>
           <Button
             variant="accent"
             onClick={handleStartRun}

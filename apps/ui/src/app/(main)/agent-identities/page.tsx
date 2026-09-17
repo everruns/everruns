@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Plus, UserRound } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { Badge } from "@/components/ui/badge";
 import { EntityCard } from "@/components/ui/entity-card";
@@ -135,10 +134,10 @@ export default function AgentIdentitiesPage() {
           </>
         }
         actions={
-          <Button variant="accent" render={<Link href="/agent-identities/new" />}>
+          <LinkButton variant="accent" href="/agent-identities/new">
             <Plus className="size-4" />
             New identity
-          </Button>
+          </LinkButton>
         }
       />
 
@@ -185,10 +184,10 @@ export default function AgentIdentitiesPage() {
               action={
                 !search &&
                 statusTab === "active" && (
-                  <Button variant="accent" render={<Link href="/agent-identities/new" />}>
+                  <LinkButton variant="accent" href="/agent-identities/new">
                     <Plus className="size-4" />
                     Create your first identity
-                  </Button>
+                  </LinkButton>
                 )
               }
             />

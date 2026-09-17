@@ -22,7 +22,9 @@ impl InMemoryDatabase {
             org_id: input.org_id,
             agent_id: input.agent_id,
             trigger_type: input.trigger_type,
+            ingress_id: input.ingress_id,
             config: input.config,
+            config_encrypted: input.config_encrypted,
             enabled: input.enabled,
             durable_schedule_id: input.durable_schedule_id,
             execution_harness_id: input.execution_harness_id,
@@ -50,6 +52,18 @@ impl InMemoryDatabase {
             .read()
             .get(&id)
             .filter(|row| row.org_id == org_id)
+            .cloned())
+    }
+
+    pub async fn get_agent_trigger_by_ingress_id_unscoped(
+        &self,
+        ingress_id: &str,
+    ) -> Result<Option<AgentTriggerRow>> {
+        Ok(self
+            .agent_triggers
+            .read()
+            .values()
+            .find(|row| row.ingress_id.as_deref() == Some(ingress_id) && row.status == "active")
             .cloned())
     }
 
@@ -91,6 +105,9 @@ impl InMemoryDatabase {
         }
         if let Some(config) = input.config {
             row.config = config;
+        }
+        if let Some(config_encrypted) = input.config_encrypted {
+            row.config_encrypted = Some(config_encrypted);
         }
         if let Some(enabled) = input.enabled {
             row.enabled = enabled;

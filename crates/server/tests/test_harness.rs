@@ -566,6 +566,7 @@ impl TestServer {
         );
         let agent_triggers_state = api::agent_triggers::AppState::new(
             db.clone(),
+            encryption.clone(),
             Some(durable_store.clone()),
             capability_service.clone(),
             auth_state.clone(),

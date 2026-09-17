@@ -535,15 +535,23 @@ async fn app_budget_fanout_does_not_overwrite_an_existing_endpoint_budget() {
     );
 }
 
-/// The migration's own closing guard, re-asserted against the migrated
-/// database: nothing is left behind under the old subject name.
 #[tokio::test]
-async fn no_app_channel_budgets_survive_the_migration() {
+async fn app_channel_budgets_only_survive_for_webhook_triggers() {
     let pool = pool().await;
-    let remaining: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM budgets WHERE subject_type = 'app_channel'")
-            .fetch_one(&pool)
-            .await
-            .expect("count app_channel budgets");
-    assert_eq!(remaining, 0);
+    let unsupported: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)
+         FROM budgets AS budget
+         WHERE budget.subject_type = 'app_channel'
+           AND NOT EXISTS (
+               SELECT 1
+               FROM agent_triggers AS trigger
+               WHERE trigger.org_id = budget.org_id
+                 AND trigger.trigger_type = 'webhook'
+                 AND trigger.ingress_id = budget.subject_id
+           )",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("count unsupported app_channel budgets");
+    assert_eq!(unsupported, 0);
 }

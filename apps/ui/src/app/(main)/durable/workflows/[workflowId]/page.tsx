@@ -3,7 +3,7 @@
 import { use } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -48,7 +48,7 @@ function getStatusIcon(status: WorkflowStatus, size: "sm" | "lg" = "sm") {
     case "cancelled":
       return <AlertTriangle className={`${sizeClass} text-yellow-500`} />;
     default:
-      return <Clock className={`${sizeClass} text-gray-500`} />;
+      return <Clock className={`${sizeClass} text-muted-foreground`} />;
   }
 }
 
@@ -78,7 +78,7 @@ function getEventIcon(eventType: string) {
       return <CheckCircle className="h-4 w-4 text-green-500" />;
     if (eventType === "activity_failed") return <XCircle className="h-4 w-4 text-red-500" />;
     if (eventType === "activity_timed_out") return <Clock className="h-4 w-4 text-yellow-500" />;
-    return <Activity className="h-4 w-4 text-gray-500" />;
+    return <Activity className="h-4 w-4 text-muted-foreground" />;
   }
   if (eventType.startsWith("timer_")) {
     return <Timer className="h-4 w-4 text-purple-500" />;
@@ -89,7 +89,7 @@ function getEventIcon(eventType: string) {
   if (eventType.startsWith("child_workflow_")) {
     return <MessageSquare className="h-4 w-4 text-blue-500" />;
   }
-  return <Activity className="h-4 w-4 text-gray-500" />;
+  return <Activity className="h-4 w-4 text-muted-foreground" />;
 }
 
 function EventTimeline({ events }: { events: WorkflowEvent[] }) {
@@ -187,10 +187,10 @@ export default function WorkflowDetailPage({
               The workflow could not be loaded. It may not exist or the API is unavailable.
             </p>
             <div className="flex gap-2">
-              <Button variant="outline" render={<Link href="/durable/workflows" />}>
+              <LinkButton variant="outline" href="/durable/workflows">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to Workflows
-              </Button>
+              </LinkButton>
               <Button onClick={() => refetch()} variant="outline">
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Retry

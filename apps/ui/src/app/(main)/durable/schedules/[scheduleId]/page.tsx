@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -85,7 +85,7 @@ function getStatusIcon(status: ScheduleExecutionStatus) {
       return <SkipForward className="h-4 w-4 text-yellow-500" />;
     case "pending":
     default:
-      return <Clock className="h-4 w-4 text-gray-500" />;
+      return <Clock className="h-4 w-4 text-muted-foreground" />;
   }
 }
 
@@ -354,10 +354,10 @@ export default function ScheduleDetailPage() {
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Retry
               </Button>
-              <Button variant="outline" render={<Link href="/durable/schedules" />}>
+              <LinkButton variant="outline" href="/durable/schedules">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to Schedules
-              </Button>
+              </LinkButton>
             </div>
           </CardContent>
         </Card>
@@ -412,7 +412,7 @@ export default function ScheduleDetailPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Clock
-                  className={`h-6 w-6 ${schedule.enabled ? "text-green-500" : "text-gray-400"}`}
+                  className={`h-6 w-6 ${schedule.enabled ? "text-green-500" : "text-muted-foreground"}`}
                 />
                 <div>
                   <CardTitle>
