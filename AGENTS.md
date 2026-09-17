@@ -41,6 +41,15 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
   alone has 51 test binaries); to get the same speedup, install `lld` and export that variable.
   Jobs sharing a `rust-cache` `shared-key` must agree on the flag — `RUSTFLAGS` is part of cargo's
   fingerprint, so a mismatch silently invalidates the shared target dir.
+- Splitting one crate's tests across several `cargo test` invocations costs real time, so CI keeps
+  the count per shard to a minimum. Two effects are easy to misread when profiling: `Compiling
+  <pkg>` is printed whenever cargo builds *any* unit of a package, including a single test binary,
+  so it does not mean the crate was rebuilt; and `--lib` builds a *test-mode* lib while `--test`
+  needs a *plain* lib, so splitting those two across invocations forces a genuine second
+  compilation. Measured on `everruns-server`: `--lib` cold 6m00, then a first `--test` 3m41, then
+  each further `--test` ~29s (the residue is linking that test binary, which is unavoidable —
+  the crate has 51 of them). Do not "optimise" this with a `--no-run` prebuild; it was tried and
+  only adds a wave.
 - Knowledge captures why/what; link to source instead of copying fields, enum variants, SQL DDL,
   or API shapes. `docs/` holds public product documentation only, durable decisions and
   investigations belong in `knowledge/`. Run `just check-okf` after knowledge
