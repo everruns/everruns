@@ -207,8 +207,10 @@ was a silent bypass, since a malformed verdict read as `allow`.
 
 `utility_llm` stays the default so existing configs keep their exact behavior;
 `jev` is opt-in per check, which also makes the two directly comparable on
-the same agent. Neither engine has calibration coverage yet — see
-[Known coverage gaps](../evaluation/evals.md#known-coverage-gaps). When a check selects `jev` and the deployment configured no judgment
+the same agent. Their calibration is measured by the
+[guardrail-calibration study](../../evals/guardrail-calibration/README.md), whose
+first run found the default threshold of 50 was not the best point on its corpus
+— see [Coverage of model-backed judgment](../evaluation/evals.md#coverage-of-model-backed-judgment). When a check selects `jev` and the deployment configured no judgment
 service (`UTILITY_TYPESAFE_API_KEY` unset), the check is skipped with a warning
 and the stage proceeds — fail-open, and visible in logs rather than silent.
 

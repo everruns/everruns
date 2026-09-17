@@ -2,6 +2,19 @@
 
 ## 2026-09-17
 
+* **The guardrail engines were shipped without anyone knowing how well they
+  work.** Unit tests proved the plumbing and the fail-open contract; nothing
+  measured block rate against false-positive rate, which is the number that
+  decides whether a guardrail is usable. The new
+  [guardrail-calibration study](../evals/guardrail-calibration/README.md) runs a
+  labeled corpus through the shipped decision path across both engines and a
+  threshold sweep. Its first run found neither engine dominates at the default:
+  `jev` caught every violation but over-blocked a benign staging-table deletion,
+  `utility_llm` never over-blocked but missed a path-traversal read. `jev` at
+  threshold 70 shed the false positive without losing a violation — evidence
+  that the default of 50 is worth revisiting, on a corpus far too small to
+  revisit it with.
+
 * **The guardrail engine value now names the model, and the deployment key names
   its role.** `engine: "judgment"` became `engine: "jev"`: an agent author is
   choosing between prose a parser has to trust and a calibrated number from a
