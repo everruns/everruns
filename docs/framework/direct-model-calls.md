@@ -26,10 +26,16 @@ persisted: a direct completion owns no session, no history, and no workspace.
 Reach for an agent as soon as the work needs tools, multiple turns, durability,
 or events.
 
-## Offline by default
+## Testing without a provider
 
-`Model::simulated` needs no credentials and no network, so direct calls are
-testable the same way agents are:
+`Model::simulated` returns canned responses from an in-process simulator
+(`everruns-llmsim`). It is a **test double**, not a local model: it runs no
+inference and is not a way to use Everruns without a model provider. It exists
+so tests and examples can assert on agent behavior without a network call or an
+API key.
+
+Real work always goes through a provider — see
+[Supported providers](/framework/supported-providers/).
 
 ```rust
 use everruns::Model;

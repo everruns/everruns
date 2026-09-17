@@ -21,8 +21,10 @@ assert_eq!(turn.response, "Hello from Everruns.");
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-The default build runs this example offline. A database, server, worker, network
-connection, and provider credential are not required.
+This example needs no database, server, worker or credential, because
+`Model::simulated` is a test double that replays a canned response rather than
+calling a model. Agents that do real work need a model provider — see
+[Supported providers](/framework/supported-providers/).
 
 ## Choose the right surface
 
@@ -43,7 +45,8 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Agents](/framework/agents/), instructions, files, workspaces, MCP, plugins, and context inspection.
 - [Workspace security](/framework/workspace-security/), configure portable read and write scopes with secure defaults.
 - [Workspaces and Environments](/framework/workspaces-and-environments/), bind sessions to isolated or explicitly shared backend-owned heads.
-- [Models and providers](/framework/models-and-providers/), simulation, OpenAI, and the open provider boundary.
+- [Models and providers](/framework/models-and-providers/), the model/provider split and the open provider boundary.
+- [Supported providers](/framework/supported-providers/), every driver that ships today and what each one supports.
 - [Direct model calls](/framework/direct-model-calls/), one prompt and one answer without an agent.
 - [Credentials](/framework/credentials/), each driver's own vendor-standard environment variables.
 - [Tools and macros](/framework/tools-and-macros/), typed function tools through `everruns::tool`.

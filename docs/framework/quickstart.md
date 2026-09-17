@@ -1,6 +1,6 @@
 ---
 title: Quickstart
-description: Install everruns and run a deterministic agent entirely offline.
+description: Install everruns and run your first agent against the test simulator, then point it at a real provider.
 ---
 
 ## Install
@@ -11,8 +11,10 @@ Add the application-facing crate:
 cargo add everruns
 ```
 
-The default features include typed tool macros and the offline simulator. They
-do not select a network provider.
+The default features include typed tool macros and the test simulator. They do
+not select a model provider — see
+[Supported providers](/framework/supported-providers/) for the feature or crate
+to add.
 
 ## Run one turn
 
@@ -35,8 +37,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 `Model::simulated` follows the same model/provider path as a live provider, but
-returns the configured response deterministically. This makes the smallest
-Framework program useful in tests, examples, and disconnected development.
+replays the configured response instead of calling one. It is a test double, not
+a local model: it runs no inference, so this first program proves the wiring
+rather than the answer. Keep it for tests and examples, and use a real provider
+for everything else.
+
 `send_and_wait` is the request/response convenience; use `send` when the
 application needs to stream output or add steering input while a turn runs.
 

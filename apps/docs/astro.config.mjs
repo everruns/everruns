@@ -183,6 +183,7 @@ export default defineConfig({
                     { label: "Workspaces and Environments", slug: "framework/workspaces-and-environments" },
                     { label: "Workspace Security", slug: "framework/workspace-security" },
                     { label: "Models and Providers", slug: "framework/models-and-providers" },
+                    { label: "Supported Providers", slug: "framework/supported-providers" },
                     { label: "Direct Model Calls", slug: "framework/direct-model-calls" },
                     { label: "Credentials", slug: "framework/credentials" },
                     { label: "Tools and Macros", slug: "framework/tools-and-macros" },

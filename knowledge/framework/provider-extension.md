@@ -37,6 +37,11 @@ branches.
   providers fail during agent construction.
 - Deterministic simulation may bundle its private offline provider because it
   has no endpoint or credential configuration.
+- The simulator is a **test double**, and public documentation must present it
+  as one. It runs no inference, so framing it as an "offline" mode of the
+  product (rather than of a test) tells a reader Everruns can serve models
+  without a vendor, which it cannot. Quickstarts may use it to prove wiring
+  without an API key, and must say that is what they are doing.
 - Built-in provider conveniences and custom providers converge on the same
   resolution and execution path.
 - Provider-specific protocol differences remain behind the driver boundary.
