@@ -54,7 +54,7 @@ export function ToolActivityRow({
       <div className="flex items-start gap-2">
         <div className="mt-0.5 flex h-4 w-4 items-center justify-center">
           {hasToolError ? (
-            <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+            <AlertCircle className="h-3.5 w-3.5 text-destructive" />
           ) : isComplete ? (
             <Check className="h-3.5 w-3.5 text-accent" />
           ) : (
@@ -102,9 +102,7 @@ export function ToolActivityRow({
             )}
           </div>
 
-          {hasToolError && (
-            <div className="mt-1 text-xs text-red-600 dark:text-red-400">{toolResult?.error}</div>
-          )}
+          {hasToolError && <div className="mt-1 text-xs text-destructive">{toolResult?.error}</div>}
 
           <McpAppResourceList resources={mcpAppResources} />
 

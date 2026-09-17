@@ -45,7 +45,7 @@ function TimelineRow({ row }: { row: TimelineToolRow }) {
       <div className="flex items-start gap-2">
         <div className="mt-0.5 flex h-4 w-4 items-center justify-center">
           {row.state === "error" ? (
-            <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+            <AlertCircle className="h-3.5 w-3.5 text-destructive" />
           ) : row.state === "completed" ? (
             <Check className="h-3.5 w-3.5 text-muted-foreground/75" />
           ) : (
@@ -84,7 +84,7 @@ function TimelineRow({ row }: { row: TimelineToolRow }) {
           </div>
 
           {row.result?.error && (
-            <div className="mt-0.5 text-xs text-red-600 dark:text-red-400">{row.result.error}</div>
+            <div className="mt-0.5 text-xs text-destructive">{row.result.error}</div>
           )}
 
           <McpAppResourceList resources={mcpAppResources} />

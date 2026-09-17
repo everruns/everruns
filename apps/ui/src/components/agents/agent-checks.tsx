@@ -115,8 +115,8 @@ function ChecksSkeleton() {
 }
 
 const SEVERITY_STYLES: Record<FindingSeverity, string> = {
-  warning: "border-amber-500/50 text-amber-600 dark:text-amber-400",
-  info: "border-sky-500/50 text-sky-600 dark:text-sky-400",
+  warning: "border-warning/50 text-warning",
+  info: "border-info/50 text-info",
   suggestion: "border-muted-foreground/50 text-muted-foreground",
 };
 

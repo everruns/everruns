@@ -10,7 +10,7 @@ export function ExperimentalBadge() {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="ml-auto text-amber-500 cursor-default">
+          <span className="ml-auto text-warning cursor-default">
             <FlaskConical className="!size-3.5" />
           </span>
         </TooltipTrigger>

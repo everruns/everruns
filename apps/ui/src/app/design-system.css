@@ -40,7 +40,13 @@
     /* Accent: Gold for active states, highlights */
     --accent: 43 60% 53%;
     --accent-foreground: 43 60% 30%;
-    --destructive: 0 84% 60%;
+    --success: 163 94% 24%;
+    --success-foreground: 0 0% 98%;
+    --warning: 26 90% 37%;
+    --warning-foreground: 0 0% 98%;
+    --info: 201 96% 32%;
+    --info-foreground: 0 0% 98%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 88%;
     --input: 0 0% 85%;
@@ -71,7 +77,13 @@
     /* Accent: Gold (same in dark mode) */
     --accent: 43 60% 53%;
     --accent-foreground: 43 60% 75%;
-    --destructive: 0 63% 31%;
+    --success: 158 64% 52%;
+    --success-foreground: 220 15% 8%;
+    --warning: 43 96% 56%;
+    --warning-foreground: 220 15% 8%;
+    --info: 198 93% 60%;
+    --info-foreground: 220 15% 8%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
     --border: 220 15% 18%;
     --input: 220 15% 18%;
@@ -98,6 +110,12 @@
   --color-muted-foreground: hsl(var(--muted-foreground));
   --color-accent: hsl(var(--accent));
   --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+  --color-info: hsl(var(--info));
+  --color-info-foreground: hsl(var(--info-foreground));
   --color-destructive: hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
   --color-border: hsl(var(--border));

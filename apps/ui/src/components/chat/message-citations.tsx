@@ -116,14 +116,14 @@ function VerifiedBadge({ verified }: { verified?: VerificationVerdict | null }) 
   if (!verified) return null;
   if (verified.status === "entailed") {
     return (
-      <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+      <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-success">
         <ShieldCheck className="h-3 w-3" /> verified
       </span>
     );
   }
   if (verified.status === "unsupported") {
     return (
-      <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+      <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-warning">
         <ShieldAlert className="h-3 w-3" /> unsupported
       </span>
     );

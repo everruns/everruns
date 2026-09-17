@@ -73,7 +73,7 @@ function AcceptInviteInner() {
 
         {phase === "success" && (
           <div className="flex flex-col items-center gap-4">
-            <CheckCircle2 className="h-12 w-12 text-emerald-500" />
+            <CheckCircle2 className="h-12 w-12 text-success" />
             <div>
               <h1 className="text-lg font-semibold">You&apos;re in!</h1>
               <p className="text-sm text-muted-foreground">

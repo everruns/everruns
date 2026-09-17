@@ -365,7 +365,7 @@ export function ChatComposer({
                 variant={voiceActive ? "secondary" : "outline"}
                 className={cn(
                   chatSurfaceStyles.composerIconButton,
-                  voiceActive && "border-emerald-500/50 text-emerald-600",
+                  voiceActive && "border-success/50 text-success",
                 )}
                 disabled={voicePending || (composerDisabled && !voiceActive)}
                 onClick={onToggleVoice}

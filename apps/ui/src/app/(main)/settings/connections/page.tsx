@@ -81,7 +81,7 @@ function ConnectionRow({
             {connection.scopes && <span className="ml-2">({connection.scopes})</span>}
           </div>
           {verifyStatus === "valid" && (
-            <div className="flex items-center gap-1 text-green-600 dark:text-green-400 text-xs mt-1">
+            <div className="flex items-center gap-1 text-success text-xs mt-1">
               <CheckCircle className="h-3 w-3" />
               API key is valid
             </div>
@@ -200,7 +200,7 @@ export default function ConnectionsPage() {
     <div className="space-y-8">
       {/* Success banner */}
       {successMessage && (
-        <div className="flex items-center gap-2 bg-green-500/10 text-green-700 dark:text-green-400 p-3 text-sm">
+        <div className="flex items-center gap-2 bg-success/10 text-success p-3 text-sm">
           <Check className="h-4 w-4" />
           {successMessage}
         </div>

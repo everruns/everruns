@@ -166,7 +166,7 @@ export function TodoListRenderer({
 
   // Handle error state
   if (error) {
-    return <div className="text-xs text-red-600">{t("error_prefix", { value: error })}</div>;
+    return <div className="text-xs text-destructive">{t("error_prefix", { value: error })}</div>;
   }
 
   // Handle warning from result
@@ -221,7 +221,7 @@ export function TodoListRenderer({
         <div className="min-h-0 overflow-hidden">
           <div className="space-y-1">
             <TodoListFromItems todos={todos} isActive={isExecuting} />
-            {warning && <div className="mt-0.5 text-xs text-amber-600">{warning}</div>}
+            {warning && <div className="mt-0.5 text-xs text-warning">{warning}</div>}
           </div>
         </div>
       </div>

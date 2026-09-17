@@ -76,9 +76,9 @@ export function ToolCallCardFromEvent({
 
   const statusIcon = isComplete ? (
     hasError ? (
-      <span className="text-red-600 text-xs">✗</span>
+      <span className="text-destructive text-xs">✗</span>
     ) : (
-      <Check className="h-3 w-3 text-green-600/80" />
+      <Check className="h-3 w-3 text-success/80" />
     )
   ) : (
     <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/60" />
@@ -101,7 +101,7 @@ export function ToolCallCardFromEvent({
 
       {/* Error message */}
       {hasError && (
-        <div className="text-red-600 ml-4 mt-0.5">
+        <div className="text-destructive ml-4 mt-0.5">
           {t("error_prefix", { value: toolResult?.error ?? "" })}
         </div>
       )}

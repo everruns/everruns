@@ -34,7 +34,7 @@ export function DlqRow({
       <TableCell>
         <TooltipProvider>
           <Tooltip>
-            <TooltipTrigger className="text-sm text-red-600 max-w-[200px] truncate block">
+            <TooltipTrigger className="text-sm text-destructive max-w-[200px] truncate block">
               {entry.last_error}
             </TooltipTrigger>
             <TooltipContent className="max-w-sm">

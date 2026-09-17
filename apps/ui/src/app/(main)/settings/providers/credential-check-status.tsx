@@ -30,7 +30,7 @@ export function CredentialCheckStatus({
   if (state.status === "valid") {
     return (
       <span
-        className={`flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 ${className ?? ""}`}
+        className={`flex items-center gap-1.5 text-xs font-medium text-success ${className ?? ""}`}
         role="status"
       >
         <Check className="icon-sharp size-3.5" />

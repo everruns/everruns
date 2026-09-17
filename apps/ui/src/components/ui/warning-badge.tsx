@@ -12,7 +12,7 @@ export function WarningBadge({ tooltip }: { tooltip: string }) {
         <TooltipTrigger asChild>
           <button
             type="button"
-            className="ml-auto text-amber-500 cursor-default"
+            className="ml-auto text-warning cursor-default"
             aria-label={tooltip}
           >
             <AlertTriangle className="!size-3.5" />

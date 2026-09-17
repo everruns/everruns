@@ -87,7 +87,7 @@ function AgentSurfaceNotice({ agentSurfaceEnabled }: { agentSurfaceEnabled: bool
 
 function StepIcon({ done }: { done: boolean }) {
   return done ? (
-    <CircleCheck className="w-5 h-5 text-green-600 shrink-0" />
+    <CircleCheck className="w-5 h-5 text-success shrink-0" />
   ) : (
     <Circle className="w-5 h-5 text-muted-foreground shrink-0" />
   );

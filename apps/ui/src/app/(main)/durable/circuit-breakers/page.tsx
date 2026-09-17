@@ -35,11 +35,11 @@ function getStateBadgeVariant(state: CircuitBreakerState) {
 function getStateIcon(state: CircuitBreakerState) {
   switch (state) {
     case "closed":
-      return <ShieldCheck className="h-4 w-4 text-green-500" />;
+      return <ShieldCheck className="h-4 w-4 text-success" />;
     case "open":
-      return <ShieldAlert className="h-4 w-4 text-red-500" />;
+      return <ShieldAlert className="h-4 w-4 text-destructive" />;
     case "half_open":
-      return <Clock className="h-4 w-4 text-yellow-500" />;
+      return <Clock className="h-4 w-4 text-warning" />;
     default:
       return <Zap className="h-4 w-4" />;
   }
@@ -83,7 +83,7 @@ function CircuitBreakerCard({ breaker }: { breaker: CircuitBreaker }) {
   });
 
   return (
-    <Card className={breaker.state === "open" ? "border-red-500/50" : ""}>
+    <Card className={breaker.state === "open" ? "border-destructive/50" : ""}>
       <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
         <div className="flex items-center gap-2">
           {getStateIcon(breaker.state)}
@@ -126,7 +126,7 @@ function CircuitBreakerCard({ breaker }: { breaker: CircuitBreaker }) {
               <Button
                 variant="outline"
                 size="sm"
-                className="text-red-600 border-red-200 hover:bg-red-50"
+                className="text-destructive border-destructive/30 hover:bg-destructive/10"
                 disabled={forceOpenMutation.isPending}
                 onClick={() => setOpenDialogOpen(true)}
               >
@@ -161,7 +161,7 @@ function CircuitBreakerCard({ breaker }: { breaker: CircuitBreaker }) {
             <Button
               variant="outline"
               size="sm"
-              className="text-green-600 border-green-200 hover:bg-green-50"
+              className="text-success border-success/30 hover:bg-success/10"
               onClick={() => forceCloseMutation.mutate()}
               disabled={forceCloseMutation.isPending}
             >
@@ -268,23 +268,23 @@ export default function CircuitBreakersPage() {
               <p className="text-xs text-muted-foreground">circuit breakers</p>
             </CardContent>
           </Card>
-          <Card className={openBreakers.length > 0 ? "border-red-500/50" : ""}>
+          <Card className={openBreakers.length > 0 ? "border-destructive/50" : ""}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Open</CardTitle>
-              <ShieldAlert className="h-4 w-4 text-red-500" />
+              <ShieldAlert className="h-4 w-4 text-destructive" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-red-600">{openBreakers.length}</div>
+              <div className="text-2xl font-bold text-destructive">{openBreakers.length}</div>
               <p className="text-xs text-muted-foreground">blocking calls</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Closed</CardTitle>
-              <ShieldCheck className="h-4 w-4 text-green-500" />
+              <ShieldCheck className="h-4 w-4 text-success" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{closedBreakers.length}</div>
+              <div className="text-2xl font-bold text-success">{closedBreakers.length}</div>
               <p className="text-xs text-muted-foreground">allowing calls</p>
             </CardContent>
           </Card>
@@ -297,7 +297,7 @@ export default function CircuitBreakersPage() {
             {openBreakers.length > 0 && (
               <div>
                 <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                  <ShieldAlert className="h-5 w-5 text-red-500" />
+                  <ShieldAlert className="h-5 w-5 text-destructive" />
                   Open Circuit Breakers
                 </h3>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -312,7 +312,7 @@ export default function CircuitBreakersPage() {
             {halfOpenBreakers.length > 0 && (
               <div>
                 <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-yellow-500" />
+                  <Clock className="h-5 w-5 text-warning" />
                   Half-Open Circuit Breakers
                 </h3>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -327,7 +327,7 @@ export default function CircuitBreakersPage() {
             {closedBreakers.length > 0 && (
               <div>
                 <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                  <ShieldCheck className="h-5 w-5 text-green-500" />
+                  <ShieldCheck className="h-5 w-5 text-success" />
                   Closed Circuit Breakers
                 </h3>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

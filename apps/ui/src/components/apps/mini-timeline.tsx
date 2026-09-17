@@ -34,9 +34,9 @@ export function MiniTimeline({
             className={cn(
               "h-6 w-1.5 border",
               total === 0 && "border-muted bg-muted/40",
-              ok > 0 && err === 0 && "border-emerald-200 bg-emerald-500",
-              err > 0 && "border-red-200 bg-red-500",
-              running > 0 && "border-amber-200 bg-amber-500",
+              ok > 0 && err === 0 && "border-success/30 bg-success",
+              err > 0 && "border-destructive/30 bg-destructive",
+              running > 0 && "border-info/30 bg-info",
             )}
           />
         );
