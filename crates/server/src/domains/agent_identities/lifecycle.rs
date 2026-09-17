@@ -106,17 +106,64 @@ mod tests {
 
     use super::*;
     use crate::kernel_imports::DEFAULT_ORG_ID;
-    use crate::storage::models::CreateAgentRow;
+    use crate::storage::models::{CreateAgentRow, CreateHarnessRow};
+    use everruns_provider::typed_id::AgentId;
 
+    /// An agent needs a harness, so seed both. Mirrors the trigger-side helper
+    /// rather than inventing a second shape.
     async fn seed_unlinked_agent(db: &Arc<StorageBackend>) -> AgentRow {
-        let created = db
-            .create_agent(CreateAgentRow {
-                org_id: DEFAULT_ORG_ID,
-                name: "Service MCP Agent".to_string(),
-                ..Default::default()
-            })
+        let harness = db
+            .create_harness(
+                DEFAULT_ORG_ID,
+                CreateHarnessRow {
+                    name: "identity-harness".to_string(),
+                    display_name: Some("Identity Harness".to_string()),
+                    icon: None,
+                    description: None,
+                    intro_markdown: None,
+                    short_description: None,
+                    starters: serde_json::json!([]),
+                    system_prompt: Some(String::new()),
+                    parent_harness_id: None,
+                    default_model_id: None,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    embedder_metadata: serde_json::json!({}),
+                    is_built_in: false,
+                },
+            )
             .await
-            .expect("seed agent");
+            .expect("create harness");
+
+        let public_id = AgentId::new().to_string();
+        let created = db
+            .create_agent(
+                DEFAULT_ORG_ID,
+                CreateAgentRow {
+                    public_id,
+                    name: "service-mcp-agent".to_string(),
+                    display_name: Some("Service MCP Agent".to_string()),
+                    description: None,
+                    intro_markdown: None,
+                    short_description: None,
+                    starters: serde_json::json!([]),
+                    system_prompt: String::new(),
+                    default_model_id: None,
+                    harness_id: harness.id,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    tools: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    max_iterations: None,
+                    parallel_tool_calls: None,
+                    is_built_in: false,
+                },
+            )
+            .await
+            .expect("create agent");
         assert!(
             created.agent_identity_id.is_none(),
             "fixture must start unlinked or the race proves nothing"
