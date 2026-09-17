@@ -89,6 +89,18 @@ packages = [
                 "optional": False,
             },
             {
+                "name": "registry-restricted-target",
+                "path": "/repo/registry-restricted-target",
+                "kind": None,
+                "optional": False,
+            },
+            {
+                "name": "explicit-crates-io-target",
+                "path": "/repo/explicit-crates-io-target",
+                "kind": None,
+                "optional": False,
+            },
+            {
                 "name": "private-target",
                 "path": "/repo/private-target",
                 "kind": "build",
@@ -103,23 +115,47 @@ packages = [
         "dependencies": [],
     },
     {
+        "name": "registry-restricted-target",
+        "manifest_path": "/repo/registry-restricted-target/Cargo.toml",
+        "publish": ["internal"],
+        "dependencies": [],
+    },
+    {
+        "name": "explicit-crates-io-target",
+        "manifest_path": "/repo/explicit-crates-io-target/Cargo.toml",
+        "publish": ["crates-io"],
+        "dependencies": [],
+    },
+    {
         "name": "private-dev-target",
         "manifest_path": "/repo/private-dev-target/Cargo.toml",
         "publish": [],
         "dependencies": [],
     },
 ]
+require(sync.crates_io_publishable(packages[0]), "default publish target must include crates.io")
+require(
+    not sync.crates_io_publishable(packages[2]),
+    "registry-restricted package must not be treated as crates.io-publishable",
+)
+require(
+    sync.crates_io_publishable(packages[3]),
+    "package that explicitly allows crates-io must be treated as publishable",
+)
 private_failures = sync.private_dependency_failures(packages)
 require(
     private_failures
     == [
         "public-owner: private-target is an optional normal path dependency on "
-        "private workspace package private-target",
-        "public-owner: private-target is a build path dependency on private "
+        "non-crates.io workspace package private-target",
+        "public-owner: registry-restricted-target is a normal path dependency on "
+        "non-crates.io workspace package registry-restricted-target",
+        "public-owner: private-target is a build path dependency on non-crates.io "
         "workspace package private-target",
     ],
-    "published packages must reject optional normal and build path dependencies "
-    f"on private workspace packages while permitting dev-only edges, got {private_failures}",
+    "crates.io packages must reject optional normal and build path dependencies "
+    "on private or registry-restricted workspace packages while permitting "
+    f"dev-only and crates.io edges, got {private_failures}",
 )
 
 manifest = tomllib.loads("""

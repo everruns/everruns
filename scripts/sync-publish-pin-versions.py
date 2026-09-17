@@ -40,6 +40,14 @@ def metadata() -> dict[str, Any]:
     return json.loads(output)
 
 
+def crates_io_publishable(package: dict[str, Any]) -> bool:
+    """Whether Cargo permits publishing this package to crates.io."""
+    registries = package.get("publish")
+    return registries is None or (
+        isinstance(registries, list) and "crates-io" in registries
+    )
+
+
 def private_dependency_failures(packages: list[dict[str, Any]]) -> list[str]:
     """Reject publishable packages that Cargo cannot resolve from crates.io."""
     by_directory = {
@@ -47,7 +55,7 @@ def private_dependency_failures(packages: list[dict[str, Any]]) -> list[str]:
     }
     failures: list[str] = []
     for package in sorted(packages, key=lambda item: item["name"]):
-        if package.get("publish") == []:
+        if not crates_io_publishable(package):
             continue
         for dependency in package.get("dependencies", []):
             if dependency.get("kind") not in (None, "normal", "build"):
@@ -56,12 +64,12 @@ def private_dependency_failures(packages: list[dict[str, Any]]) -> list[str]:
             if not isinstance(path, str):
                 continue
             target = by_directory.get(Path(path).resolve())
-            if target is None or target.get("publish") != []:
+            if target is None or crates_io_publishable(target):
                 continue
             article = "an optional" if dependency.get("optional") else "a"
             failures.append(
                 f"{package['name']}: {dependency['name']} is {article} "
-                f"{dependency.get('kind') or 'normal'} path dependency on private "
+                f"{dependency.get('kind') or 'normal'} path dependency on non-crates.io "
                 f"workspace package {target['name']}"
             )
     return failures
@@ -177,7 +185,7 @@ def main() -> int:
     published = {
         manifest: package
         for manifest, package in packages.items()
-        if package.get("publish") != []
+        if crates_io_publishable(package)
     }
     root_path = REPO / "Cargo.toml"
     root = load(root_path)
