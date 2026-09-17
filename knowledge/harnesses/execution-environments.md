@@ -13,7 +13,9 @@ tags:
 # Execution environments
 
 Status: first slice implemented, the rest proposed. Extends, does not replace,
-[Sandbox Abstraction](sandbox-abstraction.md).
+[Sandbox Abstraction](sandbox-abstraction.md). The application-facing half, what a
+harness becomes once the environment is separable, is proposed in
+[Framework Harnesses](../framework/harnesses.md).
 
 What exists in code today:
 

@@ -52,6 +52,8 @@ mod grep_limits;
 mod host;
 mod in_memory;
 mod in_process_execution;
+#[cfg(feature = "typesafe-judgment")]
+mod judgment;
 #[cfg(feature = "mcp")]
 mod mcp;
 #[cfg(feature = "mcp")]
@@ -66,6 +68,9 @@ mod runtime_context;
 mod session_file_system_factory;
 pub mod session_services;
 mod turn_strategy;
+// The OpenAI utility client needs `everruns-provider/http`, which only the
+// `utility-openai` feature turns on. Leaving the module ungated made the crate
+// fail to compile under any feature selection without it.
 #[cfg(feature = "utility-openai")]
 mod utility_llm;
 mod workspace;
@@ -121,6 +126,10 @@ pub use in_memory::{
     InMemorySessionStorageStore, InMemorySessionStore,
 };
 pub use in_process_execution::InProcessExecution;
+#[cfg(feature = "typesafe-judgment")]
+pub use judgment::{
+    JUDGMENT_MODEL, SystemJudgmentConfig, TypeSafeJudgmentService, UTILITY_TYPESAFE_API_KEY_ENV,
+};
 #[cfg(feature = "process")]
 pub use process_command::ProcessCommandExecutor;
 pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory, multi_root_file_system};

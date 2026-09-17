@@ -1,0 +1,110 @@
+name: TypeSafe Integration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'integrations/typesafe/**'
+      - 'crates/drivers/typesafe/**'
+      - 'crates/host/src/judgment.rs'
+      - 'crates/host/tests/judgment_live_test.rs'
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+    paths:
+      - 'integrations/typesafe/**'
+      - 'crates/drivers/typesafe/**'
+      - 'crates/host/src/judgment.rs'
+      - 'crates/host/tests/judgment_live_test.rs'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+  # DOPPLER_TOKEN is intentionally NOT exposed at workflow scope so it
+  # cannot reach the PR-triggered unit-test job (which runs untrusted
+  # code). It is scoped to live-test below, which only runs on push or
+  # workflow_dispatch.
+
+jobs:
+  unit-test:
+    name: TypeSafe Unit Tests
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || (((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci:skip-integration-workflows') && !contains(github.event.pull_request.labels.*.name, 'ci:skip-integration-workflows'))
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
+      - name: Run unit tests
+        run: cargo test -p everruns-integrations-typesafe -p typesafe-systemone
+
+  # Live tests hit the real TypeSafe API and need DOPPLER_TOKEN.
+  # Restricted to push/workflow_dispatch so the secret is never available
+  # in a fork-PR context where untrusted code (build.rs, proc-macros,
+  # tests) could exfiltrate it. The weekly `integration-live-sweep.yml`
+  # backstop catches shared-crate regressions that slip past this gate.
+  live-test:
+    name: TypeSafe Live API Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 10
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
+      - name: Install Doppler CLI
+        id: doppler_install
+        # Absorbs one transient installer failure; see
+        # scripts/test-doppler-install-retry.sh for why.
+        continue-on-error: true
+        uses: dopplerhq/cli-action@v4
+
+      - name: Pause before Doppler CLI retry
+        if: steps.doppler_install.outcome == 'failure'
+        run: sleep 15
+
+      - name: Install Doppler CLI (retry)
+        if: steps.doppler_install.outcome == 'failure'
+        uses: dopplerhq/cli-action@v4
+
+      - name: Fetch TypeSafe API key from Doppler
+        run: |
+          # The SDK smoke tests read TYPESAFE_API_KEY; the deployment judgment
+          # service reads UTILITY_TYPESAFE_API_KEY. One Doppler secret backs
+          # both until a separate UTILITY_TYPESAFE_API_KEY exists there.
+          KEY="$(doppler secrets get TYPESAFE_API_KEY --plain)"
+          echo "TYPESAFE_API_KEY=$KEY" >> "$GITHUB_ENV"
+          echo "UTILITY_TYPESAFE_API_KEY=$KEY" >> "$GITHUB_ENV"
+
+      - name: Run integration tests
+        run: cargo test -p typesafe-systemone --features integration
+
+      - name: Run judgment service live tests
+        run: cargo test -p everruns-host --features typesafe-live-tests --test judgment_live_test

@@ -6,7 +6,8 @@
 // narrowly scoped and avoid mutating config rows during runtime.
 
 use crate::kernel_imports::{
-    Capability, EgressService, McpServerAuthMode, ScopedMcpServers,
+    Capability, EgressService, McpProtocolMode, McpServerActsAs, McpServerAuthMode,
+    McpServerTransportType, ScopedMcpServer, ScopedMcpServers,
     everruns_provider::tool_types::ToolDefinition, everruns_provider::typed_id::SessionId,
     everruns_provider::url_validation::validate_safe_url, merge_scoped_mcp_servers,
     resolve_runtime_capabilities,
@@ -22,7 +23,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::domains::mcp_servers::McpServerResolved;
-use crate::domains::mcp_servers::service::fetch_mcp_tools;
+use crate::domains::mcp_servers::service::{McpServerService, fetch_mcp_tools};
+use crate::storage::StorageBackend;
 
 pub fn merge_effective_scoped_mcp_servers(
     harness: &Harness,
@@ -110,58 +112,132 @@ where
     Ok(merged)
 }
 
-pub fn resolve_scoped_mcp_server(
+pub async fn resolve_scoped_mcp_server(
+    mcp_server_service: &McpServerService,
+    org_id: i64,
     harness: &Harness,
     agent: Option<&Agent>,
     session: &Session,
     server_prefix: &str,
-) -> Option<McpServerResolved> {
+) -> Result<Option<McpServerResolved>> {
     let effective = merge_effective_scoped_mcp_servers(harness, agent, session);
-    effective.into_iter().find_map(|(name, server)| {
-        (everruns_core::mcp_server::is_valid_mcp_server_name(&name)
-            && sanitize_mcp_server_name(&name) == server_prefix)
-            .then(|| McpServerResolved {
-                id: scoped_mcp_server_uuid(session.id.uuid(), &name),
-                name,
-                url: server.url,
-                auth_mode: server.auth_mode,
-                protocol_mode: server.protocol_mode,
-                oauth_provider_id: server.oauth_provider_id,
-                api_key: None,
-                headers: server.headers,
-            })
-    })
+    let matched = effective.into_iter().find(|(name, _)| {
+        everruns_core::mcp_server::is_valid_mcp_server_name(name)
+            && sanitize_mcp_server_name(name) == server_prefix
+    });
+    resolve_matched_scoped_mcp_server(mcp_server_service, org_id, session.id.uuid(), matched).await
 }
 
-pub fn resolve_scoped_mcp_server_with_capabilities(
+pub async fn resolve_scoped_mcp_server_with_capabilities(
+    mcp_server_service: &McpServerService,
+    org_id: i64,
     harness: &Harness,
     agent: Option<&Agent>,
     session: &Session,
     server_prefix: &str,
     capability_registry: &CapabilityRegistry,
-) -> Option<McpServerResolved> {
+) -> Result<Option<McpServerResolved>> {
     let effective = merge_effective_scoped_mcp_servers_with_capabilities(
         harness,
         agent,
         session,
         capability_registry,
     );
-    effective.into_iter().find_map(|(name, server)| {
-        (everruns_core::mcp_server::is_valid_mcp_server_name(&name)
-            && sanitize_mcp_server_name(&name) == server_prefix)
-            .then(|| McpServerResolved {
-                id: scoped_mcp_server_uuid(session.id.uuid(), &name),
-                name,
-                url: server.url,
-                auth_mode: server.auth_mode,
-                protocol_mode: server.protocol_mode,
-                oauth_provider_id: server.oauth_provider_id,
-                api_key: None,
-                headers: server.headers,
-            })
-    })
+    let matched = effective.into_iter().find(|(name, _)| {
+        everruns_core::mcp_server::is_valid_mcp_server_name(name)
+            && sanitize_mcp_server_name(name) == server_prefix
+    });
+    resolve_matched_scoped_mcp_server(mcp_server_service, org_id, session.id.uuid(), matched).await
 }
 
+async fn resolve_matched_scoped_mcp_server(
+    mcp_server_service: &McpServerService,
+    org_id: i64,
+    session_id: Uuid,
+    matched: Option<(String, ScopedMcpServer)>,
+) -> Result<Option<McpServerResolved>> {
+    let Some((name, server)) = matched else {
+        return Ok(None);
+    };
+    if let Some(preset) = &server.preset {
+        let preset_name = preset.catalog_name();
+        let mut resolved = mcp_server_service
+            .resolve_transport_by_name(&everruns_core::Caller::internal(org_id), preset_name)
+            .await?
+            .ok_or_else(|| {
+                anyhow!("Catalog MCP server preset '{preset_name}' is missing or not active")
+            })?;
+        resolved.id = scoped_mcp_server_uuid(session_id, &name);
+        resolved.name = name;
+        resolved.acts_as = server.acts_as;
+        return Ok(Some(resolved));
+    }
+
+    Ok(Some(McpServerResolved {
+        id: scoped_mcp_server_uuid(session_id, &name),
+        name,
+        url: server.url,
+        auth_mode: server.auth_mode,
+        protocol_mode: server.protocol_mode,
+        oauth_provider_id: server.oauth_provider_id,
+        acts_as: server.acts_as,
+        api_key: None,
+        headers: server.headers,
+    }))
+}
+
+pub async fn materialize_scoped_mcp_servers(
+    db: &StorageBackend,
+    org_id: i64,
+    servers: &ScopedMcpServers,
+) -> Result<ScopedMcpServers> {
+    let mut materialized = ScopedMcpServers::new();
+    for (name, server) in servers {
+        let Some(preset) = &server.preset else {
+            materialized.insert(name.clone(), server.clone());
+            continue;
+        };
+        let preset_name = preset.catalog_name();
+        let row = db
+            .get_mcp_server_by_name(org_id, preset_name)
+            .await?
+            .filter(|row| row.status == "active")
+            .ok_or_else(|| {
+                anyhow!("Catalog MCP server preset '{preset_name}' is missing or not active")
+            })?;
+        let settings = McpServerService::settings_from_row(&row);
+        materialized.insert(
+            name.clone(),
+            ScopedMcpServer {
+                transport_type: McpServerTransportType::from(row.transport_type.as_str()),
+                url: row.url,
+                headers: serde_json::from_value(row.headers).unwrap_or_default(),
+                protocol_mode: settings.protocol_mode,
+                acts_as: server.acts_as,
+                ..Default::default()
+            },
+        );
+    }
+    Ok(materialized)
+}
+
+pub async fn build_materialized_scoped_mcp_tool_definitions(
+    db: &StorageBackend,
+    org_id: i64,
+    servers: &ScopedMcpServers,
+    session_id: Option<SessionId>,
+    connection_resolver: Option<&Arc<dyn UserConnectionResolver>>,
+    egress_service: &dyn EgressService,
+) -> Result<Vec<ToolDefinition>> {
+    let materialized = materialize_scoped_mcp_servers(db, org_id, servers).await?;
+    build_scoped_mcp_tool_definitions(
+        &materialized,
+        session_id,
+        connection_resolver,
+        egress_service,
+    )
+    .await
+}
 pub async fn build_scoped_mcp_tool_definitions(
     servers: &ScopedMcpServers,
     session_id: Option<SessionId>,
@@ -286,18 +362,28 @@ pub fn validate_scoped_mcp_servers(servers: &ScopedMcpServers) -> Result<()> {
         if name.trim().is_empty() {
             return Err(anyhow!("Scoped MCP server name cannot be empty"));
         }
-        // Local-process (stdio) transport is hard-off in the hosted product;
-        // it is only available to single-tenant runtime/CLI hosts
-        // (knowledge/integrations/runtime-mcp.md D2). Reject it here so it can never be
-        // configured on an organization's harness/agent/session.
-        if server.transport_type.is_local() {
-            return Err(anyhow!(
-                "Scoped MCP server '{name}' uses an unsupported transport: \
-                 stdio MCP servers are not allowed in this deployment"
-            ));
+        if server.preset.is_some() {
+            validate_catalog_reference_shape(name, server)?;
+        } else {
+            if server.acts_as != McpServerActsAs::None {
+                return Err(anyhow!(
+                    "Scoped MCP server '{name}' with actsAs '{}' requires a catalog preset for OAuth",
+                    server.acts_as
+                ));
+            }
+            // Local-process (stdio) transport is hard-off in the hosted product;
+            // it is only available to single-tenant runtime/CLI hosts
+            // (knowledge/integrations/runtime-mcp.md D2). Reject it here so it can never be
+            // configured on an organization's harness/agent/session.
+            if server.transport_type.is_local() {
+                return Err(anyhow!(
+                    "Scoped MCP server '{name}' uses an unsupported transport: \
+                     stdio MCP servers are not allowed in this deployment"
+                ));
+            }
+            validate_safe_url(&server.url)
+                .map_err(|e| anyhow!("Invalid scoped MCP server URL for '{name}': {e}"))?;
         }
-        validate_safe_url(&server.url)
-            .map_err(|e| anyhow!("Invalid scoped MCP server URL for '{name}': {e}"))?;
         let prefix = sanitize_mcp_server_name(name);
         if !everruns_core::mcp_server::is_valid_mcp_server_name(name) {
             return Err(anyhow!(
@@ -315,6 +401,101 @@ pub fn validate_scoped_mcp_servers(servers: &ScopedMcpServers) -> Result<()> {
     Ok(())
 }
 
+pub fn validate_capability_mcp_servers(servers: &ScopedMcpServers) -> Result<()> {
+    for (name, server) in servers {
+        if server.preset.is_some() {
+            return Err(anyhow!(
+                "Capability-contributed MCP server '{name}' cannot use a catalog preset"
+            ));
+        }
+        if server.acts_as != McpServerActsAs::None {
+            return Err(anyhow!(
+                "Capability-contributed MCP server '{name}' cannot set actsAs"
+            ));
+        }
+    }
+    validate_scoped_mcp_servers(servers)
+}
+fn validate_catalog_reference_shape(name: &str, server: &ScopedMcpServer) -> Result<()> {
+    let conflicting_field = if !server.url.is_empty() {
+        Some("url")
+    } else if !server.headers.is_empty() {
+        Some("headers")
+    } else if server.command.is_some() {
+        Some("command")
+    } else if !server.args.is_empty() {
+        Some("args")
+    } else if !server.env.is_empty() {
+        Some("env")
+    } else if server.auth_mode != McpServerAuthMode::None {
+        Some("auth_mode")
+    } else if server.protocol_mode != McpProtocolMode::Auto {
+        Some("protocol_mode")
+    } else if server.oauth_provider_id.is_some() {
+        Some("oauth_provider_id")
+    } else if !server.tool_discovery {
+        Some("tool_discovery")
+    } else {
+        None
+    };
+    if let Some(field) = conflicting_field {
+        return Err(anyhow!(
+            "Scoped MCP server '{name}' catalog preset reference cannot be combined with inline field '{field}'"
+        ));
+    }
+    Ok(())
+}
+pub async fn validate_scoped_mcp_servers_for_org(
+    db: &StorageBackend,
+    org_id: i64,
+    servers: &ScopedMcpServers,
+) -> Result<()> {
+    validate_scoped_mcp_servers(servers)?;
+    for (name, server) in servers {
+        let Some(preset) = &server.preset else {
+            continue;
+        };
+        let preset_name = preset.catalog_name();
+        let row = db
+            .get_mcp_server_by_name(org_id, preset_name)
+            .await?
+            .ok_or_else(|| {
+                anyhow!(
+                    "Scoped MCP server '{name}' references missing catalog preset '{preset_name}'"
+                )
+            })?;
+        if row.status != "active" {
+            return Err(anyhow!(
+                "Scoped MCP server '{name}' references catalog preset '{preset_name}' with non-live status '{}'",
+                row.status
+            ));
+        }
+        if server.acts_as != McpServerActsAs::None {
+            let settings = McpServerService::settings_from_row(&row);
+            if settings.auth_mode != McpServerAuthMode::OAuth || settings.oauth.is_none() {
+                return Err(anyhow!(
+                    "Scoped MCP server '{name}' with actsAs '{}' requires catalog preset '{preset_name}' to have OAuth configuration",
+                    server.acts_as
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+pub async fn validate_merged_scoped_mcp_servers_for_org<'a, I>(
+    db: &StorageBackend,
+    org_id: i64,
+    layers: I,
+) -> Result<ScopedMcpServers>
+where
+    I: IntoIterator<Item = &'a ScopedMcpServers>,
+{
+    let merged = merge_scoped_mcp_server_layers(layers);
+    validate_scoped_mcp_servers_for_org(db, org_id, &merged).await?;
+    Ok(merged)
+}
+
 fn scoped_mcp_server_uuid(session_id: Uuid, server_name: &str) -> Uuid {
     Uuid::new_v5(&session_id, server_name.as_bytes())
 }
@@ -323,8 +504,10 @@ fn scoped_mcp_server_uuid(session_id: Uuid, server_name: &str) -> Uuid {
 mod tests {
     use super::*;
     use crate::kernel_imports::{HarnessId, ScopedMcpServer, SessionId};
+    use crate::storage::models::{CreateMcpServerRow, UpdateMcpServer};
     use chrono::Utc;
     use everruns_platform::{Agent, AgentStatus, generate_agent_public_id};
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct MutableConnectionResolver {
         token: tokio::sync::RwLock<Option<String>>,
@@ -341,6 +524,94 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct CountingConnectionResolver {
+        calls: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl UserConnectionResolver for CountingConnectionResolver {
+        async fn get_connection_token(
+            &self,
+            _session_id: SessionId,
+            _provider: &str,
+        ) -> everruns_provider::error::Result<Option<String>> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(Some("legacy-token".to_string()))
+        }
+    }
+
+    #[derive(Default)]
+    struct CatalogPreviewEgress {
+        calls: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl EgressService for CatalogPreviewEgress {
+        async fn send(
+            &self,
+            request: everruns_core::EgressRequest,
+        ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
+            assert!(
+                request
+                    .headers
+                    .keys()
+                    .all(|name| !name.eq_ignore_ascii_case("Authorization"))
+            );
+            let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+            match body["method"].as_str().unwrap_or_default() {
+                "initialize" => Ok(everruns_core::EgressResponse {
+                    status: 200,
+                    headers: std::collections::BTreeMap::from([(
+                        "Mcp-Session-Id".to_string(),
+                        "preview-session".to_string(),
+                    )]),
+                    body: serde_json::to_vec(&serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": 0,
+                        "result": {
+                            "protocolVersion": "2025-06-18",
+                            "capabilities": {}
+                        }
+                    }))
+                    .unwrap(),
+                }),
+                "notifications/initialized" => Ok(everruns_core::EgressResponse {
+                    status: 202,
+                    headers: Default::default(),
+                    body: Vec::new(),
+                }),
+                "tools/list" => {
+                    self.calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(everruns_core::EgressResponse {
+                        status: 200,
+                        headers: Default::default(),
+                        body: serde_json::to_vec(&serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": 1,
+                            "result": {
+                                "tools": [{
+                                    "name": "echo",
+                                    "description": "Echo a message",
+                                    "inputSchema": {"type": "object"}
+                                }]
+                            }
+                        }))
+                        .unwrap(),
+                    })
+                }
+                method => panic!("unexpected MCP preview method: {method}"),
+            }
+        }
+
+        async fn send_stream(
+            &self,
+            _request: everruns_core::EgressRequest,
+        ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
+            panic!("MCP discovery should not use streaming egress")
+        }
+    }
+
     fn scoped_server(url: &str) -> ScopedMcpServer {
         ScopedMcpServer {
             url: url.to_string(),
@@ -354,6 +625,44 @@ mod tests {
             oauth_provider_id: Some(provider.to_string()),
             ..Default::default()
         }
+    }
+    fn catalog_server(preset: &str, acts_as: McpServerActsAs) -> ScopedMcpServer {
+        ScopedMcpServer {
+            preset: Some(format!("catalog:{preset}").parse().unwrap()),
+            acts_as,
+            ..Default::default()
+        }
+    }
+    async fn seed_catalog_server(
+        db: &StorageBackend,
+        name: &str,
+        oauth: bool,
+    ) -> everruns_provider::typed_id::McpServerId {
+        let settings = crate::domains::mcp_servers::service::McpServerSettings {
+            auth_mode: if oauth {
+                McpServerAuthMode::OAuth
+            } else {
+                McpServerAuthMode::None
+            },
+            protocol_mode: McpProtocolMode::V2025June,
+            oauth: oauth
+                .then_some(crate::domains::mcp_servers::service::McpServerOAuthSettings::default()),
+        };
+        db.create_mcp_server(
+            everruns_core::DEFAULT_ORG_ID,
+            CreateMcpServerRow {
+                name: name.to_string(),
+                description: None,
+                url: "http://8.8.8.8/mcp".to_string(),
+                transport_type: "http".to_string(),
+                api_key_encrypted: None,
+                headers: Some(serde_json::json!({"X-Catalog":"value"})),
+                settings: Some(serde_json::to_value(settings).unwrap()),
+            },
+        )
+        .await
+        .unwrap()
+        .id
     }
 
     #[test]
@@ -699,6 +1008,235 @@ mod tests {
             error.to_string().contains("stdio"),
             "expected stdio rejection, got: {error}"
         );
+    }
+
+    #[test]
+    fn validate_scoped_mcp_servers_rejects_inline_identity_and_preset_fields() {
+        for acts_as in [McpServerActsAs::Service, McpServerActsAs::User] {
+            let servers = ScopedMcpServers::from([(
+                "docs".into(),
+                ScopedMcpServer {
+                    url: "https://docs.example.com/mcp".into(),
+                    acts_as,
+                    ..Default::default()
+                },
+            )]);
+            let error = validate_scoped_mcp_servers(&servers).unwrap_err();
+            assert!(error.to_string().contains("requires a catalog preset"));
+        }
+
+        for (field, server) in [
+            (
+                "url",
+                ScopedMcpServer {
+                    url: "https://docs.example.com/mcp".into(),
+                    ..catalog_server("linear", McpServerActsAs::None)
+                },
+            ),
+            (
+                "headers",
+                ScopedMcpServer {
+                    headers: HashMap::from([("X-Test".into(), "value".into())]),
+                    ..catalog_server("linear", McpServerActsAs::None)
+                },
+            ),
+        ] {
+            let servers = ScopedMcpServers::from([("docs".into(), server)]);
+            let error = validate_scoped_mcp_servers(&servers).unwrap_err();
+            assert!(error.to_string().contains(field), "{error}");
+        }
+    }
+
+    #[tokio::test]
+    async fn catalog_validation_requires_live_existing_oauth_presets() {
+        let db = StorageBackend::in_memory();
+        let org_id = everruns_core::DEFAULT_ORG_ID;
+        let missing = ScopedMcpServers::from([(
+            "docs".into(),
+            catalog_server("missing", McpServerActsAs::None),
+        )]);
+        let error = validate_scoped_mcp_servers_for_org(&db, org_id, &missing)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("missing"), "{error}");
+
+        let plain_id = seed_catalog_server(&db, "plain", false).await;
+        let needs_oauth = ScopedMcpServers::from([(
+            "docs".into(),
+            catalog_server("plain", McpServerActsAs::Service),
+        )]);
+        let error = validate_scoped_mcp_servers_for_org(&db, org_id, &needs_oauth)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("OAuth"), "{error}");
+        db.update_mcp_server(
+            org_id,
+            plain_id.uuid(),
+            UpdateMcpServer {
+                status: Some("disabled".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let disabled = ScopedMcpServers::from([(
+            "docs".into(),
+            catalog_server("plain", McpServerActsAs::None),
+        )]);
+        let error = validate_scoped_mcp_servers_for_org(&db, org_id, &disabled)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("disabled"), "{error}");
+
+        db.update_mcp_server(
+            org_id,
+            plain_id.uuid(),
+            UpdateMcpServer {
+                status: Some("archived".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let archived = ScopedMcpServers::from([(
+            "docs".into(),
+            catalog_server("plain", McpServerActsAs::None),
+        )]);
+        let error = validate_scoped_mcp_servers_for_org(&db, org_id, &archived)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("plain"), "{error}");
+
+        let deleted_id = seed_catalog_server(&db, "deleted", false).await;
+        db.update_mcp_server(
+            org_id,
+            deleted_id.uuid(),
+            UpdateMcpServer {
+                status: Some("deleted".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let deleted = ScopedMcpServers::from([(
+            "docs".into(),
+            catalog_server("deleted", McpServerActsAs::None),
+        )]);
+        let error = validate_scoped_mcp_servers_for_org(&db, org_id, &deleted)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("deleted"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn two_logical_names_can_resolve_the_same_catalog_preset() {
+        let db = Arc::new(StorageBackend::in_memory());
+        seed_catalog_server(&db, "linear", true).await;
+        let service = McpServerService::new(db, None);
+        let harness = test_harness();
+        let agent = test_agent();
+        let mut session = test_session(harness.id, agent.public_id);
+        session.mcp_servers = ScopedMcpServers::from([
+            (
+                "issues".into(),
+                catalog_server("linear", McpServerActsAs::Service),
+            ),
+            (
+                "projects".into(),
+                catalog_server("linear", McpServerActsAs::User),
+            ),
+        ]);
+
+        for (prefix, acts_as) in [
+            ("issues", McpServerActsAs::Service),
+            ("projects", McpServerActsAs::User),
+        ] {
+            let resolved = resolve_scoped_mcp_server(
+                &service,
+                everruns_core::DEFAULT_ORG_ID,
+                &harness,
+                Some(&agent),
+                &session,
+                prefix,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert_eq!(resolved.name, prefix);
+            assert_eq!(resolved.url, "http://8.8.8.8/mcp");
+            assert_eq!(resolved.auth_mode, McpServerAuthMode::None);
+            assert_eq!(resolved.protocol_mode, McpProtocolMode::V2025June);
+            assert!(resolved.oauth_provider_id.is_none());
+            assert!(resolved.api_key.is_none());
+            assert_eq!(resolved.acts_as, acts_as);
+            assert_eq!(resolved.headers.get("X-Catalog"), Some(&"value".into()));
+        }
+    }
+    #[tokio::test]
+    async fn catalog_preview_discovery_never_uses_legacy_connection_tokens() {
+        let db = StorageBackend::in_memory();
+        seed_catalog_server(&db, "linear", true).await;
+        let resolver = Arc::new(CountingConnectionResolver::default());
+        let resolver_trait: Arc<dyn UserConnectionResolver> = resolver.clone();
+        let egress = CatalogPreviewEgress::default();
+
+        for acts_as in [
+            McpServerActsAs::None,
+            McpServerActsAs::Service,
+            McpServerActsAs::User,
+        ] {
+            let servers =
+                ScopedMcpServers::from([("docs".to_string(), catalog_server("linear", acts_as))]);
+            let materialized =
+                materialize_scoped_mcp_servers(&db, everruns_core::DEFAULT_ORG_ID, &servers)
+                    .await
+                    .unwrap();
+            let docs = materialized.get("docs").unwrap();
+            assert_eq!(docs.auth_mode, McpServerAuthMode::None);
+            assert!(docs.oauth_provider_id.is_none());
+            assert_eq!(docs.acts_as, acts_as);
+            let discovered = fetch_mcp_tools(&egress, &docs.url, None, &docs.headers)
+                .await
+                .unwrap();
+            assert_eq!(discovered.len(), 1);
+
+            let tools = build_materialized_scoped_mcp_tool_definitions(
+                &db,
+                everruns_core::DEFAULT_ORG_ID,
+                &servers,
+                Some(SessionId::new()),
+                Some(&resolver_trait),
+                &egress,
+            )
+            .await
+            .unwrap();
+            assert_eq!(tools.len(), 1, "catalog preview must expose one MCP tool");
+            assert!(tools[0].name().contains("echo"));
+        }
+
+        assert_eq!(resolver.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(egress.calls.load(Ordering::SeqCst), 6);
+    }
+
+    #[test]
+    fn capability_mcp_validation_rejects_catalog_presets_and_execution_identity() {
+        let preset = ScopedMcpServers::from([(
+            "docs".to_string(),
+            catalog_server("linear", McpServerActsAs::None),
+        )]);
+        let error = validate_capability_mcp_servers(&preset).unwrap_err();
+        assert!(error.to_string().contains("cannot use a catalog preset"));
+
+        let identity = ScopedMcpServers::from([(
+            "docs".to_string(),
+            ScopedMcpServer {
+                url: "https://docs.example.com/mcp".to_string(),
+                acts_as: McpServerActsAs::Service,
+                ..Default::default()
+            },
+        )]);
+        let error = validate_capability_mcp_servers(&identity).unwrap_err();
+        assert!(error.to_string().contains("cannot set actsAs"));
     }
 
     #[test]

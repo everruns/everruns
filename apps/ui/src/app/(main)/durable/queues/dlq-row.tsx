@@ -1,11 +1,10 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { RotateCcw, Trash2, ExternalLink } from "lucide-react";
-import Link from "next/link";
 import { formatDistanceToNow } from "@/lib/formatting";
 import type { DlqEntry } from "@/lib/api/types";
 import { EntityIdentity } from "@/components/ui/entity-identity";
@@ -79,14 +78,14 @@ export function DlqRow({
             <Trash2 className="h-3 w-3 text-muted-foreground" />
           </Button>
           {entry.workflow_id ? (
-            <Button
+            <LinkButton
               variant="ghost"
               size="sm"
               aria-label={`View workflow ${entry.workflow_id}`}
-              render={<Link href={`/durable/workflows/${entry.workflow_id}`} />}
+              href={`/durable/workflows/${entry.workflow_id}`}
             >
               <ExternalLink className="h-3 w-3" />
-            </Button>
+            </LinkButton>
           ) : (
             <Badge variant="outline" className="text-xs">
               standalone

@@ -15,6 +15,14 @@
 #    no sqlx, utoipa, inventory, axum, or tonic in normal edges. (The
 #    provider SPI's `sqlx`/`openapi` features are intentional, documented
 #    opt-ins that provider crates leave off.)
+# 5. Server and platform code never resolves credentials from the process
+#    environment (the fail-closed Key Resolution Contract in
+#    knowledge/foundations/llm-drivers.md): no EnvCredentialProvider, no
+#    `from_env`, no `provider_from_env` on any org-scoped path. Drivers may
+#    *declare* their vendor's variable names — declaring reads nothing — but
+#    only standalone/CLI/dev entrypoints may pair a declaration with a lookup.
+# 6. Drivers never read credential env vars themselves; the names they declare
+#    are inert data.
 
 set -euo pipefail
 
@@ -112,9 +120,38 @@ for crate in "${PROVIDER_CRATES[@]}"; do
   fi
 done
 
+# 5. Org-scoped code never pairs a driver's declared variable names with a real
+#    environment lookup. The names are the drivers'; the lookup belongs to
+#    standalone/CLI/dev entrypoints only.
+# Credential-specific only: `everruns_<driver>::from_env(` is a provider
+# constructor, while unrelated `Type::from_env` helpers (deployment feature
+# flags) are not credential resolution and stay allowed.
+ENV_CREDENTIAL_PATTERN='(EnvCredentialProvider|provider_from_env|everruns_[a-z_]+::from_env[[:space:]]*\()'
+SERVER_DIRS=(crates/server/src crates/platform/src)
+for dir in "${SERVER_DIRS[@]}"; do
+  if matches=$(grep -rnE "$ENV_CREDENTIAL_PATTERN" "$dir" --include='*.rs' 2>/dev/null); then
+    echo "Server/platform code must not resolve credentials from the environment:"
+    echo "$matches"
+    FAILED=1
+  fi
+done
+
+# 6. Drivers declare credential variable names; they never read them. A driver
+#    reading its own key from env is the shape the contract has always banned.
+# A real lookup is `env::var("NAME")`. A declaration is `.env("NAME")`, which
+# reads nothing, so the `var` is what distinguishes them.
+CREDENTIAL_ENV_READ='env::var(_os)?[[:space:]]*\([[:space:]]*"[A-Z_]*(API_KEY|SECRET|TOKEN|BASE_URL|ENDPOINT|ACCESS_KEY)'
+for dir in "${PROVIDER_DIRS[@]}"; do
+  if matches=$(grep -rnE "$CREDENTIAL_ENV_READ" "$dir/src" --include='*.rs' 2>/dev/null); then
+    echo "$dir must declare its credential variables, never read them:"
+    echo "$matches"
+    FAILED=1
+  fi
+done
+
 if [ "$FAILED" -ne 0 ]; then
-  echo "Provider isolation guard failed. Wire-protocol crates build on everruns-provider alone (EVE-874)."
+  echo "Provider isolation guard failed. Wire-protocol crates build on everruns-provider alone (EVE-874), and credentials never reach org-scoped paths from the environment."
   exit 1
 fi
 
-echo "Provider isolation guard passed: provider crates depend on the provider SPI, not core/host/platform/server."
+echo "Provider isolation guard passed: provider crates depend on the provider SPI, not core/host/platform/server; credential env resolution stays out of server/platform."

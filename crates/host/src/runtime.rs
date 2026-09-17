@@ -1977,6 +1977,10 @@ impl RuntimeHostAdapter for InProcessRuntime {
         self.tool_augmentor.clone()
     }
 
+    fn judgment_service(&self) -> Option<Arc<dyn everruns_core::JudgmentService>> {
+        Some(self.host_composition.judgment_service())
+    }
+
     fn utility_llm_service(&self) -> Option<Arc<dyn everruns_core::UtilityLlmService>> {
         Some(self.host_composition.utility_llm_service())
     }

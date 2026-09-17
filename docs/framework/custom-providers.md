@@ -32,6 +32,12 @@ Model ids must remain safe to log, compare, store, and pass across application
 boundaries. Provider errors should preserve useful classifications without
 including secrets.
 
+A driver registered through a `DriverDescriptor` also declares which
+environment variables it reads, on its own credential fields. Declaring is
+inert — the driver never reads them — and it is what lets a caller resolve the
+provider from the environment without any central name mapping. See
+[Credentials](/framework/credentials/).
+
 Use focused provider crates when they already implement the protocol you need.
 Custom backends and provider registry topology belong to [low-level host
 composition](/framework/custom-backends/), not ordinary model selection.

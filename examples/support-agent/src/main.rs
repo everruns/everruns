@@ -10,7 +10,6 @@ const QUESTION: &str = "Customer cust_mfa reset their password but still cannot 
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let api_key = std::env::var("OPENAI_API_KEY")?;
     let input = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
     let question = match input.as_str() {
         "" => QUESTION.to_owned(),
@@ -18,7 +17,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => input,
     };
 
-    let agent = agent::build(api_key)?;
+    // OPENAI_API_KEY, declared by the OpenAI driver itself.
+    let agent = agent::build(everruns::OpenAI::from_env()?)?;
     let engine = Engine::new();
     let session = engine.create(agent);
 

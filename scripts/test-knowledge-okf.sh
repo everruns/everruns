@@ -8,6 +8,14 @@ CHECKER="$PROJECT_ROOT/scripts/check_okf.py"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
+sed_in_place() {
+  if sed --version >/dev/null 2>&1; then
+    sed -i "$@"
+  else
+    sed -i '' "$@"
+  fi
+}
+
 write_bundle() {
   local bundle="$1"
   local first_title="$2"
@@ -91,7 +99,7 @@ rename_first_case() {
 
   mv "$bundle/test-cases/ui/widgets/TC001_first.md" \
     "$bundle/test-cases/ui/widgets/$filename"
-  sed -i "s/TC001_first.md/$filename/" "$bundle/test-cases/ui/widgets/index.md"
+  sed_in_place "s/TC001_first.md/$filename/" "$bundle/test-cases/ui/widgets/index.md"
 }
 
 python3 "$CHECKER" "$PROJECT_ROOT/knowledge"
@@ -103,18 +111,18 @@ python3 "$CHECKER" "$valid_bundle"
 escaped_double_title_bundle="$TMP_DIR/escaped-double-title"
 write_bundle \
   "$escaped_double_title_bundle" "TC001: Create a widget" "TC002" "TC002: Delete a widget"
-sed -i 's/^title: "TC001: Create a widget"$/title: "TC001: Create a \\"widget\\""/' \
+sed_in_place 's/^title: "TC001: Create a widget"$/title: "TC001: Create a \\"widget\\""/' \
   "$escaped_double_title_bundle/test-cases/ui/widgets/TC001_first.md"
-sed -i 's/^# TC001: Create a widget$/# TC001: Create a "widget"/' \
+sed_in_place 's/^# TC001: Create a widget$/# TC001: Create a "widget"/' \
   "$escaped_double_title_bundle/test-cases/ui/widgets/TC001_first.md"
 python3 "$CHECKER" "$escaped_double_title_bundle"
 
 escaped_single_title_bundle="$TMP_DIR/escaped-single-title"
 write_bundle \
   "$escaped_single_title_bundle" "TC001: Create a widget" "TC002" "TC002: Delete a widget"
-sed -i "s/^title: \"TC001: Create a widget\"$/title: 'TC001: Create a ''widget'''/" \
+sed_in_place "s/^title: \"TC001: Create a widget\"$/title: 'TC001: Create a ''widget'''/" \
   "$escaped_single_title_bundle/test-cases/ui/widgets/TC001_first.md"
-sed -i "s/^# TC001: Create a widget$/# TC001: Create a 'widget'/" \
+sed_in_place "s/^# TC001: Create a widget$/# TC001: Create a 'widget'/" \
   "$escaped_single_title_bundle/test-cases/ui/widgets/TC001_first.md"
 python3 "$CHECKER" "$escaped_single_title_bundle"
 
@@ -125,28 +133,28 @@ assert_rejected "$duplicate_bundle" "duplicate test case identifier TC001"
 invalid_title_bundle="$TMP_DIR/invalid-title"
 write_bundle \
   "$invalid_title_bundle" "TC001: Create a widget" "TC002" "TC002: Delete a widget"
-sed -i 's/^title: "TC001: Create a widget"$/title: "Create a widget"/' \
+sed_in_place 's/^title: "TC001: Create a widget"$/title: "Create a widget"/' \
   "$invalid_title_bundle/test-cases/ui/widgets/TC001_first.md"
 assert_rejected "$invalid_title_bundle" "test case title must start with 'TC###: '"
 
 invalid_h1_bundle="$TMP_DIR/invalid-h1"
 write_bundle \
   "$invalid_h1_bundle" "TC001: Create a widget" "TC002" "TC002: Delete a widget"
-sed -i 's/^# TC001: Create a widget$/# Create a widget/' \
+sed_in_place 's/^# TC001: Create a widget$/# Create a widget/' \
   "$invalid_h1_bundle/test-cases/ui/widgets/TC001_first.md"
 assert_rejected "$invalid_h1_bundle" "test case H1 must start with 'TC###: '"
 
 missing_h1_bundle="$TMP_DIR/missing-h1"
 write_bundle \
   "$missing_h1_bundle" "TC001: Create a widget" "TC002" "TC002: Delete a widget"
-sed -i '/^# TC001: Create a widget$/d' \
+sed_in_place '/^# TC001: Create a widget$/d' \
   "$missing_h1_bundle/test-cases/ui/widgets/TC001_first.md"
 assert_rejected "$missing_h1_bundle" "test case must contain an H1 heading"
 
 mismatched_heading_bundle="$TMP_DIR/mismatched-heading"
 write_bundle \
   "$mismatched_heading_bundle" "TC001: Create a widget" "TC002" "TC002: Delete a widget"
-sed -i 's/^# TC001: Create a widget$/# TC002: Create another widget/' \
+sed_in_place 's/^# TC001: Create a widget$/# TC002: Create another widget/' \
   "$mismatched_heading_bundle/test-cases/ui/widgets/TC001_first.md"
 assert_rejected \
   "$mismatched_heading_bundle" \

@@ -9,13 +9,12 @@ const QUESTION: &str = "Review sample_payment.rs against its refund contract. Ru
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let api_key = std::env::var("ANTHROPIC_API_KEY")?;
     let input = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
     let question = if input.is_empty() { QUESTION } else { &input };
     let agent = Agent::builder()
         .name("coding-review-agent")
         .instructions(include_str!("instructions.md"))
-        .provider(everruns_anthropic::provider("anthropic", api_key))
+        .provider(everruns_anthropic::from_env("anthropic")?)
         .model(MODEL)
         .max_iterations(12)
         .tool(tools::inspect_change())

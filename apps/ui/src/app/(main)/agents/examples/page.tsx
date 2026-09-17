@@ -3,8 +3,7 @@
 import { useState, useCallback, useMemo } from "react";
 import { useAgentExamples, useImportAgentExample, useCapabilities, usePageTitle } from "@/hooks";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { ArrowLeft } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
@@ -50,15 +49,15 @@ export default function AllExamplesPage() {
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <Button
+          <LinkButton
             variant="ghost"
             size="icon"
             className="h-8 w-8"
             aria-label="Back to agents"
-            render={<Link href="/agents" />}
+            href="/agents"
           >
             <ArrowLeft className="w-4 h-4" />
-          </Button>
+          </LinkButton>
           <h1 className="text-2xl font-bold">Example Agents</h1>
         </div>
         <SearchInput

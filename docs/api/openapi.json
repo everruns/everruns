@@ -18836,6 +18836,10 @@
           "type": "object",
           "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
           "properties": {
+            "actsAs": {
+              "$ref": "#/components/schemas/McpServerActsAs",
+              "description": "Identity whose grant this attachment requests."
+            },
             "args": {
               "type": "array",
               "items": {
@@ -18896,6 +18900,17 @@
             "url": {
               "type": "string",
               "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio."
+            },
+            "use": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/McpServerPresetRef",
+                  "description": "Organization catalog preset that supplies transport and authentication policy."
+                }
+              ]
             }
           }
         },
@@ -24488,6 +24503,13 @@
               "null"
             ],
             "description": "Default value the UI pre-fills (e.g. an OAuth scope or AWS region). The\nstored credential omits unfilled optional fields, so drivers still apply\ntheir own defaults; this only seeds the form input."
+          },
+          "env": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Environment variables this field can be read from in standalone/dev use,\nmost preferred first.\n\nDeclared by the driver, because only the driver knows what its vendor's\nown SDK reads: `AWS_ACCESS_KEY_ID` for Bedrock, `AZURE_TENANT_ID` for\nMAI's Entra group, `ANTHROPIC_API_KEY` for Anthropic. Later entries are\nalternates the vendor also honors (`GOOGLE_API_KEY`,\n`AWS_DEFAULT_REGION`), not a second field.\n\nEmpty means the field cannot be supplied from the environment, so a\ngroup containing a required field with no variable never resolves from\nenv alone. Server credential resolution ignores this entirely."
           },
           "field_type": {
             "$ref": "#/components/schemas/FieldType",
@@ -31209,6 +31231,16 @@
           }
         }
       },
+      "McpServerActsAs": {
+        "type": "string",
+        "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+        "enum": [
+          "none",
+          "service",
+          "user"
+        ],
+        "example": "service"
+      },
       "McpServerAuthMode": {
         "type": "string",
         "description": "MCP server authentication mode.",
@@ -31218,6 +31250,11 @@
           "oauth"
         ],
         "example": "api_key"
+      },
+      "McpServerPresetRef": {
+        "type": "string",
+        "description": "Reference to an organization MCP server catalog entry.",
+        "example": "catalog:linear"
       },
       "McpServerStatus": {
         "type": "string",

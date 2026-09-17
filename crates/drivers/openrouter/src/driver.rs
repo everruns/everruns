@@ -181,24 +181,51 @@ fn is_openrouter_api_url(api_url: &str) -> bool {
 /// let mut registry = DriverRegistry::new();
 /// register_driver(&mut registry);
 /// ```
-pub fn register_driver(registry: &mut DriverRegistry) {
-    registry.register_descriptor(DriverDescriptor {
+/// This driver's descriptor: identity, services, and the credential schema
+/// that declares its own environment variables.
+pub fn descriptor() -> DriverDescriptor {
+    DriverDescriptor {
         display_name: "OpenRouter".into(),
         credential_schema: CredentialFormSchema::api_key(
+            "OPENROUTER_API_KEY",
             "Create an API key at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys), \
              or use \"Connect with OpenRouter\" to authorize one without leaving the app.",
         ),
+        base_url_env: Some("OPENROUTER_BASE_URL".into()),
         // OpenRouter supports a one-click PKCE flow that hands back a
         // user-controlled API key, so an admin can connect without minting and
         // pasting a key manually. The key is stored like any other credential.
         oauth: Some(everruns_provider::DriverOAuthConfig::openrouter()),
         ..DriverDescriptor::chat_only(DriverId::OpenRouter, |config| {
             Provider::new(config.provider.clone(), OpenRouterChatDriver::new())
-                .base_url(config.base_url.as_deref().unwrap_or("https://openrouter.ai/api/v1"))
+                .base_url(
+                    config
+                        .base_url
+                        .as_deref()
+                        .unwrap_or("https://openrouter.ai/api/v1"),
+                )
                 .auth(BearerAuth::new(config.api_key.clone().unwrap_or_default()))
                 .into_boxed_driver()
         })
-    });
+    }
+}
+
+/// Register the driver with a [`DriverRegistry`].
+pub fn register_driver(registry: &mut DriverRegistry) {
+    registry.register_descriptor(descriptor());
+}
+
+/// Build a provider from this driver's declared environment variables.
+///
+/// Standalone/CLI/dev only: server paths resolve credentials from storage and
+/// must never read the environment.
+pub fn from_env(
+    id: impl Into<everruns_provider::ProviderKey>,
+) -> std::result::Result<
+    everruns_provider::Provider,
+    everruns_provider::credential_provider::EnvCredentialError,
+> {
+    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
 }
 
 impl Default for OpenRouterChatDriver {

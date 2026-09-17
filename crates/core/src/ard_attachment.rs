@@ -46,6 +46,7 @@ pub fn attachment_kv_key(slug: &str) -> String {
 /// The materialized form of an attached resource. Mirrors the two attachment
 /// kinds the ARD client supports: a scoped MCP server, or an external A2A agent
 /// folded into `a2a_agent_delegation` config.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ArdAttachmentTarget {

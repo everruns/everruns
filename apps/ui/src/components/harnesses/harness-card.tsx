@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/button";
 import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { GitBranch, Pencil } from "lucide-react";
@@ -90,15 +90,15 @@ export function HarnessCard({
             showEditButton &&
             !harness.is_built_in &&
             harness.status === "active" && (
-              <Button
+              <LinkButton
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
                 aria-label={`Edit ${getDisplayName(harness)}`}
-                render={<Link href={`/harnesses/${harness.id}/edit`} />}
+                href={`/harnesses/${harness.id}/edit`}
               >
                 <Pencil className="icon-sharp h-4 w-4" />
-              </Button>
+              </LinkButton>
             )
           }
         />

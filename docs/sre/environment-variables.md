@@ -366,6 +366,34 @@ DEFAULT_META_API_KEY=...
 - The `just start-all` command automatically sets these from `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `GEMINI_API_KEY` if present
 - If no API key is configured for a provider, LLM calls will fail and users will see an error message in the chat: "I encountered an error while processing your request. Please try again later."
 
+## System Model Keys
+
+Two deployment-owned models sit outside the provider system above. Neither is
+selectable by an agent, neither is stored in the database, and neither is
+reachable from session or agent configuration — they are host services the
+platform uses for its own internal work.
+
+| Variable | Powers | Unset means |
+|----------|--------|-------------|
+| `UTILITY_OPENAI_API_KEY` | Agent Analyze/Health checks, and guardrail checks with `engine: "utility_llm"` (the default) | Those checks are skipped; Analyze and Health are unavailable |
+| `UTILITY_TYPESAFE_API_KEY` | Guardrail checks with `engine: "jev"` | Those checks are skipped with a warning and the turn proceeds |
+
+Both are read from the process environment at startup. Missing keys **fail
+open**: a guardrail whose engine is not configured never blocks, so a missing
+key weakens policy rather than wedging traffic. Check the startup logs if a
+configured guardrail appears to do nothing.
+
+```bash
+# Control-plane and workers both read these.
+UTILITY_OPENAI_API_KEY=sk-...
+UTILITY_TYPESAFE_API_KEY=ts-...
+```
+
+Agents can also be given the TypeSafe capability directly, which is a
+**separate** credential: a per-user connection configured in Settings >
+Connections, never this deployment key. See
+[TypeSafe](/integrations/typesafe/) and [Guardrails](/capabilities/guardrails/).
+
 ## System Email Delivery
 
 System email delivery is an internal service used by product and operational flows. It is not an agent capability, public API, or UI setting.

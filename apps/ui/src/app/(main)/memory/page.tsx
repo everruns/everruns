@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -18,7 +17,7 @@ import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { ArchiveMemoryDialog } from "@/components/memory/archive-memory-dialog";
 import { MemoryFormDialog } from "@/components/memory/memory-form-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
 import { SearchInput } from "@/components/ui/search-input";
 import {
@@ -315,10 +314,10 @@ function MemoryCard({
                   Sync
                 </Button>
               )}
-              <Button variant="outline" size="sm" render={<Link href={`/memory/${memory.id}`} />}>
+              <LinkButton variant="outline" size="sm" href={`/memory/${memory.id}`}>
                 <FolderOpen className="h-4 w-4" />
                 Open
-              </Button>
+              </LinkButton>
               <Button
                 variant="outline"
                 size="sm"

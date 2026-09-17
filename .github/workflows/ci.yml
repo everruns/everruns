@@ -66,6 +66,7 @@ jobs:
       brave_search_integration: ${{ steps.core_filter.outputs.brave_search_integration }}
       duckduckgo_integration: ${{ steps.core_filter.outputs.duckduckgo_integration }}
       parallel_integration: ${{ steps.core_filter.outputs.parallel_integration }}
+      typesafe_integration: ${{ steps.core_filter.outputs.typesafe_integration }}
       ard: ${{ steps.core_filter.outputs.ard }}
       skip_slow_rust: ${{ steps.ci_opt_outs.outputs.skip_slow_rust }}
       skip_postgres_integration: ${{ steps.ci_opt_outs.outputs.skip_postgres_integration }}
@@ -311,6 +312,9 @@ jobs:
               - 'integrations/duckduckgo/**'
             parallel_integration:
               - 'integrations/parallel/**'
+            typesafe_integration:
+              - 'integrations/typesafe/**'
+              - 'crates/drivers/typesafe/**'
             ard:
               - 'crates/ard/**'
 
@@ -2344,6 +2348,7 @@ jobs:
 
           if [ "${{ needs.changes.outputs.brave_search_integration }}" = "true" ] || \
              [ "${{ needs.changes.outputs.duckduckgo_integration }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.typesafe_integration }}" = "true" ] || \
              [ "${{ needs.changes.outputs.parallel_integration }}" = "true" ]; then
             standalone_integration_affected=true
           else

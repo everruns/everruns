@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -354,10 +354,10 @@ export default function ScheduleDetailPage() {
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Retry
               </Button>
-              <Button variant="outline" render={<Link href="/durable/schedules" />}>
+              <LinkButton variant="outline" href="/durable/schedules">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to Schedules
-              </Button>
+              </LinkButton>
             </div>
           </CardContent>
         </Card>

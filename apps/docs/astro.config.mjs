@@ -6,6 +6,7 @@ import starlightSidebarTopics from "starlight-sidebar-topics";
 import starlightLlmsTxt from "starlight-llms-txt";
 import starlightLinksValidator from "starlight-links-validator";
 import apiSidebarFix from "./plugins/api-sidebar-fix.ts";
+import remarkStripRustHiddenLines from "./plugins/remark-strip-rust-hidden-lines.ts";
 import sitemapEnhance from "./integrations/sitemap-enhance.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -22,7 +23,12 @@ export default defineConfig({
   // flag alone does not reach the MDX pipeline, so `.mdx` tables silently
   // render as paragraphs. Listing the plugin here fixes every `.mdx` page.
   markdown: {
-    remarkPlugins: [remarkGfm],
+    remarkPlugins: [
+      remarkGfm,
+      // Hide rustdoc `# ` boilerplate lines in Rust blocks. rustdoc hides
+      // them; Starlight would otherwise render the `#` prefixes literally.
+      remarkStripRustHiddenLines,
+    ],
   },
   redirects: {
     // virtual_bash capability renamed to bashkit_shell
@@ -177,6 +183,8 @@ export default defineConfig({
                     { label: "Workspaces and Environments", slug: "framework/workspaces-and-environments" },
                     { label: "Workspace Security", slug: "framework/workspace-security" },
                     { label: "Models and Providers", slug: "framework/models-and-providers" },
+                    { label: "Direct Model Calls", slug: "framework/direct-model-calls" },
+                    { label: "Credentials", slug: "framework/credentials" },
                     { label: "Tools and Macros", slug: "framework/tools-and-macros" },
                     { label: "Sessions", slug: "framework/sessions" },
                     { label: "Session Work and Wakes", slug: "framework/background-work" },
@@ -375,6 +383,10 @@ export default defineConfig({
                     { label: "DuckDuckGo", slug: "integrations/duckduckgo" },
                     { label: "Parallel", slug: "integrations/parallel" },
                   ],
+                },
+                {
+                  label: "Reasoning & judgment",
+                  items: [{ label: "TypeSafe", slug: "integrations/typesafe" }],
                 },
                 {
                   label: "Messaging",
