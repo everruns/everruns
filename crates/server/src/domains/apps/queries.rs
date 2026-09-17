@@ -115,6 +115,11 @@ pub fn prepare_channel_storage(
         .as_object_mut()
         .and_then(|object| object.remove("auth"))
         .filter(|value| !value.is_null());
+    let auth = auth.map(|value| {
+        serde_json::from_value::<AppEndpointAuthConfig>(value.clone())
+            .and_then(serde_json::to_value)
+            .unwrap_or(value)
+    });
     let (channel_config, mut channel_config_encrypted) =
         prepare_channel_config(encryption, &transport)?;
     if auth.is_some()
@@ -176,12 +181,22 @@ pub fn decrypt_endpoint_auth(
     first_class_auth_value(encryption, row).map(|value| {
         serde_json::from_value(value).unwrap_or_else(|err| {
             tracing::error!(error = %err, "Failed to parse endpoint auth");
-            serde_json::from_value(serde_json::json!({"mode": "http_basic"}))
-                .expect("fail-closed endpoint auth is valid")
+            fail_closed_endpoint_auth()
         })
     })
 }
 
+fn fail_closed_endpoint_auth() -> AppEndpointAuthConfig {
+    serde_json::from_value(serde_json::json!({"mode": "http_basic"}))
+        .expect("fail-closed endpoint auth is valid")
+}
+
+fn parse_legacy_endpoint_auth(value: serde_json::Value) -> AppEndpointAuthConfig {
+    serde_json::from_value(value).unwrap_or_else(|err| {
+        tracing::error!(error = %err, "Failed to parse legacy endpoint auth");
+        fail_closed_endpoint_auth()
+    })
+}
 /// Return a write-ready config that includes either first-class auth or the
 /// encrypted legacy nested value. First-class storage is authoritative even
 /// when its payload cannot be decrypted or parsed.
@@ -229,13 +244,7 @@ pub fn channel_row_to_channel(
     let auth = if row.auth.is_some() || row.auth_encrypted.is_some() {
         decrypt_endpoint_auth(encryption, &row).map(Box::new)
     } else {
-        legacy_auth.and_then(|value| {
-            serde_json::from_value(value)
-                .map_err(|err| {
-                    tracing::error!(error = %err, "Failed to parse legacy endpoint auth");
-                })
-                .ok()
-        })
+        legacy_auth.map(|value| Box::new(parse_legacy_endpoint_auth(value)))
     };
 
     AppChannel {
@@ -303,8 +312,7 @@ pub async fn row_to_app(
             let auth = config
                 .as_object_mut()
                 .and_then(|object| object.remove("auth"))
-                .and_then(|value| serde_json::from_value(value).ok())
-                .map(Box::new);
+                .map(|value| Box::new(parse_legacy_endpoint_auth(value)));
             vec![AppChannel {
                 public_id: AppChannelId::from_uuid(row.id),
                 internal_id: row.id,
@@ -704,20 +712,29 @@ mod tests {
         let encryption = encryption();
         let legacy = serde_json::json!({
             "anonymous": false,
-            "auth": {"mode": "google_oidc", "provider": {
-                "type": "google_oidc",
-                "client_id": "legacy-client"
+            "auth": {"mode": "o_auth2_introspection", "provider": {
+                "type": "o_auth2_introspection",
+                "introspection_url": "https://identity.example.com/introspect"
             }}
         });
         let encrypted = encrypt_channel_config(Some(&encryption), &legacy).unwrap();
         let row = row(serde_json::json!({}), encrypted, None, None);
 
         let config = channel_config_with_auth(Some(&encryption), &row);
-        assert_eq!(config["auth"]["provider"]["client_id"], "legacy-client");
+        assert_eq!(config["auth"]["mode"], "o_auth2_introspection");
         let channel = channel_row_to_channel(Some(&encryption), row);
-        assert_eq!(
-            channel.auth.map(|auth| auth.mode),
-            Some(everruns_platform::AppEndpointAuthMode::GoogleOidc)
-        );
+        let auth = serde_json::to_value(channel.auth.unwrap()).unwrap();
+        assert_eq!(auth["mode"], "oauth2_introspection");
+        assert_eq!(auth["provider"]["type"], "oauth2_introspection");
+
+        let prepared = prepare_channel_storage(Some(&encryption), &config).unwrap();
+        let rewritten: serde_json::Value = serde_json::from_str(
+            &encryption
+                .decrypt_to_string(prepared.auth_encrypted.as_deref().unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(rewritten["mode"], "oauth2_introspection");
+        assert_eq!(rewritten["provider"]["type"], "oauth2_introspection");
     }
 }
