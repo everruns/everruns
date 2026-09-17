@@ -23,7 +23,9 @@ let agent = Agent::builder()
 # }
 ```
 
-Each driver crate offers the same entry point, returning a ready `Provider`:
+Each driver crate offers the same entry point, returning a ready `Provider`.
+The facade bundles OpenAI behind its `openai` feature; other drivers are
+separate crates you add as dependencies:
 
 ```rust
 use everruns::{Agent, Model};
@@ -56,9 +58,12 @@ either a resource key or a full Entra ID service principal. Alternates listed
 with "or" are variables the vendor itself also honors, tried in the order
 shown — not a second credential.
 
-Mutually exclusive methods resolve whole or not at all: a half-populated Entra
-block configures nothing rather than half-configuring a provider, matching how
-the same schema validates an operator-entered form.
+A credential resolves whole or not at all. If any required variable is missing
+the driver is simply not configured from the environment, rather than being
+half-configured into a provider that fails at its first request. A shell
+carrying `AWS_REGION` but no AWS keys does not configure Bedrock, and a
+half-populated Entra block does not configure MAI — the same rule the schema
+applies to an operator-entered form.
 
 This table is pinned by a test against the drivers' own declarations, so it
 cannot drift from what they read.

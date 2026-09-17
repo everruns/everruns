@@ -77,11 +77,12 @@ impl CredentialFormSchema {
     /// Resolve this schema's fields from an environment lookup.
     ///
     /// Each field takes the first of its declared variables that holds a
-    /// non-empty value. Groups follow the same mutual exclusion
-    /// [`validate`](Self::validate) enforces: a group contributes its fields
-    /// only when every required field in it resolved, and the first complete
-    /// group in declaration order wins, so a half-populated OAuth block never
-    /// half-configures a provider. Ungrouped fields are always kept.
+    /// non-empty value. The result then follows the same rules
+    /// [`validate`](Self::validate) enforces, so a partially configured
+    /// environment yields nothing rather than a half-configured provider:
+    /// every ungrouped required field must have resolved, and a group
+    /// contributes its fields only when every required field in it resolved,
+    /// the first complete group in declaration order winning.
     ///
     /// The result is the field map [`assemble_credential_document`] stores, so
     /// an env-resolved credential and an operator-entered one reach the driver
@@ -96,6 +97,19 @@ impl CredentialFormSchema {
             .iter()
             .map(|field| (field, field.resolve_env(&lookup)))
             .collect();
+
+        // Ungrouped required fields are mandatory, exactly as in `validate`.
+        // Without this an incomplete environment resolves to a partial
+        // credential and builds a broken provider, rather than falling through
+        // to whatever the caller configures explicitly. A shell carrying only
+        // `AWS_REGION` is the everyday case.
+        let ungrouped_satisfied = resolved
+            .iter()
+            .filter(|(field, _)| field.group.is_none() && field.required)
+            .all(|(_, value)| value.is_some());
+        if !ungrouped_satisfied {
+            return BTreeMap::new();
+        }
 
         let mut fields = BTreeMap::new();
         let mut group_taken = false;
@@ -485,6 +499,51 @@ mod env_tests {
             schema
                 .resolve_from_env(lookup(&[("API_KEY", "set"), ("OPENAI_API_KEY", "set")]))
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_partial_ungrouped_credential_resolves_to_nothing() {
+        // AWS_REGION alone is an everyday shell state and is not a credential.
+        // Returning just the region here would build a provider that fails at
+        // its first request instead of falling through to explicit config.
+        let bedrock = CredentialFormSchema {
+            fields: vec![
+                FormField::password("access_key_id", "Access Key ID")
+                    .required()
+                    .env("AWS_ACCESS_KEY_ID"),
+                FormField::password("secret_access_key", "Secret Access Key")
+                    .required()
+                    .env("AWS_SECRET_ACCESS_KEY"),
+                FormField::text("region", "Region").env("AWS_REGION"),
+            ],
+            instructions_markdown: String::new(),
+        };
+        assert!(
+            bedrock
+                .resolve_from_env(lookup(&[("AWS_REGION", "eu-west-1")]))
+                .is_empty()
+        );
+        assert!(
+            bedrock
+                .resolve_from_env(lookup(&[
+                    ("AWS_ACCESS_KEY_ID", "AKIA"),
+                    ("AWS_REGION", "eu-west-1"),
+                ]))
+                .is_empty()
+        );
+        // Both required fields present: the optional region rides along.
+        assert_eq!(
+            bedrock.resolve_from_env(lookup(&[
+                ("AWS_ACCESS_KEY_ID", "AKIA"),
+                ("AWS_SECRET_ACCESS_KEY", "shh"),
+                ("AWS_REGION", "eu-west-1"),
+            ])),
+            BTreeMap::from([
+                ("access_key_id".to_string(), "AKIA".to_string()),
+                ("secret_access_key".to_string(), "shh".to_string()),
+                ("region".to_string(), "eu-west-1".to_string()),
+            ])
         );
     }
 
