@@ -287,7 +287,7 @@ pub fn tool_call_budget() -> Box<dyn Scorer> {
     })
 }
 
-/// Quality signal for typed judgments: are the questions well formed?
+/// Quality signal for typed classification: are the questions well formed?
 ///
 /// Calling the tool is necessary but not sufficient. The model authors the
 /// questions, and the API answers whatever it is asked, so a malformed question

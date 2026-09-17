@@ -656,7 +656,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.22.1"
+version = "0.23.0"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -695,7 +695,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.18.11"
+version = "0.18.12"
 dependencies = [
  "async-trait",
  "chrono",
@@ -723,7 +723,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.19.3"
+version = "0.20.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -790,7 +790,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.23.1"
+version = "0.24.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -818,7 +818,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-bashkit"
-version = "0.18.7"
+version = "0.18.8"
 dependencies = [
  "async-trait",
  "bashkit",
@@ -834,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-filesystem"
-version = "0.18.8"
+version = "0.18.9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -856,15 +856,17 @@ dependencies = [
  "everruns-capability",
  "everruns-core",
  "everruns-provider",
+ "reqwest",
  "serde",
  "serde_json",
+ "thiserror",
+ "tokio",
  "tracing",
- "typesafe-systemone",
 ]
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.18.10"
+version = "0.18.11"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3098,18 +3100,6 @@ name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
-
-[[package]]
-name = "typesafe-systemone"
-version = "0.1.0"
-dependencies = [
- "reqwest",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tracing",
-]
 
 [[package]]
 name = "unicode-general-category"

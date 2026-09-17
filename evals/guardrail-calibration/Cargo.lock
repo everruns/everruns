@@ -401,7 +401,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.18.11"
+version = "0.18.12"
 dependencies = [
  "async-trait",
  "chrono",
@@ -429,7 +429,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -459,7 +459,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.19.3"
+version = "0.20.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -493,7 +493,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.23.1"
+version = "0.24.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -523,10 +523,12 @@ dependencies = [
  "everruns-capability",
  "everruns-core",
  "everruns-provider",
+ "reqwest",
  "serde",
  "serde_json",
+ "thiserror",
+ "tokio",
  "tracing",
- "typesafe-systemone",
 ]
 
 [[package]]
@@ -2439,18 +2441,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
-name = "typesafe-systemone"
-version = "0.1.0"
-dependencies = [
- "reqwest",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "unicode-general-category"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2458,9 +2448,9 @@ checksum = "0b993bddc193ae5bd0d623b49ec06ac3e9312875fdae725a975c51db1cc1677f"
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.26"
+version = "1.0.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
+checksum = "ab72a15cf68d77cb0987d3684aa8a45c5ef827e8cb49ee2f30bfd7ba2feb519f"
 
 [[package]]
 name = "unsafe-libyaml"

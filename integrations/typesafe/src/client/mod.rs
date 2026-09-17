@@ -1,4 +1,4 @@
-//! A Rust client for [TypeSafe](https://typesafe.ai)'s System One API.
+//! A client for [TypeSafe](https://typesafe.ai)'s System One API.
 //!
 //! A System One model answers *typed questions* about state: a probability, a
 //! selected option, a graded level. It does not write prose and it does not
@@ -9,15 +9,15 @@
 //! Reach for it where you would otherwise prompt a chat model and parse JSON
 //! out of its answer: verification, rating, routing, moderation, reranking.
 //!
-//! The crate stands alone — it has no Everruns dependency — and is maintained
-//! alongside [Everruns](https://everruns.com), which wraps it as an agent
-//! capability in `everruns-integrations-typesafe`.
+//! This module is the vendor edge and depends on nothing else in this crate:
+//! the capability, the connector, and the judgment service above it all speak
+//! to the API through [`TypeSafeClient`].
 //!
 //! # Example
 //!
 //! ```no_run
-//! # async fn run() -> Result<(), typesafe_systemone::Error> {
-//! use typesafe_systemone::{Evaluation, Question, TypeSafeClient};
+//! # async fn run() -> Result<(), everruns_integrations_typesafe::Error> {
+//! use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeClient};
 //!
 //! let client = TypeSafeClient::from_env()?; // TYPESAFE_API_KEY
 //!
@@ -70,13 +70,11 @@
 #![warn(missing_docs)]
 
 pub mod answer;
-pub mod client;
 pub mod error;
+pub mod http;
 pub mod question;
 
 pub use answer::{Answer, ChoiceAnswer, Judgment, NoulAnswer, ScoreAnswer, Usage};
-pub use client::{
-    API_KEY_ENV, DEFAULT_BASE_URL, RetryPolicy, TypeSafeClient, TypeSafeClientBuilder,
-};
 pub use error::{Error, Result};
+pub use http::{API_KEY_ENV, DEFAULT_BASE_URL, RetryPolicy, TypeSafeClient, TypeSafeClientBuilder};
 pub use question::{DEFAULT_MODEL, Evaluation, NoulCriteria, Question};

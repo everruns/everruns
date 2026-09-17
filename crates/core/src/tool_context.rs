@@ -86,8 +86,8 @@ pub enum ToolContextService {
     ImageArtifactStore,
     ProviderCredentialStore,
     UtilityLlmService,
-    /// Typed-judgment service for capability internals.
-    JudgmentService,
+    /// Typed-classifier for capability internals.
+    ClassifierService,
     McpInvoker,
     EgressService,
     MessageRetriever,
@@ -118,7 +118,7 @@ impl ToolContextService {
             Self::ImageArtifactStore => "ImageArtifactStore",
             Self::ProviderCredentialStore => "ProviderCredentialStore",
             Self::UtilityLlmService => "UtilityLlmService",
-            Self::JudgmentService => "JudgmentService",
+            Self::ClassifierService => "ClassifierService",
             Self::McpInvoker => "McpInvoker",
             Self::EgressService => "EgressService",
             Self::MessageRetriever => "MessageRetriever",
@@ -154,9 +154,9 @@ pub struct ToolContextServices {
     pub image_store: Option<Arc<dyn ImageArtifactStore>>,
     pub provider_credential_store: Option<Arc<dyn ProviderCredentialStore>>,
     pub utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
-    /// Typed-judgment service for capability internals that need a decision
+    /// Typed-classifier for capability internals that need a decision
     /// rather than text to parse.
-    pub judgment_service: Option<Arc<dyn crate::JudgmentService>>,
+    pub classifier: Option<Arc<dyn crate::ClassifierService>>,
     pub mcp_invoker: Option<Arc<dyn crate::McpToolInvoker>>,
     pub egress_service: Option<Arc<dyn crate::EgressService>>,
     pub message_retriever: Option<Arc<dyn crate::message_retriever::MessageRetriever>>,
@@ -190,7 +190,7 @@ impl ToolContextServices {
             ToolContextService::ImageArtifactStore => self.image_store.is_some(),
             ToolContextService::ProviderCredentialStore => self.provider_credential_store.is_some(),
             ToolContextService::UtilityLlmService => self.utility_llm_service.is_some(),
-            ToolContextService::JudgmentService => self.judgment_service.is_some(),
+            ToolContextService::ClassifierService => self.classifier.is_some(),
             ToolContextService::McpInvoker => self.mcp_invoker.is_some(),
             ToolContextService::EgressService => self.egress_service.is_some(),
             ToolContextService::MessageRetriever => self.message_retriever.is_some(),
@@ -287,11 +287,11 @@ pub struct ToolContext {
     /// Optional system utility LLM service for capability internals.
     pub utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
 
-    /// Optional system judgment service for capability internals that need a
+    /// Optional system classifier for capability internals that need a
     /// typed decision (a probability, a selection, a graded level) rather than
     /// text to parse. Host-owned and deployment-configured, like the utility
     /// LLM service.
-    pub judgment_service: Option<Arc<dyn crate::JudgmentService>>,
+    pub classifier: Option<Arc<dyn crate::ClassifierService>>,
 
     /// Optional scoped-MCP tool invoker for capability internals that need to
     /// call an MCP server out-of-band (e.g. the guardrails `mcp` check
@@ -430,7 +430,7 @@ impl ToolContext {
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
-            judgment_service: None,
+            classifier: None,
             mcp_invoker: None,
             egress_service: None,
             message_retriever: None,
@@ -472,7 +472,7 @@ impl ToolContext {
             image_store: services.image_store.clone(),
             provider_credential_store: services.provider_credential_store.clone(),
             utility_llm_service: services.utility_llm_service.clone(),
-            judgment_service: services.judgment_service.clone(),
+            classifier: services.classifier.clone(),
             mcp_invoker: services.mcp_invoker.clone(),
             egress_service: services.egress_service.clone(),
             message_retriever: services.message_retriever.clone(),
@@ -514,7 +514,7 @@ impl ToolContext {
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
-            judgment_service: None,
+            classifier: None,
             mcp_invoker: None,
             egress_service: None,
             message_retriever: None,
@@ -559,7 +559,7 @@ impl ToolContext {
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
-            judgment_service: None,
+            classifier: None,
             mcp_invoker: None,
             egress_service: None,
             message_retriever: None,
@@ -605,7 +605,7 @@ impl ToolContext {
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
-            judgment_service: None,
+            classifier: None,
             mcp_invoker: None,
             egress_service: None,
             message_retriever: None,
@@ -700,7 +700,7 @@ impl ToolContext {
             image_store: Some(image_store),
             provider_credential_store: None,
             utility_llm_service: None,
-            judgment_service: None,
+            classifier: None,
             mcp_invoker: None,
             egress_service: None,
             message_retriever: None,
@@ -747,9 +747,9 @@ impl ToolContext {
         self
     }
 
-    /// Set the judgment service on this context.
-    pub fn with_judgment_service(mut self, service: Arc<dyn crate::JudgmentService>) -> Self {
-        self.judgment_service = Some(service);
+    /// Set the classifier on this context.
+    pub fn with_classifier(mut self, service: Arc<dyn crate::ClassifierService>) -> Self {
+        self.classifier = Some(service);
         self
     }
 
@@ -957,7 +957,7 @@ impl std::fmt::Debug for ToolContext {
                 &self.provider_credential_store.is_some(),
             )
             .field("utility_llm_service", &self.utility_llm_service.is_some())
-            .field("judgment_service", &self.judgment_service.is_some())
+            .field("classifier", &self.classifier.is_some())
             .field("egress_service", &self.egress_service.is_some())
             .field("message_retriever", &self.message_retriever.is_some())
             .field("session_store", &self.session_store.is_some())

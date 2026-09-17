@@ -5,7 +5,7 @@ use std::time::Duration;
 use serde_json::Value;
 use tracing::debug;
 
-use crate::{Error, Evaluation, Judgment, Result};
+use crate::client::{Error, Evaluation, Judgment, Result};
 
 /// Default API root. Override for a proxy or a test double.
 pub const DEFAULT_BASE_URL: &str = "https://api.typesafe.ai";
@@ -100,8 +100,8 @@ impl TypeSafeClient {
     /// Ask every question in `evaluation` in one round trip.
     ///
     /// ```no_run
-    /// # async fn run() -> Result<(), typesafe_systemone::Error> {
-    /// use typesafe_systemone::{Evaluation, Question, TypeSafeClient};
+    /// # async fn run() -> Result<(), everruns_integrations_typesafe::Error> {
+    /// use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeClient};
     ///
     /// let client = TypeSafeClient::from_env()?;
     /// let judgment = client

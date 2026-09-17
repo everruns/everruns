@@ -1,21 +1,21 @@
 ---
 type: Specification
-title: "Judgment Service"
-description: "Internal typed-judgment service for capability internals."
+title: "Classification Service"
+description: "Internal typed-classifier for capability internals."
 tags:
   - everruns
   - operations
 ---
-# Judgment Service
+# Classification Service
 
 <!-- Design Decisions:
   - Modeled on the utility LLM service rather than as a model provider: same
     host-owned, deployment-configured, never-agent-configurable posture. The
     two are siblings, not layers.
   - The contract is provider-neutral (noul/choice/score), not TypeSafe-shaped.
-    Core names none of the vendor; the private TypeSafe integration owns the
-    adapter. Swapping vendors, or answering judgments with a fine-tuned local
-    model, is an integration change only.
+    Core names none of the vendor; `everruns-host` owns the adapter. Swapping
+    vendors, or classifying with a fine-tuned local model, is a host
+    change only.
   - Answers are values, not text. The point is removing the parse step, not
     saving tokens: a guardrail that fails open on malformed JSON is a security
     control with a silent bypass, and this contract has no such path.
@@ -45,7 +45,7 @@ carries a prompt that begs for JSON, a parser, and a fallback for when the
 parse fails. In a guardrail that fallback is fail-open — a malformed verdict
 reads as *allow*.
 
-A judgment service removes that class outright, and adds two things a chat
+A classifier removes that class outright, and adds two things a chat
 model cannot give cheaply:
 
 - **Calibrated probabilities.** Guardrail moderation already asked the utility
@@ -60,19 +60,19 @@ model cannot give cheaply:
 
 ## Core Contract
 
-`everruns-core` owns the abstraction ([`crates/core/src/judgment.rs`](../../crates/core/src/judgment.rs)):
+`everruns-core` owns the abstraction ([`crates/core/src/classifier.rs`](../../crates/core/src/classifier.rs)):
 
-- `JudgmentService` is the async trait used by capability internals.
-- `JudgmentQuestion` is one of three primitives — `Noul` (probability of yes),
+- `ClassifierService` is the async trait used by capability internals.
+- `ClassificationQuestion` is one of three primitives — `Noul` (probability of yes),
   `Choice` (one option plus its distribution), `Score` (a position across
   ordered levels plus its distribution).
-- `JudgmentRequest` carries the state, an ordered list of `(id, question)`, and
+- `ClassificationRequest` carries the state, an ordered list of `(id, question)`, and
   attribution metadata. Ids are for the caller's code and never reach the model,
   so every question must carry its full meaning.
-- `JudgmentAnswer` exposes `probability_yes`, `confidence`, and
+- `ClassificationAnswer` exposes `probability_yes`, `confidence`, and
   `probability_at_or_above` — the last is the honest reading for a
   "did anything serious happen" rule.
-- `JudgmentService::is_configured()` reports whether the deployment enabled it.
+- `ClassifierService::is_configured()` reports whether the deployment enabled it.
 - `HostComposition` carries the active service; `ToolContext` and
   `PostGenerationOutputContext` thread it to capability hooks, alongside the
   utility LLM service.
@@ -81,23 +81,29 @@ A noul near 0.5 means yes and no are near-equally likely. It does not mean
 "medium intensity", and it is not a confidence value; noul answers have no
 separate confidence because the probability already is one.
 
-## Deployment Implementation
+## Implementation
 
-The private `everruns-integrations-typesafe` crate owns the concrete service
-([`integrations/typesafe/src/system_judgment.rs`](../../integrations/typesafe/src/system_judgment.rs)),
-backed by the standalone [`typesafe-systemone`](../../crates/drivers/typesafe/README.md)
-client. The published host remains provider-neutral and accepts the service
-through `JudgmentService`.
+[`integrations/typesafe`](../../integrations/typesafe/README.md) owns the
+concrete service ([`src/classifier.rs`](../../integrations/typesafe/src/classifier.rs))
+and the vendor client it calls ([`src/client`](../../integrations/typesafe/src/client/)).
+Nothing above core learns the vendor.
 
-That client is filed under `crates/drivers/` as a **judgment driver**: the same
-shape as the LLM wire-protocol drivers — a vendor client below the platform
-layer, so host and everything above it can depend on it without a cycle — but
-it answers typed questions rather than chat completions, so it is not
-registered in `DriverRegistry`. The client remains a separate crate so the
-vendor protocol can be used independently of the Everruns integration.
+**One crate, composed from above.** The earlier split — vendor client under
+`crates/drivers/`, capability under `integrations/` — existed because
+`everruns-host` held the service, and a host dependency cannot point at an
+integration crate (integration → `everruns-platform` → `everruns-host` would
+close the loop). Moving the service into the integration crate removes the
+constraint instead of working around it: `crates/server` and `crates/worker`
+already depend on integrations, so they compose the service into
+`HostComposition` from above, and the client needs only one home. Host no
+longer knows TypeSafe exists.
 
 - Model is fixed (`jev-latest`), for the same reason the utility model is: call
   sites must not be able to turn it into a selectable one.
+- Two credentials, two audiences: `SystemClassifierConfig::from_env` reads the
+  platform's `UTILITY_TYPESAFE_API_KEY`, while `TypeSafeClassifier::from_env`
+  reads an embedding application's own `TYPESAFE_API_KEY` — the latter is what
+  [`Classifier`](../framework/application-api.md#direct-classification-boundary) uses outside the platform.
 - Configured from process environment: `UTILITY_TYPESAFE_API_KEY`. Unset or
   empty means the service is disabled and `is_configured()` is false. The name
   mirrors `UTILITY_OPENAI_API_KEY`: both are platform-owned credentials for

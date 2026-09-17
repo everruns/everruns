@@ -185,6 +185,7 @@ export default defineConfig({
                     { label: "Models and Providers", slug: "framework/models-and-providers" },
                     { label: "Supported Providers", slug: "framework/supported-providers" },
                     { label: "Direct Model Calls", slug: "framework/direct-model-calls" },
+                    { label: "Direct Classification", slug: "framework/direct-classification" },
                     { label: "Credentials", slug: "framework/credentials" },
                     { label: "Tools and Macros", slug: "framework/tools-and-macros" },
                     { label: "Sessions", slug: "framework/sessions" },

@@ -454,8 +454,8 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Some(self.host_composition.utility_llm_service())
     }
 
-    fn judgment_service(&self) -> Option<Arc<dyn everruns_core::JudgmentService>> {
-        Some(self.host_composition.judgment_service())
+    fn classifier(&self) -> Option<Arc<dyn everruns_core::ClassifierService>> {
+        Some(self.host_composition.classifier())
     }
 
     fn egress_service(&self) -> Option<Arc<dyn EgressService>> {

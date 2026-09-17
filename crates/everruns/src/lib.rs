@@ -48,6 +48,7 @@ mod agent;
 #[cfg(feature = "capabilities")]
 pub mod capability;
 mod capability_config;
+pub mod classifier;
 mod context;
 mod default_workspace;
 mod engine;
@@ -63,6 +64,7 @@ mod tool;
 pub mod work;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use capability_config::{CapabilityRef, CapabilitySpec, IntoCapability};
+pub use classifier::{Answers, Classification, Classifier, ClassifierError};
 pub use context::{ContextMessage, SessionContext, ToolInfo};
 pub use engine::{Engine, InMemoryEngine};
 pub use events::{
@@ -73,6 +75,10 @@ pub use events::{
 pub use everruns_builtins::{
     AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
     ToolSearch,
+};
+pub use everruns_core::classifier::{
+    ClassificationAnswer, ClassificationOutcome, ClassificationQuestion, ClassificationRequest,
+    ClassifierService,
 };
 #[deprecated(note = "use WorkspaceBackend")]
 pub use everruns_host::WorkspaceBackend as WorkspaceProvider;
@@ -255,18 +261,19 @@ pub mod prelude {
         TaskOutcome, TaskRequest, WakePolicy, WakeRequest, WorkQueue, WorkSchedule,
     };
     pub use crate::{
-        Agent, AgentBuilder, AgentStartContext, BuildError, CancelError, CancellationToken,
-        CapabilityRef, CapabilitySpec, Completion, CompletionContext, CompletionError, Engine,
-        Environment, EventStream, EventStreamError, FunctionTool, HistoryCursor,
-        HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages, HistoryQuery,
-        HookFailure, HookPoint, InMemoryEngine, InitialFile, IntoCapability, IntoHookResult,
-        IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model, PluginError, ResumeError,
-        RunError, RunOptions, SendDisposition, SentMessage, Session, SessionContext,
-        SessionEnvironmentError, SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool,
-        ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn, TurnHandle,
-        TurnStartContext, Workspace, WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff,
-        WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId,
-        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
+        Agent, AgentBuilder, AgentStartContext, Answers, BuildError, CancelError,
+        CancellationToken, CapabilityRef, CapabilitySpec, Classification, Classifier,
+        ClassifierError, Completion, CompletionContext, CompletionError, Engine, Environment,
+        EventStream, EventStreamError, FunctionTool, HistoryCursor, HistoryCursorParseError,
+        HistoryError, HistoryPage, HistoryPages, HistoryQuery, HookFailure, HookPoint,
+        InMemoryEngine, InitialFile, IntoCapability, IntoHookResult, IntoTool, IntoToolResult,
+        LlmSimConfig, McpServer, Model, PluginError, ResumeError, RunError, RunOptions,
+        SendDisposition, SentMessage, Session, SessionContext, SessionEnvironmentError,
+        SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool, ToolEndContext, ToolInfo,
+        ToolResponse, ToolStartContext, Turn, TurnHandle, TurnStartContext, Workspace,
+        WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff, WorkspaceError, WorkspaceHead,
+        WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder,
+        WorkspacePolicyError,
     };
     #[cfg(feature = "builtins")]
     pub use crate::{

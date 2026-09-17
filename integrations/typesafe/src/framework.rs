@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use everruns_core::Capability;
 
-use typesafe_systemone::TypeSafeClient;
+use crate::client::TypeSafeClient;
 
 use crate::{JevCapability, evaluate, evaluate::EvaluateInput};
 
@@ -27,7 +27,7 @@ impl Jev {
     }
 
     /// Read `TYPESAFE_API_KEY` once at application startup.
-    pub fn from_env() -> typesafe_systemone::Result<Self> {
+    pub fn from_env() -> crate::client::Result<Self> {
         Ok(Self::with_client(TypeSafeClient::from_env()?))
     }
 

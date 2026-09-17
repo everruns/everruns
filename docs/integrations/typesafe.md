@@ -1,6 +1,6 @@
 ---
 title: TypeSafe
-description: Give agents typed judgments — calibrated probabilities, single-choice routing, and graded scores — from TypeSafe's System One model, instead of asking a chat model for an opinion. Requires a TypeSafe API key.
+description: Give agents typed classification — calibrated probabilities, single-choice routing, and graded scores — from TypeSafe's System One model, instead of asking a chat model for an opinion. Requires a TypeSafe API key.
 ---
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="52.0" height="52.0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="float: right; margin-left: 16px;"><path d="M12 3v18M7 21h10M3 8l4-3 4 3M3 8a4 4 0 0 0 8 0M13 8l4-3 4 3M13 8a4 4 0 0 0 8 0M12 5l5-2M12 5 7 3"/></svg>
@@ -109,6 +109,13 @@ Two things worth knowing when you write the questions:
 - **Rating**: how severe is this report, how good is this draft, how funny is this joke
 - **Routing**: which handler, team, or tool should take this — with a confidence to gate on
 - **Screening**: does this content match a policy, and how clearly
+
+## Embedding the Framework
+
+Running the Everruns Framework in your own application rather than on the
+platform? The same capability attaches to an agent you build yourself, and the
+classifier is also callable directly with no agent at all. See
+[Direct classification](/framework/direct-classification/).
 
 ## Guardrails
 

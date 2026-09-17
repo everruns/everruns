@@ -66,7 +66,7 @@ ones. Guidance:
 
 - Published crates are the workspace packages **without** `publish = false`. Diff each one's
   `src/` and manifest since its previous release.
-- Judge *public contract*, not churn. Being git-touched over-counts massively — transitive
+- Classifier *public contract*, not churn. Being git-touched over-counts massively — transitive
   dependency bumps, internal refactors, and pure directory moves (e.g. grouping providers under
   `crates/drivers/`) are not contract changes. A release candidate is a crate whose exported API,
   behavior, feature set, or MSRV changed, or a crate that was **deleted/absorbed** (its crates.io

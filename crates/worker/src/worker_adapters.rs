@@ -313,9 +313,9 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Get the system utility LLM service for capability internals.
     fn utility_llm_service(&self) -> Option<Arc<dyn UtilityLlmService>>;
 
-    /// Get the system judgment service for capability internals that ask typed
+    /// Get the system classifier for capability internals that ask typed
     /// questions. Defaults to none, which makes dependent checks fail open.
-    fn judgment_service(&self) -> Option<Arc<dyn everruns_core::JudgmentService>> {
+    fn classifier(&self) -> Option<Arc<dyn everruns_core::ClassifierService>> {
         None
     }
 

@@ -8,7 +8,7 @@
 
 [package]
 name = "everruns"
-version = "0.22.1"
+version = "0.23.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -155,6 +155,10 @@ thiserror = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 
 [dev-dependencies]
+# Path-only on purpose: `everruns` is published and this crate is not, so this
+# must stay a dev-dependency cargo strips on publish. Promote it to a real
+# dependency only once everruns-integrations-typesafe is published itself.
+everruns-integrations-typesafe = { path = "../../integrations/typesafe", default-features = false }
 # Version-less path dev-dependencies: stripped on publish, so these test-only
 # edges do not force the facade to package before same-cycle sibling releases
 # (e.g. everruns-test-support) reach crates.io.

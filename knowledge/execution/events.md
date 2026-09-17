@@ -110,7 +110,7 @@ correlate with the durable record. `reviewed_data_never_exceeds_the_canonical_pa
 is the executable form of that invariant.
 
 Promoting a field is the intended way to answer "the reviewed surface lacks
-what I need". Judge it on whether it carries conversation content: identity,
+what I need". Classifier it on whether it carries conversation content: identity,
 outcome, token usage, timing, and operator-authored display text are promoted;
 prompts, tool arguments, tool results, and unrecognized event payloads are not.
 Model-generation accounting is promoted precisely because tracking spend must

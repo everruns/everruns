@@ -3,10 +3,10 @@
 
 use std::time::Duration;
 
-use serde_json::json;
-use typesafe_systemone::{
+use everruns_integrations_typesafe::{
     Error, Evaluation, Question, RetryPolicy, TypeSafeClient, client::DEFAULT_BASE_URL,
 };
+use serde_json::json;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{body_json, header, method, path},
