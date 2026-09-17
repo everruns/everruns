@@ -314,7 +314,7 @@ jobs:
               - 'integrations/parallel/**'
             typesafe_integration:
               - 'integrations/typesafe/**'
-              - 'crates/typesafe-systemone/**'
+              - 'crates/drivers/typesafe/**'
             ard:
               - 'crates/ard/**'
 

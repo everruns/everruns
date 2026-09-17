@@ -1,8 +1,14 @@
-# TypeSafe System One client.
-# Decision: Vendor SDK with no Everruns dependency, so it is publishable and
-#   usable on its own. The Everruns capability wraps it from
-#   `integrations/typesafe`, and `everruns-host` uses it directly to back the
-#   provider-neutral `JudgmentService`.
+# TypeSafe System One client: a judgment driver.
+# Decision: Filed beside the LLM wire-protocol drivers because it is the same
+#   shape — a vendor client below the platform layer, reachable from host and
+#   above without a dependency cycle. It is NOT registered in `DriverRegistry`:
+#   that registry is for chat completions, and this returns typed decisions.
+# Decision: Vendor SDK with no Everruns dependency at all (its neighbours take
+#   `everruns-provider`), so it is publishable and usable on its own. The
+#   package name stays vendor-neutral; per the workspace manifest the drivers
+#   directory is a repository organization boundary, not a naming rule.
+# Decision: The Everruns capability wraps it from `integrations/typesafe`, and
+#   `everruns-host` uses it directly to back the neutral `JudgmentService`.
 
 [package]
 name = "typesafe-systemone"

@@ -6,7 +6,7 @@ on:
     branches: [main]
     paths:
       - 'integrations/typesafe/**'
-      - 'crates/typesafe-systemone/**'
+      - 'crates/drivers/typesafe/**'
       - 'crates/host/src/judgment.rs'
       - 'crates/host/tests/judgment_live_test.rs'
   pull_request:
@@ -14,7 +14,7 @@ on:
     types: [opened, reopened, synchronize, labeled, unlabeled]
     paths:
       - 'integrations/typesafe/**'
-      - 'crates/typesafe-systemone/**'
+      - 'crates/drivers/typesafe/**'
       - 'crates/host/src/judgment.rs'
       - 'crates/host/tests/judgment_live_test.rs'
 

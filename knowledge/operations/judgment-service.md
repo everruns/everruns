@@ -85,8 +85,17 @@ separate confidence because the probability already is one.
 
 `everruns-host` owns the concrete service behind its optional
 `typesafe-judgment` feature ([`crates/host/src/judgment.rs`](../../crates/host/src/judgment.rs)),
-backed by the standalone [`typesafe-systemone`](../../crates/typesafe-systemone/README.md)
+backed by the standalone [`typesafe-systemone`](../../crates/drivers/typesafe/README.md)
 client. Nothing above core learns the vendor.
+
+That client is filed under `crates/drivers/` as a **judgment driver**: the same
+shape as the LLM wire-protocol drivers — a vendor client below the platform
+layer, so host and everything above it can depend on it without a cycle — but
+it answers typed questions rather than chat completions, so it is not
+registered in `DriverRegistry`. It is also the reason the client is a separate
+crate from `integrations/typesafe`: an integration crate depends on
+`everruns-platform`, which depends on `everruns-host`, so a single crate
+carrying both the client and the connector would close that loop.
 
 - Model is fixed (`jev-latest`), for the same reason the utility model is: call
   sites must not be able to turn it into a selectable one.

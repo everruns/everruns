@@ -28,8 +28,11 @@ members = [
     "crates/drivers/meta",
     "crates/drivers/openai",
     "crates/drivers/openrouter",
+    # Judgment driver: typed decisions rather than chat completions, so it
+    # is not registered in `DriverRegistry`. Filed here because it is a
+    # vendor client below the platform layer, like its neighbours.
+    "crates/drivers/typesafe",
     "crates/turbopuffer",
-    "crates/typesafe-systemone",
     "crates/internal-protocol",
     "crates/cli",
     "crates/durable",
@@ -228,7 +231,7 @@ everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version =
 everruns-integrations-lua = { path = "integrations/lua", version = "0.18.5" }
 everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.18.5" }
 everruns-integrations-typesafe = { path = "integrations/typesafe", version = "0.1.0" }
-typesafe-systemone = { path = "crates/typesafe-systemone", version = "0.1.0" }
+typesafe-systemone = { path = "crates/drivers/typesafe", version = "0.1.0" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }
