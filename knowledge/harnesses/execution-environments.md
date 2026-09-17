@@ -182,7 +182,7 @@ explicit containment block and an honest durability class:
 
 ```json
 {
-  "target": { "kind": "managed", "provider": "daytona" },
+  "target": { "kind": "managed", "vendor": "daytona" },
   "containment": {
     "level": "isolated",
     "filesystem": { "writable_roots": ["/home/daytona/workspace"] },
@@ -318,8 +318,8 @@ An agent version declares named environments and a default:
   "environments": {
     "default": "scratch",
     "profiles": {
-      "scratch": { "target": { "kind": "vfs", "provider": "bashkit" } },
-      "build":   { "target": { "kind": "managed", "provider": "daytona" } },
+      "scratch": { "target": { "kind": "vfs", "vendor": "bashkit" } },
+      "build":   { "target": { "kind": "managed", "vendor": "daytona" } },
       "here":    { "target": { "kind": "host" }, "containment": { "level": "none" } }
     }
   }
