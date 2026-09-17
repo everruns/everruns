@@ -86,6 +86,7 @@ pub enum ToolContextService {
     ImageArtifactStore,
     ProviderCredentialStore,
     UtilityLlmService,
+    /// Typed-judgment service for capability internals.
     JudgmentService,
     McpInvoker,
     EgressService,
@@ -153,6 +154,8 @@ pub struct ToolContextServices {
     pub image_store: Option<Arc<dyn ImageArtifactStore>>,
     pub provider_credential_store: Option<Arc<dyn ProviderCredentialStore>>,
     pub utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
+    /// Typed-judgment service for capability internals that need a decision
+    /// rather than text to parse.
     pub judgment_service: Option<Arc<dyn crate::JudgmentService>>,
     pub mcp_invoker: Option<Arc<dyn crate::McpToolInvoker>>,
     pub egress_service: Option<Arc<dyn crate::EgressService>>,
