@@ -1,6 +1,6 @@
 [package]
 name = "everruns-integrations-filesystem"
-version = "0.18.9"
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

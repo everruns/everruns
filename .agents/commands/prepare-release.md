@@ -29,62 +29,50 @@ have one highlight or none, in which case recommend dropping the section.
 Present the commit list and your proposed highlights, and let the user confirm or replace them
 before editing files.
 
-## 3. Audit published library crates for independent releases
+## 3. Confirm the single platform version holds
 
-Mandatory every release — never skip it, and never leave the outcome implicit. Published library
-crates are versioned independently of the product, so a product bump does **not** carry their
-changes to crates.io. If a crate's public contract changed and you don't cut its own release, the
-crates.io package silently drifts behind its source.
+Everruns ships **one version for the whole platform**. Every published crate inherits it with
+`version.workspace = true` and pins that same version for its internal dependencies, so a release
+republishes the entire publish set at one number. There is no per-crate audit, no bump
+classification, and no cone to close — those existed only because crates were versioned
+independently.
 
-**Preferred entrypoint — deterministic, run it before pushing:**
-`python3 scripts/plan-crate-release.py` prints the full version matrix (each candidate classified
-breaking vs additive against its crates.io baseline with `cargo-semver-checks`, plus the cone
-cascade computed to a fixpoint); `--write` applies it, runs
-`scripts/sync-publish-pin-versions.py --write`, regenerates every workspace and non-workspace
-lockfile, and re-runs the `check-semver-bumps` and `check-publish-cone --pre-merge` gates so the
-matrix is proven green **locally, before it ever reaches CI**. It classifies candidates on the
-current workspace, so its final gate pass is the backstop for a cascade crate that also carries its
-own breaking change — do not push a release until that pass is green. The manual steps below are the
-fallback when you need to override an individual decision.
+What is left is one gate:
 
-1. Diff each published crate's source and manifest since its last release, e.g.
-   `git diff "$PREV"..HEAD -- <crate-dir>/src <crate-dir>/Cargo.toml`. Published crates are the
-   workspace packages **without** `publish = false`.
-2. Judge *public contract*, not churn. "Touched" over-counts wildly: a transitive dependency
-   bump, an internal refactor, or a pure directory move (like grouping the drivers under
-   `crates/drivers/`) is **not** a contract change. A release candidate is a crate whose exported
-   API, behavior, feature flags, or MSRV changed — or a crate that was **deleted/absorbed**, whose
-   crates.io package is now orphaned and whose consumers must migrate.
-3. For each crate whose contract changed, pick the **smallest compatible version bump**: classify it
-   with `cargo semver-checks --package <crate> --baseline-version <last-published>` (authoritative,
-   not an eyeballed diff), then bump the **patch** component for a non-breaking (additive-only) change
-   (`0.18.0 → 0.18.1`) and the **minor** component only for a breaking change (`0.18.0 → 0.19.0`; the
-   minor is the breaking slot for `0.x` crates). Do not round crates up to the product version for
-   tidiness. Then run `/prepare-crate-release` to bump the package and run
-   `python3 scripts/sync-publish-pin-versions.py --write`. With every bump set, run
-   `python3 scripts/check-semver-bumps.py` — it re-runs `cargo-semver-checks` over exactly the
-   crates this change releases and fails a bump that is too small for the API it carries. Do this
-   before opening the PR: an under-bump cannot be undone once published (crates.io versions are
-   immutable, and yanking the new one breaks everything already released against it). CI runs the
-   same script in the **Crate Semver Bumps** job. Tagging and publishing are automated: on
-   merge to `main` the **Crate Release** workflow (`.github/workflows/crate-release.yml`) creates
-   `crate/<pkg>/v<ver>` and dispatches Publish Crate for any version not yet on crates.io, in
-   dependency order — you never push crate tags by hand. For an absorbed/deleted crate, record where
-   its API moved. **After a breaking bump, close the whole cone**: cascade a patch bump onto every
-   published dependant that still pins the old requirement (so it republishes compatibly), and **yank**
-   any absorbed dependant via the **Yank Crate** workflow. The Crate Release `strand-check` job fails
-   the run until this is done — a red `strand-check` means the release is still partial.
-4. **Record the audit in the release PR**: either the list of crate releases cut this cycle, or an
-   explicit "no published crate contracts changed" line. A reviewer must be able to see the decision
-   was made, not assumed.
+```bash
+python3 scripts/sync-publish-pin-versions.py --check
+```
+
+It fails if a published crate declares a literal version instead of inheriting, if an internal pin
+has drifted, or if a published crate depends on a private workspace package (the
+`everruns-host` 0.23.0 failure). `--write` fixes the first two. CI runs the same check in the
+**Lockfile** job.
+
+Tagging and publishing stay automated: on merge to `main` the **Crate Release** workflow
+(`.github/workflows/crate-release.yml`) creates `crate/<pkg>/v<ver>` for every published crate whose
+version is not yet on crates.io and dispatches Publish Crate in dependency order. Under a single
+version that is the whole publish set, every release. You never push crate tags by hand.
+
+If a crate is **deleted or absorbed** this cycle, its crates.io package is orphaned: **yank** it with
+the **Yank Crate** workflow and record where its API moved. That is the one crate-level judgement a
+release still carries.
 
 ## 4. Update versions
 
 - `Cargo.toml` → `workspace.package.version`
 - `apps/ui/package.json` → `version`
 
-Do not bump published library crate versions here. They are released independently with
-`/prepare-crate-release` when their own public contracts change — that call is step 3, not this one.
+That is the whole version change. Every published crate inherits `workspace.package.version`, so
+bumping it moves all 41 crates.io packages at once — do not edit crate manifests. Internal pins in
+`[workspace.dependencies]` carry the version literally and must move with it:
+
+```bash
+python3 scripts/sync-publish-pin-versions.py --write
+```
+
+The minor component is the breaking slot at `0.x`, and a release moves it for every crate whether or
+not that crate changed. That is the deliberate trade: a version number no longer claims "this crate
+changed" — `CHANGELOG.md` says that — in exchange for cascades and strandings being unrepresentable.
 
 ## 5. Add the CHANGELOG entry
 
@@ -103,8 +91,7 @@ Insert after `## [Unreleased]`, preserving the file header and versioning policy
 
 ### Crate Releases
 
-Independently versioned crates published this cycle:
-- `everruns-<name>` A.B.C → X.Y.Z
+All published crates ship at the platform version X.Y.Z.
 
 Retired (absorbed — consumers migrate):
 - `everruns-<gone>` → `everruns-<new-home>`
@@ -114,12 +101,10 @@ Link PRs and usernames. Add a **Migration Notes** section only when operators ne
 engineering-only migration detail belongs in `crates/server/migrations/` and `knowledge/operations/migrations.md`.
 Include screenshot links for UI changes.
 
-The **Crate Releases** subsection is required and records the step 3 audit outcome in the changelog
-itself — the crates published this cycle with their `old → new` versions, plus any crate that was
-deleted/absorbed and where its API now lives. When the audit found no published crate contract
-changed, state that explicitly (`No published crate contracts changed this cycle.`) rather than
-dropping the subsection. Keep it consistent with the release PR's audit note and, if the GitHub
-Release notes were already generated at tag time, refresh that release body to match.
+The **Crate Releases** subsection is required, but under a single version it is one line: every
+published crate ships at the platform version. List only crates **retired or absorbed** this cycle
+and where their API moved, since those are the packages consumers must migrate off. The
+42-line `old → new` table that independent versioning required is gone.
 
 ## 6. Prepare the release card
 
@@ -144,8 +129,16 @@ Never squash, rename, or delete existing migrations for a release. Confirm the s
 
 ## 8. Refresh lockfiles
 
+Every lockfile that resolves a workspace crate records the platform version, including the
+out-of-workspace ones — miss one and its `--locked` build fails against the new version.
+
 ```bash
 cargo generate-lockfile
+for d in crates/everruns/tests/fixtures/external-consumer evals/generic \
+         evals/guardrail-calibration evals/platform-capability \
+         examples/weekend-concierge-host; do
+  (cd "$d" && cargo generate-lockfile)
+done
 (cd apps/ui && pnpm install --lockfile-only)
 (cd apps/docs && pnpm install --lockfile-only)
 ```
@@ -161,6 +154,6 @@ git push -u origin <current-branch>
 
 Open the PR with `.github/pull_request_template.md`, and tell the user to review CHANGELOG.md, add
 any highlights or screenshots, and merge once CI is green — the tag, GitHub Release, Docker images,
-and product binaries follow automatically. Crates.io publishing is independent: include the step 3
-crate-release audit outcome in the PR body (the crate releases cut, or "no published crate contracts
-changed"), so the decision is on the record rather than assumed.
+and product binaries follow automatically. Crates.io publishing follows the same tag: every
+published crate is republished at the platform version, in dependency order. Call out any crate
+retired or absorbed this cycle in the PR body, since that is the only crate-level decision left.

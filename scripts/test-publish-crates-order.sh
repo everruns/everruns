@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Guard independent crates.io releases and dependency-version ownership.
+# Guard crates.io release ordering and the single platform version.
 
 set -euo pipefail
 
@@ -8,7 +8,6 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 python3 scripts/sync-publish-pin-versions.py --check
-python3 scripts/plan-crate-release.py --self-test
 
 python3 - <<'PY'
 import importlib.util
@@ -55,8 +54,9 @@ for package in published:
     with manifest_path.open("rb") as handle:
         manifest = tomllib.load(handle)
     require(
-        isinstance(manifest.get("package", {}).get("version"), str),
-        f"{manifest_path.relative_to(repo)}: published package must own an explicit version",
+        manifest.get("package", {}).get("version") == {"workspace": True},
+        f"{manifest_path.relative_to(repo)}: published package must inherit the "
+        "platform version with `version.workspace = true`",
     )
 
 # Pin-sync unit coverage. The ard -> host dev pin drifted through a release
@@ -261,5 +261,5 @@ if failures:
         print(f"FAIL: {failure}", file=sys.stderr)
     raise SystemExit(1)
 
-print(f"independent publishing verified for {len(published)} crate(s)")
+print(f"crate publishing verified for {len(published)} crate(s)")
 PY

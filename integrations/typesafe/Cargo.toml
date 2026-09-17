@@ -11,7 +11,7 @@
 
 [package]
 name = "everruns-integrations-typesafe"
-version = "0.1.0"
+version.workspace = true
 # Not published yet: the capability is experimental (dev registries only) and
 # its version does not track the workspace. Nothing external blocks it now that
 # the vendor client is no longer a separate private crate.
