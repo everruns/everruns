@@ -18,6 +18,10 @@
 //!   subject reads the named paths back into `Transcript.files`).
 //! - `min_tool_calls` / `max_tool_calls`: bounds on total tool calls (e.g.
 //!   `max_tool_calls: 0` asserts a plain question wastes no tool round-trips).
+//! - `expect_judgment_questions`: `{ "types": ["noul", "score"], "min": 2 }` —
+//!   grades the `typesafe_evaluate` questions the model *wrote*, not just that
+//!   it called the tool. A question the model asks badly returns a confident
+//!   number about the wrong thing, which is worse than no number at all.
 //!
 //! One subject-set transcript marker gates everything (see `subject.rs`): a
 //! `skipped` case (unmet `requires` on the active harness profile) scores N/A
@@ -283,6 +287,112 @@ pub fn tool_call_budget() -> Box<dyn Scorer> {
     })
 }
 
+/// Quality signal for typed judgments: are the questions well formed?
+///
+/// Calling the tool is necessary but not sufficient. The model authors the
+/// questions, and the API answers whatever it is asked, so a malformed question
+/// yields a confident number about the wrong thing. This grades the parts the
+/// primitive's contract actually requires:
+///
+/// - instructions carry the meaning, because the question id never reaches the
+///   model (an id like `is_funny` with instructions `"?"` scores nothing);
+/// - a `score` needs at least two ordered levels, a `choice` at least two
+///   options — the API rejects fewer, and one level is not a scale;
+/// - the requested primitives are present, so "rate this" is not answered with
+///   a yes/no.
+pub fn judgment_questions() -> Box<dyn Scorer> {
+    scorer("judgment_questions", |sample: &Sample, t: &Transcript| {
+        let Some(expect) = sample.metadata.get("expect_judgment_questions") else {
+            return Score::na(
+                "judgment_questions",
+                "sample declares no question expectations",
+            );
+        };
+        if let Some(na) = gate("judgment_questions", t) {
+            return na;
+        }
+        let questions = t
+            .metadata
+            .get(crate::subject::JUDGMENT_QUESTIONS_KEY)
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        if questions.is_empty() {
+            return Score::fail(
+                "judgment_questions",
+                "no typesafe_evaluate questions recorded",
+            );
+        }
+
+        let mut faults = Vec::new();
+        for (index, question) in questions.iter().enumerate() {
+            let kind = question.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            let instructions = question
+                .get("instructions")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            // Short enough to be leaning on the id rather than asking anything.
+            if instructions.split_whitespace().count() < 3 {
+                faults.push(format!("q{index} ({kind}): instructions carry no question"));
+            }
+            match kind {
+                "score" => {
+                    let levels = question
+                        .get("levels")
+                        .and_then(|v| v.as_array())
+                        .map(|l| l.len())
+                        .unwrap_or(0);
+                    if levels < 2 {
+                        faults.push(format!("q{index}: score has {levels} level(s), needs 2+"));
+                    }
+                }
+                "choice" => {
+                    let options = question
+                        .get("options")
+                        .and_then(|v| v.as_object())
+                        .map(|o| o.len())
+                        .unwrap_or(0);
+                    if options < 2 {
+                        faults.push(format!(
+                            "q{index}: choice has {options} option(s), needs 2+"
+                        ));
+                    }
+                }
+                "noul" => {}
+                other => faults.push(format!("q{index}: unknown primitive '{other}'")),
+            }
+        }
+
+        let min = expect.get("min").and_then(|v| v.as_u64()).unwrap_or(1) as usize;
+        if questions.len() < min {
+            faults.push(format!(
+                "asked {} question(s), expected {min}+",
+                questions.len()
+            ));
+        }
+        if let Some(types) = expect.get("types").and_then(|v| v.as_array()) {
+            let asked: Vec<&str> = questions
+                .iter()
+                .filter_map(|q| q.get("type").and_then(|v| v.as_str()))
+                .collect();
+            for wanted in types.iter().filter_map(|v| v.as_str()) {
+                if !asked.contains(&wanted) {
+                    faults.push(format!("no '{wanted}' question; asked {asked:?}"));
+                }
+            }
+        }
+
+        if faults.is_empty() {
+            Score::pass(
+                "judgment_questions",
+                format!("{} well-formed question(s)", questions.len()),
+            )
+        } else {
+            Score::fail("judgment_questions", faults.join("; "))
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -310,6 +420,76 @@ mod tests {
             tool_calls_count: tools.len(),
             ..Default::default()
         }
+    }
+
+    fn with_questions(questions: serde_json::Value) -> Transcript {
+        let mut t = transcript("done", &["typesafe_evaluate"]);
+        t.metadata
+            .insert(crate::subject::JUDGMENT_QUESTIONS_KEY.into(), questions);
+        t
+    }
+
+    #[test]
+    fn judgment_questions_pass_when_well_formed() {
+        let sample = Sample::new("j", "rate it").meta(
+            "expect_judgment_questions",
+            serde_json::json!({"types": ["score", "noul"], "min": 2}),
+        );
+        let t = with_questions(serde_json::json!([
+            {"id": "funny", "type": "noul",
+             "instructions": "Would a general audience laugh at this joke?"},
+            {"id": "quality", "type": "score",
+             "instructions": "How funny is this joke to a general audience?",
+             "levels": ["Not funny at all", "Mildly amusing", "Genuinely funny"]}
+        ]));
+        assert!(score_of(judgment_questions().as_ref(), &sample, &t).pass);
+    }
+
+    #[test]
+    fn judgment_questions_catch_a_question_leaning_on_its_id() {
+        // The id never reaches the model, so "?" asks nothing at all.
+        let sample = Sample::new("j", "rate it")
+            .meta("expect_judgment_questions", serde_json::json!({"min": 1}));
+        let t = with_questions(serde_json::json!([
+            {"id": "is_the_joke_funny", "type": "noul", "instructions": "?"}
+        ]));
+        let score = score_of(judgment_questions().as_ref(), &sample, &t);
+        assert!(!score.pass, "{score:?}");
+    }
+
+    #[test]
+    fn judgment_questions_catch_a_degenerate_scale() {
+        let sample = Sample::new("j", "rate it")
+            .meta("expect_judgment_questions", serde_json::json!({"min": 1}));
+        let t = with_questions(serde_json::json!([
+            {"id": "quality", "type": "score",
+             "instructions": "How good is this piece of writing?",
+             "levels": ["Good"]}
+        ]));
+        assert!(!score_of(judgment_questions().as_ref(), &sample, &t).pass);
+    }
+
+    #[test]
+    fn judgment_questions_catch_the_wrong_primitive() {
+        // "Rate it" answered with a yes/no is a confident number about the
+        // wrong question.
+        let sample = Sample::new("j", "rate it").meta(
+            "expect_judgment_questions",
+            serde_json::json!({"types": ["score"], "min": 1}),
+        );
+        let t = with_questions(serde_json::json!([
+            {"id": "any_good", "type": "noul",
+             "instructions": "Is this piece of writing any good?"}
+        ]));
+        let score = score_of(judgment_questions().as_ref(), &sample, &t);
+        assert!(!score.pass, "{score:?}");
+    }
+
+    #[test]
+    fn judgment_questions_are_na_without_expectations() {
+        let sample = Sample::new("j", "rate it");
+        let t = with_questions(serde_json::json!([]));
+        assert!(score_of(judgment_questions().as_ref(), &sample, &t).na);
     }
 
     #[test]

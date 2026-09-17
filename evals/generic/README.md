@@ -22,6 +22,24 @@ dataset.jsonl ──► Eval (generic) ──► GenericRuntimeSubject ──►
                  matrix               per case, in-process     file_expectations / tool_call_budget
 ```
 
+## Typed judgments
+
+The `judgment` harness profile carries the TypeSafe capability, so its cases
+measure something the other profiles cannot: whether a model *reaches for a
+measurement* instead of asserting one, and whether the questions it writes are
+answerable.
+
+That second half matters more than it looks. The model authors the questions,
+and the API answers whatever it is asked — so a question that leans on its id
+("is_the_joke_funny" with instructions "?") or a scale with one level comes
+back as a confident number about the wrong thing. The `judgment_questions`
+scorer grades the questions themselves: instructions that carry the meaning,
+at least two ordered levels for a score, at least two options for a choice, and
+the primitive the case actually called for.
+
+The profile needs `TYPESAFE_API_KEY`. Without it, cases on the profile report
+**skipped**, not failed — an unkeyed machine says nothing about the model.
+
 ## Why in-process (not the server)
 
 The [`platform-capability`](../platform-capability) study drives a live server

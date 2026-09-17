@@ -28,6 +28,7 @@ use everruns::{
     SessionEvent, WorkspacePolicy,
 };
 
+use everruns_integrations_typesafe::TypeSafe;
 use mira::subject::summarize_events;
 use mira::{ErrorKind, Part, RunCx, Sample, Source, Subject, Target, Transcript};
 
@@ -38,6 +39,24 @@ use crate::profiles::{
 /// Transcript metadata key marking a case the subject did not run because the
 /// harness profile lacks a required capability. Scorers N/A on it.
 pub const SKIPPED_KEY: &str = "skipped";
+
+/// Transcript metadata key holding the `typesafe_evaluate` questions the model
+/// wrote, so a scorer can grade the questions themselves and not only the fact
+/// that the tool was called.
+pub const JUDGMENT_QUESTIONS_KEY: &str = "typesafe_questions";
+
+/// Build error meaning "this profile needs a credential this run does not have".
+/// Reported as a skip: an unkeyed machine says nothing about the model.
+pub fn missing_credential(env: &str) -> String {
+    format!("{env} is not set")
+}
+
+/// Whether a build error is the missing-credential case rather than a fault.
+pub fn is_missing_credential(error: &str, harness: &profiles::HarnessProfile) -> bool {
+    harness
+        .credential_env
+        .is_some_and(|env| error == missing_credential(env))
+}
 
 pub struct GenericRuntimeSubject;
 
@@ -97,6 +116,13 @@ impl Subject for GenericRuntimeSubject {
 
         let handle = match build_session(sample, &cx.target, harness, config) {
             Ok(handle) => handle,
+            Err(e) if is_missing_credential(&e, harness) => {
+                transcript.metadata.insert(
+                    SKIPPED_KEY.into(),
+                    format!("harness '{harness_name}' needs a credential: {e}").into(),
+                );
+                return transcript;
+            }
             // The runtime failed to build before the model ran — scaffolding,
             // so attribute to infra (scored N/A, retried).
             Err(e) => return Transcript::infra_error(format!("Framework build failed: {e}")),
@@ -165,6 +191,12 @@ impl Subject for GenericRuntimeSubject {
         // everruns event shape (`data.tool_name`) doesn't match.
         transcript.tool_calls = extract_tool_calls(&transcript.events);
         transcript.tool_calls_count = transcript.tool_calls.len();
+        let questions = extract_judgment_questions(&transcript.events);
+        if !questions.is_empty() {
+            transcript
+                .metadata
+                .insert(JUDGMENT_QUESTIONS_KEY.into(), questions.into());
+        }
 
         // Read back the workspace files the sample's expectations name, so
         // the `file_expectations` scorer grades real post-run state.
@@ -220,6 +252,22 @@ fn extract_tool_calls(events: &[serde_json::Value]) -> Vec<String> {
                 .and_then(|n| n.as_str())
                 .map(String::from)
         })
+        .collect()
+}
+
+/// Every question the model asked `typesafe_evaluate`, flattened across calls.
+///
+/// Read from `tool.started`, which carries the arguments; `tool.completed`
+/// carries only the name.
+fn extract_judgment_questions(events: &[serde_json::Value]) -> Vec<serde_json::Value> {
+    events
+        .iter()
+        .filter(|e| e.get("type").and_then(|t| t.as_str()) == Some("tool.started"))
+        .filter_map(|e| e.get("data").and_then(|d| d.get("tool_call")))
+        .filter(|call| call.get("name").and_then(|n| n.as_str()) == Some("typesafe_evaluate"))
+        .filter_map(|call| call.get("arguments"))
+        .filter_map(|args| args.get("questions").and_then(|q| q.as_array()))
+        .flat_map(|questions| questions.iter().cloned())
         .collect()
 }
 
@@ -300,10 +348,20 @@ fn build_session_with_provider(
         .max_iterations(config.max_iterations);
 
     for capability in harness.capabilities {
-        // workspace() installs session_file_system with the contained policy.
-        // Adding it explicitly as well makes Agent::build reject the profile.
-        if *capability != "session_file_system" {
-            builder = builder.capability(CapabilityRef::new(*capability));
+        match *capability {
+            // workspace() installs session_file_system with the contained policy.
+            // Adding it explicitly as well makes Agent::build reject the profile.
+            "session_file_system" => {}
+            // The hosted `typesafe` capability resolves a user connection or a
+            // session secret; an in-process run has neither store, so attach the
+            // Framework adapter with an application-owned key instead.
+            "typesafe" => {
+                let typesafe = TypeSafe::from_env().map_err(|_| {
+                    missing_credential(harness.credential_env.unwrap_or("TYPESAFE_API_KEY"))
+                })?;
+                builder = builder.capability(typesafe);
+            }
+            id => builder = builder.capability(CapabilityRef::new(id)),
         }
     }
     if harness.capabilities.contains(&"session_file_system") {
@@ -554,8 +612,108 @@ mod tests {
                 profiles::config_profile("default").unwrap(),
                 everruns_openai::provider("openai", "test-key"),
             );
-            assert!(session.is_ok(), "{}: {:?}", harness.name, session.err());
+            match session {
+                Ok(_) => {}
+                // A credential-gated profile on an unkeyed machine is the one
+                // acceptable failure, and only with that exact error.
+                Err(e) => assert!(
+                    is_missing_credential(&e, harness),
+                    "{}: {e:?}",
+                    harness.name
+                ),
+            }
         }
+    }
+
+    #[test]
+    fn judgment_questions_are_read_from_tool_started_events() {
+        use serde_json::json;
+        // tool.completed carries only the name, so the questions must come from
+        // tool.started; a call to another tool must not contribute.
+        let events = vec![
+            json!({"type": "tool.started", "data": {"tool_call": {
+                "name": "typesafe_evaluate",
+                "arguments": {"state": "a joke", "questions": [
+                    {"id": "funny", "type": "noul", "instructions": "Would an audience laugh?"}
+                ]}
+            }}}),
+            json!({"type": "tool.started", "data": {"tool_call": {
+                "name": "read_file", "arguments": {"path": "x"}
+            }}}),
+            json!({"type": "tool.started", "data": {"tool_call": {
+                "name": "typesafe_evaluate",
+                "arguments": {"state": "a joke", "questions": [
+                    {"id": "quality", "type": "score", "instructions": "How good?",
+                     "levels": ["Bad", "Good"]}
+                ]}
+            }}}),
+            json!({"type": "tool.completed", "data": {"tool_name": "typesafe_evaluate"}}),
+        ];
+        let questions = extract_judgment_questions(&events);
+        assert_eq!(questions.len(), 2, "questions flatten across calls");
+        assert_eq!(questions[0]["type"], "noul");
+        assert_eq!(questions[1]["type"], "score");
+    }
+
+    #[test]
+    fn a_credential_gated_profile_is_skipped_not_failed_when_unkeyed() {
+        let harness = profiles::harness_profile("judgment").unwrap();
+        let env = harness.credential_env.expect("judgment profile is gated");
+        assert!(is_missing_credential(&missing_credential(env), harness));
+        // A real fault on the same profile must not read as a skip.
+        assert!(!is_missing_credential("Framework build failed", harness));
+        // Nor may an unkeyed message excuse a profile that needs no credential.
+        let coding = profiles::harness_profile("coding").unwrap();
+        assert!(!is_missing_credential(&missing_credential(env), coding));
+    }
+
+    /// End-to-end against the real model and the real tool. Runs only with both
+    /// credentials present, since this crate is not part of the CI workspace.
+    #[tokio::test]
+    async fn judgment_profile_measures_a_real_rating() {
+        let (Ok(_), Ok(_)) = (
+            std::env::var("TYPESAFE_API_KEY"),
+            std::env::var("OPENAI_API_KEY"),
+        ) else {
+            eprintln!("skipping: TYPESAFE_API_KEY and OPENAI_API_KEY required");
+            return;
+        };
+        let sample = Sample::new(
+            "judgment-rate-joke",
+            "Rate this joke and tell me the numbers: \"I told my wife she was \
+             drawing her eyebrows too high. She looked surprised.\"",
+        )
+        .meta("requires", serde_json::json!(["typesafe"]))
+        .meta(
+            "expect_judgment_questions",
+            serde_json::json!({"types": ["score"], "min": 1}),
+        );
+        let mut cx = RunCx::new(Target::openai("gpt-5.6"));
+        cx.params.insert("harness".into(), "judgment".into());
+
+        let transcript = GenericRuntimeSubject.run(&sample, &cx).await;
+        assert!(
+            !transcript.metadata.contains_key(SKIPPED_KEY),
+            "keyed run must not skip: {:?}",
+            transcript.metadata.get(SKIPPED_KEY)
+        );
+        assert!(
+            transcript
+                .tool_calls
+                .iter()
+                .any(|c| c == "typesafe_evaluate"),
+            "the model must measure rather than opine; saw {:?}",
+            transcript.tool_calls
+        );
+        let questions = transcript
+            .metadata
+            .get(JUDGMENT_QUESTIONS_KEY)
+            .and_then(|v| v.as_array())
+            .expect("questions recorded");
+        assert!(
+            questions.iter().any(|q| q["type"] == "score"),
+            "a rating is a score question; asked {questions:?}"
+        );
     }
 
     #[tokio::test]
