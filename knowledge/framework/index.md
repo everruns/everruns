@@ -6,3 +6,4 @@
 * [Framework Harnesses](harnesses.md) - Promoting the harness to an application-facing value, separating an agent's world from its behavior and its machine.
 * [Library Experience](library-experience.md) - Ergonomic and behavioral success bars for application-facing use.
 * [Documentation and Examples](documentation-and-examples.md) - The maintained public learning path and runnable-example contract.
+* [API Stability](api-stability.md) - Stable versus alpha markers, promises, and the marking convention.

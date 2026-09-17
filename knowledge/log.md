@@ -2,6 +2,8 @@
 
 ## 2026-09-17
 
+* **Framework APIs gain stability tiers: LLM surface stable, classifier alpha.** Rust's `#[stable]` / `#[unstable]` are nightly-only, so `crates/everruns` marks stability with one-line rustdoc banners defined in the new `crates/everruns/src/stability.rs` helper, recorded in `knowledge/framework/api-stability.md`. First pass marks `llm` stable and `classifier` alpha; unmarked items stay provisional (treat as alpha).
+
 * **Two crates for TypeSafe became one, by removing the constraint instead of
   working around it.** The vendor client sat in `crates/drivers/typesafe` only
   because `everruns-host` held the classifier, and a host dependency

@@ -1,3 +1,5 @@
+//! Stability: alpha — may change without a major bump; see [`stability`](crate::stability).
+//!
 //! Direct classification, without an agent.
 //!
 //! Some work is not a prompt at all: it is a question with a typed answer.
