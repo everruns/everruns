@@ -2757,6 +2757,10 @@ async fn test_get_generic_harness() {
         "Should have loop detection"
     );
     assert!(
+        cap_ids.contains(&"soft_approval"),
+        "Should have soft approval"
+    );
+    assert!(
         cap_ids.contains(&"message_metadata"),
         "Should have message metadata annotations"
     );
@@ -4052,7 +4056,8 @@ async fn test_chat_harness_includes_platform_capability() {
             "tool_call_repair",
             "loop_detection",
             "error_disclosure",
-            "compaction"
+            "compaction",
+            "soft_approval"
         ],
         "Platform Chat should keep platform operations, commands, and runtime safeguards locally"
     );

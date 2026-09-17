@@ -112,6 +112,20 @@
   the model at the first tool call. The name was re-examined against the prior art
   and kept; no other product has this middle layer, because no other product
   treats capabilities as composable modules.
+* **Nothing made an agent stop before a consequential action, and the one gate
+  that could was opt-in and unusable by default.** `tool_approval` blocks per
+  call and needs a host that can service an interactive prompt, so a hosted
+  session had no confirmation layer at all and Platform Chat's confirmation
+  rules were prose with no way to actually pause. The new `soft_approval`
+  capability is the other shape of the problem: prompt guidance that asks the
+  model to batch safe work and stop only at destructive or outward-facing
+  actions, with the pause expressed as a `request_approval` tool call so it is
+  renderable and auditable rather than a turn that appears to have died. It is
+  on by default at `normal` for the `generic` and `platform-chat` harnesses,
+  shares the `ApprovalMode` vocabulary with the hard gate, and takes its level
+  from a host-supplied store when the host owns one, which is the seam a
+  terminal host needs to adopt it without losing its own setting. See
+  [Soft Approval](execution/soft-approval.md).
 
 ## 2026-09-16
 

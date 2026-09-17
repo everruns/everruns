@@ -85,15 +85,39 @@ impl ApprovalMode {
         }
     }
 
-    /// Parse a config value, falling back to the default for anything
-    /// unrecognized (config validation reports the error; the gate must not
-    /// fail open or closed on a typo mid-turn).
-    fn from_config(config: &serde_json::Value) -> Self {
-        match config.get("mode").and_then(serde_json::Value::as_str) {
-            Some("protective") => ApprovalMode::Protective,
-            Some("off") => ApprovalMode::Off,
-            _ => ApprovalMode::Normal,
+    /// Parse a level from text, accepting the synonyms users actually say.
+    ///
+    /// Lenient on purpose: the same string arrives from capability config, a
+    /// host's own settings file, and the model-facing `set_approval_mode`
+    /// tool, and "paranoid" or "yolo" should not be a silent no-op in any of
+    /// them. Unknown values return `None` so callers can report the typo
+    /// rather than guess a level.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "protective" | "paranoid" | "careful" | "cautious" | "high" => {
+                Some(ApprovalMode::Protective)
+            }
+            "normal" | "default" | "balanced" | "standard" => Some(ApprovalMode::Normal),
+            "off" | "none" | "yolo" | "autonomous" => Some(ApprovalMode::Off),
+            _ => None,
         }
+    }
+
+    /// Parse a capability config object, falling back to the default for
+    /// anything unrecognized (config validation reports the error; a gate must
+    /// not fail open or closed on a typo mid-turn).
+    pub fn from_config(config: &serde_json::Value) -> Self {
+        config
+            .get("mode")
+            .and_then(serde_json::Value::as_str)
+            .and_then(ApprovalMode::parse)
+            .unwrap_or_default()
+    }
+}
+
+impl std::fmt::Display for ApprovalMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 

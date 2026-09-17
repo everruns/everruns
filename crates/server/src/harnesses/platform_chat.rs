@@ -73,6 +73,12 @@ pub fn definition() -> BuiltInHarnessDefinition {
                 "budget_percent": 0.85
             }),
         ),
+        // The platform tools here create, mutate, and delete org-wide entities
+        // for a whole organization, so this surface gets soft approval at the
+        // default `normal` level. It supersedes the prose "Confirmation
+        // guidelines" this prompt used to carry alone: same intent, but the
+        // pause is now a tool call the UI can render and the event log records.
+        BuiltInCapabilityDefinition::new("soft_approval"),
     ])
     // Deliberately excluded: `tool_output_distillation` and `memory` both
     // depend on `session_file_system`. Distillation only replaces a result once
@@ -147,6 +153,8 @@ Lead with the outcome. Do not include internal reasoning, planning narration, or
 
 ## Confirmation guidelines
 
+Soft approval governs the pause itself: when you stop for confirmation, `request_approval` is how you stop. These are the platform-specific cases it covers here, beyond the destructive and outward-facing default.
+
 - **Always confirm** before creating a harness or agent — these are reusable org-wide entities.
 - **Sessions**: Use common sense. Routine requests (\"run agent X on this task\") can proceed without confirmation. Unusual or high-impact requests (destructive operations, large-scale actions, unclear intent) should be confirmed first.";
 
@@ -177,7 +185,8 @@ mod tests {
                 "tool_call_repair",
                 "loop_detection",
                 "error_disclosure",
-                "compaction"
+                "compaction",
+                "soft_approval"
             ]
         );
     }
