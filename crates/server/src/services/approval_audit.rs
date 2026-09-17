@@ -130,13 +130,34 @@ fn audited_action(tool_name: &str) -> Option<AgentAction> {
     }
 }
 
+/// Cap on each free-text detail copied into an audit row.
+///
+/// THREAT[TM-OBS-007] These strings are model-authored from the conversation
+/// and land in `audit_logs`, which `AUDIT_LOG_VIEW` exposes to org admins who
+/// may have no access to the session itself. The full text stays in the
+/// session event log; the audit row carries a bounded excerpt plus the
+/// correlation ids needed to go read the rest in context. Bounding also keeps
+/// a model that emits a huge argument from writing an unbounded row
+/// (TM-DOS-*).
+const MAX_DETAIL_CHARS: usize = 512;
+
 fn detail_str(payload: &Value, key: &str) -> Option<String> {
     payload
         .get(key)
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(str::to_string)
+        .map(bounded_detail)
+}
+
+/// Truncate on a character boundary, marking that it happened so a reader does
+/// not mistake an excerpt for the whole value.
+fn bounded_detail(value: &str) -> String {
+    if value.chars().count() <= MAX_DETAIL_CHARS {
+        return value.to_string();
+    }
+    let kept: String = value.chars().take(MAX_DETAIL_CHARS).collect();
+    format!("{kept}… (truncated)")
 }
 
 #[async_trait]
@@ -232,6 +253,40 @@ mod tests {
         assert_eq!(
             initiator_user_id(&json!({"initiator": {"type": "user", "user_id": "not-a-uuid"}})),
             None
+        );
+    }
+
+    /// Audit rows are read by org admins who may not have session access, so
+    /// what the model wrote is excerpted rather than copied wholesale.
+    #[test]
+    fn free_text_details_are_bounded_on_a_character_boundary() {
+        let short = "drop the staging database";
+        assert_eq!(bounded_detail(short), short);
+
+        // Exactly at the cap is not truncated.
+        let at_cap = "a".repeat(MAX_DETAIL_CHARS);
+        assert_eq!(bounded_detail(&at_cap), at_cap);
+
+        let over = "a".repeat(MAX_DETAIL_CHARS + 1);
+        let bounded = bounded_detail(&over);
+        assert!(bounded.ends_with("… (truncated)"));
+        assert_eq!(
+            bounded.chars().count(),
+            MAX_DETAIL_CHARS + "… (truncated)".chars().count()
+        );
+
+        // Multi-byte input must not panic or split a character.
+        let wide = "界".repeat(MAX_DETAIL_CHARS + 10);
+        let bounded = bounded_detail(&wide);
+        assert!(bounded.starts_with(&"界".repeat(MAX_DETAIL_CHARS)));
+        assert!(bounded.ends_with("… (truncated)"));
+
+        // And it applies through the payload reader.
+        let payload = json!({ "action": "x".repeat(MAX_DETAIL_CHARS + 50) });
+        assert!(
+            detail_str(&payload, "action")
+                .expect("action")
+                .ends_with("… (truncated)")
         );
     }
 

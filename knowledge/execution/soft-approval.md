@@ -134,6 +134,13 @@ turn; a failed actor lookup downgrades the row to unattributed rather than
 dropping it. `set_approval_mode` is deliberately not audited here: changing the
 level is configuration, not consent.
 
+The audit row carries a **bounded excerpt**, not the full text. `audit_logs` is
+read under `AUDIT_LOG_VIEW` by org admins who may hold no access to the session,
+and the copied fields are model-authored from the conversation, so each
+free-text detail is capped and marked when truncated (TM-OBS-011). The complete
+text stays in the session event log under session permissions, and the
+correlation ids on the row are what take a reader there.
+
 ### Where the level lives
 
 Effective level = session or host override, else capability config, else
