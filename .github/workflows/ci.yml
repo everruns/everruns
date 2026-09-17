@@ -842,7 +842,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "unit"
+          shared-key: "unit-v2"
           # Heaviest shard writes the key; the others restore it (see `integration`).
           save-if: ${{ matrix.shard == 'facade-cli' }}
 
@@ -990,7 +990,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "integration"
+          shared-key: "integration-v2"
           save-if: false
 
       - name: Run worker tests
@@ -1237,6 +1237,13 @@ jobs:
         uses: dtolnay/rust-toolchain@1.96.0
 
 
+      # The `-v2` suffix is load-bearing: GitHub cache entries are immutable, and
+      # the un-suffixed key already holds a target/ written by whichever job won
+      # the save race before a producer was pinned. Without rotating the name,
+      # that entry survives and the pinning below cannot take effect until the
+      # lockfile happens to change. Bump the suffix again if this key is ever
+      # poisoned the same way.
+      #
       # Exactly one producer per cache key. A shared key is only useful if the
       # target/ stored under it matches what its consumers need, and entries are
       # immutable so the FIRST job to finish wins the save. Before this was
@@ -1248,7 +1255,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "integration"
+          shared-key: "integration-v2"
           save-if: ${{ matrix.shard == 'domain' }}
 
       - name: Cache cargo binaries
@@ -1440,7 +1447,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "integration"
+          shared-key: "integration-v2"
           save-if: false
 
       - name: Cache cargo binaries
@@ -1649,7 +1656,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "integration"
+          shared-key: "integration-v2"
           save-if: false
 
       - name: Cache cargo binaries
