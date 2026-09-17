@@ -231,25 +231,33 @@ where
         .ok_or_else(|| EnvCredentialError::NoChatService {
             driver: driver.id.to_string(),
         })?;
-    let credentials = EnvCredentialProvider::resolve_with(driver, lookup).ok_or_else(|| {
-        EnvCredentialError::Missing {
-            driver: driver.id.to_string(),
-            variables: driver.declared_env_vars(),
-        }
-    })?;
+    let missing = || EnvCredentialError::Missing {
+        driver: driver.id.to_string(),
+        variables: driver.declared_env_vars(),
+    };
+    // An endpoint override alone is not a credential: building a provider from
+    // it would defer the real failure to a 401 at the first request, instead of
+    // saying here which variable to set. Keyless drivers are not built this way.
+    let document = EnvCredentialProvider::resolve_with(driver, lookup)
+        .and_then(|credentials| {
+            credentials
+                .document()
+                .map(|document| (document, credentials.base_url().map(str::to_owned)))
+        })
+        .ok_or_else(missing)?;
+    let (document, base_url) = document;
 
     // The caller's key is the runtime provider identity; the descriptor's id is
     // the driver kind. They are independent, and a model spec selects by the
     // former.
     let id = id.into();
-    let mut config =
-        crate::driver_registry::ProviderConfig::for_provider(id.clone(), driver.id.clone());
-    if let Some(document) = credentials.document() {
-        config = config.with_api_key(document);
-    }
-    if let Some(base_url) = credentials.base_url() {
-        config = config.with_base_url(base_url.to_string());
-    }
+    let config =
+        crate::driver_registry::ProviderConfig::for_provider(id.clone(), driver.id.clone())
+            .with_api_key(document);
+    let config = match base_url {
+        Some(base_url) => config.with_base_url(base_url),
+        None => config,
+    };
     // Through the same typed-field view every other driver-creation path uses,
     // so a multi-field driver reads its credentials exactly as it does on the
     // server.

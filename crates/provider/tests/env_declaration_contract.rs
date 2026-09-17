@@ -115,6 +115,27 @@ fn a_partial_credential_is_an_error_not_a_broken_provider() {
 }
 
 #[test]
+fn an_endpoint_override_alone_is_not_a_credential() {
+    // Only the endpoint variable set. Building a provider from that would
+    // defer the failure to a 401 at the first request instead of naming the
+    // variable to set.
+    let descriptor = DriverDescriptor {
+        credential_schema: CredentialFormSchema::api_key("VENDOR_API_KEY", ""),
+        base_url_env: Some("VENDOR_BASE_URL".into()),
+        ..DriverDescriptor::chat_only(DriverId::external("vendor"), |_| -> BoxedChatDriver {
+            unreachable!("an endpoint is not a credential")
+        })
+    };
+    let error = provider_from_env_with(
+        &descriptor,
+        "vendor",
+        lookup(&[("VENDOR_BASE_URL", "https://proxy.example")]),
+    )
+    .unwrap_err();
+    assert!(matches!(error, EnvCredentialError::Missing { .. }));
+}
+
+#[test]
 fn the_driver_id_no_longer_implies_any_variable_name() {
     // `VENDOR_API_KEY` is what the retired scheme would have derived from the
     // id `vendor`. Nothing derives it now, so it configures nothing.
