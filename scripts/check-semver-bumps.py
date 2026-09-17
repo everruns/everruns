@@ -158,6 +158,15 @@ def latest_published_version(records: list[tuple[str, bool]]) -> str | None:
     return best
 
 
+def selected_baseline_version(
+    records: list[tuple[str, bool]], exact_version: str | None = None
+) -> str | None:
+    """Select an exact published version, or the latest non-yanked baseline."""
+    if exact_version is not None:
+        return exact_version if any(version == exact_version for version, _ in records) else None
+    return latest_published_version(records)
+
+
 def normalize_package_version(text: str) -> str:
     """Neutralize only the `[package] version = ...` line (a pure bump)."""
     out, section = [], None
@@ -274,19 +283,23 @@ def manifest_dirs() -> dict[str, str]:
     return _manifest_dirs
 
 
-def identical_to_baseline(name: str, records=None) -> tuple[bool, str]:
+def identical_to_baseline(
+    name: str, records=None, exact_version: str | None = None
+) -> tuple[bool, str]:
     """Whether a candidate's source is identical to its published baseline.
 
-    Downloads the baseline .crate and compares trees. Returns (True, reason)
-    only on a byte-level match (modulo the package version line); every other
-    outcome -- including any infrastructure failure -- returns False so the
-    crate gets the full semver check. This function must never turn the gate
-    green by itself.
+    Downloads either ``exact_version`` (including a yanked release) or the latest
+    non-yanked .crate and compares trees. Returns (True, reason) only on a
+    byte-level match (modulo the package version line); every other outcome --
+    including any infrastructure failure -- returns False so the crate gets the
+    full semver check. This function must never turn the gate green by itself.
     """
     if records is None:
         records = index_records(name)
-    baseline = latest_published_version(records)
+    baseline = selected_baseline_version(records, exact_version)
     if baseline is None:
+        if exact_version is not None:
+            return False, f"published baseline {exact_version} not found"
         return False, "no published baseline to compare against"
     try:
         crate_dir = manifest_dirs()[name]
@@ -360,7 +373,9 @@ def check_published_source_versions() -> int:
     baselines = fetch_many(packages, index_records)
     drift: list[tuple[str, str, str]] = []
     for name in packages:
-        identical, reason = identical_to_baseline(name, baselines[name])
+        identical, reason = identical_to_baseline(
+            name, baselines[name], exact_version=current[name]
+        )
         if not identical:
             drift.append((name, current[name], reason))
     if not drift:
@@ -529,6 +544,16 @@ def self_test() -> int:
         latest_published_version([("0.1.0", False), ("0.2.0", False)]),
         "0.2.0",
     )
+    expect(
+        "exact baseline allows yanked version",
+        selected_baseline_version([("0.18.1", True), ("0.18.2", False)], "0.18.1"),
+        "0.18.1",
+    )
+    expect(
+        "missing exact baseline fails",
+        selected_baseline_version([("0.18.2", False)], "0.18.1"),
+        None,
+    )
     expect("no baseline", latest_published_version([]), None)
     expect(
         "prerelease below release",
@@ -549,8 +574,8 @@ def self_test() -> int:
         ["a", "b"],
     )
 
-    before = '[package]\nname = "demo"\nversion = "0.18.2"\nedition = "2021"\n'
-    after = '[package]\nname = "demo"\nversion = "0.19.0"\nedition = "2021"\n'
+    before = '[package]\nname = "demo"\nversion = "0.18.1"\nedition = "2021"\n'
+    after = '[package]\nname = "demo"\nversion = "0.18.2"\nedition = "2021"\n'
     expect(
         "pure bump compares equal",
         normalize_package_version(before) == normalize_package_version(after),
@@ -564,11 +589,16 @@ def self_test() -> int:
         False,
     )
 
-    with tempfile.TemporaryDirectory() as work, tempfile.TemporaryDirectory() as base:
+    with (
+        tempfile.TemporaryDirectory() as work,
+        tempfile.TemporaryDirectory() as base,
+        tempfile.TemporaryDirectory() as newer,
+    ):
         os.makedirs(os.path.join(work, "src"))
         os.makedirs(os.path.join(base, "src"))
+        os.makedirs(os.path.join(newer, "src"))
         with open(os.path.join(work, "Cargo.toml"), "w") as fh:
-            fh.write(after)
+            fh.write(before)
         with open(os.path.join(base, "Cargo.toml"), "w") as fh:
             fh.write(before)
         with open(os.path.join(base, "Cargo.toml.orig"), "w") as fh:
@@ -596,6 +626,24 @@ def self_test() -> int:
         expect(
             "new packaged files are detected",
             trees_equal(work, base, {"Cargo.toml", "src/lib.rs", "extra.rs"}),
+            False,
+        )
+        with open(os.path.join(newer, "Cargo.toml.orig"), "w") as fh:
+            fh.write(after)
+        with open(os.path.join(newer, "src", "lib.rs"), "w") as fh:
+            fh.write("pub fn g() {}\n")
+        records = [("0.18.1", True), ("0.18.2", False)]
+        archives = {"0.18.1": base, "0.18.2": newer}
+        exact = selected_baseline_version(records, "0.18.1")
+        latest = selected_baseline_version(records)
+        expect(
+            "current source matches its exact older archive",
+            trees_equal(work, archives[exact], {"Cargo.toml", "src/lib.rs"}),
+            True,
+        )
+        expect(
+            "current source differs from the newer archive",
+            trees_equal(work, archives[latest], {"Cargo.toml", "src/lib.rs"}),
             False,
         )
 

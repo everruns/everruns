@@ -38,6 +38,7 @@ which crates.io makes unrecoverable.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import re
 import subprocess
@@ -50,9 +51,11 @@ sys.path.insert(0, str(REPO / "scripts"))
 # Reuse the vetted crates.io/index and baseline-comparison helpers rather than
 # re-deriving them: the two gates and this planner must agree on what "candidate"
 # and "baseline" mean, or the plan and the check disagree.
-import importlib
-
 _bumps = importlib.import_module("check-semver-bumps")
+
+
+class SemverClassificationError(RuntimeError):
+    """cargo-semver-checks did not produce a complete classification."""
 
 
 def parse_version(version: str) -> tuple[int, int, int]:
@@ -132,26 +135,51 @@ def cascade(
     return plan
 
 
-def classify(candidates: list[str]) -> dict[str, str]:
+def classify(candidates: list[str], runner=subprocess.run) -> tuple[dict[str, str], str]:
     """crate -> 'minor' (breaking) or 'patch' (additive), via cargo-semver-checks.
 
     Runs one ``check-release`` over the candidates on the current workspace and
     reads the per-crate verdict. A crate cargo-semver-checks flags as requiring a
     new major (the breaking slot) is 'minor'; everything else is 'patch'.
     """
+    if not candidates:
+        return {}, ""
     argv = ["cargo", "semver-checks", "check-release"]
     for name in candidates:
         argv += ["--package", name]
-    proc = subprocess.run(argv, capture_output=True, text=True)
+    proc = runner(argv, capture_output=True, text=True)
     out = proc.stdout + proc.stderr
-    level: dict[str, str] = {name: "patch" for name in candidates}
+    if proc.returncode not in (0, 100):
+        raise SemverClassificationError(
+            f"cargo-semver-checks exited {proc.returncode} before classification"
+        )
+    level: dict[str, str] = {}
+    requires_update = False
     current: str | None = None
     for line in out.splitlines():
         m = re.search(r"(?:Building|Checking)\s+(everruns\S*)\s+v", line)
-        if m and m.group(1) in level:
+        if m and m.group(1) in candidates:
             current = m.group(1)
-        if "requires new major version" in line and current:
+        if current and "Summary semver requires new major version" in line:
             level[current] = "minor"
+            requires_update = True
+        elif current and re.search(
+            r"Summary semver requires new (?:minor|patch) version", line
+        ):
+            level[current] = "patch"
+            requires_update = True
+        elif current and "Summary no semver update required" in line:
+            level[current] = "patch"
+    missing = sorted(set(candidates) - set(level))
+    if missing:
+        raise SemverClassificationError(
+            "cargo-semver-checks produced no recognized verdict for "
+            + ", ".join(missing)
+        )
+    if (proc.returncode == 100) != requires_update:
+        raise SemverClassificationError(
+            "cargo-semver-checks exit status disagrees with its package verdicts"
+        )
     return level, out
 
 
@@ -274,7 +302,11 @@ def main() -> int:
     if args.self_test:
         return self_test()
 
-    plan, baselines, _log = compute_plan()
+    try:
+        plan, baselines, _log = compute_plan()
+    except SemverClassificationError as exc:
+        print(f"::error::{exc}", file=sys.stderr)
+        return 1
     if not plan:
         print("No crate releases required: every published crate matches its crates.io baseline.")
         return 0
@@ -328,6 +360,50 @@ def self_test() -> int:
     )
     expect("caret ^0.20 excludes 0.21", caret_allows("^0.20.1", "0.21.0"), False)
     expect("caret ^0.20 allows 0.20.2", caret_allows("^0.20.1", "0.20.2"), True)
+
+    def classified_runner(*_args, **_kwargs):
+        return subprocess.CompletedProcess(
+            [],
+            returncode=100,
+            stdout=(
+                "Building everruns-provider v0.24.0 (current)\n"
+                "Summary semver requires new major version: 5 major checks failed\n"
+                "Finished [1.0s] everruns-provider\n"
+            ),
+            stderr="",
+        )
+
+    classified, _ = classify(["everruns-provider"], runner=classified_runner)
+    expect("recognized major verdict", classified, {"everruns-provider": "minor"})
+
+    writes: list[str] = []
+
+    def failed_runner(*_args, **_kwargs):
+        return subprocess.CompletedProcess(
+            [], returncode=101, stdout="", stderr="network or build failure"
+        )
+
+    try:
+        levels, _ = classify(["everruns-provider"], runner=failed_runner)
+        writes.extend(levels)
+    except SemverClassificationError:
+        pass
+    expect("tool failure produces no plan or writes", writes, [])
+
+    def incomplete_runner(*_args, **_kwargs):
+        return subprocess.CompletedProcess(
+            [],
+            returncode=0,
+            stdout="Building everruns-provider v0.24.0 (current)\n",
+            stderr="",
+        )
+
+    try:
+        classify(["everruns-provider"], runner=incomplete_runner)
+        incomplete_rejected = False
+    except SemverClassificationError:
+        incomplete_rejected = True
+    expect("missing package verdict is rejected", incomplete_rejected, True)
 
     # provider takes a breaking bump; a driver pinning ^0.20 must cascade to patch.
     baselines = {"everruns-provider": "0.20.1", "everruns-openai": "0.18.3"}
