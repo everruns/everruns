@@ -23,7 +23,8 @@ everruns-builtins = { path = "../../crates/builtins" }
 everruns-core = { path = "../../crates/core" }
 everruns-provider = { path = "../../crates/provider" }
 # Both engines' concrete services live here.
-everruns-host = { path = "../../crates/host", features = ["typesafe-judgment", "utility-openai"] }
+everruns-host = { path = "../../crates/host", features = ["utility-openai"] }
+everruns-typesafe-judgment = { path = "../../crates/drivers/typesafe-judgment" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
 serde_json = "1"
 async-trait = "0.1"

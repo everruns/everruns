@@ -1,0 +1,46 @@
+# Deployment-owned TypeSafe judgment service.
+# Decision: This lives outside `everruns-host` because `everruns-host` is
+#   published and this adapter depends on the private `typesafe-systemone`
+#   client. Cargo resolves optional dependencies when packaging, so an optional
+#   feature in the host crate still made the host unpublishable (Publish Crate
+#   run 35242784449: "no matching package named `typesafe-systemone` found").
+# Decision: Filed beside the vendor client for the same reason that one is
+#   filed under drivers: a judgment driver below the platform layer. Host keeps
+#   only core's neutral `JudgmentService` contract, so nothing at or above the
+#   host boundary learns which vendor answers.
+
+[package]
+name = "everruns-typesafe-judgment"
+version = "0.1.0"
+# Not published: depends on typesafe-systemone, which is currently private
+# (crates.io 403 for the new name). Publish both together once the registry
+# token allows it.
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-typesafe-judgment"
+description = "Deployment-owned TypeSafe judgment service for Everruns"
+readme = "README.md"
+keywords = ["everruns", "typesafe", "judgment", "guardrails", "llm"]
+categories = ["api-bindings", "asynchronous"]
+
+[dependencies]
+typesafe-systemone.workspace = true
+
+everruns-core.workspace = true
+everruns-provider.workspace = true
+
+async-trait.workspace = true
+serde_json.workspace = true
+
+[features]
+default = []
+# Live tests against the real judgment API; fail-closed on a missing key.
+live-tests = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

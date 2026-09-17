@@ -2546,7 +2546,6 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
- "typesafe-systemone",
  "uuid",
  "wiremock",
 ]
@@ -3236,6 +3235,7 @@ dependencies = [
  "everruns-provider",
  "everruns-sdk",
  "everruns-turbopuffer",
+ "everruns-typesafe-judgment",
  "everruns-worker",
  "flate2",
  "fred",
@@ -3342,6 +3342,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-typesafe-judgment"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "everruns-core",
+ "everruns-provider",
+ "serde_json",
+ "tokio",
+ "typesafe-systemone",
+]
+
+[[package]]
 name = "everruns-worker"
 version = "0.28.0"
 dependencies = [
@@ -3381,6 +3393,7 @@ dependencies = [
  "everruns-openrouter",
  "everruns-platform",
  "everruns-provider",
+ "everruns-typesafe-judgment",
  "mimalloc",
  "prost-types",
  "reqwest 0.13.5",

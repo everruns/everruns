@@ -7,7 +7,8 @@
 
 use everruns_core::DeploymentGrade;
 use everruns_host::DirectEgressService;
-use everruns_host::{HostComposition, SystemJudgmentConfig, SystemUtilityLlmConfig};
+use everruns_host::{HostComposition, SystemUtilityLlmConfig};
+use everruns_typesafe_judgment::SystemJudgmentConfig;
 use std::sync::Arc;
 
 /// Build the default worker-side platform definition for the current deployment grade.

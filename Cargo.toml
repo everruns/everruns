@@ -32,6 +32,10 @@ members = [
     # is not registered in `DriverRegistry`. Filed here because it is a
     # vendor client below the platform layer, like its neighbours.
     "crates/drivers/typesafe",
+    # Deployment-owned adapter binding that judgment driver to core's neutral
+    # `JudgmentService`. Separate from `everruns-host` so the published host
+    # crate carries no dependency on the (still private) vendor client.
+    "crates/drivers/typesafe-judgment",
     "crates/turbopuffer",
     "crates/internal-protocol",
     "crates/cli",
@@ -233,6 +237,7 @@ everruns-integrations-lua = { path = "integrations/lua", version = "0.18.7" }
 everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.18.7" }
 everruns-integrations-typesafe = { path = "integrations/typesafe", version = "0.1.0" }
 typesafe-systemone = { path = "crates/drivers/typesafe", version = "0.1.0" }
+everruns-typesafe-judgment = { path = "crates/drivers/typesafe-judgment", version = "0.1.0" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }

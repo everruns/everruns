@@ -1,6 +1,6 @@
 //! Deployment-owned TypeSafe judgment service wiring.
 //!
-//! Core owns the neutral contract (`JudgmentService`); this module owns the
+//! Core owns the neutral contract (`JudgmentService`); this crate owns the
 //! vendor. Nothing above core learns that the judgments come from TypeSafe.
 
 use std::collections::BTreeMap;

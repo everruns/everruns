@@ -47,7 +47,6 @@ everruns-integrations-bashkit = { workspace = true, optional = true }
 everruns-integrations-web-fetch = { workspace = true, optional = true }
 everruns-integrations-duckduckgo = { workspace = true, optional = true }
 everruns-integrations-lua = { workspace = true, optional = true }
-typesafe-systemone = { workspace = true, optional = true }
 opentelemetry = { workspace = true, optional = true }
 opentelemetry_sdk = { workspace = true, optional = true }
 opentelemetry-otlp = { workspace = true, optional = true }
@@ -72,11 +71,10 @@ lua = ["dep:everruns-integrations-lua", "direct-egress"]
 # out real processes; unification from other crates is not a contract.
 process = ["tokio/process", "tokio/time"]
 utility-openai = ["everruns-provider/http"]
-# Deployment-owned judgment service backing guardrail checks that ask for a
-# calibrated number instead of text to parse.
-typesafe-judgment = ["dep:typesafe-systemone"]
-# Live tests against the real judgment API; fail-closed on a missing key.
-typesafe-live-tests = ["typesafe-judgment"]
+# The deployment-owned judgment service that backs core's neutral
+# `JudgmentService` lives in `everruns-typesafe-judgment`: it depends on the
+# private vendor client, and an optional dependency here would still be
+# resolved when packaging and make this published crate unpublishable.
 observability = [
     "direct-egress",
     "tokio/time",

@@ -7,16 +7,14 @@ on:
     paths:
       - 'integrations/typesafe/**'
       - 'crates/drivers/typesafe/**'
-      - 'crates/host/src/judgment.rs'
-      - 'crates/host/tests/judgment_live_test.rs'
+      - 'crates/drivers/typesafe-judgment/**'
   pull_request:
     branches: [main]
     types: [opened, reopened, synchronize, labeled, unlabeled]
     paths:
       - 'integrations/typesafe/**'
       - 'crates/drivers/typesafe/**'
-      - 'crates/host/src/judgment.rs'
-      - 'crates/host/tests/judgment_live_test.rs'
+      - 'crates/drivers/typesafe-judgment/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -53,7 +51,7 @@ jobs:
           shared-key: "debug"
 
       - name: Run unit tests
-        run: cargo test -p everruns-integrations-typesafe -p typesafe-systemone
+        run: cargo test -p everruns-integrations-typesafe -p typesafe-systemone -p everruns-typesafe-judgment
 
   # Live tests hit the real TypeSafe API and need DOPPLER_TOKEN.
   # Restricted to push/workflow_dispatch so the secret is never available
@@ -107,4 +105,4 @@ jobs:
         run: cargo test -p typesafe-systemone --features integration
 
       - name: Run judgment service live tests
-        run: cargo test -p everruns-host --features typesafe-live-tests --test judgment_live_test
+        run: cargo test -p everruns-typesafe-judgment --features live-tests --test judgment_live_test

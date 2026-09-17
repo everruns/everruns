@@ -81,12 +81,20 @@ A noul near 0.5 means yes and no are near-equally likely. It does not mean
 "medium intensity", and it is not a confidence value; noul answers have no
 separate confidence because the probability already is one.
 
-## Host Implementation
+## Implementation
 
-`everruns-host` owns the concrete service behind its optional
-`typesafe-judgment` feature ([`crates/host/src/judgment.rs`](../../crates/host/src/judgment.rs)),
-backed by the standalone [`typesafe-systemone`](../../crates/drivers/typesafe/README.md)
-client. Nothing above core learns the vendor.
+`everruns-typesafe-judgment`
+([`crates/drivers/typesafe-judgment`](../../crates/drivers/typesafe-judgment/README.md))
+owns the concrete service, backed by the standalone
+[`typesafe-systemone`](../../crates/drivers/typesafe/README.md) client. The
+deployment entrypoints (`crates/server`, `crates/worker`) wire it into
+`HostComposition`; `everruns-host` itself knows only core's neutral contract,
+so nothing at or above the host boundary learns the vendor.
+
+It is a separate crate from `everruns-host` rather than an optional feature of
+it because `everruns-host` is published while `typesafe-systemone` is not:
+Cargo resolves optional dependencies when packaging, so the feature alone made
+the published host crate fail `cargo package`.
 
 That client is filed under `crates/drivers/` as a **judgment driver**: the same
 shape as the LLM wire-protocol drivers — a vendor client below the platform

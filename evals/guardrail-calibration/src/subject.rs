@@ -21,7 +21,8 @@ use everruns_builtins::GuardrailsCapability;
 use everruns_core::capabilities::Capability;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_hooks::PreToolUseDecision;
-use everruns_host::{OpenAiUtilityLlmService, TypeSafeJudgmentService};
+use everruns_host::OpenAiUtilityLlmService;
+use everruns_typesafe_judgment::TypeSafeJudgmentService;
 use everruns_provider::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy,
 };
