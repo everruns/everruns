@@ -72,6 +72,11 @@ def bump(version: str, level: str) -> str:
         return f"{major}.{minor}.{patch + 1}"
     raise ValueError(level)
 
+def release_version(current: str, baseline: str, level: str) -> str:
+    """Keep an existing bump when it is at least the required semver bump."""
+    minimum = bump(baseline, level)
+    return max((current, minimum), key=parse_version)
+
 
 def caret_allows(req: str, ver: str) -> bool:
     """Cargo default (caret) semantics for the all-caret internal graph."""
@@ -97,7 +102,7 @@ def caret_allows(req: str, ver: str) -> bool:
 def cascade(
     plan: dict[str, str],
     baselines: dict[str, str],
-    breaking: set[str],
+    _breaking: set[str],
     published_deps: dict[str, list[tuple[str, str]]],
 ) -> dict[str, str]:
     """Close the publish cone to a fixpoint.
@@ -113,17 +118,16 @@ def cascade(
     while changed:
         changed = False
         for name, base in baselines.items():
-            current = plan.get(name, base)
             for dep, req in published_deps.get(name, []):
                 dep_ver = plan.get(dep)
                 if dep_ver is None:
                     continue
-                if not caret_allows(req, dep_ver) and not caret_allows(req, current):
-                    # ``name``'s published pin excludes the planned dep version,
-                    # and ``name`` is not itself bumped past that pin yet.
-                    if name not in plan:
-                        plan[name] = bump(base, "patch")
-                        changed = True
+                if not caret_allows(req, dep_ver) and name not in plan:
+                    # ``name``'s published pin excludes the planned dependency
+                    # version. Republishing ``name`` updates that pin; its own
+                    # version number cannot make the old dependency pin valid.
+                    plan[name] = bump(base, "patch")
+                    changed = True
     return plan
 
 
@@ -212,7 +216,7 @@ def compute_plan() -> tuple[dict[str, str], dict[str, str], str]:
     plan: dict[str, str] = {}
     for name in candidates:
         base = baselines.get(name, current[name])
-        plan[name] = bump(base, level[name])
+        plan[name] = release_version(current[name], base, level[name])
 
     published_deps = published_dependency_map(list(current))
     plan = cascade(plan, baselines, breaking, published_deps)
@@ -311,6 +315,16 @@ def self_test() -> int:
     expect("0.x minor is breaking slot", bump("0.20.1", "minor"), "0.21.0")
     expect("0.x patch", bump("0.20.1", "patch"), "0.20.2")
     expect("1.x minor", bump("1.4.2", "minor"), "1.5.0")
+    expect(
+        "existing larger bump is preserved",
+        release_version("0.22.0", "0.21.2", "patch"),
+        "0.22.0",
+    )
+    expect(
+        "insufficient published version takes breaking bump",
+        release_version("0.22.1", "0.22.1", "minor"),
+        "0.23.0",
+    )
     expect("caret ^0.20 excludes 0.21", caret_allows("^0.20.1", "0.21.0"), False)
     expect("caret ^0.20 allows 0.20.2", caret_allows("^0.20.1", "0.20.2"), True)
 
@@ -326,10 +340,18 @@ def self_test() -> int:
     out2 = cascade(plan2, baselines, {"everruns-provider"}, deps)
     expect("already-bumped driver untouched", out2.get("everruns-openai"), "0.19.0")
 
+    # A dependant version that happens to fit the dependency's caret range still
+    # needs republishing: its published dependency requirement is what matters.
+    baselines3 = {"everruns-host": "0.22.1", "everruns": "0.22.2"}
+    plan3 = {"everruns-host": "0.23.0"}
+    deps3 = {"everruns": [("everruns-host", "^0.22.1")]}
+    out3 = cascade(plan3, baselines3, {"everruns-host"}, deps3)
+    expect("dependent version cannot heal an old pin", out3["everruns"], "0.22.3")
+
     # additive dep bump strands nobody.
-    plan3 = {"everruns-provider": "0.20.2"}
-    out3 = cascade(plan3, baselines, set(), deps)
-    expect("additive dep bump: no cascade", "everruns-openai" in out3, False)
+    plan4 = {"everruns-provider": "0.20.2"}
+    out4 = cascade(plan4, baselines, set(), deps)
+    expect("additive dep bump: no cascade", "everruns-openai" in out4, False)
 
     for f in failures:
         print(f"  FAIL {f}")
