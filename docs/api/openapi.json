@@ -18437,7 +18437,7 @@
       },
       "AppEndpointAuthConfig": {
         "type": "object",
-        "description": "Inline auth config for one App endpoint/channel.",
+        "description": "Authentication config for one App endpoint/channel.",
         "required": [
           "mode"
         ],
@@ -18473,7 +18473,7 @@
       },
       "AppEndpointAuthMode": {
         "type": "string",
-        "description": "App-published endpoint authentication mode.\n\nStored inline on `app_channels.channel_config.auth` so users can protect a\nsingle App/channel without first creating org-level identity-provider state.",
+        "description": "App-published endpoint authentication mode.\n\nStored on `AppChannel.auth` so users can protect one endpoint without first\ncreating org-level identity-provider state.",
         "enum": [
           "anonymous",
           "shared_secret",

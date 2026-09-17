@@ -102,6 +102,15 @@ impl TestServer {
     pub async fn new() -> Self {
         Self::with_mode_and_url(TestMode::Postgres, "http://127.0.0.1:0/api".to_string()).await
     }
+    pub async fn postgres_without_encryption() -> Self {
+        Self::build(
+            TestMode::Postgres,
+            "http://127.0.0.1:0/api".to_string(),
+            None,
+            false,
+        )
+        .await
+    }
 
     /// Create a new test server in dev mode (in-memory storage)
     pub async fn in_memory() -> Self {
@@ -115,6 +124,7 @@ impl TestServer {
             TestMode::InMemory,
             "http://127.0.0.1:0/api".to_string(),
             Some(max_bytes),
+            true,
         )
         .await
     }
@@ -177,13 +187,14 @@ impl TestServer {
     }
 
     async fn with_mode_and_url(mode: TestMode, api_base_url: String) -> Self {
-        Self::build(mode, api_base_url, None).await
+        Self::build(mode, api_base_url, None, true).await
     }
 
     async fn build(
         mode: TestMode,
         api_base_url: String,
         atif_export_max_bytes: Option<usize>,
+        encryption_enabled: bool,
     ) -> Self {
         // Create storage backend based on mode
         let (db, pool, durable_store) = match mode {
@@ -221,10 +232,12 @@ impl TestServer {
             .expect("Failed to seed test data");
 
         // Initialize encryption service (use test key)
-        let encryption = Some(Arc::new(
-            EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
-                .expect("Invalid test encryption key"),
-        ));
+        let encryption = encryption_enabled.then(|| {
+            Arc::new(
+                EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
+                    .expect("Invalid test encryption key"),
+            )
+        });
 
         // Create auth config and backend (no auth for tests)
         let auth_config = auth::AuthConfig {

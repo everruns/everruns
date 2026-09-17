@@ -203,9 +203,9 @@ impl InMemoryDatabase {
         if let Some(channel_config) = input.channel_config {
             ch.channel_config = channel_config;
         }
-        if let Some(encrypted) = input.channel_config_encrypted {
-            ch.channel_config_encrypted = Some(encrypted);
-        }
+        input
+            .channel_config_encrypted
+            .apply(&mut ch.channel_config_encrypted);
         input.auth.apply(&mut ch.auth);
         input.auth_encrypted.apply(&mut ch.auth_encrypted);
         input.durable_schedule_id.apply(&mut ch.durable_schedule_id);
@@ -264,9 +264,9 @@ impl InMemoryDatabase {
         if let Some(channel_config) = input.channel_config {
             ch.channel_config = channel_config;
         }
-        if let Some(encrypted) = input.channel_config_encrypted {
-            ch.channel_config_encrypted = Some(encrypted);
-        }
+        input
+            .channel_config_encrypted
+            .apply(&mut ch.channel_config_encrypted);
         input.auth.apply(&mut ch.auth);
         input.auth_encrypted.apply(&mut ch.auth_encrypted);
         input.durable_schedule_id.apply(&mut ch.durable_schedule_id);

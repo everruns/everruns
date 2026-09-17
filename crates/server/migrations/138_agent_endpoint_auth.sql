@@ -1,7 +1,7 @@
 -- Lift endpoint authentication out of transport-specific channel_config.
 ALTER TABLE agent_endpoints
-    ADD COLUMN auth JSONB,
-    ADD COLUMN auth_encrypted BYTEA;
+    ADD COLUMN auth JSONB;
+ALTER TABLE agent_endpoints ADD COLUMN auth_encrypted BYTEA;
 
 -- Plaintext rows can move in place. Encrypted legacy rows remain untouched
 -- until an application write can decrypt and split them safely.

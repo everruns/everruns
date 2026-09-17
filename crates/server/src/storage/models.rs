@@ -2992,7 +2992,7 @@ pub struct CreateAppChannelRow {
 pub struct UpdateAppChannel {
     pub channel_type: Option<String>,
     pub channel_config: Option<serde_json::Value>,
-    pub channel_config_encrypted: Option<Vec<u8>>,
+    pub channel_config_encrypted: UpdateField<Vec<u8>>,
     pub auth: UpdateField<serde_json::Value>,
     pub auth_encrypted: UpdateField<Vec<u8>>,
     pub durable_schedule_id: UpdateField<Uuid>,

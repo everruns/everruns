@@ -5119,7 +5119,7 @@ export interface components {
       updated_at: string;
     };
     /**
-     * @description Inline auth config for one App endpoint/channel.
+     * @description Authentication config for one App endpoint/channel.
      * @example {
      *       "mode": "api_key",
      *       "requirements": {
@@ -5140,8 +5140,8 @@ export interface components {
     /**
      * @description App-published endpoint authentication mode.
      *
-     *     Stored inline on `app_channels.channel_config.auth` so users can protect a
-     *     single App/channel without first creating org-level identity-provider state.
+     *     Stored on `AppChannel.auth` so users can protect one endpoint without first
+     *     creating org-level identity-provider state.
      * @enum {string}
      */
     AppEndpointAuthMode:

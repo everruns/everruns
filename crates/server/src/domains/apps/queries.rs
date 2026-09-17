@@ -42,16 +42,21 @@ pub fn encrypt_channel_config(
     Ok(Some(encryption.encrypt_string(&json)?))
 }
 
-/// Decrypt channel_config from encrypted bytes. Falls back to the plaintext
-/// column only for rows that haven't been migrated yet or when encryption
-/// is not configured (dev/test mode).
+/// Decrypt channel_config from encrypted bytes. The plaintext column is used
+/// only when the row has no encrypted payload.
 pub fn decrypt_channel_config(
     encryption: Option<&Arc<EncryptionService>>,
     encrypted: Option<&[u8]>,
     plaintext_fallback: &serde_json::Value,
 ) -> serde_json::Value {
     match (encrypted, encryption) {
-        (None, _) | (_, None) => plaintext_fallback.clone(),
+        (None, _) => plaintext_fallback.clone(),
+        (Some(_), None) => {
+            tracing::error!(
+                "channel_config is encrypted but encryption is unavailable; returning null"
+            );
+            serde_json::Value::Null
+        }
         (Some(data), Some(enc)) => {
             let json = match enc.decrypt_to_string(data) {
                 Ok(json) => json,
@@ -543,7 +548,7 @@ pub async fn update_channel_config_unscoped(
     let prepared = prepare_channel_storage(encryption, config)?;
     let input = UpdateAppChannel {
         channel_config: Some(prepared.channel_config),
-        channel_config_encrypted: prepared.channel_config_encrypted,
+        channel_config_encrypted: UpdateField::from_option(prepared.channel_config_encrypted),
         auth: UpdateField::from_option(prepared.auth),
         auth_encrypted: UpdateField::from_option(prepared.auth_encrypted),
         ..Default::default()
@@ -680,6 +685,20 @@ mod tests {
         assert!(channel.channel_config.get("auth").is_none());
     }
 
+    #[test]
+    fn encrypted_transport_without_encryption_does_not_use_plaintext_fallback() {
+        let row = row(
+            serde_json::json!({}),
+            Some(b"encrypted-legacy-auth".to_vec()),
+            None,
+            None,
+        );
+
+        let channel = channel_row_to_channel(None, row);
+        assert!(channel.channel_config.is_null());
+        assert!(channel.auth.is_none());
+        assert!(channel.ag_ui_config().is_none());
+    }
     #[test]
     fn encrypted_legacy_auth_is_available_for_lazy_split() {
         let encryption = encryption();

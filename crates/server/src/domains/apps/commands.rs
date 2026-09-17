@@ -2863,7 +2863,9 @@ impl Command for UpdateAppCmd {
                     q::prepare_channel_storage(encryption, &config).map_err(classify_anyhow)?;
                 let input = UpdateAppChannel {
                     channel_config: Some(prepared.channel_config),
-                    channel_config_encrypted: prepared.channel_config_encrypted,
+                    channel_config_encrypted: UpdateField::from_option(
+                        prepared.channel_config_encrypted,
+                    ),
                     auth: UpdateField::from_option(prepared.auth),
                     auth_encrypted: UpdateField::from_option(prepared.auth_encrypted),
                     ..Default::default()
@@ -3676,7 +3678,9 @@ impl Command for RegenerateA2aApiKeyCmd {
                 channel_row.id,
                 UpdateAppChannel {
                     channel_config: Some(prepared.channel_config),
-                    channel_config_encrypted: prepared.channel_config_encrypted,
+                    channel_config_encrypted: UpdateField::from_option(
+                        prepared.channel_config_encrypted,
+                    ),
                     auth: UpdateField::from_option(prepared.auth),
                     auth_encrypted: UpdateField::from_option(prepared.auth_encrypted),
                     ..Default::default()
@@ -3897,7 +3901,9 @@ impl Command for RegenerateApiEndpointApiKeyCmd {
                 channel_row.id,
                 UpdateAppChannel {
                     channel_config: Some(prepared.channel_config),
-                    channel_config_encrypted: prepared.channel_config_encrypted,
+                    channel_config_encrypted: UpdateField::from_option(
+                        prepared.channel_config_encrypted,
+                    ),
                     auth: UpdateField::from_option(prepared.auth),
                     auth_encrypted: UpdateField::from_option(prepared.auth_encrypted),
                     ..Default::default()
@@ -4026,12 +4032,17 @@ impl Command for UpdateChannelCmd {
                 .map_err(classify_anyhow)?;
             (
                 Some(prepared.channel_config),
-                prepared.channel_config_encrypted,
+                UpdateField::from_option(prepared.channel_config_encrypted),
                 UpdateField::from_option(prepared.auth),
                 UpdateField::from_option(prepared.auth_encrypted),
             )
         } else {
-            (None, None, UpdateField::Unchanged, UpdateField::Unchanged)
+            (
+                None,
+                UpdateField::Unchanged,
+                UpdateField::Unchanged,
+                UpdateField::Unchanged,
+            )
         };
 
         let input = UpdateAppChannel {
@@ -4136,7 +4147,8 @@ async fn set_endpoint_published(
             let prepared = q::prepare_channel_storage(ctx.encryption.as_ref(), &config)
                 .map_err(classify_anyhow)?;
             input.channel_config = Some(prepared.channel_config);
-            input.channel_config_encrypted = prepared.channel_config_encrypted;
+            input.channel_config_encrypted =
+                UpdateField::from_option(prepared.channel_config_encrypted);
             input.auth = UpdateField::from_option(prepared.auth);
             input.auth_encrypted = UpdateField::from_option(prepared.auth_encrypted);
         }

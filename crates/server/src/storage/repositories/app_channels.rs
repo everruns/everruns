@@ -223,17 +223,17 @@ impl Database {
             SET
                 channel_type = COALESCE($2, ae.channel_type),
                 channel_config = COALESCE($3, ae.channel_config),
-                channel_config_encrypted = COALESCE($4, ae.channel_config_encrypted),
-                auth = CASE WHEN $5 THEN $6 ELSE ae.auth END,
-                auth_encrypted = CASE WHEN $7 THEN $8 ELSE ae.auth_encrypted END,
-                durable_schedule_id = CASE WHEN $9 THEN $10 ELSE ae.durable_schedule_id END,
-                enabled = COALESCE($11, ae.enabled),
+                channel_config_encrypted = CASE WHEN $4 THEN $5 ELSE ae.channel_config_encrypted END,
+                auth = CASE WHEN $6 THEN $7 ELSE ae.auth END,
+                auth_encrypted = CASE WHEN $8 THEN $9 ELSE ae.auth_encrypted END,
+                durable_schedule_id = CASE WHEN $10 THEN $11 ELSE ae.durable_schedule_id END,
+                enabled = COALESCE($12, ae.enabled),
                 -- `status` is authoritative for ingress (EVE-1007). An explicit
                 -- value wins; otherwise an `enabled` change still moves it, so
                 -- the App API's enable/disable cannot leave a disabled endpoint
                 -- reachable while that API is still the everyday control.
-                status = COALESCE($12, CASE
-                    WHEN NOT COALESCE($11, ae.enabled) THEN 'disabled'
+                status = COALESCE($13, CASE
+                    WHEN NOT COALESCE($12, ae.enabled) THEN 'disabled'
                     WHEN (SELECT a.status FROM apps AS a WHERE a.id = ae.app_id) = 'published' THEN 'live'
                     ELSE 'draft'
                 END),
@@ -245,7 +245,8 @@ impl Database {
         .bind(id)
         .bind(&input.channel_type)
         .bind(&input.channel_config)
-        .bind(&input.channel_config_encrypted)
+        .bind(input.channel_config_encrypted.is_changed())
+        .bind(input.channel_config_encrypted.into_value())
         .bind(input.auth.is_changed())
         .bind(input.auth.into_value())
         .bind(input.auth_encrypted.is_changed())
@@ -293,17 +294,17 @@ impl Database {
             SET
                 channel_type = COALESCE($2, ae.channel_type),
                 channel_config = COALESCE($3, ae.channel_config),
-                channel_config_encrypted = COALESCE($4, ae.channel_config_encrypted),
-                auth = CASE WHEN $5 THEN $6 ELSE ae.auth END,
-                auth_encrypted = CASE WHEN $7 THEN $8 ELSE ae.auth_encrypted END,
-                durable_schedule_id = CASE WHEN $9 THEN $10 ELSE ae.durable_schedule_id END,
-                enabled = COALESCE($11, ae.enabled),
+                channel_config_encrypted = CASE WHEN $4 THEN $5 ELSE ae.channel_config_encrypted END,
+                auth = CASE WHEN $6 THEN $7 ELSE ae.auth END,
+                auth_encrypted = CASE WHEN $8 THEN $9 ELSE ae.auth_encrypted END,
+                durable_schedule_id = CASE WHEN $10 THEN $11 ELSE ae.durable_schedule_id END,
+                enabled = COALESCE($12, ae.enabled),
                 -- `status` is authoritative for ingress (EVE-1007). An explicit
                 -- value wins; otherwise an `enabled` change still moves it, so
                 -- the App API's enable/disable cannot leave a disabled endpoint
                 -- reachable while that API is still the everyday control.
-                status = COALESCE($12, CASE
-                    WHEN NOT COALESCE($11, ae.enabled) THEN 'disabled'
+                status = COALESCE($13, CASE
+                    WHEN NOT COALESCE($12, ae.enabled) THEN 'disabled'
                     WHEN (SELECT a.status FROM apps AS a WHERE a.id = ae.app_id) = 'published' THEN 'live'
                     ELSE 'draft'
                 END),
@@ -315,7 +316,8 @@ impl Database {
         .bind(id)
         .bind(&input.channel_type)
         .bind(&input.channel_config)
-        .bind(&input.channel_config_encrypted)
+        .bind(input.channel_config_encrypted.is_changed())
+        .bind(input.channel_config_encrypted.into_value())
         .bind(input.auth.is_changed())
         .bind(input.auth.into_value())
         .bind(input.auth_encrypted.is_changed())
