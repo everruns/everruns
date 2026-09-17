@@ -5281,6 +5281,8 @@ export interface components {
     AppStatus: "draft" | "published" | "archived" | "deleted";
     BTreeMap: {
       [key: string]: {
+        /** @description Identity whose grant this attachment requests. */
+        actsAs?: components["schemas"]["McpServerActsAs"];
         /** @description Arguments passed to the stdio `command`. */
         args?: string[];
         /** @description Authentication mode used when executing tools from this scoped server. */
@@ -5308,6 +5310,7 @@ export interface components {
          *     empty/ignored for stdio.
          */
         url?: string;
+        use?: null | components["schemas"]["McpServerPresetRef"];
       };
     };
     /** @description Structured progress reported by background tools. */
@@ -12266,11 +12269,22 @@ export interface components {
       url: string;
     };
     /**
+     * @description Identity whose OAuth grant a scoped MCP attachment requests.
+     * @example service
+     * @enum {string}
+     */
+    McpServerActsAs: "none" | "service" | "user";
+    /**
      * @description MCP server authentication mode.
      * @example api_key
      * @enum {string}
      */
     McpServerAuthMode: "none" | "api_key" | "oauth";
+    /**
+     * @description Reference to an organization MCP server catalog entry.
+     * @example catalog:linear
+     */
+    McpServerPresetRef: string;
     /**
      * @description MCP Server lifecycle status.
      *     - `active`: Server is available for use

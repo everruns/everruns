@@ -433,32 +433,55 @@ pub struct McpServer {
 #[serde(try_from = "ScopedMcpServerWire", into = "ScopedMcpServerWire")]
 pub struct ScopedMcpServer {
     /// MCP transport type. Only remote HTTP is supported today.
+    #[serde(
+        default = "default_scoped_transport_type",
+        rename = "type",
+        alias = "transport_type"
+    )]
     #[cfg_attr(feature = "openapi", schema(rename = "type"))]
     pub transport_type: McpServerTransportType,
     /// URL of the remote MCP server endpoint. Required for HTTP transport;
     /// empty/ignored for stdio.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub url: String,
     /// Additional HTTP headers sent on MCP requests (HTTP transport only).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub headers: HashMap<String, String>,
     /// Executable to spawn for a stdio transport server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
     /// Arguments passed to the stdio `command`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub args: Vec<String>,
     /// Environment variables set for the stdio `command`.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub env: HashMap<String, String>,
     /// Authentication mode used when executing tools from this scoped server.
+    #[serde(default, skip_serializing_if = "McpServerAuthMode::is_none")]
     pub auth_mode: McpServerAuthMode,
     /// Protocol-era adoption policy for the MCP client (`auto` negotiates).
+    #[serde(default, skip_serializing_if = "McpProtocolMode::is_auto")]
     pub protocol_mode: McpProtocolMode,
     /// Provider id used to resolve a user-scoped bearer token.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth_provider_id: Option<String>,
     /// Whether to discover tool definitions live from this server.
+    #[serde(
+        default = "default_scoped_tool_discovery",
+        skip_serializing_if = "is_true"
+    )]
     pub tool_discovery: bool,
     /// Organization catalog preset that supplies transport and authentication policy.
+    #[serde(rename = "use", skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(rename = "use"))]
     pub preset: Option<McpServerPresetRef>,
     /// Identity whose grant this attachment requests.
-    #[serde(default)]
+    #[serde(
+        default,
+        rename = "actsAs",
+        alias = "acts_as",
+        skip_serializing_if = "McpServerActsAs::is_none"
+    )]
     #[cfg_attr(feature = "openapi", schema(rename = "actsAs"))]
     pub acts_as: McpServerActsAs,
 }
