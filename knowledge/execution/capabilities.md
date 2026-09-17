@@ -968,7 +968,7 @@ Following the agentskills.io specification:
 - **Tools**: `request_approval` (the pause), `record_approval` (audit), `set_approval_mode` (level)
 - **Config**: `{"mode": "off" | "normal" | "protective"}` (default `normal`)
 - **Source**: `crates/builtins/src/soft_approval.rs`
-- **Behavior**: Contributes a `<soft_approval>` system-prompt block resolved per turn, so a config edit or `set_approval_mode` applies on the next turn; `off` contributes nothing. The pause is the `request_approval` call, not prose, which gives hosts a `PendingApprovalStore` to render and the event log a record of what was asked. Shares the `ApprovalMode` vocabulary with `tool_approval`, and its tools declare themselves read-only so the hard gate never gates the act of asking. Full rationale in [Soft Approval](soft-approval.md).
+- **Behavior**: Contributes a `<soft_approval>` system-prompt block resolved per turn, so a config edit or `set_approval_mode` applies on the next turn; `off` contributes nothing. The pause is the `request_approval` call, not prose, which gives hosts a `PendingApprovalStore` to render and the event log a record of what was asked. Shares the `ApprovalMode` vocabulary with `tool_approval`, and its tools declare themselves read-only so the hard gate never gates the act of asking. The tools record the turn and message a consent was spoken in but never the approver: `ApprovalAuditListener` resolves that server-side from the authenticated `input.message` initiator and writes `agent.approval.requested` / `agent.approval.granted` to the org audit log. Full rationale in [Soft Approval](soft-approval.md).
 
 #### ProgressGuard
 

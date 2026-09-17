@@ -161,6 +161,10 @@ pub enum AgentAction {
     ToolExecuted,
     LlmRequest,
     AppInvocationStarted,
+    /// An agent paused in front of a critical action and asked for consent.
+    ApprovalRequested,
+    /// A human's spoken consent for a critical action was recorded.
+    ApprovalGranted,
 }
 
 impl AgentAction {
@@ -172,6 +176,8 @@ impl AgentAction {
             Self::ToolExecuted => "agent.tool.executed",
             Self::LlmRequest => "agent.llm.request",
             Self::AppInvocationStarted => "agent.app_invocation.started",
+            Self::ApprovalRequested => "agent.approval.requested",
+            Self::ApprovalGranted => "agent.approval.granted",
         }
     }
 }

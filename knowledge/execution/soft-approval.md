@@ -78,16 +78,61 @@ clears the pause, as does the user's next message: either way they have
 answered. The prompt names the failure directly, because it is the one models
 actually make: never announce a critical action and then stop without the call.
 
-### Audit
+### Recording a grant, and who it belongs to
 
 `record_approval` is called right after the user consents. Because every tool
 call already persists a completion event on the session, the approval lands in
 that durable log for free, with a specific `action` description plus optional
 detail. Empty arguments fall back to a conservative description rather than
 failing: a model that emits a bare call after real spoken consent should not
-turn a granted approval into an error. No separate audit store is introduced,
-and both tools tell the model not to pass secrets, since the arguments are
-logged.
+turn a granted approval into an error. Both tools tell the model not to pass
+secrets, since the arguments are logged.
+
+**The tools never say who approved.** A model-written `approved_by` is an
+assertion by the thing being governed, and an audit trail whose actor field is
+supplied by the agent answers nothing. What the tools record is *where* the
+consent was spoken: `request_approval` stamps `asked_in_turn`, and
+`record_approval` stamps `approved_in_turn` and `approved_in_message`, read
+from the turn's `EventContext`. Identity is then resolved by whoever owns the
+authenticated record of that message.
+
+In Everruns that resolution is server-side. The API writes the authenticated
+caller onto every `input.message` event as `initiator` / `acting_principal_id`
+(`execution_metadata::interactive_user_metadata`), and
+`ApprovalAuditListener` reads it back for the message the consent was spoken
+in. So the approver is the identity that sent that message, established by
+authentication rather than by the transcript.
+
+Two consequences worth stating plainly:
+
+- A turn with no human initiator (a schedule, a trigger) resolves to no user.
+  The row is still written, marked `actor_resolution: unattributed`. An
+  approval nobody human granted is exactly what an auditor wants to see, so it
+  is recorded rather than suppressed.
+- In a session several people can post to, the grant belongs to whoever sent
+  the consenting message, not to the session owner. That is the correct
+  attribution, and it is only available because the join runs against the
+  message, not the session.
+
+### Audit
+
+Two records, for two different questions.
+
+**The session event log** answers "what happened in this conversation": the
+ask and the grant appear in order, in context, and are readable from
+`/v1/sessions/{id}/events`. This is the only record a portable host
+(`everruns-builtins` alone, or a terminal agent) gets, and for a single-user
+host it is sufficient.
+
+**The org audit log** (`audit_logs`, see [Audit Logging](../security/audit-logging.md))
+answers "who approved what, across the org, after the session is gone".
+`ApprovalAuditListener` writes one row per ask (`agent.approval.requested`) and
+per grant (`agent.approval.granted`), with the resolved actor, the session as
+target, and the action, detail, question, and correlation ids as details. It
+is an `EventListener`, so it is fire-and-forget and never blocks or fails a
+turn; a failed actor lookup downgrades the row to unattributed rather than
+dropping it. `set_approval_mode` is deliberately not audited here: changing the
+level is configuration, not consent.
 
 ### Where the level lives
 

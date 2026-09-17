@@ -127,6 +127,19 @@
   terminal host needs to adopt it without losing its own setting. See
   [Soft Approval](execution/soft-approval.md).
 
+* **A granted approval said what was approved but never who approved it.** The
+  grant was a tool call in the session event log, which is the right record of
+  the conversation and the wrong thing to answer to: it is scoped to one
+  session, and nothing in it names a person. Having the model write an
+  `approved_by` would have been worse, an identity claim by the thing being
+  governed. The tools now stamp only the turn and input message the consent was
+  spoken in, and the server resolves the approver from the authenticated
+  initiator it already writes onto that message, emitting
+  `agent.approval.requested` / `agent.approval.granted` to the org audit log. A
+  turn with no human initiator is recorded as unattributed rather than dropped,
+  because an approval nobody granted is the finding. See
+  [Soft Approval](execution/soft-approval.md).
+
 ## 2026-09-16
 
 * **Demo screenshots are maintained product assets, not disposable PR evidence.** The canonical set

@@ -463,7 +463,7 @@ impl Tool for RequestApprovalTool {
         // Without a session there is nowhere to hang the pause, but the model
         // must still be told to stop, so the marker is skipped and the result
         // is unchanged.
-        approval_result(&arguments)
+        approval_result(&arguments, None, None)
     }
 
     async fn execute_with_context(
@@ -474,8 +474,27 @@ impl Tool for RequestApprovalTool {
         let (action, question) = approval_ask(&arguments);
         self.pending
             .set(context.session_id, PendingApproval { action, question });
-        approval_result(&arguments)
+        let (turn_id, input_message_id) = turn_correlation(context);
+        approval_result(&arguments, turn_id, input_message_id)
     }
+}
+
+/// Correlation keys for the turn this call belongs to.
+///
+/// The soft-approval tools never assert *who* approved: a model-written
+/// identity claim is not evidence. What they record is the turn and the exact
+/// input message the consent was spoken in, which a host resolves against its
+/// own authenticated record of who sent that message. In Everruns that is the
+/// `input.message` event's initiator metadata, written by the API from the
+/// authenticated caller; see `ApprovalAuditListener`.
+fn turn_correlation(context: &ToolContext) -> (Option<String>, Option<String>) {
+    let Some(event_context) = context.event_context.as_ref() else {
+        return (None, None);
+    };
+    (
+        event_context.turn_id.map(|id| id.to_string()),
+        event_context.input_message_id.map(|id| id.to_string()),
+    )
 }
 
 fn approval_ask(arguments: &Value) -> (String, String) {
@@ -486,13 +505,22 @@ fn approval_ask(arguments: &Value) -> (String, String) {
     (action, question)
 }
 
-fn approval_result(arguments: &Value) -> ToolExecutionResult {
+fn approval_result(
+    arguments: &Value,
+    turn_id: Option<String>,
+    input_message_id: Option<String>,
+) -> ToolExecutionResult {
     let (action, question) = approval_ask(arguments);
     ToolExecutionResult::success(json!({
         "ok": true,
         "awaiting_approval": true,
         "action": action,
         "question": question,
+        // The turn the ask was raised in. The consent lands in the *next*
+        // input message, so an auditor pairs this with the grant below rather
+        // than reading an approver out of the ask itself.
+        "asked_in_turn": turn_id,
+        "asked_after_message": input_message_id,
         "message": "waiting for the user to approve; end your turn now",
     }))
 }
@@ -571,7 +599,7 @@ impl Tool for RecordApprovalTool {
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
-        recorded_result(&arguments)
+        recorded_result(&arguments, None, None)
     }
 
     async fn execute_with_context(
@@ -583,17 +611,27 @@ impl Tool for RecordApprovalTool {
         // here rather than on the next turn keeps a host from showing a pause
         // that has already been answered.
         self.pending.resolve(&context.session_id);
-        recorded_result(&arguments)
+        let (turn_id, input_message_id) = turn_correlation(context);
+        recorded_result(&arguments, turn_id, input_message_id)
     }
 }
 
-fn recorded_result(arguments: &Value) -> ToolExecutionResult {
+fn recorded_result(
+    arguments: &Value,
+    turn_id: Option<String>,
+    input_message_id: Option<String>,
+) -> ToolExecutionResult {
     let action = approval_action(arguments);
     ToolExecutionResult::success(json!({
         "ok": true,
         "recorded": true,
         "action": action,
         "detail": non_empty_str(arguments.get("detail")),
+        // The message the consent was spoken in. This is the join key an
+        // auditor uses to name the approver from the host's own authenticated
+        // record of who sent it.
+        "approved_in_turn": turn_id,
+        "approved_in_message": input_message_id,
         "message": format!("approval recorded: {action}"),
     }))
 }
@@ -941,6 +979,65 @@ mod tests {
                 .is_error()
         );
         assert_eq!(capability.modes.mode(&session_id), None);
+    }
+
+    /// The grant carries the message the consent was spoken in, which is what
+    /// lets an auditor name the approver without the model asserting an
+    /// identity.
+    #[tokio::test]
+    async fn the_grant_carries_the_turn_and_message_it_was_given_in() {
+        use crate::events::EventContext;
+        use crate::typed_id::{MessageId, TurnId};
+
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::new();
+        let mut context = ToolContext::new(session_id);
+        context.event_context = Some(EventContext {
+            turn_id: Some(turn_id),
+            input_message_id: Some(input_message_id),
+            ..Default::default()
+        });
+
+        let pending = PendingApprovalStore::new();
+        let ask = RequestApprovalTool {
+            pending: pending.clone(),
+        }
+        .execute_with_context(json!({"action": "deploy to production"}), &context)
+        .await;
+        let ToolExecutionResult::Success(ask) = ask else {
+            panic!("expected success");
+        };
+        assert_eq!(ask["asked_in_turn"], turn_id.to_string());
+        assert_eq!(ask["asked_after_message"], input_message_id.to_string());
+
+        let grant = RecordApprovalTool { pending }
+            .execute_with_context(json!({"action": "deploy to production"}), &context)
+            .await;
+        let ToolExecutionResult::Success(grant) = grant else {
+            panic!("expected success");
+        };
+        assert_eq!(grant["approved_in_turn"], turn_id.to_string());
+        assert_eq!(grant["approved_in_message"], input_message_id.to_string());
+    }
+
+    /// A host with no event context still gets a working grant, just one with
+    /// nothing to join on.
+    #[tokio::test]
+    async fn correlation_is_absent_rather_than_wrong_without_an_event_context() {
+        let grant = RecordApprovalTool {
+            pending: PendingApprovalStore::new(),
+        }
+        .execute_with_context(
+            json!({"action": "rm -rf build"}),
+            &ToolContext::new(SessionId::new()),
+        )
+        .await;
+        let ToolExecutionResult::Success(grant) = grant else {
+            panic!("expected success");
+        };
+        assert_eq!(grant["recorded"], true);
+        assert!(grant["approved_in_message"].is_null());
     }
 
     /// The seam a host with its own durable setting migrates onto.
