@@ -8,7 +8,7 @@ use crate::{AgentLoopError, LlmCallConfig, LlmMessage, LlmResponse, LlmResponseS
 use async_trait::async_trait;
 use std::collections::HashMap;
 
-pub const UTILITY_LLM_MODEL: &str = "gpt-5.5";
+pub const UTILITY_LLM_MODEL: &str = "gpt-5.6-luna";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UtilityLlmReasoningEffort {
@@ -176,7 +176,7 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, LlmMessageRole::User);
         assert_eq!(messages[0].content_as_text(), "summarize α");
-        assert_eq!(config.model, "gpt-5.5");
+        assert_eq!(config.model, "gpt-5.6-luna");
         assert_eq!(config.reasoning_effort, None);
         assert_eq!(config.temperature, None);
         assert_eq!(config.max_tokens, None);
@@ -236,7 +236,7 @@ mod tests {
                     ("request".into(), "request_1".into())
                 ])
             );
-            assert_eq!(config.model, "gpt-5.5");
+            assert_eq!(config.model, "gpt-5.6-luna");
         }
     }
 

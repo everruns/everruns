@@ -43,7 +43,7 @@ endpoint.
   `EgressService` and is not governed by tenant/agent egress policy such as
   `EVERRUNS_SYSTEM_ALLOWLIST_ENABLED`.
 
-The model is hardcoded to `gpt-5.5`. Requests do not expose tools, tool search,
+The model is hardcoded to `gpt-5.6-luna`. Requests do not expose tools, tool search,
 previous response IDs, model overrides, or provider credentials. By default the
 service sends no reasoning parameter; callers can opt into `low`, `medium`, or
 `high`.
