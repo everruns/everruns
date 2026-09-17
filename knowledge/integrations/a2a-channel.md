@@ -304,7 +304,7 @@ A2A channels; otherwise `404`. Card shape:
       "tags": ["everruns", "a2a"]
     }
   ],
-  "securitySchemes": { "...": "derived from channel_config.auth" },
+  "securitySchemes": { "...": "derived from AppChannel.auth" },
   "securityRequirements": [{ "...": [] }]
 }
 ```
@@ -444,8 +444,8 @@ request signing. When set, every request must additionally carry a
 timestamp + signature header pair; otherwise the channel keeps the
 existing authentication-only behavior. This closes TM-A2A-010
 (captured-request replay until rotation) without breaking deployments
-that have not opted in. Signing is **orthogonal** to the inline endpoint
-auth (`channel_config.auth`), it layers replay protection on top of
+that have not opted in. Signing is **orthogonal** to first-class endpoint
+auth (`AppChannel.auth`), it layers replay protection on top of
 whichever auth mode the channel uses (default API key, HTTP Basic, OIDC,
 OAuth2, or mTLS).
 
