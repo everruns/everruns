@@ -86,11 +86,36 @@ jobs:
           # (cargo reports publish = [] for those).
           published = {p["name"]: p for p in meta["packages"] if p.get("publish") != []}
 
+          existing = {name: published_versions(name) for name in published}
+
           to_release = {
               name: pkg["version"]
               for name, pkg in published.items()
-              if pkg["version"] not in published_versions(name)
+              if pkg["version"] not in existing[name]
           }
+
+          # A crate that has never been published cannot join a platform version
+          # that was already cut. Its internal pins name that version, and the
+          # siblings published at it came from the older commit, so `cargo
+          # publish`'s verification build compiles the new crate against stale
+          # dependency source and fails -- which is how
+          # everruns-integrations-typesafe 0.28.0 broke after #3666 flipped it
+          # from `publish = false` mid-cycle. Defer it to the next platform
+          # version, where every crate publishes from one commit again.
+          #
+          # Scoped to never-published crates so a re-run can still finish a
+          # partially published cascade: an existing crate resuming at the
+          # version being cut is the normal case, not this one. The cost is that
+          # a new crate added in a release whose cascade then fails ships one
+          # release later instead; a deferred crate is named below either way.
+          if any(pkg["version"] in existing[name] for name, pkg in published.items()):
+              for name in sorted(n for n in to_release if not existing[n]):
+                  print(
+                      f"::notice::{name} {to_release[name]} is new and this platform "
+                      f"version is already cut; it joins the next one",
+                      file=sys.stderr,
+                  )
+                  del to_release[name]
 
           # Topologically sort the release set so dependencies publish first.
           deps = {
