@@ -87,6 +87,22 @@
   something and get numbers back instead of forming a second impression in
   prose. Its user connection is deliberately separate from the deployment key
   that backs the classifier.
+* **Integration registration was a linker side effect.** Integration crates
+  submitted their capabilities and connectors through `inventory::submit!`, and
+  `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` each carried an
+  `extern crate` block so the linker kept those crates and their link-section
+  submissions. A registry's contents therefore depended on what a binary
+  happened to link: dropping a line removed an integration with no compile
+  error, the set was maintained in four places (two manifests, two `extern
+  crate` blocks), and `everruns-platform`'s own tests saw a different registry
+  than production because platform does not depend on the integration crates.
+  Each crate now publishes `CAPABILITY_PLUGINS` / `CONNECTOR_PLUGINS` consts and
+  the new `crates/integrations-catalog` names every one, with
+  `scripts/lib/check-integration-catalog.sh` failing a crate that publishes
+  plugins without a catalog entry. Embedders filter or extend `CATALOG`.
+  `SessionSandboxProviderPlugin` and the `CommandDescriptor` catalog still use
+  inventory and are unaffected — every catalog entry references its crate by
+  path, so the crate stays linked.
 
 * **Which identity an MCP server acts under was a side effect of its auth mode,
   not a stated property.** `api_key` happened to be org-wide, `oauth` happened to

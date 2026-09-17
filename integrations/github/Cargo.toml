@@ -1,5 +1,5 @@
 # GitHub Integration
-# Decision: External integration crate, auto-registered via inventory plugin system
+# Decision: External integration crate, named in crates/integrations-catalog
 # Decision: Provides blueprint-only GitHub Scout; host-facing GitHub tools stay empty
 # Decision: GitHub token resolved via the existing "github" user connection
 
@@ -24,7 +24,6 @@ everruns-core.workspace = true
 # schema is derived from `GitHubScoutConfig` instead of hand-written JSON.
 everruns-capability = { workspace = true, features = ["definition"] }
 everruns-provider.workspace = true
-inventory.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true

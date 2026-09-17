@@ -22,7 +22,6 @@ everruns-provider.workspace = true
 # Connector catalog (EVE-879): connectors register into the hosted connector
 # plugin system, which lives in the platform crate.
 everruns-platform.workspace = true
-inventory.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true

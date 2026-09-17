@@ -21,4 +21,6 @@
 mod image_capability;
 mod images;
 
-pub use image_capability::{EditImageTool, GenerateImageTool, GptImageGenCapability};
+pub use image_capability::{
+    CAPABILITY_PLUGINS, EditImageTool, GenerateImageTool, GptImageGenCapability,
+};

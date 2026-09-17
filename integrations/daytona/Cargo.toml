@@ -1,5 +1,5 @@
 # Daytona Integration
-# Decision: External integration crate, auto-registered via inventory plugin system
+# Decision: External integration crate, named in crates/integrations-catalog
 
 [package]
 name = "everruns-integrations-daytona"

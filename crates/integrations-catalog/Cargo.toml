@@ -1,0 +1,38 @@
+# Hosted Integration Catalog
+# Decision: the one place that names every integration crate composed into the
+# hosted product. Sits above everruns-platform because integration crates
+# depend on platform for the connector and sandbox contracts.
+
+[package]
+name = "everruns-integrations-catalog"
+version = "0.28.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-integrations-catalog"
+description = "The catalog of integrations composed into the hosted Everruns product"
+keywords = ["everruns", "integrations", "agents"]
+categories = ["api-bindings", "development-tools"]
+readme = "README.md"
+
+[dependencies]
+everruns-core.workspace = true
+everruns-platform.workspace = true
+
+everruns-ard.workspace = true
+everruns-integrations-brave-search = { path = "../../integrations/brave-search", features = ["hosted"] }
+everruns-integrations-browserless = { path = "../../integrations/browserless" }
+everruns-integrations-cursor = { path = "../../integrations/cursor" }
+everruns-integrations-daytona = { path = "../../integrations/daytona" }
+everruns-integrations-deno = { path = "../../integrations/deno" }
+everruns-integrations-docker = { path = "../../integrations/docker" }
+everruns-integrations-duckduckgo = { path = "../../integrations/duckduckgo" }
+everruns-integrations-e2b = { path = "../../integrations/e2b" }
+everruns-integrations-github = { path = "../../integrations/github" }
+everruns-integrations-openai-image = { path = "../../integrations/openai-image" }
+everruns-integrations-parallel = { path = "../../integrations/parallel" }
+everruns-integrations-sprites = { path = "../../integrations/sprites" }
+everruns-integrations-typesafe = { path = "../../integrations/typesafe", features = ["hosted"] }

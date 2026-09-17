@@ -658,6 +658,19 @@ jobs:
       - name: Check every crate test file is run by a workflow or allowlisted
         run: bash scripts/lib/check-test-enumeration.sh
 
+  integration-catalog:
+    name: Integration Catalog
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check every plugin-publishing crate is named in the catalog
+        run: bash scripts/lib/check-integration-catalog.sh
+
   clippy:
     name: Clippy Lints
     runs-on: ubuntu-latest
@@ -798,6 +811,10 @@ jobs:
           cargo test -p everruns-provider --all-features
           cargo test -p everruns-engine -p everruns-builtins --all-features
           cargo test -p everruns-integrations-docker --all-features
+          # The integration catalog is the one list naming every plugin-publishing
+          # crate; check-integration-catalog.sh guards completeness, these tests
+          # guard the entries themselves.
+          cargo test -p everruns-integrations-catalog --all-features
           # everruns-platform is in CI, but by named target: these four files
           # were never added to the list and so never ran. capability_boundary
           # is deliberately absent — it fails against current code and is parked

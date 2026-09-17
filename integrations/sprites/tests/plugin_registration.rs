@@ -3,13 +3,12 @@
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_core::deployment::DeploymentGrade;
 
-// Force linker to include the integration crate's inventory submissions.
-use everruns_integrations_sprites as _;
+use everruns_integrations_sprites::CAPABILITY_PLUGINS;
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
-    registry.register_inventory_plugins(|plugin| {
+    registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
         (!plugin.experimental_only || grade.experimental_features_enabled())
             && plugin
                 .feature_flag
@@ -19,20 +18,20 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
 }
 
 #[test]
-fn test_sprites_plugin_is_submitted() {
-    let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
+fn test_sprites_plugin_is_published() {
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     assert!(
         plugins.iter().any(|p| {
             let cap = (p.factory)();
             cap.id() == "sprites"
         }),
-        "Sprites IntegrationPlugin should be submitted via inventory"
+        "Sprites IntegrationPlugin should be published in CAPABILITY_PLUGINS"
     );
 }
 
 #[test]
 fn test_sprites_plugin_is_not_experimental() {
-    let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     let sprites = plugins
         .iter()
         .find(|p| {

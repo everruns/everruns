@@ -60,7 +60,9 @@ The policy trades PR load for a bounded amount of post-merge and scheduled cover
 
 ## Integration Crates (`integrations/`)
 
-Auto-registered via `inventory` plugin system. Each crate has a `SPEC.md`.
+Each crate publishes `CAPABILITY_PLUGINS` / `CONNECTOR_PLUGINS` consts and is named in
+`crates/integrations-catalog` (see
+[architecture.md](../foundations/architecture.md#integration-catalog)). Each crate has a `SPEC.md`.
 
 | Integration | Spec | Summary |
 |---|---|---|

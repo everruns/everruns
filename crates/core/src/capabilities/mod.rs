@@ -40,10 +40,16 @@ use std::sync::Arc;
 // Integration Plugin System
 // ============================================================================
 
-/// Plugin registration point for external integration crates.
+/// Descriptor an integration crate publishes for one of its capabilities.
 ///
-/// Integration crates use `inventory::submit!` to register their capabilities
-/// without requiring `everruns-core` to know about them at compile time.
+/// Decision: integration crates expose these as plain `const` slices and a
+/// catalog crate names every one it composes. The registration used to happen
+/// through `inventory::submit!`, which made presence in a registry a linker
+/// side effect: a forgotten `extern crate` in a binary dropped an integration
+/// with no compile error, and the same registry differed between binaries
+/// depending on what happened to be linked. A named list costs one line per
+/// integration and gets the compiler to check it.
+///
 /// Host or product composition iterates these descriptors and applies its
 /// deployment-grade and feature-selection policy. Core only owns the neutral
 /// registration contract.
@@ -52,13 +58,12 @@ use std::sync::Arc;
 ///
 /// ```ignore
 /// // In integrations/daytona/src/lib.rs:
-/// inventory::submit! {
-///     everruns_core::capabilities::IntegrationPlugin {
+/// pub const CAPABILITY_PLUGINS: &[everruns_core::capabilities::IntegrationPlugin] =
+///     &[everruns_core::capabilities::IntegrationPlugin {
 ///         experimental_only: false,
 ///         feature_flag: None,
 ///         factory: || Box::new(DaytonaCapability),
-///     }
-/// }
+///     }];
 /// ```
 pub struct IntegrationPlugin {
     /// If true, product composition registers this only for experimental grades.
@@ -71,8 +76,6 @@ pub struct IntegrationPlugin {
     /// Factory function that creates the capability instance.
     pub factory: fn() -> Box<dyn Capability>,
 }
-
-inventory::collect!(IntegrationPlugin);
 
 pub use crate::capability_types::{
     CapabilityStatus, MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource,
@@ -1370,15 +1373,17 @@ impl CapabilityRegistry {
         Ok(())
     }
 
-    /// Register inventory-submitted integrations accepted by a caller-owned policy.
+    /// Register integration plugins accepted by a caller-owned policy.
     ///
     /// Core owns the registry mutation algorithm; host and product composition
-    /// own every deployment-grade and feature decision supplied by `include`.
-    pub fn register_inventory_plugins(
+    /// own the catalog supplied by `plugins` and every deployment-grade and
+    /// feature decision supplied by `include`.
+    pub fn register_plugins<'a>(
         &mut self,
+        plugins: impl IntoIterator<Item = &'a IntegrationPlugin>,
         mut include: impl FnMut(&IntegrationPlugin) -> bool,
     ) {
-        for plugin in inventory::iter::<IntegrationPlugin>() {
+        for plugin in plugins {
             if include(plugin) {
                 self.register_boxed((plugin.factory)());
             }
