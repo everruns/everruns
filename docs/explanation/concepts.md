@@ -25,13 +25,15 @@ Your application creates **configuration**, starts **runtime**, and consumes **d
 
 You could imagine flattening everything into one "agent config" object. Everruns deliberately doesn't.
 
-- A **harness** answers *"what environment am I running in?"*, model defaults, baseline tools, network access. The same harness is reused across many agents.
+- A **harness** answers *"what environment am I running in?"*, model defaults, baseline tools, network access. The same harness is reused across many agents, and each agent holds a reference to the one it runs on.
 - An **agent** answers *"what role am I playing?"*, system prompt, domain capabilities, the agent's voice.
 - A **session** answers *"what's true for this one conversation?"*, extra tools the user just unlocked, an overridden model, a tighter network policy.
 
 When a session starts, all three layers merge into a single `RuntimeAgent` via an associative fold of overlays. Earlier layers form the base; later layers override or add. System prompts concatenate; network policies can only narrow (allow lists intersect, blocklists union); capabilities are deduplicated by ID.
 
 The motivation: operators control harnesses, app authors control agents, end users (or the runtime) control sessions. Each layer has a different blast radius, and the merge rules reflect that.
+
+None of the three is the agent loop. The loop, the thing that assembles context, calls the model, and dispatches tools, is the runtime, and it is not configured as an entity. This is worth stating because "agent harness" names that loop in most other projects, and Everruns uses the word that way itself when it calls the product a durable agentic harness engine. The `Harness` entity is a different thing with the same name: the configuration a session runs on top of.
 
 ## Why capabilities are first-class
 

@@ -18,11 +18,14 @@ Harness and Agent are **configuration containers**: they hold capabilities and d
 
 ### Harness
 
-A Harness is the top-level entity that represents a setup for agent execution. It defines the infrastructure, defaults, and constraints under which sessions run, configuring how agents are invoked, which capabilities are available by default, and what execution environment is provided.
+A Harness is what an agent runs on. It defines the execution environment, defaults, and constraints for sessions: which capabilities are available by default, the default model, network access, and starter files.
 
 - There can be many harnesses in the system
-- Each session has exactly one assigned harness
+- Each agent holds exactly one harness reference
+- Each session runs on exactly one harness, the agent's unless the session names another
 - A harness can have capabilities attached to it
+
+A Harness is not the agent loop. "Agent harness" commonly means that loop elsewhere, and Everruns uses the word that way when describing itself as a durable agentic harness engine. The loop is the runtime; a Harness is configuration the runtime reads. See [Harnesses](/features/harnesses/).
 
 ### Agent
 
