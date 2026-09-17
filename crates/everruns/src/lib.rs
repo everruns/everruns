@@ -193,6 +193,19 @@ pub use everruns_provider::runtime_provider::{
     BearerAuth, Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey,
     StaticHeaderAuth,
 };
+// Credential resolution. A driver declares which environment variables it reads
+// on its own descriptor, following its vendor's SDK; `EnvCredentialProvider` is
+// the one place that pairs those declarations with the process environment, and
+// is for standalone/CLI/dev use only.
+pub use everruns_provider::credential_provider::{
+    CredentialProvider, EnvCredentialError, EnvCredentialProvider, ProviderCredentials,
+    provider_from_env,
+};
+pub use everruns_provider::credential_schema::{CredentialFormSchema, FieldType, FormField};
+pub use everruns_provider::driver_registry::{
+    BoxedChatDriver, DriverConfig, DriverDescriptor, DriverRegistry,
+};
+pub use everruns_provider::provider::DriverId;
 pub use everruns_provider::tool_types::{ToolCall, ToolDefinition};
 pub use everruns_provider::typed_id::{SessionId, WorkspaceId};
 
@@ -249,6 +262,7 @@ pub mod prelude {
         AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
         ToolSearch,
     };
+    pub use crate::{DriverId, EnvCredentialError, EnvCredentialProvider};
     #[cfg(feature = "openai")]
     pub use crate::{OpenAI, OpenAIError};
     pub use everruns_core::turn::TurnStopReason;

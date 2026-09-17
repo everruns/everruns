@@ -120,25 +120,37 @@ fn build_client(credential: &BedrockCredential) -> Client {
 }
 
 /// Register the Bedrock driver with the given registry.
-pub fn register_driver(registry: &mut DriverRegistry) {
+/// This driver's descriptor: identity, services, and the credential schema
+/// that declares its own environment variables.
+pub fn descriptor() -> DriverDescriptor {
     // Bedrock's multi-field credential is a declared schema of discrete typed
     // fields (knowledge/foundations/providers.md), not a JSON document smuggled through
     // `api_key`. The fields are assembled into the stored credential document
     // and parsed back into the typed `DriverConfig` credential map.
-    registry.register_descriptor(DriverDescriptor {
+    DriverDescriptor {
         display_name: "AWS Bedrock".into(),
+        // Environment names are the AWS SDK's own, so an operator with a
+        // working AWS shell needs no Everruns-specific variables. There is no
+        // endpoint variable: for Bedrock the region selects the endpoint.
         credential_schema: CredentialFormSchema {
             fields: vec![
-                FormField::password("access_key_id", "Access Key ID").required(),
-                FormField::password("secret_access_key", "Secret Access Key").required(),
+                FormField::password("access_key_id", "Access Key ID")
+                    .required()
+                    .env("AWS_ACCESS_KEY_ID"),
+                FormField::password("secret_access_key", "Secret Access Key")
+                    .required()
+                    .env("AWS_SECRET_ACCESS_KEY"),
                 // Optional to match BedrockCredential, which defaults the
                 // region to us-east-1 when omitted.
                 FormField::text("region", "Region")
                     .with_placeholder("us-east-1")
                     .with_default("us-east-1")
-                    .with_help("Defaults to us-east-1."),
+                    .with_help("Defaults to us-east-1.")
+                    .env("AWS_REGION")
+                    .env_fallback("AWS_DEFAULT_REGION"),
                 FormField::password("session_token", "Session Token")
-                    .with_help("Only for temporary credentials."),
+                    .with_help("Only for temporary credentials.")
+                    .env("AWS_SESSION_TOKEN"),
             ],
             instructions_markdown:
                 "Create an IAM user or role with Bedrock invoke permissions and use its access keys."
@@ -155,7 +167,25 @@ pub fn register_driver(registry: &mut DriverRegistry) {
                 Err(e) => Box::new(FailDriver(e.to_string())) as BoxedChatDriver,
             }
         })
-    });
+    }
+}
+
+/// Register the driver with a [`DriverRegistry`].
+pub fn register_driver(registry: &mut DriverRegistry) {
+    registry.register_descriptor(descriptor());
+}
+
+/// Build a provider from this driver's declared environment variables.
+///
+/// Standalone/CLI/dev only: server paths resolve credentials from storage and
+/// must never read the environment.
+pub fn from_env(
+    id: impl Into<everruns_provider::ProviderKey>,
+) -> std::result::Result<
+    everruns_provider::Provider,
+    everruns_provider::credential_provider::EnvCredentialError,
+> {
+    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
 }
 
 /// Driver that immediately fails with a credential error.

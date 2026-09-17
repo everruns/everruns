@@ -316,7 +316,9 @@ fn fireworks_credential_schema() -> CredentialFormSchema {
                 .with_help(
                     "Your Fireworks AI API key. Create one at https://fireworks.ai under \
                      Account → API Keys.",
-                ),
+                )
+                // The fireworks-ai SDK's own variable.
+                .env("FIREWORKS_API_KEY"),
         ],
         instructions_markdown:
             "Configure a [Fireworks AI](https://fireworks.ai) provider with your API key. \
@@ -342,10 +344,13 @@ fn fireworks_credential_schema() -> CredentialFormSchema {
 /// register_driver(&mut registry);
 /// assert!(registry.has_driver(&everruns_provider::DriverId::Fireworks));
 /// ```
-pub fn register_driver(registry: &mut DriverRegistry) {
-    registry.register_descriptor(DriverDescriptor {
+/// This driver's descriptor: identity, services, and the credential schema
+/// that declares its own environment variables.
+pub fn descriptor() -> DriverDescriptor {
+    DriverDescriptor {
         display_name: "Fireworks AI".into(),
         credential_schema: fireworks_credential_schema(),
+        base_url_env: Some("FIREWORKS_BASE_URL".into()),
         ..DriverDescriptor::chat_only(DriverId::Fireworks, |config| {
             Provider::new(config.provider.clone(), FireworksChatDriver::new())
                 .base_url(
@@ -357,7 +362,25 @@ pub fn register_driver(registry: &mut DriverRegistry) {
                 .auth(BearerAuth::new(config.api_key.clone().unwrap_or_default()))
                 .into_boxed_driver()
         })
-    });
+    }
+}
+
+/// Register the driver with a [`DriverRegistry`].
+pub fn register_driver(registry: &mut DriverRegistry) {
+    registry.register_descriptor(descriptor());
+}
+
+/// Build a provider from this driver's declared environment variables.
+///
+/// Standalone/CLI/dev only: server paths resolve credentials from storage and
+/// must never read the environment.
+pub fn from_env(
+    id: impl Into<everruns_provider::ProviderKey>,
+) -> std::result::Result<
+    everruns_provider::Provider,
+    everruns_provider::credential_provider::EnvCredentialError,
+> {
+    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
 }
 
 impl Default for FireworksChatDriver {

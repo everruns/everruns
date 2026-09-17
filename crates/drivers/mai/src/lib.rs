@@ -39,7 +39,7 @@ mod driver;
 pub use auth::{
     DEFAULT_ENTRA_AUTHORITY, DEFAULT_ENTRA_SCOPE, EntraOAuthConfig, EntraOAuthProvider, MaiAuth,
 };
-pub use driver::{MaiChatDriver, provider, register_driver};
+pub use driver::{MaiChatDriver, descriptor, from_env, provider, register_driver};
 
 // Re-export core types for convenience.
 pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};

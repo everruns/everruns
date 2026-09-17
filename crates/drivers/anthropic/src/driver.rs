@@ -1374,19 +1374,48 @@ impl std::fmt::Debug for AnthropicChatDriver {
 /// let mut registry = DriverRegistry::new();
 /// register_driver(&mut registry);
 /// ```
-pub fn register_driver(registry: &mut DriverRegistry) {
-    registry.register_descriptor(DriverDescriptor {
+/// This driver's descriptor: identity, services, and the credential schema
+/// that declares its own environment variables.
+pub fn descriptor() -> DriverDescriptor {
+    DriverDescriptor {
         display_name: "Anthropic".into(),
+        // Matches the anthropic SDK's own variables.
         credential_schema: CredentialFormSchema::api_key(
+            "ANTHROPIC_API_KEY",
             "Create an API key in the [Anthropic Console](https://console.anthropic.com/settings/keys).",
         ),
+        base_url_env: Some("ANTHROPIC_BASE_URL".into()),
         ..DriverDescriptor::chat_only(DriverId::Anthropic, |config| {
-            let provider = everruns_provider::Provider::new(config.provider.clone(), AnthropicChatDriver::new())
-                .base_url(config.base_url.as_deref().unwrap_or(DEFAULT_BASE_URL))
-                .auth(everruns_provider::StaticHeaderAuth::new("x-api-key", config.api_key.as_deref().unwrap_or("")));
+            let provider = everruns_provider::Provider::new(
+                config.provider.clone(),
+                AnthropicChatDriver::new(),
+            )
+            .base_url(config.base_url.as_deref().unwrap_or(DEFAULT_BASE_URL))
+            .auth(everruns_provider::StaticHeaderAuth::new(
+                "x-api-key",
+                config.api_key.as_deref().unwrap_or(""),
+            ));
             provider.into_boxed_driver()
         })
-    });
+    }
+}
+
+/// Register the driver with a [`DriverRegistry`].
+pub fn register_driver(registry: &mut DriverRegistry) {
+    registry.register_descriptor(descriptor());
+}
+
+/// Build a provider from this driver's declared environment variables.
+///
+/// Standalone/CLI/dev only: server paths resolve credentials from storage and
+/// must never read the environment.
+pub fn from_env(
+    id: impl Into<everruns_provider::ProviderKey>,
+) -> std::result::Result<
+    everruns_provider::Provider,
+    everruns_provider::credential_provider::EnvCredentialError,
+> {
+    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
 }
 
 impl Default for AnthropicChatDriver {
