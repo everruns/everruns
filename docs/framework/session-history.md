@@ -7,13 +7,14 @@ Every Framework session has a typed `SessionId`. Keep that value when an
 application may need to reopen the conversation:
 
 ```rust
-use everruns::{Agent, Engine, Model, SessionId};
+use everruns::{Agent, Engine, OpenAI, SessionId};
 
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 let agent = Agent::builder()
     .instructions("Remember the conversation.")
-    .model(Model::simulated("Acknowledged."))
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .build()?;
 
 let engine = Engine::new();
@@ -130,7 +131,8 @@ use everruns::{Agent, Engine, LocalConfig, Model};
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 let build_agent = || Agent::builder()
     .instructions("Remember the conversation.")
-    .model(Model::simulated("Ready."))
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .local(LocalConfig::new(".everruns-data"))
     .build();
 

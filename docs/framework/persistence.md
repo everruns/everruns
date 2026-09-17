@@ -34,17 +34,18 @@ event log under the configured application data directory. It also supplies a
 trusted real-disk workspace plus SQLite-backed task and schedule state:
 
 ```rust
-use everruns::{Agent, Engine, LocalConfig, Model};
+use everruns::{Agent, Engine, LocalConfig, OpenAI};
 
 let local = LocalConfig::new(".everruns-data").workspace("./workspace");
 let agent = Agent::builder()
     .instructions("Work inside the configured workspace.")
-    .model(Model::simulated("Ready."))
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .local(local)
     .build()?;
 let engine = Engine::new();
 let session = engine.create(agent);
-# Ok::<(), everruns::BuildError>(())
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 Enable it with `cargo add everruns --features local`. Select both directories
