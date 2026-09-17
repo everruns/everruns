@@ -35,21 +35,11 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
   `crates/server/migrations/`, run `bash scripts/lib/check-migration-ordering.sh` and renumber.
 - Run `just pre-push` before pushing. It scopes expensive checks to changed surfaces and shares a
   dedicated pre-push Rust target across worktrees; use `just pre-push-full` to force every check.
-- CI links the heavy Rust jobs with `lld` via a job-scoped
-  `CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS`, not a checked-in `.cargo/config.toml`, so a
-  checkout without `lld` still builds. Linking dominates local test builds too (`crates/server`
-  alone has 51 test binaries); to get the same speedup, install `lld` and export that variable.
-  Jobs sharing a `rust-cache` `shared-key` must agree on the flag — `RUSTFLAGS` is part of cargo's
-  fingerprint, so a mismatch silently invalidates the shared target dir.
-- Splitting one crate's tests across several `cargo test` invocations costs real time, so CI keeps
-  the count per shard to a minimum. Two effects are easy to misread when profiling: `Compiling
-  <pkg>` is printed whenever cargo builds *any* unit of a package, including a single test binary,
-  so it does not mean the crate was rebuilt; and `--lib` builds a *test-mode* lib while `--test`
-  needs a *plain* lib, so splitting those two across invocations forces a genuine second
-  compilation. Measured on `everruns-server`: `--lib` cold 6m00, then a first `--test` 3m41, then
-  each further `--test` ~29s (the residue is linking that test binary, which is unavoidable —
-  the crate has 51 of them). Do not "optimise" this with a `--no-run` prebuild; it was tried and
-  only adds a wave.
+- Editing `ci.yml`'s Rust jobs has two non-obvious traps: jobs sharing a `rust-cache` `shared-key`
+  must set the same `RUSTFLAGS` (it is part of cargo's fingerprint), and each extra `cargo test`
+  invocation costs a codegen+link pass. See `knowledge/project/ci-build-time.md` before re-cutting
+  the shards. Locally, `export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C
+  link-arg=-fuse-ld=lld"` with `lld` installed buys the same speedup CI gets.
 - Knowledge captures why/what; link to source instead of copying fields, enum variants, SQL DDL,
   or API shapes. `docs/` holds public product documentation only, durable decisions and
   investigations belong in `knowledge/`. Run `just check-okf` after knowledge
