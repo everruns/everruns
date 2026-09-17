@@ -1,9 +1,9 @@
-//! Direct judgments, without an agent.
+//! Direct classification, without an agent.
 //!
 //! Some work is not a prompt at all: it is a question with a typed answer.
 //! *Is this claim supported by the source? How severe is this complaint? Which
 //! queue does this ticket belong in?* A chat model answers those in prose that
-//! your code then has to parse and trust. A judgment model answers them as
+//! your code then has to parse and trust. A classifier answers them as
 //! numbers — a probability, a distribution over your options, a position along
 //! your levels — so the decision stays in your code.
 //!
@@ -11,23 +11,23 @@
 //! counterpart to [`Model::complete`](crate::Model::complete): same shape, a
 //! different contract.
 //!
-//! | | [`Model`](crate::Model) | [`Judge`] |
+//! | | [`Model`](crate::Model) | [`Classifier`] |
 //! |---|---|---|
 //! | you send | messages | state plus typed questions |
 //! | you get back | text | calibrated numbers |
 //! | decides the outcome | the model's words | your threshold, in your code |
 //! | streams | yes | no — one round trip, nothing to stream |
 //!
-//! Start from a [`Judge`]: [`Judge::probability`] for the one-line case,
-//! [`Judge::about`] when the call asks more than one question or needs the
+//! Start from a [`Classifier`]: [`Classifier::probability`] for the one-line case,
+//! [`Classifier::about`] when the call asks more than one question or needs the
 //! other primitives.
 //!
 //! ```
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! use everruns::Judge;
+//! use everruns::Classifier;
 //!
-//! let judge = Judge::simulated(0.93);
+//! let judge = Classifier::simulated(0.93);
 //! let p = judge
 //!     .probability("Does this convey urgency?", "I've been on hold for two hours.")
 //!     .await?;
@@ -40,18 +40,19 @@
 //! one round trip. Ids are yours: they label answers for your code and are
 //! never shown to the model, so every question must read on its own.
 //!
-//! A judgment keeps no history, runs no tools, and has no session — those stay
+//! A classification keeps no history, runs no tools, and has no session — those stay
 //! with [`Agent`](crate::Agent).
 
 use std::fmt;
 use std::sync::Arc;
 
-use everruns_core::judgment::{
-    JudgmentAnswer, JudgmentOutcome, JudgmentQuestion, JudgmentRequest, JudgmentService,
+use everruns_core::classifier::{
+    ClassificationAnswer, ClassificationOutcome, ClassificationQuestion, ClassificationRequest,
+    ClassifierService,
 };
 use everruns_provider::error::AgentLoopError;
 
-/// Why a judgment could not be made.
+/// Why a classification could not be made.
 ///
 /// [`MissingService`](Self::MissingService), [`NoQuestions`](Self::NoQuestions)
 /// and [`Unconfigured`](Self::Unconfigured) are configuration mistakes, caught
@@ -59,10 +60,10 @@ use everruns_provider::error::AgentLoopError;
 /// service failure verbatim.
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum JudgmentError {
-    /// No judgment service was attached to the judge.
+pub enum ClassifierError {
+    /// No classifier service was attached.
     MissingService,
-    /// The judgment was sent with no questions.
+    /// The classification was sent with no questions.
     NoQuestions,
     /// The service exists but the deployment never configured it, so it would
     /// answer nothing.
@@ -76,82 +77,82 @@ pub enum JudgmentError {
     Call(AgentLoopError),
 }
 
-impl fmt::Display for JudgmentError {
+impl fmt::Display for ClassifierError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            JudgmentError::MissingService => {
-                write!(f, "judge has no service; use Judge::new(service)")
+            ClassifierError::MissingService => {
+                write!(f, "judge has no service; use Classifier::new(service)")
             }
-            JudgmentError::NoQuestions => {
-                write!(f, "judgment has no questions; ask at least one")
+            ClassifierError::NoQuestions => {
+                write!(f, "classification has no questions; ask at least one")
             }
-            JudgmentError::Unconfigured => write!(
+            ClassifierError::Unconfigured => write!(
                 f,
-                "judgment service is not configured; set its deployment credential"
+                "classifier is not configured; set its deployment credential"
             ),
-            JudgmentError::NoSuchAnswer(id) => write!(f, "no answer for question '{id}'"),
-            JudgmentError::Call(error) => write!(f, "{error}"),
+            ClassifierError::NoSuchAnswer(id) => write!(f, "no answer for question '{id}'"),
+            ClassifierError::Call(error) => write!(f, "{error}"),
         }
     }
 }
 
-impl std::error::Error for JudgmentError {
+impl std::error::Error for ClassifierError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            JudgmentError::Call(error) => Some(error),
+            ClassifierError::Call(error) => Some(error),
             _ => None,
         }
     }
 }
 
-impl From<AgentLoopError> for JudgmentError {
+impl From<AgentLoopError> for ClassifierError {
     fn from(error: AgentLoopError) -> Self {
-        JudgmentError::Call(error)
+        ClassifierError::Call(error)
     }
 }
 
-/// A judgment model, and the service used to reach it.
+/// A classifier, and the service used to reach it.
 ///
 /// Cheap to clone and safe to share: one judge can serve many concurrent
 /// calls.
 #[derive(Clone)]
-pub struct Judge {
-    service: Option<Arc<dyn JudgmentService>>,
+pub struct Classifier {
+    service: Option<Arc<dyn ClassifierService>>,
 }
 
-impl Judge {
-    /// Reach a judgment model through `service`.
+impl Classifier {
+    /// Reach a classifier through `service`.
     ///
     /// The concrete service comes from an integration — for TypeSafe's System
-    /// One, `everruns_integrations_typesafe::TypeSafeJudgmentService` — the
+    /// One, `everruns_integrations_typesafe::TypeSafeClassifier` — the
     /// same way a [`Model`](crate::Model) takes its provider from a driver.
-    pub fn new(service: impl JudgmentService + 'static) -> Self {
+    pub fn new(service: impl ClassifierService + 'static) -> Self {
         Self {
             service: Some(Arc::new(service)),
         }
     }
 
-    /// Reach a judgment model through a service that is already shared.
-    pub fn shared(service: Arc<dyn JudgmentService>) -> Self {
+    /// Reach a classifier through a service that is already shared.
+    pub fn shared(service: Arc<dyn ClassifierService>) -> Self {
         Self {
             service: Some(service),
         }
     }
 
-    /// A deterministic in-process judge that answers every question the same
+    /// A deterministic in-process classifier that answers every question the same
     /// way, with no credentials and no network.
     ///
     /// `probability` answers yes/no questions; choices and scores spread their
     /// mass evenly, so tests exercise the shape without asserting a vendor's
     /// numbers.
     pub fn simulated(probability: f64) -> Self {
-        Self::new(SimulatedJudgmentService { probability })
+        Self::new(SimulatedClassifierService { probability })
     }
 
     /// Whether the underlying service is configured to answer at all.
     ///
     /// False means a deployment left its credential unset. Calls would fail
-    /// with [`JudgmentError::Unconfigured`] rather than reaching anything.
+    /// with [`ClassifierError::Unconfigured`] rather than reaching anything.
     pub fn is_configured(&self) -> bool {
         self.service
             .as_ref()
@@ -166,9 +167,9 @@ impl Judge {
     /// ```
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// use everruns::Judge;
+    /// use everruns::Classifier;
     ///
-    /// let p = Judge::simulated(0.04)
+    /// let p = Classifier::simulated(0.04)
     ///     .probability("Is this spam?", "Standup moved to 10am.")
     ///     .await?;
     /// assert!(p < 0.1);
@@ -179,7 +180,7 @@ impl Judge {
         &self,
         question: impl Into<String>,
         state: impl Into<serde_json::Value>,
-    ) -> Result<f64, JudgmentError> {
+    ) -> Result<f64, ClassifierError> {
         const ID: &str = "answer";
         self.about(state)
             .noul(ID, question)
@@ -188,18 +189,18 @@ impl Judge {
             .probability(ID)
     }
 
-    /// Describe a judgment about `state`.
-    pub fn about(&self, state: impl Into<serde_json::Value>) -> Judgment {
-        Judgment {
+    /// Describe a classification of `state`.
+    pub fn about(&self, state: impl Into<serde_json::Value>) -> Classification {
+        Classification {
             service: self.service.clone(),
-            request: JudgmentRequest::new(state),
+            request: ClassificationRequest::new(state),
         }
     }
 }
 
-impl fmt::Debug for Judge {
+impl fmt::Debug for Classifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Judge")
+        f.debug_struct("Classifier")
             .field(
                 "service",
                 &self.service.as_ref().map(|service| service.name()),
@@ -208,17 +209,17 @@ impl fmt::Debug for Judge {
     }
 }
 
-/// One judgment call, described before it is sent.
+/// One classification call, described before it is sent.
 ///
-/// Built with [`Judge::about`]. Questions answer in parallel inside a single
+/// Built with [`Classifier::about`]. Questions answer in parallel inside a single
 /// request, so asking several is the cheap path, not the expensive one.
 ///
 /// ```
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// use everruns::Judge;
+/// use everruns::Classifier;
 ///
-/// let answers = Judge::simulated(0.8)
+/// let answers = Classifier::simulated(0.8)
 ///     .about("I've been on hold for two hours and nobody can tell me why.")
 ///     .noul("urgent", "Does this convey urgency?")
 ///     .score(
@@ -238,14 +239,14 @@ impl fmt::Debug for Judge {
 /// # Ok(())
 /// # }
 /// ```
-pub struct Judgment {
-    service: Option<Arc<dyn JudgmentService>>,
-    request: JudgmentRequest,
+pub struct Classification {
+    service: Option<Arc<dyn ClassifierService>>,
+    request: ClassificationRequest,
 }
 
-impl Judgment {
+impl Classification {
     /// Reach the model through `service`, replacing the judge's own.
-    pub fn service(mut self, service: impl JudgmentService + 'static) -> Self {
+    pub fn service(mut self, service: impl ClassifierService + 'static) -> Self {
         self.service = Some(Arc::new(service));
         self
     }
@@ -255,7 +256,7 @@ impl Judgment {
     /// `instructions` must carry the whole question: `id` labels the answer for
     /// your code and never reaches the model.
     pub fn noul(self, id: impl Into<String>, instructions: impl Into<String>) -> Self {
-        self.ask(id, JudgmentQuestion::noul(instructions))
+        self.ask(id, ClassificationQuestion::noul(instructions))
     }
 
     /// Ask a yes/no question, spelling out what each side means.
@@ -271,7 +272,7 @@ impl Judgment {
     ) -> Self {
         self.ask(
             id,
-            JudgmentQuestion::Noul {
+            ClassificationQuestion::Noul {
                 instructions: instructions.into(),
                 yes: Some(yes.into()),
                 no: Some(no.into()),
@@ -294,7 +295,7 @@ impl Judgment {
     {
         self.ask(
             id,
-            JudgmentQuestion::Choice {
+            ClassificationQuestion::Choice {
                 instructions: instructions.into(),
                 options: options
                     .into_iter()
@@ -321,12 +322,12 @@ impl Judgment {
     {
         self.ask(
             id,
-            JudgmentQuestion::score(instructions, levels.into_iter().map(Into::into)),
+            ClassificationQuestion::score(instructions, levels.into_iter().map(Into::into)),
         )
     }
 
     /// Attach a question built directly, for shapes the helpers do not cover.
-    pub fn ask(mut self, id: impl Into<String>, question: JudgmentQuestion) -> Self {
+    pub fn ask(mut self, id: impl Into<String>, question: ClassificationQuestion) -> Self {
         self.request = self.request.ask(id, question);
         self
     }
@@ -337,29 +338,31 @@ impl Judgment {
         self
     }
 
-    /// Send the judgment and wait for every answer.
-    pub async fn send(self) -> Result<Answers, JudgmentError> {
+    /// Send the classification and wait for every answer.
+    pub async fn send(self) -> Result<Answers, ClassifierError> {
         let (service, request) = self.into_request()?;
         Ok(Answers(service.evaluate(request).await?))
     }
 
     /// Validate the described call, keeping configuration mistakes off the
     /// wire.
-    fn into_request(self) -> Result<(Arc<dyn JudgmentService>, JudgmentRequest), JudgmentError> {
-        let service = self.service.ok_or(JudgmentError::MissingService)?;
+    fn into_request(
+        self,
+    ) -> Result<(Arc<dyn ClassifierService>, ClassificationRequest), ClassifierError> {
+        let service = self.service.ok_or(ClassifierError::MissingService)?;
         if self.request.questions.is_empty() {
-            return Err(JudgmentError::NoQuestions);
+            return Err(ClassifierError::NoQuestions);
         }
         if !service.is_configured() {
-            return Err(JudgmentError::Unconfigured);
+            return Err(ClassifierError::Unconfigured);
         }
         Ok((service, self.request))
     }
 }
 
-impl fmt::Debug for Judgment {
+impl fmt::Debug for Classification {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Judgment")
+        f.debug_struct("Classification")
             .field(
                 "service",
                 &self.service.as_ref().map(|service| service.name()),
@@ -369,31 +372,31 @@ impl fmt::Debug for Judgment {
     }
 }
 
-/// Answers to one judgment, keyed by the ids you asked under.
+/// Answers to one classification, keyed by the ids you asked under.
 ///
 /// The accessors return the shape you asked for, so reading a `score` as a
 /// probability is a typed mistake rather than a silent one.
 #[derive(Debug, Clone)]
-pub struct Answers(JudgmentOutcome);
+pub struct Answers(ClassificationOutcome);
 
 impl Answers {
     /// The probability of yes for a `noul` question.
     ///
     /// Near 0.5 means yes and no are near-equally likely — not "medium".
-    pub fn probability(&self, id: &str) -> Result<f64, JudgmentError> {
+    pub fn probability(&self, id: &str) -> Result<f64, ClassifierError> {
         match self.answer(id)? {
-            JudgmentAnswer::Noul { probability } => Ok(*probability),
-            _ => Err(JudgmentError::NoSuchAnswer(format!(
+            ClassificationAnswer::Noul { probability } => Ok(*probability),
+            _ => Err(ClassifierError::NoSuchAnswer(format!(
                 "{id} was not asked as a yes/no question"
             ))),
         }
     }
 
     /// The selected option for a `choice` question.
-    pub fn selected(&self, id: &str) -> Result<&str, JudgmentError> {
+    pub fn selected(&self, id: &str) -> Result<&str, ClassifierError> {
         match self.answer(id)? {
-            JudgmentAnswer::Choice { selected, .. } => Ok(selected.as_str()),
-            _ => Err(JudgmentError::NoSuchAnswer(format!(
+            ClassificationAnswer::Choice { selected, .. } => Ok(selected.as_str()),
+            _ => Err(ClassifierError::NoSuchAnswer(format!(
                 "{id} was not asked as a choice"
             ))),
         }
@@ -403,72 +406,72 @@ impl Answers {
     ///
     /// For an "any serious hit" rule prefer [`tail`](Self::tail): an answer
     /// that is probably fine and possibly awful must not average into fine.
-    pub fn score(&self, id: &str) -> Result<f64, JudgmentError> {
+    pub fn score(&self, id: &str) -> Result<f64, ClassifierError> {
         match self.answer(id)? {
-            JudgmentAnswer::Score { score, .. } => Ok(*score),
-            _ => Err(JudgmentError::NoSuchAnswer(format!(
+            ClassificationAnswer::Score { score, .. } => Ok(*score),
+            _ => Err(ClassifierError::NoSuchAnswer(format!(
                 "{id} was not asked as a score"
             ))),
         }
     }
 
     /// The probability mass at or above `level` for a `score` question.
-    pub fn tail(&self, id: &str, level: usize) -> Result<f64, JudgmentError> {
+    pub fn tail(&self, id: &str, level: usize) -> Result<f64, ClassifierError> {
         match self.answer(id)? {
-            JudgmentAnswer::Score { probabilities, .. } => Ok(probabilities
+            ClassificationAnswer::Score { probabilities, .. } => Ok(probabilities
                 .iter()
                 .filter(|(index, _)| **index >= level)
                 .map(|(_, probability)| probability)
                 .sum()),
-            _ => Err(JudgmentError::NoSuchAnswer(format!(
+            _ => Err(ClassifierError::NoSuchAnswer(format!(
                 "{id} was not asked as a score"
             ))),
         }
     }
 
     /// The raw answer, for shapes the accessors do not cover.
-    pub fn answer(&self, id: &str) -> Result<&JudgmentAnswer, JudgmentError> {
+    pub fn answer(&self, id: &str) -> Result<&ClassificationAnswer, ClassifierError> {
         self.0
             .answers
             .get(id)
-            .ok_or_else(|| JudgmentError::NoSuchAnswer(id.to_string()))
+            .ok_or_else(|| ClassifierError::NoSuchAnswer(id.to_string()))
     }
 
     /// The whole outcome, including usage.
-    pub fn outcome(&self) -> &JudgmentOutcome {
+    pub fn outcome(&self) -> &ClassificationOutcome {
         &self.0
     }
 }
 
-/// Deterministic judgments for offline use; see [`Judge::simulated`].
+/// Deterministic classifications for offline use; see [`Classifier::simulated`].
 #[derive(Debug)]
-struct SimulatedJudgmentService {
+struct SimulatedClassifierService {
     probability: f64,
 }
 
 #[async_trait::async_trait]
-impl JudgmentService for SimulatedJudgmentService {
+impl ClassifierService for SimulatedClassifierService {
     fn is_configured(&self) -> bool {
         true
     }
 
     fn name(&self) -> &'static str {
-        "SimulatedJudgmentService"
+        "SimulatedClassifierService"
     }
 
     async fn evaluate(
         &self,
-        request: JudgmentRequest,
-    ) -> everruns_provider::error::Result<JudgmentOutcome> {
-        let mut outcome = JudgmentOutcome::default();
+        request: ClassificationRequest,
+    ) -> everruns_provider::error::Result<ClassificationOutcome> {
+        let mut outcome = ClassificationOutcome::default();
         for (id, question) in &request.questions {
             let answer = match question {
-                JudgmentQuestion::Noul { .. } => JudgmentAnswer::Noul {
+                ClassificationQuestion::Noul { .. } => ClassificationAnswer::Noul {
                     probability: self.probability,
                 },
-                JudgmentQuestion::Choice { options, .. } => {
+                ClassificationQuestion::Choice { options, .. } => {
                     let each = 1.0 / options.len().max(1) as f64;
-                    JudgmentAnswer::Choice {
+                    ClassificationAnswer::Choice {
                         selected: options
                             .first()
                             .map(|(name, _)| name.clone())
@@ -480,9 +483,9 @@ impl JudgmentService for SimulatedJudgmentService {
                         confidence: each,
                     }
                 }
-                JudgmentQuestion::Score { levels, .. } => {
+                ClassificationQuestion::Score { levels, .. } => {
                     let each = 1.0 / levels.len().max(1) as f64;
-                    JudgmentAnswer::Score {
+                    ClassificationAnswer::Score {
                         score: (levels.len().saturating_sub(1)) as f64 / 2.0,
                         probabilities: (0..levels.len()).map(|index| (index, each)).collect(),
                         confidence: each,
@@ -501,16 +504,16 @@ mod tests {
 
     #[tokio::test]
     async fn probability_answers_the_one_line_case() {
-        let p = Judge::simulated(0.93)
+        let p = Classifier::simulated(0.93)
             .probability("Does this convey urgency?", "Two hours on hold.")
             .await
-            .expect("simulated judgment succeeds");
+            .expect("simulated classification succeeds");
         assert!((p - 0.93).abs() < 1e-9, "{p}");
     }
 
     #[tokio::test]
     async fn every_question_rides_one_request_and_keeps_its_id() {
-        let answers = Judge::simulated(0.8)
+        let answers = Classifier::simulated(0.8)
             .about("I've been on hold for two hours.")
             .noul("urgent", "Does this convey urgency?")
             .score(
@@ -521,7 +524,7 @@ mod tests {
             .choice("queue", "Which team?", ["billing", "technical"])
             .send()
             .await
-            .expect("simulated judgment succeeds");
+            .expect("simulated classification succeeds");
 
         assert!((answers.probability("urgent").expect("noul") - 0.8).abs() < 1e-9);
         assert_eq!(answers.selected("queue").expect("choice"), "billing");
@@ -533,44 +536,47 @@ mod tests {
 
     #[tokio::test]
     async fn reading_an_answer_as_the_wrong_shape_is_an_error_not_a_number() {
-        let answers = Judge::simulated(0.5)
+        let answers = Classifier::simulated(0.5)
             .about("x")
             .score("rating", "How good?", ["Bad", "Good"])
             .send()
             .await
-            .expect("simulated judgment succeeds");
+            .expect("simulated classification succeeds");
         assert!(matches!(
             answers.probability("rating"),
-            Err(JudgmentError::NoSuchAnswer(_))
+            Err(ClassifierError::NoSuchAnswer(_))
         ));
         assert!(matches!(
             answers.answer("missing"),
-            Err(JudgmentError::NoSuchAnswer(_))
+            Err(ClassifierError::NoSuchAnswer(_))
         ));
     }
 
     #[tokio::test]
     async fn configuration_mistakes_never_reach_the_service() {
         // No questions: nothing to ask.
-        let empty = Judge::simulated(0.5).about("x").send().await;
-        assert!(matches!(empty, Err(JudgmentError::NoQuestions)));
+        let empty = Classifier::simulated(0.5).about("x").send().await;
+        assert!(matches!(empty, Err(ClassifierError::NoQuestions)));
 
         // No service at all.
-        let judge = Judge { service: None };
+        let judge = Classifier { service: None };
         let orphan = judge.about("x").noul("q", "Is it?").send().await;
-        assert!(matches!(orphan, Err(JudgmentError::MissingService)));
+        assert!(matches!(orphan, Err(ClassifierError::MissingService)));
 
         // A service the deployment never configured answers nothing, and says
         // so rather than looking like a confident negative.
-        let disabled = Judge::new(everruns_core::judgment::DisabledJudgmentService);
+        let disabled = Classifier::new(everruns_core::classifier::DisabledClassifierService);
         assert!(!disabled.is_configured());
         let unconfigured = disabled.about("x").noul("q", "Is it?").send().await;
-        assert!(matches!(unconfigured, Err(JudgmentError::Unconfigured)));
+        assert!(matches!(unconfigured, Err(ClassifierError::Unconfigured)));
     }
 
     #[test]
     fn debug_never_renders_a_credential_bearing_service() {
-        let rendered = format!("{:?}", Judge::simulated(0.5));
-        assert!(rendered.contains("SimulatedJudgmentService"), "{rendered}");
+        let rendered = format!("{:?}", Classifier::simulated(0.5));
+        assert!(
+            rendered.contains("SimulatedClassifierService"),
+            "{rendered}"
+        );
     }
 }

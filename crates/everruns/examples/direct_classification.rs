@@ -6,15 +6,15 @@
 //!
 //! Offline (no API key):
 //! ```text
-//! cargo run -p everruns --example direct_judgment
+//! cargo run -p everruns --example direct_classification
 //! ```
 //! TypeSafe System One (requires TYPESAFE_API_KEY):
 //! ```text
-//! cargo run -p everruns --features jev --example direct_judgment -- --live
+//! cargo run -p everruns --features jev --example direct_classification -- --live
 //! ```
 //! An optional positional argument replaces the content being judged.
 
-use everruns::Judge;
+use everruns::Classifier;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -28,22 +28,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into()
     });
     if args.next().is_some() || content.trim().is_empty() {
-        return Err("Usage: direct_judgment [--live] [CONTENT]".into());
+        return Err("Usage: direct_classification [--live] [CONTENT]".into());
     }
 
     let judge = if live {
         #[cfg(feature = "jev")]
         {
             println!("TypeSafe System One over HTTP.\n");
-            Judge::new(everruns::TypeSafeJudgmentService::from_env()?)
+            Classifier::new(everruns::TypeSafeClassifier::from_env()?)
         }
         #[cfg(not(feature = "jev"))]
         {
-            return Err("Live mode requires: cargo run -p everruns --features jev --example direct_judgment -- --live".into());
+            return Err("Live mode requires: cargo run -p everruns --features jev --example direct_classification -- --live".into());
         }
     } else {
         println!("Offline simulator: fixed answers; no model inference.\n");
-        Judge::simulated(0.87)
+        Classifier::simulated(0.87)
     };
 
     // One question, one number. This is the whole API for the common case.

@@ -197,11 +197,11 @@ pub struct PostGenerationOutputContext<'a> {
     /// Utility LLM service for model-backed checks. `None` when the deployment
     /// has no utility model configured — model-backed checks then fail open.
     pub utility_llm_service: Option<&'a Arc<dyn crate::UtilityLlmService>>,
-    /// Judgment service for checks that want a calibrated number instead of
+    /// Classification service for checks that want a calibrated number instead of
     /// text to parse. `None` when the deployment configured no judgment
     /// provider — those checks then fail open, or fall back to the utility
     /// model when the check allows it.
-    pub judgment_service: Option<&'a Arc<dyn crate::JudgmentService>>,
+    pub classifier: Option<&'a Arc<dyn crate::ClassifierService>>,
 }
 
 /// A post-generation guardrail provider paired with its contributing
@@ -361,7 +361,7 @@ mod tests {
             system_prompt: "",
             message_text: text,
             utility_llm_service: None,
-            judgment_service: None,
+            classifier: None,
         }
     }
 

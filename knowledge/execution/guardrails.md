@@ -193,7 +193,7 @@ picks its engine with `engine`:
 
 | | `utility_llm` (default) | `jev` |
 |---|---|---|
-| Backing service | [Utility LLM Service](../operations/utility-llm.md) | [Judgment Service](../operations/judgment-service.md) |
+| Backing service | [Utility LLM Service](../operations/utility-llm.md) | [Classifier Service](../operations/classifier-service.md) |
 | Requests | one per check (per category set) | one per stage, for every judgment check on it |
 | Answer | JSON verdict / scores the call site parses | a calibrated probability |
 | Verdict | what the model wrote | `threshold`, applied in code |
@@ -336,9 +336,9 @@ Clients localize copy from the code rather than the human text. The
 
 - Deterministic checks run in-process with no external network access.
 - A model-backed check with `engine: "jev"` sends the same bounded excerpt
-  to the deployment's judgment provider instead of the utility model; the
+  to the deployment's classifier instead of the utility model; the
   egress class is identical, the destination is not. See
-  [Judgment Service](../operations/judgment-service.md).
+  [Classifier Service](../operations/classifier-service.md).
 - The `llm_judge` check sends a bounded content excerpt to the utility LLM
   (TM-LLM-027/028); the `mcp` check sends a bounded content excerpt to an
   external, operator-configured MCP guardrail endpoint (data egress,

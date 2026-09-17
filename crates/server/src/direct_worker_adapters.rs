@@ -298,7 +298,7 @@ pub struct DirectWorkerAdapters {
     connector_registry: everruns_platform::connector::ConnectorRegistry,
     driver_registry: DriverRegistry,
     utility_llm_service: Option<Arc<dyn UtilityLlmService>>,
-    judgment_service: Option<Arc<dyn everruns_core::JudgmentService>>,
+    classifier: Option<Arc<dyn everruns_core::ClassifierService>>,
     egress_service: Option<Arc<dyn EgressService>>,
     sqldb_store: std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>,
     storage_store: Option<Arc<dyn everruns_core::session_services::SessionStorageStore>>,
@@ -339,7 +339,7 @@ impl DirectWorkerAdapters {
             connector_registry: everruns_platform::connector::ConnectorRegistry::new(),
             driver_registry,
             utility_llm_service: None,
-            judgment_service: None,
+            classifier: None,
             egress_service: None,
             sqldb_store,
             storage_store: None,
@@ -584,11 +584,8 @@ impl DirectWorkerAdapters {
         self
     }
 
-    pub fn with_judgment_service(
-        mut self,
-        service: Arc<dyn everruns_core::JudgmentService>,
-    ) -> Self {
-        self.judgment_service = Some(service);
+    pub fn with_classifier(mut self, service: Arc<dyn everruns_core::ClassifierService>) -> Self {
+        self.classifier = Some(service);
         self
     }
 
@@ -1751,8 +1748,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
         self.utility_llm_service.clone()
     }
 
-    fn judgment_service(&self) -> Option<Arc<dyn everruns_core::JudgmentService>> {
-        self.judgment_service.clone()
+    fn classifier(&self) -> Option<Arc<dyn everruns_core::ClassifierService>> {
+        self.classifier.clone()
     }
 
     fn egress_service(&self) -> Option<Arc<dyn EgressService>> {

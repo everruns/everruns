@@ -12,7 +12,7 @@ Status: **Phase 1 implemented** (behind the `observers` feature flag), turn-scop
 
 Phase 1 surface: `Observer` entity (org-scoped, embedded match rules + scorers), `trace_scores` queue, an `ObserverMatchListener` on `turn.completed` that samples and enqueues, and a dual-mode `spawn_observer_worker` that drains the queue (durable `FOR UPDATE SKIP LOCKED` in full mode, in-process in dev mode). Code: `crates/platform/src/observer.rs`, `crates/server/src/domains/observers/`, `crates/server/src/api/observers.rs`, migrations `059_observers.sql` + `070_observer_llm_judge.sql`. API under `/v1/observers`.
 
-Each scorer has a `method`: `rule` (the eval scorer vocabulary) or `llm_judge`. An `llm_judge` scorer carries a `rubric`, an optional `model_id` (defaults to the org's default model), and a `pass_threshold`. The judge call (`crates/server/src/domains/observers/judge.rs`) goes through the **org's own configured model/provider** (resolved via `ProviderResolverService`), returns structured `{value, label, reasoning}`, and stores token/cost accounting on the score. Judge usage is recorded on the `trace_score` row; metering into `usage_journal`/budgets is a follow-up.
+Each scorer has a `method`: `rule` (the eval scorer vocabulary) or `llm_judge`. An `llm_judge` scorer carries a `rubric`, an optional `model_id` (defaults to the org's default model), and a `pass_threshold`. The judge call (`crates/server/src/domains/observers/judge.rs`) goes through the **org's own configured model/provider** (resolved via `ProviderResolverService`), returns structured `{value, label, reasoning}`, and stores token/cost accounting on the score. Classifier usage is recorded on the `trace_score` row; metering into `usage_journal`/budgets is a follow-up.
 
 A scorer's `model_id` is validated on observer create/update (`ObserverService::validate_model_access`): the model must exist for the org and be enabled, mirroring runtime resolution (`get_model` is org-scoped + enabled-only). Without this an observer could be saved against an inaccessible model and then silently `skip` every score at scoring time. A judge with no `model_id` is always accepted, it resolves the org default at scoring time.
 
@@ -33,7 +33,7 @@ UI: the `observers` feature flag also gates a UI surface (`apps/ui/src/app/(main
   - Matching runs on the event stream; scores are stored in their own table and link back to
     the trace (session/turn/tool call), never appended into the append-only session event log.
   - Scoring never adds latency to user turns.
-  - Judge reasoning text is stored, not just scalar scores, it is the raw material for the
+  - Classifier reasoning text is stored, not just scalar scores, it is the raw material for the
     Phase 2 improvement loop (clustering, prompt-learning).
   - Scores feed the reporting layer for aggregation; thresholds feed notifications.
   - Complexity is contained in the UI by progressive disclosure: one-click observer creation
@@ -91,7 +91,7 @@ The building blocks exist; Observers are mostly composition:
 | Utility LLM | `knowledge/operations/utility-llm.md` | Candidate judge-model path for platform-internal scoring. |
 | Reporting outbox + facts | `knowledge/evaluation/reporting.md` | Async projection pipeline for aggregations (`fact_trace_score` alongside `fact_turn`, `fact_tool_call`). |
 | Notifications | `knowledge/operations/notifications.md` | Delivery channel for threshold alerts and Phase 2 improvement proposals. |
-| Usage tracking | `knowledge/security/usage-tracking.md` | Judge calls must be metered like any other LLM usage (cost visibility, budgets). |
+| Usage tracking | `knowledge/security/usage-tracking.md` | Classifier calls must be metered like any other LLM usage (cost visibility, budgets). |
 
 What does **not** exist yet: message-level user feedback (thumbs up/down), an `llm_judge` scorer, any score storage detached from eval runs, and score aggregation UI.
 
@@ -121,7 +121,7 @@ The single user-facing entity. Org-scoped, standard building-block lifecycle (`a
 
 **Scopes, what the scorer sees and when it triggers:**
 
-| Scope | Trigger event | Judge/rule input | Use case |
+| Scope | Trigger event | Classifier/rule input | Use case |
 |-------|--------------|------------------|----------|
 | `turn` | `turn.completed` | Input message + final assistant output + tool-call summary | Default. "Was this answer complete? Did it cite sources?" |
 | `session` | `session.idled` | Whole conversation transcript | Multi-turn quality: "Did the user get what they came for? Did they repeat themselves?" |
@@ -145,7 +145,7 @@ The output record. One row per (observer, scorer key, scored unit):
 | `value` | 0.0–1.0 (matches eval `Score.value`) |
 | `label` | Optional categorical (e.g. `missing_source`, `frustrated_user`, `empty_result`) |
 | `pass` | Normalized boolean via the scorer's threshold |
-| `reasoning` | Judge explanation text, retained deliberately for Phase 2 |
+| `reasoning` | Classifier explanation text, retained deliberately for Phase 2 |
 | `judge_usage` | Token usage of the judge call (also journaled via usage tracking) |
 | `status` | `pending` / `completed` / `errored` / `skipped` |
 
@@ -172,7 +172,7 @@ ScoringBackend::enqueue(job)  // job = (observer_id, scorer_key, session_id, tur
 
 A periodic catch-up scan (durable scheduler cron) heals missed enqueues in full mode and powers "apply to past sessions" backfill. Dismissed alternative, scheduler-only scanning as the *primary* trigger (Arize's model), is recorded below.
 
-### Judge model selection
+### Classifier model selection
 
 Two viable paths; this is a real product decision, not just plumbing:
 
@@ -214,7 +214,7 @@ Phase 2 changes no Phase 1 storage decisions except the requirement (already enc
 
 - Judges read raw production content. Observers must be **explicitly created** (nothing scored by default), and config is org-scoped like everything else (`knowledge/security/multitenancy.md`). Exporter-style redaction modes (cf. Braintrust listener's content controls) should apply to what judge prompts may include.
 - Sampling default conservative (e.g. 10%); per-org cap on judge calls/day; judge usage metered through `usage_journal` so budgets (`knowledge/security/budgeting.md`) can bound it. Tool scope multiplies score volume (many tool calls per turn), per-scope sampling or tool filters are the lever.
-- Judge inputs are truncated; tool outputs use the already-distilled form (`knowledge/execution/tool-output-distillation.md`).
+- Classifier inputs are truncated; tool outputs use the already-distilled form (`knowledge/execution/tool-output-distillation.md`).
 - Sessions created by offline eval runs (tagged `eval`) are excluded by default; observer-triggered judge calls must never themselves be matched (no recursion).
 
 ## Dismissed options

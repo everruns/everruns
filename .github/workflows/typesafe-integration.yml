@@ -104,5 +104,5 @@ jobs:
       - name: Run integration tests
         run: cargo test -p everruns-integrations-typesafe --features integration,live-tests
 
-      - name: Run judgment service live tests
+      - name: Run classifier live tests
         run: cargo test -p everruns-host --features typesafe-live-tests --test judgment_live_test

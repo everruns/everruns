@@ -43,7 +43,7 @@ fn capability_is_available_in_dev_and_withheld_in_prod() {
 fn capability_metadata_is_stable() {
     let registry = registry_for_grade(DeploymentGrade::Dev);
     let capability = registry.get("jev").expect("capability");
-    assert_eq!(capability.name(), "[Experimental] Jev Judgments");
+    assert_eq!(capability.name(), "[Experimental] Jev Classifications");
     assert_eq!(capability.icon(), Some("scale"));
     assert_eq!(capability.category(), Some("Reasoning"));
     assert!(capability.dependencies().is_empty());

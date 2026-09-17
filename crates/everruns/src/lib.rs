@@ -48,13 +48,13 @@ mod agent;
 #[cfg(feature = "capabilities")]
 pub mod capability;
 mod capability_config;
+pub mod classifier;
 mod context;
 mod default_workspace;
 mod engine;
 mod events;
 mod history;
 mod hooks;
-pub mod judgment;
 pub mod llm;
 mod mcp;
 mod plugin;
@@ -64,6 +64,7 @@ mod tool;
 pub mod work;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use capability_config::{CapabilityRef, CapabilitySpec, IntoCapability};
+pub use classifier::{Answers, Classification, Classifier, ClassifierError};
 pub use context::{ContextMessage, SessionContext, ToolInfo};
 pub use engine::{Engine, InMemoryEngine};
 pub use events::{
@@ -75,8 +76,9 @@ pub use everruns_builtins::{
     AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
     ToolSearch,
 };
-pub use everruns_core::judgment::{
-    JudgmentAnswer, JudgmentOutcome, JudgmentQuestion, JudgmentRequest, JudgmentService,
+pub use everruns_core::classifier::{
+    ClassificationAnswer, ClassificationOutcome, ClassificationQuestion, ClassificationRequest,
+    ClassifierService,
 };
 #[deprecated(note = "use WorkspaceBackend")]
 pub use everruns_host::WorkspaceBackend as WorkspaceProvider;
@@ -94,9 +96,9 @@ pub use everruns_integrations_bashkit::BashkitShell;
 pub use everruns_integrations_duckduckgo::DuckDuckGo;
 #[cfg(feature = "filesystem")]
 pub use everruns_integrations_filesystem::FileSystem;
-/// The TypeSafe-backed judgment service, for [`Judge::new`].
+/// The TypeSafe-backed classifier, for [`Classifier::new`].
 #[cfg(feature = "jev")]
-pub use everruns_integrations_typesafe::TypeSafeJudgmentService;
+pub use everruns_integrations_typesafe::TypeSafeClassifier;
 #[cfg(feature = "web-fetch")]
 pub use everruns_integrations_web_fetch::WebFetch;
 pub use history::{
@@ -107,7 +109,6 @@ pub use hooks::{
     AgentStartContext, CompletionContext, HookFailure, HookPoint, IntoHookResult, ToolEndContext,
     ToolStartContext, TurnStartContext,
 };
-pub use judgment::{Answers, Judge, Judgment, JudgmentError};
 pub use llm::{Completion, CompletionError};
 pub use mcp::McpServer;
 pub use plugin::PluginError;
@@ -264,17 +265,17 @@ pub mod prelude {
     };
     pub use crate::{
         Agent, AgentBuilder, AgentStartContext, Answers, BuildError, CancelError,
-        CancellationToken, CapabilityRef, CapabilitySpec, Completion, CompletionContext,
-        CompletionError, Engine, Environment, EventStream, EventStreamError, FunctionTool,
-        HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages,
-        HistoryQuery, HookFailure, HookPoint, InMemoryEngine, InitialFile, IntoCapability,
-        IntoHookResult, IntoTool, IntoToolResult, Judge, Judgment, JudgmentError, LlmSimConfig,
-        McpServer, Model, PluginError, ResumeError, RunError, RunOptions, SendDisposition,
-        SentMessage, Session, SessionContext, SessionEnvironmentError, SessionEvent,
-        SessionEventKind, SessionId, SessionMessage, Tool, ToolEndContext, ToolInfo, ToolResponse,
-        ToolStartContext, Turn, TurnHandle, TurnStartContext, Workspace, WorkspaceBackend,
-        WorkspaceBackendId, WorkspaceDiff, WorkspaceError, WorkspaceHead, WorkspaceHeadAccess,
-        WorkspaceHeadId, WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder,
+        CancellationToken, CapabilityRef, CapabilitySpec, Classification, Classifier,
+        ClassifierError, Completion, CompletionContext, CompletionError, Engine, Environment,
+        EventStream, EventStreamError, FunctionTool, HistoryCursor, HistoryCursorParseError,
+        HistoryError, HistoryPage, HistoryPages, HistoryQuery, HookFailure, HookPoint,
+        InMemoryEngine, InitialFile, IntoCapability, IntoHookResult, IntoTool, IntoToolResult,
+        LlmSimConfig, McpServer, Model, PluginError, ResumeError, RunError, RunOptions,
+        SendDisposition, SentMessage, Session, SessionContext, SessionEnvironmentError,
+        SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool, ToolEndContext, ToolInfo,
+        ToolResponse, ToolStartContext, Turn, TurnHandle, TurnStartContext, Workspace,
+        WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff, WorkspaceError, WorkspaceHead,
+        WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder,
         WorkspacePolicyError,
     };
     #[cfg(feature = "builtins")]

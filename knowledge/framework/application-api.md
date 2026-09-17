@@ -53,7 +53,7 @@ The Framework owns value-first configuration for:
   stores or their file format into the application API.
 - direct, agentless model calls over the same provider values an agent uses,
   for work that is one prompt and one answer;
-- direct, agentless judgments over the same `JudgmentService` the platform's
+- direct, agentless judgments over the same `ClassifierService` the platform's
   guardrails use, for work whose answer is a number rather than prose.
 
 The application execution boundary is the concrete `everruns::Engine`.
@@ -225,7 +225,7 @@ The low-level path stays open and is now self-sufficient from the facade: the
 re-exported from `everruns`, so calling the driver boundary directly no longer
 forces a second crate dependency.
 
-## Direct judgment boundary
+## Direct classification boundary
 
 The counterpart to the direct model call, for work whose answer is a number
 rather than prose. *Is this claim supported? How severe is this? Which queue?*
@@ -234,17 +234,17 @@ such site grows the same three things: a prompt asking for JSON, a parser, and
 a fallback for when the parse fails. In anything enforcing a policy that
 fallback is a silent bypass.
 
-`Judge::probability` and `Judge::about` close that the same way `Model` closed
-the direct completion: a thin value-first layer over the `JudgmentService`
-contract core already owns, reaching a judgment model the way `Model` reaches a
+`Classifier::probability` and `Classifier::about` close that the same way `Model` closed
+the direct completion: a thin value-first layer over the `ClassifierService`
+contract core already owns, reaching a classifier the way `Model` reaches a
 chat model. The contract differs because the work differs — state plus typed
 questions in, calibrated answers out, and the threshold that decides an outcome
 stays in the caller's code. There is nothing to stream, because a judgment is
 one round trip.
 
-The concrete service is supplied, never assumed: `Judge::new` takes any
-`JudgmentService`, exactly as `Model::new` takes any `Provider`, so the facade
-depends on no vendor. `Judge::simulated` keeps tests and examples offline, the
+The concrete service is supplied, never assumed: `Classifier::new` takes any
+`ClassifierService`, exactly as `Model::new` takes any `Provider`, so the facade
+depends on no vendor. `Classifier::simulated` keeps tests and examples offline, the
 role `Model::simulated` plays for completions.
 
 Deliberately excluded, and for the same reasons as the completion layer:
@@ -253,7 +253,7 @@ threshold policy. A judgment returns the distribution; what counts as a block,
 a routing decision, or an escalation is the application's, and burying it in
 the layer would recreate the parse-and-trust problem one level down.
 
-- Direct judgments stay a thin layer over `JudgmentService` with no policy of
+- Direct judgments stay a thin layer over `ClassifierService` with no policy of
   their own. The number is the layer's output; the decision is the caller's.
 - Question ids are caller-side labels and never reach the model, so each
   question must carry its whole meaning in its instructions.

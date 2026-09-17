@@ -657,7 +657,7 @@ mod tests {
 
     #[tokio::test]
     async fn llm_judge_skipped_when_org_has_no_model() {
-        // Judge client present, but the org has no model configured (Ok(None)).
+        // Classifier client present, but the org has no model configured (Ok(None)).
         let judge = Arc::new(FakeJudge {
             value: 0.0,
             label: None,

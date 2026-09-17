@@ -46,10 +46,10 @@ question the API accepts — one noul over a two-word state — because there is
 dedicated auth probe; `401`/`403` means the key is invalid, `429` means it is
 valid but throttled.
 
-## Relationship to the judgment service
+## Relationship to the classifier
 
 Everruns' guardrails do **not** depend on this crate. They call
-`everruns_core::JudgmentService`, a provider-neutral trait that `everruns-host`
+`everruns_core::ClassifierService`, a provider-neutral trait that `everruns-host`
 implements on top of the same client. That keeps `everruns-builtins` free of
 network and vendor edges, the way `UtilityLlmService` does for chat completions,
 and it keeps the two credentials separate: the guardrail path uses a

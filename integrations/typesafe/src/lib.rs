@@ -1,8 +1,8 @@
-//! [TypeSafe](https://typesafe.ai) typed judgments for Everruns agents.
+//! [TypeSafe](https://typesafe.ai) typed classification for Everruns agents.
 //!
 //! One crate covers the whole surface: the vendor [`client`], the agent-facing
 //! `jev` capability, the connector an operator configures, and the
-//! [`TypeSafeJudgmentService`] the platform wires in to back guardrail checks.
+//! [`TypeSafeClassifier`] the platform wires in to back guardrail checks.
 //!
 //! The `jev` capability contributes one tool, `jev_evaluate`: the
 //! agent hands it content and its own typed questions, and gets calibrated
@@ -36,12 +36,12 @@
 #![warn(missing_docs)]
 
 mod capability;
+mod classifier;
 pub mod client;
 #[cfg(feature = "hosted")]
 mod connection;
 mod evaluate;
 mod framework;
-mod judgment;
 
 pub use capability::JevCapability;
 #[cfg(feature = "hosted")]
@@ -49,14 +49,14 @@ pub use connection::TypeSafeConnector;
 pub use evaluate::EvaluateInput;
 pub use framework::Jev;
 
+/// The classifier the platform wires into its host composition, and the
+/// deployment credential that enables it.
+pub use classifier::{
+    CLASSIFIER_MODEL, SystemClassifierConfig, TypeSafeClassifier, UTILITY_TYPESAFE_API_KEY_ENV,
+};
 /// The vendor client this capability runs on, re-exported at the crate root so
 /// callers reach it without naming the module.
 pub use client::{Error, Evaluation, Question, Result, RetryPolicy, TypeSafeClient};
-/// The judgment service the platform wires into its host composition, and the
-/// deployment credential that enables it.
-pub use judgment::{
-    JUDGMENT_MODEL, SystemJudgmentConfig, TypeSafeJudgmentService, UTILITY_TYPESAFE_API_KEY_ENV,
-};
 
 /// Capability id.
 ///

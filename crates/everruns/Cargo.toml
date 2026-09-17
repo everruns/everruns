@@ -104,7 +104,7 @@ a2a = ["local", "everruns-platform/a2a"]
 # default so the standard facade build pulls in no provider or Reqwest edge; the
 # `OpenAI` config type and its driver wiring compile only with this feature.
 openai = ["dep:everruns-openai"]
-# Typed judgments: the TypeSafe-backed `JudgmentService` behind `Judge`.
+# Typed judgments: the TypeSafe-backed `ClassifierService` behind `Classifier`.
 jev = ["dep:everruns-integrations-typesafe"]
 
 [dependencies]

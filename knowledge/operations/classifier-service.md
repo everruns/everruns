@@ -1,12 +1,12 @@
 ---
 type: Specification
-title: "Judgment Service"
-description: "Internal typed-judgment service for capability internals."
+title: "Classification Service"
+description: "Internal typed-classifier for capability internals."
 tags:
   - everruns
   - operations
 ---
-# Judgment Service
+# Classification Service
 
 <!-- Design Decisions:
   - Modeled on the utility LLM service rather than as a model provider: same
@@ -45,7 +45,7 @@ carries a prompt that begs for JSON, a parser, and a fallback for when the
 parse fails. In a guardrail that fallback is fail-open — a malformed verdict
 reads as *allow*.
 
-A judgment service removes that class outright, and adds two things a chat
+A classifier removes that class outright, and adds two things a chat
 model cannot give cheaply:
 
 - **Calibrated probabilities.** Guardrail moderation already asked the utility
@@ -60,19 +60,19 @@ model cannot give cheaply:
 
 ## Core Contract
 
-`everruns-core` owns the abstraction ([`crates/core/src/judgment.rs`](../../crates/core/src/judgment.rs)):
+`everruns-core` owns the abstraction ([`crates/core/src/classifier.rs`](../../crates/core/src/classifier.rs)):
 
-- `JudgmentService` is the async trait used by capability internals.
-- `JudgmentQuestion` is one of three primitives — `Noul` (probability of yes),
+- `ClassifierService` is the async trait used by capability internals.
+- `ClassificationQuestion` is one of three primitives — `Noul` (probability of yes),
   `Choice` (one option plus its distribution), `Score` (a position across
   ordered levels plus its distribution).
-- `JudgmentRequest` carries the state, an ordered list of `(id, question)`, and
+- `ClassificationRequest` carries the state, an ordered list of `(id, question)`, and
   attribution metadata. Ids are for the caller's code and never reach the model,
   so every question must carry its full meaning.
-- `JudgmentAnswer` exposes `probability_yes`, `confidence`, and
+- `ClassificationAnswer` exposes `probability_yes`, `confidence`, and
   `probability_at_or_above` — the last is the honest reading for a
   "did anything serious happen" rule.
-- `JudgmentService::is_configured()` reports whether the deployment enabled it.
+- `ClassifierService::is_configured()` reports whether the deployment enabled it.
 - `HostComposition` carries the active service; `ToolContext` and
   `PostGenerationOutputContext` thread it to capability hooks, alongside the
   utility LLM service.
@@ -84,7 +84,7 @@ separate confidence because the probability already is one.
 ## Implementation
 
 [`integrations/typesafe`](../../integrations/typesafe/README.md) owns the
-concrete service ([`src/judgment.rs`](../../integrations/typesafe/src/judgment.rs))
+concrete service ([`src/judgment.rs`](../../integrations/typesafe/src/classifier.rs))
 and the vendor client it calls ([`src/client`](../../integrations/typesafe/src/client/)).
 Nothing above core learns the vendor.
 
@@ -100,10 +100,10 @@ longer knows TypeSafe exists.
 
 - Model is fixed (`jev-latest`), for the same reason the utility model is: call
   sites must not be able to turn it into a selectable one.
-- Two credentials, two audiences: `SystemJudgmentConfig::from_env` reads the
-  platform's `UTILITY_TYPESAFE_API_KEY`, while `TypeSafeJudgmentService::from_env`
+- Two credentials, two audiences: `SystemClassifierConfig::from_env` reads the
+  platform's `UTILITY_TYPESAFE_API_KEY`, while `TypeSafeClassifier::from_env`
   reads an embedding application's own `TYPESAFE_API_KEY` — the latter is what
-  [`Judge`](../framework/application-api.md#direct-judgment-boundary) uses outside the platform.
+  [`Classifier`](../framework/application-api.md#direct-classification-boundary) uses outside the platform.
 - Configured from process environment: `UTILITY_TYPESAFE_API_KEY`. Unset or
   empty means the service is disabled and `is_configured()` is false. The name
   mirrors `UTILITY_OPENAI_API_KEY`: both are platform-owned credentials for

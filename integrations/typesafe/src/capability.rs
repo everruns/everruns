@@ -44,7 +44,7 @@ impl Capability for JevCapability {
     }
 
     fn name(&self) -> &str {
-        "[Experimental] Jev Judgments"
+        "[Experimental] Jev Classifications"
     }
 
     fn description(&self) -> &str {

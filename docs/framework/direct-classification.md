@@ -1,6 +1,6 @@
 ---
-title: Direct Judgments
-description: Ask a model for a number instead of prose, without building an agent.
+title: Direct Classification
+description: Ask a classifier for a number instead of prose, without building an agent.
 ---
 
 Some questions have typed answers. *Is this claim supported by the source? How
@@ -8,14 +8,14 @@ severe is this complaint? Which queue does this ticket belong in?* A chat model
 answers those in prose, so the call site ends up with a prompt asking for JSON,
 a parser, and a fallback for when the parse fails.
 
-A judgment model answers them as numbers instead, and the decision stays in your
+A classifier answers them as numbers instead, and the decision stays in your
 code:
 
 ```rust
-use everruns::{Judge, TypeSafeJudgmentService};
+use everruns::{Classifier, TypeSafeClassifier};
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let judge = Judge::new(TypeSafeJudgmentService::from_env()?);
+let judge = Classifier::new(TypeSafeClassifier::from_env()?);
 let spam = judge
     .probability("Is this message spam?", "Claim your prize now!")
     .await?;
@@ -29,7 +29,7 @@ if spam > 0.9 {
 This is the counterpart to [direct model calls](/framework/direct-model-calls/):
 the same shape, a different contract.
 
-| | `Model` | `Judge` |
+| | `Model` | `Classifier` |
 |---|---|---|
 | you send | messages | state plus typed questions |
 | you get back | text | calibrated numbers |
@@ -42,9 +42,9 @@ A judgment asks one or more questions about the same state. Each is one of
 three shapes:
 
 ```rust
-use everruns::Judge;
+use everruns::Classifier;
 
-# async fn run(judge: Judge) -> Result<(), Box<dyn std::error::Error>> {
+# async fn run(judge: Classifier) -> Result<(), Box<dyn std::error::Error>> {
 let answers = judge
     .about("I've been on hold for two hours and my card was charged twice.")
     .noul("urgent", "Does this convey urgency?")
@@ -116,14 +116,14 @@ if serious > 0.3 {
 
 ## Offline by default
 
-`Judge::simulated` needs no credentials and no network, so judgments are
+`Classifier::simulated` needs no credentials and no network, so judgments are
 testable the same way agents and completions are:
 
 ```rust
-use everruns::Judge;
+use everruns::Classifier;
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let p = Judge::simulated(0.93)
+let p = Classifier::simulated(0.93)
     .probability("Does this convey urgency?", "Two hours on hold.")
     .await?;
 assert!(p > 0.9);
@@ -133,7 +133,7 @@ assert!(p > 0.9);
 
 ## Credentials
 
-`TypeSafeJudgmentService::from_env()` reads your application's own
+`TypeSafeClassifier::from_env()` reads your application's own
 `TYPESAFE_API_KEY`, and requires the `jev` feature:
 
 ```toml
@@ -151,4 +151,4 @@ Reach for an [agent](/framework/agents/) as soon as the work needs any of those.
 Typed output guarantees the interface, not the truth: validate thresholds
 against your own data and consequences.
 
-Runnable: [`direct_judgment.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_judgment.rs).
+Runnable: [`direct_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_classification.rs).

@@ -1,6 +1,6 @@
 # TypeSafe Integration
 # Decision: One crate, not two. The vendor client, the capability and its tool,
-#   the connector catalog entry, and the judgment service that backs guardrail
+#   the connector catalog entry, and the classifier that backs guardrail
 #   `jev` checks all live here. A separate client crate would have to sit below
 #   `everruns-host` for the service to use it; keeping the service here instead
 #   lets the platform wire it from above, which is the direction that already
