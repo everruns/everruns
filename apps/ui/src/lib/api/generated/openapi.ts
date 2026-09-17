@@ -4776,6 +4776,8 @@ export interface components {
        * @example trg_01933b5a000070008000000000000001
        */
       id: string;
+      /** @description Stable HTTP ingress identifier for trigger types that accept requests. */
+      ingress_id?: string | null;
       /** @description The kind of event that fires this trigger. */
       trigger_type: components["schemas"]["AgentTriggerType"];
       /**
@@ -4804,11 +4806,10 @@ export interface components {
       status: string;
     };
     /**
-     * @description The kind of event that fires an agent trigger. Only scheduled triggers exist
-     *     today; the enum leaves room for webhook/event triggers later.
+     * @description The kind of event that fires an agent trigger.
      * @enum {string}
      */
-    AgentTriggerType: "schedule";
+    AgentTriggerType: "schedule" | "webhook";
     /** @description Immutable snapshot of an Agent's authored and resolved runtime config. */
     AgentVersion: {
       /**
@@ -6541,21 +6542,28 @@ export interface components {
        */
       tools?: components["schemas"]["ToolDefinition"][];
     };
-    /** @description Request to create a schedule trigger on an agent. */
+    /** @description Request to create a trigger on an agent. */
     CreateAgentTriggerRequest: {
+      /** @description Shared endpoint auth is not supported by webhook triggers. */
+      auth?: unknown;
       /**
        * @description Cron expression that drives the durable schedule. Accepts 5-field
        *     (min hour day month weekday) or 7-field (sec … year) form.
        * @example 0 9 * * *
        */
-      cron_expression: string;
+      cron_expression?: string | null;
       /** @description Whether the trigger is active on creation (default `true`). */
       enabled?: boolean;
       /**
-       * @description Message content or `{{template}}` sent when the schedule fires.
+       * @description Message content or `{{template}}` sent when the trigger fires.
        * @example Run the daily digest
        */
       message: string;
+      /**
+       * Format: int32
+       * @description Optional per-ingress, per-IP webhook request limit.
+       */
+      rate_limit_per_minute?: number | null;
       /** @description Whether invocations reuse a stable session or create a new one. */
       session_mode?: components["schemas"]["SessionBinding"];
       /**
@@ -6563,6 +6571,10 @@ export interface components {
        * @example UTC
        */
       timezone?: string;
+      /** @description Shared secret for webhook triggers. */
+      token?: string | null;
+      /** @description Trigger kind. Omitted values retain the schedule API default. */
+      trigger_type?: components["schemas"]["AgentTriggerType"];
     };
     /** @description Request body for the `create_agent_version` operation. */
     CreateAgentVersionRequest: {
@@ -6596,7 +6608,8 @@ export interface components {
       /**
        * @description Initial channel configuration. Shape depends on `channel_type`, for
        *     example `{"token": "whk_redacted", "message": "Run support triage"}`
-       *     for `webhook`. New schedule channels are rejected; use agent triggers.
+       *     for `webhook`. New schedule and webhook channels are rejected; use agent
+       *     triggers.
        */
       channel_config?: Record<string, unknown> | null;
       channel_type?: null | components["schemas"]["ChannelType"];
@@ -17429,19 +17442,28 @@ export interface components {
       tools?: components["schemas"]["ToolDefinition"][] | null;
     };
     /**
-     * @description Request to update a schedule trigger. Only provided fields change; the rest
-     *     are preserved from the stored config.
+     * @description Request to update a trigger. Only provided fields change; the rest are
+     *     preserved from the stored config.
      */
     UpdateAgentTriggerRequest: {
+      /** @description Shared endpoint auth is not supported by webhook triggers. */
+      auth?: unknown;
       /** @description Replacement cron expression. */
       cron_expression?: string | null;
       /** @description Replacement enabled state. */
       enabled?: boolean | null;
       /** @description Replacement message sent when the trigger fires. */
       message?: string | null;
+      /**
+       * Format: int32
+       * @description Replacement per-ingress, per-IP webhook request limit.
+       */
+      rate_limit_per_minute?: number | null;
       session_mode?: null | components["schemas"]["SessionBinding"];
       /** @description Replacement IANA timezone identifier. */
       timezone?: string | null;
+      /** @description Replacement webhook token. */
+      token?: string | null;
     };
     /** @description Request to update an app. Only provided fields will be updated. */
     UpdateAppRequest: {

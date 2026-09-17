@@ -14,6 +14,33 @@
   transport and OAuth client registration only, and restricts unattended runs to
   `service` so they stop borrowing whichever human the session resolved to.
 
+## 2026-09-16
+
+* **Blueprint config schemas were hand-written JSON that nothing validated.**
+  Each blueprint carried a `json!` schema duplicating the shape, bounds, and
+  defaults its Rust code already knew, and the spawn path only checked whether
+  config was present when the schema had required properties - so a declared
+  bound was advice to the model, not a constraint on the host. Schemas are now
+  derived from a typed config struct through the same derivation that backs
+  typed capability tool schemas, and the spawn path validates host config
+  against the derived schema before creating a child session. The bounds reuse
+  the constants the blueprint's tools already clamp against, so schema and
+  runtime cannot drift.
+
+* **Slack approvals, task progress, and the second-token problem are one
+  missing capability, not three features.** All three reduce to an agent being
+  unable to act on its own Slack channel with that channel's identity. The
+  approval half needs no new protocol: `setup_connection` and `url_elicitation`
+  already establish pause-and-consent via [Client
+  Hints](runtime-resources/client-hints.md), and Slack becomes a third client of
+  it — including the degradation path, which is exactly today's behaviour when a
+  surface cannot draw the card. Task state is already on `ToolContext`; the gap
+  is rendering, and it belongs in the delivery adapter rather than in model
+  narration. Recorded as [Slack Agent
+  Actions](integrations/slack-agent-actions.md), which also settles that an
+  approval click binds to both the pending tool call and an identified Slack
+  user, defaulting to the requester.
+
 ## 2026-09-15
 
 * **Per-crate versioning was bumping more crates per release, not fewer, and the

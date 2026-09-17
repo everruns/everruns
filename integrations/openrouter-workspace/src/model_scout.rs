@@ -26,6 +26,8 @@ use super::{
 };
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
+use everruns_capability::json_schema_for;
+use everruns_capability::schemars::JsonSchema;
 use everruns_core::tool_context::ToolContext;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -37,6 +39,9 @@ const MAX_PROBE_TIMEOUT_MS: u64 = 60_000;
 const DEFAULT_MAX_SPEND_USD: f64 = 0.10;
 const MAX_PROBE_SPEND_USD: f64 = 10.0;
 const MAX_PROBE_TASKS: usize = 50;
+const DEFAULT_PROBE_CANDIDATES: u32 = 10;
+const MAX_PROBE_CANDIDATES: u32 = 50;
+const DEFAULT_TARGET_ROUTE_KEY: &str = "base";
 
 /// Capability that contributes the OpenRouter model scout blueprint.
 pub struct ModelScoutCapability;
@@ -90,57 +95,7 @@ impl Capability for ModelScoutCapability {
                 Box::new(ProposeRouterUpdateTool),
             ],
             max_turns: Some(30),
-            config_schema: Some(json!({
-                "type": "object",
-                "properties": {
-                    "max_candidates": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 50,
-                        "default": 10,
-                        "description": "Maximum number of models to probe."
-                    },
-                    "max_spend_usd": {
-                        "type": "number",
-                        "minimum": 0.0,
-                        "maximum": 10.0,
-                        "default": 0.10,
-                        "description": "Maximum total spend in USD across all probes."
-                    },
-                    "probe_timeout_ms": {
-                        "type": "integer",
-                        "minimum": 1000,
-                        "maximum": 60000,
-                        "default": 10000,
-                        "description": "Per-probe HTTP timeout in milliseconds."
-                    },
-                    "probe_tasks": {
-                        "type": "array",
-                        "items": { "$ref": "#/$defs/ProbeTask" },
-                        "description": "Custom probe tasks. If empty, built-in probes are used."
-                    },
-                    "target_route_key": {
-                        "type": "string",
-                        "default": "base",
-                        "description": "Router route key to update in the proposal."
-                    }
-                },
-                "$defs": {
-                    "ProbeTask": {
-                        "type": "object",
-                        "required": ["id", "prompt"],
-                        "properties": {
-                            "id": { "type": "string" },
-                            "prompt": { "type": "string" },
-                            "checks": {
-                                "type": "array",
-                                "items": { "type": "string" },
-                                "description": "Check IDs: not_empty, max_latency_5s, max_latency_10s"
-                            }
-                        }
-                    }
-                }
-            })),
+            config_schema: Some(json_schema_for::<ScoutConfig>()),
         }]
     }
 }
@@ -167,11 +122,57 @@ Guard rails:
 - The proposal is advisory — do NOT apply it automatically.";
 
 // ============================================================================
+// Blueprint configuration
+// ============================================================================
+
+// This struct is the single source of truth for the blueprint's config
+// contract: the advertised JSON Schema is derived from it, and the spawn path
+// validates host config against that schema, so the bounds below are enforced
+// rather than merely described to the model. The bounds reuse the same
+// constants the probe tools apply to their own arguments, so a schema change
+// cannot drift from the runtime clamp. Doc comments become schema
+// descriptions read by the spawning agent — keep them host-facing.
+
+/// Configuration for the OpenRouter model scout.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, default)]
+#[schemars(crate = "everruns_capability::schemars")]
+pub struct ScoutConfig {
+    /// Maximum number of models to probe.
+    #[schemars(range(min = 1, max = MAX_PROBE_CANDIDATES))]
+    pub max_candidates: u32,
+    /// Maximum total spend in USD across all probes.
+    #[schemars(range(min = 0.0, max = MAX_PROBE_SPEND_USD))]
+    pub max_spend_usd: f64,
+    /// Per-probe HTTP timeout in milliseconds.
+    #[schemars(range(min = MIN_PROBE_TIMEOUT_MS, max = MAX_PROBE_TIMEOUT_MS))]
+    pub probe_timeout_ms: u64,
+    /// Custom probe tasks. If empty, built-in probes are used.
+    #[schemars(length(max = MAX_PROBE_TASKS))]
+    pub probe_tasks: Vec<ProbeTask>,
+    /// Router route key to update in the proposal.
+    pub target_route_key: String,
+}
+
+impl Default for ScoutConfig {
+    fn default() -> Self {
+        Self {
+            max_candidates: DEFAULT_PROBE_CANDIDATES,
+            max_spend_usd: DEFAULT_MAX_SPEND_USD,
+            probe_timeout_ms: DEFAULT_PROBE_TIMEOUT_MS,
+            probe_tasks: Vec::new(),
+            target_route_key: DEFAULT_TARGET_ROUTE_KEY.to_string(),
+        }
+    }
+}
+
+// ============================================================================
 // Shared types
 // ============================================================================
 
 /// A single probe task definition.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[schemars(crate = "everruns_capability::schemars")]
 pub struct ProbeTask {
     pub id: String,
     pub prompt: String,
@@ -1010,6 +1011,88 @@ async fn resolve_openrouter_key(context: &ToolContext) -> Result<String, String>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::capabilities::Capability;
+
+    fn scout_blueprint() -> AgentBlueprint {
+        ModelScoutCapability
+            .agent_blueprints()
+            .pop()
+            .expect("model scout contributes a blueprint")
+    }
+
+    #[test]
+    fn config_schema_is_derived_from_scout_config() {
+        let blueprint = scout_blueprint();
+        let schema = blueprint
+            .config_schema
+            .expect("scout declares a config schema");
+        let properties = schema["properties"]
+            .as_object()
+            .expect("derived schema exposes properties");
+
+        // Every ScoutConfig field reaches the schema, with the runtime bounds
+        // attached — no hand-maintained copy to drift.
+        assert_eq!(properties.len(), 5);
+        assert_eq!(
+            properties["max_candidates"]["maximum"],
+            MAX_PROBE_CANDIDATES
+        );
+        assert_eq!(
+            properties["max_candidates"]["default"],
+            DEFAULT_PROBE_CANDIDATES
+        );
+        assert_eq!(
+            properties["probe_timeout_ms"]["minimum"],
+            MIN_PROBE_TIMEOUT_MS
+        );
+        assert_eq!(
+            properties["probe_timeout_ms"]["maximum"],
+            MAX_PROBE_TIMEOUT_MS
+        );
+        assert_eq!(properties["max_spend_usd"]["maximum"], MAX_PROBE_SPEND_USD);
+        assert_eq!(properties["probe_tasks"]["maxItems"], MAX_PROBE_TASKS);
+        assert_eq!(schema["additionalProperties"], json!(false));
+    }
+
+    #[test]
+    fn scout_config_defaults_round_trip_through_the_schema() {
+        let blueprint = scout_blueprint();
+        let defaults = serde_json::to_value(ScoutConfig::default()).expect("serialize defaults");
+
+        blueprint
+            .validate_config(Some(&defaults))
+            .expect("defaults must satisfy the blueprint's own schema");
+    }
+
+    #[test]
+    fn scout_config_bounds_are_enforced_at_spawn() {
+        let blueprint = scout_blueprint();
+
+        assert!(
+            blueprint
+                .validate_config(Some(&json!({"max_candidates": 5})))
+                .is_ok()
+        );
+        // Previously the schema described these bounds and nothing checked them.
+        assert!(
+            blueprint
+                .validate_config(Some(&json!({"max_candidates": 5_000})))
+                .is_err(),
+            "max_candidates above the cap must be rejected"
+        );
+        assert!(
+            blueprint
+                .validate_config(Some(&json!({"probe_timeout_ms": 1})))
+                .is_err(),
+            "probe timeout below the floor must be rejected"
+        );
+        assert!(
+            blueprint
+                .validate_config(Some(&json!({"unknown_knob": true})))
+                .is_err(),
+            "unknown config keys must be rejected"
+        );
+    }
 
     fn make_probe(
         model_id: &str,

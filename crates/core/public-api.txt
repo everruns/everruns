@@ -72,6 +72,11 @@ everruns_core::capabilities::A2A_AGENT_DELEGATION_CAPABILITY_ID	constant
 everruns_core::capabilities::AGENT_RUN_KEY_PREFIX	constant
 everruns_core::capabilities::AgentBlueprint	struct
 everruns_core::capabilities::AppliedCapabilities	struct
+everruns_core::capabilities::BlueprintConfigError	enum
+everruns_core::capabilities::BlueprintConfigError::Invalid	variant
+everruns_core::capabilities::BlueprintConfigError::InvalidSchema	variant
+everruns_core::capabilities::BlueprintConfigError::NotAccepted	variant
+everruns_core::capabilities::BlueprintConfigError::Required	variant
 everruns_core::capabilities::BlueprintModel	enum
 everruns_core::capabilities::BlueprintModel::Default	variant
 everruns_core::capabilities::BlueprintModel::Fixed	variant

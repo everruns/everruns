@@ -22,12 +22,14 @@
 mod client;
 mod tools;
 
+use everruns_capability::json_schema_for;
+use everruns_capability::schemars::JsonSchema;
 use everruns_core::capabilities::{
     AgentBlueprint, BlueprintModel, Capability, CapabilityLocalization, CapabilityStatus,
     IntegrationPlugin,
 };
 use everruns_core::tools::Tool;
-use serde_json::json;
+use serde::{Deserialize, Serialize};
 
 use tools::{ReadGitHubFileTool, SearchGitHubCodeTool, SearchGitHubIssuesTool};
 
@@ -100,23 +102,35 @@ impl Capability for GitHubScoutCapability {
                 Box::new(SearchGitHubIssuesTool),
             ],
             max_turns: Some(15),
-            config_schema: Some(json!({
-                "type": "object",
-                "properties": {
-                    "repos": {
-                        "type": "array",
-                        "items": {
-                            "type": "string",
-                            "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
-                        },
-                        "description": "Repository list to scope searches, in owner/repo format."
-                    }
-                },
-                "additionalProperties": false
-            })),
+            config_schema: Some(json_schema_for::<GitHubScoutConfig>()),
         }]
     }
 }
+
+// Single source of truth for the blueprint's config contract: the advertised
+// JSON Schema is derived from this struct and the spawn path validates host
+// config against it. Doc comments become schema descriptions read by the
+// spawning agent — keep them host-facing.
+
+/// Configuration for the GitHub scout.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, default)]
+#[schemars(crate = "everruns_capability::schemars")]
+pub struct GitHubScoutConfig {
+    /// Repository list to scope searches, in owner/repo format.
+    #[schemars(inner(regex(pattern = REPO_PATTERN)))]
+    pub repos: Vec<String>,
+}
+
+/// `owner/repo`, restricted to the characters GitHub allows in either segment.
+///
+/// Each segment needs at least one character that is not a dot, so `.` and `..`
+/// cannot pass as segments. Written without a lookahead because JSON Schema
+/// validators are not required to support one. `is_valid_owner_repo` applies the
+/// same rule at call time; `schema_pattern_matches_runtime_validation` pins the
+/// two together.
+const REPO_PATTERN: &str =
+    r"^[A-Za-z0-9_.-]*[A-Za-z0-9_-][A-Za-z0-9_.-]*/[A-Za-z0-9_.-]*[A-Za-z0-9_-][A-Za-z0-9_.-]*$";
 
 const GITHUB_SCOUT_PROMPT: &str = r#"You are GitHub Scout, a read-only repository exploration agent.
 
@@ -171,6 +185,81 @@ mod tests {
                 "read_github_file",
                 "search_github_issues"
             ]
+        );
+    }
+
+    #[test]
+    fn config_schema_is_derived_from_scout_config() {
+        let cap = GitHubScoutCapability;
+        let scout = cap.agent_blueprints().pop().expect("blueprint");
+        let schema = scout.config_schema.expect("scout declares a config schema");
+
+        assert_eq!(
+            schema["properties"]["repos"]["items"]["pattern"],
+            serde_json::json!(REPO_PATTERN)
+        );
+        assert_eq!(schema["additionalProperties"], serde_json::json!(false));
+        assert!(
+            schema["required"].is_null(),
+            "every field has a default, so config stays optional"
+        );
+    }
+
+    #[test]
+    fn schema_pattern_matches_runtime_validation() {
+        let cap = GitHubScoutCapability;
+        let scout = cap.agent_blueprints().pop().expect("blueprint");
+
+        // The advertised pattern is now the spawn-time gate, so it must accept
+        // exactly what the tools accept at call time — otherwise config that
+        // passes validation still fails every search it scopes.
+        for repo in [
+            "owner/repo",
+            "owner.name/repo-name",
+            "o/r",
+            "owner",
+            "owner/repo/extra",
+            "../repo",
+            "owner/..",
+            "./repo",
+            "",
+            "owner/",
+            "owner/re po",
+        ] {
+            let accepted_by_schema = scout
+                .validate_config(Some(&serde_json::json!({"repos": [repo]})))
+                .is_ok();
+            assert_eq!(
+                accepted_by_schema,
+                crate::tools::is_valid_owner_repo(repo),
+                "schema and runtime validation disagree on {repo:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn repo_scoping_is_enforced_at_spawn() {
+        let cap = GitHubScoutCapability;
+        let scout = cap.agent_blueprints().pop().expect("blueprint");
+
+        assert!(scout.validate_config(None).is_ok());
+        assert!(
+            scout
+                .validate_config(Some(&serde_json::json!({"repos": ["everruns/everruns"]})))
+                .is_ok()
+        );
+        // Previously the pattern was advisory; nothing validated host config.
+        assert!(
+            scout
+                .validate_config(Some(&serde_json::json!({"repos": ["not-a-repo"]})))
+                .is_err(),
+            "malformed repo references must be rejected"
+        );
+        assert!(
+            scout
+                .validate_config(Some(&serde_json::json!({"branch": "main"})))
+                .is_err(),
+            "unknown config keys must be rejected"
         );
     }
 }

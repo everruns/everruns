@@ -23,7 +23,7 @@ import { formatTokens } from "@/lib/formatting";
 import { useSessionContext } from "../session-context";
 
 const SECTION_COLORS: Record<string, string> = {
-  system_prompt: "bg-zinc-500",
+  system_prompt: "bg-muted-foreground",
   tools: "bg-violet-500",
   rules: "bg-emerald-600",
   skills: "bg-amber-500",

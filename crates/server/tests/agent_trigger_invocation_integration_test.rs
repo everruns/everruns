@@ -7,16 +7,23 @@
 
 mod test_harness;
 
-use axum::http::StatusCode;
+use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_provider::typed_id::SessionId;
+use everruns_platform::SessionSource;
+use everruns_provider::typed_id::{
+    AgentId, AgentIdentityId, AppChannelId, HarnessId, SessionId, TriggerId,
+};
 use everruns_server::domains::agent_triggers::invoke_agent_trigger;
+use everruns_server::domains::budgets::BudgetService;
 use everruns_server::domains::messages::MessageService;
 use everruns_server::domains::sessions::SessionService;
 use everruns_server::event_delivery::EventDelivery;
+use everruns_server::storage::models::{
+    CreateAgentTriggerRow, CreateBudgetLedgerRow, CreateBudgetRow,
+};
 
 async fn create_agent(server: &TestServer, name: &str) -> Value {
     server
@@ -50,6 +57,60 @@ async fn create_trigger(server: &TestServer, agent_id: &str, session_mode: &str)
         .json()
 }
 
+#[tokio::test]
+async fn webhook_trigger_can_be_created() {
+    let server = TestServer::in_memory().await;
+    let agent = create_agent(&server, "webhook-trigger-agent").await;
+    let agent_id = agent["id"].as_str().unwrap();
+
+    let trigger: Value = server
+        .post(
+            &format!("/v1/agents/{agent_id}/triggers"),
+            json!({
+                "trigger_type": "webhook",
+                "token": "webhook-secret",
+                "session_mode": "shared_session",
+                "message": "payload={{payload}}",
+                "enabled": true,
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    assert_eq!(trigger["trigger_type"], "webhook");
+    assert_eq!(trigger["config"]["token_configured"], true);
+    assert!(trigger["config"].get("token").is_none());
+    let ingress_id = trigger["ingress_id"].as_str().unwrap();
+    assert!(ingress_id.starts_with("appchan_"));
+
+    let invoked: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/e/{ingress_id}/webhook"),
+            vec![
+                ("content-type", "application/json"),
+                ("x-everruns-webhook-token", "webhook-secret"),
+            ],
+            serde_json::to_vec(&json!({"native": true})).unwrap(),
+        )
+        .await
+        .assert_status(StatusCode::ACCEPTED)
+        .json();
+    assert!(invoked["created_session"].as_bool().unwrap());
+    let session_id: SessionId = invoked["session_id"].as_str().unwrap().parse().unwrap();
+    let session = server
+        .db
+        .get_session(DEFAULT_ORG_ID, session_id)
+        .await
+        .expect("get webhook session")
+        .expect("webhook session exists");
+    assert_eq!(
+        SessionSource::from(session.source.as_str()),
+        SessionSource::Webhook
+    );
+}
+
 async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<String> {
     let body: Value = server
         .get(&format!("/v1/sessions/{session_id}/messages"))
@@ -71,6 +132,391 @@ async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<S
             })
         })
         .collect()
+}
+
+async fn create_migrated_webhook_trigger(
+    server: &TestServer,
+    name: &str,
+    session_mode: &str,
+    message: &str,
+    rate_limit_per_minute: Option<u32>,
+) -> (String, String, String) {
+    let agent = create_agent(server, &format!("{name}-agent")).await;
+    let agent_public_id = agent["id"].as_str().unwrap().to_string();
+    let app: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": name,
+                "harness_id": server.seed_generic_harness_id.clone(),
+                "agent_id": agent_public_id,
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let app_public_id = app["id"].as_str().unwrap().to_string();
+    let app_row = server
+        .db
+        .get_app_by_public_id(DEFAULT_ORG_ID, &app_public_id)
+        .await
+        .expect("get migrated app")
+        .expect("migrated app exists");
+
+    let ingress_id = AppChannelId::new().to_string();
+    server
+        .db
+        .create_agent_trigger(CreateAgentTriggerRow {
+            org_id: DEFAULT_ORG_ID,
+            id: TriggerId::new(),
+            agent_id: AgentId::from_uuid(app_row.agent_id.expect("app agent")),
+            trigger_type: "webhook".to_string(),
+            ingress_id: Some(ingress_id.clone()),
+            config: json!({
+                "token": "migrated-secret",
+                "session_mode": session_mode,
+                "message": message,
+                "rate_limit_per_minute": rate_limit_per_minute,
+            }),
+            config_encrypted: None,
+            enabled: true,
+            durable_schedule_id: None,
+            execution_harness_id: Some(HarnessId::from_uuid(app_row.harness_id)),
+            execution_owner_principal_id: Some(app_row.owner_principal_id),
+            execution_resolved_owner_user_id: app_row.resolved_owner_user_id,
+            execution_agent_identity_id: app_row.agent_identity_id.map(AgentIdentityId::from_uuid),
+            execution_app_id: Some(app_row.id),
+        })
+        .await
+        .expect("seed migrated webhook trigger");
+
+    (app_public_id, agent_public_id, ingress_id)
+}
+
+async fn invoke_webhook(
+    server: &TestServer,
+    path: &str,
+    token_header: (&str, &str),
+    action: &str,
+) -> test_harness::TestResponse {
+    server
+        .request_raw(
+            Method::POST,
+            path,
+            vec![
+                ("content-type", "application/json"),
+                token_header,
+                ("x-event", "push"),
+            ],
+            serde_json::to_vec(&json!({"action": action})).unwrap(),
+        )
+        .await
+}
+
+#[tokio::test]
+async fn webhook_trigger_creation_rejects_unsupported_auth_and_bindings() {
+    let server = TestServer::in_memory().await;
+    let agent = create_agent(&server, "invalid-webhook-trigger-agent").await;
+    let agent_id = agent["id"].as_str().unwrap();
+
+    for binding in ["per_thread", "per_channel", "per_user"] {
+        let response = server
+            .post(
+                &format!("/v1/agents/{agent_id}/triggers"),
+                json!({
+                    "trigger_type": "webhook",
+                    "token": "secret",
+                    "session_mode": binding,
+                    "message": "payload={{payload}}",
+                }),
+            )
+            .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(response.text().contains("not valid for an agent trigger"));
+    }
+
+    let response = server
+        .post(
+            &format!("/v1/agents/{agent_id}/triggers"),
+            json!({
+                "trigger_type": "webhook",
+                "token": "secret",
+                "session_mode": "shared_session",
+                "message": "payload={{payload}}",
+                "auth": {"mode": "none"},
+            }),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(response.text().contains("do not support auth config"));
+}
+
+#[tokio::test]
+async fn migrated_webhook_trigger_preserves_routes_auth_templates_and_shared_session() {
+    let server = TestServer::in_memory().await;
+    let template = concat!(
+        "app={{app.id}} app_name={{app.name}} channel={{channel.id}} ",
+        "agent={{agent.id}} trigger={{trigger.id}} endpoint={{endpoint.id}} ",
+        "payload={{payload.action}} body={{webhook.body}} ",
+        "json={{webhook.json.action}} event={{webhook.headers.x-event}}"
+    );
+    let (app_id, agent_id, ingress_id) = create_migrated_webhook_trigger(
+        &server,
+        "migrated-webhook",
+        "shared_session",
+        template,
+        None,
+    )
+    .await;
+
+    for path in [
+        format!("/v1/apps/{app_id}/webhooks/{ingress_id}"),
+        format!("/v1/e/{ingress_id}/webhook"),
+    ] {
+        let response = invoke_webhook(
+            &server,
+            &path,
+            ("x-everruns-webhook-token", "wrong"),
+            "ignored",
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            response.json::<Value>()["detail"],
+            "Invalid or missing webhook token"
+        );
+    }
+
+    let first: Value = invoke_webhook(
+        &server,
+        &format!("/v1/apps/{app_id}/webhooks/{ingress_id}"),
+        ("x-everruns-webhook-token", "migrated-secret"),
+        "opened",
+    )
+    .await
+    .assert_status(StatusCode::ACCEPTED)
+    .json();
+    let second: Value = invoke_webhook(
+        &server,
+        &format!("/v1/e/{ingress_id}/webhook"),
+        ("authorization", "Bearer migrated-secret"),
+        "synchronize",
+    )
+    .await
+    .assert_status(StatusCode::ACCEPTED)
+    .json();
+
+    assert!(first["created_session"].as_bool().unwrap());
+    assert!(!second["created_session"].as_bool().unwrap());
+    assert_eq!(first["session_id"], second["session_id"]);
+    let texts = list_user_message_texts(&server, first["session_id"].as_str().unwrap()).await;
+    assert!(texts.iter().any(|text| {
+        text.contains(&format!(
+            "app={app_id} app_name=migrated-webhook channel={ingress_id}"
+        )) && text.contains(&format!("agent={agent_id}"))
+            && text.contains("trigger=trg_")
+            && text.contains(&format!("endpoint={ingress_id}"))
+            && text.contains("payload=opened")
+            && text.contains(r#"body={"action":"opened"}"#)
+            && text.contains("json=opened event=push")
+    }));
+
+    server
+        .post(
+            &format!("/v1/agents/{agent_id}/exposures/suspend"),
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    for path in [
+        format!("/v1/apps/{app_id}/webhooks/{ingress_id}"),
+        format!("/v1/e/{ingress_id}/webhook"),
+    ] {
+        let response = invoke_webhook(
+            &server,
+            &path,
+            ("x-everruns-webhook-token", "migrated-secret"),
+            "suspended",
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(response.json::<Value>()["detail"], "App channel not found");
+    }
+}
+
+#[tokio::test]
+async fn migrated_webhook_trigger_ephemeral_sessions_and_rate_limit_are_preserved() {
+    let server = TestServer::in_memory().await;
+    let (app_id, _, ingress_id) = create_migrated_webhook_trigger(
+        &server,
+        "migrated-ephemeral-webhook",
+        "session_per_invocation",
+        "{{payload.action}}",
+        Some(2),
+    )
+    .await;
+
+    let first: Value = invoke_webhook(
+        &server,
+        &format!("/v1/apps/{app_id}/webhooks/{ingress_id}"),
+        ("x-everruns-webhook-token", "migrated-secret"),
+        "first",
+    )
+    .await
+    .assert_status(StatusCode::ACCEPTED)
+    .json();
+    let second: Value = invoke_webhook(
+        &server,
+        &format!("/v1/e/{ingress_id}/webhook"),
+        ("x-everruns-webhook-token", "migrated-secret"),
+        "second",
+    )
+    .await
+    .assert_status(StatusCode::ACCEPTED)
+    .json();
+    assert!(first["created_session"].as_bool().unwrap());
+    assert!(second["created_session"].as_bool().unwrap());
+    assert_ne!(first["session_id"], second["session_id"]);
+
+    invoke_webhook(
+        &server,
+        &format!("/v1/e/{ingress_id}/webhook"),
+        ("x-everruns-webhook-token", "migrated-secret"),
+        "limited",
+    )
+    .await
+    .assert_status(StatusCode::TOO_MANY_REQUESTS);
+}
+#[tokio::test]
+async fn migrated_webhook_reuses_legacy_session_and_enforces_its_budget() {
+    let server = TestServer::new().await;
+    let name = format!(
+        "budgeted-migrated-webhook-{}",
+        uuid::Uuid::now_v7().simple()
+    );
+    let (app_id, agent_id, ingress_id) = create_migrated_webhook_trigger(
+        &server,
+        &name,
+        "shared_session",
+        "{{payload.action}}",
+        None,
+    )
+    .await;
+    let app = server
+        .db
+        .get_app_by_public_id(DEFAULT_ORG_ID, &app_id)
+        .await
+        .expect("get migrated App")
+        .expect("migrated App exists");
+    let legacy_session: Value = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "agent_id": agent_id,
+                "title": "legacy webhook session",
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let legacy_session_id: SessionId = legacy_session["id"].as_str().unwrap().parse().unwrap();
+    sqlx::query(
+        "UPDATE sessions
+         SET app_id = $2,
+             endpoint_id = NULL,
+             owner_principal_id = $3,
+             resolved_owner_user_id = $4,
+             tags = $5,
+             source = 'webhook'
+         WHERE id = $1",
+    )
+    .bind(legacy_session_id.uuid())
+    .bind(app.id)
+    .bind(app.owner_principal_id.uuid())
+    .bind(app.resolved_owner_user_id)
+    .bind(vec![
+        format!("app:{app_id}"),
+        format!("app_channel:{ingress_id}"),
+        "app_channel_type:webhook".to_string(),
+        "__internal:app_invocation".to_string(),
+        "legacy-tag".to_string(),
+    ])
+    .execute(&server.pool)
+    .await
+    .expect("model the migrated legacy webhook session");
+    let budget = server
+        .db
+        .create_budget(CreateBudgetRow {
+            org_id: DEFAULT_ORG_ID,
+            subject_type: "app_channel".into(),
+            subject_id: ingress_id.clone(),
+            currency: "tokens".into(),
+            limit: 100.0,
+            soft_limit: Some(25.0),
+            period: None,
+            metadata: Some(json!({"policy": "migrated-webhook-cap"})),
+        })
+        .await
+        .expect("create preexisting webhook budget");
+    server
+        .db
+        .create_budget_ledger_entry(CreateBudgetLedgerRow {
+            budget_id: budget.id,
+            amount: 100.0,
+            meter_source: "llm_tokens".into(),
+            ref_type: None,
+            ref_id: None,
+            session_id: None,
+            description: None,
+        })
+        .await
+        .expect("exhaust preexisting webhook budget");
+    server
+        .db
+        .set_budget_status(budget.id, "exhausted")
+        .await
+        .expect("set webhook budget status");
+
+    let invoked: Value = invoke_webhook(
+        &server,
+        &format!("/v1/apps/{app_id}/webhooks/{ingress_id}"),
+        ("x-everruns-webhook-token", "migrated-secret"),
+        "budget-check",
+    )
+    .await
+    .assert_status(StatusCode::ACCEPTED)
+    .json();
+    assert!(!invoked["created_session"].as_bool().unwrap());
+    let session_id = invoked["session_id"].as_str().unwrap();
+    assert_eq!(session_id, legacy_session_id.to_string());
+    let session = server
+        .db
+        .get_session(DEFAULT_ORG_ID, session_id.parse().unwrap())
+        .await
+        .expect("get webhook session")
+        .expect("webhook session exists");
+    assert_eq!(session.endpoint_id, None);
+
+    let service = BudgetService::new(server.db.clone());
+    let selected = service
+        .list_budgets_for_session_hierarchy(DEFAULT_ORG_ID, session_id, None)
+        .await;
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].id, budget.id);
+    assert_eq!(selected[0].subject_type, "app_channel");
+    assert_eq!(selected[0].subject_id, ingress_id);
+    assert_eq!(selected[0].soft_limit, Some(25.0));
+    assert_eq!(
+        selected[0].metadata,
+        Some(json!({"policy": "migrated-webhook-cap"}))
+    );
+    assert_eq!(selected[0].status, "exhausted");
+
+    let enforcement = service
+        .check_budgets_for_session(DEFAULT_ORG_ID, session_id, None)
+        .await;
+    assert_eq!(enforcement.action, "stop");
+    assert_eq!(enforcement.budget_id.map(|id| id.uuid()), Some(budget.id));
 }
 
 #[tokio::test]
@@ -130,6 +576,10 @@ async fn agent_trigger_binds_schedule_and_invokes_shared_session() {
         .await
         .expect("get session")
         .expect("session exists");
+    assert_eq!(
+        SessionSource::from(session.source.as_str()),
+        SessionSource::Schedule
+    );
     assert_eq!(
         session
             .harness_id
