@@ -13,9 +13,9 @@ tags:
     host-owned, deployment-configured, never-agent-configurable posture. The
     two are siblings, not layers.
   - The contract is provider-neutral (noul/choice/score), not TypeSafe-shaped.
-    Core names none of the vendor; `everruns-host` owns the adapter. Swapping
-    vendors, or classifying with a fine-tuned local model, is a host
-    change only.
+    Core names none of the vendor; the integration crate owns the adapter.
+    Swapping vendors, or classifying with a fine-tuned local model, changes
+    only what a composition passes in.
   - Answers are values, not text. The point is removing the parse step, not
     saving tokens: a guardrail that fails open on malformed JSON is a security
     control with a silent bypass, and this contract has no such path.
@@ -66,9 +66,10 @@ model cannot give cheaply:
 - `ClassificationQuestion` is one of three primitives — `Noul` (probability of yes),
   `Choice` (one option plus its distribution), `Score` (a position across
   ordered levels plus its distribution).
-- `ClassificationRequest` carries the state, an ordered list of `(id, question)`, and
-  attribution metadata. Ids are for the caller's code and never reach the model,
-  so every question must carry its full meaning.
+- `ClassificationRequest` carries the state, an ordered list of `(id, question)`,
+  an optional model name, and attribution metadata. Ids are for the caller's
+  code and never reach the model, so every question must carry its full
+  meaning.
 - `ClassificationAnswer` exposes `probability_yes`, `confidence`, and
   `probability_at_or_above` — the last is the honest reading for a
   "did anything serious happen" rule.
@@ -98,8 +99,19 @@ already depend on integrations, so they compose the service into
 `HostComposition` from above, and the client needs only one home. Host no
 longer knows TypeSafe exists.
 
-- Model is fixed (`jev-latest`), for the same reason the utility model is: call
-  sites must not be able to turn it into a selectable one.
+The crate is published, so the `everruns` facade re-exports `TypeSafeClassifier`
+and `Jev` behind its `jev` feature: an embedding application reaches both halves
+through one import, exactly as it does for OpenAI.
+
+- The model is selectable, and defaulted rather than required. A service has
+  its own default (`jev-latest`); `TypeSafeClassifier::model` overrides it for
+  every call, and `ClassificationRequest::model` overrides it for one. This is
+  the difference from the utility LLM service, whose model is fixed: there will
+  be other classifiers and other versions of this one, and pinning
+  `jev-1.13.0` rather than tracking a vendor default is a caller's decision.
+  The platform still pins its own: the knob is absent from the guardrail config
+  an agent author writes, rather than absent from the type
+  (THREAT[TM-LLM-037]).
 - Two credentials, two audiences: `SystemClassifierConfig::from_env` reads the
   platform's `UTILITY_TYPESAFE_API_KEY`, while `TypeSafeClassifier::from_env`
   reads an embedding application's own `TYPESAFE_API_KEY` — the latter is what

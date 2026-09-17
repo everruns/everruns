@@ -2,7 +2,9 @@
 //!
 //! One crate covers the whole surface: the vendor [`client`], the agent-facing
 //! `jev` capability, the connector an operator configures, and the
-//! [`TypeSafeClassifier`] the platform wires in to back guardrail checks.
+//! [`TypeSafeClassifier`] the platform wires in to back guardrail checks. It
+//! brings typed classification — a calibrated number rather than prose — to the
+//! [Everruns](https://everruns.com) ecosystem.
 //!
 //! The `jev` capability contributes one tool, `jev_evaluate`: the
 //! agent hands it content and its own typed questions, and gets calibrated

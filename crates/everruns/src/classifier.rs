@@ -120,6 +120,7 @@ impl From<AgentLoopError> for ClassifierError {
 #[derive(Clone)]
 pub struct Classifier {
     service: Option<Arc<dyn ClassifierService>>,
+    model: Option<String>,
 }
 
 impl Classifier {
@@ -131,13 +132,33 @@ impl Classifier {
     pub fn new(service: impl ClassifierService + 'static) -> Self {
         Self {
             service: Some(Arc::new(service)),
+            model: None,
         }
+    }
+
+    /// Ask a particular model rather than the service's default.
+    ///
+    /// `Model` takes its id up front because a provider is pure transport and
+    /// serves many models with no default. A classifier service has one, so the
+    /// id is an override rather than a required argument — but it is an
+    /// override that exists, because there will be other classifiers and other
+    /// models.
+    ///
+    /// ```
+    /// # use everruns::Classifier;
+    /// let classifier = Classifier::simulated(0.5).model("jev-1.13.0");
+    /// # let _ = classifier;
+    /// ```
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
     }
 
     /// Reach a classifier through a service that is already shared.
     pub fn shared(service: Arc<dyn ClassifierService>) -> Self {
         Self {
             service: Some(service),
+            model: None,
         }
     }
 
@@ -193,9 +214,11 @@ impl Classifier {
 
     /// Describe a classification of `state`.
     pub fn about(&self, state: impl Into<serde_json::Value>) -> Classification {
+        let mut request = ClassificationRequest::new(state);
+        request.model = self.model.clone();
         Classification {
             service: self.service.clone(),
-            request: ClassificationRequest::new(state),
+            request,
         }
     }
 }
@@ -331,6 +354,12 @@ impl Classification {
     /// Attach a question built directly, for shapes the helpers do not cover.
     pub fn ask(mut self, id: impl Into<String>, question: ClassificationQuestion) -> Self {
         self.request = self.request.ask(id, question);
+        self
+    }
+
+    /// Ask a particular model for this call only.
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.request.model = Some(model.into());
         self
     }
 
@@ -561,7 +590,10 @@ mod tests {
         assert!(matches!(empty, Err(ClassifierError::NoQuestions)));
 
         // No service at all.
-        let classifier = Classifier { service: None };
+        let classifier = Classifier {
+            service: None,
+            model: None,
+        };
         let orphan = classifier.about("x").noul("q", "Is it?").send().await;
         assert!(matches!(orphan, Err(ClassifierError::MissingService)));
 
@@ -579,6 +611,70 @@ mod tests {
         assert!(
             rendered.contains("SimulatedClassifierService"),
             "{rendered}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod model_selection_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    /// Records the model each request named, so the resolution order is
+    /// observable rather than assumed.
+    #[derive(Debug, Default)]
+    struct RecordingService {
+        seen: Mutex<Vec<Option<String>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl ClassifierService for RecordingService {
+        fn is_configured(&self) -> bool {
+            true
+        }
+
+        async fn evaluate(
+            &self,
+            request: ClassificationRequest,
+        ) -> everruns_provider::error::Result<ClassificationOutcome> {
+            self.seen.lock().expect("lock").push(request.model.clone());
+            Ok(ClassificationOutcome::default())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_model_is_selectable_and_a_call_outranks_the_classifier() {
+        let service = Arc::new(RecordingService::default());
+        let classifier = Classifier::shared(service.clone()).model("jev-1.13.0");
+
+        // No per-call model: the classifier's choice travels with the request.
+        let _ = classifier
+            .about("x")
+            .noul("q", "Does it hold?")
+            .send()
+            .await;
+        // A per-call model wins over the classifier's.
+        let _ = classifier
+            .about("x")
+            .noul("q", "Does it hold?")
+            .model("jev-latest")
+            .send()
+            .await;
+        // A classifier with no model leaves the choice to the service.
+        let _ = Classifier::shared(service.clone())
+            .about("x")
+            .noul("q", "Does it hold?")
+            .send()
+            .await;
+
+        let seen = service.seen.lock().expect("lock").clone();
+        assert_eq!(
+            seen,
+            vec![
+                Some("jev-1.13.0".to_string()),
+                Some("jev-latest".to_string()),
+                None,
+            ]
         );
     }
 }

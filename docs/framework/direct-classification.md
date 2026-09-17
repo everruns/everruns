@@ -12,8 +12,7 @@ A classifier answers them as numbers instead, and the decision stays in your
 code:
 
 ```rust
-use everruns::Classifier;
-use everruns_integrations_typesafe::TypeSafeClassifier;
+use everruns::{Classifier, TypeSafeClassifier};
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 let classifier = Classifier::new(TypeSafeClassifier::from_env()?);
@@ -37,9 +36,26 @@ the same shape, a different contract.
 | decides the outcome | the model's words | your threshold, in your code |
 | streams | yes | no — one round trip |
 
+## Offline by default
+
+`Classifier::simulated` needs no credentials and no network, so classifications are
+testable the same way agents and completions are:
+
+```rust
+use everruns::Classifier;
+
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let p = Classifier::simulated(0.93)
+    .probability("Does this convey urgency?", "Two hours on hold.")
+    .await?;
+assert!(p > 0.9);
+# Ok(())
+# }
+```
+
 ## Three primitives
 
-A judgment asks one or more questions about the same state. Each is one of
+A classification asks one or more questions about the same state. Each is one of
 three shapes:
 
 ```rust
@@ -115,37 +131,84 @@ if serious > 0.3 {
 # }
 ```
 
-## Offline by default
+## Errors
 
-`Classifier::simulated` needs no credentials and no network, so judgments are
-testable the same way agents and completions are:
+`ClassifierError` separates configuration mistakes from service failures, the
+same split [`CompletionError`](/framework/direct-model-calls/#errors) makes:
+
+- `MissingService` — the classifier was built without a service to reach.
+- `NoQuestions` — the classification was sent with nothing to ask.
+- `Unconfigured` — the service exists but the deployment never configured its
+  credential, so it would answer nothing.
+- `NoSuchAnswer(id)` — you read an id that was not asked, or read an answer as
+  the wrong shape (a `score` as a probability).
+- `Call(..)` — the service call failed, carrying the `AgentLoopError`.
+
+The first three are caught before any request leaves the process.
+`Unconfigured` is worth handling separately: a guardrail treats it as fail-open,
+but a direct caller usually wants to know the number never arrived rather than
+read a confident-looking default.
+
+## Going lower
+
+`Classification` is a thin value-first layer over `ClassifierService`, which is
+public. Applications that already hold a service — or implement their own, over
+a different vendor or a local model — can call it directly with `everruns`'s
+`ClassificationRequest`, `ClassificationQuestion`, and `ClassificationAnswer`
+re-exports:
 
 ```rust
-use everruns::Classifier;
+use everruns::{ClassificationQuestion, ClassificationRequest, ClassifierService};
 
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let p = Classifier::simulated(0.93)
-    .probability("Does this convey urgency?", "Two hours on hold.")
+# async fn run(service: std::sync::Arc<dyn ClassifierService>) -> Result<(), Box<dyn std::error::Error>> {
+let outcome = service
+    .evaluate(
+        ClassificationRequest::new("Claim your prize now!")
+            .ask("spam", ClassificationQuestion::noul("Is this message spam?")),
+    )
     .await?;
-assert!(p > 0.9);
+# let _ = outcome;
 # Ok(())
 # }
 ```
 
+That surface is the contract itself: every question type and the full
+`ClassificationOutcome`, including usage, with nothing defaulted for you.
+Implementing `ClassifierService` is also how a different classifier — another
+vendor, or a fine-tuned local model — plugs into the same `Classifier`,
+guardrails included.
+
 ## Credentials
 
 `TypeSafeClassifier::from_env()` reads your application's own
-`TYPESAFE_API_KEY`. The classifier itself comes from the integration crate, so
-add it alongside `everruns`:
+`TYPESAFE_API_KEY`, and requires the `jev` feature:
 
 ```toml
-everruns = "0.22"
-everruns-integrations-typesafe = { version = "0.1", default-features = false }
+everruns = { version = "0.28", features = ["jev"] }
 ```
 
-`default-features = false` leaves out the hosted connector catalog, which only
-the platform needs. `everruns` itself stays vendor-free: `Classifier::new`
+`everruns` itself stays vendor-free without that feature: `Classifier::new`
 takes any `ClassifierService`, exactly as `Model::new` takes any provider.
+
+## Choosing a model
+
+A service has a default model, so naming one is an override rather than a
+required argument — the difference from [`Model::new`](/framework/direct-model-calls/),
+where a provider is pure transport and serves many models with no default.
+
+```rust
+# use everruns::Classifier;
+# fn run(classifier: Classifier) {
+// Pin a version rather than tracking the vendor's default.
+let pinned = classifier.model("jev-1.13.0");
+# let _ = pinned;
+# }
+```
+
+A single call can override it again with the same method on the builder. A
+deployment that must pin a model does so by never exposing the knob in the
+config an agent writes — not by the type being unable to carry one, because
+there will be other classifiers and other models.
 
 A deployment running the Everruns platform configures a separate
 `UTILITY_TYPESAFE_API_KEY` for its [guardrails](/capabilities/guardrails/) — a
@@ -160,8 +223,7 @@ against a source before citing it, rating a draft before sending it.
 `Jev` is the same classifier as a capability, so an agent gets it as a tool:
 
 ```rust
-use everruns::{Agent, Engine, Model, OpenAI};
-use everruns_integrations_typesafe::Jev;
+use everruns::{Agent, Engine, Jev, Model, OpenAI};
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 let agent = Agent::builder()
@@ -196,21 +258,16 @@ Which one to reach for:
 | **use** | `Classifier` | the `Jev` capability |
 | **good for** | a policy check, a routing rule, a gate | verification inside a longer task |
 
-Add the dependency alongside `everruns`:
-
-```toml
-everruns-integrations-typesafe = { version = "0.1", default-features = false }
-```
-
-`default-features = false` leaves out the hosted connector catalog, which only
-the platform needs.
-
 ## What stays with an agent
 
-A judgment owns no session, no history, and no workspace, and runs no tools.
+A classification owns no session, no history, and no workspace, and runs no
+tools.
 Reach for an [agent](/framework/agents/) as soon as the work needs any of those.
 Typed output guarantees the interface, not the truth: validate thresholds
 against your own data and consequences.
 
-Runnable: [`direct_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_classification.rs)
-and [`agent_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/agent_classification.rs).
+The runnable version of this page is
+[`direct_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_classification.rs),
+which runs offline without an API key, and
+[`agent_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/agent_classification.rs)
+for the agent path.

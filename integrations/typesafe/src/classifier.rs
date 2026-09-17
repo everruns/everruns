@@ -30,20 +30,26 @@ use std::sync::Arc;
 /// session secret instead, and the two must never be the same key.
 pub const UTILITY_TYPESAFE_API_KEY_ENV: &str = "UTILITY_TYPESAFE_API_KEY";
 
-/// The model this deployment asks for. Fixed for the same reason the utility
-/// LLM model is: call sites must not be able to turn it into a selectable one.
+/// The model this service asks for when neither the request nor the service
+/// names one.
+///
+/// The platform pins its classifier to this by never naming a model: the knob
+/// is absent from the config an agent can write. Other deployments, and
+/// embedders, are free to choose — there will be other classifiers and other
+/// models, and the type should not be the thing preventing that.
 pub const CLASSIFIER_MODEL: &str = DEFAULT_MODEL;
 
 /// TypeSafe-backed implementation of core's provider-neutral classifier.
 #[derive(Clone)]
 pub struct TypeSafeClassifier {
     client: TypeSafeClient,
+    model: Option<String>,
 }
 
 impl std::fmt::Debug for TypeSafeClassifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TypeSafeClassifier")
-            .field("model", &CLASSIFIER_MODEL)
+            .field("model", &self.model.as_deref().unwrap_or(CLASSIFIER_MODEL))
             .field("configured", &true)
             .finish()
     }
@@ -72,7 +78,19 @@ impl TypeSafeClassifier {
 
     /// Supply a client, including a trusted custom endpoint for tests.
     pub fn with_client(client: TypeSafeClient) -> Self {
-        Self { client }
+        Self {
+            client,
+            model: None,
+        }
+    }
+
+    /// Ask a particular model rather than the vendor's default.
+    ///
+    /// A request that names its own model still wins: this is the default for
+    /// callers that name none.
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
     }
 
     /// A client that does not retry, for callers on a latency-critical seam.
@@ -97,18 +115,22 @@ impl ClassifierService for TypeSafeClassifier {
     async fn evaluate(&self, request: ClassificationRequest) -> Result<ClassificationOutcome> {
         if request.is_empty() {
             return Err(AgentLoopError::llm(
-                "judgment request must carry at least one question",
+                "classification request must carry at least one question",
             ));
         }
         let mut evaluation = Evaluation::new(request.state.clone());
+        // The caller's model when they named one, this service's otherwise.
+        // Guardrails never name one, so the deployment stays on its default.
+        if let Some(model) = request.model.as_deref().or(self.model.as_deref()) {
+            evaluation = evaluation.model(model);
+        }
         for (id, question) in &request.questions {
             evaluation = evaluation.ask(id.clone(), to_vendor_question(question));
         }
 
-        let judgment =
-            self.client.evaluate(evaluation).await.map_err(|error| {
-                AgentLoopError::llm(format!("judgment request failed: {error}"))
-            })?;
+        let judgment = self.client.evaluate(evaluation).await.map_err(|error| {
+            AgentLoopError::llm(format!("classification request failed: {error}"))
+        })?;
 
         Ok(ClassificationOutcome {
             model: judgment.model.clone(),

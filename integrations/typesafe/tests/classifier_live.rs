@@ -159,3 +159,30 @@ async fn moderation_categories_are_scored_in_one_request() {
         );
     }
 }
+
+/// Naming a model reaches the vendor, and the default is an alias the vendor
+/// resolves rather than a literal it echoes back.
+///
+/// The pinned id is read from the default's own answer rather than written
+/// here, so retiring a version fails the *pin*, not the test's guess at one.
+#[tokio::test]
+async fn the_named_model_is_the_one_that_answers() {
+    let content = serde_json::json!({"query": "SELECT 1"});
+    let default = service()
+        .evaluate(judge_request("sql_exec", content.clone(), DELETE_POLICY))
+        .await
+        .expect("judgment succeeds");
+    assert_ne!(
+        default.model, "jev-latest",
+        "the default is an alias; the answer must name the version that ran"
+    );
+
+    let pinned = service()
+        .evaluate(judge_request("sql_exec", content, DELETE_POLICY).model(&default.model))
+        .await
+        .expect("judgment succeeds");
+    assert_eq!(
+        pinned.model, default.model,
+        "a named model is the one that answers"
+    );
+}
