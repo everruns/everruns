@@ -78,7 +78,6 @@
 4592 crates/server/src/slack_delivery.rs
 4551 crates/server/src/storage/memory/tests.rs
 3866 crates/server/src/storage/models.rs
-5366 crates/server/tests/api_integration_test.rs
 2589 crates/server/tests/app_a2a_integration_test.rs
 1743 crates/server/tests/evals_integration_test.rs
 4254 crates/server/tests/mcp_endpoint_test.rs
