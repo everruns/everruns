@@ -60,13 +60,15 @@ export function resolveExposureState(channel: AppChannel, agent: Agent | undefin
 export function isAnonymousExposure(channel: AppChannel): boolean {
   if (channel.channel_type === "public_chat") {
     const config = channel.channel_config as PublicChatChannelConfig;
-    const hasSignIn = !!config.auth && config.auth.mode !== "anonymous";
+    const auth = channel.auth ?? config.auth;
+    const hasSignIn = !!auth && auth.mode !== "anonymous";
     const tokenProtected = !!config.token_configured || !!config.token;
     return !hasSignIn && !tokenProtected && config.anonymous !== false;
   }
   if (channel.channel_type === "ag_ui") {
     const config = channel.channel_config as AgUiChannelConfig;
-    const hasSignIn = !!config.auth && config.auth.mode !== "anonymous";
+    const auth = channel.auth ?? config.auth;
+    const hasSignIn = !!auth && auth.mode !== "anonymous";
     const tokenProtected = !!config.token_configured || !!config.token;
     return !hasSignIn && !tokenProtected && config.anonymous !== false;
   }

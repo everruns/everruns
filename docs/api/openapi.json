@@ -18392,6 +18392,17 @@
           "updated_at"
         ],
         "properties": {
+          "auth": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AppEndpointAuthConfig",
+                "description": "Authentication policy for this endpoint."
+              }
+            ]
+          },
           "channel_config": {
             "description": "Channel-specific configuration (validated per channel type)."
           },
@@ -18543,6 +18554,9 @@
                   "null"
                 ]
               },
+              "client_secret_configured": {
+                "type": "boolean"
+              },
               "introspection_url": {
                 "type": "string"
               },
@@ -18566,6 +18580,9 @@
                   "string",
                   "null"
                 ]
+              },
+              "password_configured": {
+                "type": "boolean"
               },
               "password_hash": {
                 "type": [
@@ -18606,6 +18623,9 @@
                   "null"
                 ],
                 "description": "Shared secret the trusted proxy includes in `proxy_secret_header`.\nWrite-only: redacted in GET responses. See TM-AUTH-021."
+              },
+              "proxy_secret_configured": {
+                "type": "boolean"
               },
               "proxy_secret_header": {
                 "type": [

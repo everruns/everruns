@@ -248,7 +248,7 @@ async fn authorize_ag_ui_request(
         tracing::error!(app_id = %app.public_id, "AG-UI channel config did not deserialize");
         return Err(not_found());
     };
-    if let Some(auth) = channel_config.auth.as_ref() {
+    if let Some(auth) = channel.auth.as_ref() {
         state
             .auth_verifier
             .verify(

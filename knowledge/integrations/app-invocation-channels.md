@@ -131,8 +131,8 @@ Ingress:
 
 - `POST /v1/apps/{app_id}/webhooks/{channel_id}`
 - auth via `Authorization: Bearer <token>` or `X-Everruns-Webhook-Token: <token>`
-- future webhook auth implementations should use the same
-  `channel_config.auth` verifier as AG-UI and A2A instead of adding
+- future webhook auth implementations should use the same first-class
+  endpoint auth verifier as AG-UI and A2A instead of adding
   channel-local credential logic. Until that enforcement lands, webhook
   channel configs must not include `auth`.
 

@@ -642,21 +642,29 @@ fn normalize_inline_endpoint_auth(
         .get_mut("auth")
         .and_then(|auth| auth.get_mut("provider"))
         .and_then(Value::as_object_mut)
-        && provider.get("type").and_then(Value::as_str) == Some("http_basic")
     {
-        let password = provider
-            .remove("password")
-            .and_then(|value| value.as_str().map(str::to_owned));
-        if let Some(password) = password {
-            if password.trim().is_empty() {
-                return Err(CommandError::bad_request(
-                    "HTTP Basic password must be non-empty when configured",
-                ));
+        for configured_flag in [
+            "client_secret_configured",
+            "password_configured",
+            "proxy_secret_configured",
+        ] {
+            provider.remove(configured_flag);
+        }
+        if provider.get("type").and_then(Value::as_str) == Some("http_basic") {
+            let password = provider
+                .remove("password")
+                .and_then(|value| value.as_str().map(str::to_owned));
+            if let Some(password) = password {
+                if password.trim().is_empty() {
+                    return Err(CommandError::bad_request(
+                        "HTTP Basic password must be non-empty when configured",
+                    ));
+                }
+                provider.insert(
+                    "password_hash".to_string(),
+                    Value::String(hash_app_endpoint_basic_password(&password)?),
+                );
             }
-            provider.insert(
-                "password_hash".to_string(),
-                Value::String(hash_app_endpoint_basic_password(&password)?),
-            );
         }
     }
     Ok(())
@@ -757,6 +765,7 @@ fn validate_endpoint_auth_config(
                 username,
                 password,
                 password_hash,
+                ..
             }) if !username.trim().is_empty()
                 && (password.as_deref().is_some_and(|p| !p.trim().is_empty())
                     || password_hash
@@ -775,6 +784,7 @@ fn validate_endpoint_auth_config(
                 allowed_values,
                 proxy_secret_header,
                 proxy_secret,
+                ..
             }) if !header_name.trim().is_empty()
                 && !allowed_values.is_empty()
                 && proxy_secret_header
@@ -911,6 +921,14 @@ fn redact_inline_endpoint_auth(config: &mut Value) {
 }
 
 fn redact_channel_for_response(mut channel: AppChannel) -> AppChannel {
+    if let Some(auth) = channel.auth.take() {
+        let mut wrapped = json!({ "auth": auth });
+        redact_inline_endpoint_auth(&mut wrapped);
+        channel.auth = wrapped
+            .get_mut("auth")
+            .map(Value::take)
+            .and_then(|value| serde_json::from_value(value).ok());
+    }
     redact_channel_config(&channel.channel_type, &mut channel.channel_config);
     channel
 }
@@ -2161,9 +2179,8 @@ impl Command for CreateApp {
             .await
             .map_err(classify_anyhow)?;
 
-        // Prepare channel config
-        let (stored_plaintext, channel_config_encrypted) =
-            q::prepare_channel_config(encryption, &channel_config).map_err(classify_anyhow)?;
+        let prepared =
+            q::prepare_channel_storage(encryption, &channel_config).map_err(classify_anyhow)?;
 
         // Persist app
         let internal_uuid = Uuid::now_v7();
@@ -2180,8 +2197,8 @@ impl Command for CreateApp {
             owner_principal_id: owner_principal.id,
             resolved_owner_user_id: owner_principal.resolved_user_id,
             channel_type: channel_type.as_ref().map(ToString::to_string),
-            channel_config: stored_plaintext.clone(),
-            channel_config_encrypted: channel_config_encrypted.clone(),
+            channel_config: prepared.channel_config.clone(),
+            channel_config_encrypted: prepared.channel_config_encrypted.clone(),
         };
         let row = ctx
             .db
@@ -2196,8 +2213,10 @@ impl Command for CreateApp {
             let channel_input = CreateAppChannelRow {
                 public_id: channel_public_id.to_string(),
                 channel_type: channel_type.to_string(),
-                channel_config: stored_plaintext,
-                channel_config_encrypted,
+                channel_config: prepared.channel_config,
+                channel_config_encrypted: prepared.channel_config_encrypted,
+                auth: prepared.auth,
+                auth_encrypted: prepared.auth_encrypted,
                 durable_schedule_id: None,
                 enabled: true,
             };
@@ -2826,16 +2845,27 @@ impl Command for UpdateAppCmd {
                 .list_app_channels(existing.id)
                 .await
                 .map_err(classify_anyhow)?;
-            for channel_row in channel_rows
-                .into_iter()
-                .filter(|channel_row| channel_row.channel_config_encrypted.is_none())
-            {
-                let (stored, encrypted) =
-                    q::prepare_channel_config(encryption, &channel_row.channel_config)
-                        .map_err(classify_anyhow)?;
+            for channel_row in channel_rows {
+                let config = q::channel_config_with_auth(encryption, &channel_row);
+                let has_legacy_auth = channel_row.auth.is_none()
+                    && channel_row.auth_encrypted.is_none()
+                    && config.get("auth").is_some();
+                let needs_transport_encryption = channel_row.channel_config_encrypted.is_none()
+                    && channel_row
+                        .channel_config
+                        .as_object()
+                        .is_some_and(|config| !config.is_empty());
+                let needs_auth_encryption = channel_row.auth.is_some();
+                if !needs_transport_encryption && !needs_auth_encryption && !has_legacy_auth {
+                    continue;
+                }
+                let prepared =
+                    q::prepare_channel_storage(encryption, &config).map_err(classify_anyhow)?;
                 let input = UpdateAppChannel {
-                    channel_config: Some(stored),
-                    channel_config_encrypted: encrypted,
+                    channel_config: Some(prepared.channel_config),
+                    channel_config_encrypted: prepared.channel_config_encrypted,
+                    auth: UpdateField::from_option(prepared.auth),
+                    auth_encrypted: UpdateField::from_option(prepared.auth_encrypted),
                     ..Default::default()
                 };
                 ctx.db
@@ -3209,16 +3239,18 @@ impl Command for AddChannel {
             self.req.channel_type.clone(),
             self.req.channel_config.unwrap_or_default(),
         )?;
-        let (stored_plaintext, encrypted) =
-            q::prepare_channel_config(encryption, &channel_config).map_err(classify_anyhow)?;
+        let prepared =
+            q::prepare_channel_storage(encryption, &channel_config).map_err(classify_anyhow)?;
 
         let channel_uuid = Uuid::now_v7();
         let channel_public_id = AppChannelId::from_uuid(channel_uuid);
         let input = CreateAppChannelRow {
             public_id: channel_public_id.to_string(),
             channel_type: self.req.channel_type.to_string(),
-            channel_config: stored_plaintext,
-            channel_config_encrypted: encrypted,
+            channel_config: prepared.channel_config,
+            channel_config_encrypted: prepared.channel_config_encrypted,
+            auth: prepared.auth,
+            auth_encrypted: prepared.auth_encrypted,
             durable_schedule_id: None,
             enabled: self.req.enabled.unwrap_or(true),
         };
@@ -3623,11 +3655,7 @@ impl Command for RegenerateA2aApiKeyCmd {
         }
 
         let encryption = ctx.encryption.as_ref();
-        let mut existing_config: Value = q::decrypt_channel_config(
-            encryption,
-            channel_row.channel_config_encrypted.as_deref(),
-            &channel_row.channel_config,
-        );
+        let mut existing_config = q::channel_config_with_auth(encryption, &channel_row);
         let (plaintext, hash, prefix) = generate_a2a_api_key();
         if let Some(map) = existing_config.as_object_mut() {
             map.insert("api_key_hash".to_string(), Value::String(hash));
@@ -3640,15 +3668,17 @@ impl Command for RegenerateA2aApiKeyCmd {
         let existing_config =
             normalize_and_validate_channel_config(ChannelType::A2a, existing_config)?;
 
-        let (stored, encrypted) =
-            q::prepare_channel_config(encryption, &existing_config).map_err(classify_anyhow)?;
+        let prepared =
+            q::prepare_channel_storage(encryption, &existing_config).map_err(classify_anyhow)?;
         let row = ctx
             .db
             .update_app_channel(
                 channel_row.id,
                 UpdateAppChannel {
-                    channel_config: Some(stored),
-                    channel_config_encrypted: encrypted,
+                    channel_config: Some(prepared.channel_config),
+                    channel_config_encrypted: prepared.channel_config_encrypted,
+                    auth: UpdateField::from_option(prepared.auth),
+                    auth_encrypted: UpdateField::from_option(prepared.auth_encrypted),
                     ..Default::default()
                 },
             )
@@ -3846,11 +3876,7 @@ impl Command for RegenerateApiEndpointApiKeyCmd {
         }
 
         let encryption = ctx.encryption.as_ref();
-        let mut existing_config: Value = q::decrypt_channel_config(
-            encryption,
-            channel_row.channel_config_encrypted.as_deref(),
-            &channel_row.channel_config,
-        );
+        let mut existing_config = q::channel_config_with_auth(encryption, &channel_row);
         let (plaintext, hash, prefix) = generate_app_api_key();
         if let Some(map) = existing_config.as_object_mut() {
             map.insert("api_key_hash".to_string(), Value::String(hash));
@@ -3863,15 +3889,17 @@ impl Command for RegenerateApiEndpointApiKeyCmd {
         let existing_config =
             normalize_and_validate_channel_config(ChannelType::ApiEndpoint, existing_config)?;
 
-        let (stored, encrypted) =
-            q::prepare_channel_config(encryption, &existing_config).map_err(classify_anyhow)?;
+        let prepared =
+            q::prepare_channel_storage(encryption, &existing_config).map_err(classify_anyhow)?;
         let row = ctx
             .db
             .update_app_channel(
                 channel_row.id,
                 UpdateAppChannel {
-                    channel_config: Some(stored),
-                    channel_config_encrypted: encrypted,
+                    channel_config: Some(prepared.channel_config),
+                    channel_config_encrypted: prepared.channel_config_encrypted,
+                    auth: UpdateField::from_option(prepared.auth),
+                    auth_encrypted: UpdateField::from_option(prepared.auth_encrypted),
                     ..Default::default()
                 },
             )
@@ -3961,11 +3989,7 @@ impl Command for UpdateChannelCmd {
             .clone()
             .unwrap_or(current_channel_type.clone());
         reject_new_schedule_channel(&final_channel_type)?;
-        let existing_decrypted = q::decrypt_channel_config(
-            encryption,
-            channel_row.channel_config_encrypted.as_deref(),
-            &channel_row.channel_config,
-        );
+        let existing_decrypted = q::channel_config_with_auth(encryption, &channel_row);
         let mut final_channel_config = self
             .req
             .channel_config
@@ -3991,22 +4015,31 @@ impl Command for UpdateChannelCmd {
         let normalized_channel_config =
             normalize_and_validate_channel_config(final_channel_type, final_channel_config)?;
 
-        let config_changed = self.req.channel_config.is_some();
-        let (channel_config, channel_config_encrypted) = if config_changed {
+        let config_changed = self.req.channel_config.is_some()
+            || (channel_row.auth.is_none()
+                && channel_row.auth_encrypted.is_none()
+                && existing_decrypted.get("auth").is_some());
+        let (channel_config, channel_config_encrypted, auth, auth_encrypted) = if config_changed {
             // Persist the merged config (so A2A preserves the existing
             // api_key_hash / prefix when the client omits them).
-            let (stored, encrypted) =
-                q::prepare_channel_config(encryption, &normalized_channel_config)
-                    .map_err(classify_anyhow)?;
-            (Some(stored), encrypted)
+            let prepared = q::prepare_channel_storage(encryption, &normalized_channel_config)
+                .map_err(classify_anyhow)?;
+            (
+                Some(prepared.channel_config),
+                prepared.channel_config_encrypted,
+                UpdateField::from_option(prepared.auth),
+                UpdateField::from_option(prepared.auth_encrypted),
+            )
         } else {
-            (None, None)
+            (None, None, UpdateField::Unchanged, UpdateField::Unchanged)
         };
 
         let input = UpdateAppChannel {
             channel_type: self.req.channel_type.map(|ct| ct.to_string()),
             channel_config,
             channel_config_encrypted,
+            auth,
+            auth_encrypted,
             durable_schedule_id: UpdateField::Unchanged,
             enabled: self.req.enabled,
             // The App channel API has no status field of its own; the repository
@@ -4093,16 +4126,24 @@ async fn set_endpoint_published(
             "Enable the channel before publishing it",
         ));
     }
-
+    let mut input = UpdateAppChannel {
+        status: Some(if published { "live" } else { "draft" }.to_string()),
+        ..Default::default()
+    };
+    if channel_row.auth.is_none() && channel_row.auth_encrypted.is_none() {
+        let config = q::channel_config_with_auth(ctx.encryption.as_ref(), &channel_row);
+        if config.get("auth").is_some() {
+            let prepared = q::prepare_channel_storage(ctx.encryption.as_ref(), &config)
+                .map_err(classify_anyhow)?;
+            input.channel_config = Some(prepared.channel_config);
+            input.channel_config_encrypted = prepared.channel_config_encrypted;
+            input.auth = UpdateField::from_option(prepared.auth);
+            input.auth_encrypted = UpdateField::from_option(prepared.auth_encrypted);
+        }
+    }
     let row = ctx
         .db
-        .update_app_channel(
-            channel_row.id,
-            UpdateAppChannel {
-                status: Some(if published { "live" } else { "draft" }.to_string()),
-                ..Default::default()
-            },
-        )
+        .update_app_channel(channel_row.id, input)
         .await
         .map_err(classify_anyhow)?
         .ok_or_else(|| CommandError::not_found("Channel"))?;
@@ -4347,6 +4388,7 @@ mod tests {
             internal_id: Uuid::nil(),
             channel_type: ChannelType::Webhook,
             channel_config: json!({}),
+            auth: None,
             enabled: true,
             status: everruns_platform::EndpointStatus::Live,
             created_at: now,

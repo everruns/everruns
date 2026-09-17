@@ -328,6 +328,9 @@ pub struct AppChannel {
     /// Channel-specific configuration (validated per channel type).
     #[serde(default)]
     pub channel_config: serde_json::Value,
+    /// Authentication policy for this endpoint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<Box<AppEndpointAuthConfig>>,
     /// Whether this channel is enabled.
     #[serde(default = "default_true")]
     pub enabled: bool,
@@ -599,8 +602,8 @@ pub const DEFAULT_AG_UI_GENERIC_TOOL_TEXT: &str = DEFAULT_PUBLIC_TOOL_ACTIVITY_T
 
 /// App-published endpoint authentication mode.
 ///
-/// Stored inline on `app_channels.channel_config.auth` so users can protect a
-/// single App/channel without first creating org-level identity-provider state.
+/// Stored on `AppChannel.auth` so users can protect one endpoint without first
+/// creating org-level identity-provider state.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -636,6 +639,8 @@ pub enum AppEndpointAuthProviderConfig {
         client_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         client_secret: Option<String>,
+        #[serde(default, skip_serializing_if = "is_false")]
+        client_secret_configured: bool,
     },
     HttpBasic {
         username: String,
@@ -643,6 +648,8 @@ pub enum AppEndpointAuthProviderConfig {
         password: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         password_hash: Option<String>,
+        #[serde(default, skip_serializing_if = "is_false")]
+        password_configured: bool,
     },
     Mtls {
         header_name: String,
@@ -656,6 +663,8 @@ pub enum AppEndpointAuthProviderConfig {
         /// Write-only: redacted in GET responses. See TM-AUTH-021.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         proxy_secret: Option<String>,
+        #[serde(default, skip_serializing_if = "is_false")]
+        proxy_secret_configured: bool,
     },
 }
 
@@ -683,7 +692,7 @@ pub struct AppEndpointAuthRequirements {
     pub domains: Vec<String>,
 }
 
-/// Inline auth config for one App endpoint/channel.
+/// Authentication config for one App endpoint/channel.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[cfg_attr(
@@ -1470,6 +1479,7 @@ mod tests {
             internal_id: Uuid::nil(),
             channel_type,
             channel_config: config,
+            auth: None,
             enabled: true,
             status: EndpointStatus::Live,
             created_at: Utc::now(),

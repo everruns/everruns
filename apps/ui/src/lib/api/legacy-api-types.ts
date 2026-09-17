@@ -777,6 +777,7 @@ export interface PublicChatChannelConfig {
 export interface AppChannel {
   id: string;
   channel_type: ChannelType;
+  auth?: AppEndpointAuthConfig;
   channel_config:
     | SlackChannelConfig
     | AgUiChannelConfig

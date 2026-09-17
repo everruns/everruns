@@ -5031,6 +5031,169 @@ async fn test_update_app_reencrypts_legacy_plaintext_channel_configs() {
 }
 
 #[tokio::test]
+async fn test_endpoint_auth_is_stored_in_separate_ciphertext() {
+    let server = TestServer::new().await;
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({ "name": "endpoint-auth-storage-agent", "display_name": "Test Agent", "system_prompt": "Test" }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let app: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Endpoint auth storage",
+                "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent["id"],
+                "channel_type": "ag_ui",
+                "channel_config": {
+                    "anonymous": false,
+                    "auth": {
+                        "mode": "http_basic",
+                        "provider": {
+                            "type": "http_basic",
+                            "username": "operator",
+                            "password": "YExample0"
+                        }
+                    }
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let channel = &app["channels"][0];
+    assert_eq!(channel["auth"]["mode"], "http_basic");
+    assert_eq!(
+        channel["auth"]["provider"]["password_configured"],
+        json!(true)
+    );
+    assert!(channel["auth"]["provider"].get("password").is_none());
+    assert!(channel["auth"]["provider"].get("password_hash").is_none());
+    assert!(channel["channel_config"].get("auth").is_none());
+
+    let row = server
+        .db
+        .get_app_channel_by_public_id(channel["id"].as_str().unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.channel_config, json!({}));
+    assert!(row.channel_config_encrypted.is_some());
+    assert!(row.auth.is_none());
+    assert!(row.auth_encrypted.is_some());
+
+    let encryption = server.encryption.as_ref().unwrap();
+    let transport: Value = serde_json::from_str(
+        &encryption
+            .decrypt_to_string(row.channel_config_encrypted.as_deref().unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(transport.get("auth").is_none());
+    let auth: Value = serde_json::from_str(
+        &encryption
+            .decrypt_to_string(row.auth_encrypted.as_deref().unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    let hash = auth["provider"]["password_hash"].as_str().unwrap();
+    assert!(hash.starts_with("$argon2id$"));
+    assert!(!hash.contains("YExample0"));
+}
+
+#[tokio::test]
+async fn test_endpoint_write_lazily_splits_encrypted_legacy_auth() {
+    let server = TestServer::new().await;
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({ "name": "legacy-auth-split-agent", "display_name": "Test Agent", "system_prompt": "Test" }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let app: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Legacy endpoint auth",
+                "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent["id"],
+                "channel_type": "ag_ui",
+                "channel_config": {"anonymous": true}
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    let row = server
+        .db
+        .get_app_channel_by_public_id(channel_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let legacy = json!({
+        "auth": {
+            "mode": "google_oidc",
+            "provider": {"type": "google_oidc", "client_id": "legacy-client"}
+        }
+    });
+    let legacy_encrypted = server
+        .encryption
+        .as_ref()
+        .unwrap()
+        .encrypt_string(&serde_json::to_string(&legacy).unwrap())
+        .unwrap();
+    sqlx::query(
+        "UPDATE agent_endpoints
+         SET channel_config = '{}'::jsonb, channel_config_encrypted = $1,
+             auth = NULL, auth_encrypted = NULL
+         WHERE id = $2",
+    )
+    .bind(legacy_encrypted)
+    .bind(row.id)
+    .execute(&server.pool)
+    .await
+    .unwrap();
+
+    let updated: Value = server
+        .patch(
+            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
+            json!({"enabled": false}),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(updated["auth"]["mode"], "google_oidc");
+    assert!(updated["channel_config"].get("auth").is_none());
+
+    let row = server
+        .db
+        .get_app_channel_by_public_id(channel_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(row.auth_encrypted.is_some());
+    let transport: Value = serde_json::from_str(
+        &server
+            .encryption
+            .as_ref()
+            .unwrap()
+            .decrypt_to_string(row.channel_config_encrypted.as_deref().unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(transport, json!({}));
+}
+
+#[tokio::test]
 async fn test_list_connections_initially_empty() {
     let server = TestServer::in_memory().await;
 

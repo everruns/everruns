@@ -14,11 +14,10 @@ Apps publish inbound endpoints such as AG-UI and A2A. Those endpoints need a
 shared authentication model so enterprise schemes can be added once instead of
 reimplemented per channel.
 
-The first implementation is deliberately channel-local: a user creates an
-Agent, creates an App/channel, then configures auth directly on that channel.
-There is no required org-level provider setup. Optional reusable providers may
-be added later as a product convenience, but the verifier contract is based on
-the inline `app_channels.channel_config.auth` object.
+The implementation is channel-local: a user creates an Agent, creates an
+App/channel, then configures auth directly on that endpoint. There is no
+required org-level provider setup. Optional reusable providers may be added
+later as a product convenience.
 
 ## Goals
 
@@ -45,9 +44,17 @@ the inline `app_channels.channel_config.auth` object.
 5. Token issuance. Everruns validates credentials issued by external identity
    providers.
 
-## Inline Auth Model
+## Endpoint Auth Model
 
-Supported channels store auth at `app_channels.channel_config.auth`.
+Supported channels expose auth as `AppChannel.auth` and store it in
+`agent_endpoints.auth`. Deployments with encryption configured store the JSON
+only in `agent_endpoints.auth_encrypted`; this includes Argon2id password
+hashes, OAuth client secrets, and mTLS proxy secrets.
+
+Legacy nested `channel_config.auth` remains readable. The migration moves
+plaintext rows immediately. It leaves encrypted transport rows intact because
+SQL cannot decrypt them; the next endpoint write decrypts and separates their
+auth. First-class auth is authoritative when both forms exist.
 
 ```json
 {
@@ -79,7 +86,7 @@ Modes:
 - `oauth2_introspection` validates opaque bearer tokens through an RFC 7662
   introspection endpoint, then applies requirements.
 - `http_basic` validates standard HTTP Basic credentials. Passwords are
-  write-only and stored as Argon2id hashes in channel config.
+  write-only and stored as encrypted Argon2id hashes.
 - `mtls` validates a configured identity header set by a trusted reverse proxy
   after client certificate verification. Requires `proxy_secret_header` and
   `proxy_secret`, a shared secret the trusted proxy injects to prove the
@@ -123,7 +130,7 @@ AG-UI behavior:
 - Without `auth`, current behavior remains: `anonymous` controls public access
   and optional `token` accepts `Authorization: Bearer <token>` or
   `X-Everruns-AG-UI-Token`.
-- With `auth`, the shared verifier is authoritative and the legacy token gate
+- With first-class `auth`, the shared verifier is authoritative and the legacy token gate
   is ignored.
 - Stream and image-upload routes use the same auth decision on endpoint-scoped
   and app-scoped addresses.
@@ -141,7 +148,7 @@ A2A behavior:
 Webhook behavior:
 
 - Webhook channels continue to require their existing `token`.
-- The API rejects `channel_config.auth` on webhook channels until the webhook
+- The API rejects endpoint auth on webhook channels until the webhook
   handler is wired into the shared verifier. This avoids storing a policy that
   callers might assume is enforced.
 

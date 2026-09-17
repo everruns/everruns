@@ -5090,6 +5090,7 @@ export interface components {
      *     Each channel has its own type, config, and lifecycle status.
      */
     AppChannel: {
+      auth?: null | components["schemas"]["AppEndpointAuthConfig"];
       /** @description Channel-specific configuration (validated per channel type). */
       channel_config?: unknown;
       /** @description Channel type (e.g. slack). */
@@ -5169,12 +5170,14 @@ export interface components {
       | {
           client_id?: string | null;
           client_secret?: string | null;
+          client_secret_configured?: boolean;
           introspection_url: string;
           /** @enum {string} */
           type: "o_auth2_introspection";
         }
       | {
           password?: string | null;
+          password_configured?: boolean;
           password_hash?: string | null;
           /** @enum {string} */
           type: "http_basic";
@@ -5188,6 +5191,7 @@ export interface components {
            *     Write-only: redacted in GET responses. See TM-AUTH-021.
            */
           proxy_secret?: string | null;
+          proxy_secret_configured?: boolean;
           /**
            * @description Header the trusted reverse proxy uses to prove its identity.
            *     Required. Configs without this field fail closed at verification time.
